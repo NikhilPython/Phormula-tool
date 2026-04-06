@@ -144,6 +144,17 @@ const getCurrencySymbol = (country?: string) => {
 const capitalize = (str: string) =>
   str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
 
+const formatCurrencyValue = (value: number, currencySymbol: string) => {
+  const absValue = Math.abs(Number(value || 0)).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return Number(value) < 0
+    ? `-${currencySymbol}${absValue}`
+    : `${currencySymbol}${absValue}`;
+};
+
 // fixed columns expected
 const columnsToDisplay2 = [
   "net_sales",
@@ -372,23 +383,28 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   ]);
 
   const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
-    quantity_total: 10,
-    gross_sales: 16,
-    net_sales: 14,
-    amazon_fee: 32,
-    advertising_total: 18,
-    taxncredit: 45,
-    otherwplatform: 28,
-    rembursement_fee: 32,
-    cashflow: 82,
+    quantity_total: 0,
+    gross_sales: 0,
+    net_sales: 0,
+    amazon_fee: 0,
+    advertising_total: 0,
+    taxncredit: 0,
+    otherwplatform: 0,
+    rembursement_fee: 0,
+    cashflow: 0,
   };
 
-
-  const effectiveData = isPreviewMode
-    ? { summary: DUMMY_CASHFLOW_SUMMARY }
-    : data;
-
-
+  const EMPTY_CASHFLOW_SUMMARY: SummaryShape = {
+    quantity_total: 0,
+    gross_sales: 0,
+    net_sales: 0,
+    amazon_fee: 0,
+    advertising_total: 0,
+    taxncredit: 0,
+    otherwplatform: 0,
+    rembursement_fee: 0,
+    cashflow: 0,
+  };
 
   const [selectedGraphs, setSelectedGraphs] =
     useState<Record<string, boolean>>(defaultMetricState);
@@ -397,13 +413,14 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-  const getSafeValue = (key: keyof SummaryShape) => {
-    return (effectiveData?.summary?.[key] ?? 0) as number;
-  };
+  // const getSafeValue = (key: keyof SummaryShape) => {
+  //   return (effectiveData?.summary?.[key] ?? 0) as number;
+  // };
 
-  const allValuesZero =
-    !effectiveData?.summary ||
-    Object.values(effectiveData.summary).every((v) => !v);
+  // const allValuesZero =
+  //   !effectiveData?.summary ||
+  //   Object.values(effectiveData.summary).every((v) => !v);
+
   // API helpers (using fetch)
   const fetchSpecificPeriodData = async (
     requestMonth: string | null,
@@ -521,6 +538,8 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     setError("");
     setLoading(true);
     setData(null);
+    setAllYearlyData({});
+    setQuarterlyMonthlyData({});
 
     // validation
     if (periodType === "monthly" && (!month || !year)) {
@@ -574,7 +593,17 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         setData(resp);
       }
     } catch (err: any) {
-      setError(err?.message || "Network error or unexpected error occurred");
+      const message = err?.message || "Network error or unexpected error occurred";
+
+      if (message.toLowerCase().includes("no data")) {
+        setError("");
+        setData({
+          previous_summary: undefined,
+          summary: EMPTY_CASHFLOW_SUMMARY,
+        });
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -644,24 +673,48 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-
-
-  const isSmallScreen = viewportWidth < 1024; // mobile + tablet
+  const isSmallScreen = viewportWidth < 1024;
   const isMobile = viewportWidth < 640;
 
   const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
   const yAxisFontSize = 12;
   const barWidthInPixels = Math.max(viewportWidth * 0.05, 40);
 
+  const canShowResults =
+    (periodType === "monthly" && !!month && !!year) ||
+    (periodType === "quarterly" && !!selectedQuarter && !!year) ||
+    (periodType === "yearly" && !!year);
+
+  const effectiveData =
+    isPreviewMode
+      ? { summary: EMPTY_CASHFLOW_SUMMARY }
+      : data?.summary
+        ? data
+        : canShowResults && !loading
+          ? { summary: EMPTY_CASHFLOW_SUMMARY }
+          : null;
+
+  const getSafeValue = (key: keyof SummaryShape) => {
+    return (effectiveData?.summary?.[key] ?? 0) as number;
+  };
+
+  const allValuesZero =
+    !effectiveData?.summary ||
+    Object.values(effectiveData.summary ?? {}).every((v) => !v);
+
+  const showNoDataMessage =
+    !isPreviewMode &&
+    canShowResults &&
+    !loading &&
+    !error &&
+    !!effectiveData?.summary &&
+    allValuesZero;
+
   const getLineChartData = () => {
     let labels: string[] = [];
     const datasets: any[] = [];
 
-    if (
-      periodType === "quarterly" &&
-      selectedQuarter &&
-      Object.keys(quarterlyMonthlyData).length > 0
-    ) {
+    if (periodType === "quarterly" && selectedQuarter) {
       const sourceMonths = quarterMapping[selectedQuarter] || [];
 
       labels = sourceMonths.map((m) =>
@@ -673,7 +726,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
         const ds = sourceMonths.map((monthName) => {
           const md = quarterlyMonthlyData[monthName];
-          return Math.abs(Number(md?.[key] ?? 0));
+          return Number(md?.[key] ?? 0);
         });
 
         datasets.push({
@@ -698,8 +751,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
         const ds = monthsList.map((m) => {
           const md = allYearlyData[m];
-          const val = md?.[key] ?? 0;
-          return Math.abs(Number(val));
+          return Number(md?.[key] ?? 0);
         });
 
         const label = labelMap[key];
@@ -736,7 +788,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       datasets: [
         {
           label: "Amount",
-          data: filteredKeys.map((k) => Math.abs(Number(getSafeValue(k)))),
+          data: filteredKeys.map((k) => Number(getSafeValue(k))),
           backgroundColor: filteredKeys.map(
             (k) => colorMapping[labelMap[k]] || "#999"
           ),
@@ -761,10 +813,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         callbacks: {
           label: (tooltipItem: any) => {
             const label = tooltipItem.label || "";
-            return `${label}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`;
+            return `${label}: ${formatCurrencyValue(tooltipItem.raw, currencySymbol)}`;
           },
         },
       },
@@ -803,7 +852,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           font: { size: yAxisFontSize },
           padding: 0,
           callback: (value: any) =>
-            `${currencySymbol}${Number(value).toLocaleString()}`,
+            formatCurrencyValue(Number(value), currencySymbol),
         },
         border: {
           display: false,
@@ -840,10 +889,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         callbacks: {
           label: (tooltipItem: any) => {
             const displayLabel = tooltipItem.dataset.label || "";
-            return `${displayLabel}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`;
+            return `${displayLabel}: ${formatCurrencyValue(Number(tooltipItem.raw), currencySymbol)}`;
           },
           labelColor: (context: any) => {
             const color = context.dataset.borderColor;
@@ -890,7 +936,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           font: { size: yAxisFontSize },
           padding: 0,
           callback: (value: any) =>
-            `${currencySymbol}${Number(value).toLocaleString()}`,
+            formatCurrencyValue(Number(value), currencySymbol),
         },
         border: {
           display: false,
@@ -967,10 +1013,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     }));
   };
 
-  const canShowResults =
-    (periodType === "monthly" && !!month && !!year) ||
-    (periodType === "quarterly" && !!selectedQuarter && !!year) ||
-    (periodType === "yearly" && !!year);
 
   const minSelectedMetricCount = Object.values(selectedGraphs).filter(Boolean).length;
 
@@ -993,13 +1035,11 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
   return (
     <div className="w-full pb-6 sm:pb-0">
-
       {!embedded && (
         <div
           className="w-full flex flex-col bg-[#F7F7F7] gap-1 sm:gap-4 border-b border-gray-200
-  md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
+md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
         >
-          {/* LEFT: Title */}
           <div className="mb-2 flex flex-wrap items-start gap-2">
             <div>
               <div className="flex flex-wrap items-baseline gap-2 justify-start">
@@ -1022,9 +1062,8 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
             </div>
           </div>
 
-          {/* RIGHT: Filters */}
           <div className="mb-2 sm:mb-0">
-            <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
+            <div className="flex flex-col md:flex-row sm:items-center gap-[0.5vw]">
               <PeriodFiltersTable
                 range={periodType}
                 selectedMonth={month.toLowerCase()}
@@ -1038,150 +1077,130 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
               />
             </div>
           </div>
-
-          {/* </div> */}
         </div>
       )}
 
-      {/* Show alert until a valid period selection is made */}
-      {
-        !isPreviewMode && !canShowResults && (
-          <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-            <div className="flex items-center">
-              <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-              <span>
-                Choose a period to view cash flow.
-              </span>
-            </div>
+      {!isPreviewMode && !canShowResults && (
+        <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
+          <div className="flex items-center">
+            <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
+            <span>Choose a period to view cash flow.</span>
           </div>
-        )
-      }
+        </div>
+      )}
 
-      {/* Loading – now using Loader */}
-      {
-        !isPreviewMode && loading && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Loader fullscreen transparent />
+      {!isPreviewMode && loading && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Loader fullscreen transparent />
+        </div>
+      )}
+
+      {!isPreviewMode && !!error && !showNoDataMessage && (
+        <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
+          <div className="flex items-center">
+            <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
+            <span>{error}</span>
           </div>
-        )
-      }
+        </div>
+      )}
 
-      {/* Error */}
-      {
-        !isPreviewMode && !!error && (
-          <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-            <div className="flex items-center">
-              <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-              <span>{error}</span>
+
+      {effectiveData && (
+        <div className="flex flex-col">
+          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" />
+
+          {effectiveData?.summary && (
+            <div className="mt-4 rounded-xl overflow-hidden">
+              <CashFlowSankey
+                data={effectiveData.summary}
+                previous_summary={isPreviewMode ? undefined : data?.previous_summary}
+                previousLabel={isPreviewMode ? undefined : previousLabel}
+                periodType={periodType}
+                currency={currencySymbol}
+                isPreviewMode={isPreviewMode}
+              />
             </div>
-          </div>
-        )
-      }
+          )}
 
-      {/* Results */}
-      {
-        (effectiveData) && (
-          <div className="flex flex-col">
-            {/* Header + Download in one responsive row */}
-            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            </div>
+          <div className="mt-6 rounded-xl bg-white p-4 shadow border">
+            <div
+              className={[
+                "flex flex-wrap items-center justify-center",
+                "gap-4",
+                "w-full",
+                allValuesZero ? "pointer-events-none" : "opacity-100",
+                "transition-opacity duration-300",
+              ].join(" ")}
+            >
+              {displayedMetrics.map(({ name, displayLabel, color }) => {
+                const isChecked = !!selectedGraphs[name];
 
-            {/* Summary Table using DataTable */}
-            {effectiveData?.summary && (
-              <div className="mt-4 rounded-xl overflow-hidden">
-                <CashFlowSankey
-                  data={effectiveData.summary}
-                  previous_summary={
-                    isPreviewMode ? undefined : data?.previous_summary
-                  }
-                  previousLabel={isPreviewMode ? undefined : previousLabel}
-                  periodType={periodType}
-                  currency={currencySymbol}
-                />
-              </div>
-            )}
-
-            {/* Chart Section */}
-            <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-              <div
-                className={[
-                  "flex flex-wrap items-center justify-center",
-                  "gap-4",
-                  "w-full",
-                  allValuesZero ? "opacity-30 pointer-events-none" : "opacity-100",
-                  "transition-opacity duration-300",
-                ].join(" ")}
-              >
-                {displayedMetrics.map(({ name, displayLabel, color }) => {
-                  const isChecked = !!selectedGraphs[name];
-
-                  return (
-                    <label
-                      key={name}
-                      onClick={(e) => e.stopPropagation()}
+                return (
+                  <label
+                    key={name}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={[
+                      "shrink-0",
+                      "flex items-center gap-1 sm:gap-1.5",
+                      "font-semibold select-none whitespace-nowrap",
+                      "text-[10px] 2xl:text-xs my-1 2xl:my-3",
+                      "text-charcoal-500",
+                      allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
+                    ].join(" ")}
+                  >
+                    <span
+                      className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                      style={{
+                        borderColor: color,
+                        backgroundColor: isChecked ? color : "white",
+                        opacity: allValuesZero ? 0.6 : 1,
+                      }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className={[
-                        "shrink-0",
-                        "flex items-center gap-1 sm:gap-1.5",
-                        "font-semibold select-none whitespace-nowrap",
-                        "text-[10px] 2xl:text-xs my-1 2xl:my-3",
-                        "text-charcoal-500",
-                        allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
-                      ].join(" ")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!allValuesZero) toggleMetricSelection(name);
+                      }}
                     >
-                      <span
-                        className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-                        style={{
-                          borderColor: color,
-                          backgroundColor: isChecked ? color : "white",
-                          opacity: allValuesZero ? 0.6 : 1,
-                        }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!allValuesZero) toggleMetricSelection(name);
-                        }}
-                      >
-                        {isChecked && (
-                          <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
-                            <path
-                              fill="currentColor"
-                              d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                            />
-                          </svg>
-                        )}
-                      </span>
+                      {isChecked && (
+                        <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                          <path
+                            fill="currentColor"
+                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                          />
+                        </svg>
+                      )}
+                    </span>
 
-                      <span className="capitalize">{displayLabel}</span>
-                    </label>
-                  );
-                })}
-              </div>
+                    <span className="capitalize">{displayLabel}</span>
+                  </label>
+                );
+              })}
+            </div>
 
-              <div className="w-full pt-4 h-[320px] sm:h-[40vw] max-h-[560px]">
-                {periodType === "monthly" ? (
-                  <Bar
-                    key="cashflow-bar"
-                    ref={chartRef}
-                    data={getFilteredBarChartData() as any}
-                    options={barChartOptions as any}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                ) : (
-                  <Line
-                    key="cashflow-line"
-                    ref={chartRef}
-                    data={getLineChartData() as any}
-                    options={lineChartOptions as any}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                )}
-              </div>
+            <div className="w-full pt-4 h-[320px] sm:h-[40vw] max-h-[560px]">
+              {periodType === "monthly" ? (
+                <Bar
+                  key="cashflow-bar"
+                  ref={chartRef}
+                  data={getFilteredBarChartData() as any}
+                  options={barChartOptions as any}
+                  style={{ width: "100%", height: "100%" }}
+                />
+              ) : (
+                <Line
+                  key="cashflow-line"
+                  ref={chartRef}
+                  data={getLineChartData() as any}
+                  options={lineChartOptions as any}
+                  style={{ width: "100%", height: "100%" }}
+                />
+              )}
             </div>
           </div>
-        )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   );
 };
 

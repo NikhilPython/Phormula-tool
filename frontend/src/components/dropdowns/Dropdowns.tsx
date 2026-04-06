@@ -1341,10 +1341,17 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   const drawerPeriodText =
     narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
 
+  const hasNoAiData =
+    !summaryBullets.length &&
+    !skuInsightsBullets.length &&
+    !inventoryBullets.length &&
+    !recommendationBullets.length;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="w-full space-y-4">
-        {(narrativeInsights.length > 0 || objective) && (
+        {!hasNoAiData && (narrativeInsights.length > 0 || objective) && (
+
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
             {narrativeInsights.length > 0 && (
               <div className="xl:col-span-7 rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full">
@@ -1391,25 +1398,27 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         )}
 
         {/* Product Insights */}
-        <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-          <div className="space-y-5">
-            <ProductInsightsSection
-              blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-              objective={objective}
-              recommendationsMap={recommendationsMap}
-              nameToSkuMap={nameToSkuMap}
-              range={range}
-              selectedYear={selectedYear}
-              selectedQuarter={selectedQuarter}
-              homeCurrency={homeCurrency}
-              countryName={countryName}
-              drawerPeriodText={drawerPeriodText}
-            />
+        {!hasNoAiData && parseProductInsightsBlocks(skuInsightsBullets).length > 0 && (
+          <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+            <div className="space-y-5">
+              <ProductInsightsSection
+                blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+                objective={objective}
+                recommendationsMap={recommendationsMap}
+                nameToSkuMap={nameToSkuMap}
+                range={range}
+                selectedYear={selectedYear}
+                selectedQuarter={selectedQuarter}
+                homeCurrency={homeCurrency}
+                countryName={countryName}
+                drawerPeriodText={drawerPeriodText}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Inventory Section */}
-        {inventoryBullets.length > 0 && (
+        {!hasNoAiData && inventoryBullets.length > 0 && (
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="flex items-center gap-2">
               <span className="text-base 2xl:text-2xl font-bold text-slate-800">
@@ -3246,7 +3255,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   if (initialLoading) {
     return (
-      <Loader fullscreen transparent />
+      // <Loader fullscreen transparent />
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
+        <Loader backgroundClass="bg-transparent" />
+      </div>
     );
   }
 
@@ -3923,6 +3935,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               onExportApiReady={setTrendExportApi}
                               isExpanded={focusedChart === "trend"}
                               onToggleExpand={() => toggleFocus("trend")}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -3986,6 +3999,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               uploads={bargraphUploads}
                               loading={bargraphLoading}
                               userMeta={bargraphUserMeta}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -4004,6 +4018,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           countryName={initialCountryName}
                           homeCurrency={globalHomeCurrency}
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
+                          isPreviewMode={isDemoMode}
                         />
 
                         <CMchartofsku
@@ -4053,6 +4068,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               onExportApiReady={setTrendExportApi}
                               isExpanded={focusedChart === "trend"}
                               onToggleExpand={() => toggleFocus("trend")}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -4117,6 +4133,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               loading={graphPageLoading}
                               userMeta={graphPageUserMeta}
                               error={graphPageError}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -4135,6 +4152,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           countryName={initialCountryName}
                           homeCurrency={globalHomeCurrency}
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
+                          isPreviewMode={isDemoMode}
                         />
 
                         <CMchartofsku
@@ -4183,6 +4201,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               onExportApiReady={setTrendExportApi}
                               isExpanded={focusedChart === "trend"}
                               onToggleExpand={() => toggleFocus("trend")}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -4246,6 +4265,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               loading={graphPageLoading}
                               userMeta={graphPageUserMeta}
                               error={graphPageError}
+                              isPreviewMode={isDemoMode}
                             />
                           </div>
                         </div>
@@ -4264,6 +4284,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setExpenseBreakdownPieBase64}
                         disableInternalFade={isDemoMode}
+                        isPreviewMode={isDemoMode}
                       />
 
                       <CMchartofsku

@@ -218,12 +218,22 @@ export default function InventoryFlowPage() {
       }
     };
 
-    applyHash(window.location.hash);
-
     const onHashChange = () => applyHash(window.location.hash);
 
+    const onPageHashNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hash?: string }>;
+      applyHash(customEvent.detail?.hash ? `#${customEvent.detail.hash}` : window.location.hash);
+    };
+
+    applyHash(window.location.hash);
+
     window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    window.addEventListener('page-hash-navigate', onPageHashNavigate as EventListener);
+
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('page-hash-navigate', onPageHashNavigate as EventListener);
+    };
   }, []);
 
   const handleTabChange = (tab: InventoryFlowTab) => {
@@ -231,7 +241,7 @@ export default function InventoryFlowPage() {
     const hash = TAB_TO_HASH[tab];
 
     if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', `#${hash}`);
+      window.location.hash = hash;
     }
   };
 
@@ -529,86 +539,86 @@ export default function InventoryFlowPage() {
   }, [countryName, effectiveMonth, effectiveYear, isDemoMode]);
 
   const DemoDispatchPreview = () => {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-        <h3 className="text-base font-semibold text-[#414042]">Dispatch Report Preview</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Demo data shown because month/year is NA.
-        </p>
-      </div>
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h3 className="text-base font-semibold text-[#414042]">Dispatch Report Preview</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Demo data shown because month/year is NA.
+          </p>
+        </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-green-500 text-[#F8EDCE]">
-            <tr>
-              <th className="px-4 py-3 text-left">SKU</th>
-              <th className="px-4 py-3 text-left">Product</th>
-              <th className="px-4 py-3 text-left">Dispatch Qty</th>
-              <th className="px-4 py-3 text-left">Warehouse</th>
-              <th className="px-4 py-3 text-left">Dispatch Date</th>
-              <th className="px-4 py-3 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DUMMY_DISPATCH_DATA.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-100">
-                <td className="px-4 py-3">{row.sku}</td>
-                <td className="px-4 py-3">{row.productName}</td>
-                <td className="px-4 py-3">{row.dispatchQty}</td>
-                <td className="px-4 py-3">{row.warehouse}</td>
-                <td className="px-4 py-3">{row.dispatchDate}</td>
-                <td className="px-4 py-3">{row.status}</td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-green-500 text-[#F8EDCE]">
+              <tr>
+                <th className="px-4 py-3 text-left">SKU</th>
+                <th className="px-4 py-3 text-left">Product</th>
+                <th className="px-4 py-3 text-left">Dispatch Qty</th>
+                <th className="px-4 py-3 text-left">Warehouse</th>
+                <th className="px-4 py-3 text-left">Dispatch Date</th>
+                <th className="px-4 py-3 text-left">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {DUMMY_DISPATCH_DATA.map((row, idx) => (
+                <tr key={idx} className="border-b border-slate-100">
+                  <td className="px-4 py-3">{row.sku}</td>
+                  <td className="px-4 py-3">{row.productName}</td>
+                  <td className="px-4 py-3">{row.dispatchQty}</td>
+                  <td className="px-4 py-3">{row.warehouse}</td>
+                  <td className="px-4 py-3">{row.dispatchDate}</td>
+                  <td className="px-4 py-3">{row.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-const DemoPurchaseOrderPreview = () => {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-        <h3 className="text-base font-semibold text-[#414042]">PO Report Preview</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Demo data shown because month/year is NA.
-        </p>
-      </div>
+  const DemoPurchaseOrderPreview = () => {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h3 className="text-base font-semibold text-[#414042]">PO Report Preview</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Demo data shown because month/year is NA.
+          </p>
+        </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-green-500 text-[#F8EDCE]">
-            <tr>
-              <th className="px-4 py-3 text-left">PO Number</th>
-              <th className="px-4 py-3 text-left">Supplier</th>
-              <th className="px-4 py-3 text-left">SKU</th>
-              <th className="px-4 py-3 text-left">Product</th>
-              <th className="px-4 py-3 text-left">Order Qty</th>
-              <th className="px-4 py-3 text-left">ETA</th>
-              <th className="px-4 py-3 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DUMMY_PO_DATA.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-100">
-                <td className="px-4 py-3">{row.poNumber}</td>
-                <td className="px-4 py-3">{row.supplier}</td>
-                <td className="px-4 py-3">{row.sku}</td>
-                <td className="px-4 py-3">{row.productName}</td>
-                <td className="px-4 py-3">{row.orderQty}</td>
-                <td className="px-4 py-3">{row.eta}</td>
-                <td className="px-4 py-3">{row.status}</td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-green-500 text-[#F8EDCE]">
+              <tr>
+                <th className="px-4 py-3 text-left">PO Number</th>
+                <th className="px-4 py-3 text-left">Supplier</th>
+                <th className="px-4 py-3 text-left">SKU</th>
+                <th className="px-4 py-3 text-left">Product</th>
+                <th className="px-4 py-3 text-left">Order Qty</th>
+                <th className="px-4 py-3 text-left">ETA</th>
+                <th className="px-4 py-3 text-left">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {DUMMY_PO_DATA.map((row, idx) => (
+                <tr key={idx} className="border-b border-slate-100">
+                  <td className="px-4 py-3">{row.poNumber}</td>
+                  <td className="px-4 py-3">{row.supplier}</td>
+                  <td className="px-4 py-3">{row.sku}</td>
+                  <td className="px-4 py-3">{row.productName}</td>
+                  <td className="px-4 py-3">{row.orderQty}</td>
+                  <td className="px-4 py-3">{row.eta}</td>
+                  <td className="px-4 py-3">{row.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   const PreviewLockedSection = ({
     enabled,
@@ -636,35 +646,35 @@ const DemoPurchaseOrderPreview = () => {
         >
           {children}
         </div>
-  
+
         {enabled && (
           <>
             <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
-  
+
             <div className="absolute inset-0 z-20 pointer-events-none">
               <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
                 <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
                   <div className="mb-4 flex justify-center">
-                                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                                     <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                                   </div>
-                                </div>
-  
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
+
                   <h3 className="text-lg font-semibold text-[#414042]">
                     {title}
                   </h3>
-  
+
                   <p className="mt-2 text-sm text-gray-600 leading-6">
                     {description}
                   </p>
-  
+
                   <button
                     onClick={onAction}
                     className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
                   >
                     {buttonText}
                   </button>
-  
+
                   <p className="mt-3 text-xs text-gray-500">
                     Demo data is shown for preview only.
                   </p>
@@ -884,7 +894,7 @@ const DemoPurchaseOrderPreview = () => {
                       <div className="alert-message">
                         <span>Please fetch at least 4 months&apos; files to see the next two months.</span>
                       </div>
-                     
+
                     </div>
                   </div>
                 ) : error ? (
@@ -909,33 +919,33 @@ const DemoPurchaseOrderPreview = () => {
                     />
                   </div>
                 )
-) : activeTab === 'dispatch' ? (
-  <div id="dispatch" className="scroll-mt-[80px]">
-    {isDemoMode ? (
-      <DemoDispatchPreview />
-    ) : (
-      <DispatchPage
-        embedded
-        countryNameProp={countryName}
-        selectedMonthProp={sharedMonth}
-        selectedYearProp={sharedYear}
-      />
-    )}
-  </div>
-) : (
-  <div id="purchase-order" className="scroll-mt-[80px]">
-    {isDemoMode ? (
-      <DemoPurchaseOrderPreview />
-    ) : (
-      <PurchaseOrderPage
-        embedded
-        countryNameProp={countryName}
-        selectedMonthProp={sharedMonth}
-        selectedYearProp={sharedYear}
-      />
-    )}
-  </div>
-)}
+              ) : activeTab === 'dispatch' ? (
+                <div id="dispatch" className="scroll-mt-[80px]">
+                  {isDemoMode ? (
+                    <DemoDispatchPreview />
+                  ) : (
+                    <DispatchPage
+                      embedded
+                      countryNameProp={countryName}
+                      selectedMonthProp={sharedMonth}
+                      selectedYearProp={sharedYear}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div id="purchase-order" className="scroll-mt-[80px]">
+                  {isDemoMode ? (
+                    <DemoPurchaseOrderPreview />
+                  ) : (
+                    <PurchaseOrderPage
+                      embedded
+                      countryNameProp={countryName}
+                      selectedMonthProp={sharedMonth}
+                      selectedYearProp={sharedYear}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </PreviewLockedSection>
         </div>

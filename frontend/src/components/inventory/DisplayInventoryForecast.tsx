@@ -246,7 +246,20 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
     return rows.map((r, idx) => ({
       sNo: idx + 1,
-      ...r,
+      ...(
+        demoMode
+          ? {
+            product: r.product,
+            sku: r.sku,
+            sold1: 0,
+            sold2: 0,
+            sold3: 0,
+            f1: 0,
+            f2: 0,
+            f3: 0,
+          }
+          : r
+      ),
     }));
   }, [forecastData, last3SoldOldestFirst, forecast3]);
 
@@ -261,6 +274,18 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       }
       return Math.round(total);
     };
+
+    if (demoMode) {
+      return {
+        label: 'Total',
+        sold1: 0,
+        sold2: 0,
+        sold3: 0,
+        f1: 0,
+        f2: 0,
+        f3: 0,
+      };
+    }
 
     return {
       label: 'Total',
@@ -314,7 +339,9 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           (t.row["Product Name"] as string) ||
           (t.row["sku"] as string) ||
           `Product ${i + 1}`,
-        data: t.vals,
+        data: demoMode
+          ? chartLabels.map(() => 0)   // 🔥 FORCE ZERO IN PREVIEW
+          : t.vals,
         borderColor: palette[i % palette.length],
         backgroundColor: palette[i % palette.length],
         borderWidth: 2,

@@ -350,8 +350,17 @@ const MonthsforBI: React.FC = () => {
   useEffect(() => {
     if (!isPreviewMode) return;
 
-    // setActiveTab('top_80_skus');
-    handleSubmit();
+    setMonth1(PREVIEW_MONTH1);
+    setYear1(PREVIEW_YEAR1);
+    setMonth2(PREVIEW_MONTH2);
+    setYear2(PREVIEW_YEAR2);
+
+    setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
+    setAdvertisingTotals({ month1: 0, month2: 0 });
+    setExpenseTotals({ month1: 0, month2: 0 });
+    setReimbursementTotals({ month1: 0, month2: 0 });
+    setMonth2Label("Preview");
+    setError(null);
   }, [isPreviewMode]);
 
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
@@ -535,9 +544,9 @@ const MonthsforBI: React.FC = () => {
     setYear2(PREVIEW_YEAR2);
 
     setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
-    setAdvertisingTotals({ month1: 4200, month2: 5200 });
-    setExpenseTotals({ month1: 3800, month2: 4100 });
-    setReimbursementTotals({ month1: 900, month2: 1100 });
+    setAdvertisingTotals({ month1: 0, month2: 0 });
+    setExpenseTotals({ month1: 0, month2: 0 });
+    setReimbursementTotals({ month1: 0, month2: 0 });
     setMonth2Label("Preview");
     // setActiveTab("all_skus");
     setError(null);
@@ -814,12 +823,12 @@ const MonthsforBI: React.FC = () => {
       return {
         x,
         values: {
-          top80_m1: 12000,
-          top80_m2: 16500,
-          newRev_m1: 4000,
-          newRev_m2: 7200,
-          other_m1: 8000,
-          other_m2: 6500,
+          top80_m1: 0,
+          top80_m2: 0,
+          newRev_m1: 0,
+          newRev_m2: 0,
+          other_m1: 0,
+          other_m2: 0,
         },
       };
     }
@@ -956,707 +965,707 @@ const MonthsforBI: React.FC = () => {
     }, 0);
   };
 
-useEffect(() => {
-  const el = chartRef.current;
-  if (!el) return;
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el) return;
 
-  let ro: ResizeObserver | null = null;
-  const onResize = () => chartInstanceRef.current?.resize();
+    let ro: ResizeObserver | null = null;
+    const onResize = () => chartInstanceRef.current?.resize();
 
-  const raf = requestAnimationFrame(() => {
-    if (chartInstanceRef.current && chartInstanceRef.current.getDom() !== el) {
-      chartInstanceRef.current.dispose();
-      chartInstanceRef.current = null;
-    }
-    if (!chartInstanceRef.current) {
-      chartInstanceRef.current = echarts.init(el);
-    }
+    const raf = requestAnimationFrame(() => {
+      if (chartInstanceRef.current && chartInstanceRef.current.getDom() !== el) {
+        chartInstanceRef.current.dispose();
+        chartInstanceRef.current = null;
+      }
+      if (!chartInstanceRef.current) {
+        chartInstanceRef.current = echarts.init(el);
+      }
 
-    const { x, values } = buildCompareSeries('net_sales');
-    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-    const currency = displayCurrencySymbol;
+      const { x, values } = buildCompareSeries('net_sales');
+      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+      const currency = displayCurrencySymbol;
 
-    const hasAny =
-      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+      const hasAny =
+        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-    if (!hasAny && !isPreviewMode) {
-      chartInstanceRef.current?.clear();
-      chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-      chartInstanceRef.current?.resize();
-      return;
-    }
+      if (!hasAny && !isPreviewMode) {
+        chartInstanceRef.current?.clear();
+        chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+        chartInstanceRef.current?.resize();
+        return;
+      }
 
-    const option: echarts.EChartsOption = {
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const axisLabel = params?.[0]?.axisValueLabel ?? '';
-          const lines: string[] = [];
-          lines.push(`<div style="font-weight:700;margin-bottom:6px;">Net Sales ${axisLabel}</div>`);
+      const option: echarts.EChartsOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const axisLabel = params?.[0]?.axisValueLabel ?? '';
+            const lines: string[] = [];
+            lines.push(`<div style="font-weight:700;margin-bottom:6px;">Net Sales ${axisLabel}</div>`);
 
-          const map = new Map(params.map((p: any) => [p.seriesName, p]));
-          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
+            const map = new Map(params.map((p: any) => [p.seriesName, p]));
+            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
 
-          ordered.forEach((p: any) => {
-            lines.push(
-              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+            ordered.forEach((p: any) => {
+              lines.push(
+                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
                 <span style="flex:1;">${p.seriesName}</span>
                 <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
               </div>`
-            );
-          });
+              );
+            });
 
-          return `<div style="min-width:180px;">${lines.join('')}</div>`;
-        },
-      },
-      legend: { show: false },
-      grid: { left: 50, right: 20, top: 40, bottom: 35 },
-      color: ['#7B9A6D', '#3a8ea4', '#ed9F50'],
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: x,
-        axisLabel: {
-          interval: 0,
-          fontSize: axisTickFontSize,
-          margin: 20,
-          align: 'center',
-          formatter: (v: string, idx: number) => {
-            if (v === '') return '';
-            if (idx === 0) return `{m1|${v}}`;
-            if (idx === 2) return `{m2|${v}}`;
-            return v;
-          },
-          rich: {
-            m1: { align: 'right', padding: [0, 0, 0, 80] },
-            m2: { align: 'left', padding: [0, 80, 0, 0] },
+            return `<div style="min-width:180px;">${lines.join('')}</div>`;
           },
         },
-        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-      },
-      yAxis: {
-        type: 'value',
-        name: `Amount (${currency})`,
-        nameLocation: 'middle',
-        nameGap: 45,
-        axisLabel: {
-          fontSize: axisTickFontSize,
-          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-        }
-      },
-      series: [
-        {
-          name: 'New/Reviving',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-            ]),
+        legend: { show: false },
+        grid: { left: 50, right: 20, top: 40, bottom: 35 },
+        color: ['#7B9A6D', '#3a8ea4', '#ed9F50'],
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: x,
+          axisLabel: {
+            interval: 0,
+            fontSize: axisTickFontSize,
+            margin: 20,
+            align: 'center',
+            formatter: (v: string, idx: number) => {
+              if (v === '') return '';
+              if (idx === 0) return `{m1|${v}}`;
+              if (idx === 2) return `{m2|${v}}`;
+              return v;
+            },
+            rich: {
+              m1: { align: 'right', padding: [0, 0, 0, 80] },
+              m2: { align: 'left', padding: [0, 80, 0, 0] },
+            },
           },
-          data: [newRev_m1, newRev_m1, newRev_m2],
+          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
         },
-        {
-          name: 'Other SKUs',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-            ]),
-          },
-          data: [other_m1, other_m1, other_m2],
+        yAxis: {
+          type: 'value',
+          name: `Amount (${currency})`,
+          nameLocation: 'middle',
+          nameGap: 45,
+          axisLabel: {
+            fontSize: axisTickFontSize,
+            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+          }
         },
-        {
-          name: 'Top 80%',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-            ]),
+        series: [
+          {
+            name: 'New/Reviving',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+              ]),
+            },
+            data: [newRev_m1, newRev_m1, newRev_m2],
           },
-          data: [top80_m1, top80_m1, top80_m2],
-          markLine: {
-            symbol: "none",
-            silent: true,
-            data: [{ xAxis: "" }],
-            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-            label: { show: false },
+          {
+            name: 'Other SKUs',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+              ]),
+            },
+            data: [other_m1, other_m1, other_m2],
           },
-        },
-      ],
+          {
+            name: 'Top 80%',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+              ]),
+            },
+            data: [top80_m1, top80_m1, top80_m2],
+            markLine: {
+              symbol: "none",
+              silent: true,
+              data: [{ xAxis: "" }],
+              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+              label: { show: false },
+            },
+          },
+        ],
+      };
+
+      chartInstanceRef.current.setOption(option, true);
+      chartInstanceRef.current.resize();
+
+      window.addEventListener("resize", onResize);
+      ro = new ResizeObserver(() => chartInstanceRef.current?.resize());
+      ro.observe(el);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
+  }, [
+    month1, year1, month2, year2,
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.new_or_reviving_skus,
+    categorizedGrowth.other_skus,
+    rateMap,
+    displayCurrencySymbol,
+    displayCurrencyCode,
+    effectiveCountry,
+    axisTickFontSize,
+    isPreviewMode,
+  ]);
 
-    chartInstanceRef.current.setOption(option, true);
-    chartInstanceRef.current.resize();
+  useEffect(() => {
+    const el = profitChartRef.current;
+    if (!el) return;
 
-    window.addEventListener("resize", onResize);
-    ro = new ResizeObserver(() => chartInstanceRef.current?.resize());
-    ro.observe(el);
-  });
+    let ro: ResizeObserver | null = null;
+    const onResize = () => profitChartInstanceRef.current?.resize();
 
-  return () => {
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", onResize);
-    ro?.disconnect();
-  };
-}, [
-  month1, year1, month2, year2,
-  categorizedGrowth.top_80_skus,
-  categorizedGrowth.new_or_reviving_skus,
-  categorizedGrowth.other_skus,
-  rateMap,
-  displayCurrencySymbol,
-  displayCurrencyCode,
-  effectiveCountry,
-  axisTickFontSize,
-  isPreviewMode,
-]);
+    const raf = requestAnimationFrame(() => {
+      if (profitChartInstanceRef.current && profitChartInstanceRef.current.getDom() !== el) {
+        profitChartInstanceRef.current.dispose();
+        profitChartInstanceRef.current = null;
+      }
+      if (!profitChartInstanceRef.current) {
+        profitChartInstanceRef.current = echarts.init(el);
+      }
 
-useEffect(() => {
-  const el = profitChartRef.current;
-  if (!el) return;
+      const { x, values } = buildCompareSeries('profit');
+      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+      const currency = displayCurrencySymbol;
 
-  let ro: ResizeObserver | null = null;
-  const onResize = () => profitChartInstanceRef.current?.resize();
+      const hasAny =
+        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-  const raf = requestAnimationFrame(() => {
-    if (profitChartInstanceRef.current && profitChartInstanceRef.current.getDom() !== el) {
-      profitChartInstanceRef.current.dispose();
-      profitChartInstanceRef.current = null;
-    }
-    if (!profitChartInstanceRef.current) {
-      profitChartInstanceRef.current = echarts.init(el);
-    }
+      if (!hasAny && !isPreviewMode) {
+        profitChartInstanceRef.current?.clear();
+        profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+        profitChartInstanceRef.current?.resize();
+        return;
+      }
 
-    const { x, values } = buildCompareSeries('profit');
-    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-    const currency = displayCurrencySymbol;
+      const option: echarts.EChartsOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const axisLabel = params?.[0]?.axisValueLabel ?? '';
+            const lines: string[] = [];
+            lines.push(`<div style="font-weight:700;margin-bottom:6px;">CM1 Profit ${axisLabel}</div>`);
 
-    const hasAny =
-      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+            const map = new Map(params.map((p: any) => [p.seriesName, p]));
+            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
 
-    if (!hasAny && !isPreviewMode) {
-      profitChartInstanceRef.current?.clear();
-      profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-      profitChartInstanceRef.current?.resize();
-      return;
-    }
-
-    const option: echarts.EChartsOption = {
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const axisLabel = params?.[0]?.axisValueLabel ?? '';
-          const lines: string[] = [];
-          lines.push(`<div style="font-weight:700;margin-bottom:6px;">CM1 Profit ${axisLabel}</div>`);
-
-          const map = new Map(params.map((p: any) => [p.seriesName, p]));
-          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-          ordered.forEach((p: any) => {
-            lines.push(
-              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+            ordered.forEach((p: any) => {
+              lines.push(
+                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
                 <span style="flex:1;">${p.seriesName}</span>
                 <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
               </div>`
-            );
-          });
+              );
+            });
 
-          return `<div style="min-width:180px;">${lines.join('')}</div>`;
-        },
-      },
-      legend: { show: false },
-      grid: { left: 50, right: 20, top: 40, bottom: 35 },
-      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: x,
-        axisLabel: {
-          interval: 0,
-          fontSize: axisTickFontSize,
-          margin: 20,
-          align: 'center',
-          formatter: (v: string, idx: number) => {
-            if (v === '') return '';
-            if (idx === 0) return `{m1|${v}}`;
-            if (idx === 2) return `{m2|${v}}`;
-            return v;
-          },
-          rich: {
-            m1: { align: 'right', padding: [0, 0, 0, 80] },
-            m2: { align: 'left', padding: [0, 80, 0, 0] },
+            return `<div style="min-width:180px;">${lines.join('')}</div>`;
           },
         },
-        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-      },
-      yAxis: {
-        type: 'value',
-        name: `Amount (${currency})`,
-        nameLocation: 'middle',
-        nameGap: 45,
-        axisLabel: {
-          fontSize: axisNameFontSize,
-          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-        }
-      },
-      series: [
-        {
-          name: 'New/Reviving',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-            ]),
+        legend: { show: false },
+        grid: { left: 50, right: 20, top: 40, bottom: 35 },
+        color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: x,
+          axisLabel: {
+            interval: 0,
+            fontSize: axisTickFontSize,
+            margin: 20,
+            align: 'center',
+            formatter: (v: string, idx: number) => {
+              if (v === '') return '';
+              if (idx === 0) return `{m1|${v}}`;
+              if (idx === 2) return `{m2|${v}}`;
+              return v;
+            },
+            rich: {
+              m1: { align: 'right', padding: [0, 0, 0, 80] },
+              m2: { align: 'left', padding: [0, 80, 0, 0] },
+            },
           },
-          data: [newRev_m1, newRev_m1, newRev_m2],
+          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
         },
-        {
-          name: 'Other SKUs',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-            ]),
-          },
-          data: [other_m1, other_m1, other_m2],
+        yAxis: {
+          type: 'value',
+          name: `Amount (${currency})`,
+          nameLocation: 'middle',
+          nameGap: 45,
+          axisLabel: {
+            fontSize: axisNameFontSize,
+            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+          }
         },
-        {
-          name: 'Top 80%',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-            ]),
+        series: [
+          {
+            name: 'New/Reviving',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+              ]),
+            },
+            data: [newRev_m1, newRev_m1, newRev_m2],
           },
-          data: [top80_m1, top80_m1, top80_m2],
-          markLine: {
-            symbol: "none",
-            silent: true,
-            data: [{ xAxis: "" }],
-            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-            label: { show: false },
+          {
+            name: 'Other SKUs',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+              ]),
+            },
+            data: [other_m1, other_m1, other_m2],
           },
-        },
-      ],
+          {
+            name: 'Top 80%',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+              ]),
+            },
+            data: [top80_m1, top80_m1, top80_m2],
+            markLine: {
+              symbol: "none",
+              silent: true,
+              data: [{ xAxis: "" }],
+              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+              label: { show: false },
+            },
+          },
+        ],
+      };
+
+      profitChartInstanceRef.current.setOption(option, true);
+      profitChartInstanceRef.current.resize();
+
+      window.addEventListener("resize", onResize);
+      ro = new ResizeObserver(() => profitChartInstanceRef.current?.resize());
+      ro.observe(el);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
+  }, [
+    month1,
+    year1,
+    month2,
+    year2,
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.new_or_reviving_skus,
+    categorizedGrowth.other_skus,
+    rateMap,
+    displayCurrencySymbol,
+    displayCurrencyCode,
+    effectiveCountry,
+    axisTickFontSize,
+    axisNameFontSize,
+    isPreviewMode,
+  ]);
+  useEffect(() => {
+    const el = unitsChartRef.current;
+    if (!el) return;
 
-    profitChartInstanceRef.current.setOption(option, true);
-    profitChartInstanceRef.current.resize();
+    let ro: ResizeObserver | null = null;
+    const onResize = () => unitsChartInstanceRef.current?.resize();
 
-    window.addEventListener("resize", onResize);
-    ro = new ResizeObserver(() => profitChartInstanceRef.current?.resize());
-    ro.observe(el);
-  });
+    const raf = requestAnimationFrame(() => {
+      if (unitsChartInstanceRef.current && unitsChartInstanceRef.current.getDom() !== el) {
+        unitsChartInstanceRef.current.dispose();
+        unitsChartInstanceRef.current = null;
+      }
+      if (!unitsChartInstanceRef.current) {
+        unitsChartInstanceRef.current = echarts.init(el);
+      }
 
-  return () => {
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", onResize);
-    ro?.disconnect();
-  };
-}, [
-  month1,
-  year1,
-  month2,
-  year2,
-  categorizedGrowth.top_80_skus,
-  categorizedGrowth.new_or_reviving_skus,
-  categorizedGrowth.other_skus,
-  rateMap,
-  displayCurrencySymbol,
-  displayCurrencyCode,
-  effectiveCountry,
-  axisTickFontSize,
-  axisNameFontSize,
-  isPreviewMode,
-]);
-useEffect(() => {
-  const el = unitsChartRef.current;
-  if (!el) return;
+      const { x, values } = buildCompareSeries('total_quantity');
+      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
 
-  let ro: ResizeObserver | null = null;
-  const onResize = () => unitsChartInstanceRef.current?.resize();
+      const hasAny =
+        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-  const raf = requestAnimationFrame(() => {
-    if (unitsChartInstanceRef.current && unitsChartInstanceRef.current.getDom() !== el) {
-      unitsChartInstanceRef.current.dispose();
-      unitsChartInstanceRef.current = null;
-    }
-    if (!unitsChartInstanceRef.current) {
-      unitsChartInstanceRef.current = echarts.init(el);
-    }
+      if (!hasAny && !isPreviewMode) {
+        unitsChartInstanceRef.current?.clear();
+        unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+        unitsChartInstanceRef.current?.resize();
+        return;
+      }
 
-    const { x, values } = buildCompareSeries('total_quantity');
-    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+      const option: echarts.EChartsOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const axisLabel = params?.[0]?.axisValueLabel ?? '';
+            const lines: string[] = [];
+            lines.push(`<div style="font-weight:700;margin-bottom:6px;">Units ${axisLabel}</div>`);
 
-    const hasAny =
-      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+            const map = new Map(params.map((p: any) => [p.seriesName, p]));
+            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
 
-    if (!hasAny && !isPreviewMode) {
-      unitsChartInstanceRef.current?.clear();
-      unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-      unitsChartInstanceRef.current?.resize();
-      return;
-    }
-
-    const option: echarts.EChartsOption = {
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const axisLabel = params?.[0]?.axisValueLabel ?? '';
-          const lines: string[] = [];
-          lines.push(`<div style="font-weight:700;margin-bottom:6px;">Units ${axisLabel}</div>`);
-
-          const map = new Map(params.map((p: any) => [p.seriesName, p]));
-          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-          ordered.forEach((p: any) => {
-            lines.push(
-              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+            ordered.forEach((p: any) => {
+              lines.push(
+                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
                 <span style="flex:1;">${p.seriesName}</span>
                 <span style="font-weight:700;">${fmtNum(p.data)}</span>
               </div>`
-            );
-          });
+              );
+            });
 
-          return `<div style="min-width:180px;">${lines.join('')}</div>`;
-        },
-      },
-      legend: { show: false },
-      grid: { left: 50, right: 20, top: 40, bottom: 35 },
-      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: x,
-        axisLabel: {
-          interval: 0,
-          fontSize: axisTickFontSize,
-          margin: 20,
-          align: 'center',
-          formatter: (v: string, idx: number) => {
-            if (v === '') return '';
-            if (idx === 0) return `{m1|${v}}`;
-            if (idx === 2) return `{m2|${v}}`;
-            return v;
-          },
-          rich: {
-            m1: { align: 'right', padding: [0, 0, 0, 80] },
-            m2: { align: 'left', padding: [0, 80, 0, 0] },
+            return `<div style="min-width:180px;">${lines.join('')}</div>`;
           },
         },
-        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Nos.',
-        nameLocation: 'middle',
-        nameGap: 45,
-        axisLabel: {
-          fontSize: axisTickFontSize,
-          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-        }
-      },
-      series: [
-        {
-          name: 'New/Reviving',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-            ]),
+        legend: { show: false },
+        grid: { left: 50, right: 20, top: 40, bottom: 35 },
+        color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: x,
+          axisLabel: {
+            interval: 0,
+            fontSize: axisTickFontSize,
+            margin: 20,
+            align: 'center',
+            formatter: (v: string, idx: number) => {
+              if (v === '') return '';
+              if (idx === 0) return `{m1|${v}}`;
+              if (idx === 2) return `{m2|${v}}`;
+              return v;
+            },
+            rich: {
+              m1: { align: 'right', padding: [0, 0, 0, 80] },
+              m2: { align: 'left', padding: [0, 80, 0, 0] },
+            },
           },
-          data: [newRev_m1, newRev_m1, newRev_m2],
+          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
         },
-        {
-          name: 'Other SKUs',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-            ]),
-          },
-          data: [other_m1, other_m1, other_m2],
+        yAxis: {
+          type: 'value',
+          name: 'Nos.',
+          nameLocation: 'middle',
+          nameGap: 45,
+          axisLabel: {
+            fontSize: axisTickFontSize,
+            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+          }
         },
-        {
-          name: 'Top 80%',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-            ]),
+        series: [
+          {
+            name: 'New/Reviving',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+              ]),
+            },
+            data: [newRev_m1, newRev_m1, newRev_m2],
           },
-          data: [top80_m1, top80_m1, top80_m2],
-          markLine: {
-            symbol: "none",
-            silent: true,
-            data: [{ xAxis: "" }],
-            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-            label: { show: false },
+          {
+            name: 'Other SKUs',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+              ]),
+            },
+            data: [other_m1, other_m1, other_m2],
           },
-        },
-      ],
+          {
+            name: 'Top 80%',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+              ]),
+            },
+            data: [top80_m1, top80_m1, top80_m2],
+            markLine: {
+              symbol: "none",
+              silent: true,
+              data: [{ xAxis: "" }],
+              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+              label: { show: false },
+            },
+          },
+        ],
+      };
+
+      unitsChartInstanceRef.current.setOption(option, true);
+      unitsChartInstanceRef.current.resize();
+
+      window.addEventListener("resize", onResize);
+      ro = new ResizeObserver(() => unitsChartInstanceRef.current?.resize());
+      ro.observe(el);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
+  }, [
+    month1, year1, month2, year2,
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.new_or_reviving_skus,
+    categorizedGrowth.other_skus,
+    rateMap,
+    displayCurrencySymbol,
+    displayCurrencyCode,
+    effectiveCountry,
+    axisTickFontSize,
+    isPreviewMode,
+  ]);
 
-    unitsChartInstanceRef.current.setOption(option, true);
-    unitsChartInstanceRef.current.resize();
+  useEffect(() => {
+    const el = aspChartRef.current;
+    if (!el) return;
 
-    window.addEventListener("resize", onResize);
-    ro = new ResizeObserver(() => unitsChartInstanceRef.current?.resize());
-    ro.observe(el);
-  });
+    let ro: ResizeObserver | null = null;
+    const onResize = () => aspChartInstanceRef.current?.resize();
 
-  return () => {
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", onResize);
-    ro?.disconnect();
-  };
-}, [
-  month1, year1, month2, year2,
-  categorizedGrowth.top_80_skus,
-  categorizedGrowth.new_or_reviving_skus,
-  categorizedGrowth.other_skus,
-  rateMap,
-  displayCurrencySymbol,
-  displayCurrencyCode,
-  effectiveCountry,
-  axisTickFontSize,
-  isPreviewMode,
-]);
+    const raf = requestAnimationFrame(() => {
+      if (aspChartInstanceRef.current && aspChartInstanceRef.current.getDom() !== el) {
+        aspChartInstanceRef.current.dispose();
+        aspChartInstanceRef.current = null;
+      }
+      if (!aspChartInstanceRef.current) {
+        aspChartInstanceRef.current = echarts.init(el);
+      }
 
-useEffect(() => {
-  const el = aspChartRef.current;
-  if (!el) return;
+      const { x, values } = buildCompareSeries('asp');
+      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+      const currency = displayCurrencySymbol;
 
-  let ro: ResizeObserver | null = null;
-  const onResize = () => aspChartInstanceRef.current?.resize();
+      const hasAny =
+        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-  const raf = requestAnimationFrame(() => {
-    if (aspChartInstanceRef.current && aspChartInstanceRef.current.getDom() !== el) {
-      aspChartInstanceRef.current.dispose();
-      aspChartInstanceRef.current = null;
-    }
-    if (!aspChartInstanceRef.current) {
-      aspChartInstanceRef.current = echarts.init(el);
-    }
+      if (!hasAny && !isPreviewMode) {
+        aspChartInstanceRef.current?.clear();
+        aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+        aspChartInstanceRef.current?.resize();
+        return;
+      }
 
-    const { x, values } = buildCompareSeries('asp');
-    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-    const currency = displayCurrencySymbol;
+      const option: echarts.EChartsOption = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            const axisLabel = params?.[0]?.axisValueLabel ?? '';
+            const lines: string[] = [];
+            lines.push(`<div style="font-weight:700;margin-bottom:6px;">ASP ${axisLabel}</div>`);
 
-    const hasAny =
-      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+            const map = new Map(params.map((p: any) => [p.seriesName, p]));
+            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
 
-    if (!hasAny && !isPreviewMode) {
-      aspChartInstanceRef.current?.clear();
-      aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-      aspChartInstanceRef.current?.resize();
-      return;
-    }
-
-    const option: echarts.EChartsOption = {
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const axisLabel = params?.[0]?.axisValueLabel ?? '';
-          const lines: string[] = [];
-          lines.push(`<div style="font-weight:700;margin-bottom:6px;">ASP ${axisLabel}</div>`);
-
-          const map = new Map(params.map((p: any) => [p.seriesName, p]));
-          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-          ordered.forEach((p: any) => {
-            lines.push(
-              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+            ordered.forEach((p: any) => {
+              lines.push(
+                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
                 <span style="flex:1;">${p.seriesName}</span>
                 <span style="font-weight:700;">${currency}${Number(p.data ?? 0).toFixed(2)}</span>
               </div>`
-            );
-          });
+              );
+            });
 
-          return `<div style="min-width:180px;">${lines.join('')}</div>`;
-        },
-      },
-      legend: { show: false },
-      grid: { left: 50, right: 20, top: 40, bottom: 35 },
-      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: x,
-        axisLabel: {
-          interval: 0,
-          fontSize: axisTickFontSize,
-          margin: 20,
-          align: 'center',
-          formatter: (v: string, idx: number) => {
-            if (v === '') return '';
-            if (idx === 0) return `{m1|${v}}`;
-            if (idx === 2) return `{m2|${v}}`;
-            return v;
-          },
-          rich: {
-            m1: { align: 'right', padding: [0, 0, 0, 80] },
-            m2: { align: 'left', padding: [0, 80, 0, 0] },
+            return `<div style="min-width:180px;">${lines.join('')}</div>`;
           },
         },
-        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-      },
-      yAxis: {
-        type: 'value',
-        name: `Amount (${currency})`,
-        nameLocation: 'middle',
-        nameGap: 45,
-        axisLabel: {
-          fontSize: axisNameFontSize,
-          formatter: (value: number) => {
-            if (!value) return '0';
-            return Number.isInteger(value) ? value.toString() : value.toFixed(0);
-          }
-        },
-      },
-      series: [
-        {
-          name: 'New/Reviving',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-            ]),
+        legend: { show: false },
+        grid: { left: 50, right: 20, top: 40, bottom: 35 },
+        color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: x,
+          axisLabel: {
+            interval: 0,
+            fontSize: axisTickFontSize,
+            margin: 20,
+            align: 'center',
+            formatter: (v: string, idx: number) => {
+              if (v === '') return '';
+              if (idx === 0) return `{m1|${v}}`;
+              if (idx === 2) return `{m2|${v}}`;
+              return v;
+            },
+            rich: {
+              m1: { align: 'right', padding: [0, 0, 0, 80] },
+              m2: { align: 'left', padding: [0, 80, 0, 0] },
+            },
           },
-          data: [newRev_m1, newRev_m1, newRev_m2],
+          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
         },
-        {
-          name: 'Other SKUs',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-            ]),
-          },
-          data: [other_m1, other_m1, other_m2],
-        },
-        {
-          name: 'Top 80%',
-          type: 'line',
-          smooth: true,
-          stack: 'Total',
-          symbol: 'none',
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-            ]),
-          },
-          data: [top80_m1, top80_m1, top80_m2],
-          markLine: {
-            symbol: "none",
-            silent: true,
-            data: [{ xAxis: "" }],
-            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-            label: { show: false },
+        yAxis: {
+          type: 'value',
+          name: `Amount (${currency})`,
+          nameLocation: 'middle',
+          nameGap: 45,
+          axisLabel: {
+            fontSize: axisNameFontSize,
+            formatter: (value: number) => {
+              if (!value) return '0';
+              return Number.isInteger(value) ? value.toString() : value.toFixed(0);
+            }
           },
         },
-      ],
+        series: [
+          {
+            name: 'New/Reviving',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+              ]),
+            },
+            data: [newRev_m1, newRev_m1, newRev_m2],
+          },
+          {
+            name: 'Other SKUs',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+              ]),
+            },
+            data: [other_m1, other_m1, other_m2],
+          },
+          {
+            name: 'Top 80%',
+            type: 'line',
+            smooth: true,
+            stack: 'Total',
+            symbol: 'none',
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+              ]),
+            },
+            data: [top80_m1, top80_m1, top80_m2],
+            markLine: {
+              symbol: "none",
+              silent: true,
+              data: [{ xAxis: "" }],
+              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+              label: { show: false },
+            },
+          },
+        ],
+      };
+
+      aspChartInstanceRef.current.setOption(option, true);
+      aspChartInstanceRef.current.resize();
+
+      window.addEventListener("resize", onResize);
+      ro = new ResizeObserver(() => aspChartInstanceRef.current?.resize());
+      ro.observe(el);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
-
-    aspChartInstanceRef.current.setOption(option, true);
-    aspChartInstanceRef.current.resize();
-
-    window.addEventListener("resize", onResize);
-    ro = new ResizeObserver(() => aspChartInstanceRef.current?.resize());
-    ro.observe(el);
-  });
-
-  return () => {
-    cancelAnimationFrame(raf);
-    window.removeEventListener("resize", onResize);
-    ro?.disconnect();
-  };
-}, [
-  month1, year1, month2, year2,
-  categorizedGrowth.top_80_skus,
-  categorizedGrowth.new_or_reviving_skus,
-  categorizedGrowth.other_skus,
-  rateMap,
-  displayCurrencySymbol,
-  displayCurrencyCode,
-  effectiveCountry,
-  axisTickFontSize,
-  axisNameFontSize,
-  isPreviewMode,
-]);
+  }, [
+    month1, year1, month2, year2,
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.new_or_reviving_skus,
+    categorizedGrowth.other_skus,
+    rateMap,
+    displayCurrencySymbol,
+    displayCurrencyCode,
+    effectiveCountry,
+    axisTickFontSize,
+    axisNameFontSize,
+    isPreviewMode,
+  ]);
 
 
 
@@ -1919,9 +1928,9 @@ useEffect(() => {
 
       setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
 
-      setAdvertisingTotals({ month1: 4200, month2: 5200 });
-      setExpenseTotals({ month1: 3800, month2: 4100 });
-      setReimbursementTotals({ month1: 900, month2: 1100 });
+      setAdvertisingTotals({ month1: 0, month2: 0 });
+      setExpenseTotals({ month1: 0, month2: 0 });
+      setReimbursementTotals({ month1: 0, month2: 0 });
 
       setMonth2Label("Preview");
 

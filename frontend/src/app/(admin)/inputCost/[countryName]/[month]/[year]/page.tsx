@@ -10,6 +10,8 @@ import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
+import { useRouter } from 'next/navigation';
+import { IoMdLock } from "react-icons/io";
 
 // Types
 interface Params {
@@ -93,12 +95,114 @@ function getCurrencyForCountry(country: string): string {
   }
 }
 
+const isPreviewNA = (month: string, year: string) =>
+  month?.toLowerCase() === 'na' || year?.toLowerCase() === 'na';
+
+const DUMMY_SKU_DATA: SkuRow[] = [
+  {
+    s_no: 1,
+    product_name: 'Sample Product A',
+    sku_uk: 'UK-SKU-001',
+    sku_us: 'US-SKU-001',
+    sku_canada: 'CA-SKU-001',
+    asin: 'B0DUMMY001',
+    product_barcode: '1234567890123',
+    price: 12.5,
+    currency: 'GBP',
+    month: 'January',
+    year: '2026',
+  },
+  {
+    s_no: 2,
+    product_name: 'Sample Product B',
+    sku_uk: 'UK-SKU-002',
+    sku_us: 'US-SKU-002',
+    sku_canada: 'CA-SKU-002',
+    asin: 'B0DUMMY002',
+    product_barcode: '2234567890123',
+    price: 18.75,
+    currency: 'GBP',
+    month: 'January',
+    year: '2026',
+  },
+  {
+    s_no: 3,
+    product_name: 'Sample Product C',
+    sku_uk: 'UK-SKU-003',
+    sku_us: 'US-SKU-003',
+    sku_canada: 'CA-SKU-003',
+    asin: 'B0DUMMY003',
+    product_barcode: '3234567890123',
+    price: 9.99,
+    currency: 'GBP',
+    month: 'January',
+    year: '2026',
+  },
+];
+
+const DUMMY_ASP_DATA: Record<string, number> = {
+  'Sample Product A': 25,
+  'Sample Product B': 34,
+  'Sample Product C': 16,
+  'Sample Product A_uk': 25,
+  'Sample Product B_uk': 34,
+  'Sample Product C_uk': 16,
+  'Sample Product A_us': 31,
+  'Sample Product B_us': 42,
+  'Sample Product C_us': 20,
+  'Sample Product A_canada': 38,
+  'Sample Product B_canada': 49,
+  'Sample Product C_canada': 24,
+};
+
+const DUMMY_CURRENCY_RATES: Record<string, number> = {
+  GBP: 1,
+  USD: 1,
+  CAD: 1,
+  EUR: 1,
+  INR: 1,
+
+  gbp: 1,
+  usd: 1,
+  cad: 1,
+  eur: 1,
+  inr: 1,
+
+  GBP_uk: 1,
+  USD_us: 1,
+  CAD_canada: 1,
+  EUR_europe: 1,
+  EUR_eu: 1,
+  USD_global: 1,
+};
+
+const DUMMY_WAREHOUSE_DATA = [
+  {
+    s_no: 1,
+    sku_us: 'US-SKU-001',
+    sku_uk: 'UK-SKU-001',
+    local_stock: 120,
+    in_transit_units: 15,
+    month: 'January',
+    year: '2026',
+  },
+  {
+    s_no: 2,
+    sku_us: 'US-SKU-002',
+    sku_uk: 'UK-SKU-002',
+    local_stock: 85,
+    in_transit_units: 9,
+    month: 'January',
+    year: '2026',
+  },
+];
+
 export default function InputCostPage({ params }: Params) {
   const { countryName: countryNameRaw, month: monthRaw, year: yearRaw } = use(params);
   const countryName = decodeURIComponent(countryNameRaw ?? '').toLowerCase();
   const monthParam = decodeURIComponent(monthRaw ?? '');
   const yearParam = decodeURIComponent(yearRaw ?? '');
-
+  // const isNA = isPreviewNA(monthParam, yearParam);
   const [skuData, setSkuData] = useState<SkuRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,10 +216,16 @@ export default function InputCostPage({ params }: Params) {
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
   const [showAllRows, setShowAllRows] = useState(false);
   const [warehouseData, setWarehouseData] = useState<Record<string, any>[]>([]);
-const [warehouseColumns, setWarehouseColumns] = useState<string[]>([]);
-const [warehouseLoading, setWarehouseLoading] = useState(false);
-const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
-const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
+  const [warehouseColumns, setWarehouseColumns] = useState<string[]>([]);
+  const [warehouseLoading, setWarehouseLoading] = useState(false);
+  const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
+  const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
+
+  const router = useRouter();
+
+  const isNA =
+    monthParam?.toLowerCase() === 'na' ||
+    yearParam?.toLowerCase() === 'na';
 
   type InputCostTab = 'sku-info' | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('sku-info');
@@ -279,7 +389,43 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     }
   };
 
+  // const fetchCurrencyRates = async () => {
+  //   const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+  //   if (!token) return;
+
+  //   try {
+  //     const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`, {
+  //       method: 'GET',
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
+  //     if (response.ok) {
+  //       const rates: Array<{ user_currency: string; country: string; conversion_rate: number }> =
+  //         await response.json();
+  //       const map: Record<string, number> = {};
+  //       rates.forEach((rate) => {
+  //         const keys = [
+  //           `${rate.user_currency}_${rate.country}`,
+  //           `${rate.user_currency.toLowerCase()}_${rate.country.toLowerCase()}`,
+  //           `${rate.user_currency.toUpperCase()}_${rate.country.toLowerCase()}`,
+  //           rate.user_currency,
+  //           rate.user_currency.toLowerCase(),
+  //           rate.user_currency.toUpperCase(),
+  //         ];
+  //         keys.forEach((k) => (map[k] = rate.conversion_rate));
+  //       });
+  //       setCurrencyRates(map);
+  //     }
+  //   } catch (e) {
+  //     console.error('Error fetching currency rates', e);
+  //   }
+  // };
+
   const fetchCurrencyRates = async () => {
+    if (isNA) {
+      setCurrencyRates(DUMMY_CURRENCY_RATES);
+      return;
+    }
+
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
     if (!token) return;
 
@@ -311,6 +457,11 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
   };
 
   const fetchAspData = async () => {
+    if (isNA) {
+      setAspData(DUMMY_ASP_DATA);
+      return;
+    }
+
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
     if (!token) return;
 
@@ -384,14 +535,74 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     }
   };
 
+  // useEffect(() => {
+  //   const fetchSkuData = async () => {
+  //     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+  //     if (!token) {
+  //       setError('Authorization token is missing');
+  //       setLoading(false);
+  //       return;
+  //     }
+  //     try {
+  //       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skuprice`, {
+  //         method: 'GET',
+  //         headers: { Authorization: `Bearer ${token}` },
+  //       });
+  //       if (!response.ok) throw new Error('Failed to fetch data');
+  //       const data: SkuRow[] = await response.json();
+  //       const sorted = [...data].sort((a, b) => (a.s_no ?? 0) - (b.s_no ?? 0));
+  //       setSkuData(sorted);
+  //       const columns = getVisibleColumns(sorted);
+  //       setVisibleColumns(columns);
+  //     } catch (err: any) {
+  //       setError(err.message);
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
+
+  //   fetchSkuData();
+  //   fetchCurrencyRates();
+  //   fetchAspData();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [countryName, monthParam, yearParam]);
+
   useEffect(() => {
     const fetchSkuData = async () => {
+      if (isNA) {
+        const previewCurrency =
+          countryName === 'uk'
+            ? 'GBP'
+            : countryName === 'us'
+              ? 'USD'
+              : countryName === 'canada'
+                ? 'CAD'
+                : countryName === 'eu' || countryName === 'europe'
+                  ? 'EUR'
+                  : 'USD';
+
+        const previewRows = DUMMY_SKU_DATA.map((row) => ({
+          ...row,
+          currency: countryName === 'global' ? row.currency : previewCurrency,
+          month: 'January',
+          year: '2026',
+        }));
+
+        const sorted = [...previewRows].sort((a, b) => (a.s_no ?? 0) - (b.s_no ?? 0));
+        setSkuData(sorted);
+        setVisibleColumns(getVisibleColumns(sorted));
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
       const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
       if (!token) {
         setError('Authorization token is missing');
         setLoading(false);
         return;
       }
+
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skuprice`, {
           method: 'GET',
@@ -414,7 +625,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     fetchCurrencyRates();
     fetchAspData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countryName, monthParam, yearParam]);
+  }, [countryName, monthParam, yearParam, isNA]);
 
   const handlePriceChange = (productName: string, value: string) => {
     setEditedPrices((prev) => ({
@@ -467,108 +678,122 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
   };
 
   const fetchWarehouseData = async () => {
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-  if (!token) return;
-
-  try {
-    setWarehouseLoading(true);
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData?country=${countryName}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setWarehouseData([]);
-      setWarehouseColumns([]);
+    if (isNA) {
+      setWarehouseData(DUMMY_WAREHOUSE_DATA);
+      setWarehouseColumns(getOrderedWarehouseColumns(Object.keys(DUMMY_WAREHOUSE_DATA[0] || {})));
+      setWarehouseLoading(false);
       return;
     }
 
-    const rows = Array.isArray(result?.data) ? result.data : [];
-    const cols = Array.isArray(result?.columns)
-      ? result.columns
-      : rows.length > 0
-      ? Object.keys(rows[0])
-      : [];
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-    setWarehouseData(rows);
-    setWarehouseColumns(getOrderedWarehouseColumns(cols));
-  } catch (e) {
-    console.error('Failed to fetch warehouse data', e);
-    setWarehouseData([]);
-    setWarehouseColumns([]);
-  } finally {
-    setWarehouseLoading(false);
-  }
-};
+    if (!token) return;
+
+    try {
+      setWarehouseLoading(true);
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData?country=${countryName}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setWarehouseData([]);
+        setWarehouseColumns([]);
+        return;
+      }
+
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      const cols = Array.isArray(result?.columns)
+        ? result.columns
+        : rows.length > 0
+          ? Object.keys(rows[0])
+          : [];
+
+      setWarehouseData(rows);
+      setWarehouseColumns(getOrderedWarehouseColumns(cols));
+    } catch (e) {
+      console.error('Failed to fetch warehouse data', e);
+      setWarehouseData([]);
+      setWarehouseColumns([]);
+    } finally {
+      setWarehouseLoading(false);
+    }
+  };
 
   const handleWarehouseUpload = async (file: File) => {
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
-
-  if (!token) {
-    setModalMessage('Authorization token is missing');
-    setShowModal(true);
-    return;
-  }
-
-  try {
-    setWarehouseLoading(true);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('country', countryName);
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(result?.error || result?.message || 'Failed to upload warehouse file');
+    if (isNA) {
+      setModalMessage('Preview mode only. Connect your account to upload warehouse data.');
+      setShowModal(true);
+      return;
     }
 
-    const rows = Array.isArray(result?.data) ? result.data : [];
-setWarehouseData(rows);
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-const cols = Array.isArray(result?.columns)
-  ? result.columns
-  : rows.length > 0
-  ? Object.keys(rows[0])
-  : [];
+    if (!token) {
+      setModalMessage('Authorization token is missing');
+      setShowModal(true);
+      return;
+    }
 
-setWarehouseColumns(getOrderedWarehouseColumns(cols));
+    try {
+      setWarehouseLoading(true);
 
-    setShowWarehouseUpload(false);
-    setModalMessage(result?.message || 'Warehouse file uploaded successfully');
-    setShowModal(true);
-  } catch (e: any) {
-    setModalMessage(e?.message || 'Failed to upload warehouse file');
-    setShowModal(true);
-  } finally {
-    setWarehouseLoading(false);
-  }
-};
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('country', countryName);
 
-useEffect(() => {
-  if (activeTab === 'extra') {
-    void fetchWarehouseData();
-  }
-}, [activeTab, countryName]);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result?.error || result?.message || 'Failed to upload warehouse file');
+      }
+
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      setWarehouseData(rows);
+
+      const cols = Array.isArray(result?.columns)
+        ? result.columns
+        : rows.length > 0
+          ? Object.keys(rows[0])
+          : [];
+
+      setWarehouseColumns(getOrderedWarehouseColumns(cols));
+
+      setShowWarehouseUpload(false);
+      setModalMessage(result?.message || 'Warehouse file uploaded successfully');
+      setShowModal(true);
+    } catch (e: any) {
+      setModalMessage(e?.message || 'Failed to upload warehouse file');
+      setShowModal(true);
+    } finally {
+      setWarehouseLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'extra') {
+      void fetchWarehouseData();
+    }
+  }, [activeTab, countryName]);
 
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
@@ -640,56 +865,56 @@ useEffect(() => {
     XLSX.writeFile(workbook, fileName);
   };
 
- const tableData: TableRow[] = useMemo(() => {
-  const mappedRows: TableRow[] = skuData.map((row, index) => {
-    const item: TableRow = {
-      id: `${row.product_name}-${index}`,
-      s_no: row.s_no ?? index + 1,
-      product_name: row.product_name ?? '—',
-      sku_uk: row.sku_uk ?? '—',
-      sku_us: row.sku_us ?? '—',
-      sku_canada: row.sku_canada ?? '—',
-      asin: row.asin ?? '—',
-      product_barcode: row.product_barcode ?? '—',
-      month_year: getMonthYearDisplay(row),
-      price: row.price ?? '',
+  const tableData: TableRow[] = useMemo(() => {
+    const mappedRows: TableRow[] = skuData.map((row, index) => {
+      const item: TableRow = {
+        id: `${row.product_name}-${index}`,
+        s_no: row.s_no ?? index + 1,
+        product_name: row.product_name ?? '—',
+        sku_uk: row.sku_uk ?? '—',
+        sku_us: row.sku_us ?? '—',
+        sku_canada: row.sku_canada ?? '—',
+        asin: row.asin ?? '—',
+        product_barcode: row.product_barcode ?? '—',
+        month_year: getMonthYearDisplay(row),
+        price: row.price ?? '',
+      };
+
+      visibleColumns.forEach((col) => {
+        if (col.startsWith('gross_margin_')) {
+          item[col] = '';
+        } else if (col in row) {
+          item[col] = row[col] ?? '—';
+        }
+      });
+
+      return item;
+    });
+
+    if (mappedRows.length <= 9 || showAllRows) {
+      return mappedRows;
+    }
+
+    const firstNine = mappedRows.slice(0, 9);
+    const remainingCount = mappedRows.length - 9;
+
+    const othersRow: TableRow = {
+      id: 'others-row',
+      s_no: '—',
+      product_name: `Others (${remainingCount} more items)`,
+      month_year: '—',
+      price: '—',
+      isOthersRow: true,
     };
 
     visibleColumns.forEach((col) => {
-      if (col.startsWith('gross_margin_')) {
-        item[col] = '';
-      } else if (col in row) {
-        item[col] = row[col] ?? '—';
+      if (!(col in othersRow)) {
+        othersRow[col] = '—';
       }
     });
 
-    return item;
-  });
-
-  if (mappedRows.length <= 9 || showAllRows) {
-    return mappedRows;
-  }
-
-  const firstNine = mappedRows.slice(0, 9);
-  const remainingCount = mappedRows.length - 9;
-
-  const othersRow: TableRow = {
-    id: 'others-row',
-    s_no: '—',
-    product_name: `Others (${remainingCount} more items)`,
-    month_year: '—',
-    price: '—',
-    isOthersRow: true,
-  };
-
-  visibleColumns.forEach((col) => {
-    if (!(col in othersRow)) {
-      othersRow[col] = '—';
-    }
-  });
-
-  return [...firstNine, othersRow];
-}, [skuData, visibleColumns, showAllRows]);
+    return [...firstNine, othersRow];
+  }, [skuData, visibleColumns, showAllRows]);
 
   const columns: ColumnDef<TableRow>[] = useMemo(() => {
     return visibleColumns.map((column) => {
@@ -702,25 +927,25 @@ useEffect(() => {
         col.width = '70px';
       }
 
-if (column === 'product_name') {
-  col.width = '220px';
-  col.cellClassName = 'text-left';
-  col.render = (tableRow) => {
-    if (tableRow.isOthersRow) {
-      return (
-        <button
-          type="button"
-          onClick={() => setShowAllRows(true)}
-          className="text-blue-600 font-semibold underline cursor-pointer"
-        >
-          {tableRow.product_name}
-        </button>
-      );
-    }
+      if (column === 'product_name') {
+        col.width = '220px';
+        col.cellClassName = 'text-left';
+        col.render = (tableRow) => {
+          if (tableRow.isOthersRow) {
+            return (
+              <button
+                type="button"
+                onClick={() => setShowAllRows(true)}
+                className="text-blue-600 font-semibold underline cursor-pointer"
+              >
+                {tableRow.product_name}
+              </button>
+            );
+          }
 
-    return <span>{tableRow.product_name}</span>;
-  };
-}
+          return <span>{tableRow.product_name}</span>;
+        };
+      }
 
       if (column === 'asin') {
         col.width = '140px';
@@ -776,74 +1001,148 @@ if (column === 'product_name') {
   }, [visibleColumns, skuData, isEditing, editedPrices]);
 
   const tabOptions = useMemo(
-  () => [
-    { value: 'sku-info' as const, label: 'Sku Info' },
-    { value: 'extra' as const, label: 'Upload Warehouse Data' },
-  ],
-  []
-);
+    () => [
+      { value: 'sku-info' as const, label: 'Sku Info' },
+      { value: 'extra' as const, label: 'Upload Warehouse Data' },
+    ],
+    []
+  );
 
-const getOrderedWarehouseColumns = (cols: string[]) => {
-  const preferredOrder = [
-    's_no',
-    'sku_us',
-    'sku_uk',
-    'local_stock',
-    'in_transit_units',
-    'month',
-    'year',
-  ];
+  const getOrderedWarehouseColumns = (cols: string[]) => {
+    const preferredOrder = [
+      's_no',
+      'sku_us',
+      'sku_uk',
+      'local_stock',
+      'in_transit_units',
+      'month',
+      'year',
+    ];
 
-  const preferred = preferredOrder.filter((c) => cols.includes(c));
-  const remaining = cols.filter((c) => !preferredOrder.includes(c));
+    const preferred = preferredOrder.filter((c) => cols.includes(c));
+    const remaining = cols.filter((c) => !preferredOrder.includes(c));
 
-  return [...preferred, ...remaining];
-};
+    return [...preferred, ...remaining];
+  };
 
-const getWarehouseHeaderLabel = (col: string) => {
-  switch (col) {
-    case 's_no':
-      return 'S No';
-    case 'sku_us':
-      return 'SKU US';
-    case 'sku_uk':
-      return 'SKU UK';
-    case 'local_stock':
-      return 'Local Stock';
-    case 'in_transit_units':
-      return 'In Transit Units';
-    case 'month':
-      return 'Month';
-    case 'year':
-      return 'Year';
-    default:
-      return col.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-};
+  const getWarehouseHeaderLabel = (col: string) => {
+    switch (col) {
+      case 's_no':
+        return 'S No';
+      case 'sku_us':
+        return 'SKU US';
+      case 'sku_uk':
+        return 'SKU UK';
+      case 'local_stock':
+        return 'Local Stock';
+      case 'in_transit_units':
+        return 'In Transit Units';
+      case 'month':
+        return 'Month';
+      case 'year':
+        return 'Year';
+      default:
+        return col.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  };
 
-const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
-  return warehouseColumns.map((col) => ({
-    key: col,
-    header: getWarehouseHeaderLabel(col),
-    width:
-      col === 's_no'
-        ? '70px'
-        : col === 'sku_us' || col === 'sku_uk'
-        ? '120px'
-        : col === 'local_stock' || col === 'in_transit_units'
-        ? '150px'
-        : col === 'month' || col === 'year'
-        ? '110px'
-        : '140px',
-    cellClassName: 'text-center',
-    render: (row) => {
-      const value = row[col];
-      return value === null || value === undefined || value === '' ? '—' : String(value);
-    },
-  }));
-}, [warehouseColumns]);
+  const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
+    return warehouseColumns.map((col) => ({
+      key: col,
+      header: getWarehouseHeaderLabel(col),
+      width:
+        col === 's_no'
+          ? '70px'
+          : col === 'sku_us' || col === 'sku_uk'
+            ? '120px'
+            : col === 'local_stock' || col === 'in_transit_units'
+              ? '150px'
+              : col === 'month' || col === 'year'
+                ? '110px'
+                : '140px',
+      cellClassName: 'text-center',
+      render: (row) => {
+        const value = row[col];
+        return value === null || value === undefined || value === '' ? '—' : String(value);
+      },
+    }));
+  }, [warehouseColumns]);
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
+
+
+  const PreviewLockedSection = ({
+    enabled,
+    children,
+    title,
+    description,
+    buttonText,
+    onAction,
+  }: {
+    enabled: boolean;
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    onAction?: () => void;
+  }) => {
+    return (
+      <div className="relative w-full">
+        <div
+          className={
+            enabled
+              ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+              : "opacity-100 transition-all duration-300"
+          }
+        >
+          {children}
+        </div>
+
+        {enabled && (
+          <>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
+
+                  <h3 className="text-lg font-semibold text-[#414042]">
+                    {title}
+                  </h3>
+
+                  <p className="mt-2 text-sm text-gray-600 leading-6">
+                    {description}
+                  </p>
+
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
+
+                  <p className="mt-3 text-xs text-gray-500">
+                    Demo data is shown for preview only.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+
+  const handleConnectAmazonPreview = () => {
+    const connectCountry = countryName === 'global' ? 'uk' : countryName;
+    router.push(`/profile/${connectCountry}/NA/NA`);
+  };
 
   return (
     <div>
@@ -854,234 +1153,291 @@ const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
-<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-  <div className="min-w-0">
-    <div className="flex flex-wrap items-baseline gap-2 justify-start">
-      <PageBreadcrumb
-        pageTitle="Input Cost –"
-        variant="page"
-        align="left"
-        className=""
-      />
-      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-        Amazon {countryName?.toLowerCase() === "global"
-          ? "Global"
-          : countryName?.toUpperCase()}
-      </span>
-    </div>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-2 justify-start">
+            <PageBreadcrumb
+              pageTitle="Input Cost –"
+              variant="page"
+              align="left"
+              className=""
+            />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
+          </div>
 
-    <div className="mt-3">
-      <SegmentedToggle
-        value={activeTab}
-        options={tabOptions}
-        onChange={(val) => setActiveTab(val as InputCostTab)}
-        compact
-        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-      />
-    </div>
-  </div>
+          <div className="mt-3">
+            <SegmentedToggle
+              value={activeTab}
+              options={tabOptions}
+              onChange={(val) => setActiveTab(val as InputCostTab)}
+              compact
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            />
+          </div>
+        </div>
 
-  <div className="flex flex-wrap items-center gap-3 md:justify-end">
-    {activeTab === 'sku-info' ? (
-      <>
-        {isEditing && (
-          <button className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]" onClick={saveChanges}>
-            Save Changes
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3 md:justify-end">
+          {activeTab === 'sku-info' ? (
+            <>
+              {isEditing && (
+                <button className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]" onClick={saveChanges}>
+                  Save Changes
+                </button>
+              )}
 
-        <button
-         className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-          onClick={() => setShowMultiuseCountry(true)}
-        >
-          Re-Upload file
-        </button>
+              {/* <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowMultiuseCountry(true)}
+              >
+                Re-Upload file
+              </button>
 
-        <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
-      </>
-    ) : (
-      <button
-        className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-        onClick={() => setShowWarehouseUpload(true)}
-      >
-        Upload Warehouse File
-      </button>
-    )}
-  </div>
-</div>
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" /> */}
 
-           
+              <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowMultiuseCountry(true)}
+                disabled={isNA}
+              >
+                Re-Upload file
+              </button>
 
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
+            </>
+          ) : (
+            // <button
+            //   className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+            //   onClick={() => setShowWarehouseUpload(true)}
+            // >
+            //   Upload Warehouse File
+            // </button>
+
+            <button
+              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+              onClick={() => setShowWarehouseUpload(true)}
+              disabled={isNA}
+            >
+              Upload Warehouse File
+            </button>
+          )}
+        </div>
+      </div>
+
+
+      {/* 
       {activeTab === 'sku-info' && (
-  <>
-    {skuData.length > 0 ? (
-      <div className="mt-5">
-        <DataTable<TableRow>
-          columns={columns}
-          data={tableData}
-          loading={loading}
-          paginate={false}
-          pageSize={10}
-          stickyHeader={true}
-          zebra={true}
-          scrollY={false}
-          maxHeight="auto"
-          emptyMessage="No data available"
-          tableClassName="text-sm"
-          className="rounded-xl"
-          rowClassName={(row) =>
-            row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
-          }
-        />
-      </div>
-    ) : (
-      <p className="mt-5">No data available</p>
-    )}
-  </>
-)}
-
-{activeTab === 'extra' && (
-  <div className="mt-5">
-    
-      <div className="mb-2 text-sm font-semibold text-[#414042]">
-        Warehouse Data
-      </div>
-
-    {warehouseLoading ? (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-        Uploading...
-      </div>
-    ) : warehouseData.length > 0 ? (
-      <DataTable<Record<string, any>>
-        columns={warehouseTableColumns}
-        data={warehouseData}
-        paginate={false}
-        stickyHeader
-        scrollY={false}
-        maxHeight="auto"
-        emptyMessage="No warehouse data available"
-        tableClassName="text-sm"
-        className="rounded-xl"
-      />
-    ) : (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-        Upload a warehouse file to view data here.
-      </div>
-    )}
-  </div>
-
-)}
-
-
-{showWarehouseUpload && (
-  <div
-    onClick={() => {
-  setSelectedWarehouseFile(null);
-  setShowWarehouseUpload(false);
-}}
-    className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 p-4"
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="relative w-full max-w-xl rounded-xl bg-white shadow-xl"
-    >
-      <button
-        onClick={() => {
-  setSelectedWarehouseFile(null);
-  setShowWarehouseUpload(false);
-}}
-        className="absolute right-4 top-3 text-2xl leading-none text-neutral-500 hover:text-neutral-800"
-        type="button"
-      >
-        &times;
-      </button>
-
-      <div className="border-b border-slate-200 px-6 py-4">
-        <div className="text-lg font-bold text-[#414042]">
-          Upload Warehouse Data
-        </div>
-        <div className="mt-1 text-sm text-slate-500">
-          Upload the warehouse Excel file for{" "}
-          <span className="font-semibold text-[#5EA68E]">
-            {countryName?.toUpperCase()}
-          </span>
-        </div>
-      </div>
-
-      <div className="px-6 py-5">
-        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
-          <div className="text-sm font-medium text-[#414042]">
-            Accepted format
-          </div>
-          <div className="mt-1 text-sm text-slate-500">
-            Please upload an Excel file (.xlsx or .xls)
-          </div>
-
-          <div className="mt-4">
-            <label className="inline-flex cursor-pointer items-center rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95">
-              Choose File
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setSelectedWarehouseFile(file);
-                }}
+        <>
+          {skuData.length > 0 ? (
+            <div className="mt-5">
+              <DataTable<TableRow>
+                columns={columns}
+                data={tableData}
+                loading={loading}
+                paginate={false}
+                pageSize={10}
+                stickyHeader={true}
+                zebra={true}
+                scrollY={false}
+                maxHeight="auto"
+                emptyMessage="No data available"
+                tableClassName="text-sm"
+                className="rounded-xl"
+                rowClassName={(row) =>
+                  row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
+                }
               />
-            </label>
-          </div>
+            </div>
+          ) : (
+            <p className="mt-5">No data available</p>
+          )}
+        </>
+      )} */}
 
-          <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm">
-            {selectedWarehouseFile ? (
-              <div className="flex flex-col gap-1">
-                <span className="font-medium text-[#414042]">Selected file</span>
-                <span className="break-all text-slate-600">
-                  {selectedWarehouseFile.name}
+
+      <PreviewLockedSection
+        enabled={isNA}
+        title="Preview mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
+        <>
+          {activeTab === 'sku-info' && (
+            <>
+              {skuData.length > 0 ? (
+                <div className="mt-5">
+                  <DataTable<TableRow>
+                    columns={columns}
+                    data={tableData}
+                    loading={loading}
+                    paginate={false}
+                    pageSize={10}
+                    stickyHeader={true}
+                    zebra={true}
+                    scrollY={false}
+                    maxHeight="auto"
+                    emptyMessage="No data available"
+                    tableClassName="text-sm"
+                    className="rounded-xl"
+                    rowClassName={(row) =>
+                      row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
+                    }
+                  />
+                </div>
+              ) : (
+                <p className="mt-5">No data available</p>
+              )}
+            </>
+          )}
+
+          {activeTab === 'extra' && (
+            <div className="mt-5">
+              <div className="mb-2 text-sm font-semibold text-[#414042]">
+                Warehouse Data
+              </div>
+
+              {warehouseLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                  Uploading...
+                </div>
+              ) : warehouseData.length > 0 ? (
+                <DataTable<Record<string, any>>
+                  columns={warehouseTableColumns}
+                  data={warehouseData}
+                  paginate={false}
+                  stickyHeader
+                  scrollY={false}
+                  maxHeight="auto"
+                  emptyMessage="No warehouse data available"
+                  tableClassName="text-sm"
+                  className="rounded-xl"
+                />
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                  Upload a warehouse file to view data here.
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      </PreviewLockedSection>
+
+
+
+
+      {showWarehouseUpload && (
+        <div
+          onClick={() => {
+            setSelectedWarehouseFile(null);
+            setShowWarehouseUpload(false);
+          }}
+          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-xl rounded-xl bg-white shadow-xl"
+          >
+            <button
+              onClick={() => {
+                setSelectedWarehouseFile(null);
+                setShowWarehouseUpload(false);
+              }}
+              className="absolute right-4 top-3 text-2xl leading-none text-neutral-500 hover:text-neutral-800"
+              type="button"
+            >
+              &times;
+            </button>
+
+            <div className="border-b border-slate-200 px-6 py-4">
+              <div className="text-lg font-bold text-[#414042]">
+                Upload Warehouse Data
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                Upload the warehouse Excel file for{" "}
+                <span className="font-semibold text-[#5EA68E]">
+                  {countryName?.toUpperCase()}
                 </span>
               </div>
-            ) : (
-              <span className="text-slate-400">No file selected</span>
-            )}
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
+                <div className="text-sm font-medium text-[#414042]">
+                  Accepted format
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  Please upload an Excel file (.xlsx or .xls)
+                </div>
+
+                <div className="mt-4">
+                  <label className="inline-flex cursor-pointer items-center rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95">
+                    Choose File
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setSelectedWarehouseFile(file);
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm">
+                  {selectedWarehouseFile ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium text-[#414042]">Selected file</span>
+                      <span className="break-all text-slate-600">
+                        {selectedWarehouseFile.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">No file selected</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWarehouseFile(null);
+                    setShowWarehouseUpload(false);
+                  }}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedWarehouseFile) {
+                      setModalMessage('Please select a file first');
+                      setShowModal(true);
+                      return;
+                    }
+                    void handleWarehouseUpload(selectedWarehouseFile);
+                  }}
+                  className="rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95 disabled:opacity-60"
+                  disabled={warehouseLoading}
+                >
+                  {warehouseLoading ? 'Uploading...' : 'Upload File'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="mt-5 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedWarehouseFile(null);
-              setShowWarehouseUpload(false);
-            }}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (!selectedWarehouseFile) {
-                setModalMessage('Please select a file first');
-                setShowModal(true);
-                return;
-              }
-              void handleWarehouseUpload(selectedWarehouseFile);
-            }}
-            className="rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95 disabled:opacity-60"
-            disabled={warehouseLoading}
-          >
-            {warehouseLoading ? 'Uploading...' : 'Upload File'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
 
 
-     
+
 
       {showMultiuseCountry && (
         <div

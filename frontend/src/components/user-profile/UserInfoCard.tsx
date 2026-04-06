@@ -3063,12 +3063,38 @@ const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
 
+// function platformIsConnected(
+//   platform: PlatformId,
+//   connected: {
+//     amazonUk: boolean;
+//     amazonUs: boolean;
+//     amazonCa: boolean;
+//     shopify: boolean;
+//   }
+// ) {
+//   switch (platform) {
+//     case "global":
+//       return false;
+//     case "amazon-uk":
+//       return connected.amazonUk;
+//     case "amazon-us":
+//       return connected.amazonUs;
+//     case "amazon-ca":
+//       return connected.amazonCa;
+//     case "shopify":
+//       return connected.shopify;
+//     default:
+//       return false;
+//   }
+// }
+
 function platformIsConnected(
   platform: PlatformId,
   connected: {
     amazonUk: boolean;
     amazonUs: boolean;
     amazonCa: boolean;
+    amazonAds: boolean;
     shopify: boolean;
   }
 ) {
@@ -3081,6 +3107,8 @@ function platformIsConnected(
       return connected.amazonUs;
     case "amazon-ca":
       return connected.amazonCa;
+    case "amazon-ads":
+      return connected.amazonAds;
     case "shopify":
       return connected.shopify;
     default:
@@ -3088,12 +3116,22 @@ function platformIsConnected(
   }
 }
 
-const PLATFORM_FLAG_META: Partial<Record<PlatformId, { label: string; countryCode?: string }>> = {
+const PLATFORM_FLAG_META: Partial<
+  Record<
+    PlatformId,
+    { label: string; countryCode?: string; image?: string }
+  >
+> = {
   "amazon-us": { label: "Amazon US", countryCode: "US" },
   "amazon-uk": { label: "Amazon UK", countryCode: "GB" },
   "amazon-ca": { label: "Amazon CA", countryCode: "CA" },
+  "amazon-ads": {
+    label: "Amazon Ads",
+    image: "/images/AmazonAds.jpg",
+  },
   shopify: { label: "Shopify" },
 };
+
 
 const PLATFORM_TARGET_META: Partial<Record<PlatformId, { marketplace: string; currencySymbol: string }>> = {
   "amazon-us": { marketplace: "Amazon US", currencySymbol: "$" },
@@ -3604,11 +3642,11 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const selectedDialCode = getDialCodeFromPhone(form.phone_number);
 
-const displayedPhone = form.phone_number
-  ? selectedDialCode
-    ? `${selectedDialCode} ${stripKnownDialCode(form.phone_number)}`
-    : form.phone_number.replace(/\s+/g, "")
-  : "";
+  const displayedPhone = form.phone_number
+    ? selectedDialCode
+      ? `${selectedDialCode} ${stripKnownDialCode(form.phone_number)}`
+      : form.phone_number.replace(/\s+/g, "")
+    : "";
 
   const GROWTH_OPTIONS = ["conservative", "balanced", "aggressive"] as const;
 
@@ -5352,14 +5390,20 @@ const displayedPhone = form.phone_number
 
                               return (
                                 <div key={p.id} className="flex items-center gap-3">
-                                  {meta.countryCode && (
+                                  {meta.countryCode ? (
                                     <ReactCountryFlag
                                       svg
                                       countryCode={meta.countryCode as any}
                                       className="text-[22px] leading-none"
                                       aria-label={meta.label}
                                     />
-                                  )}
+                                  ) : meta.image ? (
+                                    <img
+                                      src={meta.image}
+                                      alt={meta.label}
+                                      className="h-8 w-8 object-contain"
+                                    />
+                                  ) : null}
 
                                   <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
                                     {meta.label}

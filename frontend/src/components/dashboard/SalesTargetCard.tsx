@@ -428,8 +428,6 @@ export default function SalesTargetCard({
     typeof reimbursementDeltaPct === "number" &&
     !Number.isNaN(reimbursementDeltaPct);
 
-
-
   return (
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
       {/* Legend */}
@@ -659,7 +657,9 @@ export default function SalesTargetCard({
               style={{ width: `${reimbNowPct}%`, backgroundColor: "#ED9F50" }}
             />
           </div> */}
-          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+
+
+          {/* <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
 
             {reimbNowFill.leftPct > 0 && (
@@ -681,16 +681,55 @@ export default function SalesTargetCard({
                 }}
               />
             )}
+          </div> */}
+
+          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+
+            {/* Center line */}
+            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+
+            {/* 🔴 Center red marker */}
+            <span
+              className="absolute h-2.5 w-0.5 rounded-full z-20"
+              style={{
+                backgroundColor: "#414042",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+              }}
+            />
+
+            {reimbNowFill.leftPct > 0 && (
+              <div
+                className="absolute right-1/2 top-0 h-full rounded-l-full border-b-2"
+                style={{
+                  width: `${reimbNowFill.leftPct}%`,
+                  backgroundColor: "#ED9F50",
+                  borderColor: reimbNow < 0 ? "#B75A5A" : "#5EA68E", // 🔴 red / 🟢 green
+                }}
+              />
+            )}
+
+            {reimbNowFill.rightPct > 0 && (
+              <div
+                className="absolute left-1/2 top-0 h-full rounded-r-full border-b-2"
+                style={{
+                  width: `${reimbNowFill.rightPct}%`,
+                  backgroundColor: "#ED9F50",
+                  borderColor: reimbNow < 0 ? "#B75A5A" : "#5EA68E",
+                }}
+              />
+            )}
           </div>
         </div>
 
-        <div className="relative h-3">
+        {/* <div className="relative h-3">
           <span className="absolute left-1/2 -translate-x-1/2 text-[10px] 2xl:text-xs text-gray-400">
             0
           </span>
-        </div>
+        </div> */}
 
-        <div className="">
+        <div className="mt-3">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-charcoal-500">
               {toApostropheLabel(reimbPrevLabel)}{" "}
@@ -708,7 +747,9 @@ export default function SalesTargetCard({
               style={{ width: `${reimbPrevPct}%`, backgroundColor: "#9CA3AF" }}
             />
           </div> */}
-          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+
+
+          {/* <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
 
             {reimbPrevFill.leftPct > 0 && (
@@ -727,6 +768,45 @@ export default function SalesTargetCard({
                 style={{
                   width: `${reimbPrevFill.rightPct}%`,
                   backgroundColor: "#9CA3AF",
+                }}
+              />
+            )}
+          </div> */}
+
+          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+
+            {/* Center line */}
+            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+
+            {/* 🔴 Center red marker */}
+            <span
+              className="absolute h-2.5 w-0.5 rounded-full z-20"
+              style={{
+                backgroundColor: "#414042",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+              }}
+            />
+
+            {reimbPrevFill.leftPct > 0 && (
+              <div
+                className="absolute right-1/2 top-0 h-full rounded-l-full border-b-2"
+                style={{
+                  width: `${reimbPrevFill.leftPct}%`,
+                  backgroundColor: "#9CA3AF",
+                  borderColor: reimbPrev < 0 ? "#B75A5A" : "#5EA68E",
+                }}
+              />
+            )}
+
+            {reimbPrevFill.rightPct > 0 && (
+              <div
+                className="absolute left-1/2 top-0 h-full rounded-r-full border-b-2"
+                style={{
+                  width: `${reimbPrevFill.rightPct}%`,
+                  backgroundColor: "#9CA3AF",
+                  borderColor: reimbPrev < 0 ? "#B75A5A" : "#5EA68E",
                 }}
               />
             )}

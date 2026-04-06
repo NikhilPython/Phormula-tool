@@ -98,7 +98,6 @@ type BargraphProps = {
   selectedMonth: string;
   selectedYear: number | string;
   countryName: string;
-
   /** only used on global pages */
   homeCurrency?: string;
 
@@ -115,6 +114,7 @@ type BargraphProps = {
   onExportApiReady?: (api: ProfitChartExportApi) => void;
   hideDownloadButton?: boolean;
   isCollapsed?: boolean;
+  isPreviewMode?: boolean;
 };
 
 const getCurrencySymbol = (codeOrCountry: string) => {
@@ -153,6 +153,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   onExportApiReady,
   hideDownloadButton,
   isCollapsed = false,
+  isPreviewMode = false,
 }) => {
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
@@ -294,7 +295,7 @@ const Bargraph: React.FC<BargraphProps> = ({
 
   const { chartData, chartOptions, exportToExcel, allValuesZero, metricsToShow, values } =
     useMemo(() => {
-      if (!data || data.length === 0) {
+      if ((!data || data.length === 0) && !isPreviewMode) {
         return {
           chartData: { labels: [], datasets: [] } as ChartData<"bar">,
           chartOptions: {} as ChartOptions<"bar">,
@@ -349,12 +350,12 @@ const Bargraph: React.FC<BargraphProps> = ({
       const barWidthInPixels = viewportWidth * 0.05;
 
       let computedValues = computedMetricsToShow.map((label) => {
+        if (isPreviewMode) return 0;
         const field = metricMapping[label];
         return monthData ? Number(monthData?.[field] ?? 0) : 0;
       });
 
       const zero = computedValues.every((v) => v === 0);
-      if (zero) computedValues = computedMetricsToShow.map(() => Math.floor(Math.random() * 1000 + 100));
 
       const chartData: ChartData<"bar"> = {
         labels,
@@ -549,17 +550,29 @@ const Bargraph: React.FC<BargraphProps> = ({
       userMeta?.brand_name,
       userMeta?.company_name,
       isCollapsed,
+      isPreviewMode,
     ]);
 
   useEffect(() => {
-    onNoDataChange?.(!loading && allValuesZero);
-  }, [onNoDataChange, allValuesZero, loading]);
+    onNoDataChange?.(!loading && !isPreviewMode && allValuesZero);
+  }, [onNoDataChange, allValuesZero, loading, isPreviewMode]);
+
+  // if (isPreviewMode && !loading) {
+  //   return <div className="w-full h-full min-h-0" />;
+  // }
+
+  // if (allValuesZero && !loading) {
+  //   return (
+  //     <div className="flex h-full items-center justify-center text-gray-400 text-sm">
+  //       No data available
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="relative w-full h-full min-h-0">
       <div
-        className={`h-full min-h-0 ${allValuesZero && !loading ? "opacity-30 pointer-events-none" : "opacity-100"
-          }`}
+        className={`h-full min-h-0 `}
       >
         {!hideDownloadButton && (
           <div className="flex justify-end mb-2">

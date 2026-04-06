@@ -6,12 +6,14 @@ export type PlatformId =
   | "amazon-uk"
   | "amazon-us"
   | "amazon-ca"
+  | "amazon-ads"
   | "shopify";
 
 export type ConnectedPlatforms = {
   amazonUk: boolean;
   amazonUs: boolean;
   amazonCa: boolean;
+  amazonAds: boolean;
   shopify: boolean;
 };
 
@@ -20,6 +22,7 @@ export const ALL_PLATFORM_DEFS: { id: PlatformId; label: string }[] = [
   { id: "amazon-uk", label: "Amazon UK" },
   { id: "amazon-us", label: "Amazon US" },
   { id: "amazon-ca", label: "Amazon CA" },
+  { id: "amazon-ads", label: "Amazon Ads" },
   { id: "shopify", label: "Shopify" },
 ];
 
@@ -40,6 +43,11 @@ export const buildPlatformOptions = (
   if (connected.amazonCa) {
     opts.push({ value: "amazon-ca", label: "Amazon CA" });
   }
+
+  // Intentionally NOT adding amazon-ads here,
+  // because this list powers the sidebar region/platform selector.
+  // Add it only if you want Amazon Ads selectable as a page platform.
+
   if (connected.shopify) {
     opts.push({ value: "shopify", label: "Shopify" });
   }
@@ -57,6 +65,8 @@ export const platformToCountryName = (platform: PlatformId): string => {
       return "us";
     case "amazon-ca":
       return "ca";
+    case "amazon-ads":
+      return "global";
     case "shopify":
       return "global";
     default:
