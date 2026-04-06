@@ -2,27 +2,23 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 
 export type Message = {
-  id: string; // client id or server history item id
+  id: string;
   sender: "user" | "bot";
   text: string;
 
-  // backend related
   serverId?: number;
   promptText?: string;
 
-  // ui
   liked?: "like" | "dislike";
   error?: boolean;
-  timestamp?: number; // epoch ms
+  timestamp?: number;
 };
 
 type ChatStore = {
   messages: Message[];
   loading: boolean;
 
-  // ✅ async now (DB se load karega)
   loadFromStorage: () => Promise<void>;
-
   sendMessage: (text: string) => Promise<void>;
   clearChat: () => void;
   reactToMessage: (id: string, reaction: Message["liked"]) => void;
@@ -46,7 +42,7 @@ const API_BASE_URL =
 const getAuthToken = () =>
   typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-// ✅ backend history fetcher (uses your existing API)
+// ✅ Fetch history (unchanged)
 const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
   const token = getAuthToken();
   if (!token) return null;
@@ -64,7 +60,7 @@ const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
     if (!res.ok || !data?.success || !Array.isArray(data?.items)) return null;
 
     const items: Message[] = data.items.map((m: any) => ({
-      id: String(m.id), // backend returns "12-u" / "12-b"
+      id: String(m.id),
       sender: m.sender,
       text: m.text,
       timestamp: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
@@ -80,12 +76,9 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
   messages: [],
   loading: false,
 
-  // ✅ DB -> local fallback -> default
   loadFromStorage: async () => {
-    // agar pehle se messages loaded hain → kuch mat karo
     if (get().messages.length > 0) return;
 
-    // 1) Try DB history first
     const dbMsgs = await fetchHistoryFromDB();
     if (dbMsgs && dbMsgs.length > 0) {
       set({ messages: dbMsgs });
@@ -95,7 +88,6 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       return;
     }
 
-    // 2) fallback localStorage
     const saved =
       typeof window !== "undefined"
         ? localStorage.getItem("chatbot_history")
@@ -108,15 +100,13 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           set({ messages: parsed });
           return;
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
-    // 3) default welcome
     set({ messages: [DEFAULT_BOT_MESSAGE] });
   },
 
+  // 🚀 UPDATED SEND MESSAGE (AGENT)
   sendMessage: async (text) => {
     if (!text.trim()) return;
 
@@ -127,7 +117,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       timestamp: Date.now(),
     };
 
-    // ✅ add user msg + sync local
+    // add user msg
     set((s) => {
       const updated = [...s.messages, userMsg];
       if (typeof window !== "undefined") {
@@ -137,15 +127,29 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
     });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/chatbot`, {
+      // 👉 get user country dynamically
+      let country = "uk";
+      if (typeof window !== "undefined") {
+        try {
+          const userData = JSON.parse(
+            localStorage.getItem("userdata") || "{}"
+          );
+          country = userData?.country || "uk";
+        } catch {}
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getAuthToken()}`,
         },
         body: JSON.stringify({
-          action: "chat",
-          query: text,
+          message: text,
+          country,
+          conversation_id: null, // 🔥 can upgrade later
+          email_requested: false,
+          thresholds: {},
         }),
       });
 
@@ -154,14 +158,15 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       const botMsg: Message = {
         id: uuid(),
         sender: "bot",
-        text: data?.response || "No response",
+        text:
+          data?.output ||
+          data?.response ||
+          data?.result ||
+          data?.message ||
+          "No response",
         timestamp: Date.now(),
-        // (optional) agar backend return karta ho
-        serverId: data?.message_id,
-        promptText: data?.original_prompt,
       };
 
-      // ✅ add bot msg + sync local (no stale get().messages)
       set((s) => {
         const updated = [...s.messages, botMsg];
         if (typeof window !== "undefined") {
@@ -169,8 +174,19 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
         }
         return { messages: updated, loading: false };
       });
-    } catch {
-      set({ loading: false });
+    } catch (err) {
+      const errorMsg: Message = {
+        id: uuid(),
+        sender: "bot",
+        text: "⚠️ Something went wrong. Please try again.",
+        error: true,
+        timestamp: Date.now(),
+      };
+
+      set((s) => ({
+        messages: [...s.messages, errorMsg],
+        loading: false,
+      }));
     }
   },
 
@@ -178,7 +194,6 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
     if (typeof window !== "undefined") {
       localStorage.removeItem("chatbot_history");
     }
-    // ✅ keep welcome instead of empty (optional but better UX)
     set({ messages: [DEFAULT_BOT_MESSAGE] });
   },
 
@@ -212,8 +227,6 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           additional_feedback,
         }),
       });
-    } catch {
-      // ignore
-    }
+    } catch {}
   },
 }));

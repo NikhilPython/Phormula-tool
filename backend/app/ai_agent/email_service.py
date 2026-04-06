@@ -71,9 +71,11 @@ def send_agent_email(
     subject: str,
     html_body: str,
     recipient: Optional[str] = None,
+    attachment_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     user = User.query.filter_by(id=user_id).first()
     to_email = recipient or (user.email if user else None)
+
     if not to_email:
         raise ValueError("Recipient email not available")
 
@@ -82,6 +84,22 @@ def send_agent_email(
         sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
         recipients=[to_email],
     )
+
     msg.html = html_body
+
+    # 🟢 ATTACHMENT SUPPORT (NEW)
+    if attachment_path:
+        with open(attachment_path, "rb") as f:
+            msg.attach(
+                filename="report.csv",
+                content_type="text/csv",
+                data=f.read()
+            )
+
     mail.send(msg)
-    return {"status": "sent", "recipient": to_email, "subject": subject}
+
+    return {
+        "status": "sent",
+        "recipient": to_email,
+        "subject": subject
+    }

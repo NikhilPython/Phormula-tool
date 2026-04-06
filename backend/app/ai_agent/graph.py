@@ -7,17 +7,10 @@ from langchain_openai import ChatOpenAI
 import re
 from datetime import datetime
 import pandas as pd
-from app.ai_agent.db import (
-    fetch_month_df,
-    get_engine,
-    get_latest_completed_month,
-    previous_month,
-    resolve_table_name,
-    fetch_range_df,
-    fetch_between_dates_df
-)
+
 from app.ai_agent.email_service import build_summary_html, send_agent_email
-from app.ai_agent.formula_engine import compare_metric, compute_metric, pick_top_skus
+from app.ai_agent.db import get_engine,latest_available_month
+from app.ai_agent.formula_engine import parse_period,get_metric_for_month,get_metric_for_period,get_metric_last_n_months,compare_periods,pick_top_skus
 from app.ai_agent.prompts import ADVISOR_SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT
 from app.ai_agent.state import AgentState
 from app.models.user_models import User
@@ -61,16 +54,140 @@ _llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0)
 _planner = _llm.with_structured_output(PlannerResult)
 _advisor = _llm.with_structured_output(AdviceResult)
 
+ALIAS_MAP = {
+    # 🔥 SALES
+    "gross sales": "gross_sales",
+    "gross revenue": "gross_sales",
+    "sales before refund": "gross_sales",
 
-def _df_to_json(df: pd.DataFrame) -> str:
-    return df.to_json(orient="records", date_format="iso")
+    "total sales": "net_sales",
+    "net sales": "net_sales",
+    "sales": "net_sales",
+
+    # 🔥 TAX / CREDIT
+    "total tax": "tax",
+    "taxes": "tax",
+
+    "credits total": "credits",
+    "credit": "credits",
+    "net credits": "net_credits",
+    "net credit": "net_credits",
+
+    # 🔥 REIMBURSEMENT
+    "reimbursement vs cm2": "reimbursement_vs_cm2_margins",
+    "reimb vs cm2": "reimbursement_vs_cm2_margins",
+    "reimbursement vs sales": "reimbursement_vs_sales",
+    "reimb vs sales": "reimbursement_vs_sales",
+    "reimbursements": "reimbursement_fee",
+    "reimbursement": "reimbursement_fee",
+
+    # 🔥 PLATFORM / ADS
+    "subscription fee": "platform_fee",
+    "platform": "platform_fee",
+
+    "ads spend": "advertising_total",
+    "ad spend": "advertising_total",
+    "ads": "advertising_total",
+    "advertising": "advertising_total",
+
+    # 🔥 PROFIT
+    "cm2 profit": "cm2_profit",
+    "net profit": "cm2_profit",
+    "cm2": "cm2_profit",
+    "cm2 margin": "cm2_margins",
+
+    "profit %": "profit_margin",
+    "margin": "profit_margin",
+
+    # 🔥 ACOS
+    "ad cos": "acos",
+    "roas": "acos",
+    "acos": "acos",
+
+    # 🔥 PRICE
+    "average selling price": "asp",
+    "avg selling price": "asp",
+
+    "profit per unit": "unit_profitability",
+    "ppu": "unit_profitability",
+
+    # 🔥 MIX
+    "sales share": "sales_mix",
+    "profit share": "profit_mix",
+
+    # 🔥 QUANTITY (IMPORTANT GROUP)
+    "total orders": "total_quantity",
+    "orders": "total_quantity",
+    "ordered units": "total_quantity",
+    "total units": "total_quantity",
+    "units sold": "total_quantity",
+    "sold units": "total_quantity",
+    "net units": "total_quantity",
+    "units": "total_quantity",
+    "quantity sold": "total_quantity",
+    "qty sold": "total_quantity",
+    "net quantity": "total_quantity",
+
+    # 🔥 FEES
+    "amazon fees total": "amazon_fees",
+    "amazon fees": "amazon_fees",
+    "amazon fee": "amazon_fees",
+
+    "fba fees": "fba_fees",
+    "fulfillment fees": "fba_fees",
+    "fulfilment fees": "fba_fees",
+    "fulfillment fee": "fba_fees",
+    "fulfilment fee": "fba_fees",
+
+    "selling fees": "selling_fees",
+    "selling fee": "selling_fees",
+    "referral fees": "selling_fees",
+    "referral fee": "selling_fees",
+
+    # 🔥 REFUNDS
+    "refund count": "refunds",
+    "returns": "refunds",
+    "refund": "refunds",
+}
 
 
-def _df_from_json(raw: str) -> pd.DataFrame:
-    if not raw:
-        return pd.DataFrame()
-    return pd.read_json(raw, orient="records")
+def resolve_metric_from_query(query: str, llm_metric: str = None) -> str:
+    q = query.lower()
 
+    # ✅ sort keys by length (longest first → avoids "sales" overriding "net sales")
+    for phrase in sorted(ALIAS_MAP.keys(), key=len, reverse=True):
+        if phrase in q:
+            return ALIAS_MAP[phrase]
+
+    # ✅ fallback to LLM (if valid)
+    if llm_metric:
+        return llm_metric
+
+    # ✅ final fallback
+    return "profit"
+
+
+def find_best_product_match(query: str, rows: list) -> str | None:
+    q = query.lower()
+
+    products = [
+        str(r.get("product_name", "")).strip().lower()
+        for r in rows
+        if r.get("product_name")
+    ]
+
+    # 1️⃣ exact phrase match
+    for p in products:
+        if p and p in q:
+            return p
+
+    # 2️⃣ word overlap match
+    for p in products:
+        words = p.split()
+        if any(w in q for w in words):
+            return p
+
+    return None
 
 def planner_node(state: AgentState) -> AgentState:
     history = state.get("chat_history", [])
@@ -87,8 +204,11 @@ def planner_node(state: AgentState) -> AgentState:
 
     result = _planner.invoke(messages)
 
+    # ✅ MUTATE STATE (IMPORTANT)
     state["intent"] = result.intent
-    state["metric_name"] = result.metric_name
+    state["metric_name"] = resolve_metric_from_query(
+    state["user_query"],
+    result.metric_name)
     state["period_mode"] = result.period_mode
     state["months_back"] = result.months_back
     state["needs_sku"] = result.needs_sku
@@ -99,134 +219,305 @@ def planner_node(state: AgentState) -> AgentState:
     state["period_2"] = result.period_2
     state["email_requested"] = bool(state.get("email_requested") or result.email_requested)
 
+    # ✅ PARSER
+    parsed = parse_period(state["user_query"])
+
+    if not parsed or "type" not in parsed:
+        parsed = {"type": "latest_month"}
+
+    state["period_parsed"] = parsed
+
+    print("🧠 PARSED PERIOD:", parsed)
+
+    query = state["user_query"].lower()
+
+    if any(word in query for word in [
+        "breakdown",
+        "productwise",
+        "product wise",
+        "all columns",
+        "raw data",
+        "full data",
+        "export"
+    ]):
+        state["data_mode"] = True
+    else:
+        state["data_mode"] = False
+
     return state
 
 
 def fetch_node(state: AgentState) -> AgentState:
+    print("\n================= 📦 FETCH NODE =================\n")
+
     engine = get_engine()
-    table_name = resolve_table_name(state["user_id"], state["country"])
-    latest = get_latest_completed_month(engine, table_name)
 
-    # 1) explicit custom comparison periods
-    if state.get("custom_range") and state.get("period_1") and state.get("period_2"):
-        try:
-            p1 = state["period_1"]
-            p2 = state["period_2"]
+    # 🔍 DEBUG: incoming state
+    print("📥 Incoming state keys:", list(state.keys()))
 
-            previous_df = fetch_between_dates_df(
-                engine,
-                table_name,
-                start_date=p1["start"],
-                end_date=p1["end"],
-            )
-            current_df = fetch_between_dates_df(
-                engine,
-                table_name,
-                start_date=p2["start"],
-                end_date=p2["end"],
-            )
+    payload = state.get("period_parsed") or {}
 
-            state["latest_completed_month"] = {
-                "year": latest.year,
-                "month": latest.month,
-                "month_label": f"{latest.year}-{latest.month:02d}",
-                "custom_period_1": p1,
-                "custom_period_2": p2,
-            }
-            state["current_df_json"] = _df_to_json(current_df)
-            state["previous_df_json"] = _df_to_json(previous_df)
-            return state
+    # 🔥 DEBUG: parser output
+    print("🧠 RAW PARSED PERIOD:", payload)
 
-        except Exception as e:
-            print(f"[ERROR] Custom range fetch failed: {e}")
+    # -------------------------------
+    # SAFETY FALLBACK
+    # -------------------------------
+    if not payload or "type" not in payload:
+        print("⚠️ No valid parsed period, using latest_month")
+        period_payload = {"type": "latest_month"}
 
-    # 2) rolling last X months
-    months_back = state.get("months_back")
-    if months_back:
-        try:
-            end_date = datetime(latest.year, latest.month, 1)
-            start_date = end_date - pd.DateOffset(months=months_back)
+    # -------------------------------
+    # COMPARISON
+    # -------------------------------
+    elif payload.get("type") == "comparison":
+        period_payload = {
+            "type": "comparison",
+            "p1": payload["left"],
+            "p2": payload["right"],
+        }
 
-            df = fetch_range_df(
-                engine,
-                table_name,
-                start_iso=start_date.isoformat(),
-                end_iso=end_date.isoformat(),
-            )
+    # -------------------------------
+    # RANGE
+    # -------------------------------
+    elif payload.get("type") == "range":
+        period_payload = payload
 
-            state["latest_completed_month"] = {
-                "year": latest.year,
-                "month": latest.month,
-                "month_label": f"{latest.year}-{latest.month:02d}",
-            }
-            state["current_df_json"] = _df_to_json(df)
-            state["previous_df_json"] = ""
-            return state
+    # -------------------------------
+    # LAST N MONTHS
+    # -------------------------------
+    elif payload.get("type") == "last_n":
+        period_payload = {
+            "type": "last_n_months",
+            "n": payload["n"],
+        }
 
-        except Exception as e:
-            print(f"[ERROR] Range fetch failed: {e}")
+    # -------------------------------
+    # SINGLE MONTH
+    # -------------------------------
+    elif payload.get("type") == "single":
+        period_payload = payload
 
-    # 3) default latest month + previous month
-    prev_year, prev_month_num = previous_month(latest.year, latest.month)
+    # -------------------------------
+    # YEAR
+    # -------------------------------
+    elif payload.get("type") == "year":
+        period_payload = {
+            "type": "range",
+            "start_month": 1,
+            "start_year": payload["year"],
+            "end_month": 12,
+            "end_year": payload["year"],
+        }
 
-    current_df = fetch_month_df(engine, table_name, latest.year, latest.month)
-    previous_df = fetch_month_df(engine, table_name, prev_year, prev_month_num)
+    # -------------------------------
+    # LATEST
+    # -------------------------------
+    elif payload.get("type") == "latest_month":
+        period_payload = {"type": "latest_month"}
 
-    state["latest_completed_month"] = {
-        "year": latest.year,
-        "month": latest.month,
-        "month_label": f"{latest.year}-{latest.month:02d}",
-        "previous_year": prev_year,
-        "previous_month": prev_month_num,
-    }
-    state["current_df_json"] = _df_to_json(current_df)
-    state["previous_df_json"] = _df_to_json(previous_df)
+    else:
+        print("⚠️ Unknown type, fallback to latest_month")
+        period_payload = {"type": "latest_month"}
+
+    # 🔥 DEBUG: final payload
+    print("📦 FINAL PERIOD PAYLOAD:", period_payload)
+
+    # 🔥 CRITICAL FIX: return NEW state (not mutate)
+    state["engine"] = engine
+    state["period_payload"] = period_payload
 
     return state
 
 
-def metrics_node(state: AgentState) -> AgentState:
-    current_df = _df_from_json(state.get("current_df_json", ""))
-    previous_df = _df_from_json(state.get("previous_df_json", ""))
 
+def metrics_node(state: AgentState) -> AgentState:
+    print("\n================= 🔍 NSE METRICS NODE =================\n")
+
+    # 🚨 DATA MODE BYPASS (NEW)
+    if state.get("data_mode"):
+        print("🟢 DATA MODE ACTIVATED")
+
+        from app.ai_agent.db import fetch_nse_month_df, fetch_non_total_rows
+
+        engine = state.get("engine")
+        if engine is None:
+            raise ValueError("Engine not found in state")
+
+        user_id = state["user_id"]
+        country = state["country"]
+        payload = state.get("period_payload", {})
+
+        if payload.get("type") == "single":
+            df = fetch_nse_month_df(
+                engine,
+                user_id,
+                country,
+                payload["month"],
+                payload["year"]
+            )
+        else:
+            raise ValueError("Data mode supports single month only")
+
+        df = fetch_non_total_rows(df)
+
+        # store raw data
+        state["raw_df"] = df.to_dict(orient="records")
+
+        return state
+
+    # -------------------------------
+    # NORMAL METRIC MODE (UNCHANGED)
+    # -------------------------------
+    engine = state.get("engine")
+    if engine is None:
+        raise ValueError("Engine not found in state (fetch_node failed)")
+
+    user_id = state["user_id"]
+    country = state["country"]
     metric_name = state.get("metric_name", "profit")
 
-    # ✅ compute current metrics
-    current_metrics = compute_metric(current_df, metric_name, state["country"])
-    state["current_metrics"] = current_metrics
+    payload = state.get("period_payload") or {"type": "latest_month"}
+    ptype = payload.get("type", "latest_month")
 
-    # ✅ optional comparison (only if previous_df exists)
-    if (
-        state.get("intent") in {"period_comparison", "daily_summary", "weekly_summary", "advice", "send_email"}
-        and not previous_df.empty
-    ):
-        try:
-            previous_metrics = compute_metric(previous_df, metric_name, state["country"])
-            state["previous_metrics"] = previous_metrics
-            state["comparison"] = compare_metric(current_metrics, previous_metrics)
-        except Exception as e:
-            print(f"[ERROR] comparison failed: {e}")
+    print("📊 metric:", metric_name)
+    print("📊 payload:", payload)
 
-    # ✅ NEW: SKU only when needed
-    if state.get("needs_sku"):
-        try:
-            if state.get("intent") == "loss_making_skus":
-                sku_rows = sorted(
-                    current_metrics.get("per_sku", []),
-                    key=lambda x: float(x.get("__metric__", 0.0))
-                )[:10]
-            else:
-                descending = metric_name != "tax"
-                sku_rows = pick_top_skus(current_metrics, n=10, reverse=descending)
+    try:
+        if ptype == "latest_month":
+            latest = latest_available_month(engine, user_id, country)
 
-            state["sku_analysis"] = sku_rows
+            result = get_metric_for_month(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                month=latest.month,
+                year=latest.year,
+            )
 
-        except Exception as e:
-            print(f"[ERROR] SKU analysis failed: {e}")
+            state["current_metrics"] = result
+
+        elif ptype == "single":
+            result = get_metric_for_month(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                month=payload["month"],
+                year=payload["year"],
+            )
+
+            state["current_metrics"] = result
+
+        elif ptype == "range":
+            result = get_metric_for_period(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                start_month=payload["start_month"],
+                start_year=payload["start_year"],
+                end_month=payload["end_month"],
+                end_year=payload["end_year"],
+            )
+
+            state["current_metrics"] = result
+
+        elif ptype == "last_n_months":
+            n = payload["n"]
+
+            current = get_metric_last_n_months(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                n=n,
+                offset=0,
+            )
+
+            previous = get_metric_last_n_months(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                n=n,
+                offset=n,
+            )
+
+            current_total = float(current.get("total", 0))
+            previous_total = float(previous.get("total", 0))
+
+            pct_change = (
+                ((current_total - previous_total) / previous_total) * 100
+                if previous_total != 0
+                else None
+            )
+
+            state["comparison"] = {
+                "left": current,
+                "right": previous,
+                "pct_change": pct_change,
+            }
+
+            state["current_metrics"] = current
+            return state
+
+        elif ptype == "comparison":
+            p1 = payload["p1"]
+            p2 = payload["p2"]
+
+            left = get_metric_for_period(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                start_month=p1["start_month"],
+                start_year=p1["start_year"],
+                end_month=p1["end_month"],
+                end_year=p1["end_year"],
+            )
+
+            right = get_metric_for_period(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                start_month=p2["start_month"],
+                start_year=p2["start_year"],
+                end_month=p2["end_month"],
+                end_year=p2["end_year"],
+            )
+
+            left_total = float(left.get("total", 0))
+            right_total = float(right.get("total", 0))
+
+            pct_change = (
+                ((left_total - right_total) / right_total) * 100
+                if right_total != 0
+                else None
+            )
+
+            state["comparison"] = {
+                "left": left,
+                "right": right,
+                "pct_change": pct_change,
+            }
+
+            state["current_metrics"] = left
+            return state
+
+        else:
+            raise ValueError("Unsupported payload type")
+
+        if state.get("needs_sku"):
+            state["sku_analysis"] = pick_top_skus(state["current_metrics"], n=10)
+        else:
             state["sku_analysis"] = []
 
-    else:
-        state["sku_analysis"] = []
+    except Exception as e:
+        print("❌ METRICS ERROR:", e)
+        state["error"] = str(e)
 
     return state
 
@@ -260,11 +551,79 @@ def email_node(state: AgentState) -> AgentState:
     if not state.get("email_requested"):
         return state
 
+    # 🟢 DATA MODE EMAIL (NEW)
+    if state.get("data_mode"):
+        import pandas as pd
+        import tempfile
+
+        df = pd.DataFrame(state.get("raw_df", []))
+
+        metric = state.get("metric_name", "tax")
+
+        METRIC_COLUMN_GROUPS = {
+            "tax": [
+                "product_name", "sku", "quantity",
+                "product_sales_tax",
+                "shipping_credits_tax",
+                "giftwrap_credits_tax",
+                "promotional_rebates_tax",
+                "marketplace_facilitator_tax",
+                "digital_transaction_tax",
+                "sales_tax_refund",
+                "net_taxes",
+            ],
+            "sales": [
+                "product_name", "sku", "quantity",
+                "product_sales",
+                "gross_sales",
+                "net_sales",
+                "refund_sales",
+            ],
+            "profit": [
+                "product_name", "sku", "quantity",
+                "net_sales",
+                "cost_of_unit_sold",
+                "amazon_fee",
+                "fba_fees",
+                "profit",
+                "profit_percentage",
+            ],
+            "fees": [
+                "product_name", "sku",
+                "selling_fees",
+                "fba_fees",
+                "amazon_fee",
+                "other_transaction_fees",
+            ],
+        }
+
+        columns = METRIC_COLUMN_GROUPS.get(metric, df.columns.tolist())
+        columns = [c for c in columns if c in df.columns]
+
+        df = df[columns]
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+        df.to_csv(tmp.name, index=False)
+
+        state["email_result"] = send_agent_email(
+            user_id=state["user_id"],
+            subject=f"{metric.upper()} Breakdown Report",
+            html_body="<p>Attached is your breakdown report.</p>",
+            attachment_path=tmp.name
+        )
+
+        return state
+
+    # -------------------------------
+    # NORMAL EMAIL (UNCHANGED)
+    # -------------------------------
     user = User.query.filter_by(id=state["user_id"]).first()
-    period = state.get("latest_completed_month", {})
-    period_label = period.get("month_label", "latest completed month")
+
     current_metrics = state.get("current_metrics", {})
+    period_label = current_metrics.get("period_label", "selected period")
+
     subject = f"Phormula AI Summary - {state.get('country', 'uk').upper()} - {period_label}"
+
     html = build_summary_html(
         user_name=(user.name if user else "there") or "there",
         title="Phormula AI Business Summary",
@@ -275,51 +634,124 @@ def email_node(state: AgentState) -> AgentState:
         top_skus=state.get("sku_analysis", []),
         advice=state.get("advice", []),
     )
-    state["email_result"] = send_agent_email(user_id=state["user_id"], subject=subject, html_body=html)
+
+    state["email_result"] = send_agent_email(
+        user_id=state["user_id"],
+        subject=subject,
+        html_body=html
+    )
+
     return state
 
 
 def final_node(state: AgentState) -> AgentState:
-    metric = state.get("current_metrics", {})
-    sku_data = state.get("sku_analysis", [])
-    advice = state.get("advice", [])
-    history = state.get("chat_history", [])
-    comparison = state.get("comparison", {})
-    response_mode = state.get("response_mode", "short")
-    latest_period = state.get("latest_completed_month", {})
+    print("\n================= 🔍 FINAL NODE START =================\n")
 
-    history_text = ""
-    for h in history:
-        history_text += f"User: {h['message']}\nAssistant: {h['response']}\n"
+    try:
+        metric = state.get("current_metrics", {})
+        comparison = state.get("comparison", {})
+        sku_data = state.get("sku_analysis", [])
+        advice = state.get("advice", [])
+        intent = state.get("intent", "")
+        query = state.get("user_query", "")
 
-    prompt = f"""
-Conversation so far:
-{history_text}
+        print("📊 INTENT:", intent)
+        print("📊 QUERY:", query)
 
-User asked: {state.get("user_query")}
-Response mode: {response_mode}
+        period_label = metric.get("period_label", "selected period")
+        metric_name = metric.get("metric")
 
-Data:
-Metric: {metric.get("metric")}
-Total: {metric.get("total")}
-Comparison: {comparison}
-Top SKUs: {sku_data[:5]}
-Advice: {advice}
-Latest period context: {latest_period}
+        # labels
+        if metric_name in ["quantity", "units", "total_quantity"]:
+            label = "units"
+        elif metric_name in ["sales", "net_sales", "profit", "advertising", "platform_fee", "cm2_profit", "gross_sales"]:
+            label = "£"
+        else:
+            label = metric_name
 
-Rules:
-- If response_mode = short, answer directly in 1-3 lines
-- If response_mode = detailed, explain clearly
-- If the user asked for growth, state both period values and growth percentage
-- If product_name exists in SKU rows, prefer product_name over raw sku code
-- Use previous conversation context when relevant
-- Do not add unnecessary sections
-- Be concise and business-friendly
-"""
+        # product match
+        per_sku = metric.get("per_sku", [])
+        product_filter = find_best_product_match(query, per_sku)
 
-    llm_response = _llm.invoke(prompt)
-    state["final_response"] = llm_response.content.strip()
-    return state
+        print("🔍 PRODUCT FILTER:", product_filter)
+
+        # -------------------------------
+        # 🔥 COMPARISON WITH INSIGHTS
+        # -------------------------------
+        if comparison:
+            left = comparison.get("left", {})
+            right = comparison.get("right", {})
+
+            current_total = float(left.get("total", 0))
+            previous_total = float(right.get("total", 0))
+
+            pct = comparison.get("pct_change")
+            pct_text = f"{pct:.2f}%" if pct is not None else "N/A"
+
+            # 🔥 DRIVER ANALYSIS
+            curr = {r["product_name"]: float(r["__metric__"]) for r in left.get("per_sku", [])}
+            prev = {r["product_name"]: float(r["__metric__"]) for r in right.get("per_sku", [])}
+
+            changes = []
+            for p in set(curr) | set(prev):
+                diff = curr.get(p, 0) - prev.get(p, 0)
+                changes.append((p, diff))
+
+            changes.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            top_pos = [c for c in changes if c[1] > 0][:3]
+            top_neg = [c for c in changes if c[1] < 0][:3]
+
+            def fmt(lst):
+                return ", ".join(f"{p} ({'+' if v>=0 else '-'}{abs(int(v))})" for p, v in lst)
+
+            lines = [
+                f"Your {metric_name} was {int(current_total)} in {left.get('period_label')},",
+                f"compared to {int(previous_total)} in {right.get('period_label')}.",
+                f"Growth: {pct_text}.",
+            ]
+
+            if top_pos:
+                lines.append(f"Top positive drivers: {fmt(top_pos)}")
+
+            if top_neg:
+                lines.append(f"Top negative drivers: {fmt(top_neg)}")
+
+            state["final_response"] = "\n".join(lines)
+            return state
+
+        # -------------------------------
+        # DIRECT QA
+        # -------------------------------
+        if intent == "metric_qa":
+            if product_filter:
+                rows = [
+                    r for r in per_sku
+                    if str(r.get("product_name", "")).strip().lower() == product_filter
+                ]
+                value = sum(float(r.get("__metric__", 0.0)) for r in rows)
+            else:
+                value = metric.get("total", 0.0)
+
+            state["final_response"] = (
+                f"In {period_label}, you had {int(value)} {label} in the UK."
+            )
+            return state
+
+        # -------------------------------
+        # FALLBACK
+        # -------------------------------
+        state["final_response"] = (
+            f"In {period_label}, your total {metric_name} was {int(metric.get('total', 0))}."
+        )
+
+        return state
+
+    except Exception as e:
+        print("❌ FINAL NODE ERROR:", e)
+        state["error"] = str(e)
+        return state
+    
 
 def _needs_email(state: AgentState) -> str:
     return "email" if state.get("email_requested") else "final"

@@ -49,3 +49,10 @@ class AgentState(TypedDict, total=False):
     final_response: str
     citations: List[str]
     error: Optional[str]
+    data_mode: bool
+    raw_df: Optional[list]
+
+    # 🔥 ADD THESE (CRITICAL FIX)
+    period_parsed: Optional[Dict[str, Any]]
+    period_payload: Optional[Dict[str, Any]]
+    engine: Optional[Any]
