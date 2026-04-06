@@ -1407,59 +1407,7 @@ def run_sku(sku, payload):
 
 graph = build_event_planner_graph(phormula_engine, amazon_engine)
 
-# def build_plan_langgraph(payload, phormula_engine, amazon_engine):
 
-#     # Step 1: Load full sales data once
-#     sales_df = load_sales_data(
-#         phormula_engine,
-#         payload["user_id"],
-#         payload["country"],
-#         payload["future_event"]["year"],
-#         payload["future_event"]["month"],
-#     )
-
-#     # 🚨 Remove TOTAL rows
-#     sales_df = sales_df[~sales_df["sku"].str.contains("total", case=False, na=False)]
-
-#     # Get all unique SKUs
-#     unique_skus = sales_df["sku"].dropna().unique()
-
-#     results = []
-
-#     for sku in unique_skus:
-#         try:
-#             initial_state = {
-#                 "user_id": int(payload["user_id"]),
-#                 "country": str(payload["country"]).lower(),
-#                 "last_event": payload["last_event"],
-#                 "future_event": payload["future_event"],
-#                 "target_sales": payload.get("target_sales"),
-#                 "scope": {"level": "sku", "value": sku},  # ✅ FORCE SKU MODE
-#                 "retry_count": 0,
-#             }
-
-#             result = graph.invoke(
-#                 initial_state,
-#                 config={
-#                     "configurable": {
-#                         "thread_id": f"user-{payload['user_id']}-sku-{sku}"
-#                     }
-#                 }
-#             )
-
-#             results.append({
-#                 "sku": sku,
-#                 "analytics": result.get("analytics", {}),
-#                 "plan": result.get("execution_plan", {}),
-#             })
-
-#         except Exception as e:
-#             results.append({
-#                 "sku": sku,
-#                 "error": str(e)
-#             })
-
-#     return build_ui_output(results)
 
 def build_plan_langgraph(payload, phormula_engine, amazon_engine):
 
