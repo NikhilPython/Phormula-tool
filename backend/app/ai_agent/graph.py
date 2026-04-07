@@ -837,13 +837,15 @@ def email_node(state: AgentState) -> AgentState:
     # 🔥 NEW: AI-generated summary
     summary_text = build_ai_email_summary(state)
 
+    safe_summary = summary_text.replace("\n", "<br>")
+
     html = f"""
     <p>Hi {(user.name if user else "there")},</p>
 
-    <p>{summary_text.replace('\n', '<br>')}</p>
+    <p>{safe_summary}</p>
 
     <br>
-    <p>— Phormula</p>
+    <p>— Phormula AI</p>
     """
 
     state["email_result"] = send_agent_email(
