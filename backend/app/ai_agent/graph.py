@@ -648,6 +648,14 @@ def final_node(state: AgentState) -> AgentState:
     print("\n================= 🔍 FINAL NODE START =================\n")
 
     try:
+        # ✅ EMAIL RESPONSE OVERRIDE (FIX)
+        if state.get("email_requested"):
+            if state.get("data_mode"):
+                state["final_response"] = "📩 I've emailed you the detailed breakdown report."
+            else:
+                state["final_response"] = "📩 I've sent you the summary report on email."
+            return state
+
         metric = state.get("current_metrics", {})
         comparison = state.get("comparison", {})
         sku_data = state.get("sku_analysis", [])
