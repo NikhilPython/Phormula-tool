@@ -277,8 +277,9 @@ def get_metric_last_n_months(
     country: str,
     metric_name: str,
     n: int,
-    offset: int = 0,  # 🔥 NEW
+    offset: int = 0,
 ) -> Dict[str, Any]:
+
     if not isinstance(n, int) or n <= 0:
         raise ValueError("n must be a positive integer")
 
@@ -288,7 +289,7 @@ def get_metric_last_n_months(
 
     y, m = latest.year, latest.month
 
-    # 🔥 APPLY OFFSET FIRST
+    # 🔥 APPLY OFFSET
     for _ in range(offset):
         if m == 1:
             y -= 1
@@ -296,7 +297,7 @@ def get_metric_last_n_months(
         else:
             m -= 1
 
-    # 🔥 THEN COLLECT N MONTHS
+    # 🔥 COLLECT MONTHS
     for _ in range(n):
         months.append(MonthKey(year=y, month=m))
         if m == 1:
@@ -307,17 +308,33 @@ def get_metric_last_n_months(
 
     months.reverse()
 
-    return get_metric_for_period(
-        engine=engine,
-        user_id=user_id,
-        country=country,
-        metric_name=metric_name,
-        start_month=months[0].month,
-        start_year=months[0].year,
-        end_month=months[-1].month,
-        end_year=months[-1].year,
-        skip_missing=False,
-    )
+    # 🔥 FETCH MONTH-BY-MONTH DATA
+    per_period = []
+
+    for mk in months:
+        result = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=mk.month,
+            year=mk.year,
+        )
+
+        value = float(result.get("total", 0))
+
+        per_period.append({
+            "period_label": f"{mk.month:02d}-{mk.year}",
+            "__metric__": value
+        })
+
+    total = sum(x["__metric__"] for x in per_period)
+
+    return {
+        "metric": metric_name,
+        "per_period": per_period,
+        "total": total,
+    }
 
 
 def compare_periods(
@@ -446,19 +463,68 @@ def extract_month_year(text: str) -> Optional[Tuple[int, int]]:
 # -------------------------------
 
 def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
-    match = re.search(r"\bq([1-4])\s*(20\d{2})\b", text)
-    if not match:
-        return None
+    text = text.lower()
 
-    q = int(match.group(1))
-    year = int(match.group(2))
+    # -------------------------------
+    # STANDARD Q FORMAT (q1 2026)
+    # -------------------------------
+    match = re.search(r"\bq([1-4])\s*(20\d{2})?\b", text)
+    if match:
+        q = int(match.group(1))
+        year = int(match.group(2)) if match.group(2) else extract_year(text)
+
+        if not year:
+            return None
+
+        start_month = (q - 1) * 3 + 1
+        end_month = start_month + 2
+        return year, start_month, end_month
+
+    # -------------------------------
+    # TEXTUAL QUARTERS
+    # -------------------------------
+    quarter_map = {
+        "first quarter": 1,
+        "1st quarter": 1,
+        "second quarter": 2,
+        "2nd quarter": 2,
+        "third quarter": 3,
+        "3rd quarter": 3,
+        "fourth quarter": 4,
+        "4th quarter": 4,
+    }
+
+    for phrase, q in quarter_map.items():
+        if phrase in text:
+            year = extract_year(text)
+            if not year:
+                return None
+
+            start_month = (q - 1) * 3 + 1
+            end_month = start_month + 2
+            return year, start_month, end_month
+
+    # -------------------------------
+    # RELATIVE QUARTERS
+    # -------------------------------
+    today = datetime.today()
+    current_q = (today.month - 1) // 3 + 1
+    year = today.year
+
+    if "this quarter" in text:
+        q = current_q
+    elif "last quarter" in text:
+        q = current_q - 1
+        if q == 0:
+            q = 4
+            year -= 1
+    else:
+        return None
 
     start_month = (q - 1) * 3 + 1
     end_month = start_month + 2
 
     return year, start_month, end_month
-
-
 # -------------------------------
 # LAST N MONTHS
 # -------------------------------
@@ -589,15 +655,7 @@ def parse_single(text: str):
             "year": my[0],
         }
 
-    # year
-    year = extract_year(text)
-    if year:
-        return {
-            "type": "year",
-            "year": year,
-        }
-
-    # quarter
+    # 🔥 FIX: quarter BEFORE year
     q = parse_quarter(text)
     if q:
         return {
@@ -606,6 +664,14 @@ def parse_single(text: str):
             "start_year": q[0],
             "end_month": q[2],
             "end_year": q[0],
+        }
+
+    # year
+    year = extract_year(text)
+    if year:
+        return {
+            "type": "year",
+            "year": year,
         }
 
     return None
@@ -623,7 +689,12 @@ def parse_period(query: str) -> Dict:
     if cmp:
         return cmp
 
-    # 2️⃣ last n months
+    # 2️⃣ relative periods (NEW 🔥)
+    rel = parse_relative_period(text)
+    if rel:
+        return rel
+
+    # 3️⃣ last n months
     last_n = parse_last_n(text)
     if last_n:
         return {
@@ -631,17 +702,67 @@ def parse_period(query: str) -> Dict:
             "n": last_n,
         }
 
-    # 3️⃣ range
+    # 4️⃣ range
     rng = parse_range(text)
     if rng:
         return rng
 
-    # 4️⃣ single
+    # 5️⃣ single (includes quarter fix already)
     single = parse_single(text)
     if single:
         return single
 
-    # 5️⃣ fallback
+    # 6️⃣ fallback
     return {
         "type": "latest_month"
     }
+
+def parse_relative_period(text: str):
+    today = datetime.today()
+
+    # THIS MONTH
+    if "this month" in text:
+        return {
+            "type": "single",
+            "month": today.month,
+            "year": today.year,
+        }
+
+    # LAST MONTH
+    if "last month" in text:
+        month = today.month - 1
+        year = today.year
+        if month == 0:
+            month = 12
+            year -= 1
+        return {
+            "type": "single",
+            "month": month,
+            "year": year,
+        }
+
+    # THIS YEAR
+    if "this year" in text:
+        return {
+            "type": "year",
+            "year": today.year,
+        }
+
+    # LAST YEAR
+    if "last year" in text:
+        return {
+            "type": "year",
+            "year": today.year - 1,
+        }
+
+    # YTD
+    if "ytd" in text or "year to date" in text:
+        return {
+            "type": "range",
+            "start_month": 1,
+            "start_year": today.year,
+            "end_month": today.month,
+            "end_year": today.year,
+        }
+
+    return None

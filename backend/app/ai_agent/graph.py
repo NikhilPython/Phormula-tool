@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 import re
 from datetime import datetime
 import pandas as pd
-
+from app.utils.agent_utils import build_plan_langgraph, phormula_engine, amazon_engine
 from app.ai_agent.email_service import build_summary_html, send_agent_email
 from app.ai_agent.db import get_engine,latest_available_month
 from app.ai_agent.formula_engine import parse_period,get_metric_for_month,get_metric_for_period,get_metric_last_n_months,compare_periods,pick_top_skus
@@ -20,6 +20,9 @@ import os
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+chat_llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0.7)
+explain_llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0.2)
+
 
 class Period(BaseModel):
     start: str
@@ -29,10 +32,10 @@ class Period(BaseModel):
         extra = "forbid"
 
 class PlannerResult(BaseModel):
-    intent: str = "metric_qa"
-    metric_name: str = "profit"
-    period_mode: str = "latest_completed_month"
-    months_back: int | None = None
+    intent: str = "chat"   # chat | explain | metric_qa | comparison | report | email | clarify | event_planner | pricing_planner | inventory_planner
+    metric_name: Optional[str] = None
+    period_mode: str = "none"   # none | latest_completed_month | explicit | last_n | comparison
+    months_back: Optional[int] = None
     needs_sku: bool = False
     needs_advice: bool = False
     response_mode: str = "short"
@@ -41,6 +44,8 @@ class PlannerResult(BaseModel):
     custom_range: bool = False
     period_1: Optional[Period] = None
     period_2: Optional[Period] = None
+
+    clarification_question: Optional[str] = None
 
     class Config:
         extra = "forbid"
@@ -53,6 +58,27 @@ class AdviceResult(BaseModel):
 _llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0)
 _planner = _llm.with_structured_output(PlannerResult)
 _advisor = _llm.with_structured_output(AdviceResult)
+
+def format_metric_value(value, metric_name, country):
+    try:
+        value = float(value)
+    except:
+        return value
+
+    # Units → no decimals
+    if metric_name in ["units", "quantity", "total_quantity"]:
+        return f"{int(value)}"
+
+    # Percentage metrics
+    if metric_name in ["acos", "roas", "margin"]:
+        return f"{value:.2f}%"
+
+    # Currency (UK)
+    if country == "uk":
+        return f"£{value:.2f}"
+
+    # Default fallback
+    return f"{value:.2f}"
 
 ALIAS_MAP = {
     # 🔥 SALES
@@ -150,6 +176,73 @@ ALIAS_MAP = {
     "refund": "refunds",
 }
 
+def build_ai_email_summary(state: AgentState) -> str:
+    from langchain_openai import ChatOpenAI
+
+    llm = ChatOpenAI(model="gpt-4.1", temperature=0.4)
+
+    metric = state.get("current_metrics", {})
+    comparison = state.get("comparison", {})
+    per_sku = metric.get("per_sku", [])
+
+    trend_3 = state.get("trend_3", [])
+    trend_6 = state.get("trend_6", [])
+
+    country = state.get("country", "").upper()
+    period = metric.get("period_label", "selected period")
+
+    # top 5 SKUs
+    top_skus = sorted(
+        per_sku,
+        key=lambda x: float(x.get("__metric__", 0)),
+        reverse=True
+    )[:5]
+
+    # prepare structured payload
+    data_payload = {
+        "period": period,
+        "country": country,
+        "net_sales": metric.get("net_sales"),
+        "profit": metric.get("profit"),
+        "cm2_profit": metric.get("cm2_profit"),
+        "units": metric.get("total_quantity"),
+        "advertising": metric.get("advertising_total"),
+        "platform_fee": metric.get("platform_fee"),
+        "acos": metric.get("acos"),
+        "comparison": comparison,
+        "top_skus": top_skus,
+        "trend_3_months": trend_3,
+        "trend_6_months": trend_6,
+    }
+
+    prompt = f"""
+You are a senior ecommerce business analyst.
+
+Write a sharp, professional business summary for Amazon UK.
+
+IMPORTANT RULES:
+- Do NOT list raw numbers mechanically
+- Explain performance clearly and concisely
+- Use comparison (if available)
+- Use historical trends (3-month and 6-month)
+- Highlight if performance is improving, declining, or stable
+- Mention top products and SKU movement
+- Keep it executive-level (clear, insightful, not long)
+- NO recommendations
+- NO bullet points unless necessary
+- Write like a business report, not a chatbot
+
+DATA:
+{data_payload}
+"""
+
+    response = llm.invoke([
+        {"role": "system", "content": "You are a sharp ecommerce financial analyst."},
+        {"role": "user", "content": prompt},
+    ])
+
+    return response.content
+
 
 def resolve_metric_from_query(query: str, llm_metric: str = None) -> str:
     q = query.lower()
@@ -191,57 +284,197 @@ def find_best_product_match(query: str, rows: list) -> str | None:
 
 def planner_node(state: AgentState) -> AgentState:
     history = state.get("chat_history", [])
+    user_query = (state.get("user_query") or "").strip()
+    query_l = user_query.lower()
 
-    messages = [
-        {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+    GREETINGS = {
+        "hi", "hello", "hey", "yo", "hola", "good morning",
+        "good afternoon", "good evening"
+    }
+
+    CHAT_ONLY = {
+        "thanks", "thank you", "ok", "okay", "cool", "nice", "great"
+    }
+
+    EXPLAIN_TRIGGERS = [
+        "what is", "what's", "explain", "define", "meaning of",
+        "how does", "how do you calculate", "formula for"
     ]
+
+    EMAIL_TRIGGERS = [
+        "send email", "send me", "mail me", "email me", "mail the report",
+        "send the report", "email the report"
+    ]
+
+    PLANNER_TRIGGERS = [
+        "forecast", "event", "prime day", "black friday", "pricing",
+        "price range", "inventory planning", "stock planning", "procurement",
+        "reorder", "target sales", "coverage months"
+    ]
+
+    DATA_TRIGGERS = [
+        "profit", "sales", "revenue", "tax", "acos", "roas", "margin",
+        "orders", "units", "fees", "sku", "compare", "comparison",
+        "last month", "this month", "march", "april", "2024", "2025", "2026",
+        "report", "breakdown", "trend", "performance"
+    ]
+
+    # -------------------------------
+    # GREETING / CHAT
+    # -------------------------------
+    if query_l in GREETINGS or query_l in CHAT_ONLY:
+        state["intent"] = "chat"
+        state["metric_name"] = None
+        state["period_mode"] = "none"
+        state["months_back"] = None
+        state["needs_sku"] = False
+        state["needs_advice"] = False
+        state["response_mode"] = "short"
+        state["custom_range"] = False
+        state["period_1"] = None
+        state["period_2"] = None
+        state["email_requested"] = False
+        state["period_parsed"] = {"type": "none"}
+        state["data_mode"] = False
+        state["clarification_question"] = None
+        state["planner_payload"] = None
+        return state
+
+    # -------------------------------
+    # EXPLAIN MODE
+    # -------------------------------
+    if any(trigger in query_l for trigger in EXPLAIN_TRIGGERS) and not any(word in query_l for word in DATA_TRIGGERS):
+        state["intent"] = "explain"
+        state["metric_name"] = None
+        state["period_mode"] = "none"
+        state["months_back"] = None
+        state["needs_sku"] = False
+        state["needs_advice"] = False
+        state["response_mode"] = "short"
+        state["custom_range"] = False
+        state["period_1"] = None
+        state["period_2"] = None
+        state["email_requested"] = False
+        state["period_parsed"] = {"type": "none"}
+        state["data_mode"] = False
+        state["clarification_question"] = None
+        state["planner_payload"] = None
+        return state
+
+    # -------------------------------
+    # 🔥 PLANNER TRIGGER (FIX)
+    # -------------------------------
+    if any(trigger in query_l for trigger in PLANNER_TRIGGERS):
+        state["intent"] = "pricing_planner"
+        state["metric_name"] = None
+        state["period_mode"] = "none"
+        state["months_back"] = None
+        state["needs_sku"] = True
+        state["needs_advice"] = True
+        state["response_mode"] = "detailed"
+        state["custom_range"] = False
+        state["period_1"] = None
+        state["period_2"] = None
+        state["email_requested"] = False
+        state["period_parsed"] = {"type": "none"}
+        state["data_mode"] = False
+        state["clarification_question"] = None
+
+        state["planner_payload"] = {
+            "user_id": state["user_id"],
+            "country": state["country"],
+            "last_event": {"month": 11, "year": 2025},
+            "future_event": {"month": 11, "year": 2026},
+            "target_sales": None,
+        }
+
+        return state
+
+    # -------------------------------
+    # EMAIL DETECTION
+    # -------------------------------
+    hard_email_requested = any(trigger in query_l for trigger in EMAIL_TRIGGERS)
+
+    # -------------------------------
+    # LLM PLANNER
+    # -------------------------------
+    messages = [{"role": "system", "content": PLANNER_SYSTEM_PROMPT}]
 
     for h in history:
         messages.append({"role": "user", "content": h["message"]})
         messages.append({"role": "assistant", "content": h["response"]})
 
-    messages.append({"role": "user", "content": state["user_query"]})
+    messages.append({"role": "user", "content": user_query})
 
     result = _planner.invoke(messages)
 
-    # ✅ MUTATE STATE (IMPORTANT)
-    state["intent"] = result.intent
-    state["metric_name"] = resolve_metric_from_query(
-    state["user_query"],
-    result.metric_name)
-    state["period_mode"] = result.period_mode
+    intent = (result.intent or "chat").strip().lower()
+
+    if intent == "period_comparison":
+        intent = "comparison"
+    elif intent in ["daily_summary", "weekly_summary"]:
+        intent = "report"
+    elif intent == "send_email":
+        intent = "email"
+
+    allowed_intents = {
+        "chat", "explain", "metric_qa", "comparison", "report", "email", "clarify",
+        "event_planner", "pricing_planner", "inventory_planner",
+        "top_skus", "loss_making_skus", "advice"
+    }
+
+    if intent not in allowed_intents:
+        intent = "chat"
+
+    if hard_email_requested:
+        intent = "email"
+
+    state["intent"] = intent
+
+    if intent in {
+        "metric_qa", "comparison", "report", "email",
+        "top_skus", "loss_making_skus", "advice"
+    }:
+        state["metric_name"] = resolve_metric_from_query(user_query, result.metric_name)
+    else:
+        state["metric_name"] = None
+
+    state["period_mode"] = result.period_mode or "none"
     state["months_back"] = result.months_back
-    state["needs_sku"] = result.needs_sku
-    state["needs_advice"] = result.needs_advice
-    state["response_mode"] = result.response_mode
-    state["custom_range"] = result.custom_range
+    state["needs_sku"] = bool(result.needs_sku)
+    state["needs_advice"] = bool(result.needs_advice)
+    state["response_mode"] = result.response_mode or "short"
+    state["custom_range"] = bool(result.custom_range)
     state["period_1"] = result.period_1
     state["period_2"] = result.period_2
-    state["email_requested"] = bool(state.get("email_requested") or result.email_requested)
+    state["email_requested"] = bool(hard_email_requested or result.email_requested or intent == "email")
+    state["clarification_question"] = getattr(result, "clarification_question", None)
 
-    # ✅ PARSER
-    parsed = parse_period(state["user_query"])
+    if intent in {
+        "metric_qa", "comparison", "report", "email",
+        "top_skus", "loss_making_skus", "advice"
+    }:
+        parsed = parse_period(user_query)
+        if not parsed or "type" not in parsed:
+            parsed = {"type": "latest_month"}
+        state["period_parsed"] = parsed
+    else:
+        state["period_parsed"] = {"type": "none"}
 
-    if not parsed or "type" not in parsed:
-        parsed = {"type": "latest_month"}
-
-    state["period_parsed"] = parsed
-
-    print("🧠 PARSED PERIOD:", parsed)
-
-    query = state["user_query"].lower()
-
-    if any(word in query for word in [
-        "breakdown",
-        "productwise",
-        "product wise",
-        "all columns",
-        "raw data",
-        "full data",
-        "export"
+    if intent in {"metric_qa", "comparison", "report", "email"} and any(word in query_l for word in [
+        "breakdown", "productwise", "product wise", "all columns", "raw data", "full data", "export"
     ]):
         state["data_mode"] = True
     else:
+        state["data_mode"] = False
+
+    state["planner_payload"] = None
+
+    if intent in {"metric_qa", "comparison", "report", "email"} and not state.get("metric_name"):
+        state["intent"] = "clarify"
+        state["clarification_question"] = "Which metric would you like me to use?"
+        state["email_requested"] = False
+        state["period_parsed"] = {"type": "none"}
         state["data_mode"] = False
 
     return state
@@ -427,7 +660,7 @@ def metrics_node(state: AgentState) -> AgentState:
         elif ptype == "last_n_months":
             n = payload["n"]
 
-            current = get_metric_last_n_months(
+            result = get_metric_last_n_months(
                 engine=engine,
                 user_id=user_id,
                 country=country,
@@ -436,31 +669,8 @@ def metrics_node(state: AgentState) -> AgentState:
                 offset=0,
             )
 
-            previous = get_metric_last_n_months(
-                engine=engine,
-                user_id=user_id,
-                country=country,
-                metric_name=metric_name,
-                n=n,
-                offset=n,
-            )
-
-            current_total = float(current.get("total", 0))
-            previous_total = float(previous.get("total", 0))
-
-            pct_change = (
-                ((current_total - previous_total) / previous_total) * 100
-                if previous_total != 0
-                else None
-            )
-
-            state["comparison"] = {
-                "left": current,
-                "right": previous,
-                "pct_change": pct_change,
-            }
-
-            state["current_metrics"] = current
+            state["current_metrics"] = result
+            state["comparison"] = None  # 🔥 IMPORTANT: disable comparison
             return state
 
         elif ptype == "comparison":
@@ -551,7 +761,7 @@ def email_node(state: AgentState) -> AgentState:
     if not state.get("email_requested"):
         return state
 
-    # 🟢 DATA MODE EMAIL (NEW)
+    # 🟢 DATA MODE EMAIL (UNCHANGED)
     if state.get("data_mode"):
         import pandas as pd
         import tempfile
@@ -615,6 +825,36 @@ def email_node(state: AgentState) -> AgentState:
         return state
 
     # -------------------------------
+    # 🔥 AI EMAIL (UPDATED)
+    # -------------------------------
+    user = User.query.filter_by(id=state["user_id"]).first()
+
+    current_metrics = state.get("current_metrics", {})
+    period_label = current_metrics.get("period_label", "selected period")
+
+    subject = f"Phormula AI Summary - {state.get('country', 'uk').upper()} - {period_label}"
+
+    # 🔥 NEW: AI-generated summary
+    summary_text = build_ai_email_summary(state)
+
+    html = f"""
+    <p>Hi {(user.name if user else "there")},</p>
+
+    <p>{summary_text.replace('\n', '<br>')}</p>
+
+    <br>
+    <p>— Phormula</p>
+    """
+
+    state["email_result"] = send_agent_email(
+        user_id=state["user_id"],
+        subject=subject,
+        html_body=html
+    )
+
+    return state
+
+    # -------------------------------
     # NORMAL EMAIL (UNCHANGED)
     # -------------------------------
     user = User.query.filter_by(id=state["user_id"]).first()
@@ -643,12 +883,35 @@ def email_node(state: AgentState) -> AgentState:
 
     return state
 
+def planner_agent_node(state: AgentState) -> AgentState:
+    try:
+        
+        payload = state.get("planner_payload") or {}
+
+        result = build_plan_langgraph(
+            payload=payload,
+            phormula_engine=phormula_engine,
+            amazon_engine=amazon_engine,
+        )
+
+        state["planner_result"] = {
+            "type": "multi_sku_plan",
+            "items": result,
+        }
+
+        return state
+
+    except Exception as e:
+        state["error"] = f"Planner agent failed: {str(e)}"
+        return state
+
+
 
 def final_node(state: AgentState) -> AgentState:
     print("\n================= 🔍 FINAL NODE START =================\n")
 
     try:
-        # ✅ EMAIL RESPONSE OVERRIDE (FIX)
+        # EMAIL RESPONSE
         if state.get("email_requested"):
             if state.get("data_mode"):
                 state["final_response"] = "📩 I've emailed you the detailed breakdown report."
@@ -656,36 +919,117 @@ def final_node(state: AgentState) -> AgentState:
                 state["final_response"] = "📩 I've sent you the summary report on email."
             return state
 
+        # CLARIFICATION
+        if state.get("intent") == "clarify":
+            state["final_response"] = state.get("clarification_question") or "Could you clarify what you'd like me to analyze?"
+            return state
+
+        # PLANNER RESULT
+        if state.get("planner_result"):
+            planner_result = state["planner_result"]
+            items = planner_result.get("items", [])
+
+            if not items:
+                state["final_response"] = "I analyzed the planning request, but I couldn't generate a planner result."
+                return state
+
+            top_items = items[:3]
+            lines = ["Here’s the planning summary:"]
+
+            for item in top_items:
+                sku = item.get("sku", "Unknown SKU")
+
+                summary = None
+                if isinstance(item.get("summary"), list):
+                    summary = item["summary"]
+                elif isinstance(item.get("plan", {}).get("summary"), list):
+                    summary = item["plan"]["summary"]
+
+                if summary:
+                    lines.append(f"- {sku}: {summary[0]}")
+                else:
+                    lines.append(f"- {sku}: planning completed successfully.")
+
+            state["final_response"] = "\n".join(lines)
+            return state
+
+        # CHAT MODE
+        if state.get("intent") == "chat":
+            history = state.get("chat_history", [])
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a friendly business copilot. Talk naturally and helpfully.",
+                }
+            ]
+
+            for h in history[-6:]:
+                messages.append({"role": "user", "content": h["message"]})
+                messages.append({"role": "assistant", "content": h["response"]})
+
+            messages.append({"role": "user", "content": state.get("user_query", "")})
+
+            response = chat_llm.invoke(messages)
+            state["final_response"] = response.content
+            return state
+
+        # EXPLAIN MODE
+        if state.get("intent") == "explain":
+            response = explain_llm.invoke([
+                {"role": "system", "content": "Explain ecommerce metrics clearly."},
+                {"role": "user", "content": state.get("user_query", "")},
+            ])
+            state["final_response"] = response.content
+            return state
+
+        # -------------------------------
+        # METRICS
+        # -------------------------------
         metric = state.get("current_metrics", {})
         comparison = state.get("comparison", {})
-        sku_data = state.get("sku_analysis", [])
-        advice = state.get("advice", [])
         intent = state.get("intent", "")
         query = state.get("user_query", "")
 
-        print("📊 INTENT:", intent)
-        print("📊 QUERY:", query)
-
-        period_label = metric.get("period_label", "selected period")
+        country = state.get("country", "").lower()
         metric_name = metric.get("metric")
 
-        # labels
-        if metric_name in ["quantity", "units", "total_quantity"]:
-            label = "units"
-        elif metric_name in ["sales", "net_sales", "profit", "advertising", "platform_fee", "cm2_profit", "gross_sales"]:
-            label = "£"
-        else:
-            label = metric_name
+        # 🔥 TREND ANALYSIS (WITH FORMATTING)
+        if metric.get("per_period"):
+            series = metric["per_period"]
 
-        # product match
+            if len(series) >= 2:
+                values = [float(x.get("__metric__", 0)) for x in series]
+                labels = [x.get("period_label") for x in series]
+
+                change = values[-1] - values[0]
+                pct = ((change / values[0]) * 100) if values[0] else 0
+
+                trend = "increased" if change > 0 else "decreased"
+
+                lines = [
+                    f"Your {metric_name} has {trend} over the last {len(series)} months.",
+                    ""
+                ]
+
+                for l, v in zip(labels, values):
+                    formatted = format_metric_value(v, metric_name, country)
+                    lines.append(f"{l}: {formatted}")
+
+                formatted_change = format_metric_value(change, metric_name, country)
+
+                lines.append("")
+                lines.append(f"Overall change: {formatted_change} ({pct:.2f}%)")
+
+                state["final_response"] = "\n".join(lines)
+                return state
+
+        period_label = metric.get("period_label", "selected period")
+
         per_sku = metric.get("per_sku", [])
         product_filter = find_best_product_match(query, per_sku)
 
-        print("🔍 PRODUCT FILTER:", product_filter)
-
-        # -------------------------------
-        # 🔥 COMPARISON WITH INSIGHTS
-        # -------------------------------
+        # COMPARISON (WITH FORMATTING)
         if comparison:
             left = comparison.get("left", {})
             right = comparison.get("right", {})
@@ -696,42 +1040,16 @@ def final_node(state: AgentState) -> AgentState:
             pct = comparison.get("pct_change")
             pct_text = f"{pct:.2f}%" if pct is not None else "N/A"
 
-            # 🔥 DRIVER ANALYSIS
-            curr = {r["product_name"]: float(r["__metric__"]) for r in left.get("per_sku", [])}
-            prev = {r["product_name"]: float(r["__metric__"]) for r in right.get("per_sku", [])}
+            current_fmt = format_metric_value(current_total, metric_name, country)
+            previous_fmt = format_metric_value(previous_total, metric_name, country)
 
-            changes = []
-            for p in set(curr) | set(prev):
-                diff = curr.get(p, 0) - prev.get(p, 0)
-                changes.append((p, diff))
-
-            changes.sort(key=lambda x: abs(x[1]), reverse=True)
-
-            top_pos = [c for c in changes if c[1] > 0][:3]
-            top_neg = [c for c in changes if c[1] < 0][:3]
-
-            def fmt(lst):
-                return ", ".join(f"{p} ({'+' if v>=0 else '-'}{abs(int(v))})" for p, v in lst)
-
-            lines = [
-                f"Your {metric_name} was {int(current_total)} in {left.get('period_label')},",
-                f"compared to {int(previous_total)} in {right.get('period_label')}.",
-                f"Growth: {pct_text}.",
-            ]
-
-            if top_pos:
-                lines.append(f"Top positive drivers: {fmt(top_pos)}")
-
-            if top_neg:
-                lines.append(f"Top negative drivers: {fmt(top_neg)}")
-
-            state["final_response"] = "\n".join(lines)
+            state["final_response"] = (
+                f"Your {metric_name} was {current_fmt} vs {previous_fmt}. Growth: {pct_text}."
+            )
             return state
 
-        # -------------------------------
-        # DIRECT QA
-        # -------------------------------
-        if intent == "metric_qa":
+        # STANDARD METRIC QA (WITH FORMATTING)
+        if intent in {"metric_qa", "report", "email", "top_skus", "loss_making_skus", "advice"}:
             if product_filter:
                 rows = [
                     r for r in per_sku
@@ -741,18 +1059,14 @@ def final_node(state: AgentState) -> AgentState:
             else:
                 value = metric.get("total", 0.0)
 
-            state["final_response"] = (
-                f"In {period_label}, you had {int(value)} {label} in the UK."
-            )
+            formatted_value = format_metric_value(value, metric_name, country)
+
+            state["final_response"] = f"In {period_label}, you had {formatted_value} in the UK."
             return state
 
-        # -------------------------------
         # FALLBACK
-        # -------------------------------
-        state["final_response"] = (
-            f"In {period_label}, your total {metric_name} was {int(metric.get('total', 0))}."
-        )
-
+        fallback_value = format_metric_value(metric.get("total", 0), metric_name, country)
+        state["final_response"] = f"In {period_label}, your total {metric_name} was {fallback_value}."
         return state
 
     except Exception as e:
@@ -764,6 +1078,17 @@ def final_node(state: AgentState) -> AgentState:
 def _needs_email(state: AgentState) -> str:
     return "email" if state.get("email_requested") else "final"
 
+def _route_after_planner(state: AgentState) -> str:
+    intent = state.get("intent")
+
+    if intent in {"chat", "explain", "clarify"}:
+        return "final"
+
+    if intent in {"event_planner", "pricing_planner", "inventory_planner"}:
+        return "planner_agent"
+
+    return "fetch"
+
 
 def build_graph():
     graph = StateGraph(AgentState)
@@ -772,13 +1097,26 @@ def build_graph():
     graph.add_node("metrics", metrics_node)
     graph.add_node("advisor", advisor_node)
     graph.add_node("email", email_node)
+    graph.add_node("planner_agent", planner_agent_node)
     graph.add_node("final", final_node)
 
     graph.set_entry_point("planner")
-    graph.add_edge("planner", "fetch")
+
+    graph.add_conditional_edges(
+        "planner",
+        _route_after_planner,
+        {
+            "fetch": "fetch",
+            "planner_agent": "planner_agent",
+            "final": "final",
+        }
+    )
+
     graph.add_edge("fetch", "metrics")
     graph.add_edge("metrics", "advisor")
     graph.add_conditional_edges("advisor", _needs_email, {"email": "email", "final": "final"})
     graph.add_edge("email", "final")
+    graph.add_edge("planner_agent", "final")
     graph.add_edge("final", END)
+
     return graph.compile()
