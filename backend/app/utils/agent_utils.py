@@ -362,7 +362,7 @@ class ExecutionPlan(BaseModel):
     priority: str
 
 
-class AgentState(TypedDict, total=False):
+class EventPlannerState(TypedDict, total=False):
     # request
     user_id: int
     country: str
@@ -620,7 +620,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
         }
     }
 
-def load_context_node(state: AgentState) -> AgentState:
+def load_context_node(state: EventPlannerState) -> EventPlannerState:
     scope = state.get("scope") or {"level": "sku", "value": None}
     return {
         **state,
@@ -633,7 +633,7 @@ def load_context_node(state: AgentState) -> AgentState:
     }
 
 def make_load_sales_inventory_node(phormula_engine, amazon_engine):
-    def load_sales_inventory_node(state: AgentState) -> AgentState:
+    def load_sales_inventory_node(state: EventPlannerState) -> EventPlannerState:
         future_event = state["future_event"]
 
         sales_df = load_sales_data(
@@ -673,7 +673,7 @@ def make_load_sales_inventory_node(phormula_engine, amazon_engine):
 
     return load_sales_inventory_node
 
-def analyze_scope_node(state: AgentState) -> AgentState:
+def analyze_scope_node(state: EventPlannerState) -> EventPlannerState:
     scope = state["scope"]
 
     sales_df = pd.DataFrame(state["sales_df"])
@@ -721,7 +721,7 @@ def analyze_scope_node(state: AgentState) -> AgentState:
         "profit_mix_pct": round(profit_mix_pct, 2),
     }
 
-def compute_forecast_node(state: AgentState) -> AgentState:
+def compute_forecast_node(state: EventPlannerState) -> EventPlannerState:
     monthly = pd.DataFrame(state["monthly_df"])
 
     # 🔥 STEP 1: sort and get recent months
@@ -890,7 +890,7 @@ def compute_forecast_node(state: AgentState) -> AgentState:
         "pricing": pricing_output,
     }
 
-def optimize_pricing_node(state: AgentState) -> AgentState:
+def optimize_pricing_node(state: EventPlannerState) -> EventPlannerState:
 
     # print("DEBUG: optimize_pricing_node START")
 
@@ -948,7 +948,7 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
     }
 
 
-def detect_risks_node(state: AgentState) -> AgentState:
+def detect_risks_node(state: EventPlannerState) -> EventPlannerState:
     forecast = state["forecast"]
     top_skus = state.get("top_skus", [])
 
@@ -1019,7 +1019,7 @@ def detect_risks_node(state: AgentState) -> AgentState:
     }
 
 
-def generate_execution_plan_node(state: AgentState) -> AgentState:
+def generate_execution_plan_node(state: EventPlannerState) -> EventPlannerState:
     analytics = state["analytics"]
     validation_errors = state.get("validation_errors", [])
 
@@ -1266,7 +1266,7 @@ Upper end of range:
     }
 
 
-def validate_plan_node(state: AgentState) -> AgentState:
+def validate_plan_node(state: EventPlannerState) -> EventPlannerState:
     plan = state["execution_plan"]
 
     errors: List[str] = []
@@ -1311,7 +1311,7 @@ def validate_plan_node(state: AgentState) -> AgentState:
     }
 
 
-def route_after_validation(state: AgentState) -> str:
+def route_after_validation(state: EventPlannerState) -> str:
     if state.get("is_valid", False):
         return "finalize"
     if state.get("retry_count", 0) >= 2:
@@ -1319,7 +1319,7 @@ def route_after_validation(state: AgentState) -> str:
     return "generate_execution_plan"
 
 
-def finalize_node(state: AgentState) -> AgentState:
+def finalize_node(state: EventPlannerState) -> EventPlannerState:
     return {
         "execution_plan": {
             **state["execution_plan"],
@@ -1330,7 +1330,7 @@ def finalize_node(state: AgentState) -> AgentState:
 
 
 def build_event_planner_graph(phormula_engine, amazon_engine):
-    graph = StateGraph(AgentState)
+    graph = StateGraph(EventPlannerState)
 
     graph.add_node("load_context", load_context_node)
     graph.add_node("load_sales_inventory", make_load_sales_inventory_node(phormula_engine, amazon_engine))

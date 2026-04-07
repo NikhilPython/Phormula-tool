@@ -4,14 +4,22 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 
 Intent = Literal[
+    "chat",
+    "explain",
+    "clarify",
+
     "metric_qa",
-    "period_comparison",
+    "comparison",
+    "report",
+    "email",
+
     "top_skus",
     "loss_making_skus",
     "advice",
-    "daily_summary",
-    "weekly_summary",
-    "send_email",
+
+    "event_planner",
+    "pricing_planner",
+    "inventory_planner",
 ]
 
 
@@ -56,3 +64,7 @@ class AgentState(TypedDict, total=False):
     period_parsed: Optional[Dict[str, Any]]
     period_payload: Optional[Dict[str, Any]]
     engine: Optional[Any]
+
+    clarification_question: Optional[str]
+    planner_payload: Optional[Dict[str, Any]]
+    planner_result: Optional[Dict[str, Any]]
