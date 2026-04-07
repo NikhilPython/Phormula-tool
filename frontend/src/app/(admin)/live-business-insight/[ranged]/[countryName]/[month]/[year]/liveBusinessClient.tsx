@@ -2506,7 +2506,7 @@ export default function LiveBusinessClient({
 
   type BIGridRow = {
     __isTotal?: boolean;
-    sNo?: number | string;
+    sNo?: React.ReactNode;
     product?: React.ReactNode;
     salesMix?: React.ReactNode;
     profitMix?: React.ReactNode;
@@ -2535,6 +2535,14 @@ export default function LiveBusinessClient({
     return { value: v, category: "" };
   };
 
+  const CenterCell = ({ value }: { value: React.ReactNode }) => (
+    <div className="w-full flex items-center justify-center">
+      <span className="tabular-nums inline-block min-w-[60px] text-center">
+        {value}
+      </span>
+    </div>
+  );
+
   const GrowthCell = ({
     val,
     color,
@@ -2552,7 +2560,6 @@ export default function LiveBusinessClient({
         className="inline-flex items-center justify-center gap-2 w-full font-semibold"
         style={{ color }}
       >
-        {/* ✅ fixed icon slot (never collapses) */}
         <span className="w-4 flex justify-center shrink-0">
           {showArrow ? (
             <Icon size={12} />
@@ -2561,7 +2568,7 @@ export default function LiveBusinessClient({
           )}
         </span>
 
-        <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
+        <span className="tabular-nums inline-block w-[60px] text-center">
           {val === 0 ? "0.00%" : text}
         </span>
       </span>
@@ -2569,9 +2576,7 @@ export default function LiveBusinessClient({
   };
 
   const renderGrowthOrNA = (g?: GrowthCategory) => {
-    if (!g || g.value == null) return <span>N/A</span>;
-
-    const val = Number(g.value);
+    const val = !g || g.value == null ? 0 : Number(g.value);
 
     let color = "#414042";
     if (val > 5) color = "#5EA68E";
@@ -2580,12 +2585,13 @@ export default function LiveBusinessClient({
     return <GrowthCell val={val} color={color} showArrow={val !== 0} />;
   };
 
-
   const renderNewRevGrowthOrDash = (g?: GrowthCategory) => {
-    if (g && g.value != null && g.category && g.category !== 'No Data') {
-      return renderGrowthOrNA(g);
-    }
-    return <span>-</span>;
+    const val =
+      g && g.value != null && g.category && g.category !== "No Data"
+        ? g.value
+        : 0;
+
+    return renderGrowthOrNA({ value: Number(val), category: "" });
   };
 
   const buildAiCell = (item: SkuItem) => {
@@ -2777,10 +2783,10 @@ export default function LiveBusinessClient({
           : "0.00%";
 
       return {
-        sNo: idx + 1,
+        sNo: <CenterCell value={idx + 1} />,
         product: item.product_name || item.sku || 'N/A',
-        salesMix,
-        profitMix,
+        salesMix: <CenterCell value={salesMix} />,
+        profitMix: <CenterCell value={profitMix} />,
         unit: isNewRev ? renderNewRevGrowthOrDash(item['Unit Growth']) : renderGrowthOrNA(item['Unit Growth']),
         asp: isNewRev ? renderNewRevGrowthOrDash(item['ASP Growth']) : renderGrowthOrNA(item['ASP Growth']),
         sales: isNewRev ? renderNewRevGrowthOrDash(item['Sales Growth']) : renderGrowthOrNA(item['Sales Growth']),
@@ -2846,13 +2852,14 @@ export default function LiveBusinessClient({
         totalNetSalesMonth2 > 0 ? (othersNetSales / totalNetSalesMonth2) * 100 : 0;
 
       rows.push({
-        sNo: 6,
+        sNo: <CenterCell value={6} />,
         product: 'Others',
-        salesMix:
+        salesMix: <CenterCell value={
           totalNetSalesMonth2 > 0
             ? `${((othersNetSales / totalNetSalesMonth2) * 100).toFixed(2)}%`
-            : '0.00%',
-        profitMix: othersProfitMix,
+            : '0.00%'
+        } />,
+        profitMix: <CenterCell value={othersProfitMix} />,
         unit: renderGrowthOrNA(makeGrowth(qty.prev, qty.curr)),
         asp: renderGrowthOrNA(makeGrowth(aspPrev, aspCurr)),
         sales: renderGrowthOrNA(makeGrowth(sales.prev, sales.curr)),
@@ -2955,10 +2962,10 @@ export default function LiveBusinessClient({
 
     const totalRow: BIGridRow = {
       __isTotal: true,
-      sNo: '',
+      sNo: <CenterCell value="" />,
       product: 'Total',
-      salesMix: totalSalesMix,
-      profitMix: totalProfitMix,
+      salesMix: <CenterCell value={totalSalesMix} />,
+      profitMix: <CenterCell value={totalProfitMix} />,
       ...(activeTab === "all_skus"
         ? (() => {
           // Use allSkuRows so totals are correct even when UI shows only 5 + "Others"

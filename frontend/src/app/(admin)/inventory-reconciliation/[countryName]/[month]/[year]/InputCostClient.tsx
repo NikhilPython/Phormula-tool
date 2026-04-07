@@ -231,6 +231,35 @@ const DUMMY_ROWS: AnyRow[] = [
   },
 ];
 
+const DUMMY_LOST_COMP_ROWS: AnyRow[] = [
+  {
+    id: "dummy-lc-1",
+    product_name: "Sample Product A",
+    msku: "SKU-001",
+    lost_units: 0,
+    damaged_units: 0,
+    total_lost_units: 0,
+    compensation_units: 0,
+    compensation_value: 0,
+    settlement_loss_event_amount: 0,
+    net_value: 0,
+    net_units: 0,
+  },
+  {
+    product_name: "Total",
+    msku: "-",
+    __isTotal: true,
+    lost_units: 0,
+    damaged_units: 0,
+    total_lost_units: 0,
+    compensation_units: 0,
+    compensation_value: 0,
+    settlement_loss_event_amount: 0,
+    net_value: 0,
+    net_units: 0,
+  },
+];
+
 const PreviewLockedSection = ({
   enabled,
   children,
@@ -617,16 +646,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
   }
 
- useEffect(() => {
-  if (pageLoading) return;
-  if (isNA) {
-    setLostCompRows([]);
-    return;
-  }
-  if (activeView !== "extra") return;
+  useEffect(() => {
+    if (pageLoading) return;
+    if (isNA) {
+      setLostCompRows([]);
+      return;
+    }
+    if (activeView !== "extra") return;
 
-  void fetchInventoryLostCompensation();
-}, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading, isNA]);
+    void fetchInventoryLostCompensation();
+  }, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading, isNA]);
 
 
   const getCurrencySymbol = (currency: string) => {
@@ -649,13 +678,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   // const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
   //   return (lostCompRows || []).map((row, idx) => ({
-  //     __sno: idx + 1,
+  //     __isTotal: row?.__isTotal, // ✅ IMPORTANT
+
+  //     __sno: row?.__isTotal ? "" : idx + 1,
   //     product_name: formatCell(row?.product_name),
   //     msku: formatCell(row?.msku),
-  //     asin: formatCell(row?.asin),
-  //     product_barcode: formatCell(row?.product_barcode),
   //     price: formatCell(row?.price),
-  //     currency: formatCell(row?.currency),
+
   //     lost_units: formatCell(row?.lost_units),
   //     damaged_units: formatCell(row?.damaged_units),
   //     total_lost_units: formatCell(row?.total_lost_units),
@@ -670,10 +699,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
   //   }));
   // }, [lostCompRows]);
 
-  const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
-    return (lostCompRows || []).map((row, idx) => ({
-      __isTotal: row?.__isTotal, // ✅ IMPORTANT
+  const effectiveLostCompRows = useMemo(() => {
+    if (!hasValidPeriod) return DUMMY_LOST_COMP_ROWS;
+    return lostCompRows;
+  }, [hasValidPeriod, lostCompRows]);
 
+  const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
+    return (effectiveLostCompRows || []).map((row, idx) => ({
+      __isTotal: row?.__isTotal,
       __sno: row?.__isTotal ? "" : idx + 1,
       product_name: formatCell(row?.product_name),
       msku: formatCell(row?.msku),
@@ -691,7 +724,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       net_units: formatCell(row?.net_units),
       net_value: formatCell(row?.net_value),
     }));
-  }, [lostCompRows]);
+  }, [effectiveLostCompRows]);
 
   const lostCompTableColumns = useMemo<
     DataTableColumnDef<Record<string, React.ReactNode>>[]
@@ -813,7 +846,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
         headerClassName: "break-words",
       },
 
-      
+
 
       {
         key: "compensation_value",
@@ -847,11 +880,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
       //   headerClassName: "break-words",
       // },
 
-      
 
-      
 
-      
+
+
+
     ];
   }, [lostCompRows, countryName]);
 
@@ -1208,7 +1241,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (!hasValidPeriod) return DUMMY_ROWS;
     return displayRows;
   }, [hasValidPeriod, displayRows]);
-
 
   // Sign row (stable sets)
   const SIGN_PLUS = useMemo(
@@ -1888,7 +1920,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     });
   };
 
-   const handleConnectAmazonPreview = () => {
+  const handleConnectAmazonPreview = () => {
     const connectCountry = countryName === "global" ? "uk" : countryName;
     router.push(`/profile/${connectCountry}/NA/NA`);
   };
@@ -1896,8 +1928,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
   if (pageLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Loader fullscreen transparent />
-              </div>
+        <Loader fullscreen transparent />
+      </div>
     );
   }
 
@@ -1969,70 +2001,72 @@ export default function InventoryReconciliationPage({ params }: Params) {
         </div>
       </div>
 
-<PreviewLockedSection
-         enabled={isNA}
-          title="Preview mode"
-          description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-          buttonText="Connect Amazon"
-          onAction={handleConnectAmazonPreview}
-        >
-      {/* ✅ Pie charts row */}
-      {activeView === "charts" && (
-        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <InventoryPieCard
-            ref={breakupPieRef}
-            title="Inventory Breakup"
-            data={breakupPie}
-            loading={pieLoading}
-            height={320}
-          />
-
-          <InventoryPieCard
-            ref={ageingPieRef}
-            title="Inventory Ageing"
-            data={ageingPie}
-            loading={pieLoading}
-            height={320}
-          />
-        </div>
-      )}
-
-      {/* Table */}
-      {activeView === "table" && (
-        <div
-          className={[
-            "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-            "overflow-x-auto",
-            "[-webkit-overflow-scrolling:touch]",
-          ].join(" ")}
-        >
-          {effectiveRows.length === 0 ? (
-            <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
-          ) : (
-            <GroupedCollapsibleTable
-              rows={effectiveRows}
-              getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-              leftCols={leftCols}
-              groups={groups}
-              singleCols={singleCols}
-              getValue={getValue}
-              getRowClassName={getRowClassName}
-              onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-              tableClassName={
-                anyExpanded
-                  ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                  : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-              }
-              headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-              headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-              showSignRowInBody
-              getSignForCol={getSignForCol}
+      <PreviewLockedSection
+        enabled={isNA}
+        title="Preview mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
+        {/* ✅ Pie charts row */}
+        {activeView === "charts" && (
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <InventoryPieCard
+              ref={breakupPieRef}
+              title="Inventory Breakup"
+              data={breakupPie}
+              loading={pieLoading}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
             />
-          )}
-        </div>
-      )}
 
-      {/* <div className="mt-4" id="inventory-pie-export">
+            <InventoryPieCard
+              ref={ageingPieRef}
+              title="Inventory Ageing"
+              data={ageingPie}
+              loading={pieLoading}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
+            />
+          </div>
+        )}
+
+        {/* Table */}
+        {activeView === "table" && (
+          <div
+            className={[
+              "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+              "overflow-x-auto",
+              "[-webkit-overflow-scrolling:touch]",
+            ].join(" ")}
+          >
+            {effectiveRows.length === 0 ? (
+              <div className="p-6 text-sm text-neutral-600">No data available</div>
+            ) : (
+              <GroupedCollapsibleTable
+                rows={effectiveRows}
+                getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+                leftCols={leftCols}
+                groups={groups}
+                singleCols={singleCols}
+                getValue={getValue}
+                getRowClassName={getRowClassName}
+                onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+                tableClassName={
+                  anyExpanded
+                    ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                    : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                }
+                headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                showSignRowInBody
+                getSignForCol={getSignForCol}
+              />
+            )}
+          </div>
+        )}
+
+        {/* <div className="mt-4" id="inventory-pie-export">
 
         <InventoryTopProductsPie
           key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
@@ -2043,25 +2077,25 @@ export default function InventoryReconciliationPage({ params }: Params) {
         />
       </div> */}
 
-      {activeView === "extra" && (
-        <div className="mt-5">
-          <DataTable<Record<string, React.ReactNode>>
-            columns={lostCompTableColumns}
-            data={lostCompTableData}
-            loading={lostCompLoading}
-            paginate={false}
-            stickyHeader
-            scrollY={false}
-            maxHeight="auto"
-            emptyMessage="No rows returned."
-            tableClassName="text-xs 2xl:text-sm"
-            className="rounded-lg"
-            rowClassName={(row) =>
-              (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
-            }
-          />
-        </div>
-      )}
+        {activeView === "extra" && (
+          <div className="mt-5">
+            <DataTable<Record<string, React.ReactNode>>
+              columns={lostCompTableColumns}
+              data={lostCompTableData}
+              loading={lostCompLoading}
+              paginate={false}
+              stickyHeader
+              scrollY={false}
+              maxHeight="auto"
+              emptyMessage="No data available"
+              tableClassName="text-xs 2xl:text-sm"
+              className="rounded-lg"
+              rowClassName={(row) =>
+                (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
+              }
+            />
+          </div>
+        )}
       </PreviewLockedSection>
 
       {/* Multi-country modal (kept) */}
