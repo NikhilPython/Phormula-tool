@@ -4366,17 +4366,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
             <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
               <SKUtable
-                range={range as Exclude<RangeType, "">}
-                month={range === "monthly" ? selectedMonth : undefined}
-                quarter={range === "quarterly" ? selectedQuarter : undefined}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                hideDownloadButton={false}
+                range={range as "monthly" | "quarterly" | "yearly"}
+                month={range === "monthly" ? (isDemoMode ? "NA" : selectedMonth) : undefined}
+                quarter={range === "quarterly" ? (isDemoMode ? undefined : selectedQuarter) : undefined}
+                year={isDemoMode ? "NA" : selectedYear}
+                countryName={isDemoMode ? "global" : initialCountryName}
+                homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                 onExportPayloadChange={setSkuExportPayload}
-                onDownload={handleDownloadSkuSheet1}
                 onRowsChange={setSkuRows}
-                disableInternalFade={isDemoMode}
               />
 
               {skuRows.length > 0 && (

@@ -22,6 +22,7 @@ import { useHomeCurrencyContext } from "@/lib/hooks/useHomeCurrencyContext";
 import { AiButton } from "@/components/ui/button/AiButton";
 import PeriodFiltersTable, { type Range } from "@/components/filters/PeriodFiltersTable";
 import GroupedDataTable from "@/components/ui/table/GroupedDataTable";
+import { IoMdLock } from "react-icons/io";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -387,6 +388,74 @@ function FeeCard({
   );
 }
 
+function PreviewLockedSection({
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                {buttonText && (
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
+                )}
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ===================== MAIN DASHBOARD PAGE ===================== */
 export default function ReferralFeesDashboard(): JSX.Element {
@@ -421,7 +490,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
     return currencyFromCountryName(effectiveCountry);
   }, [effectiveCountry, homeCurrency]);
 
-
+  const handlePreviewAction = () => {
+    window.location.href = "/profile/uk/NA/NA";
+  };
 
   const [card6, setCard6] = useState<Card6Summary>({
     sales: 0,
@@ -471,105 +542,104 @@ export default function ReferralFeesDashboard(): JSX.Element {
   );
 
   const DUMMY_CARD6: Card6Summary = {
-    sales: 125000,
-    units: 3400,
-    productSales: 138500,
+    sales: 0,
+    units: 0,
+    productSales: 0,
 
-    totalFees: 18500,
-    totalFeesApplicable: 17200,
+    totalFees: 0,
+    totalFeesApplicable: 0,
 
-    refFeesApplied: 9200,
-    refFeesApplicable: 8800,
+    refFeesApplied: 0,
+    refFeesApplicable: 0,
 
-    fbaFees: 5200,
-    fbaFeesApplicable: 5000,
+    fbaFees: 0,
+    fbaFeesApplicable: 0,
 
-    platformFees: 2800,
-    platformFeesApplicable: 2600,
+    platformFees: 0,
+    platformFeesApplicable: 0,
 
-    otherFees: 1300,
-    otherFeesApplicable: 1200,
+    otherFees: 0,
+    otherFeesApplicable: 0,
   };
 
   const DUMMY_FEE_SUMMARY_ROWS: FeeSummaryRow[] = [
     {
       label: "Charge - Accurate",
-      units: 2100,
-      sales: 82000,
-      refFeesApplicable: 5900,
-      refFeesCharged: 6100,
-      overcharged: -200,
+      units: 0,
+      sales: 0,
+      refFeesApplicable: 0,
+      refFeesCharged: 0,
+      overcharged: 0,
     },
     {
       label: "Charge - Overcharged",
-      units: 700,
-      sales: 28000,
-      refFeesApplicable: 1700,
-      refFeesCharged: 2100,
-      overcharged: 400,
+      units: 0,
+      sales: 0,
+      refFeesApplicable: 0,
+      refFeesCharged: 0,
+      overcharged: 0,
     },
     {
       label: "Charge - Undercharged",
-      units: 400,
-      sales: 10000,
-      refFeesApplicable: 900,
-      refFeesCharged: 600,
-      overcharged: -300,
+      units: 0,
+      sales: 0,
+      refFeesApplicable: 0,
+      refFeesCharged: 0,
+      overcharged: 0,
     },
     {
       label: "Charge - noreferallfee",
-      units: 200,
-      sales: 5000,
+      units: 0,
+      sales: 0,
       refFeesApplicable: 0,
       refFeesCharged: 0,
       overcharged: 0,
     },
     {
       label: "Grand Total",
-      units: 3400,
-      sales: 125000,
-      refFeesApplicable: 8500,
-      refFeesCharged: 8800,
-      overcharged: -300,
+      units: 0,
+      sales: 0,
+      refFeesApplicable: 0,
+      refFeesCharged: 0,
+      overcharged: 0,
     },
   ];
-
 
   const DUMMY_ROWS: ReferralRow[] = [
     {
       sku: "Charge - Accurate",
-      net_sales_total_value: 82000,
-      selling_fees: 6100,
-      answer: 5900,
-      difference: -200,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
     {
       sku: "Charge - Overcharged",
-      net_sales_total_value: 28000,
-      selling_fees: 2100,
-      answer: 1700,
-      difference: 400,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
     {
       sku: "Charge - Undercharged",
-      net_sales_total_value: 10000,
-      selling_fees: 600,
-      answer: 900,
-      difference: -300,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
     {
       sku: "Charge - noreferallfee",
-      net_sales_total_value: 5000,
+      net_sales_total_value: 0,
       selling_fees: 0,
       answer: 0,
       difference: 0,
     },
     {
       sku: "Grand Total",
-      net_sales_total_value: 125000,
-      selling_fees: 8800,
-      answer: 8500,
-      difference: -300,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
   ];
 
@@ -577,20 +647,20 @@ export default function ReferralFeesDashboard(): JSX.Element {
     {
       sku: "SKU-001",
       product_name: "Demo Product A",
-      quantity: 1200,
-      net_sales_total_value: 42000,
-      selling_fees: 3200,
-      answer: 3000,
-      difference: 200,
+      quantity: 0,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
     {
       sku: "SKU-002",
       product_name: "Demo Product B",
-      quantity: 800,
-      net_sales_total_value: 31000,
-      selling_fees: 2600,
-      answer: 2500,
-      difference: 100,
+      quantity: 0,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
     },
   ];
 
@@ -1580,317 +1650,323 @@ export default function ReferralFeesDashboard(): JSX.Element {
               if (v && month) setError(null);
             }}
           />
-        {/* </div> */}
+          {/* </div> */}
 
+        </div>
       </div>
-    </div>
 
       {
-    loading && (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Loader fullscreen transparent />
-      </div>
-    )
-  }
+        loading && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Loader fullscreen transparent />
+          </div>
+        )
+      }
 
-  {
-    !loading && !!error && (
-      <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-        <div className="flex items-center">
-          <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-          <span>{error}</span>
-        </div>
-      </div>
-    )
-  }
+      {
+        !loading && !!error && (
+          <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
+            <div className="flex items-center">
+              <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
+              <span>{error}</span>
+            </div>
+          </div>
+        )
+      }
 
-  {
-    canShowContent && (
-      <>
-        {/* ===================== 6 CARDS (UPDATED) ===================== */}
+      {canShowContent && (
+        <PreviewLockedSection
+          enabled={isPreviewMode}
+          title="Preview mode"
+          description="You're viewing demo expense reconciliation data. Connect your Amazon account to unlock your real reconciliation insights."
+          buttonText="Connect Amazon"
+          onAction={handlePreviewAction}
+        >
+          <>
+            {/* ===================== 6 CARDS (UPDATED) ===================== */}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
-          <SalesCard
-            title="Sales"
-            sales={card6.sales}
-            productSales={card6.productSales}
-            units={card6.units}
-            valueFmt={fmtCurrencyRounded}
-            borderColor="#75BBDA"
-            bgColor="#75BBDA4D"
-          />
-
-
-          <FeeCard
-            title="Total Amazon Fees"
-            sales={card6.sales}
-            charged={card6.totalFees}
-            applicable={card6.totalFeesApplicable}
-            fmtCurrency={fmtCurrencyRounded}
-            borderColor="#B75A5A"
-            bgColor="#B75A5A4D"
-          />
-
-          <FeeCard
-            title="Referral Fees"
-            sales={card6.sales}
-            charged={card6.refFeesApplied}
-            applicable={card6.refFeesApplicable}
-            fmtCurrency={fmtCurrencyRounded}
-            borderColor="#7B9A6D"
-            bgColor="#7B9A6D4D"
-          />
-
-          <FeeCard
-            title="FBA Fees"
-            sales={card6.sales}
-            charged={card6.fbaFees}
-            applicable={card6.fbaFeesApplicable}
-            fmtCurrency={fmtCurrencyRounded}
-            borderColor="#FDD36F"
-            bgColor="#FDD36F4D"
-          />
-
-          <FeeCard
-            title="Platform Fees"
-            sales={card6.sales}
-            charged={card6.platformFees}
-            applicable={card6.platformFeesApplicable}
-            fmtCurrency={fmtCurrencyRounded}
-            borderColor="#ED9F50"
-            bgColor="#ED9F504D"
-          />
-
-          <FeeCard
-            title="Other Fees"
-            sales={card6.sales}
-            charged={card6.otherFees}
-            applicable={card6.otherFeesApplicable}
-            fmtCurrency={fmtCurrencyRounded}
-            borderColor="#3A8EA4"
-            bgColor="#3A8EA44D"
-          />
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
+              <SalesCard
+                title="Sales"
+                sales={card6.sales}
+                productSales={card6.productSales}
+                units={card6.units}
+                valueFmt={fmtCurrencyRounded}
+                borderColor="#75BBDA"
+                bgColor="#75BBDA4D"
+              />
 
 
-        {/* ===================== BREAKDOWN SECTION (NEW) ===================== */}
-        {(() => {
-          /* =========================
-             1) Pull Charge rows + Grand Total
-          ========================= */
-          const chargeAcc = rows.find(
-            (r) => String(r.sku ?? "").toLowerCase() === "charge - accurate"
-          );
-          const chargeOver = rows.find(
-            (r) => String(r.sku ?? "").toLowerCase() === "charge - overcharged"
-          );
-          const chargeUnder = rows.find(
-            (r) => String(r.sku ?? "").toLowerCase() === "charge - undercharged"
-          );
-          const chargeNoRef = rows.find(
-            (r) => String(r.sku ?? "").toLowerCase() === "charge - noreferallfee"
-          );
-          const grand = rows.find(
-            (r) => String(r.sku ?? "").toLowerCase() === "grand total"
-          );
+              <FeeCard
+                title="Total Amazon Fees"
+                sales={card6.sales}
+                charged={card6.totalFees}
+                applicable={card6.totalFeesApplicable}
+                fmtCurrency={fmtCurrencyRounded}
+                borderColor="#B75A5A"
+                bgColor="#B75A5A4D"
+              />
 
-          const fmtPctSigned = (p: number) => {
-            const v = toNumberSafe(p);
-            const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-            return `${sign}${Math.abs(v).toFixed(2)}%`;
-          };
+              <FeeCard
+                title="Referral Fees"
+                sales={card6.sales}
+                charged={card6.refFeesApplied}
+                applicable={card6.refFeesApplicable}
+                fmtCurrency={fmtCurrencyRounded}
+                borderColor="#7B9A6D"
+                bgColor="#7B9A6D4D"
+              />
 
+              <FeeCard
+                title="FBA Fees"
+                sales={card6.sales}
+                charged={card6.fbaFees}
+                applicable={card6.fbaFeesApplicable}
+                fmtCurrency={fmtCurrencyRounded}
+                borderColor="#FDD36F"
+                bgColor="#FDD36F4D"
+              />
 
-          const pctOf = (value: number, total: number) => {
-            const t = Math.max(1e-9, Math.abs(toNumberSafe(total)));
-            return (toNumberSafe(value) / t) * 100;
-          };
+              <FeeCard
+                title="Platform Fees"
+                sales={card6.sales}
+                charged={card6.platformFees}
+                applicable={card6.platformFeesApplicable}
+                fmtCurrency={fmtCurrencyRounded}
+                borderColor="#ED9F50"
+                bgColor="#ED9F504D"
+              />
 
-          const totalSalesForPct = Math.max(1, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
-
-
-          /* =========================
-             2) LEFT PANEL (Sales based): use net_sales_total_value from Charge lines
-             Requirement: show net_sales_total_value for:
-             Charge - Accurate, Charge - Undercharged, Charge - Overcharged, Charge - noreferallfee, Grand Total
-          ========================= */
-          // const leftList = [
-          //   {
-          //     label: "Total Sales",
-          //     value: toNumberSafe(grand?.net_sales_total_value),
-          //     color: "#F47A00",
-          //   },
-          //   {
-          //     label: "Accurately charged",
-          //     value: toNumberSafe(chargeAcc?.net_sales_total_value),
-          //     color: "#14B8A6",
-          //   },
-          //   {
-          //     label: "Over charged",
-          //     value: toNumberSafe(chargeOver?.net_sales_total_value),
-          //     color: "#EF4444",
-          //   },
-          //   {
-          //     label: "Undercharged",
-          //     value: toNumberSafe(chargeUnder?.net_sales_total_value),
-          //     color: "#F59E0B",
-          //   },
-          //   {
-          //     label: "No ref fee",
-          //     value: toNumberSafe(chargeNoRef?.net_sales_total_value),
-          //     color: "#94A3B8",
-          //   },
-          // ];
-
-          const totalSalesForLeft = Math.max(1e-9, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
-
-          const leftList = [
-            {
-              label: "Total Sales",
-              value: toNumberSafe(grand?.net_sales_total_value),
-              pct: pctOf(toNumberSafe(grand?.net_sales_total_value), totalSalesForLeft),
-              color: "#75BBDA",
-            },
-            {
-              label: "Accurately charged",
-              value: toNumberSafe(chargeAcc?.net_sales_total_value),
-              pct: pctOf(toNumberSafe(chargeAcc?.net_sales_total_value), totalSalesForLeft),
-              color: "#C49466",
-            },
-            {
-              label: "Over charged",
-              value: toNumberSafe(chargeOver?.net_sales_total_value),
-              pct: pctOf(toNumberSafe(chargeOver?.net_sales_total_value), totalSalesForLeft),
-              color: "#B75A5A",
-            },
-            {
-              label: "Undercharged",
-              value: toNumberSafe(chargeUnder?.net_sales_total_value),
-              pct: pctOf(toNumberSafe(chargeUnder?.net_sales_total_value), totalSalesForLeft),
-              color: "#FDD36F",
-            },
-            {
-              label: "No ref fee",
-              value: toNumberSafe(chargeNoRef?.net_sales_total_value),
-              pct: pctOf(toNumberSafe(chargeNoRef?.net_sales_total_value), totalSalesForLeft),
-              color: "#ED9F50",
-            },
-          ];
+              <FeeCard
+                title="Other Fees"
+                sales={card6.sales}
+                charged={card6.otherFees}
+                applicable={card6.otherFeesApplicable}
+                fmtCurrency={fmtCurrencyRounded}
+                borderColor="#3A8EA4"
+                bgColor="#3A8EA44D"
+              />
+            </div>
 
 
-          /* =========================
-             3) RIGHT PANEL (Ref fee breakdown): use selling_fees from Charge lines
-             Also show difference in brackets next to value
-          ========================= */
-          const rightList = [
-            {
-              label: "Total Ref Fees",
-              value: toNumberSafe(grand?.selling_fees),
-              diff: toNumberSafe(grand?.difference),
-              pct: pctOf(toNumberSafe(grand?.difference), totalSalesForPct),
-              color: "#7B9A6D",
-            },
-            {
-              label: "Accurately charged",
-              value: toNumberSafe(chargeAcc?.selling_fees),
-              diff: toNumberSafe(chargeAcc?.difference),
-              pct: pctOf(toNumberSafe(chargeAcc?.difference), totalSalesForPct),
-              color: "#C49466",
-            },
-            {
-              label: "Over charged",
-              value: toNumberSafe(chargeOver?.selling_fees),
-              diff: toNumberSafe(chargeOver?.difference),
-              pct: pctOf(toNumberSafe(chargeOver?.difference), totalSalesForPct),
-              color: "#B75A5A",
-            },
-            {
-              label: "Undercharged",
-              value: toNumberSafe(chargeUnder?.selling_fees),
-              diff: toNumberSafe(chargeUnder?.difference),
-              pct: pctOf(toNumberSafe(chargeUnder?.difference), totalSalesForPct),
-              color: "#FDD36F",
-            },
-            {
-              label: "No ref fee",
-              value: toNumberSafe(chargeNoRef?.selling_fees),
-              diff: toNumberSafe(chargeNoRef?.difference),
-              pct: pctOf(toNumberSafe(chargeNoRef?.difference), totalSalesForPct),
-              color: "#ED9F50",
-            },
-          ];
+            {/* ===================== BREAKDOWN SECTION (NEW) ===================== */}
+            {(() => {
+              /* =========================
+                 1) Pull Charge rows + Grand Total
+              ========================= */
+              const chargeAcc = rows.find(
+                (r) => String(r.sku ?? "").toLowerCase() === "charge - accurate"
+              );
+              const chargeOver = rows.find(
+                (r) => String(r.sku ?? "").toLowerCase() === "charge - overcharged"
+              );
+              const chargeUnder = rows.find(
+                (r) => String(r.sku ?? "").toLowerCase() === "charge - undercharged"
+              );
+              const chargeNoRef = rows.find(
+                (r) => String(r.sku ?? "").toLowerCase() === "charge - noreferallfee"
+              );
+              const grand = rows.find(
+                (r) => String(r.sku ?? "").toLowerCase() === "grand total"
+              );
+
+              const fmtPctSigned = (p: number) => {
+                const v = toNumberSafe(p);
+                const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+                return `${sign}${Math.abs(v).toFixed(2)}%`;
+              };
 
 
-          /* =========================
-             4) Bar scaling totals
-             - LEFT: scale by Grand Total sales (so bars are "out of total sales")
-             - RIGHT: scale by Grand Total ref fees (so bars are "out of total ref fees")
-          ========================= */
-          const leftTotalForBars = Math.max(
-            1,
-            Math.abs(toNumberSafe(grand?.net_sales_total_value))
-          );
+              const pctOf = (value: number, total: number) => {
+                const t = Math.max(1e-9, Math.abs(toNumberSafe(total)));
+                return (toNumberSafe(value) / t) * 100;
+              };
 
-          const rightTotalForBars = Math.max(
-            1,
-            Math.abs(toNumberSafe(grand?.selling_fees))
-          );
+              const totalSalesForPct = Math.max(1, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
 
-          /* =========================
-             5) Row renderer
-             - shows bar + value (and optional diff in brackets)
-          ========================= */
-          const BarRow = ({
-            label,
-            value,
-            total,
-            color,
-            deltaPct,
-            showDelta = false,
-            pctColor,
-          }: {
-            label: string;
-            value: number;
-            total: number;
-            color: string;
-            deltaPct?: number;
-            showDelta?: boolean;
-            pctColor?: string;
-          }) => {
 
-            const v = Math.abs(toNumberSafe(value));
-            const t = Math.max(1, Math.abs(toNumberSafe(total)));
-            const barPct = Math.min(100, (v / t) * 100);
+              /* =========================
+                 2) LEFT PANEL (Sales based): use net_sales_total_value from Charge lines
+                 Requirement: show net_sales_total_value for:
+                 Charge - Accurate, Charge - Undercharged, Charge - Overcharged, Charge - noreferallfee, Grand Total
+              ========================= */
+              // const leftList = [
+              //   {
+              //     label: "Total Sales",
+              //     value: toNumberSafe(grand?.net_sales_total_value),
+              //     color: "#F47A00",
+              //   },
+              //   {
+              //     label: "Accurately charged",
+              //     value: toNumberSafe(chargeAcc?.net_sales_total_value),
+              //     color: "#14B8A6",
+              //   },
+              //   {
+              //     label: "Over charged",
+              //     value: toNumberSafe(chargeOver?.net_sales_total_value),
+              //     color: "#EF4444",
+              //   },
+              //   {
+              //     label: "Undercharged",
+              //     value: toNumberSafe(chargeUnder?.net_sales_total_value),
+              //     color: "#F59E0B",
+              //   },
+              //   {
+              //     label: "No ref fee",
+              //     value: toNumberSafe(chargeNoRef?.net_sales_total_value),
+              //     color: "#94A3B8",
+              //   },
+              // ];
 
-            const deltaCls =
-              typeof deltaPct === "number"
-                ? deltaPct > 0
-                  ? "text-emerald-600"
-                  : deltaPct < 0
-                    ? "text-red-600"
-                    : "text-slate-500"
-                : "text-slate-500";
+              const totalSalesForLeft = Math.max(1e-9, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
 
-            return (
-              <div
-                className={`grid items-center gap-3 ${showDelta
-                  ? "grid-cols-[180px_1fr_170px]"
-                  : "grid-cols-[180px_1fr_120px]"
-                  }`}
-              >
-                {/* Label */}
-                <div className="text-sm text-slate-700">{label}</div>
+              const leftList = [
+                {
+                  label: "Total Sales",
+                  value: toNumberSafe(grand?.net_sales_total_value),
+                  pct: pctOf(toNumberSafe(grand?.net_sales_total_value), totalSalesForLeft),
+                  color: "#75BBDA",
+                },
+                {
+                  label: "Accurately charged",
+                  value: toNumberSafe(chargeAcc?.net_sales_total_value),
+                  pct: pctOf(toNumberSafe(chargeAcc?.net_sales_total_value), totalSalesForLeft),
+                  color: "#C49466",
+                },
+                {
+                  label: "Over charged",
+                  value: toNumberSafe(chargeOver?.net_sales_total_value),
+                  pct: pctOf(toNumberSafe(chargeOver?.net_sales_total_value), totalSalesForLeft),
+                  color: "#B75A5A",
+                },
+                {
+                  label: "Undercharged",
+                  value: toNumberSafe(chargeUnder?.net_sales_total_value),
+                  pct: pctOf(toNumberSafe(chargeUnder?.net_sales_total_value), totalSalesForLeft),
+                  color: "#FDD36F",
+                },
+                {
+                  label: "No ref fee",
+                  value: toNumberSafe(chargeNoRef?.net_sales_total_value),
+                  pct: pctOf(toNumberSafe(chargeNoRef?.net_sales_total_value), totalSalesForLeft),
+                  color: "#ED9F50",
+                },
+              ];
 
-                {/* Bar */}
-                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+
+              /* =========================
+                 3) RIGHT PANEL (Ref fee breakdown): use selling_fees from Charge lines
+                 Also show difference in brackets next to value
+              ========================= */
+              const rightList = [
+                {
+                  label: "Total Ref Fees",
+                  value: toNumberSafe(grand?.selling_fees),
+                  diff: toNumberSafe(grand?.difference),
+                  pct: pctOf(toNumberSafe(grand?.difference), totalSalesForPct),
+                  color: "#7B9A6D",
+                },
+                {
+                  label: "Accurately charged",
+                  value: toNumberSafe(chargeAcc?.selling_fees),
+                  diff: toNumberSafe(chargeAcc?.difference),
+                  pct: pctOf(toNumberSafe(chargeAcc?.difference), totalSalesForPct),
+                  color: "#C49466",
+                },
+                {
+                  label: "Over charged",
+                  value: toNumberSafe(chargeOver?.selling_fees),
+                  diff: toNumberSafe(chargeOver?.difference),
+                  pct: pctOf(toNumberSafe(chargeOver?.difference), totalSalesForPct),
+                  color: "#B75A5A",
+                },
+                {
+                  label: "Undercharged",
+                  value: toNumberSafe(chargeUnder?.selling_fees),
+                  diff: toNumberSafe(chargeUnder?.difference),
+                  pct: pctOf(toNumberSafe(chargeUnder?.difference), totalSalesForPct),
+                  color: "#FDD36F",
+                },
+                {
+                  label: "No ref fee",
+                  value: toNumberSafe(chargeNoRef?.selling_fees),
+                  diff: toNumberSafe(chargeNoRef?.difference),
+                  pct: pctOf(toNumberSafe(chargeNoRef?.difference), totalSalesForPct),
+                  color: "#ED9F50",
+                },
+              ];
+
+
+              /* =========================
+                 4) Bar scaling totals
+                 - LEFT: scale by Grand Total sales (so bars are "out of total sales")
+                 - RIGHT: scale by Grand Total ref fees (so bars are "out of total ref fees")
+              ========================= */
+              const leftTotalForBars = Math.max(
+                1,
+                Math.abs(toNumberSafe(grand?.net_sales_total_value))
+              );
+
+              const rightTotalForBars = Math.max(
+                1,
+                Math.abs(toNumberSafe(grand?.selling_fees))
+              );
+
+              /* =========================
+                 5) Row renderer
+                 - shows bar + value (and optional diff in brackets)
+              ========================= */
+              const BarRow = ({
+                label,
+                value,
+                total,
+                color,
+                deltaPct,
+                showDelta = false,
+                pctColor,
+              }: {
+                label: string;
+                value: number;
+                total: number;
+                color: string;
+                deltaPct?: number;
+                showDelta?: boolean;
+                pctColor?: string;
+              }) => {
+
+                const v = Math.abs(toNumberSafe(value));
+                const t = Math.max(1, Math.abs(toNumberSafe(total)));
+                const barPct = Math.min(100, (v / t) * 100);
+
+                const deltaCls =
+                  typeof deltaPct === "number"
+                    ? deltaPct > 0
+                      ? "text-emerald-600"
+                      : deltaPct < 0
+                        ? "text-red-600"
+                        : "text-slate-500"
+                    : "text-slate-500";
+
+                return (
                   <div
-                    className="h-2 rounded-full"
-                    style={{ width: `${barPct}%`, backgroundColor: color }}
-                  />
-                </div>
+                    className={`grid items-center gap-3 ${showDelta
+                      ? "grid-cols-[180px_1fr_170px]"
+                      : "grid-cols-[180px_1fr_120px]"
+                      }`}
+                  >
+                    {/* Label */}
+                    <div className="text-sm text-slate-700">{label}</div>
 
-                {/* Value (+ optional %) */}
-                {/* <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
+                    {/* Bar */}
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-2 rounded-full"
+                        style={{ width: `${barPct}%`, backgroundColor: color }}
+                      />
+                    </div>
+
+                    {/* Value (+ optional %) */}
+                    {/* <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
                     <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
                       {fmtNumber(value)}
                     </span>
@@ -1902,58 +1978,58 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     )}
                   </div> */}
 
-                {/* Value / Right column */}
-                <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
-                  <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
-                    {fmtNumber(value)}
-                  </span>
+                    {/* Value / Right column */}
+                    <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
+                      <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
+                        {fmtNumber(value)}
+                      </span>
 
-                  {showDelta ? (
-                    <span className={`ml-1 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}>
-                      ({fmtPctSigned(deltaPct ?? 0)})
-                    </span>
-                  ) : (
-                    <span
-                      className={`ml-2 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}
-                    >
-                      ({fmtPctSigned(deltaPct ?? 0)})
-                    </span>
-                  )}
+                      {showDelta ? (
+                        <span className={`ml-1 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}>
+                          ({fmtPctSigned(deltaPct ?? 0)})
+                        </span>
+                      ) : (
+                        <span
+                          className={`ml-2 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}
+                        >
+                          ({fmtPctSigned(deltaPct ?? 0)})
+                        </span>
+                      )}
 
-                </div>
+                    </div>
 
-              </div>
-            );
-          };
+                  </div>
+                );
+              };
 
-          const currencySymbol = fmtCurrency(0).replace(/[\d.,\s]/g, "");
-          const fmtNumber = (n: number) =>
-            toNumberSafe(n).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            });
+              const currencySymbol = fmtCurrency(0).replace(/[\d.,\s]/g, "");
+              const fmtNumber = (n: number) =>
+                toNumberSafe(n).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                });
 
-          /* =========================
-             6) UI (wrapped in bordered div with heading)
-          ========================= */
-          return (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
-              <div className="flex flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-                <PageBreadcrumb
-                  pageTitle="Referral Fee Recon"
-                  variant="page"
-                  align="left"
-                  className="mb-0 md:mb-4 text-center"
-                />
-                <DownloadButton
-                  onClick={handleDownloadExcel}
-                  disabled={isPreviewMode}
-                />
-              </div>
+              /* =========================
+                 6) UI (wrapped in bordered div with heading)
+              ========================= */
+              return (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+                  <div className="flex flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                    <PageBreadcrumb
+                      pageTitle="Referral Fee Recon"
+                      variant="page"
+                      align="left"
+                      className="mb-0 md:mb-4 text-center"
+                    />
+                    <DownloadButton
+                      onClick={handleDownloadExcel}
+                      disabled={isPreviewMode}
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* LEFT PANEL */}
-                {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* LEFT PANEL */}
+                    {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
                     <div className="text-base font-semibold text-slate-800 mb-4">
                       Sales Summary <span className="text-slate-500">({currencySymbol})</span>
                     </div>
@@ -1974,43 +2050,43 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     </div>
                   </div> */}
 
-                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                  <div className="text-base font-semibold text-slate-800 mb-2">
-                    Sales Summary <span className="text-slate-500">({currencySymbol})</span>
-                  </div>
+                    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                      <div className="text-base font-semibold text-slate-800 mb-2">
+                        Sales Summary <span className="text-slate-500">({currencySymbol})</span>
+                      </div>
 
-                  {/* LEFT headers */}
-                  {/* LEFT headers */}
-                  <div className="grid grid-cols-[180px_1fr_120px] items-center mb-2 text-[11px] text-slate-500 font-semibold">
-                    <div /> {/* label column */}
-                    <div /> {/* bar column */}
+                      {/* LEFT headers */}
+                      {/* LEFT headers */}
+                      <div className="grid grid-cols-[180px_1fr_120px] items-center mb-2 text-[11px] text-slate-500 font-semibold">
+                        <div /> {/* label column */}
+                        <div /> {/* bar column */}
 
-                    {/* single container for both headings (you control gap) */}
-                    <div className="flex justify-end gap-4 pr-2">
-                      <span>Net Sales</span>
-                      <span>% of Sales</span>
+                        {/* single container for both headings (you control gap) */}
+                        <div className="flex justify-end gap-4 pr-2">
+                          <span>Net Sales</span>
+                          <span>% of Sales</span>
+                        </div>
+                      </div>
+
+
+                      <div className="space-y-3">
+                        {leftList.map((x) => (
+                          <BarRow
+                            key={x.label}
+                            label={x.label}
+                            value={x.value}
+                            total={leftTotalForBars}
+                            color={x.color}
+                            deltaPct={x.pct}
+                            showDelta={false}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
 
-                  <div className="space-y-3">
-                    {leftList.map((x) => (
-                      <BarRow
-                        key={x.label}
-                        label={x.label}
-                        value={x.value}
-                        total={leftTotalForBars}
-                        color={x.color}
-                        deltaPct={x.pct}
-                        showDelta={false}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-
-                {/* RIGHT PANEL */}
-                {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                    {/* RIGHT PANEL */}
+                    {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
                     <div className="text-base font-semibold text-slate-800 mb-4">
                       Referral Fees Breakdown <span className="text-slate-500">(£)</span>
                     </div>
@@ -2033,160 +2109,161 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     </div>
                   </div> */}
 
-                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                  <div className="text-base font-semibold text-slate-800 mb-2">
-                    Referral Fees Breakdown <span className="text-slate-500">(£)</span>
-                  </div>
+                    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                      <div className="text-base font-semibold text-slate-800 mb-2">
+                        Referral Fees Breakdown <span className="text-slate-500">(£)</span>
+                      </div>
 
-                  {/* RIGHT headers */}
-                  {/* Header row */}
-                  <div className="grid grid-cols-[180px_1fr_170px] items-center mb-2 text-[11px] font-semibold text-slate-500">
-                    {/* Empty label column */}
-                    <div />
+                      {/* RIGHT headers */}
+                      {/* Header row */}
+                      <div className="grid grid-cols-[180px_1fr_170px] items-center mb-2 text-[11px] font-semibold text-slate-500">
+                        {/* Empty label column */}
+                        <div />
 
-                    {/* Empty bar column */}
-                    <div />
+                        {/* Empty bar column */}
+                        <div />
 
-                    {/* Single container for both headings */}
-                    <div className="flex justify-end gap-4 pr-2">
-                      <span>Fees Charged</span>
-                      <span>Delta</span>
+                        {/* Single container for both headings */}
+                        <div className="flex justify-end gap-4 pr-2">
+                          <span>Fees Charged</span>
+                          <span>Delta</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {rightList.map((x) => (
+                          <BarRow
+                            key={x.label}
+                            label={x.label}
+                            value={x.value}
+                            total={rightTotalForBars}
+                            color={x.color}
+                            deltaPct={x.pct}
+                            showDelta={true}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-3">
-                    {rightList.map((x) => (
-                      <BarRow
-                        key={x.label}
-                        label={x.label}
-                        value={x.value}
-                        total={rightTotalForBars}
-                        color={x.color}
-                        deltaPct={x.pct}
-                        showDelta={true}
-                      />
-                    ))}
                   </div>
                 </div>
+              );
+            })()}
+
+
+
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto mt-4">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                <PageBreadcrumb
+                  pageTitle="Product-wise breakdown"
+                  variant="page"
+                  align="left"
+                  className="mt-4 mb-0 md:mb-4 text-center"
+                />
+                {/* <DownloadButton onClick={handleDownloadExcel} /> */}
+              </div>
+
+              {/* <AiButton /> */}
+
+              <div className="[&_table]:w-full ">
+                <GroupedDataTable
+                  data={groupedSkuTableDisplay}
+                  rowClassName={(row) =>
+                    (row as any)._isTotal ? "bg-[#EFEFEF] font-semibold" : ""
+                  }
+                  baseColumns={[
+                    { key: "sno", header: "S.No.", width: "60px" },
+                    {
+                      key: "productName", header: "Product Name", width: "180px", headerClassName: "text-left",
+                      cellClassName: "text-left"
+                    },
+                    { key: "sku", header: "SKU", width: "110px" },
+                    { key: "units", header: "Units", width: "70px" },
+                    {
+                      key: "sales",
+                      header: `Net Sales (${currencySymbol})`,
+                      width: "110px",
+                      render: (_, v) => fmtMoneyNoSymbol(v),
+                    },
+                  ]}
+                  groupedColumns={[
+                    {
+                      groupHeader: "Referral Fees",
+                      columns: [
+                        {
+                          key: "ref_applicable",
+                          header: `Applicable (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                        {
+                          key: "ref_charged",
+                          header: `Charged (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                      ],
+                    },
+                    {
+                      groupHeader: "FBA Fees",
+                      columns: [
+                        {
+                          key: "fba_applicable",
+                          header: `Applicable (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                        {
+                          key: "fba_charged",
+                          header: `Charged (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                      ],
+                    },
+                    {
+                      groupHeader: "Other Fees",
+                      columns: [
+                        {
+                          key: "other_applicable",
+                          header: `Applicable (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                        {
+                          key: "other_charged",
+                          header: `Charged (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                      ],
+                    },
+                    {
+                      groupHeader: "Total Fees",
+                      columns: [
+                        {
+                          key: "total_applicable",
+                          header: `Applicable (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                        {
+                          key: "total_charged",
+                          header: `Charged (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                      ],
+                    },
+                  ]}
+                />
 
               </div>
             </div>
-          );
-        })()}
+          </>
+        </PreviewLockedSection>
+      )}
 
-
-
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto mt-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-            <PageBreadcrumb
-              pageTitle="Product-wise breakdown"
-              variant="page"
-              align="left"
-              className="mt-4 mb-0 md:mb-4 text-center"
-            />
-            {/* <DownloadButton onClick={handleDownloadExcel} /> */}
-          </div>
-
-          {/* <AiButton /> */}
-
-          <div className="[&_table]:w-full ">
-            <GroupedDataTable
-              data={groupedSkuTableDisplay}
-              rowClassName={(row) =>
-                (row as any)._isTotal ? "bg-[#EFEFEF] font-semibold" : ""
-              }
-              baseColumns={[
-                { key: "sno", header: "S.No.", width: "60px" },
-                {
-                  key: "productName", header: "Product Name", width: "180px", headerClassName: "text-left",
-                  cellClassName: "text-left"
-                },
-                { key: "sku", header: "SKU", width: "110px" },
-                { key: "units", header: "Units", width: "70px" },
-                {
-                  key: "sales",
-                  header: `Net Sales (${currencySymbol})`,
-                  width: "110px",
-                  render: (_, v) => fmtMoneyNoSymbol(v),
-                },
-              ]}
-              groupedColumns={[
-                {
-                  groupHeader: "Referral Fees",
-                  columns: [
-                    {
-                      key: "ref_applicable",
-                      header: `Applicable (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                    {
-                      key: "ref_charged",
-                      header: `Charged (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                  ],
-                },
-                {
-                  groupHeader: "FBA Fees",
-                  columns: [
-                    {
-                      key: "fba_applicable",
-                      header: `Applicable (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                    {
-                      key: "fba_charged",
-                      header: `Charged (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                  ],
-                },
-                {
-                  groupHeader: "Other Fees",
-                  columns: [
-                    {
-                      key: "other_applicable",
-                      header: `Applicable (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                    {
-                      key: "other_charged",
-                      header: `Charged (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                  ],
-                },
-                {
-                  groupHeader: "Total Fees",
-                  columns: [
-                    {
-                      key: "total_applicable",
-                      header: `Applicable (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                    {
-                      key: "total_charged",
-                      header: `Charged (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                  ],
-                },
-              ]}
-            />
-
-          </div>
-        </div>
-      </>
-    )
-  }
     </div >
   );
 }

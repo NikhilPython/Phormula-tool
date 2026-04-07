@@ -188,23 +188,33 @@ const SkuAnalysisSection: React.FC<Props> = ({
     }, [categorizedGrowth, activeTab, expandAllSkusOthers]);
 
     const renderGrowthCell = (growth: any) => {
-        if (growth == null) return "N/A";
+        const isObj = typeof growth === "object" && growth !== null && "value" in growth;
+        const rawVal = isObj ? growth.value : growth;
 
-        const isObj = typeof growth === "object" && "value" in growth;
-        const val = Number(isObj ? growth.value : growth);
-
-        if (!Number.isFinite(val)) return "N/A";
+        const val = Number.isFinite(Number(rawVal)) ? Number(rawVal) : 0;
 
         const sign = val > 0 ? "+" : "";
         const text = `${sign}${val.toFixed(2)}%`;
 
-        const category = isObj
-            ? growth.category
-            : val >= 5
-                ? "High Growth"
-                : val < 0
-                    ? "Negative Growth"
-                    : "Low Growth";
+        // ✅ NEW: handle zero case separately (NO arrow, NO color)
+        if (val === 0) {
+            return (
+                <span className="flex items-center justify-center w-full font-semibold text-[#414042]">
+                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-center">
+                        {text}
+                    </span>
+                </span>
+            );
+        }
+
+        const category =
+            isObj && growth?.category
+                ? growth.category
+                : val >= 5
+                    ? "High Growth"
+                    : val < 0
+                        ? "Negative Growth"
+                        : "Low Growth";
 
         if (category === "High Growth") {
             return (
@@ -212,7 +222,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                     <span className="w-4 flex justify-center shrink-0">
                         <FaArrowUp size={12} />
                     </span>
-                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
+                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-center">
                         {text}
                     </span>
                 </span>
@@ -225,7 +235,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                     <span className="w-4 flex justify-center shrink-0">
                         <FaArrowDown size={12} />
                     </span>
-                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
+                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-center">
                         {text}
                     </span>
                 </span>
@@ -241,7 +251,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         <FaArrowDown size={12} />
                     ) : null}
                 </span>
-                <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
+                <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-center">
                     {text}
                 </span>
             </span>
@@ -262,10 +272,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                     String(item.product_name).trim() === "0"
                         ? item.sku || "N/A"
                         : item.product_name,
-                sales_mix:
-                    item["Sales Mix (Month2)"] != null
-                        ? `${Number(item["Sales Mix (Month2)"]).toFixed(2)}%`
-                        : "N/A",
+                sales_mix: `${Number(item["Sales Mix (Month2)"] ?? 0).toFixed(2)}%`,
                 sales_mix_change: item["Sales Mix Change"],
                 unit_growth: item["Unit Growth"],
                 asp_growth: item["ASP Growth"],

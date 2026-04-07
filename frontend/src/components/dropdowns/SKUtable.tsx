@@ -402,6 +402,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
+  const isPreviewMode =
+    String(month).toUpperCase() === "NA" ||
+    String(year).toUpperCase() === "NA";
+
   // Token (memo once)
   const token = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -945,7 +949,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : `SKU-wise Profitability-Year'${yearShort}`;
 
   // Dummy table data
-  const dummyTableData: TableRow[] = useMemo(
+  const previewTableData: TableRow[] = useMemo(
     () => [
       {
         product_name: "Sample Product A",
@@ -1113,12 +1117,75 @@ const SKUtable: React.FC<SKUtableProps> = ({
   ]);
 
   /* --------- Fetch table data (AbortController to prevent race) --------- */
+  // useEffect(() => {
+  //   if (!countryName) return;
+
+  //   const ac = new AbortController();
+
+  //   (async () => {
+  //     setLoading(true);
+  //     setError(null);
+
+  //     try {
+  //       const url = buildSkuUrl();
+
+  //       const res = await fetch(url, {
+  //         method: "GET",
+  //         headers: token ? { Authorization: `Bearer ${token}` } : {},
+  //         cache: "no-store",
+  //         signal: ac.signal,
+  //       });
+
+  //       if (!res.ok) {
+  //         setNoDataFound(true);
+  //         setTableData([]);
+  //         return;
+  //       }
+
+  //       const data = (await res.json()) as unknown;
+
+  //       if (!Array.isArray(data) || data.length === 0) {
+  //         setNoDataFound(true);
+  //         setTableData([]);
+  //         return;
+  //       }
+
+  //       const normalized = normalizeRows(data);
+  //       setTableData(normalized);
+  //       setTotals(computeTotalsFromLastRow(normalized));
+  //       setNoDataFound(false);
+
+  //       // ✅ NEW: expose rows to parent
+  //       onRowsChange?.(normalized);
+
+  //     } catch (e: any) {
+  //       if (e?.name === "AbortError") return;
+  //       setNoDataFound(true);
+  //       setTableData([]);
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   })();
+
+  //   return () => ac.abort();
+  // }, [countryName, buildSkuUrl, token, dummyTableData]);
+
   useEffect(() => {
     if (!countryName) return;
 
     const ac = new AbortController();
 
     (async () => {
+      if (isPreviewMode) {
+        setLoading(false);
+        setError(null);
+        setNoDataFound(false);
+        setTableData(previewTableData);
+        setTotals(computeTotalsFromLastRow(previewTableData));
+        onRowsChange?.(previewTableData);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
@@ -1150,10 +1217,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         setTableData(normalized);
         setTotals(computeTotalsFromLastRow(normalized));
         setNoDataFound(false);
-
-        // ✅ NEW: expose rows to parent
         onRowsChange?.(normalized);
-
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setNoDataFound(true);
@@ -1164,7 +1228,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     })();
 
     return () => ac.abort();
-  }, [countryName, buildSkuUrl, token, dummyTableData]);
+  }, [countryName, buildSkuUrl, token, isPreviewMode, previewTableData, onRowsChange]);
 
   useEffect(() => {
     if (!tableData || tableData.length === 0) return;
@@ -1301,7 +1365,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
             <div className="min-w-full">
               <GroupedCollapsibleTable<TableRow>
-                rows={noDataFound ? [] : displayRows}
+                rows={isPreviewMode ? displayRows : noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
@@ -1498,7 +1562,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   valueCols: 2,
                 }}
               />
-              {noDataFound && (
+              {!isPreviewMode && noDataFound && (
                 <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
                   No Data Available for selected period
                 </div>

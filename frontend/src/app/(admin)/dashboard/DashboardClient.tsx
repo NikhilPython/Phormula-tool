@@ -141,6 +141,30 @@ type FetchLiveBiPayloadArgs = {
     generateInsights?: boolean;
 };
 
+type ProductwiseMoneyKey =
+    | "asp"
+    | "net_sales"
+    | "cogs"
+    | "fba_fees"
+    | "selling_fees"
+    | "ads_spend"
+    | "cm2_profit"
+    | "tax"
+    | "credits"
+    | "tax_and_credits"
+    | "cm1_profit_per_unit"
+    | "cm2_profit_per_unit"
+    | "profit"
+    | "platform_fee"
+    | "platform_fee_inventory_storage"
+    | "lost_total"
+    | "other"
+    | "product_spend"
+    | "brand_spend"
+    | "dealsvouchar_ads"
+    | "platformfeenew";
+
+
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -3199,6 +3223,32 @@ export default function DashboardPage() {
         return mapped;
     }, [data]);
 
+
+    const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
+        "asp",
+        "net_sales",
+        "cogs",
+        "fba_fees",
+        "selling_fees",
+        "ads_spend",
+        "cm2_profit",
+        "tax",
+        "credits",
+        "tax_and_credits",
+        "cm1_profit_per_unit",
+        "cm2_profit_per_unit",
+        "profit",
+        "platform_fee",
+        "platform_fee_inventory_storage",
+        "lost_total",
+        "other",
+        "product_spend",
+        "brand_spend",
+        "dealsvouchar_ads",
+        "platformfeenew",
+    ];
+
+
     const convertProductwiseRowToDisplay = useCallback(
         (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
             if (platform !== "global") return row;
@@ -3335,53 +3385,6 @@ export default function DashboardPage() {
         [values]
     );
 
-
-    const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
-        "asp",
-        "net_sales",
-        "cogs",
-        "fba_fees",
-        "selling_fees",
-        "ads_spend",
-        "cm2_profit",
-        "tax",
-        "credits",
-        "tax_and_credits",
-        "cm1_profit_per_unit",
-        "cm2_profit_per_unit",
-        "profit",
-        "platform_fee",
-        "platform_fee_inventory_storage",
-        "lost_total",
-        "other",
-        "product_spend",
-        "brand_spend",
-        "dealsvouchar_ads",
-        "platformfeenew",
-    ];
-
-    type ProductwiseMoneyKey =
-        | "asp"
-        | "net_sales"
-        | "cogs"
-        | "fba_fees"
-        | "selling_fees"
-        | "ads_spend"
-        | "cm2_profit"
-        | "tax"
-        | "credits"
-        | "tax_and_credits"
-        | "cm1_profit_per_unit"
-        | "cm2_profit_per_unit"
-        | "profit"
-        | "platform_fee"
-        | "platform_fee_inventory_storage"
-        | "lost_total"
-        | "other"
-        | "product_spend"
-        | "brand_spend"
-        | "dealsvouchar_ads"
-        | "platformfeenew";
 
     const formatAdType = (adType?: string | null) => {
         if (!adType) return "-";
@@ -4665,64 +4668,7 @@ Use tighter replenishment rules on slow-moving items to avoid inventory drag.`,
                 },
             ],
 
-            other_skus: [
-                {
-                    product_name: "Dummy Product 4",
-                    sku: "DUMMY-SKU-004",
-                    quantity_month1: 0,
-                    quantity_month2: 0,
-                    asp_month1: 0,
-                    asp_month2: 0,
-                    product_sales_month1: 0,
-                    product_sales_month2: 0,
-                    net_sales_month1: 0,
-                    net_sales_month2: 0,
-                    sales_mix_month1: 0,
-                    sales_mix_month2: 0,
-                    unit_wise_profitability_month1: 0,
-                    unit_wise_profitability_month2: 0,
-                    profit_month1: 0,
-                    profit_month2: 0,
-                    profit_percentage_month1: 0,
-                    profit_percentage_month2: 0,
-                    "Sales Mix (Month2)": 0,
-                    "Unit Growth": { category: "growth", value: 0 },
-                    "ASP Growth": { category: "growth", value: 0 },
-                    "Sales Growth": { category: "growth", value: 0 },
-                    "Net Sales Growth": { category: "growth", value: 0 },
-                    "Sales Mix Change": { category: "growth", value: 0 },
-                    "Profit Per Unit": { category: "growth", value: 0 },
-                    "CM1 Profit Impact": { category: "growth", value: 0 },
-                },
-                {
-                    product_name: "Dummy Product 5",
-                    sku: "DUMMY-SKU-005",
-                    quantity_month1: 0,
-                    quantity_month2: 0,
-                    asp_month1: 0,
-                    asp_month2: 0,
-                    product_sales_month1: 0,
-                    product_sales_month2: 0,
-                    net_sales_month1: 0,
-                    net_sales_month2: 0,
-                    sales_mix_month1: 0,
-                    sales_mix_month2: 0,
-                    unit_wise_profitability_month1: 0,
-                    unit_wise_profitability_month2: 0,
-                    profit_month1: 0,
-                    profit_month2: 0,
-                    profit_percentage_month1: 0,
-                    profit_percentage_month2: 0,
-                    "Sales Mix (Month2)": 0,
-                    "Unit Growth": { category: "growth", value: 0 },
-                    "ASP Growth": { category: "growth", value: 0 },
-                    "Sales Growth": { category: "growth", value: 0 },
-                    "Net Sales Growth": { category: "growth", value: 0 },
-                    "Sales Mix Change": { category: "growth", value: 0 },
-                    "Profit Per Unit": { category: "growth", value: 0 },
-                    "CM1 Profit Impact": { category: "growth", value: 0 },
-                },
-            ],
+            other_skus: [],
 
             top_80_total: {
                 product_name: "Total",
