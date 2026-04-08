@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
+from langchain_openai import ChatOpenAI
 from flask import current_app
 from flask_mail import Message
-
+from app.ai_agent.state import AgentState
 from app import mail
 from app.models.user_models import User
 
@@ -103,3 +103,131 @@ def send_agent_email(
         "recipient": to_email,
         "subject": subject
     }
+
+def build_ai_email_summary(state: AgentState) -> str:
+    from langchain_openai import ChatOpenAI
+
+    llm = ChatOpenAI(model="gpt-4.1", temperature=0.4)
+
+    metric = state.get("current_metrics", {})
+    comparison = state.get("comparison", {})
+    per_sku = metric.get("per_sku", [])
+
+    trend_3 = state.get("trend_3", [])
+    trend_6 = state.get("trend_6", [])
+
+    country = state.get("country", "").upper()
+    period = metric.get("period_label", "selected period")
+
+    # -------------------------------
+    # 🔥 FIX: USE PRIMARY METRIC CORRECTLY
+    # -------------------------------
+    metric_name = metric.get("metric")
+
+    total_value = sum(float(x.get("__metric__", 0)) for x in per_sku)
+
+    # Only populate if actually relevant
+    net_sales = total_value if metric_name in ["net_sales", "sales"] else None
+    profit = total_value if metric_name in ["profit"] else None
+    units = total_value if metric_name in ["units", "quantity", "total_quantity"] else None
+
+    # other metrics (already aggregated in metric node)
+    advertising = float(metric.get("advertising_total", 0) or 0)
+    platform_fee = float(metric.get("platform_fee", 0) or 0)
+    cm2 = float(metric.get("cm2_profit", 0) or 0)
+    acos = float(metric.get("acos", 0) or 0)
+
+    # -------------------------------
+    # TOP 5 SKUs
+    # -------------------------------
+    top_skus = sorted(
+        per_sku,
+        key=lambda x: float(x.get("__metric__", 0)),
+        reverse=True
+    )[:5]
+
+    # -------------------------------
+    # TOP 5 MOVEMENT
+    # -------------------------------
+    entered = []
+    dropped = []
+
+    if comparison:
+        prev_skus = comparison.get("right", {}).get("per_sku", [])
+
+        prev_top = sorted(
+            prev_skus,
+            key=lambda x: float(x.get("__metric__", 0)),
+            reverse=True
+        )[:5]
+
+        prev_names = set(x.get("product_name") for x in prev_top)
+        curr_names = set(x.get("product_name") for x in top_skus)
+
+        entered = list(curr_names - prev_names)
+        dropped = list(prev_names - curr_names)
+
+    # -------------------------------
+    # 🔥 SAFE DATA PAYLOAD
+    # -------------------------------
+    data_payload = {
+        "period": period,
+        "country": country,
+        "metric_name": metric_name,
+        "metric_total": total_value,
+        "net_sales": net_sales,
+        "profit": profit,
+        "units": units,
+        "cm2_profit": cm2,
+        "advertising": advertising,
+        "platform_fee": platform_fee,
+        "acos": acos,
+        "comparison": comparison,
+        "top_skus": top_skus,
+        "entered_top_5": entered,
+        "dropped_top_5": dropped,
+        "trend_3_months": trend_3,
+        "trend_6_months": trend_6,
+    }
+
+    # -------------------------------
+    # 🔥 STRONG + CORRECT PROMPT
+    # -------------------------------
+    prompt = f"""
+You are a senior ecommerce business analyst.
+
+Write a professional business summary for Amazon UK.
+
+CRITICAL RULES:
+- ALWAYS include the primary metric and its value
+- If net sales / profit / units are available, include them
+- NEVER say "data not available"
+- All provided data is correct and MUST be used
+- Combine numbers + explanation in the same sentence
+- Focus on business performance FIRST, then SKU insights
+- Highlight change vs previous period (if available)
+- Use 3-month and 6-month trends if present
+- Mention top SKUs with their actual values
+- Mention if any SKU entered or dropped from top 5
+- Keep it concise and executive-level
+- NO recommendations
+
+STYLE:
+- Business report tone
+- Short paragraphs
+- Numbers must appear naturally in sentences
+- Avoid generic or vague statements
+
+DATA:
+{data_payload}
+"""
+
+    response = llm.invoke([
+        {"role": "system", "content": "You are a sharp ecommerce financial analyst."},
+        {"role": "user", "content": prompt},
+    ])
+
+    return response.content
+
+
+

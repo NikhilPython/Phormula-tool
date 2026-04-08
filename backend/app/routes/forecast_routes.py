@@ -20,6 +20,10 @@ import numpy as np
 import re
 from decimal import Decimal
 from sqlalchemy.orm import sessionmaker
+import tempfile
+from pathlib import Path
+from io import BytesIO
+from sqlalchemy.exc import IntegrityError
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -28,10 +32,6 @@ db_url = os.getenv('DATABASE_URL')
 db_url1= os.getenv('DATABASE_ADMIN_URL')
 forecast_bp = Blueprint('forecast_bp', __name__)
 
-
-
-from io import BytesIO
-from sqlalchemy.exc import IntegrityError
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -44,8 +44,7 @@ def send_db_file(stored: StoredFile, download_name: str):
         download_name=download_name
     )
 
-import tempfile
-from pathlib import Path
+
 
 def ingest_xlsx_path_to_db(*, path: str, user_id, country, filename, kind, month=None, year=None, content_type=XLSX_MIME):
     """Read XLSX from a filesystem path (anywhere), store into DB, then delete it."""
