@@ -1,6 +1,8 @@
 from flask_mail import Message
 from app import mail
 import os
+import smtplib
+from email.message import EmailMessage
 from sqlalchemy import create_engine
 import re
 from sqlalchemy import text
@@ -963,7 +965,7 @@ def send_live_bi_email(
     # ---------------------------
     deep_link_html = ""
     if deep_link_token:
-        dashboard_url = f"https://app.phormula.io/live-bi?token={deep_link_token}&country={country}"
+        dashboard_url = f"https://phormula.io/live-bi?token={deep_link_token}&country={country}"
         deep_link_html = f"""
         <p style="text-align:center; margin-top:24px;">
           <a href="{dashboard_url}"
@@ -1196,4 +1198,132 @@ def get_user_email_by_id(user_id: int) -> str | None:
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email for id={user_id}: {e}")
         return None
+
+def send_email_with_attachment(
+    *,
+    to_email: str,
+    subject: str,
+    body: str,
+    attachment_bytes: bytes,
+    attachment_filename: str,
+    mime_type: str = "application/octet-stream",
+):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f'{os.getenv("MAIL_DEFAULT_SENDER_NAME", "Phormula Care")} <{os.getenv("MAIL_USERNAME")}>'
+    msg["To"] = to_email
+
+    # ✅ Plain fallback
+    msg.set_content(body)
+
+    html_body = f"""
+<html>
+<body style="font-family:Arial, sans-serif; background:#f4f4f4; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:#ffffff; padding:30px; border-radius:10px; border:1px solid #ddd;">
+
+    <!-- Header -->
+    <div style="text-align:center; margin-bottom:20px;">
+      <h2 style="color:#37455F; margin:0;">Phormula</h2>
+      <p style="color:#777; font-size:13px;">Amazon Monthly Report</p>
+    </div>
+
+    <p style="font-size:14px; color:#333;">Hi,</p>
+
+    <!-- MAIN MESSAGE -->
+    <p style="font-size:14px; color:#555; line-height:1.6;">
+      Your <strong>Amazon Monthly Transactions (Raw Data)</strong> file is ready.
+    </p>
+
+    <!-- Attachment Highlight -->
+    <div style="
+        background:#F3F4F6;
+        border-left:4px solid #37455F;
+        padding:12px;
+        margin:18px 0;
+        font-size:14px;
+    ">
+      📊 <strong>{attachment_filename}</strong> is attached to this email.
+    </div>
+
+    <!-- IMPORTANT CONTEXT -->
+    <div style="
+        background:#FFF7E6;
+        border:1px solid #F5D48A;
+        padding:14px;
+        border-radius:8px;
+        margin-bottom:18px;
+        font-size:14px;
+        line-height:1.6;
+    ">
+      ⚠️ This file contains <strong>raw Amazon transaction data</strong>.<br/><br/>
+      To view <strong>SKU-level profitability insights, margins, and performance analysis</strong>, please log in to the Phormula dashboard.
+    </div>
+
+    <!-- CTA BUTTON -->
+    <div style="text-align:center; margin:24px 0;">
+      <a href="https://phormula.io"
+         style="
+           display:inline-block;
+           background:#37455F;
+           color:#ffffff;
+           padding:12px 24px;
+           text-decoration:none;
+           border-radius:8px;
+           font-size:14px;
+           font-weight:600;
+         ">
+        Open Phormula Dashboard
+      </a>
+    </div>
+
+    <p style="font-size:13px; color:#777;">
+      Inside Phormula, you can:
+    </p>
+
+    <ul style="font-size:13px; color:#555; line-height:1.6;">
+      <li>View SKU-level profitability</li>
+      <li>Analyze margins (CM1, Net Profit)</li>
+      <li>Track performance trends</li>
+      <li>Get actionable insights</li>
+    </ul>
+
+    <p style="font-size:13px; color:#777; margin-top:24px;">
+      Need help? Contact us at 
+      <a href="mailto:care@phormula.io">care@phormula.io</a>
+    </p>
+
+    <p style="font-size:13px; color:#777;">
+      Regards,<br/>
+      <strong>Phormula Team</strong>
+    </p>
+
+  </div>
+</body>
+</html>
+"""
+
+    msg.add_alternative(html_body, subtype="html")
+
+    # Attachment
+    maintype, subtype = mime_type.split("/", 1)
+    msg.add_attachment(
+        attachment_bytes,
+        maintype=maintype,
+        subtype=subtype,
+        filename=attachment_filename,
+    )
+
+    # SMTP send
+    smtp_host = os.getenv("MAIL_SERVER")
+    smtp_port = int(os.getenv("MAIL_PORT", "587"))
+    smtp_user = os.getenv("MAIL_USERNAME")
+    smtp_pass = os.getenv("MAIL_PASSWORD")
+    use_tls = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        if use_tls:
+            server.starttls()
+        if smtp_user and smtp_pass:
+            server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
 
