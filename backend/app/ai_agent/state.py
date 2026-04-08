@@ -51,6 +51,8 @@ class AgentState(TypedDict, total=False):
     previous_metrics: Dict[str, Any]
     comparison: Dict[str, Any]
     sku_analysis: List[Dict[str, Any]]
+    product_query: Optional[str]
+    product_queries: Optional[List[str]]
     advice: List[str]
     email_requested: bool
     email_result: Dict[str, Any]

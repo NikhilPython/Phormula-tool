@@ -6,17 +6,7 @@ from typing import Any, Dict, List, Tuple
 import re
 import pandas as pd
 from sqlalchemy.engine import Engine
-
-from app.ai_agent.db import (
-    MonthKey,
-    fetch_non_total_rows,
-    fetch_period_dfs,
-    fetch_total_row,
-    fetch_nse_month_df,
-    latest_available_month,
-    MetricDef, get_metric_def
-
-)
+from app.ai_agent.db import (MonthKey, fetch_non_total_rows, fetch_period_dfs, fetch_total_row, fetch_nse_month_df, latest_available_month, MetricDef, get_metric_def)
 
 
 
@@ -639,7 +629,6 @@ def parse_comparison(text: str):
         }
 
     return None
-
 
 # -------------------------------
 # SINGLE PERIOD

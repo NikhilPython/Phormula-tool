@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 import pandas as pd
 from app.utils.agent_utils import build_plan_langgraph, phormula_engine, amazon_engine
-from app.ai_agent.email_service import build_summary_html, send_agent_email
+from app.ai_agent.email_service import build_summary_html, send_agent_email, build_ai_email_summary
 from app.ai_agent.db import get_engine,latest_available_month
 from app.ai_agent.formula_engine import parse_period,get_metric_for_month,get_metric_for_period,get_metric_last_n_months,compare_periods,pick_top_skus
 from app.ai_agent.prompts import ADVISOR_SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT
@@ -122,6 +122,9 @@ ALIAS_MAP = {
     "cm2": "cm2_profit",
     "cm2 margin": "cm2_margins",
 
+    "cm1 profit":"profit",
+    "profit":"profit",
+
     "profit %": "profit_margin",
     "margin": "profit_margin",
 
@@ -176,74 +179,6 @@ ALIAS_MAP = {
     "refund": "refunds",
 }
 
-def build_ai_email_summary(state: AgentState) -> str:
-    from langchain_openai import ChatOpenAI
-
-    llm = ChatOpenAI(model="gpt-4.1", temperature=0.4)
-
-    metric = state.get("current_metrics", {})
-    comparison = state.get("comparison", {})
-    per_sku = metric.get("per_sku", [])
-
-    trend_3 = state.get("trend_3", [])
-    trend_6 = state.get("trend_6", [])
-
-    country = state.get("country", "").upper()
-    period = metric.get("period_label", "selected period")
-
-    # top 5 SKUs
-    top_skus = sorted(
-        per_sku,
-        key=lambda x: float(x.get("__metric__", 0)),
-        reverse=True
-    )[:5]
-
-    # prepare structured payload
-    data_payload = {
-        "period": period,
-        "country": country,
-        "net_sales": metric.get("net_sales"),
-        "profit": metric.get("profit"),
-        "cm2_profit": metric.get("cm2_profit"),
-        "units": metric.get("total_quantity"),
-        "advertising": metric.get("advertising_total"),
-        "platform_fee": metric.get("platform_fee"),
-        "acos": metric.get("acos"),
-        "comparison": comparison,
-        "top_skus": top_skus,
-        "trend_3_months": trend_3,
-        "trend_6_months": trend_6,
-    }
-
-    prompt = f"""
-You are a senior ecommerce business analyst.
-
-Write a sharp, professional business summary for Amazon UK.
-
-IMPORTANT RULES:
-- Do NOT list raw numbers mechanically
-- Explain performance clearly and concisely
-- Use comparison (if available)
-- Use historical trends (3-month and 6-month)
-- Highlight if performance is improving, declining, or stable
-- Mention top products and SKU movement
-- Keep it executive-level (clear, insightful, not long)
-- NO recommendations
-- NO bullet points unless necessary
-- Write like a business report, not a chatbot
-
-DATA:
-{data_payload}
-"""
-
-    response = llm.invoke([
-        {"role": "system", "content": "You are a sharp ecommerce financial analyst."},
-        {"role": "user", "content": prompt},
-    ])
-
-    return response.content
-
-
 def resolve_metric_from_query(query: str, llm_metric: str = None) -> str:
     q = query.lower()
 
@@ -281,6 +216,13 @@ def find_best_product_match(query: str, rows: list) -> str | None:
             return p
 
     return None
+
+
+def extract_products_from_query(query: str):
+    # Keep planner lightweight. Product detection should happen in metrics_node
+    # using actual DB product names, not regex guesses.
+    return []
+
 
 def planner_node(state: AgentState) -> AgentState:
     history = state.get("chat_history", [])
@@ -362,7 +304,7 @@ def planner_node(state: AgentState) -> AgentState:
         return state
 
     # -------------------------------
-    # 🔥 PLANNER TRIGGER (FIX)
+    # PLANNER TRIGGER
     # -------------------------------
     if any(trigger in query_l for trigger in PLANNER_TRIGGERS):
         state["intent"] = "pricing_planner"
@@ -408,6 +350,10 @@ def planner_node(state: AgentState) -> AgentState:
 
     result = _planner.invoke(messages)
 
+    print("\n================= 🧠 PLANNER DEBUG =================\n")
+    print("User Query:", user_query)
+    print("Planner Raw Output:", result)
+
     intent = (result.intent or "chat").strip().lower()
 
     if intent == "period_comparison":
@@ -450,6 +396,16 @@ def planner_node(state: AgentState) -> AgentState:
     state["email_requested"] = bool(hard_email_requested or result.email_requested or intent == "email")
     state["clarification_question"] = getattr(result, "clarification_question", None)
 
+    # -------------------------------
+    # 🔥 PRODUCT EXTRACTION (SAFE ADD)
+    # -------------------------------
+    state["product_queries"] = extract_products_from_query(user_query)
+
+    print("🧠 Extracted Products:", state["product_queries"])
+
+    # -------------------------------
+    # PERIOD PARSING
+    # -------------------------------
     if intent in {
         "metric_qa", "comparison", "report", "email",
         "top_skus", "loss_making_skus", "advice"
@@ -461,21 +417,40 @@ def planner_node(state: AgentState) -> AgentState:
     else:
         state["period_parsed"] = {"type": "none"}
 
+    # -------------------------------
+    # DATA MODE
+    # -------------------------------
+    # Only enable raw-data mode for explicit export/raw-data asks.
+    # Do not treat "breakdown" alone as raw-data mode, because users often mean
+    # analytical breakdown, not CSV/raw table output.
     if intent in {"metric_qa", "comparison", "report", "email"} and any(word in query_l for word in [
-        "breakdown", "productwise", "product wise", "all columns", "raw data", "full data", "export"
-    ]):
+            "productwise", "product wise", "all columns", "raw data", "full data", "export"
+        ]):
+    
         state["data_mode"] = True
     else:
         state["data_mode"] = False
 
     state["planner_payload"] = None
 
+    # -------------------------------
+    # CLARIFICATION
+    # -------------------------------
     if intent in {"metric_qa", "comparison", "report", "email"} and not state.get("metric_name"):
         state["intent"] = "clarify"
         state["clarification_question"] = "Which metric would you like me to use?"
         state["email_requested"] = False
         state["period_parsed"] = {"type": "none"}
         state["data_mode"] = False
+
+    print("\n🧠 FINAL PLANNER STATE:")
+    print({
+        "intent": state.get("intent"),
+        "metric_name": state.get("metric_name"),
+        "needs_sku": state.get("needs_sku"),
+        "products": state.get("product_queries"),
+        "period_parsed": state.get("period_parsed"),
+    })
 
     return state
 
@@ -560,14 +535,25 @@ def fetch_node(state: AgentState) -> AgentState:
     state["engine"] = engine
     state["period_payload"] = period_payload
 
-    return state
+    print("\n📦 FETCH OUTPUT STATE:")
+    print({
+        "period_payload": state.get("period_payload"),
+    })
 
+    return state
 
 
 def metrics_node(state: AgentState) -> AgentState:
     print("\n================= 🔍 NSE METRICS NODE =================\n")
 
-    # 🚨 DATA MODE BYPASS (NEW)
+    print("\n📊 FULL STATE BEFORE METRICS:")
+    print({
+        "metric_name": state.get("metric_name"),
+        "needs_sku": state.get("needs_sku"),
+        "period_payload": state.get("period_payload"),
+    })
+
+    # 🚨 DATA MODE BYPASS (UNCHANGED)
     if state.get("data_mode"):
         print("🟢 DATA MODE ACTIVATED")
 
@@ -593,14 +579,12 @@ def metrics_node(state: AgentState) -> AgentState:
             raise ValueError("Data mode supports single month only")
 
         df = fetch_non_total_rows(df)
-
-        # store raw data
         state["raw_df"] = df.to_dict(orient="records")
 
         return state
 
     # -------------------------------
-    # NORMAL METRIC MODE (UNCHANGED)
+    # NORMAL METRIC MODE
     # -------------------------------
     engine = state.get("engine")
     if engine is None:
@@ -617,6 +601,9 @@ def metrics_node(state: AgentState) -> AgentState:
     print("📊 payload:", payload)
 
     try:
+        # -------------------------------
+        # LATEST MONTH
+        # -------------------------------
         if ptype == "latest_month":
             latest = latest_available_month(engine, user_id, country)
 
@@ -631,6 +618,9 @@ def metrics_node(state: AgentState) -> AgentState:
 
             state["current_metrics"] = result
 
+        # -------------------------------
+        # SINGLE
+        # -------------------------------
         elif ptype == "single":
             result = get_metric_for_month(
                 engine=engine,
@@ -643,6 +633,9 @@ def metrics_node(state: AgentState) -> AgentState:
 
             state["current_metrics"] = result
 
+        # -------------------------------
+        # RANGE
+        # -------------------------------
         elif ptype == "range":
             result = get_metric_for_period(
                 engine=engine,
@@ -657,22 +650,110 @@ def metrics_node(state: AgentState) -> AgentState:
 
             state["current_metrics"] = result
 
+        # -------------------------------
+        # 🔥 LAST N MONTHS (FIXED)
+        # -------------------------------
         elif ptype == "last_n_months":
             n = payload["n"]
+            user_query = state.get("user_query", "")
 
-            result = get_metric_last_n_months(
-                engine=engine,
-                user_id=user_id,
-                country=country,
-                metric_name=metric_name,
-                n=n,
-                offset=0,
-            )
+            print("\n🔥 LAST N MONTHS WITH PRODUCT MATCHING")
+            print("User Query:", user_query)
 
-            state["current_metrics"] = result
-            state["comparison"] = None  # 🔥 IMPORTANT: disable comparison
+            latest = latest_available_month(engine, user_id, country)
+
+            months = []
+            y, m = latest.year, latest.month
+
+            for _ in range(n):
+                months.append((y, m))
+                if m == 1:
+                    y -= 1
+                    m = 12
+                else:
+                    m -= 1
+
+            months.reverse()
+
+            # 🔥 NEW STRUCTURE
+            per_product_series = {}
+            matched_products = []
+
+            for y, m in months:
+                result_month = get_metric_for_month(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    metric_name=metric_name,
+                    month=m,
+                    year=y,
+                )
+
+                rows = result_month.get("per_sku", [])
+
+                # 🔍 PRODUCT DETECTION (same logic, untouched)
+                if rows and not matched_products:
+                    all_products = [
+                        str(r.get("product_name", "")).strip().lower()
+                        for r in rows
+                        if r.get("product_name")
+                    ]
+
+                    query_l = user_query.lower()
+
+                    for p in sorted(set(all_products), key=len, reverse=True):
+                        if p:
+                            if re.search(rf"\b{re.escape(p)}\b", query_l):
+                                matched_products.append(p)
+
+                    if not matched_products:
+                        match = find_best_product_match(user_query, rows)
+                        if match:
+                            matched_products.append(match)
+
+                    print("🔍 Matched Products:", matched_products)
+
+                # 🔥 INITIALIZE SERIES
+                for mp in matched_products:
+                    if mp not in per_product_series:
+                        per_product_series[mp] = []
+
+                # 🔥 PER PRODUCT AGGREGATION (THIS IS THE KEY CHANGE)
+                if matched_products:
+                    for mp in matched_products:
+                        value = sum(
+                            float(r.get("__metric__", 0.0))
+                            for r in rows
+                            if str(r.get("product_name", "")).strip().lower() == mp
+                        )
+
+                        per_product_series[mp].append({
+                            "period_label": f"{m:02d}-{y}",
+                            "__metric__": value
+                        })
+                else:
+                    total_val = result_month.get("total", 0)
+                    per_product_series.setdefault("total", []).append({
+                        "period_label": f"{m:02d}-{y}",
+                        "__metric__": total_val
+                    })
+
+            print("\n📊 FINAL PER PRODUCT SERIES:")
+            for k, v in per_product_series.items():
+                print(k, v[:2])
+
+            state["current_metrics"] = {
+                "metric": metric_name,
+                "per_product_series": per_product_series,
+                "products": matched_products,
+            }
+
+            state["comparison"] = None
             return state
 
+        # -------------------------------
+        # COMPARISON
+        # -------------------------------
         elif ptype == "comparison":
             p1 = payload["p1"]
             p2 = payload["p2"]
@@ -720,6 +801,10 @@ def metrics_node(state: AgentState) -> AgentState:
         else:
             raise ValueError("Unsupported payload type")
 
+        print("\n📊 METRICS RESULT:")
+        print("Keys:", list(state["current_metrics"].keys()))
+        print("Sample:", str(state["current_metrics"])[:500])
+
         if state.get("needs_sku"):
             state["sku_analysis"] = pick_top_skus(state["current_metrics"], n=10)
         else:
@@ -761,13 +846,14 @@ def email_node(state: AgentState) -> AgentState:
     if not state.get("email_requested"):
         return state
 
-    # 🟢 DATA MODE EMAIL (UNCHANGED)
+    # -------------------------------
+    # 🟢 DATA MODE EMAIL
+    # -------------------------------
     if state.get("data_mode"):
         import pandas as pd
         import tempfile
 
         df = pd.DataFrame(state.get("raw_df", []))
-
         metric = state.get("metric_name", "tax")
 
         METRIC_COLUMN_GROUPS = {
@@ -809,7 +895,6 @@ def email_node(state: AgentState) -> AgentState:
 
         columns = METRIC_COLUMN_GROUPS.get(metric, df.columns.tolist())
         columns = [c for c in columns if c in df.columns]
-
         df = df[columns]
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
@@ -825,29 +910,46 @@ def email_node(state: AgentState) -> AgentState:
         return state
 
     # -------------------------------
-    # 🔥 AI EMAIL (UPDATED)
+    # COMMON SETUP
     # -------------------------------
     user = User.query.filter_by(id=state["user_id"]).first()
-
     current_metrics = state.get("current_metrics", {})
     period_label = current_metrics.get("period_label", "selected period")
 
     subject = f"Phormula AI Summary - {state.get('country', 'uk').upper()} - {period_label}"
 
-    # 🔥 NEW: AI-generated summary
-    summary_text = build_ai_email_summary(state)
+    # -------------------------------
+    # 🔥 AI EMAIL (preferred path)
+    # -------------------------------
+    if state.get("use_ai_email", True):
+        summary_text = build_ai_email_summary(state)
+        safe_summary = summary_text.replace("\n", "<br>")
 
-    safe_summary = summary_text.replace("\n", "<br>")
+        html = f"""
+        <p>Hi {(user.name if user else "there")},</p>
+        <p>{safe_summary}</p>
+        <br>
+        <p>— Phormula AI</p>
+        """
 
-    html = f"""
-    <p>Hi {(user.name if user else "there")},</p>
+    # -------------------------------
+    # 🟡 NORMAL EMAIL (fallback)
+    # -------------------------------
+    else:
+        html = build_summary_html(
+            user_name=(user.name if user else "there") or "there",
+            title="Phormula AI Business Summary",
+            period_label=period_label,
+            metric_name=current_metrics.get("metric", "profit"),
+            total=float(current_metrics.get("total", 0.0)),
+            comparison=state.get("comparison"),
+            top_skus=state.get("sku_analysis", []),
+            advice=state.get("advice", []),
+        )
 
-    <p>{safe_summary}</p>
-
-    <br>
-    <p>— Phormula AI</p>
-    """
-
+    # -------------------------------
+    # SEND EMAIL (single exit point)
+    # -------------------------------
     state["email_result"] = send_agent_email(
         user_id=state["user_id"],
         subject=subject,
@@ -856,34 +958,6 @@ def email_node(state: AgentState) -> AgentState:
 
     return state
 
-    # -------------------------------
-    # NORMAL EMAIL (UNCHANGED)
-    # -------------------------------
-    user = User.query.filter_by(id=state["user_id"]).first()
-
-    current_metrics = state.get("current_metrics", {})
-    period_label = current_metrics.get("period_label", "selected period")
-
-    subject = f"Phormula AI Summary - {state.get('country', 'uk').upper()} - {period_label}"
-
-    html = build_summary_html(
-        user_name=(user.name if user else "there") or "there",
-        title="Phormula AI Business Summary",
-        period_label=period_label,
-        metric_name=current_metrics.get("metric", "profit"),
-        total=float(current_metrics.get("total", 0.0)),
-        comparison=state.get("comparison"),
-        top_skus=state.get("sku_analysis", []),
-        advice=state.get("advice", []),
-    )
-
-    state["email_result"] = send_agent_email(
-        user_id=state["user_id"],
-        subject=subject,
-        html_body=html
-    )
-
-    return state
 
 def planner_agent_node(state: AgentState) -> AgentState:
     try:
@@ -908,9 +982,14 @@ def planner_agent_node(state: AgentState) -> AgentState:
         return state
 
 
-
 def final_node(state: AgentState) -> AgentState:
     print("\n================= 🔍 FINAL NODE START =================\n")
+
+    print("\n🧾 FINAL NODE INPUT:")
+    print({
+        "intent": state.get("intent"),
+        "metric_keys": list(state.get("current_metrics", {}).keys()),
+    })
 
     try:
         # EMAIL RESPONSE
@@ -996,40 +1075,53 @@ def final_node(state: AgentState) -> AgentState:
         country = state.get("country", "").lower()
         metric_name = metric.get("metric")
 
-        # 🔥 TREND ANALYSIS (WITH FORMATTING)
-        if metric.get("per_period"):
-            series = metric["per_period"]
+       
+        # 🔥 TREND ANALYSIS (FIXED)
+        if metric.get("per_product_series"):
+            series_map = metric["per_product_series"]
+            metric_name = metric.get("metric")
 
-            if len(series) >= 2:
+            print("\n📈 MULTI PRODUCT TREND MODE")
+            print("Products:", list(series_map.keys()))
+
+            lines = []
+
+            for product, series in series_map.items():
+                lines.append(f"\n🔹 {product.title()}")
+
                 values = [float(x.get("__metric__", 0)) for x in series]
                 labels = [x.get("period_label") for x in series]
 
-                change = values[-1] - values[0]
-                pct = ((change / values[0]) * 100) if values[0] else 0
-
-                trend = "increased" if change > 0 else "decreased"
-
-                lines = [
-                    f"Your {metric_name} has {trend} over the last {len(series)} months.",
-                    ""
-                ]
+                if len(values) >= 2:
+                    change = values[-1] - values[0]
+                    pct = ((change / values[0]) * 100) if values[0] else 0
+                    trend = "↑" if change > 0 else "↓"
+                else:
+                    change = 0
+                    pct = 0
+                    trend = ""
 
                 for l, v in zip(labels, values):
                     formatted = format_metric_value(v, metric_name, country)
                     lines.append(f"{l}: {formatted}")
 
-                formatted_change = format_metric_value(change, metric_name, country)
+                lines.append(f"Change: {trend} {format_metric_value(change, metric_name, country)} ({pct:.2f}%)")
 
-                lines.append("")
-                lines.append(f"Overall change: {formatted_change} ({pct:.2f}%)")
-
-                state["final_response"] = "\n".join(lines)
-                return state
+            state["final_response"] = "\n".join(lines)
+            return state
 
         period_label = metric.get("period_label", "selected period")
 
         per_sku = metric.get("per_sku", [])
-        product_filter = find_best_product_match(query, per_sku)
+        product_filter = None
+
+        if not metric.get("per_period"):
+            product_filter = find_best_product_match(query, per_sku)
+
+        print("\n🔍 PRODUCT MATCH DEBUG:")
+        print("Query:", query)
+        print("Available Products Sample:", [r.get("product_name") for r in per_sku[:5]])
+        print("Matched Product:", product_filter)
 
         # COMPARISON (WITH FORMATTING)
         if comparison:
@@ -1079,6 +1171,7 @@ def final_node(state: AgentState) -> AgentState:
 
 def _needs_email(state: AgentState) -> str:
     return "email" if state.get("email_requested") else "final"
+
 
 def _route_after_planner(state: AgentState) -> str:
     intent = state.get("intent")
