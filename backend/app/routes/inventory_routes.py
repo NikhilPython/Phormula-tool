@@ -2539,7 +2539,7 @@ def _compute_inventory_coverage_ratio(ending_total, sold_total):
         sold = float(sold_total or 0)
         if sold == 0:
             return None
-        return ending / sold   # per your formula
+        return ending / abs(sold)
     except Exception:
         return None
 
@@ -2773,7 +2773,6 @@ def inventory_ledger_summary_store_month():
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
-            grand_total = _compute_grand_total(items)
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
@@ -2797,6 +2796,104 @@ def inventory_ledger_summary_store_month():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+    
+def _quarter_range_upto_latest_completed_month_end(
+    conn,
+    user_id: int,
+    mp: str,
+    year: int,
+    quarter: int
+) -> tuple[date, date]:
+    """
+    Quarter summary rule (CORRECT):
+
+    - start = first day of quarter
+    - if full quarter exists → use quarter end (e.g. 30 Jun)
+    - else → use latest COMPLETED month-end inside that quarter
+    - ignore partial current month
+
+    Examples:
+      Q2:
+        only April → end = 30 Apr
+        April+May → end = 31 May
+        full → end = 30 Jun
+    """
+
+    if quarter not in (1, 2, 3, 4):
+        raise ValueError("quarter must be 1-4")
+
+    start_date, quarter_end = _quarter_range(year, quarter)
+    src = _get_source_table(conn)
+
+    # 1️⃣ Check if full quarter end exists (e.g. 30 Jun)
+    full_q_sql = text(f"""
+        SELECT 1
+        FROM {src} mi
+        WHERE mi.user_id = :user_id
+          AND mi.marketplace_id = :mp
+          AND mi.date = :quarter_end
+        LIMIT 1
+    """)
+
+    full_exists = conn.execute(full_q_sql, {
+        "user_id": user_id,
+        "mp": mp,
+        "quarter_end": quarter_end,
+    }).first()
+
+    if full_exists:
+        return start_date, quarter_end
+
+    # 2️⃣ Get latest completed month-end inside quarter
+    month_end_sql = text(f"""
+        SELECT MAX(x.month_end_date) AS last_completed_month_end
+        FROM (
+            SELECT DISTINCT mi.date AS month_end_date
+            FROM {src} mi
+            WHERE mi.user_id = :user_id
+              AND mi.marketplace_id = :mp
+              AND mi.date >= :start_date
+              AND mi.date <= :quarter_end
+              AND mi.date = (
+                  date_trunc('month', mi.date)::date
+                  + INTERVAL '1 month'
+                  - INTERVAL '1 day'
+              )::date
+        ) x
+    """)
+
+    last_completed = conn.execute(month_end_sql, {
+        "user_id": user_id,
+        "mp": mp,
+        "start_date": start_date,
+        "quarter_end": quarter_end,
+    }).scalar()
+
+    if last_completed:
+        return start_date, last_completed
+
+    # 3️⃣ fallback (no month-end found)
+    fallback_sql = text(f"""
+        SELECT MAX(mi.date)
+        FROM {src} mi
+        WHERE mi.user_id = :user_id
+          AND mi.marketplace_id = :mp
+          AND mi.date >= :start_date
+          AND mi.date <= :quarter_end
+    """)
+
+    fallback = conn.execute(fallback_sql, {
+        "user_id": user_id,
+        "mp": mp,
+        "start_date": start_date,
+        "quarter_end": quarter_end,
+    }).scalar()
+
+    if fallback:
+        return start_date, fallback
+
+    return start_date, quarter_end
+
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-quarter", methods=["GET"])
 def inventory_ledger_summary_store_quarter():
@@ -2815,7 +2912,11 @@ def inventory_ledger_summary_store_quarter():
     try:
         quarter = int(request.args.get("quarter", "0"))
         year = int(request.args.get("year", "0"))
-        start_date, end_date = _quarter_range(year, quarter)
+
+        if quarter not in (1, 2, 3, 4):
+            raise ValueError("Invalid quarter")
+        if year < 2000 or year > 2100:
+            raise ValueError("Invalid year")
     except Exception:
         return jsonify({"error": "Provide valid ?country=xx&quarter=Q&year=YYYY"}), 400
 
@@ -2823,7 +2924,13 @@ def inventory_ledger_summary_store_quarter():
 
     try:
         with amazon_conn() as conn:
+            # ✅ dynamic quarter end date
+            start_date, end_date = _quarter_range_upto_latest_completed_month_end(
+                conn, user_id, mp, year, quarter
+            )
+
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"), r.get("sold_total")
@@ -2833,7 +2940,7 @@ def inventory_ledger_summary_store_quarter():
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
-            grand_total = _compute_grand_total(items)
+
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
@@ -2856,6 +2963,110 @@ def inventory_ledger_summary_store_quarter():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+    
+def _year_range_upto_latest_completed_month_end(
+    conn,
+    user_id: int,
+    mp: str,
+    year: int
+) -> tuple[date, date]:
+    """
+    Yearly summary rule:
+    - start = 1 Jan of requested year
+    - if 31 Dec exists, use it
+    - otherwise use the latest completed month-end date inside that year
+    - ignore partial current-month dates
+
+    Example:
+      if today is 2026-04-08 and data exists up to 2026-04-08,
+      yearly end_date should be 2026-03-31, not 2026-04-08.
+    """
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+
+    start_date = date(year, 1, 1)
+    dec_31 = date(year, 12, 31)
+
+    src = _get_source_table(conn)
+
+    # 1) if full year-end exists, use 31-Dec
+    dec31_sql = text(f"""
+        SELECT 1
+        FROM {src} mi
+        WHERE mi.user_id = :user_id
+          AND mi.marketplace_id = :mp
+          AND mi.date = :dec_31
+        LIMIT 1
+    """)
+    dec31_exists = conn.execute(
+        dec31_sql,
+        {
+            "user_id": user_id,
+            "mp": mp,
+            "dec_31": dec_31,
+        },
+    ).first()
+
+    if dec31_exists:
+        return start_date, dec_31
+
+    # 2) otherwise pick latest month-end date that actually exists in this year
+    month_end_sql = text(f"""
+        SELECT MAX(x.month_end_date) AS last_completed_month_end
+        FROM (
+            SELECT DISTINCT mi.date AS month_end_date
+            FROM {src} mi
+            WHERE mi.user_id = :user_id
+              AND mi.marketplace_id = :mp
+              AND mi.date >= :start_date
+              AND mi.date < :dec_31
+              AND mi.date = (
+                  date_trunc('month', mi.date)::date
+                  + INTERVAL '1 month'
+                  - INTERVAL '1 day'
+              )::date
+        ) x
+    """)
+
+    last_completed_month_end = conn.execute(
+        month_end_sql,
+        {
+            "user_id": user_id,
+            "mp": mp,
+            "start_date": start_date,
+            "dec_31": dec_31,
+        },
+    ).scalar()
+
+    if last_completed_month_end:
+        return start_date, last_completed_month_end
+
+    # 3) fallback: no month-end found, use latest available date
+    fallback_sql = text(f"""
+        SELECT MAX(mi.date) AS last_available_date
+        FROM {src} mi
+        WHERE mi.user_id = :user_id
+          AND mi.marketplace_id = :mp
+          AND mi.date >= :start_date
+          AND mi.date <= :dec_31
+    """)
+
+    last_available_date = conn.execute(
+        fallback_sql,
+        {
+            "user_id": user_id,
+            "mp": mp,
+            "start_date": start_date,
+            "dec_31": dec_31,
+        },
+    ).scalar()
+
+    if not last_available_date:
+        return start_date, dec_31
+
+    return start_date, last_available_date
+
+
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-year", methods=["GET"])
 def inventory_ledger_summary_store_year():
@@ -2873,7 +3084,8 @@ def inventory_ledger_summary_store_year():
 
     try:
         year = int(request.args.get("year", "0"))
-        start_date, end_date = _year_range(year)
+        if year < 2000 or year > 2100:
+            raise ValueError("Invalid year")
     except Exception:
         return jsonify({"error": "Provide valid ?country=xx&year=YYYY"}), 400
 
@@ -2881,7 +3093,13 @@ def inventory_ledger_summary_store_year():
 
     try:
         with amazon_conn() as conn:
+            # ✅ use latest completed month-end, not partial current month
+            start_date, end_date = _year_range_upto_latest_completed_month_end(
+                conn, user_id, mp, year
+            )
+
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"), r.get("sold_total")
@@ -2891,7 +3109,7 @@ def inventory_ledger_summary_store_year():
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
-            grand_total = _compute_grand_total(items)
+
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
@@ -2914,3 +3132,5 @@ def inventory_ledger_summary_store_year():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
