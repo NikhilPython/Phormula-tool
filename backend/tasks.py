@@ -211,30 +211,50 @@ def get_users_for_monthly_amazon_sync():
         return []
 
 
+from sqlalchemy import text
+import pandas as pd
+import io
+import base64
+
 def _send_monthly_amazon_file_email(*, user_id: int, to_email: str, country: str, year: int, month: int, pipeline_result: dict):
-    """
-    Decode excel_file from pipeline_result and email it as attachment.
-    """
+
     if not to_email:
         print(f"[WARN] No email found for user_id={user_id}")
         return
 
-    excel_b64 = (pipeline_result or {}).get("excel_file")
-    if not excel_b64:
-        print(f"[WARN] No excel_file found in pipeline_result for user_id={user_id}")
-        return
-
     try:
-        attachment_bytes = base64.b64decode(excel_b64)
+        # 🔥 Build correct table name
+        month_name = datetime(year, month, 1).strftime("%B").lower()
+        table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"  
+
+        query = text(f'SELECT * FROM public."{table_name}"')
+
+        df = pd.read_sql(query, db.engine)
+
+        if df.empty:
+            print(f"[WARN] SKU-wise table empty for user_id={user_id}")
+            return
+
+        # 🔥 Convert to Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="SKUWise")
+
+        output.seek(0)
+        attachment_bytes = output.read()
+
     except Exception as e:
-        print(f"[ERROR] Failed to decode excel_file for user_id={user_id}: {e}")
+        print(f"[ERROR] Failed to fetch SKU-wise table: {e}")
         return
 
-    filename = f"amazon_monthly_transactions_{country}_{year}_{month:02d}.xlsx"
-    subject = f"Amazon Monthly Transactions - {country.upper()} - {year}-{month:02d}"
+    # ✅ Updated filename + subject
+    filename = f"skuwise_monthly_{country}_{year}_{month:02d}.xlsx"
+
+    subject = f"Amazon SKU-wise Report - {country.upper()} - {year}-{month:02d}"
+
     body = (
         f"Hi,\n\n"
-        f"Please find attached the Amazon monthly transactions file for "
+        f"Please find attached the Amazon SKU-wise performance report for "
         f"{country.upper()} ({year}-{month:02d}).\n\n"
         f"Regards,\n"
         f"Skinelements"
@@ -249,9 +269,12 @@ def _send_monthly_amazon_file_email(*, user_id: int, to_email: str, country: str
             attachment_filename=filename,
             mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        print(f"[INFO] Email sent successfully to {to_email} for user_id={user_id}")
+
+        print(f"[INFO] SKU-wise email sent to {to_email}")
+
     except Exception as e:
-        print(f"[ERROR] Failed to send monthly file email to {to_email}: {e}")
+        print(f"[ERROR] Email send failed: {e}")
+
 
 
 

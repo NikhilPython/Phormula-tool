@@ -1218,85 +1218,115 @@ def send_email_with_attachment(
 
     html_body = f"""
 <html>
-<body style="font-family:Arial, sans-serif; background:#f4f4f4; padding:20px;">
-  <div style="max-width:600px; margin:auto; background:#ffffff; padding:30px; border-radius:10px; border:1px solid #ddd;">
-
-    <!-- Header -->
-    <div style="text-align:center; margin-bottom:20px;">
-      <h2 style="color:#37455F; margin:0;">Phormula</h2>
-      <p style="color:#777; font-size:13px;">Amazon Monthly Report</p>
-    </div>
-
-    <p style="font-size:14px; color:#333;">Hi,</p>
-
-    <!-- MAIN MESSAGE -->
-    <p style="font-size:14px; color:#555; line-height:1.6;">
-      Your <strong>Amazon Monthly Transactions (Raw Data)</strong> file is ready.
-    </p>
-
-    <!-- Attachment Highlight -->
+<body style="margin:0; padding:0; background:#f4f6f8; font-family:Arial, sans-serif;">
+  <div style="padding:32px 16px;">
     <div style="
-        background:#F3F4F6;
-        border-left:4px solid #37455F;
-        padding:12px;
-        margin:18px 0;
-        font-size:14px;
+      max-width:640px;
+      margin:0 auto;
+      background:#ffffff;
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow:0 8px 24px rgba(15,23,42,0.06);
     ">
-      📊 <strong>{attachment_filename}</strong> is attached to this email.
+
+      <!-- Top bar -->
+      <div style="background:linear-gradient(135deg, #37455F 0%, #2F6476 100%); padding:24px 28px;">
+        <div style="font-size:24px; font-weight:700; color:#ffffff; letter-spacing:0.2px;">
+          Phormula
+        </div>
+        <div style="font-size:13px; color:#dbe4ea; margin-top:6px;">
+          Amazon SKU Performance Report
+        </div>
+      </div>
+
+      <!-- Main content -->
+      <div style="padding:32px 28px 28px 28px;">
+
+        <p style="font-size:15px; color:#1f2937; margin:0 0 16px 0;">Hi,</p>
+
+        <p style="font-size:15px; color:#4b5563; line-height:1.7; margin:0 0 18px 0;">
+          Your <strong>Amazon SKU-wise monthly report</strong> is ready and attached to this email.
+        </p>
+
+        <!-- Attachment card -->
+        <div style="
+          background:#f8fafc;
+          border:1px solid #e5e7eb;
+          border-radius:12px;
+          padding:14px 16px;
+          margin:20px 0;
+        ">
+          <div style="font-size:13px; color:#6b7280; margin-bottom:6px;">
+            Attached file
+          </div>
+          <div style="font-size:16px; color:#111827; font-weight:700;">
+            {attachment_filename}
+          </div>
+        </div>
+
+        <!-- Value section -->
+        <div style="
+          background:#eef7f3;
+          border:1px solid #cfe9dc;
+          border-radius:12px;
+          padding:16px 18px;
+          margin:20px 0 22px 0;
+        ">
+          <div style="font-size:14px; font-weight:700; color:#1f2937; margin-bottom:10px;">
+            What’s inside this report
+          </div>
+          <ul style="margin:0; padding-left:18px; color:#4b5563; font-size:14px; line-height:1.8;">
+            <li>SKU-level sales and net sales performance</li>
+            <li>Profitability metrics including ASP and margin view</li>
+            <li>Refunds, returns, fees, and deductions</li>
+            <li>A clean monthly view to support faster decision-making</li>
+          </ul>
+        </div>
+
+        <p style="font-size:14px; color:#4b5563; line-height:1.7; margin:0 0 22px 0;">
+          For deeper analysis, including trends, profitability breakdowns, and business insights,
+          open your dashboard in Phormula.
+        </p>
+
+        <!-- CTA -->
+        <div style="text-align:center; margin:28px 0 24px 0;">
+          <a href="https://phormula.io"
+             style="
+               display:inline-block;
+               background:#37455F;
+               color:#ffffff;
+               padding:13px 26px;
+               text-decoration:none;
+               border-radius:10px;
+               font-size:14px;
+               font-weight:700;
+             ">
+            Open Phormula Dashboard
+          </a>
+        </div>
+
+        <!-- Footer note -->
+        <div style="
+          border-top:1px solid #e5e7eb;
+          padding-top:18px;
+          margin-top:8px;
+        ">
+          <p style="font-size:12px; color:#9ca3af; line-height:1.7; margin:0 0 8px 0;">
+            This email was generated automatically by Phormula.
+          </p>
+          <p style="font-size:13px; color:#6b7280; margin:0 0 14px 0;">
+            Need help? Contact us at
+            <a href="mailto:care@phormula.io" style="color:#37455F; text-decoration:none;">care@phormula.io</a>
+          </p>
+          <p style="font-size:13px; color:#6b7280; margin:0;">
+            Regards,<br/>
+            <strong>Phormula Team</strong>
+          </p>
+        </div>
+
+      </div>
     </div>
-
-    <!-- IMPORTANT CONTEXT -->
-    <div style="
-        background:#FFF7E6;
-        border:1px solid #F5D48A;
-        padding:14px;
-        border-radius:8px;
-        margin-bottom:18px;
-        font-size:14px;
-        line-height:1.6;
-    ">
-      ⚠️ This file contains <strong>raw Amazon transaction data</strong>.<br/><br/>
-      To view <strong>SKU-level profitability insights, margins, and performance analysis</strong>, please log in to the Phormula dashboard.
-    </div>
-
-    <!-- CTA BUTTON -->
-    <div style="text-align:center; margin:24px 0;">
-      <a href="https://phormula.io"
-         style="
-           display:inline-block;
-           background:#37455F;
-           color:#ffffff;
-           padding:12px 24px;
-           text-decoration:none;
-           border-radius:8px;
-           font-size:14px;
-           font-weight:600;
-         ">
-        Open Phormula Dashboard
-      </a>
-    </div>
-
-    <p style="font-size:13px; color:#777;">
-      Inside Phormula, you can:
-    </p>
-
-    <ul style="font-size:13px; color:#555; line-height:1.6;">
-      <li>View SKU-level profitability</li>
-      <li>Analyze margins (CM1, Net Profit)</li>
-      <li>Track performance trends</li>
-      <li>Get actionable insights</li>
-    </ul>
-
-    <p style="font-size:13px; color:#777; margin-top:24px;">
-      Need help? Contact us at 
-      <a href="mailto:care@phormula.io">care@phormula.io</a>
-    </p>
-
-    <p style="font-size:13px; color:#777;">
-      Regards,<br/>
-      <strong>Phormula Team</strong>
-    </p>
-
   </div>
 </body>
 </html>
