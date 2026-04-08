@@ -53,6 +53,8 @@ function monthToLowerName(value: string) {
   return value ? value.trim().toLowerCase() : '';
 }
 
+
+
 async function fetchInventoryForecastFile(
   token: string,
   country: string,
@@ -86,6 +88,34 @@ async function ensureInventoryForecastReady(
   }
 
   return res;
+}
+
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const num = Number(String(value ?? '').replace(/,/g, '').trim())
+  return Number.isFinite(num) ? num : 0
+}
+
+function buildOthersPoRow(rows: Row[], displayedColumns: string[]): Row {
+  const othersRow: Row = {
+    'Product Name': 'Others',
+    'Sno.': '',
+  }
+
+  displayedColumns.forEach((col) => {
+    if (col === 'Sno.' || col === 'Product Name') return
+
+    // keep rate-like fields blank in Others row
+    if (col === 'Cost per Unit (in INR)') {
+      othersRow[col] = ''
+      return
+    }
+
+    othersRow[col] = rows.reduce((sum, row) => sum + toNumber(row[col]), 0)
+  })
+
+  return othersRow
 }
 
 
@@ -420,40 +450,113 @@ export default function PurchaseOrderPage({
     }
   };
 
+  // const tableData = useMemo(() => {
+  //   if (!skuData.length) return [];
+
+  //   const signRow: Row = {};
+  //   displayedColumns.forEach((col) => {
+  //     signRow[col] = signRowMap[col] || '';
+  //   });
+  //   signRow.__isSignRow = true;
+
+  //   const formattedRows = skuData.map((row, index) => {
+  //     const output: Row = {};
+
+  //     displayedColumns.forEach((col) => {
+  //       let value = col === 'Sno.' ? row[col] ?? index + 1 : row[col];
+
+  //       if (typeof value === 'number') {
+  //         value = value.toLocaleString('en-IN', {
+  //           minimumFractionDigits: 0,
+  //           maximumFractionDigits: 2,
+  //         });
+  //       }
+
+  //       output[col] = value ?? '';
+  //     });
+
+  //     const isTotalRow =
+  //       String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
+
+  //     output.__isTotalRow = isTotalRow;
+  //     return output;
+  //   });
+
+  //   return [signRow, ...formattedRows];
+  // }, [skuData, displayedColumns, signRowMap]);
+
   const tableData = useMemo(() => {
-    if (!skuData.length) return [];
+    if (!skuData.length) return []
 
-    const signRow: Row = {};
+    const signRow: Row = {}
     displayedColumns.forEach((col) => {
-      signRow[col] = signRowMap[col] || '';
-    });
-    signRow.__isSignRow = true;
+      signRow[col] = signRowMap[col] || ''
+    })
+    signRow.__isSignRow = true
 
-    const formattedRows = skuData.map((row, index) => {
-      const output: Row = {};
+    const totalRow = skuData.find(
+      (row) => String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
+    )
+
+    const nonTotalRows = skuData.filter(
+      (row) => String(row['Product Name'] ?? '').trim().toLowerCase() !== 'total'
+    )
+
+    let rowsForDisplay: Row[] = []
+
+    if (nonTotalRows.length <= 9) {
+      rowsForDisplay = [...nonTotalRows]
+    } else {
+      const firstNine = nonTotalRows.slice(0, 9)
+      const remainingRows = nonTotalRows.slice(9)
+      const othersRow = buildOthersPoRow(remainingRows, displayedColumns)
+
+      rowsForDisplay = [...firstNine, othersRow]
+    }
+
+    if (totalRow) {
+      rowsForDisplay.push(totalRow)
+    }
+
+    const formattedRows = rowsForDisplay.map((row, index) => {
+      const output: Row = {}
 
       displayedColumns.forEach((col) => {
-        let value = col === 'Sno.' ? row[col] ?? index + 1 : row[col];
+        let value = col === 'Sno.' ? row[col] ?? index + 1 : row[col]
+
+        const isOthersRow =
+          String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
+        const isTotalRow =
+          String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
+
+        if (col === 'Sno.') {
+          if (isTotalRow) {
+            value = ''
+          } else {
+            value = index + 1
+          }
+        }
 
         if (typeof value === 'number') {
           value = value.toLocaleString('en-IN', {
             minimumFractionDigits: 0,
             maximumFractionDigits: 2,
-          });
+          })
         }
 
-        output[col] = value ?? '';
-      });
+        output[col] = value ?? ''
+      })
 
-      const isTotalRow =
-        String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
+      output.__isOthersRow =
+        String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
+      output.__isTotalRow =
+        String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
 
-      output.__isTotalRow = isTotalRow;
-      return output;
-    });
+      return output
+    })
 
-    return [signRow, ...formattedRows];
-  }, [skuData, displayedColumns, signRowMap]);
+    return [signRow, ...formattedRows]
+  }, [skuData, displayedColumns, signRowMap])
 
   const tableColumns = useMemo<ColumnDef<Row>[]>(
     () =>
@@ -488,10 +591,10 @@ export default function PurchaseOrderPage({
   );
 
   const getTableRowClassName = useCallback((row: Row) => {
-    if (row.__isSignRow) return 'bg-white';
-    if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold';
-    return 'bg-white';
-  }, []);
+    if (row.__isSignRow) return 'bg-white'
+    if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold'
+    return 'bg-white'
+  }, [])
 
   useEffect(() => {
     if (!embedded || typeof window === 'undefined') return;

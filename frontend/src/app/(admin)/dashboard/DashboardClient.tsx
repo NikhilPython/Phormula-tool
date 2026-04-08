@@ -5513,7 +5513,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 )}
 
                 {/* Top 5 alerts */}
-                {/* <div className="my-2 md:my-4 space-y-3">
+                <div className="my-2 md:my-4 space-y-3">
                 {top5Skus
                     .map((sku) => ({
                         sku,
@@ -5536,7 +5536,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             onClose={() => handleDismiss(sku)} // ✅ persist dismissal
                         />
                     ))}
-            </div> */}
+            </div>
 
                 {activeTab === "live" && (
                     <div

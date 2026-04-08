@@ -386,7 +386,7 @@ async function fetchForecastMonthRange(params: { country: string }) {
 
 async function fetchDispatchFile(params: {
   country: string;
-  month: string; // Full month name, e.g. "May"
+  month: string; // full month name
   year: number | string;
 }) {
   const token = getAuthToken();
@@ -415,6 +415,78 @@ async function fetchDispatchFile(params: {
   return { ok: true, url, blob };
 }
 
+// async function runPurchaseOrder(params: {
+//   country: string;
+//   year: number | string;
+//   month: number | string;
+// }) {
+//   const token = getAuthToken();
+
+//   // let monthValue = String(params.month).trim().toLowerCase();
+//   let monthValue = "april"
+
+//   const numericMonth = parseInt(monthValue, 10);
+//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+//     monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
+//   }
+
+//   const formData = new FormData();
+//   formData.append("month", monthValue);
+//   formData.append("year", String(params.year));
+//   formData.append("country", params.country.toLowerCase());
+
+//   const url = `${API_BASE}/purchase_order`;
+
+//   const res = await fetch(url, {
+//     method: "POST",
+//     headers: {
+//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+//     },
+//     body: formData,
+//   });
+
+//   const text = await res.text().catch(() => "");
+//   let data: any = {};
+//   try {
+//     data = text ? JSON.parse(text) : {};
+//   } catch {
+//     data = { raw: text };
+//   }
+
+//   if (!res.ok) {
+//     const msg =
+//       data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
+//     throw new Error(msg);
+//   }
+
+//   return data;
+// }
+
+async function fetchGeneratedPOFile(params: {
+  country: string;
+  month: string;
+  year: number | string;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    country: params.country,
+    month: String(params.month).trim().toLowerCase(),
+    year: String(params.year),
+  });
+
+  const url = `${API_BASE}/getDispatchfile2?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return res;
+}
+
 async function runPurchaseOrder(params: {
   country: string;
   year: number | string;
@@ -440,6 +512,7 @@ async function runPurchaseOrder(params: {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Accept: "application/json",
     },
     body: formData,
   });
@@ -492,6 +565,24 @@ async function fetchPurchaseOrderFile(params: {
   return { ok: true, url, blob };
 }
 
+// function getMonthNameFromInput(month: number | string) {
+//   const raw = String(month).trim();
+//   const numericMonth = parseInt(raw, 10);
+
+//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+//     return fullMonthNames[numericMonth - 1];
+//   }
+
+//   const normalized = raw.toLowerCase();
+//   const idx = fullMonthNames.findIndex(
+//     (m) => m.toLowerCase() === normalized
+//   );
+
+//   if (idx !== -1) return fullMonthNames[idx];
+
+//   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+// }
+
 function getMonthNameFromInput(month: number | string) {
   const raw = String(month).trim();
   const numericMonth = parseInt(raw, 10);
@@ -501,14 +592,36 @@ function getMonthNameFromInput(month: number | string) {
   }
 
   const normalized = raw.toLowerCase();
-  const idx = fullMonthNames.findIndex(
-    (m) => m.toLowerCase() === normalized
-  );
+  const idx = fullMonthNames.findIndex((m) => m.toLowerCase() === normalized);
 
   if (idx !== -1) return fullMonthNames[idx];
 
   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
 }
+
+function getNextMonthAndYear(month: number | string, year: number | string) {
+  const monthName = getMonthNameFromInput(month);
+  const monthIndex = fullMonthNames.findIndex(
+    (m) => m.toLowerCase() === monthName.toLowerCase()
+  );
+
+  if (monthIndex === -1) {
+    return {
+      month: monthName,
+      year: String(year),
+    };
+  }
+
+  const nextIndex = (monthIndex + 1) % 12;
+  const nextYear =
+    monthIndex === 11 ? String(Number(year) + 1) : String(year);
+
+  return {
+    month: fullMonthNames[nextIndex],
+    year: nextYear,
+  };
+}
+
 
 function parseForecastLabelToMonthName(label?: string) {
   if (!label) return null;
@@ -526,56 +639,95 @@ function parseForecastLabelToMonthName(label?: string) {
   return fullMonthNames[idx];
 }
 
-
-
 async function runForecastAndPoSequence(params: {
   country: string;
   year: number | string;
   month: number | string;
   setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
 }) {
-  const requestMonthName = getMonthNameFromInput(params.month);
-  const requestMonthLower = requestMonthName.toLowerCase();
+  const selectedMonthName = getMonthNameFromInput(params.month);
+  const selectedYearStr = String(params.year);
 
-  params.setStep(7, "Forecast", 0, "Running inventory forecast...");
+  // current going month = selected month + 1
+  const currentGoingPeriod = getNextMonthAndYear(selectedMonthName, selectedYearStr);
+  const currentGoingMonthName = currentGoingPeriod.month;
+  const currentGoingMonthLower = currentGoingMonthName.toLowerCase();
+  const currentGoingYearStr = currentGoingPeriod.year;
+
+  // dispatch month = current going month + 1
+  const dispatchPeriod = getNextMonthAndYear(
+    currentGoingMonthName,
+    currentGoingYearStr
+  );
+
+  params.setStep(
+    7,
+    "Forecast",
+    0,
+    `Running inventory forecast for ${currentGoingMonthName} ${currentGoingYearStr}...`
+  );
   await runForecast({
     country: params.country,
-    year: params.year,
-    month: params.month,
+    year: currentGoingYearStr,
+    month: currentGoingMonthName,
   });
 
-  params.setStep(7, "Forecast", 20, "Fetching forecast month range...");
-  const monthRangeData = await fetchForecastMonthRange({
-    country: params.country,
-  });
-
-  const resolvedForecastMonth =
-    parseForecastLabelToMonthName(monthRangeData?.last_month) || requestMonthName;
-
-  const resolvedForecastMonthLower = resolvedForecastMonth.toLowerCase();
-
-  params.setStep(7, "Forecast", 40, `Fetching inventory dispatch file for ${resolvedForecastMonth}...`);
+  params.setStep(
+    7,
+    "Forecast",
+    25,
+    `Fetching dispatch file for ${dispatchPeriod.month} ${dispatchPeriod.year}...`
+  );
   await fetchDispatchFile({
     country: params.country,
-    month: resolvedForecastMonth,
-    year: params.year,
+    month: dispatchPeriod.month,
+    year: dispatchPeriod.year,
   });
 
-  params.setStep(7, "Forecast", 65, `Generating purchase order for ${resolvedForecastMonth}...`);
-  await runPurchaseOrder({
+  params.setStep(
+    7,
+    "Forecast",
+    55,
+    `Checking purchase order file for ${currentGoingMonthName} ${currentGoingYearStr}...`
+  );
+  let poRes = await fetchGeneratedPOFile({
     country: params.country,
-    year: params.year,
-    month: resolvedForecastMonthLower,
+    month: currentGoingMonthLower,
+    year: currentGoingYearStr,
   });
 
-  params.setStep(7, "Forecast", 85, "Fetching purchase order file...");
-  await fetchPurchaseOrderFile({
-    country: params.country,
-    month: resolvedForecastMonthLower,
-    year: params.year,
-  });
+  if (!poRes.ok && poRes.status === 404) {
+    params.setStep(
+      7,
+      "Forecast",
+      75,
+      `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
+    );
 
-  params.setStep(7, "Forecast", 100, "Inventory forecast and purchase order ready");
+    await runPurchaseOrder({
+      country: params.country,
+      year: currentGoingYearStr,
+      month: currentGoingMonthLower,
+    });
+
+    params.setStep(7, "Forecast", 90, "Fetching purchase order file...");
+    poRes = await fetchGeneratedPOFile({
+      country: params.country,
+      month: currentGoingMonthLower,
+      year: currentGoingYearStr,
+    });
+  }
+
+  if (!poRes.ok) {
+    const msg = await readErrorMessage(poRes);
+    throw new Error(
+      `Purchase order file API ${poRes.status} ${poRes.statusText}\n\n${msg}`
+    );
+  }
+
+  await poRes.blob();
+
+  params.setStep(7, "Forecast", 100, "Forecast, dispatch, and purchase order ready");
 }
 
 function monthValue(y: number, m1: number) {

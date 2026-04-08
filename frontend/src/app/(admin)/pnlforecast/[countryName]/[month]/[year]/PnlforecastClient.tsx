@@ -111,6 +111,40 @@ const addMonths = (monthName: string, yearVal: number, offset: number) => {
   };
 };
 
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined || value === '') return 0;
+  const num = Number(String(value).replace(/,/g, '').trim());
+  return Number.isFinite(num) ? num : 0;
+};
+
+const isPnlTotalRow = (row: RowData) =>
+  String(row?.product_name || '').trim().toLowerCase() === 'total' ||
+  String(row?.sku || '').trim().toLowerCase() === 'total';
+
+const buildOthersPnlRow = (rows: RowData[]): RowData => {
+  const numericKeys = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        Object.keys(row || {}).filter((key) => {
+          const value = row[key];
+          return value !== null && value !== undefined && value !== '' && !isNaN(Number(value));
+        })
+      )
+    )
+  );
+
+  const othersRow: RowData = {
+    product_name: 'Others',
+    sku: '',
+  };
+
+  numericKeys.forEach((key) => {
+    othersRow[key] = rows.reduce((sum, row) => sum + toNumber(row[key]), 0);
+  });
+
+  return othersRow;
+};
+
 const Pnlforecast: React.FC = () => {
   const router = useRouter();
   const params = useParams();
@@ -658,8 +692,6 @@ const Pnlforecast: React.FC = () => {
     });
   };
 
-
-
   const PreviewLockedSection = ({
     enabled,
     children,
@@ -934,10 +966,31 @@ const Pnlforecast: React.FC = () => {
     profit_percentage_sum: '',
   }));
 
-  const normalizedProductRows = productRows?.map(r => ({
+  const normalizedProductRows = productRows?.map((r) => ({
     ...r,
     sku: r.sku === 'Total' ? '' : r.sku,
   }));
+
+  const displayProductRows = React.useMemo(() => {
+    const rows = normalizedProductRows || [];
+
+    const totalRow =
+      rows.find((row) => isPnlTotalRow(row)) || null;
+
+    const nonTotalRows = rows.filter((row) => !isPnlTotalRow(row));
+
+    if (nonTotalRows.length <= 9) {
+      return totalRow ? [...nonTotalRows, totalRow] : nonTotalRows;
+    }
+
+    const firstNine = nonTotalRows.slice(0, 9);
+    const remainingRows = nonTotalRows.slice(9);
+    const othersRow = buildOthersPnlRow(remainingRows);
+
+    return totalRow
+      ? [...firstNine, othersRow, totalRow]
+      : [...firstNine, othersRow];
+  }, [normalizedProductRows]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -1035,7 +1088,7 @@ const Pnlforecast: React.FC = () => {
                 <div className="w-full text-xs 2xl:text-sm text-[#414042]">
                   <GroupedCollapsibleTables<RowData>
                     rows={[
-                      ...(normalizedProductRows || []),
+                      ...displayProductRows,
                       ...summaryAsRows,
                     ]}
                     getRowKey={(r, idx) =>
@@ -1046,20 +1099,20 @@ const Pnlforecast: React.FC = () => {
                     singleCols={[]}
                     getValue={(row, key, rowIndex) => {
                       if (key === "sr_no") {
-                        if (
-                          row.product_name === "Total" ||
-                          summaryRows.some(s => s.label === row.product_name)
-                        ) {
+                        const isTotal =
+                          String(row.product_name || '').trim().toLowerCase() === 'total';
+
+                        const isSummary = summaryRows.some(
+                          (s) => s.label === row.product_name
+                        );
+
+                        if (isTotal || isSummary) {
                           return "";
                         }
 
-                        const productIndex = normalizedProductRows?.findIndex(
-                          r => r === row
-                        );
+                        const productIndex = displayProductRows.findIndex((r) => r === row);
 
-                        return productIndex !== undefined && productIndex >= 0
-                          ? productIndex + 1
-                          : "";
+                        return productIndex >= 0 ? productIndex + 1 : "";
                       }
 
                       return formatCellValue(key, row[key]);

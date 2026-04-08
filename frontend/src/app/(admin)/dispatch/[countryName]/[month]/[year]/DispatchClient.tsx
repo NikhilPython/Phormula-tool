@@ -147,6 +147,30 @@ function isMeaningfulRow(row: SkuRow): boolean {
   )
 }
 
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const num = Number(String(value ?? '').replace(/,/g, '').trim())
+  return Number.isFinite(num) ? num : 0
+}
+
+function buildOthersRow(rows: SkuRow[]): SkuRow {
+  return {
+    'Product Name': 'Others',
+    sku: '',
+    'Inventory at Month End': rows.reduce((sum, row) => sum + toNumber(row['Inventory at Month End']), 0),
+    'Inventory Coverage Ratio Before Dispatch': rows.reduce(
+      (sum, row) => sum + toNumber(row['Inventory Coverage Ratio Before Dispatch']),
+      0
+    ),
+    'Dispatch': rows.reduce((sum, row) => sum + toNumber(row['Dispatch']), 0),
+    'Current Inventory + Dispatch': rows.reduce(
+      (sum, row) => sum + toNumber(row['Current Inventory + Dispatch']),
+      0
+    ),
+  }
+}
+
 export default function DispatchPage({
   embedded = false,
   countryNameProp,
@@ -214,7 +238,7 @@ export default function DispatchPage({
         let errorData: any = {}
         try {
           errorData = await response.json()
-        } catch {}
+        } catch { }
 
         const msg = String(errorData?.error || 'Failed to fetch dispatch file')
 
@@ -428,52 +452,122 @@ export default function DispatchPage({
     }
   }, [embedded, countryName, skuData, monthdp, yeardp])
 
-  const tableRows = skuData.map((row, index) => {
-    const isTotal = isTotalRow(row)
+  // const tableRows = skuData.map((row, index) => {
+  //   const isTotal = isTotalRow(row)
 
-    const obj: Record<string, any> = {
-      __isTotal: isTotal,
-      sno: isTotal ? '' : index + 1,
+  //   const obj: Record<string, any> = {
+  //     __isTotal: isTotal,
+  //     sno: isTotal ? '' : index + 1,
+  //   }
+
+  //   displayedColumns.forEach((col) => {
+  //     if (col === 'Sno.') return
+
+  //     if (
+  //       isTotal &&
+  //       [
+  //         'Inventory at Month End',
+  //         'Dispatch',
+  //         'Current Inventory + Dispatch',
+  //         'Inventory Coverage Ratio Before Dispatch',
+  //       ].includes(col)
+  //     ) {
+  //       obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+  //       return
+  //     }
+
+  //     if (isTotal) {
+  //       if (col === 'sku') {
+  //         obj[col] = ''
+  //         return
+  //       }
+  //       if (col === 'Product Name') {
+  //         obj[col] = 'Total'
+  //         return
+  //       }
+  //     }
+
+  //     const v = row[col]
+  //     obj[col] =
+  //       typeof v === 'number'
+  //         ? v.toLocaleString('en-US')
+  //         : v !== undefined && v !== null
+  //           ? String(v)
+  //           : ''
+  //   })
+
+  //   return obj
+  // })
+
+  const tableRows = useMemo(() => {
+    const totalRow = skuData.find((row) => isTotalRow(row))
+    const nonTotalRows = skuData.filter((row) => !isTotalRow(row))
+
+    let rowsForDisplay: SkuRow[] = []
+
+    if (nonTotalRows.length <= 9) {
+      rowsForDisplay = [...nonTotalRows]
+    } else {
+      const firstNine = nonTotalRows.slice(0, 9)
+      const remainingRows = nonTotalRows.slice(9)
+      const othersRow = buildOthersRow(remainingRows)
+
+      rowsForDisplay = [...firstNine, othersRow]
     }
 
-    displayedColumns.forEach((col) => {
-      if (col === 'Sno.') return
+    if (totalRow) {
+      rowsForDisplay.push(totalRow)
+    }
 
-      if (
-        isTotal &&
-        [
-          'Inventory at Month End',
-          'Dispatch',
-          'Current Inventory + Dispatch',
-          'Inventory Coverage Ratio Before Dispatch',
-        ].includes(col)
-      ) {
-        obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
-        return
+    return rowsForDisplay.map((row, index) => {
+      const isTotal = isTotalRow(row)
+      const isOthers = String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
+
+      const obj: Record<string, any> = {
+        __isTotal: isTotal,
+        __isOthers: isOthers,
+        sno: isTotal ? '' : index + 1,
       }
 
-      if (isTotal) {
-        if (col === 'sku') {
-          obj[col] = ''
-          return
-        }
-        if (col === 'Product Name') {
-          obj[col] = 'Total'
-          return
-        }
-      }
+      displayedColumns.forEach((col) => {
+        if (col === 'Sno.') return
 
-      const v = row[col]
-      obj[col] =
-        typeof v === 'number'
-          ? v.toLocaleString('en-US')
-          : v !== undefined && v !== null
-            ? String(v)
-            : ''
+        if (
+          isTotal &&
+          [
+            'Inventory at Month End',
+            'Dispatch',
+            'Current Inventory + Dispatch',
+            'Inventory Coverage Ratio Before Dispatch',
+          ].includes(col)
+        ) {
+          obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+          return
+        }
+
+        if (isTotal) {
+          if (col === 'sku') {
+            obj[col] = ''
+            return
+          }
+          if (col === 'Product Name') {
+            obj[col] = 'Total'
+            return
+          }
+        }
+
+        const v = row[col]
+        obj[col] =
+          typeof v === 'number'
+            ? v.toLocaleString('en-US')
+            : v !== undefined && v !== null
+              ? String(v)
+              : ''
+      })
+
+      return obj
     })
-
-    return obj
-  })
+  }, [skuData, displayedColumns])
 
   const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
     const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
@@ -850,8 +944,8 @@ export default function DispatchPage({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Loader fullscreen transparent />
-                </div>
+          <Loader fullscreen transparent />
+        </div>
       ) : error ? (
         <div className="alert-container">
           <div className="alert-message">
@@ -881,7 +975,9 @@ export default function DispatchPage({
               maxHeight="90vh"
               stickyHeader
               loading={loading}
-              rowClassName={(row: any) => (row.__isTotal ? 'bg-[#D9D9D9] font-bold' : '')}
+              rowClassName={(row: any) =>
+                row.__isTotal ? 'bg-[#D9D9D9] font-bold' : ''
+              }
             />
           ) : (
             <p>Select Month and Year to see Dispatch!</p>
