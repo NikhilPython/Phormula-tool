@@ -305,6 +305,430 @@ async function fetchMonthlyTransactionsExcel(params: {
   return { ok: true, url };
 }
 
+/** ---------------- Forecast fetch (backend expects month name, not 03) ---------------- */
+async function runForecast(params: {
+  country: string;
+  year: number | string;
+  month: number | string; // 1-12, "03", or month name
+}) {
+  const token = getAuthToken();
+
+  let monthValue = String(params.month).trim().toLowerCase();
+
+  // If numeric month is provided, convert to full month name expected by backend
+  const numericMonth = parseInt(monthValue, 10);
+  if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+    monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
+  }
+
+  const qs = new URLSearchParams({
+    country: params.country,
+    year: String(params.year),
+    month: monthValue,
+  });
+
+  const url = `${API_BASE}/api/forecast?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw new Error(`Forecast API ${res.status} ${res.statusText}\nURL: ${url}\n\n${msg}`);
+  }
+
+  const blob = await res.blob();
+
+  return {
+    ok: true,
+    url,
+    blob,
+    filename: res.headers.get("Content-Disposition") || "forecast-file",
+  };
+}
+
+async function fetchForecastMonthRange(params: { country: string }) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    country: params.country,
+  });
+
+  const url = `${API_BASE}/api/forecast_monthrange?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  const text = await res.text().catch(() => "");
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok) {
+    const msg =
+      data?.error || data?.message || text || `Forecast month range failed: ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+async function fetchDispatchFile(params: {
+  country: string;
+  month: string; // full month name
+  year: number | string;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    country: params.country,
+    month: params.month,
+    year: String(params.year),
+  });
+
+  const url = `${API_BASE}/getDispatchfile?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw new Error(`Dispatch file API ${res.status} ${res.statusText}\nURL: ${url}\n\n${msg}`);
+  }
+
+  const blob = await res.blob();
+  return { ok: true, url, blob };
+}
+
+// async function runPurchaseOrder(params: {
+//   country: string;
+//   year: number | string;
+//   month: number | string;
+// }) {
+//   const token = getAuthToken();
+
+//   // let monthValue = String(params.month).trim().toLowerCase();
+//   let monthValue = "april"
+
+//   const numericMonth = parseInt(monthValue, 10);
+//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+//     monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
+//   }
+
+//   const formData = new FormData();
+//   formData.append("month", monthValue);
+//   formData.append("year", String(params.year));
+//   formData.append("country", params.country.toLowerCase());
+
+//   const url = `${API_BASE}/purchase_order`;
+
+//   const res = await fetch(url, {
+//     method: "POST",
+//     headers: {
+//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+//     },
+//     body: formData,
+//   });
+
+//   const text = await res.text().catch(() => "");
+//   let data: any = {};
+//   try {
+//     data = text ? JSON.parse(text) : {};
+//   } catch {
+//     data = { raw: text };
+//   }
+
+//   if (!res.ok) {
+//     const msg =
+//       data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
+//     throw new Error(msg);
+//   }
+
+//   return data;
+// }
+
+async function fetchGeneratedPOFile(params: {
+  country: string;
+  month: string;
+  year: number | string;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    country: params.country,
+    month: String(params.month).trim().toLowerCase(),
+    year: String(params.year),
+  });
+
+  const url = `${API_BASE}/getDispatchfile2?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return res;
+}
+
+async function runPurchaseOrder(params: {
+  country: string;
+  year: number | string;
+  month: number | string;
+}) {
+  const token = getAuthToken();
+
+  let monthValue = String(params.month).trim().toLowerCase();
+
+  const numericMonth = parseInt(monthValue, 10);
+  if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+    monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
+  }
+
+  const formData = new FormData();
+  formData.append("month", monthValue);
+  formData.append("year", String(params.year));
+  formData.append("country", params.country.toLowerCase());
+
+  const url = `${API_BASE}/purchase_order`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  const text = await res.text().catch(() => "");
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok) {
+    const msg =
+      data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+async function fetchPurchaseOrderFile(params: {
+  country: string;
+  month: string; // must match stored month, e.g. "april"
+  year: number | string;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    country: params.country,
+    month: params.month.toLowerCase(),
+    year: String(params.year),
+  });
+
+  const url = `${API_BASE}/getDispatchfile2?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw new Error(`Purchase order file API ${res.status} ${res.statusText}\nURL: ${url}\n\n${msg}`);
+  }
+
+  const blob = await res.blob();
+  return { ok: true, url, blob };
+}
+
+// function getMonthNameFromInput(month: number | string) {
+//   const raw = String(month).trim();
+//   const numericMonth = parseInt(raw, 10);
+
+//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+//     return fullMonthNames[numericMonth - 1];
+//   }
+
+//   const normalized = raw.toLowerCase();
+//   const idx = fullMonthNames.findIndex(
+//     (m) => m.toLowerCase() === normalized
+//   );
+
+//   if (idx !== -1) return fullMonthNames[idx];
+
+//   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+// }
+
+function getMonthNameFromInput(month: number | string) {
+  const raw = String(month).trim();
+  const numericMonth = parseInt(raw, 10);
+
+  if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
+    return fullMonthNames[numericMonth - 1];
+  }
+
+  const normalized = raw.toLowerCase();
+  const idx = fullMonthNames.findIndex((m) => m.toLowerCase() === normalized);
+
+  if (idx !== -1) return fullMonthNames[idx];
+
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+}
+
+function getNextMonthAndYear(month: number | string, year: number | string) {
+  const monthName = getMonthNameFromInput(month);
+  const monthIndex = fullMonthNames.findIndex(
+    (m) => m.toLowerCase() === monthName.toLowerCase()
+  );
+
+  if (monthIndex === -1) {
+    return {
+      month: monthName,
+      year: String(year),
+    };
+  }
+
+  const nextIndex = (monthIndex + 1) % 12;
+  const nextYear =
+    monthIndex === 11 ? String(Number(year) + 1) : String(year);
+
+  return {
+    month: fullMonthNames[nextIndex],
+    year: nextYear,
+  };
+}
+
+
+function parseForecastLabelToMonthName(label?: string) {
+  if (!label) return null;
+
+  const cleaned = String(label).trim().replace(/ Sold$/i, "");
+  const match = cleaned.match(/^([A-Za-z]{3})'(\d{2})$/);
+
+  if (!match) return null;
+
+  const short = match[1].toLowerCase();
+  const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const idx = shortMonths.indexOf(short);
+
+  if (idx === -1) return null;
+  return fullMonthNames[idx];
+}
+
+async function runForecastAndPoSequence(params: {
+  country: string;
+  year: number | string;
+  month: number | string;
+  setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
+}) {
+  const selectedMonthName = getMonthNameFromInput(params.month);
+  const selectedYearStr = String(params.year);
+
+  // current going month = selected month + 1
+  const currentGoingPeriod = getNextMonthAndYear(selectedMonthName, selectedYearStr);
+  const currentGoingMonthName = currentGoingPeriod.month;
+  const currentGoingMonthLower = currentGoingMonthName.toLowerCase();
+  const currentGoingYearStr = currentGoingPeriod.year;
+
+  // dispatch month = current going month + 1
+  const dispatchPeriod = getNextMonthAndYear(
+    currentGoingMonthName,
+    currentGoingYearStr
+  );
+
+  params.setStep(
+    7,
+    "Forecast",
+    0,
+    `Running inventory forecast for ${currentGoingMonthName} ${currentGoingYearStr}...`
+  );
+  await runForecast({
+    country: params.country,
+    year: currentGoingYearStr,
+    month: currentGoingMonthName,
+  });
+
+  params.setStep(
+    7,
+    "Forecast",
+    25,
+    `Fetching dispatch file for ${dispatchPeriod.month} ${dispatchPeriod.year}...`
+  );
+  await fetchDispatchFile({
+    country: params.country,
+    month: dispatchPeriod.month,
+    year: dispatchPeriod.year,
+  });
+
+  params.setStep(
+    7,
+    "Forecast",
+    55,
+    `Checking purchase order file for ${currentGoingMonthName} ${currentGoingYearStr}...`
+  );
+  let poRes = await fetchGeneratedPOFile({
+    country: params.country,
+    month: currentGoingMonthLower,
+    year: currentGoingYearStr,
+  });
+
+  if (!poRes.ok && poRes.status === 404) {
+    params.setStep(
+      7,
+      "Forecast",
+      75,
+      `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
+    );
+
+    await runPurchaseOrder({
+      country: params.country,
+      year: currentGoingYearStr,
+      month: currentGoingMonthLower,
+    });
+
+    params.setStep(7, "Forecast", 90, "Fetching purchase order file...");
+    poRes = await fetchGeneratedPOFile({
+      country: params.country,
+      month: currentGoingMonthLower,
+      year: currentGoingYearStr,
+    });
+  }
+
+  if (!poRes.ok) {
+    const msg = await readErrorMessage(poRes);
+    throw new Error(
+      `Purchase order file API ${poRes.status} ${poRes.statusText}\n\n${msg}`
+    );
+  }
+
+  await poRes.blob();
+
+  params.setStep(7, "Forecast", 100, "Forecast, dispatch, and purchase order ready");
+}
 
 function monthValue(y: number, m1: number) {
   // m1: 1..12
@@ -677,16 +1101,28 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       await new Promise((resolve) => setTimeout(resolve, 500));
       markStepComplete(6);
 
-      setStep(7, "Plotting Graph", 0, "Preparing charts...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Step 7: Inventory Forecast + Purchase Order
+      await runForecastAndPoSequence({
+        country: countryUsed,
+        year: y,
+        month: mNum,
+        setStep,
+      });
       markStepComplete(7);
+
+      // Step 8: Plotting Graph
+      setStep(8, "Plotting Graph", 0, "Preparing charts...");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      markStepComplete(8);
 
       await new Promise((r) => setTimeout(r, 600));
 
       const monthSlug = fullMonthNames[mNum - 1].toLowerCase();
       updateLatestFetchedPeriod(monthSlug, String(y));
 
-      setMessage(`Fetched ${countryUsed}: ${y}-${two(mNum)} (fees primed, no download)`);
+      setMessage(
+        `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast and purchase order generated successfully.`
+      );
 
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
       window.dispatchEvent(new Event("storage"));
@@ -824,9 +1260,28 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       await new Promise((resolve) => setTimeout(resolve, 500));
       markStepComplete(6);
 
-      setStep(7, "Plotting Graph", 0, "Preparing charts...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Step 7: Inventory Forecast + Purchase Order
+      const lastMonth = months[months.length - 1];
+
+      setStep(
+        7,
+        "Forecast",
+        0,
+        `Running inventory forecast for ${lastMonth.y}-${two(lastMonth.mNum)}...`
+      );
+
+      await runForecastAndPoSequence({
+        country: countryUsed,
+        year: lastMonth.y,
+        month: lastMonth.mNum,
+        setStep,
+      });
       markStepComplete(7);
+
+      // Step 8: Plotting Graph
+      setStep(8, "Plotting Graph", 0, "Preparing charts...");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      markStepComplete(8);
 
       await new Promise((r) => setTimeout(r, 600));
 
@@ -834,7 +1289,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
 
       setMessage(
-        `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`}, ok ${ok}, failed ${fail}.`
+        `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
+        }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y}-${two(last.mNum)}.`
       );
 
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
@@ -847,6 +1303,46 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
   const selectedIsValid =
     isSelectableUTC(parseInt(selYear, 10), parseInt(selMonth, 10));
 
+  const handleQuickForecastTest = () =>
+    wrap(async () => {
+      if (!selectedPeriod || selectedPeriod < 6) {
+        throw new Error("Quick Forecast Test requires at least 6 months selected.");
+      }
+
+      const months = buildMonthRange(selectedPeriod);
+      if (months.length < 5) {
+        throw new Error("Forecast requires at least 5 months of historic data.");
+      }
+
+      console.log("🚀 QUICK TEST START");
+
+      for (let i = 0; i < months.length; i++) {
+        const { y, mNum } = months[i];
+
+        console.log(`📦 Fetching historic data for ${y}-${two(mNum)}...`);
+        await fetchMonthlyTransactionsExcel({
+          year: y,
+          month: mNum,
+          marketplace_id: marketplaceIdUsed,
+          country: countryUsed,
+          run_upload_pipeline: true,
+          store_in_db: true,
+        });
+      }
+
+      const lastMonth = months[months.length - 1];
+
+      await runForecastAndPoSequence({
+        country: countryUsed,
+        year: lastMonth.y,
+        month: lastMonth.mNum,
+        setStep,
+      });
+
+      setMessage(
+        `⚡ Quick forecast + purchase order completed for ${selectedPeriod} months using ${lastMonth.y}-${two(lastMonth.mNum)}.`
+      );
+    });
 
   return (
     <div className="w-full">
@@ -869,7 +1365,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         </p>
 
         {/* Period Buttons */}
-        <div className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-5 sm:gap-3 max-w-xl mx-auto">
+        <div className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-5 sm:gap-3 max-w-2xl mx-auto">
           {[1, 3, 6, 12, 24].map((m) => {
             const isActive = selectedPeriod === m;
 
@@ -914,11 +1410,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
         {/* Note Section */}
         <div
-          className="mt-4 max-w-xl mx-auto rounded-lg bg-[#FDD36F4D] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#FDD36F]"
+          className="mt-4 max-w-2xl mx-auto rounded-lg bg-[#FDD36F4D] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#FDD36F]"
           style={{ borderLeft: "6px solid #FDD36F" }}
         >
           Note:&nbsp; Your Amazon credentials are encrypted and stored securely. We only access data necessary for
-analytics.
+          analytics.
         </div>
 
         {/* Progress UI with 6-Step Stepper */}
@@ -1010,6 +1506,17 @@ analytics.
             <Button onClick={handleFetchRange} variant="primary" size="sm" disabled={busy}>
               {busy ? "Fetching..." : `Continue`}
             </Button>
+            {selectedPeriod && selectedPeriod >= 6 && (
+              <Button
+                onClick={handleQuickForecastTest}
+                variant="primary"
+                size="sm"
+                disabled={busy}
+              >
+                ⚡ Quick Forecast Test
+              </Button>
+            )}
+
           </div>
         )}
 
@@ -1060,7 +1567,7 @@ analytics.
               <div className="absolute top-6 left-[4%] right-[4%] h-1.5 bg-[#D9D9D9] -z-10">
                 {completedSteps.size > 0 && (() => {
                   const maxCompleted = Math.max(...Array.from(completedSteps));
-                  const progressPercent = maxCompleted > 1 ? ((maxCompleted - 1) / 5) * 100 : 0;
+                  const progressPercent = maxCompleted > 1 ? ((maxCompleted - 1) / 7) * 100 : 0;
                   return (
                     <div
                       className="h-full bg-[#5EA68E] transition-all duration-500"
@@ -1077,7 +1584,8 @@ analytics.
                 { num: 4, label: "Inventory Data" },
                 { num: 5, label: "Historic Data" },
                 { num: 6, label: "Live Data" },
-                { num: 7, label: "Plotting Graph" },
+                { num: 7, label: "Inventory Forecast" },
+                { num: 8, label: "Plotting Graph" },
               ].map((step) => {
                 const isCompleted = completedSteps.has(step.num);
                 const isActive = currentStep === step.num;

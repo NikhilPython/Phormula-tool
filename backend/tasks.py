@@ -1,6 +1,7 @@
 from datetime import timedelta, datetime
 import jwt
 from datetime import date
+import base64
 from app.routes.conversion_rate_routes import ensure_month_seeded, MONTHS_REVERSE_MAP
 from app import create_app, db
 from config import Config
@@ -13,6 +14,7 @@ from app.utils.email_utils import (
     mark_bi_email_sent,
 )
 from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
+from app.utils.email_utils import get_user_email_by_id, send_email_with_attachment
 from app.services.forecast_service import generate_forecast_for_user
 from app.routes.forecast_routes import generate_forecast_core
 SECRET_KEY = Config.SECRET_KEY
@@ -198,6 +200,7 @@ def get_users_for_monthly_amazon_sync():
             seen.add(key)
             users.append({
                 "user_id": user_id,
+                "email": row.email,   # ✅ keep email also
                 "country": country,
             })
 
@@ -206,6 +209,73 @@ def get_users_for_monthly_amazon_sync():
     except Exception as e:
         print(f"[ERROR] get_users_for_monthly_amazon_sync failed: {e}")
         return []
+
+
+from sqlalchemy import text
+import pandas as pd
+import io
+import base64
+
+def _send_monthly_amazon_file_email(*, user_id: int, to_email: str, country: str, year: int, month: int, pipeline_result: dict):
+
+    if not to_email:
+        print(f"[WARN] No email found for user_id={user_id}")
+        return
+
+    try:
+        # 🔥 Build correct table name
+        month_name = datetime(year, month, 1).strftime("%B").lower()
+        table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"  
+
+        query = text(f'SELECT * FROM public."{table_name}"')
+
+        df = pd.read_sql(query, db.engine)
+
+        if df.empty:
+            print(f"[WARN] SKU-wise table empty for user_id={user_id}")
+            return
+
+        # 🔥 Convert to Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="SKUWise")
+
+        output.seek(0)
+        attachment_bytes = output.read()
+
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch SKU-wise table: {e}")
+        return
+
+    # ✅ Updated filename + subject
+    filename = f"skuwise_monthly_{country}_{year}_{month:02d}.xlsx"
+
+    subject = f"Amazon SKU-wise Report - {country.upper()} - {year}-{month:02d}"
+
+    body = (
+        f"Hi,\n\n"
+        f"Please find attached the Amazon SKU-wise performance report for "
+        f"{country.upper()} ({year}-{month:02d}).\n\n"
+        f"Regards,\n"
+        f"Skinelements"
+    )
+
+    try:
+        send_email_with_attachment(
+            to_email=to_email,
+            subject=subject,
+            body=body,
+            attachment_bytes=attachment_bytes,
+            attachment_filename=filename,
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+        print(f"[INFO] SKU-wise email sent to {to_email}")
+
+    except Exception as e:
+        print(f"[ERROR] Email send failed: {e}")
+
+
 
 
 @celery_app.task(name="tasks.sync_amazon_monthly_transactions")
@@ -230,6 +300,7 @@ def sync_amazon_monthly_transactions():
             for user in users:
                 try:
                     user_id = user["user_id"]
+                    email = user.get("email") or get_user_email_by_id(user_id)
                     country = (user.get("country") or "uk").strip().lower()
 
                     dedupe_key = (user_id, country)
@@ -257,6 +328,18 @@ def sync_amazon_monthly_transactions():
                             f"user_id={user_id}, country={country}, year={year}, month={month}, "
                             f"count={result.get('count', 0)}"
                         )
+
+                        # ✅ send fetched file by email
+                        pipeline_result = result.get("pipeline_result") or {}
+                        _send_monthly_amazon_file_email(
+                            user_id=user_id,
+                            to_email=email,
+                            country=country,
+                            year=year,
+                            month=month,
+                            pipeline_result=pipeline_result,
+                        )
+
                     else:
                         print(
                             f"[ERROR] Amazon monthly sync failed for "
@@ -268,6 +351,7 @@ def sync_amazon_monthly_transactions():
 
         except Exception as e:
             print(f"[ERROR] sync_amazon_monthly_transactions crashed: {e}")
+
 
 #---------------------------------------------  Celery Beat scheduled tasks for monthly forecast generation ---------------------------------------------------------#
 
@@ -419,4 +503,4 @@ def run_agent_schedules():
 
         except Exception as e:
             print(f"[ERROR] run_agent_schedules crashed: {e}")            
-        
+            

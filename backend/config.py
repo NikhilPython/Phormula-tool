@@ -71,12 +71,16 @@ class Config:
         "beat_schedule": {
             "seed-currency-rates-every-month-1st-11am": {
                 "task": "tasks.seed_currency_rates_monthly",
-                "schedule": crontab(day_of_month=1, hour=11, minute=0),
+                "schedule": crontab(day_of_month=1, hour=10, minute=0),
             },
             "sync-amazon-monthly-transactions-every-month-1st-11am": {
                 "task": "tasks.sync_amazon_monthly_transactions",
-                "schedule": crontab(day_of_month=1, hour=11, minute=0),
+                "schedule": crontab(day_of_month=1, hour=10, minute=15),
             },
+            # "sync-amazon-monthly-transactions-every-month-1st-11am": {
+            #     "task": "tasks.sync_amazon_monthly_transactions",
+            #     "schedule": crontab(hour=12, minute=44),
+            # },
             "generate-forecast-every-month-1st-11-30am": {
                 "task": "tasks.generate_monthly_forecast_files",
                 "schedule": crontab(day_of_month=1, hour=11, minute=30),

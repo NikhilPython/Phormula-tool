@@ -28,6 +28,7 @@ import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import { IoMdLock } from "react-icons/io";
 import Loader from '@/components/loader/Loader';
+
 /* ================= TYPES ================= */
 interface Params {
   params: Promise<{
@@ -349,6 +350,7 @@ const formatQuarterLabel = (q: string, year4: string) => {
   return `${qq}'${yy}`;
 };
 
+
 const buildReconFilename = (range: Range, opts: {
   month: string;
   quarter: string;
@@ -578,7 +580,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       }
 
       if (mode === "quarter") {
-        q.quarter = quarterToNumber(selectedQuarter);
+        q.quarter = String(selectedQuarter).toLowerCase(); // "Q1" → "q1"
       }
 
       const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
@@ -1058,6 +1060,23 @@ export default function InventoryReconciliationPage({ params }: Params) {
     };
   }
 
+  const periodLabel = useMemo(() => {
+    if (range === "monthly") return "month";
+    if (range === "quarterly") return "quarter";
+    return "year";
+  }, [range]);
+
+  const beginningInventoryLabel = useMemo(
+    () => `Inventory at the beginning of the ${periodLabel}`,
+    [periodLabel]
+  );
+
+  const endingInventoryLabel = useMemo(() => {
+    if (range === "monthly") return "Inventory at month end";
+    if (range === "quarterly") return "Inventory at quarter end";
+    return "Inventory at year end";
+  }, [range]);
+
   /* ================= MAIN FLOW ================= */
 
   const debounceRef = useRef<number | null>(null);
@@ -1287,30 +1306,22 @@ export default function InventoryReconciliationPage({ params }: Params) {
   // 2) Group: Inventory at the beginning of the month
   const groups: ColGroup<AnyRow>[] = useMemo(
     () => [
-      // =======================
-      // Group 1: Beginning (you already have)
-      // =======================
       {
         id: 'beginning',
-        label: 'Inventory at the beginning of the month',
+        label: beginningInventoryLabel,
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
           { key: '__beginning_total', label: 'Total', width: 140, align: 'center' }
-        ]
-        ,
+        ],
         expandedCols: [
           { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
           { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
           { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
-          // ⚠️ If you later add an opening transit field, replace this
           { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
-      // =======================
-      // Group 2: Units in transit
-      // =======================
       {
         id: 'units_in_transit',
         label: 'Units in transit',
@@ -1319,30 +1330,18 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
         ],
         expandedCols: [
-          // map these to your actual keys:
-          // "in transit" -> transit_total (based on your sample)
           { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
-
-          // "delivered" -> I’m assuming receipts represent delivered to FC.
-          // If you have a better field, replace sum_receipts with it.
           { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
           { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
-      // =======================
-      // Group 3: Other Items
-      // =======================
       {
         id: 'other_items',
         label: 'Other Items',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
-          {
-            key: '__other_items_total',
-            label: 'Total',
-            width: 90, align: 'center'
-          },
+          { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
         ],
         expandedCols: [
           { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
@@ -1355,9 +1354,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
-      // =======================
-      // Group 4: Units Sold
-      // =======================
+
       {
         id: 'units_sold',
         label: 'Units Sold',
@@ -1366,48 +1363,29 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: '__units_sold_net', label: 'Net Units', width: 90, align: 'center' },
         ],
         expandedCols: [
-          // Map based on your data keys
           { key: '__units_sold_gross', label: 'Gross Sales', width: 110, align: 'center' },
           { key: '__units_sold_returns', label: 'Return', width: 110, align: 'center' },
           { key: '__units_sold_net', label: 'Net Units', width: 110, align: 'center' },
         ],
       },
+
       {
         id: 'open_orders',
         label: 'Open orders',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
-          {
-            key: '__open_orders_total',
-            label: 'Total',
-            width: 110, align: 'center'
-          },
+          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
         ],
         expandedCols: [
-          {
-            key: '__open_orders_beginning',
-            label: 'Beginning',
-            width: 110, align: 'center'
-          },
-          {
-            key: '__open_orders_end',
-            label: 'End',
-            width: 110, align: 'center'
-          },
-          {
-            key: '__open_orders_total',
-            label: 'Total',
-            width: 110, align: 'center'
-          },
+          { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
+          { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
+          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
-      // =======================
-      // Group 6: Inventory at month end
-      // =======================
       {
         id: 'ending',
-        label: 'Inventory at month end',
+        label: endingInventoryLabel,
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
           { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
@@ -1416,21 +1394,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
-
-          {
-            key: '__ending_transit_placeholder',
-            label: 'Transit (Between WH)',
-            width: 110, align: 'center'
-          },
-
-
+          { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
-
-
     ],
-    []
+    [beginningInventoryLabel, endingInventoryLabel]
   );
 
   // 3) Everything else goes to singleCols for now (optional)
@@ -1567,18 +1536,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
       if (pn === 'OTHERS') return 'Others';
       if (pn === 'TOTAL' || pn === 'GRAND TOTAL') return 'Total';
     }
-
     if (colKey === "__sno") {
-      // leave blank for total rows
-      if (isSpecialRow) return "";
+      // only TOTAL row should be blank
+      if (row?.__isTotal === true || isTotalRow(row)) return "";
 
-      // ✅ for export: use provided index (1-based)
-      if (typeof exportIndex === "number") return String(exportIndex + 1);
-
-      // ✅ for UI: fallback to your existing logic
       const idx = displayRows.findIndex(
         (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
       );
+
       return idx >= 0 ? String(idx + 1) : "";
     }
 
@@ -2022,7 +1987,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
             <InventoryPieCard
               ref={ageingPieRef}
-              title="Inventory Ageing"
+              title="Current Inventory Ageing"
               data={ageingPie}
               loading={pieLoading}
               height={320}
@@ -2040,7 +2005,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
               "[-webkit-overflow-scrolling:touch]",
             ].join(" ")}
           >
-            {effectiveRows.length === 0 ? (
+            {fetching ? (
+              <div className="flex justify-center items-center py-10">
+                <Loader fullscreen transparent />
+              </div>
+            ) : effectiveRows.length === 0 ? (
               <div className="p-6 text-sm text-neutral-600">No data available</div>
             ) : (
               <GroupedCollapsibleTable
