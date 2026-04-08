@@ -17,7 +17,7 @@ from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.amazon_utils import amazon_client
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 
 referral_fee_bp = Blueprint('referral_fee_bp', __name__)
 
