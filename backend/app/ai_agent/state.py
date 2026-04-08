@@ -70,3 +70,9 @@ class AgentState(TypedDict, total=False):
     clarification_question: Optional[str]
     planner_payload: Optional[Dict[str, Any]]
     planner_result: Optional[Dict[str, Any]]
+
+    # 🔥 NEW: analysis + insight layer
+    analysis_type: Optional[str]
+    analysis_result: Optional[Dict[str, Any]]
+    insight_context: Optional[Dict[str, Any]]
+    product_match: Optional[str]
