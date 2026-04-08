@@ -494,7 +494,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
   /* ================= UI STATE ================= */
   const [pageLoading, setPageLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
-  const [fetching, setFetching] = useState(false);
+
+  // start as true so first render shows loader
+  const [fetching, setFetching] = useState(true);
+
+  // track whether at least one fetch cycle has completed
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
   const [selectedRow, setSelectedRow] = useState<AnyRow | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
@@ -561,10 +567,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
   async function fetchInventoryLostCompensation() {
     if (!hasValidPeriod) {
       setLostCompRows([]);
+      setLostCompLoading(false);
       return;
     }
 
     setLostCompLoading(true);
+
     try {
       const mode =
         range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
@@ -580,7 +588,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       }
 
       if (mode === "quarter") {
-        q.quarter = String(selectedQuarter).toLowerCase(); // "Q1" → "q1"
+        q.quarter = String(selectedQuarter).toLowerCase();
       }
 
       const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
@@ -590,13 +598,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
       if (!res.ok || json?.success === false) {
         throw new Error(json?.error || "Failed to fetch inventory lost compensation");
       }
+
       setLostCompRows(() => {
         let rows: AnyRow[] = Array.isArray(json?.data) ? (json.data as AnyRow[]) : [];
 
         rows = rows.filter((r: AnyRow) => {
           const name = String(r?.product_name || "").toUpperCase();
           const sku = String(r?.msku || "").toUpperCase();
-
           return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
         });
 
@@ -621,7 +629,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
             product_name: "Total",
             msku: "-",
             __isTotal: true,
-
             lost_units: 0,
             damaged_units: 0,
             total_lost_units: 0,
@@ -652,13 +659,15 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (pageLoading) return;
     if (isNA) {
       setLostCompRows([]);
+      setLostCompLoading(false);
       return;
     }
+
     if (activeView !== "extra") return;
 
+    setLostCompLoading(true);
     void fetchInventoryLostCompensation();
   }, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading, isNA]);
-
 
   const getCurrencySymbol = (currency: string) => {
     const c = String(currency || "").trim().toUpperCase();
@@ -1091,14 +1100,17 @@ export default function InventoryReconciliationPage({ params }: Params) {
     return Number.isFinite(n) ? Math.trunc(n) : 0;
   };
 
-
   const runDBFetchForFilters = async () => {
     if (!hasValidPeriod) {
-      setRows([]);     // real rows clear
+      setRows([]);
       setMeta(null);
+      setFetching(false);
+      setHasLoadedOnce(true);
       return;
     }
+
     setFetching(true);
+
     try {
       const country = countryName;
 
@@ -1123,6 +1135,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       setShowModal(true);
     } finally {
       setFetching(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -1135,14 +1148,18 @@ export default function InventoryReconciliationPage({ params }: Params) {
   useEffect(() => {
     if (pageLoading) return;
 
-    // 🚨 NA/NA case → NO seed, NO API
     if (!hasValidPeriod) {
       setRows([]);
       setMeta(null);
+      setFetching(false);
+      setHasLoadedOnce(true);
       return;
     }
 
     const doSeedThenFetch = async () => {
+      setFetching(true);
+      setHasLoadedOnce(false);
+
       try {
         await seedAmazonLedgerOnce(selectedYear);
       } catch (e: any) {
@@ -1163,12 +1180,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
     void doSeedThenFetch();
   }, [selectedYear, countryName, pageLoading]);
 
-
-
   // When filters change (range/month/quarter/year), DO NOT seed again. Only DB fetch.
   useEffect(() => {
     if (pageLoading) return;
     if (!initializedRef.current) return;
+
+    // immediately show loader when period/filter changes
+    setFetching(true);
+    setHasLoadedOnce(false);
 
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
@@ -1178,7 +1197,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-    // ✅ include selectedYear so year changes also re-fetch via debounce if needed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
@@ -1188,8 +1206,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (!first) return [];
     return Object.keys(first);
   }, [rows]);
-
-
 
   const displayRows = useMemo(() => {
     if (!rows || rows.length === 0) return [];
@@ -1892,8 +1908,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   if (pageLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Loader fullscreen transparent />
+      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+        <Loader />
       </div>
     );
   }
@@ -2005,9 +2021,9 @@ export default function InventoryReconciliationPage({ params }: Params) {
               "[-webkit-overflow-scrolling:touch]",
             ].join(" ")}
           >
-            {fetching ? (
-              <div className="flex justify-center items-center py-10">
-                <Loader fullscreen transparent />
+            {fetching || !hasLoadedOnce ? (
+              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                <Loader className='bg-transparent' />
               </div>
             ) : effectiveRows.length === 0 ? (
               <div className="p-6 text-sm text-neutral-600">No data available</div>
@@ -2034,7 +2050,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
             )}
           </div>
         )}
-
         {/* <div className="mt-4" id="inventory-pie-export">
 
         <InventoryTopProductsPie
@@ -2048,21 +2063,27 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
         {activeView === "extra" && (
           <div className="mt-5">
-            <DataTable<Record<string, React.ReactNode>>
-              columns={lostCompTableColumns}
-              data={lostCompTableData}
-              loading={lostCompLoading}
-              paginate={false}
-              stickyHeader
-              scrollY={false}
-              maxHeight="auto"
-              emptyMessage="No data available"
-              tableClassName="text-xs 2xl:text-sm"
-              className="rounded-lg"
-              rowClassName={(row) =>
-                (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
-              }
-            />
+            {lostCompLoading ? (
+              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                <Loader />
+              </div>
+            ) : (
+              <DataTable<Record<string, React.ReactNode>>
+                columns={lostCompTableColumns}
+                data={lostCompTableData}
+                loading={false}
+                paginate={false}
+                stickyHeader
+                scrollY={false}
+                maxHeight="auto"
+                emptyMessage="No data available"
+                tableClassName="text-xs 2xl:text-sm"
+                className="rounded-lg"
+                rowClassName={(row) =>
+                  (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
+                }
+              />
+            )}
           </div>
         )}
       </PreviewLockedSection>
