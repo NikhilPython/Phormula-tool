@@ -261,6 +261,63 @@ export default function InventoryFlowPage() {
     return token;
   };
 
+  const normalizeMonthForApi = (month: string) => {
+    const raw = String(month || '').trim().toLowerCase();
+
+    const shortMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const fullMonths = [
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december',
+    ];
+
+    const fullIndex = fullMonths.indexOf(raw);
+    if (fullIndex !== -1) return fullMonths[fullIndex];
+
+    const shortIndex = shortMonths.indexOf(raw.slice(0, 3));
+    if (shortIndex !== -1) return fullMonths[shortIndex];
+
+    const numeric = parseInt(raw, 10);
+    if (!Number.isNaN(numeric) && numeric >= 1 && numeric <= 12) {
+      return fullMonths[numeric - 1];
+    }
+
+    return raw;
+  };
+
+  const ensureForecastExists = async (country: string, month: string, year: string) => {
+    const token = tokenOrFail();
+    const normalizedMonth = normalizeMonthForApi(month);
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast?country=${encodeURIComponent(
+        country.toLowerCase()
+      )}&month=${encodeURIComponent(normalizedMonth)}&year=${encodeURIComponent(year)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.error || json?.message || 'Inventory forecast not found');
+    }
+
+    return res;
+  };
+
   async function fetchUploadHistory() {
     if (!countryName || !effectiveMonth || !effectiveYear) return;
 
@@ -487,10 +544,10 @@ export default function InventoryFlowPage() {
       throw new Error('Missing NEXT_PUBLIC_API_BASE_URL');
     }
 
-    const safeMonth = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    const normalizedMonth = normalizeMonthForApi(month).toLowerCase();
 
     const formData = new FormData();
-    formData.append('month', safeMonth);
+    formData.append('month', normalizedMonth);
     formData.append('year', year);
     formData.append('country', country.toLowerCase());
 
@@ -506,7 +563,7 @@ export default function InventoryFlowPage() {
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      throw new Error(json?.error || 'Purchase order API failed');
+      throw new Error(json?.error || json?.message || 'Purchase order API failed');
     }
 
     return json;
@@ -514,15 +571,24 @@ export default function InventoryFlowPage() {
 
   useEffect(() => {
     if (activeTab !== 'purchaseOrder' || isDemoMode) return;
+    if (!countryName || !sharedMonth || !sharedYear) return;
 
-    const key = `${countryName}-${sharedMonth}-${sharedYear}`;
+    const normalizedMonth = normalizeMonthForApi(sharedMonth);
+    const key = `${countryName}-${normalizedMonth}-${sharedYear}`;
     if (lastPoTriggerRef.current === key) return;
 
     lastPoTriggerRef.current = key;
 
-    triggerPurchaseOrderApi(countryName, sharedMonth, sharedYear).catch((err) => {
-      console.error('PO API error:', err);
-    });
+    const run = async () => {
+      try {
+        await ensureForecastExists(countryName, normalizedMonth, sharedYear);
+        await triggerPurchaseOrderApi(countryName, normalizedMonth, sharedYear);
+      } catch (err: any) {
+        console.error('PO API error:', err);
+      }
+    };
+
+    void run();
   }, [activeTab, countryName, sharedMonth, sharedYear, isDemoMode]);
 
   useEffect(() => {
