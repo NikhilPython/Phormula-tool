@@ -49,6 +49,46 @@ function parseWorkbookToRows(buffer: ArrayBuffer): Row[] {
   return XLSX.utils.sheet_to_json<Row>(sheet);
 }
 
+function monthToLowerName(value: string) {
+  return value ? value.trim().toLowerCase() : '';
+}
+
+async function fetchInventoryForecastFile(
+  token: string,
+  country: string,
+  month: string,
+  year: string
+) {
+  return fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast?country=${encodeURIComponent(
+      country.toLowerCase()
+    )}&month=${encodeURIComponent(monthToLowerName(month))}&year=${encodeURIComponent(year)}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+}
+
+async function ensureInventoryForecastReady(
+  token: string,
+  country: string,
+  month: string,
+  year: string
+) {
+  const res = await fetchInventoryForecastFile(token, country, month, year);
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson?.error || errJson?.message || 'Inventory forecast not found');
+  }
+
+  return res;
+}
+
+
 export default function PurchaseOrderPage({
   embedded = false,
   countryNameProp,
@@ -83,29 +123,29 @@ export default function PurchaseOrderPage({
     () =>
       isGlobalRoute
         ? [
-            'Sno.',
-            'Product Name',
-            'Dispatches UK',
-            'Dispatches Canada',
-            'Dispatches Amazon US',
-            'Total Dispatches',
-            'Current Inventory - Local Warehouse',
-            'PO Already Raised',
-            'PO to be raised',
-            'Cost per Unit (in INR)',
-            'PO Cost (in INR)',
-          ]
+          'Sno.',
+          'Product Name',
+          'Dispatches UK',
+          'Dispatches Canada',
+          'Dispatches Amazon US',
+          'Total Dispatches',
+          'Current Inventory - Local Warehouse',
+          'PO Already Raised',
+          'PO to be raised',
+          'Cost per Unit (in INR)',
+          'PO Cost (in INR)',
+        ]
         : [
-            'Sno.',
-            'Product Name',
-            'Dispatches UK',
-            'Total Dispatches',
-            'Current Inventory - Local Warehouse',
-            'PO Already Raised',
-            'PO to be raised',
-            'Cost per Unit (in INR)',
-            'PO Cost (in INR)',
-          ],
+          'Sno.',
+          'Product Name',
+          'Dispatches UK',
+          'Total Dispatches',
+          'Current Inventory - Local Warehouse',
+          'PO Already Raised',
+          'PO to be raised',
+          'Cost per Unit (in INR)',
+          'PO Cost (in INR)',
+        ],
     [isGlobalRoute]
   );
 
@@ -165,7 +205,7 @@ export default function PurchaseOrderPage({
       const token = getTokenOrThrow();
 
       const formData = new FormData();
-      formData.append('month', capitalize(selectedMonth));
+      formData.append('month', monthToLowerName(selectedMonth));
       formData.append('year', selectedYear);
       formData.append('country', countryName.toLowerCase());
 
@@ -203,17 +243,33 @@ export default function PurchaseOrderPage({
       setError('');
 
       try {
+        const token = getTokenOrThrow();
+
         let res = await fetchGeneratedPOFile(selectedMonth, selectedYear);
 
         if (!res.ok && res.status === 404) {
+          // Ensure inventory forecast exists first
+          await ensureInventoryForecastReady(
+            token,
+            countryName,
+            selectedMonth,
+            selectedYear
+          );
+
+          // Then generate PO
           await generatePurchaseOrder(selectedMonth, selectedYear);
+
+          // Then fetch generated PO file again
           res = await fetchGeneratedPOFile(selectedMonth, selectedYear);
         }
 
         if (!res.ok) {
           const errJson = await res.json().catch(() => ({}));
 
-          if (errJson?.error === 'Generated file not found') {
+          if (
+            errJson?.error === 'Generated file not found' ||
+            errJson?.error === 'Purchase order file not found'
+          ) {
             setError('Please upload your local house inventory file to see PO.');
             return;
           }
@@ -230,7 +286,7 @@ export default function PurchaseOrderPage({
         setLoading(false);
       }
     },
-    [fetchGeneratedPOFile, generatePurchaseOrder, month, year]
+    [fetchGeneratedPOFile, generatePurchaseOrder, month, year, getTokenOrThrow, countryName]
   );
 
   const fetchGlobalDispatchFile = useCallback(
@@ -409,8 +465,8 @@ export default function PurchaseOrderPage({
           col === 'Product Name'
             ? 'text-left'
             : col === 'Sno.'
-            ? 'text-center'
-            : '',
+              ? 'text-center'
+              : '',
         headerClassName: col === 'Sno.' ? 'text-center' : '',
         render: (row, value) => {
           const text = String(value ?? '');
