@@ -2022,7 +2022,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
             <InventoryPieCard
               ref={ageingPieRef}
-              title="Inventory Ageing"
+              title="Current Inventory Ageing"
               data={ageingPie}
               loading={pieLoading}
               height={320}
