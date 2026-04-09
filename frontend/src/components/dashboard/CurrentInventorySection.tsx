@@ -365,83 +365,93 @@ export default function CurrentInventorySection({
 
   /* ===================== DOWNLOAD EXCEL (FULL DATA) ===================== */
 
+  const exportRows = useMemo(() => {
+    if (!invRows?.length) return [];
+
+    return invRows
+      .filter((r) => {
+        const name = String(r["Product Name"] ?? "").trim();
+        const sku = String(r["SKU"] ?? "").trim();
+        if (!name && !sku) return false;
+        if (isInventoryTotalRow(r)) return false;
+        return true;
+      })
+      .map((row, index) => {
+        const sku = String(row["SKU"] ?? "").trim();
+
+        const currentInventory =
+          toNumberSafe(row["Inventory at the end of the month"]) ||
+          toNumberSafe(row["Available Inventory"]);
+
+        const mtdKey = findMtdKey(row);
+        const currentMonthUnitsSold = toNumberSafe(
+          mtdKey ? (row as any)[mtdKey] : 0
+        );
+
+        const daysInHand =
+          currentMonthUnitsSold > 0
+            ? Math.round(currentInventory / currentMonthUnitsSold)
+            : "";
+
+        const rawAlert = String(inventoryAlerts?.[sku]?.alert ?? "").toLowerCase();
+
+        let status =
+          rawAlert.includes("high")
+            ? "High Alert"
+            : rawAlert.includes("low")
+              ? "Low Stock"
+              : "Healthy";
+
+        return {
+          "Sno.": index + 1,
+          "SKU": sku,
+          "Product Name": row["Product Name"] ?? "",
+          "Current Inventory": currentInventory,
+          "Current Month Units Sold": currentMonthUnitsSold,
+          "Days in Hand": daysInHand,
+          "Status": status,
+        } as Record<string, string | number>;
+      });
+  }, [invRows, inventoryAlerts, findMtdKey]);
+
   const downloadInventoryExcel = useCallback(() => {
-    if (!invRows?.length) return;
+    if (!exportRows.length) return;
 
-    // export ALL rows except empty rows + backend totals
-    const rowsToExport = invRows.filter((r) => {
-      const name = String(r["Product Name"] ?? "").trim();
-      const sku = String(r["SKU"] ?? "").trim();
-      if (!name && !sku) return false;
-      if (isInventoryTotalRow(r)) return false;
-      return true;
-    });
+    const headerOrder = Object.keys(exportRows[0]);
+    const bodyAoA = exportRows.map((row) =>
+      headerOrder.map((h) => (row as Record<string, any>)[h] ?? "")
+    );
 
-    if (!rowsToExport.length) return;
-
-    // ✅ normalize headers
-    const cleanedRows = normalizeExportRows(rowsToExport);
-
-    const displayCountry = displayRegion;
-
-    const abbr = getAbbr(invMonthYear.month);
-    const yy = invMonthYear.year.slice(2);
-    const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${yy}`;
+    const { monthName, year } = getISTYearMonth();
+    const abbr = monthName.slice(0, 3);
+    const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${String(year).slice(2)}`;
 
     const companyNameForExcel = capitalizeWords((userData as any)?.company_name || "");
     const brandNameForExcel = capitalizeWords((userData as any)?.brand_name || "");
 
-    // currency shown is just symbol in your header lines
-    const currencySymbol = (homeCurrencyCodeForExcel || "").toUpperCase();
-
-    const headerOrder = Object.keys(cleanedRows[0] || {});
-    const headerCount = headerOrder.length;
-
-    const BRAND_ANCHOR_COL_1_BASED = Math.max(1, headerCount);
-
     const topAoA = buildTopAoA({
-      headerCount,
-      title: `Amazon ${displayCountry} - Current Inventory - ${periodLabel}`,
+      headerCount: headerOrder.length,
+      title: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
       companyName: companyNameForExcel,
       brandName: brandNameForExcel,
-      brandAnchorColIndex1Based: BRAND_ANCHOR_COL_1_BASED,
+      brandAnchorColIndex1Based: headerOrder.length,
       extraLines: [
-        `Country : ${displayCountry}`,
+        `Country : ${displayRegion}`,
         `Platform : Amazon`,
-        `Currency : ${currencySymbol}`,
         `Period : ${periodLabel}`,
       ],
     });
 
-    const bodyAoA = cleanedRows.map((obj) => headerOrder.map((h) => obj?.[h] ?? ""));
     const sheetAoA = [...topAoA, headerOrder, ...bodyAoA];
-
     const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
 
     const HEADER_ROW_INDEX = topAoA.length;
     boldHeaderRows(ws, [HEADER_ROW_INDEX]);
 
-    const productNameColIndex0 = headerOrder.findIndex(
-      (h) => String(h).toLowerCase().trim() === "product name"
-    );
-    boldRowsByColValue(ws, productNameColIndex0 >= 0 ? productNameColIndex0 : 0, [
-      "others",
-      "total",
-      "grand total",
-    ]);
-
-    (ws as any)["!freeze"] = { xSplit: 0, ySplit: HEADER_ROW_INDEX + 1 };
-
-    ws["!cols"] = headerOrder.map((h) => ({
-      wch: Math.min(Math.max(String(h).length + 2, 12), 48),
-    }));
-
-    applyTopStyles(ws, headerCount, BRAND_ANCHOR_COL_1_BASED);
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
 
-    const fileName = `Current-Inventory_${displayCountry}_${invMonthYear.month}_${invMonthYear.year}.xlsx`;
+    const fileName = `Current-Inventory_${displayRegion}_${monthName}_${year}.xlsx`;
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
 
     const blob = new Blob([out], {
@@ -449,7 +459,7 @@ export default function CurrentInventorySection({
     });
 
     saveAs(blob, fileName);
-  }, [invRows, displayRegion, invMonthYear, userData, homeCurrencyCodeForExcel]);
+  }, [exportRows, displayRegion, userData]);
 
   /* -------- Transform backend rows → UI rows for DataTable -------- */
 
@@ -752,13 +762,72 @@ export default function CurrentInventorySection({
     ];
   }, [storageHeaderLabel]);
 
+  // return (
+  //   <div
+  //     className="
+  //       mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
+  //       w-full max-w-full overflow-hidden
+  //       flex flex-col
+  //     "
+  //   >
+  //     <div className="mb-3 flex items-center justify-between">
+  //       <div className="flex items-baseline gap-2">
+  //         <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
+  //       </div>
+
+  //       <DownloadIconButton
+  //         onClick={downloadInventoryExcel}
+  //         disabled={invLoading || !invRows?.length}
+  //         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+  //       />
+  //     </div>
+
+  //     {invError ? (
+  //       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+  //         {invError}
+  //       </div>
+  //     ) : (
+  //       <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+  //         <div className="min-w-0">
+  //           <DataTable
+  //             columns={columns}
+  //             data={invLoading ? [] : tableRows}
+  //             loading={false}
+  //             paginate={true}
+  //             pageSize={15}
+  //             scrollY={false}
+  //             maxHeight="none"
+  //             emptyMessage={invLoading ? "" : "No inventory data."}
+  //             rowClassName={(row) => {
+  //               if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
+  //               if (row.rowType === "others") return "!bg-[#FFFFFF]";
+  //               return "bg-white";
+  //             }}
+  //             tableClassName="
+  //         table-fixed w-full
+  //         [&_th]:whitespace-normal
+  //         [&_th]:break-words
+  //         [&_th]:leading-snug
+  //         [&_th>div]:[display:-webkit-box]
+  //         [&_th>div]:[-webkit-box-orient:vertical]
+  //         [&_th>div]:[-webkit-line-clamp:3]
+  //         [&_th>div]:overflow-hidden
+  //         [&_th>div]:text-ellipsis
+  //       "
+  //           />
+  //         </div>
+  //       </div>
+  //     )}
+  //   </div>
+  // );
+
   return (
     <div
       className="
-        mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
-        w-full max-w-full overflow-hidden
-        flex flex-col
-      "
+      mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
+      w-full max-w-full overflow-hidden
+      flex flex-col
+    "
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -776,38 +845,43 @@ export default function CurrentInventorySection({
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           {invError}
         </div>
+      ) : invLoading ? (
+        <div className="w-full rounded-xl  min-h-[280px] flex items-center justify-center">
+          <Loader transparent />
+        </div>
       ) : (
         <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <div className="min-w-0">
             <DataTable
               columns={columns}
-              data={invLoading ? [] : tableRows}
+              data={tableRows}
               loading={false}
               paginate={true}
               pageSize={15}
               scrollY={false}
               maxHeight="none"
-              emptyMessage={invLoading ? "" : "No inventory data."}
+              emptyMessage="No inventory data."
               rowClassName={(row) => {
                 if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
                 if (row.rowType === "others") return "!bg-[#FFFFFF]";
                 return "bg-white";
               }}
               tableClassName="
-          table-fixed w-full
-          [&_th]:whitespace-normal
-          [&_th]:break-words
-          [&_th]:leading-snug
-          [&_th>div]:[display:-webkit-box]
-          [&_th>div]:[-webkit-box-orient:vertical]
-          [&_th>div]:[-webkit-line-clamp:3]
-          [&_th>div]:overflow-hidden
-          [&_th>div]:text-ellipsis
-        "
+              table-fixed w-full
+              [&_th]:whitespace-normal
+              [&_th]:break-words
+              [&_th]:leading-snug
+              [&_th>div]:[display:-webkit-box]
+              [&_th>div]:[-webkit-box-orient:vertical]
+              [&_th>div]:[-webkit-line-clamp:3]
+              [&_th>div]:overflow-hidden
+              [&_th>div]:text-ellipsis
+            "
             />
           </div>
         </div>
       )}
     </div>
   );
+
 }

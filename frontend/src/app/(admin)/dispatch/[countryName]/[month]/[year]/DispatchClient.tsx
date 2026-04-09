@@ -11,6 +11,8 @@ import DataTable, { ColumnDef } from '@/components/ui/table/DataTable'
 import DownloadIconButton from '@/components/ui/button/DownloadButton'
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
+import { exportDispatchExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import { useGetUserDataQuery } from '@/lib/api/profileApi'
 
 interface SkuRow {
   [key: string]: string | number | undefined
@@ -179,6 +181,20 @@ export default function DispatchPage({
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
   const router = useRouter()
+
+  const { data: userData } = useGetUserDataQuery();
+
+  const companyName =
+    (userData as any)?.companyName ||
+    (userData as any)?.company_name ||
+    (userData as any)?.company ||
+    "";
+
+  const brandName =
+    (userData as any)?.brandName ||
+    (userData as any)?.brand_name ||
+    (userData as any)?.brand ||
+    "";
 
   const countryName = useMemo(
     () => (countryNameProp ?? params?.countryName ?? '').toString(),
@@ -373,55 +389,109 @@ export default function DispatchPage({
 
   const displayedColumns = [...DISPLAYED_COLUMNS]
 
+  // function handleExportToExcel() {
+  //   const worksheetData = skuData.map((row, index) => {
+  //     const formattedRow: Record<string, string | number> = {
+  //       'Sno.': isTotalRow(row) ? '' : index + 1,
+  //     }
+
+  //     displayedColumns.forEach((col) => {
+  //       if (col === 'Sno.') return
+
+  //       if (col === 'sku' && isTotalRow(row)) {
+  //         formattedRow[col] = ''
+  //       } else if (
+  //         isTotalRow(row) &&
+  //         [
+  //           'Inventory at Month End',
+  //           'Dispatch',
+  //           'Current Inventory + Dispatch',
+  //           'Inventory Coverage Ratio Before Dispatch',
+  //         ].includes(col)
+  //       ) {
+  //         formattedRow[col] = calculateColumnTotal(col)
+  //       } else {
+  //         const v = row[col]
+  //         formattedRow[col] =
+  //           typeof v === 'number' || typeof v === 'string' ? v : ''
+  //       }
+  //     })
+
+  //     return formattedRow
+  //   })
+
+  //   const worksheet = XLSX.utils.json_to_sheet(worksheetData)
+
+  //   if (worksheet['!ref']) {
+  //     const range = XLSX.utils.decode_range(worksheet['!ref'])
+  //     for (let R = range.s.r; R <= range.e.r; ++R) {
+  //       for (let C = range.s.c; C <= range.e.c; ++C) {
+  //         const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
+  //         const cell = (worksheet as any)[cellAddress]
+  //         if (cell && typeof cell.v === 'number') {
+  //           cell.z = '#,##0.##'
+  //         }
+  //       }
+  //     }
+  //   }
+
+  //   const workbook = XLSX.utils.book_new()
+  //   XLSX.utils.book_append_sheet(workbook, worksheet, 'Dispatch')
+  //   XLSX.writeFile(workbook, `Dispatch Report ${monthdp}-${yeardp}.xlsx`)
+  // }
+
   function handleExportToExcel() {
-    const worksheetData = skuData.map((row, index) => {
+    const exportRows = skuData.map((row, index) => {
       const formattedRow: Record<string, string | number> = {
-        'Sno.': isTotalRow(row) ? '' : index + 1,
-      }
+        "Sno.": isTotalRow(row) ? "" : index + 1,
+      };
 
       displayedColumns.forEach((col) => {
-        if (col === 'Sno.') return
+        if (col === "Sno.") return;
 
-        if (col === 'sku' && isTotalRow(row)) {
-          formattedRow[col] = ''
-        } else if (
+        if (col === "sku" && isTotalRow(row)) {
+          formattedRow["SKU"] = "";
+          return;
+        }
+
+        if (
           isTotalRow(row) &&
           [
-            'Inventory at Month End',
-            'Dispatch',
-            'Current Inventory + Dispatch',
-            'Inventory Coverage Ratio Before Dispatch',
+            "Inventory at Month End",
+            "Dispatch",
+            "Current Inventory + Dispatch",
+            "Inventory Coverage Ratio Before Dispatch",
           ].includes(col)
         ) {
-          formattedRow[col] = calculateColumnTotal(col)
-        } else {
-          const v = row[col]
-          formattedRow[col] =
-            typeof v === 'number' || typeof v === 'string' ? v : ''
+          formattedRow[col] = calculateColumnTotal(col);
+          return;
         }
-      })
 
-      return formattedRow
-    })
-
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData)
-
-    if (worksheet['!ref']) {
-      const range = XLSX.utils.decode_range(worksheet['!ref'])
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
-          const cell = (worksheet as any)[cellAddress]
-          if (cell && typeof cell.v === 'number') {
-            cell.z = '#,##0.##'
-          }
+        if (isTotalRow(row) && col === "Product Name") {
+          formattedRow[col] = "Total";
+          return;
         }
-      }
-    }
 
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Dispatch')
-    XLSX.writeFile(workbook, `Dispatch Report ${monthdp}-${yeardp}.xlsx`)
+        const v = row[col];
+        formattedRow[col === "sku" ? "SKU" : col] =
+          typeof v === "number" || typeof v === "string" ? v : "";
+      });
+
+      return formattedRow;
+    });
+
+    void exportDispatchExcel({
+      filename: `Dispatch Report ${monthdp}-${yeardp}.xlsx`,
+      titleLine: `Amazon ${countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()
+        } - Dispatch Report - ${monthdp} ${yeardp}`,
+      titleCountry:
+        countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase(),
+      platformLabel: "Phormula",
+      periodLabel: `${monthdp} ${yeardp}`,
+      companyName,
+      brandName,
+      dataRows: exportRows,
+    });
   }
 
   useEffect(() => {

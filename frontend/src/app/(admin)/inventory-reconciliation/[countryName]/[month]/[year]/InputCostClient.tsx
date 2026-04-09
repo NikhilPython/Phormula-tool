@@ -94,13 +94,12 @@ const isNumericLike = (v: any) => {
 };
 
 const formatCell = (v: any) => {
-  if (v === null || v === undefined || v === '') return '-';
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (v === null || v === undefined || v === "") return "-";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+
   if (isNumericLike(v)) {
-    const n = Math.abs(Number(v)); // ✅ force positive
-    return Number.isInteger(n)
-      ? n.toLocaleString()
-      : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const n = Math.abs(Math.trunc(Number(v))); // ✅ force integer
+    return n.toLocaleString(); // ✅ no decimals ever
   }
 
   return String(v);
@@ -109,24 +108,13 @@ const formatCell = (v: any) => {
 const toNum = (v: any) => {
   if (v === null || v === undefined || v === '') return 0;
   const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? Math.trunc(n) : 0; // ✅ FORCE INTEGER
 };
 
 const sum = (row: AnyRow, keys: string[]) => keys.reduce((acc, k) => acc + toNum(row?.[k]), 0);
 
 // localStorage keys
 const seedKey = (country: string, year: string) => `ledgerSeeded:${country}:${year}`;
-
-// const isTotalRow = (row: AnyRow) => {
-//   const msku = String(row?.msku || '').trim().toUpperCase();
-//   const pn = String(row?.product_name || '').trim().toUpperCase();
-//   return (
-//     msku === 'TOTAL' ||
-//     pn === 'TOTAL' ||
-//     row?.is_total === true ||
-//     row?.__isTotal === true
-//   );
-// };
 
 const isTotalRow = (row: AnyRow) => {
   const msku = String(row?.msku || "").trim().toUpperCase();
@@ -140,7 +128,6 @@ const isTotalRow = (row: AnyRow) => {
     row?.__isTotal === true
   );
 };
-
 
 const sumRowForKeys = (rowsToSum: AnyRow[], keys: string[], base: AnyRow = {}) => {
   const out: AnyRow = { ...base };
@@ -186,6 +173,29 @@ const normalizeYear = (y: string) => {
   // "26" => "2026"
   if (/^\d{2}$/.test(yy)) return `20${yy}`;
   return yy;
+};
+
+const sanitizeExportValue = (value: any) => {
+  if (value === null || value === undefined || value === "") return "-";
+
+  if (typeof value === "number") {
+    return Math.trunc(value).toString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (trimmed === "-" || trimmed === "") return trimmed;
+
+    const numeric = Number(trimmed.replace(/,/g, ""));
+    if (!Number.isNaN(numeric)) {
+      return Math.trunc(numeric).toLocaleString();
+    }
+
+    return value;
+  }
+
+  return value;
 };
 
 const DUMMY_ROWS: AnyRow[] = [
@@ -1552,17 +1562,21 @@ export default function InventoryReconciliationPage({ params }: Params) {
       if (pn === 'OTHERS') return 'Others';
       if (pn === 'TOTAL' || pn === 'GRAND TOTAL') return 'Total';
     }
+
     if (colKey === "__sno") {
-      // only TOTAL row should be blank
       if (row?.__isTotal === true || isTotalRow(row)) return "";
 
-      const idx = displayRows.findIndex(
+      if (typeof exportIndex === "number") {
+        return String(exportIndex + 1);
+      }
+
+      const visibleRows = displayRows.filter((r) => !(r?.__isTotal || isTotalRow(r)));
+      const idx = visibleRows.findIndex(
         (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
       );
 
       return idx >= 0 ? String(idx + 1) : "";
     }
-
 
     // Beginning inventory -> Transit (Between WH) is not available yet
     if (colKey === 'sum_in_transit_between_warehouses') {
@@ -1684,7 +1698,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (colKey === "inventory_coverage_ratio") {
       const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
       if (!n) return "-";
-      return n.toFixed(1); // ✅ no "x"
+      return Math.trunc(n).toString();
     }
 
 
@@ -1814,15 +1828,17 @@ export default function InventoryReconciliationPage({ params }: Params) {
   }, [rows]);
 
 
-  // ✅ Build export rows using getValue() so Excel matches the UI cells
   const buildExcelRows = useCallback(() => {
     const cols = getExportColumns();
 
     return (displayRows || []).map((row) => {
       const out: Record<string, any> = {};
+
       for (const col of cols) {
-        out[col.header] = getValue(row, col.key);
+        const rawValue = getValue(row, col.key);
+        out[col.header] = sanitizeExportValue(rawValue);
       }
+
       return out;
     });
   }, [displayRows, getExportColumns, getValue]);
@@ -1854,21 +1870,74 @@ export default function InventoryReconciliationPage({ params }: Params) {
     const cols = getExpandedExportCols();
 
     const grandTotalRow = rows.find(isTotalRow) || null;
-    const dataOnly = rows.filter((r) => !isTotalRow(r));
-    const all = grandTotalRow ? [...dataOnly, grandTotalRow] : dataOnly;
 
-    return all.map((row, i) => {
+    // export ALL real rows, not the 9-row display version
+    const dataOnly = rows.filter((r) => !isTotalRow(r));
+
+    // sort same as UI logic, but keep every row
+    const sortedDataRows = [...dataOnly].sort(
+      (a, b) => toNum(b?.ending_total) - toNum(a?.ending_total)
+    );
+
+    const exportRows = grandTotalRow
+      ? [...sortedDataRows, { ...grandTotalRow, __isTotal: true }]
+      : sortedDataRows;
+
+    let serial = 0;
+
+    return exportRows.map((row) => {
       const out: Record<string, any> = {};
+      const rowIndex = row?.__isTotal || isTotalRow(row) ? undefined : serial++;
+
       for (const col of cols) {
-        out[col.header] = getValue(row, col.key, i); // ✅ pass index
+        out[col.header] = sanitizeExportValue(getValue(row, col.key, rowIndex));
       }
+
       return out;
     });
   }, [rows, getExpandedExportCols, getValue]);
 
+  const buildLostCompExportRows = useCallback(() => {
+    const exportRows = effectiveLostCompRows || [];
+
+    let serial = 0;
+
+    return exportRows.map((row) => {
+      const isTotal = !!row?.__isTotal;
+
+      return {
+        "S. No.": isTotal ? "" : String(++serial),
+        "Product Name": formatCell(row?.product_name),
+        "SKU": formatCell(row?.msku),
+        "Lost Units": formatCell(row?.lost_units),
+        "Damaged Units": formatCell(row?.damaged_units),
+        "Compensation Units": formatCell(row?.compensation_units),
+        "Remaining Compensation Units": formatCell(row?.net_units),
+        "Total Lost Units": formatCell(row?.total_lost_units),
+        [`Compensation Value Amount`]: formatCell(row?.compensation_value),
+        [`Remaining Compensation Amount`]: formatCell(row?.settlement_loss_event_amount),
+        [`Total Compensation Value`]: formatCell(row?.net_value),
+        __isTotal: isTotal,
+      };
+    });
+  }, [effectiveLostCompRows]);
+
   const handleDownloadXLSX = async () => {
     const dataRows = buildReconExportDataRows();
     if (!dataRows.length) return;
+
+    // ✅ ensure lost/comp data is available before export
+    let lostRows = lostCompRows;
+
+    if (!lostRows || lostRows.length === 0) {
+      try {
+        await fetchInventoryLostCompensation(); // fetch fresh data
+        lostRows = buildLostCompExportRows().map(r => r); // force fresh build
+      } catch (e) {
+        console.error("Lost vs Compensation fetch failed", e);
+        lostRows = [];
+      }
+    }
 
     const periodLabel =
       range === "monthly"
@@ -1891,11 +1960,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
       titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
       countryName,
       titleCountry: countryName?.toUpperCase(),
-      platformLabel: "Amazon",
+      platformLabel: "Phormula",
       periodLabel,
       companyName,
       brandName,
       dataRows,
+      lostCompRows: lostRows.length ? buildLostCompExportRows() : [],
       breakupChartBase64,
       ageingChartBase64,
     });
@@ -1909,7 +1979,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   if (pageLoading) {
     return (
       <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-        <Loader />
+        <Loader transparent />
       </div>
     );
   }
@@ -2023,7 +2093,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           >
             {fetching || !hasLoadedOnce ? (
               <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-                <Loader className='bg-transparent' />
+                <Loader transparent />
               </div>
             ) : effectiveRows.length === 0 ? (
               <div className="p-6 text-sm text-neutral-600">No data available</div>
@@ -2065,7 +2135,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           <div className="mt-5">
             {lostCompLoading ? (
               <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-                <Loader />
+                <Loader transparent />
               </div>
             ) : (
               <DataTable<Record<string, React.ReactNode>>

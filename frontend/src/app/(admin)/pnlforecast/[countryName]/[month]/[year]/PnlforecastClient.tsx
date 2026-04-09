@@ -682,7 +682,7 @@ const Pnlforecast: React.FC = () => {
       filename: "PNL_Forecast_With_Chart.xlsx",
       titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
       titleCountry: effectiveCountry.toUpperCase(),
-      platformLabel: "Amazon",
+      platformLabel: "Phormula",
       periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
       companyName,
       brandName,
@@ -995,22 +995,27 @@ const Pnlforecast: React.FC = () => {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center gap-4">
-        <div className="flex items-baseline gap-2">
-          <PageBreadcrumb
-            pageTitle={
-              <>
-                P&amp;L Forecast -{' '}
-                <span className="text-green-500">
-                  {effectiveCountry.toUpperCase()} (
-                  {formatMonthYear(currentMonth, currentYear)} to{' '}
-                  {formatMonthYear(nextToNextMonth, nextToNextMonthYear)})
-                </span>
-              </>
-            }
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
+        <div className="flex items-center justify-between w-full gap-3">
+          <div className="flex flex-col leading-tight">
+            <div className="flex items-baseline gap-2">
+              <PageBreadcrumb
+                pageTitle="P&L Forecast"
+                variant="page"
+                align="left"
+                textSize="2xl"
+              />
+            </div>
+            <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+              Historical Data vs Forecasted Trends
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <DownloadIconButton
+              onClick={handleDownload}
+              disabled={isDemoMode}
+            />
+          </div>
         </div>
       </div>
 
@@ -1036,7 +1041,7 @@ const Pnlforecast: React.FC = () => {
 
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
             <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between w-full gap-3">
+              {/* <div className="flex items-center justify-between w-full gap-3">
                 <div className="flex flex-col leading-tight">
                   <div className="flex items-baseline gap-2">
                     <PageBreadcrumb
@@ -1057,7 +1062,7 @@ const Pnlforecast: React.FC = () => {
                     disabled={isDemoMode}
                   />
                 </div>
-              </div>
+              </div> */}
 
               <div className="mt-2">
                 <PnlForecastChart

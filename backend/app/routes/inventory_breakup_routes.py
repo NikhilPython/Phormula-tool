@@ -26,10 +26,6 @@ SECRET_KEY = Config.SECRET_KEY
 
 dotenv_path = find_dotenv(filename=".env", usecwd=True)
 load_dotenv(dotenv_path, override=True)
-
-logger = logging.getLogger("amazon_sp_api")
-logging.basicConfig(level=logging.INFO)
-
 db_url = os.getenv("DATABASE_URL")
 db_url1 = os.getenv("DATABASE_ADMIN_URL") or db_url
 db_url_amazon = os.getenv("DATABASE_AMAZON_URL") or db_url
@@ -209,7 +205,6 @@ def inventory_breakup():
                 "end_date": end_date,
             }).mappings().first()
     except Exception as e:
-        logger.exception("DB error in inventory_breakup (amazon_engine)")
         return jsonify({"success": False, "error": str(e)}), 500
 
     # no data in range
@@ -299,7 +294,6 @@ def inventory_ageing():
                 "marketplace": marketplace,
             }).mappings().first()
     except Exception as e:
-        logger.exception("DB error in inventory_ageing (amazon_engine)")
         return jsonify({"success": False, "error": str(e)}), 500
 
     if not row:
@@ -661,7 +655,6 @@ def inventory_lost_compensation():
             inventory_rows = conn.execute(inventory_sql).mappings().all()
 
     except Exception as e:
-        logger.exception("DB error in inventory_lost_compensation")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -714,7 +707,11 @@ def inventory_lost_compensation():
         net_units = compensation_units - total_lost_units
         net_value = compensation_value - loss_value
 
-        product_name = row["product_name"] or inv.get("inventory_product_name", "") or "Unknown"
+        product_name = (
+            row["product_name"]
+            or inv.get("inventory_product_name", "")
+            or row["asin"]   # 👈 fallback to ASIN
+        )
 
         if (
             total_lost_units <= 0
@@ -914,7 +911,6 @@ def inventory_lost_compensation():
                 })
 
     except Exception as e:
-        logger.exception("DB error while storing inventory_lost_compensation result")
         return jsonify({
             "success": False,
             "error": f"Result generated but failed to store table: {str(e)}",

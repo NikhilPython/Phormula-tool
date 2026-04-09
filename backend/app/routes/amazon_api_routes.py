@@ -48,9 +48,6 @@ SECRET_KEY = Config.SECRET_KEY
 # --- load .env robustly (works no matter where you run `flask run`) ---
 dotenv_path = find_dotenv(filename=".env", usecwd=True)
 load_dotenv(dotenv_path, override=True)
-
-logger = logging.getLogger("amazon_sp_api")
-logging.basicConfig(level=logging.INFO)
 load_dotenv()
 db_url  = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  # fallback
@@ -317,10 +314,8 @@ def list_skus():
             saved_count = _upsert_products_to_db_with_open_date(skus, mp, user_id)
             out["db"] = {"saved_products": saved_count}
             out["open_date"]["updated"] = saved_count
-            logger.info(f"Saved {saved_count} products (with open_date) for marketplace {mp}")
         except Exception as e:
             db.session.rollback()
-            logger.exception(f"Failed to save products with open_date: {e}")
             out["db"] = {"saved_products": 0, "error": str(e)}
             out["open_date"]["note"] = "Failed while fetching open_date / saving products."
 
@@ -340,7 +335,6 @@ def amazon_account():
 
     res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
     if not res or "error" in res:
-        logger.error(f"Account fetch failed: {res}")
         return jsonify({
             "success": False,
             "message": "Failed to fetch account info",
@@ -349,7 +343,6 @@ def amazon_account():
 
     data = res.get("payload") if isinstance(res, dict) else res
     if data is None:
-        logger.error(f"Unexpected account response shape: {res}")
         return jsonify({
             "success": False,
             "message": "Unexpected response from Amazon",
@@ -1906,7 +1899,6 @@ def finances_mtd_transactions():
                 ads_agg.rename(columns={"spend": "ads_spend_raw"}, inplace=True)
 
         except Exception as e:
-            logger.warning(f"Could not read/aggregate ads table {ads_table_name}: {e}")
             ads_agg = pd.DataFrame()
 
         if not ads_agg.empty:
@@ -2008,7 +2000,6 @@ def finances_mtd_transactions():
                 df_sku["product_name"] = df_sku["product_name"].fillna("").astype(str)
 
         except Exception as e:
-            logger.warning(f"Could not read/map product_name from {sku_data_table}: {e}")
             if "product_name" not in df_sku.columns:
                 df_sku["product_name"] = ""
             df_sku["product_name"] = df_sku["product_name"].fillna("").astype(str)
@@ -2103,7 +2094,6 @@ def finances_mtd_transactions():
             sku_summary_saved = True
             sku_summary_rows = int(len(df_sku))
         except Exception as e:
-            logger.exception(f"Failed to store SKU-wise table {skuwise_table_name}: {e}")
             sku_summary_saved = False
 
     # ---------------- Excel response ----------------

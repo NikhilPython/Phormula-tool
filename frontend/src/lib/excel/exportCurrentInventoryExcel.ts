@@ -173,23 +173,21 @@ const isPercentLabel = (label: string) => {
 ========================= */
 export function exportCurrentInventoryExcel(params: {
   filename: string;
-
-  // heading like: "Phormula UK - Current Inventory - Jan'26"
   titleLine: string;
 
-  countryName: string; // "uk" | "us" | "global"
-  titleCountry: string; // "UK" | "US" | "Global"
-  platformLabel?: string; // "Phormula" etc
+  countryName: string;
+  titleCountry: string;
+  platformLabel?: string;
 
-  periodLabel: string; // e.g. "Jan'26" or "Jan 2026"
+  periodLabel: string;
   companyName: string;
   brandName: string;
-  pieImageBase64?: string | null;
 
-  homeCurrencyCode?: string; // e.g. "USD"
-  dataRows: Record<string, any>[]; // normalized rows (clean headers)
+  pieImageBase64?: string | null;
+  homeCurrencyCode?: string;
+  dataRows: Record<string, any>[];
 }) {
-const {
+  const {
     filename,
     titleLine = "",
     countryName = "",
@@ -200,14 +198,30 @@ const {
     brandName = "",
     homeCurrencyCode,
     dataRows,
-    pieImageBase64,
   } = params;
+
   if (!dataRows?.length) return;
 
-  const headers = Object.keys(dataRows[0] || {});
+  const preferredHeaders = [
+    "S.No.",
+    "Product Name",
+    "SKU",
+    "MTD Sales",
+    "Sales Last 30 Days",
+    "Sales Rank",
+    "Current Inventory",
+    "Inventory 180+ Days",
+    "Estimated Storage Cost",
+    "Inventory Coverage Ratio",
+    "Inventory Alerts",
+  ];
+
+  const sourceHeaders = Object.keys(dataRows[0] || {});
+  const headers = preferredHeaders.filter((h) => sourceHeaders.includes(h));
   const headerCount = headers.length || 1;
 
-  // Anchor brand to last column for inventory
+  if (!headers.length) return;
+
   const ANCHOR_COL_1_BASED = headerCount;
 
   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
@@ -230,29 +244,89 @@ const {
 
   const headerRowIndex = topAoA.length;
 
-  const bodyAoA = dataRows.map((r) => headers.map((h) => (r as any)[h] ?? ""));
+  const bodyAoA = dataRows.map((row, index) =>
+    headers.map((h) => {
+      if (h === "S.No.") {
+        return row[h] ?? index + 1;
+      }
+      return row[h] ?? "";
+    })
+  );
 
   const sheetAoA = [...topAoA, headers, ...bodyAoA];
   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
 
-  // Freeze under table header
   ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
 
-  // Auto widths
-  ws["!cols"] = headers.map((h) => ({
-    wch: Math.min(Math.max(String(h).length + 2, 12), 48),
-  }));
+  ws["!cols"] = headers.map((h) => {
+    if (h === "S.No.") return { wch: 8 };
+    if (h === "Product Name") return { wch: 24 };
+    if (h === "SKU") return { wch: 18 };
+    if (h === "MTD Sales") return { wch: 14 };
+    if (h === "Sales Last 30 Days") return { wch: 18 };
+    if (h === "Sales Rank") return { wch: 14 };
+    if (h === "Current Inventory") return { wch: 18 };
+    if (h === "Inventory 180+ Days") return { wch: 18 };
+    if (h === "Estimated Storage Cost") return { wch: 20 };
+    if (h === "Inventory Coverage Ratio") return { wch: 18 };
+    if (h === "Inventory Alerts") return { wch: 24 };
+    return { wch: Math.min(Math.max(String(h).length + 2, 12), 28) };
+  });
 
   applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
-  // Force numeric cells to 2 decimals
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+    if (!ws[addr]) continue;
+
+    ws[addr].s = {
+      ...(ws[addr].s || {}),
+      font: { bold: true, sz: 11 },
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: false,
+      },
+    };
+  }
+
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
+  for (let r = headerRowIndex + 1; r <= range.e.r; r++) {
+    for (let c = 0; c < headerCount; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = ws[addr];
       if (!cell) continue;
-      if (isNumber(cell.v)) cell.z = "#,##0.00";
+
+      const header = headers[c];
+
+      if (header === "Product Name") {
+        cell.s = {
+          ...(cell.s || {}),
+          alignment: { horizontal: "left", vertical: "center" },
+        };
+        continue;
+      }
+
+      if (header === "Inventory Alerts") {
+        cell.s = {
+          ...(cell.s || {}),
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        };
+        continue;
+      }
+
+      if (isNumber(cell.v)) {
+        if (header === "Estimated Storage Cost" || header === "Inventory Coverage Ratio") {
+          cell.z = "#,##0.00";
+        } else {
+          cell.z = "#,##0";
+        }
+      }
+
+      cell.s = {
+        ...(cell.s || {}),
+        alignment: { horizontal: "center", vertical: "center" },
+      };
     }
   }
 
@@ -260,7 +334,6 @@ const {
   XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
   XLSX.writeFile(wb, filename);
 }
-
 
 /* =========================
    P&L Productwise Breakdown MTD export
@@ -494,9 +567,10 @@ export async function exportInventoryReconExcel(params: {
   brandName: string;
 
   dataRows: Record<string, any>[];
+  lostCompRows?: Record<string, any>[];
 
   breakupChartBase64?: string | null;
-ageingChartBase64?: string | null;// (unused now)
+  ageingChartBase64?: string | null;
 }) {
 const {
   filename,
@@ -507,6 +581,7 @@ const {
   companyName,
   brandName,
   dataRows,
+  lostCompRows = [],
   breakupChartBase64 = null,
   ageingChartBase64 = null,
 } = params;
@@ -560,7 +635,7 @@ const {
     cell.alignment = {
       horizontal: "center",
       vertical: "middle",
-      wrapText: true,
+      wrapText: false,
     };
   });
   headerRow.height = 18;
@@ -582,10 +657,10 @@ const {
 
       const n = toNumberLoose(v);
       if (n !== null) {
-        cell.value = n;
-        cell.numFmt = "#,##0.00";
-        cell.alignment = { horizontal: "center" };
-      } else {
+  cell.value = Math.trunc(n);
+  cell.numFmt = "#,##0";
+  cell.alignment = { horizontal: "center" };
+} else {
         cell.value = v;
         cell.alignment = { horizontal: "center" };
       }
@@ -618,7 +693,107 @@ const {
   }
 
   /* =========================
-   Sheet 2: Inventory Charts
+     Sheet 2: Lost vs Compensation
+  ========================= */
+  if (lostCompRows?.length) {
+    const lostHeaders = Object.keys(lostCompRows[0] || {}).filter((h) => h !== "__isTotal");
+    const lostHeaderCount = lostHeaders.length || 1;
+
+    const productNameCol0Lost = lostHeaders.findIndex((h) =>
+      String(h).toLowerCase().includes("product name")
+    );
+    const snoCol0Lost = lostHeaders.findIndex((h) =>
+      String(h).toLowerCase().includes("s. no")
+    );
+
+    const wsLost = wb.addWorksheet(safeSheetName("Lost vs Compensation"), {
+      views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    });
+
+    wsLost.mergeCells(1, 1, 1, lostHeaderCount);
+    wsLost.getCell(1, 1).value = `${titleLine} - Lost vs Compensation`;
+    wsLost.getCell(1, 1).font = { bold: false };
+    wsLost.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+    wsLost.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+    wsLost.getCell(2, 1).alignment = { horizontal: "left" };
+
+    wsLost.getCell(2, lostHeaderCount).value = `${brandName || ""}`;
+    wsLost.getCell(2, lostHeaderCount).alignment = { horizontal: "right" };
+    wsLost.getCell(2, lostHeaderCount).font = { bold: true };
+
+    wsLost.getCell(3, 1).value = `Country : ${titleCountry}`;
+    wsLost.getCell(4, 1).value = `Platform : ${platformLabel}`;
+    wsLost.getCell(5, 1).value = `Period : ${periodLabel}`;
+
+    const lostHeaderRowNumber = 7;
+    const lostHeaderRow = wsLost.getRow(lostHeaderRowNumber);
+
+    lostHeaders.forEach((h, i) => {
+      const cell = lostHeaderRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, size: 11 };
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: false,
+      };
+    });
+
+    const lostStartDataRow = lostHeaderRowNumber + 1;
+
+    lostCompRows.forEach((r, idx) => {
+      const row = wsLost.getRow(lostStartDataRow + idx);
+
+      lostHeaders.forEach((h, c0) => {
+        const cell = row.getCell(c0 + 1);
+        const v = r?.[h] ?? "";
+
+        if (c0 === snoCol0Lost) {
+          cell.value = v === null || v === undefined ? "" : String(v);
+          cell.numFmt = "@";
+          cell.alignment = { horizontal: "center" };
+          return;
+        }
+
+        const n = toNumberLoose(v);
+        if (n !== null) {
+          cell.value = n;
+          cell.numFmt = "#,##0";
+          cell.alignment = { horizontal: "center" };
+        } else {
+          cell.value = v;
+          cell.alignment = { horizontal: "center" };
+        }
+      });
+    });
+
+    wsLost.columns = lostHeaders.map((h) => ({
+      width: Math.min(Math.max(String(h).length + 2, 12), 40),
+    }));
+
+    if (productNameCol0Lost >= 0) {
+      const totalCandidates = new Set(["total", "grand total"]);
+      for (let i = 0; i < lostCompRows.length; i++) {
+        const rowNum = lostStartDataRow + i;
+        const cellVal = String(
+          wsLost.getCell(rowNum, productNameCol0Lost + 1).value ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (totalCandidates.has(cellVal)) {
+          const row = wsLost.getRow(rowNum);
+          row.eachCell((cell) => {
+            cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+          });
+        }
+      }
+    }
+  }
+
+  /* =========================
+   Sheet 3: Inventory Charts
 ========================= */
 const ws2 = wb.addWorksheet(safeSheetName("Inventory Charts"));
 
@@ -919,7 +1094,7 @@ else if (table?.headers?.length && table?.rows?.length) {
     cell.alignment = {
       horizontal: "center",
       vertical: "middle",
-      wrapText: true,
+      wrapText: false,
     };
   });
   hdrRow.height = 18;
@@ -1316,18 +1491,6 @@ for (let r = tableStartRow + 2; r < tableStartRow + tableData.length; r++) {
   saveAs(blob, filename);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 export async function exportPnLForecastExcel(params: {
   filename: string;
 
@@ -1534,3 +1697,333 @@ export async function exportPnLForecastExcel(params: {
   saveAs(blob, filename);
 }
 
+export async function exportDispatchExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  const snoCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("sno")
+  );
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
+  const skuCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase() === "sku" || String(h).toLowerCase() === "sku."
+  );
+
+  const ws = wb.addWorksheet(safeSheetName("Dispatch"), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  // Header block same as your other Excel helpers
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).font = { bold: false };
+  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(2, headerCount).font = { bold: true };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+  });
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws.getRow(startDataRow + idx);
+
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h] ?? "";
+
+      if (c0 === snoCol0) {
+        cell.value = v === null || v === undefined ? "" : String(v);
+        cell.numFmt = "@";
+        cell.alignment = { horizontal: "center" };
+        return;
+      }
+
+      const n = toNumberLoose(v);
+      if (n !== null) {
+        cell.value = Math.trunc(n);
+        cell.numFmt = "#,##0";
+        cell.alignment = { horizontal: "center" };
+      } else {
+        cell.value = v;
+        cell.alignment = {
+          horizontal: c0 === productNameCol0 ? "left" : "center",
+        };
+      }
+    });
+  });
+
+  ws.columns = headers.map((h, idx) => {
+    const lower = String(h).toLowerCase();
+    let width = Math.min(Math.max(String(h).length + 2, 12), 40);
+
+    if (idx === productNameCol0) width = 28;
+    if (idx === skuCol0) width = 18;
+    if (lower.includes("coverage")) width = 26;
+    if (lower.includes("dispatch")) width = 18;
+
+    return { width };
+  });
+
+  // Bold total row
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowNum = startDataRow + i;
+      const cellVal = String(
+        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (totalCandidates.has(cellVal)) {
+        const row = ws.getRow(rowNum);
+        row.eachCell((cell) => {
+          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+        });
+      }
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
+
+
+
+
+
+
+
+
+
+export async function exportPurchaseOrderExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  sheetName?: string;
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    sheetName = "PO Data",
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  const snoCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("sno")
+  );
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
+
+  const ws = wb.addWorksheet(safeSheetName(sheetName), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).font = { bold: false };
+  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(2, headerCount).font = { bold: true };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+  });
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws.getRow(startDataRow + idx);
+
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h] ?? "";
+
+      if (c0 === snoCol0) {
+        cell.value = v === null || v === undefined ? "" : String(v);
+        cell.numFmt = "@";
+        cell.alignment = { horizontal: "center" };
+        return;
+      }
+
+      const n = toNumberLoose(v);
+
+
+if (n !== null) {
+  const headerLower = String(h).toLowerCase();
+
+  cell.value = n;
+
+  // decimal columns
+  if (
+    headerLower.includes("cost per unit") ||
+    headerLower.includes("po cost") ||
+    headerLower.includes("price") ||
+    headerLower.includes("amount")
+  ) {
+    cell.numFmt = "#,##0.00";
+  } else {
+    // unit columns
+    cell.numFmt = "#,##0";
+  }
+
+  cell.alignment = { horizontal: "center" };
+} else {
+  cell.value = v;
+  cell.alignment = {
+    horizontal: c0 === productNameCol0 ? "left" : "center",
+  };
+}
+    });
+  });
+
+  ws.columns = headers.map((h, idx) => {
+    const lower = String(h).toLowerCase();
+
+    if (idx === productNameCol0) return { width: 28 };
+    if (lower.includes("dispatch")) return { width: 18 };
+    if (lower.includes("inventory")) return { width: 24 };
+    if (lower.includes("cost per unit")) return { width: 22 };
+    if (lower.includes("po cost")) return { width: 18 };
+    if (lower.includes("already raised")) return { width: 18 };
+    if (lower.includes("to be raised")) return { width: 18 };
+
+    const maxContentLength = Math.max(
+      String(h).length,
+      ...dataRows.map((row) => String(row[h] ?? "").length)
+    );
+
+    return {
+      width: Math.min(Math.max(maxContentLength + 4, 14), 40),
+    };
+  });
+
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowNum = startDataRow + i;
+      const cellVal = String(
+        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (totalCandidates.has(cellVal)) {
+        const row = ws.getRow(rowNum);
+        row.eachCell((cell) => {
+          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+        });
+      }
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
