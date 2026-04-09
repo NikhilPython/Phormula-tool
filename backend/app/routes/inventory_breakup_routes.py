@@ -714,7 +714,11 @@ def inventory_lost_compensation():
         net_units = compensation_units - total_lost_units
         net_value = compensation_value - loss_value
 
-        product_name = row["product_name"] or inv.get("inventory_product_name", "") or "Unknown"
+        product_name = (
+            row["product_name"]
+            or inv.get("inventory_product_name", "")
+            or row["asin"]   # 👈 fallback to ASIN
+        )
 
         if (
             total_lost_units <= 0
