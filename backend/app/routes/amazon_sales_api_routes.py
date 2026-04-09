@@ -22,9 +22,6 @@ SECRET_KEY = Config.SECRET_KEY
 dotenv_path = find_dotenv(filename=".env", usecwd=True)
 load_dotenv(dotenv_path, override=True)
 
-logger = logging.getLogger("amazon_sp_api")
-logging.basicConfig(level=logging.INFO)
-
 db_url  = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  # fallback
 
@@ -891,8 +888,6 @@ def settlements_route_single():
             return True
         return norm in _target_aliases
 
-    logger.info(f"Fetching settlements for marketplace_id={mp} ({target_marketplace_name}), region={amazon_client.region}")
-
     primary_type = request.args.get("type") or "GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2"
     fallback_type = "GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE"
     out_format = (request.args.get("format") or "json").lower()
@@ -1086,8 +1081,6 @@ def settlements_route_single():
     for r in aggregated:
         mp_name = (r.get("marketplace") or "Unknown").strip()
         marketplace_counts[mp_name] = marketplace_counts.get(mp_name, 0) + 1
-    logger.info(f"Marketplace distribution in aggregated data: {marketplace_counts}")
-    logger.info(f"Filtering for target marketplace: '{target_marketplace_name}' (strict={strict_marketplace})")
 
     # ---- filtering (marketplace + month with fallback to report_created when date/time is missing) ----
     filtered = aggregated
@@ -1174,9 +1167,6 @@ def settlements_route_single():
 
         filtered = [b for b in filtered if _in_date_range(b)]
 
-
-
-    logger.info(f"After filtering: {len(filtered)} rows for {target_marketplace_name} (from {len(aggregated)} total)")
 
     # ---- optional upload pipeline ----
     run_upload_pipeline = run_upload
