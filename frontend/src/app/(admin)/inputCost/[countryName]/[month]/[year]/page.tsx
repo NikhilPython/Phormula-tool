@@ -34,6 +34,7 @@ interface SkuRow {
   currency?: string;
   month?: string;
   year?: string | number;
+  // ✅ ADD THESE
   local_stock?: number;
   in_transit_units?: number;
   [key: string]: any;

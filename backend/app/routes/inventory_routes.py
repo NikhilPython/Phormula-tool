@@ -1498,11 +1498,18 @@ def _fetch_ledger_summary_rows(
 
     if not create or create.get("error"):
         msg = str(create)
-        if "status_code': 403" in msg or '"status_code": 403' in msg:
-            raise RuntimeError(
-                "403 Unauthorized: Access denied for GET_LEDGER_SUMMARY_VIEW_DATA. "
-                "Fix SP-API roles/permissions in Seller Central for your app."
-            )
+
+        if "QuotaExceeded" in msg or "429" in msg:
+            raise RuntimeError("AMAZON_RATE_LIMIT_EXCEEDED")
+
+        if (
+            "status_code': 403" in msg
+            or '"status_code": 403' in msg
+            or "Unauthorized" in msg
+            or "Access to requested resource is denied" in msg
+        ):
+            raise RuntimeError("CONNECTED_AMAZON_ACCOUNT_ACCESS_DENIED")
+
         raise RuntimeError(f"Failed to create ledger summary report: {create}")
 
     create_payload = create.get("payload") or create
@@ -1599,6 +1606,7 @@ def _fetch_ledger_summary_rows(
             }
         )
     return rows
+
 
 
 # =============================================================================
@@ -1708,7 +1716,24 @@ def inventory_ledger_summary():
         rows = _fetch_ledger_summary_rows(mp, start_date, end_date, time_period="DAILY")
     except Exception as e:
         logger.exception("Failed to fetch ledger summary")
-        return jsonify({"success": False, "error": str(e)}), 500
+        msg = str(e)
+
+        if "AMAZON_RATE_LIMIT_EXCEEDED" in msg:
+            return jsonify({
+                "success": False,
+                "error": "Amazon rate limit exceeded. Please wait 4-5 minutes and try again."
+            }), 429
+
+        if "CONNECTED_AMAZON_ACCOUNT_ACCESS_DENIED" in msg:
+            return jsonify({
+                "success": False,
+                "error": "Amazon access denied. Please reconnect your account."
+            }), 403
+
+        return jsonify({
+            "success": False,
+            "error": msg
+        }), 500
 
     # ---- Optional: Filter ONLY first+last when keep_first_last=true ----
     if rows and keep_first_last:
