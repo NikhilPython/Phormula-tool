@@ -20,9 +20,21 @@ const API_BASE =
 const getAuthToken = () =>
   typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
+const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
+  uk: "A1F83G8C2ARO7P",
+  us: "ATVPDKIKX0DER",
+  canada: "A2EUQ1WTGCTBG2",
+};
+
+const COUNTRY_TO_REGION: Record<string, string> = {
+  uk: "eu-west-1",
+  us: "us-east-1",
+  canada: "us-east-1",
+};
+
 /** ======= HARD OVERRIDE FOR TESTING ======= **/
 const FORCE = {
-  enabled: true,
+  enabled: false,
   country: "uk",
   region: "eu-west-1",
   marketplaceId: "A1F83G8C2ARO7P",
@@ -889,18 +901,26 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
   }, [user]);
 
   let countryUsed = (country || "uk").toLowerCase();
-  let marketplaceIdUsed = countryMarketplaceMap[countryUsed];
 
+  // normalize dropdown values just in case
+  if (countryUsed === "united kingdom") countryUsed = "uk";
+  if (countryUsed === "united states") countryUsed = "us";
 
-  const regionUsed = FORCE.enabled ? FORCE.region : region;
+  let marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed];
+  let regionUsed = COUNTRY_TO_REGION[countryUsed];
+
   if (FORCE.enabled) {
     countryUsed = FORCE.country;
     marketplaceIdUsed = FORCE.marketplaceId;
+    regionUsed = FORCE.region;
   }
 
-  // ✅ NOW validate
   if (!marketplaceIdUsed) {
     throw new Error(`Marketplace not configured for ${countryUsed}`);
+  }
+
+  if (!regionUsed) {
+    throw new Error(`Region not configured for ${countryUsed}`);
   }
 
   const earliest = useMemo(() => getEarliestAllowedMonthUTC(), []);
