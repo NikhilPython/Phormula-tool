@@ -1721,7 +1721,7 @@ def inventory_ledger_summary():
         if "AMAZON_RATE_LIMIT_EXCEEDED" in msg:
             return jsonify({
                 "success": False,
-                "error": "Amazon rate limit exceeded. Please wait 4-5 minutes and try again."
+                "error": "Amazon rate limit exceeded. Please try again later."
             }), 429
 
         if "CONNECTED_AMAZON_ACCOUNT_ACCESS_DENIED" in msg:
