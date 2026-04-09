@@ -34,6 +34,8 @@ interface SkuRow {
   currency?: string;
   month?: string;
   year?: string | number;
+  local_stock?: number;
+  in_transit_units?: number;
   [key: string]: any;
 }
 
@@ -264,7 +266,16 @@ export default function InputCostPage({ params }: Params) {
       grossMarginColumns.push(`gross_margin_${countryName}`);
     }
 
-    const otherColumns = ['asin', 'product_barcode', 'month_year', 'price'];
+    const otherColumns = [
+      'asin',
+      'product_barcode',
+      'month_year',
+      'price',
+
+      // ✅ ADD HERE
+      'local_stock',
+      'in_transit_units'
+    ];
     const visibleOtherColumns = otherColumns.filter((col) => {
       if (col === 'month_year') {
         return data.some((row) => (row.month || row.year));
@@ -295,6 +306,11 @@ export default function InputCostPage({ params }: Params) {
         return 'Month / Year';
       case 'price':
         return 'Landing Cost';
+      case 'local_stock':
+        return 'Local Stock';
+
+      case 'in_transit_units':
+        return 'In Transit Units';
       default:
         if (column.startsWith('sku_')) {
           const c = column.replace('sku_', '').toUpperCase();
@@ -878,6 +894,10 @@ export default function InputCostPage({ params }: Params) {
         product_barcode: row.product_barcode ?? '—',
         month_year: getMonthYearDisplay(row),
         price: row.price ?? '',
+
+        // ✅ ADD THESE
+        local_stock: row.local_stock ?? '—',
+        in_transit_units: row.in_transit_units ?? '—',
       };
 
       visibleColumns.forEach((col) => {
@@ -1274,7 +1294,7 @@ export default function InputCostPage({ params }: Params) {
                     columns={columns}
                     data={tableData}
                     loading={loading}
-                    paginate={false}
+                    paginate={true}
                     pageSize={10}
                     stickyHeader={true}
                     zebra={true}
@@ -1308,7 +1328,8 @@ export default function InputCostPage({ params }: Params) {
                 <DataTable<Record<string, any>>
                   columns={warehouseTableColumns}
                   data={warehouseData}
-                  paginate={false}
+                  paginate={true}
+                  pageSize={10}
                   stickyHeader
                   scrollY={false}
                   maxHeight="auto"

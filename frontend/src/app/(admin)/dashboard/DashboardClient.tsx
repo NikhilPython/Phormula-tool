@@ -52,6 +52,7 @@ import Alert from "@/components/ui/alert/Alert";
 import { ApiResponse } from "@/components/businessInsight/types";
 import DashboardStickyKpis from "./DashboardStickyKpis";
 import { IoMdLock } from "react-icons/io";
+import { Toaster, toast } from "sonner";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -1119,6 +1120,7 @@ const sliceByDayRange = (
 export default function DashboardPage() {
     const router = useRouter();
     const params = useParams();
+    const shownInventoryToastIdsRef = useRef<Set<string>>(new Set());
 
     const urlMonthParam = Array.isArray(params?.month)
         ? params.month[0]
@@ -1448,6 +1450,187 @@ export default function DashboardPage() {
     }, [platform, isMonthYearNA, activeDateRegion]);
 
 
+    const showInventoryToast = ({
+        sku,
+        productName,
+        onDismiss,
+        currentParams,
+    }: {
+        sku: string;
+        productName: string;
+        onDismiss: () => void;
+        currentParams: {
+            countryName: string;
+            month: string;
+            year: string;
+        };
+    }) => {
+        toast.custom(
+            (toastId) => (
+                <div
+                    style={{
+                        background: "#FFFFFF", // deep black
+                        color: "#ffffff",
+                        padding: "16px 18px",
+                        borderRadius: "12px",
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        // boxShadow: "0 10px 25px rgba(0,0,0,0.4)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                        minWidth: "300px",
+                        border: "1px solid #414042",
+                    }}
+                >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div
+                            style={{
+                                width: "4px",
+                                height: "20px",
+                                background: "#ef4444", // red accent
+                                borderRadius: "2px",
+                            }}
+                        />
+                        <div style={{ fontSize: "15px", fontWeight: 600, color:"#414042" }}>
+                            {productName}
+                        </div>
+                    </div>
+
+                    <div
+                        style={{
+                            fontSize: "12px",
+                            background: "rgba(239, 68, 68, 0.08)", // soft red tint
+                            color: "#414042",
+                            padding: "8px 10px",
+                            borderRadius: "6px",
+                            lineHeight: 1.5,
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                        }}
+                    >
+                        Top-selling item is running low. Restock recommended.
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                        <button
+                            onClick={() => {
+                                const targetUrl = `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`;
+
+                                // make sure the dashboard is on the live tab
+                                setActiveTab("live");
+                                setPendingHash("#current-inventory");
+
+                                // navigate
+                                router.push(targetUrl);
+
+                                // after tab/page updates, force scroll
+                                setTimeout(() => {
+                                    const el = document.getElementById("current-inventory");
+                                    if (el) {
+                                        el.scrollIntoView({
+                                            behavior: "smooth",
+                                            block: "start",
+                                        });
+                                    } else {
+                                        window.location.hash = "current-inventory";
+                                    }
+                                }, 250);
+
+                                toast.dismiss(toastId);
+                            }}
+                            style={{
+                                background: "#FFFFFF",
+                                color: "#414042",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                border: "1px solid #414042",
+                                cursor: "pointer",
+                            }}
+                        >
+                            View
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                onDismiss();
+                                toast.dismiss(toastId);
+                            }}
+                            style={{
+                                background: "#FFFFFF",
+                                color: "#414042",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                border: "1px solid #414042",
+                                cursor: "pointer",
+                            }}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            ),
+            {
+                id: sku,
+                duration: Infinity,
+            }
+        );
+    };
+
+    useEffect(() => {
+        const top5HighAlerts = top5Skus
+            .map((sku) => ({
+                sku,
+                productName: skuToProductName[sku] || sku,
+                alert: inventoryAlerts?.[sku]?.alert || "",
+                alertType: inventoryAlerts?.[sku]?.alert_type || "error",
+            }))
+            .filter(
+                (item) =>
+                    item.alert.trim().toLowerCase() === "high alert" &&
+                    !dismissedAlerts.includes(item.sku)
+            );
+
+        top5HighAlerts.forEach(({ sku, productName }) => {
+            if (shownInventoryToastIdsRef.current.has(sku)) return;
+
+            shownInventoryToastIdsRef.current.add(sku);
+
+            showInventoryToast({
+                sku,
+                productName,
+                onDismiss: () => handleDismiss(sku),
+                currentParams: {
+                    countryName: countryName,
+                    month: urlMonthParam || "",
+                    year: urlYearParam || "",
+                },
+            });
+        });
+    }, [top5Skus, skuToProductName, inventoryAlerts, dismissedAlerts]);
+
+    useEffect(() => {
+        if (activeTab !== "live") return;
+        if (!pendingHash) return;
+
+        const run = () => {
+            const targetId = pendingHash.replace("#", "");
+            const el = document.getElementById(targetId);
+
+            if (el) {
+                el.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                });
+                setPendingHash("");
+            }
+        };
+
+        const timer = setTimeout(run, 250);
+        return () => clearTimeout(timer);
+    }, [activeTab, pendingHash]);
+
     useEffect(() => {
         if (activeTab === "summary") {
             setSummaryLoading(true);
@@ -1467,16 +1650,15 @@ export default function DashboardPage() {
 
     const handleDismiss = (sku: string) => {
         setDismissedAlerts((prev) => {
+            if (prev.includes(sku)) return prev;
+
             const updated = [...prev, sku];
-            localStorage.setItem(
-                "dismissedInventoryAlerts",
-                JSON.stringify(updated)
-            );
+            localStorage.setItem("dismissedInventoryAlerts", JSON.stringify(updated));
             return updated;
         });
+
+        toast.dismiss(sku);
     };
-
-
 
     /* ===================== ✅ SHARED RANGE STATE (PARENT) ===================== */
     const [selectedStartDay, setSelectedStartDay] = useState<number | null>(null);
@@ -5422,6 +5604,14 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     return (
         <div className="relative w-full">
+            <Toaster
+                position="top-right"
+                richColors
+                closeButton={false}
+                toastOptions={{
+                    duration: Infinity,
+                }}
+            />
             <HashScroll offset={80} />
             {/* {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
                 <Loader fullscreen backgroundClass="bg-white/80" />
@@ -5513,30 +5703,30 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 )}
 
                 {/* Top 5 alerts */}
-                <div className="my-2 md:my-4 space-y-3">
-                {top5Skus
-                    .map((sku) => ({
-                        sku,
-                        productName: skuToProductName[sku] || sku,
-                        alert: inventoryAlerts?.[sku]?.alert || "",
-                    }))
-                    .filter(
-                        (x) =>
-                            x.alert.trim().toLowerCase() === "high alert" &&
-                            !dismissedAlerts.includes(x.sku) // ✅ don't show dismissed
-                    )
-                    .map(({ sku, productName }) => (
-                        <Alert
-                            key={sku}
-                            variant="error"
-                            title={`Inventory Alert - ${productName}`}
-                            message="This product is in your Top 5 and requires attention."
-                            showLink={false}
-                            closable
-                            onClose={() => handleDismiss(sku)} // ✅ persist dismissal
-                        />
-                    ))}
-            </div>
+                {/* <div className="my-2 md:my-4 space-y-3">
+                    {top5Skus
+                        .map((sku) => ({
+                            sku,
+                            productName: skuToProductName[sku] || sku,
+                            alert: inventoryAlerts?.[sku]?.alert || "",
+                        }))
+                        .filter(
+                            (x) =>
+                                x.alert.trim().toLowerCase() === "high alert" &&
+                                !dismissedAlerts.includes(x.sku) // ✅ don't show dismissed
+                        )
+                        .map(({ sku, productName }) => (
+                            <Alert
+                                key={sku}
+                                variant="error"
+                                title={`Inventory Alert - ${productName}`}
+                                message="This product is in your Top 5 and requires attention."
+                                showLink={false}
+                                closable
+                                onClose={() => handleDismiss(sku)} // ✅ persist dismissal
+                            />
+                        ))}
+                </div> */}
 
                 {activeTab === "live" && (
                     <div

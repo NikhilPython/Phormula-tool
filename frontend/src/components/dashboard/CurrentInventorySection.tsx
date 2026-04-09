@@ -752,13 +752,72 @@ export default function CurrentInventorySection({
     ];
   }, [storageHeaderLabel]);
 
+  // return (
+  //   <div
+  //     className="
+  //       mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
+  //       w-full max-w-full overflow-hidden
+  //       flex flex-col
+  //     "
+  //   >
+  //     <div className="mb-3 flex items-center justify-between">
+  //       <div className="flex items-baseline gap-2">
+  //         <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
+  //       </div>
+
+  //       <DownloadIconButton
+  //         onClick={downloadInventoryExcel}
+  //         disabled={invLoading || !invRows?.length}
+  //         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+  //       />
+  //     </div>
+
+  //     {invError ? (
+  //       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+  //         {invError}
+  //       </div>
+  //     ) : (
+  //       <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+  //         <div className="min-w-0">
+  //           <DataTable
+  //             columns={columns}
+  //             data={invLoading ? [] : tableRows}
+  //             loading={false}
+  //             paginate={true}
+  //             pageSize={15}
+  //             scrollY={false}
+  //             maxHeight="none"
+  //             emptyMessage={invLoading ? "" : "No inventory data."}
+  //             rowClassName={(row) => {
+  //               if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
+  //               if (row.rowType === "others") return "!bg-[#FFFFFF]";
+  //               return "bg-white";
+  //             }}
+  //             tableClassName="
+  //         table-fixed w-full
+  //         [&_th]:whitespace-normal
+  //         [&_th]:break-words
+  //         [&_th]:leading-snug
+  //         [&_th>div]:[display:-webkit-box]
+  //         [&_th>div]:[-webkit-box-orient:vertical]
+  //         [&_th>div]:[-webkit-line-clamp:3]
+  //         [&_th>div]:overflow-hidden
+  //         [&_th>div]:text-ellipsis
+  //       "
+  //           />
+  //         </div>
+  //       </div>
+  //     )}
+  //   </div>
+  // );
+
   return (
     <div
       className="
-        mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
-        w-full max-w-full overflow-hidden
-        flex flex-col
-      "
+      mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
+      w-full max-w-full overflow-hidden
+      flex flex-col
+    "
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -776,38 +835,43 @@ export default function CurrentInventorySection({
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           {invError}
         </div>
+      ) : invLoading ? (
+        <div className="w-full rounded-xl  min-h-[280px] flex items-center justify-center">
+          <Loader transparent/>
+        </div>
       ) : (
         <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <div className="min-w-0">
             <DataTable
               columns={columns}
-              data={invLoading ? [] : tableRows}
+              data={tableRows}
               loading={false}
               paginate={true}
               pageSize={15}
               scrollY={false}
               maxHeight="none"
-              emptyMessage={invLoading ? "" : "No inventory data."}
+              emptyMessage="No inventory data."
               rowClassName={(row) => {
                 if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
                 if (row.rowType === "others") return "!bg-[#FFFFFF]";
                 return "bg-white";
               }}
               tableClassName="
-          table-fixed w-full
-          [&_th]:whitespace-normal
-          [&_th]:break-words
-          [&_th]:leading-snug
-          [&_th>div]:[display:-webkit-box]
-          [&_th>div]:[-webkit-box-orient:vertical]
-          [&_th>div]:[-webkit-line-clamp:3]
-          [&_th>div]:overflow-hidden
-          [&_th>div]:text-ellipsis
-        "
+              table-fixed w-full
+              [&_th]:whitespace-normal
+              [&_th]:break-words
+              [&_th]:leading-snug
+              [&_th>div]:[display:-webkit-box]
+              [&_th>div]:[-webkit-box-orient:vertical]
+              [&_th>div]:[-webkit-line-clamp:3]
+              [&_th>div]:overflow-hidden
+              [&_th>div]:text-ellipsis
+            "
             />
           </div>
         </div>
       )}
     </div>
   );
+
 }

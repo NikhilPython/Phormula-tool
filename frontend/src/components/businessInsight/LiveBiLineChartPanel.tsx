@@ -6,6 +6,7 @@ import type { EChartsOption, EChartsType } from "echarts";
 
 import SegmentedToggle from "../ui/SegmentedToggle";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import Loader from "../loader/Loader";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -444,11 +445,14 @@ export default function LiveBiLineChartPanel({
         </div>
       </div>
 
-      <div style={{ marginTop: "-5px" }}>
-        {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
-        {error && <div className="text-sm text-red-500">{error}</div>}
-
-        {!loading && !error && dailySeries && (
+      <div style={{ marginTop: "-5px" }} className="min-h-[260px]">
+        {loading ? (
+          <div className="flex items-center justify-center h-[260px]">
+            <Loader />
+          </div>
+        ) : error ? (
+          <div className="text-sm text-red-500">{error}</div>
+        ) : dailySeries ? (
           <LiveLineChart
             dataPrev={dailySeries.previous || []}
             dataCurr={dailySeries.current_mtd || []}
@@ -459,9 +463,9 @@ export default function LiveBiLineChartPanel({
             selectedStartDay={selectedStartDay}
             selectedEndDay={selectedEndDay}
           />
+        ) : (
+          <div className="text-sm text-gray-500">No daily data available.</div>
         )}
-
-        {!loading && !error && !dailySeries && <div className="text-sm text-gray-500">No daily data available.</div>}
       </div>
     </div>
   );

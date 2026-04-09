@@ -30,7 +30,7 @@ const COLORS = ["#B75A5A", "#FDD36F", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"
 
 const toNum = (v: any) => {
   const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
 };
 
 export type InventoryPieCardHandle = {
@@ -115,10 +115,7 @@ const InventoryPieCard = forwardRef<
               const label = String(ctx.label || "");
               const val = Math.abs(toNum(ctx.raw));
               const pct = total > 0 ? (val / total) * 100 : 0;
-              return `${label}: ${val.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })} (${pct.toFixed(2)}%)`;
+              return `${label}: ${val.toLocaleString()} (${pct.toFixed(2)}%)`;
             },
           },
         },
@@ -175,10 +172,7 @@ const InventoryPieCard = forwardRef<
 
         ctx.font = "13px Arial";
         ctx.fillText(
-          `${value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })} (${pct.toFixed(2)}%)`,
+          `${value.toLocaleString()} (${pct.toFixed(2)}%)`,
           legendX + 18,
           y + 24
         );
@@ -266,10 +260,7 @@ const InventoryPieCard = forwardRef<
                             {slice.name}
                           </div>
                           <div className="text-xs break-words" style={{ color: "#414042" }}>
-                            {value.toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })} ({pct.toFixed(2)}%)
+                            {value.toLocaleString()} ({pct.toFixed(2)}%)
                           </div>
                         </div>
                       </div>

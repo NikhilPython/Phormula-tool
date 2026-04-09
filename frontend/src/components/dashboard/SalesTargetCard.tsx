@@ -429,75 +429,130 @@ export default function SalesTargetCard({
     !Number.isNaN(reimbursementDeltaPct);
 
   return (
-    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
-      {/* Legend */}
-      <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
-        <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
-          <span
-            className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#ED9F50" }}
-          />
-          <span className="text-charcoal-500">MTD Sale</span>
+    <>
+      <style jsx>{`
+.bar-shimmer {
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.35) 48%,
+    rgba(255, 255, 255, 0.7) 52%,
+    rgba(255, 255, 255, 0.35) 56%,
+    transparent 70%
+  );
+
+  animation: shimmer-right 2s linear infinite;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 👇 negative direction */
+.bar-shimmer.reverse {
+  animation: shimmer-left 2s linear infinite;
+}
+
+/* ➡️ positive (default) */
+@keyframes shimmer-right {
+  0% {
+    transform: translateX(-70%) rotate(12deg);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(70%) rotate(12deg);
+    opacity: 0.4;
+  }
+}
+
+/* ⬅️ negative */
+@keyframes shimmer-left {
+  0% {
+    transform: translateX(70%) rotate(12deg);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(-70%) rotate(12deg);
+    opacity: 0.4;
+  }
+}
+`}</style>
+      <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
+        {/* Legend */}
+        <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
+          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: "#ED9F50" }}
+            />
+            <span className="text-charcoal-500">MTD Sale</span>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: "#5EA68E" }}
+
+            />
+            <span className="text-charcoal-500">{thisMonthLabel} Target</span>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: "#9ca3af" }}
+            />
+            <span className="text-charcoal-500">{prevLabel} Sale</span>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: "#B75A5A" }}
+            />
+            <span className="text-charcoal-500">{prevLabel} MTD</span>
+          </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
-          <span
-            className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#5EA68E" }}
-
-          />
-          <span className="text-charcoal-500">{thisMonthLabel} Target</span>
-        </div>
-
-        <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
-          <span
-            className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#9ca3af" }}
-          />
-          <span className="text-charcoal-500">{prevLabel} Sale</span>
-        </div>
-
-        <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
-          <span
-            className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#B75A5A" }}
-          />
-          <span className="text-charcoal-500">{prevLabel} MTD</span>
-        </div>
-      </div>
-
-      {/* Gauge */}
-      <div className="mt-3 2xl:mt-4 flex flex-col items-center">
-        <div
-          ref={wrapRef}
-          className="relative"
-          style={{ width: size, height: size / 2 + extraBottom, overflow: "visible" }}
-          onMouseMove={moveTip}
-          onMouseLeave={hideTip}
-        >
-
-          <svg
-            width={size}
-            height={size / 2 + extraBottom}
-            viewBox={`0 0 ${size} ${size / 2 + extraBottom}`}
-            style={{ overflow: "visible" }}
-            overflow="visible"
+        {/* Gauge */}
+        <div className="mt-3 2xl:mt-4 flex flex-col items-center">
+          <div
+            ref={wrapRef}
+            className="relative"
+            style={{ width: size, height: size / 2 + extraBottom, overflow: "visible" }}
+            onMouseMove={moveTip}
+            onMouseLeave={hideTip}
           >
 
-            {/* Orange arc (Prev month sale reference) */}
-            <path
-              d={arcPath(fullFrom, toDeg_Orange, rLastMTD)}
-              fill="none"
-              // stroke="#f59e0b"
-              stroke="#9CA3AF"
-              strokeWidth={strokeLast}
-              strokeLinecap="round"
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
+            <svg
+              width={size}
+              height={size / 2 + extraBottom}
+              viewBox={`0 0 ${size} ${size / 2 + extraBottom}`}
+              style={{ overflow: "visible" }}
+              overflow="visible"
+            >
 
-            {/* ✅ Red rectangular marker, perpendicular to arc (radial) */}
-            {/* <rect
+              {/* Orange arc (Prev month sale reference) */}
+              <path
+                d={arcPath(fullFrom, toDeg_Orange, rLastMTD)}
+                fill="none"
+                // stroke="#f59e0b"
+                stroke="#9CA3AF"
+                strokeWidth={strokeLast}
+                strokeLinecap="round"
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
+
+              {/* ✅ Red rectangular marker, perpendicular to arc (radial) */}
+              {/* <rect
               x={knobPrevToDate.x - 2}
               y={knobPrevToDate.y - 8}
               width={6}
@@ -511,237 +566,208 @@ export default function SalesTargetCard({
               onMouseLeave={hideTip}
             /> */}
 
-            <circle
-              cx={knobPrevToDate.x}
-              cy={knobPrevToDate.y}
-              r={4}
-              fill="#B75A5A"
-              stroke="#ffffff"
-              strokeWidth={2}
-            />
+              <circle
+                cx={knobPrevToDate.x}
+                cy={knobPrevToDate.y}
+                r={4}
+                fill="#B75A5A"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
 
 
-            {/* Dec target arc */}
-            <path
-              d={arcPath(fullFrom, toDeg_DecTarget, rDecTarget)}
-              fill="none"
-              // stroke="#9CA3AF"
-              stroke="#5EA68E"
-              strokeWidth={strokeDec}
-              strokeLinecap="round"
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
+              {/* Dec target arc */}
+              <path
+                d={arcPath(fullFrom, toDeg_DecTarget, rDecTarget)}
+                fill="none"
+                // stroke="#9CA3AF"
+                stroke="#5EA68E"
+                strokeWidth={strokeDec}
+                strokeLinecap="round"
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
 
-            {/* Green arc (Current MTD) */}
-            <path
-              d={arcPath(fullFrom, toDeg_MTD, rCurrent)}
-              fill="none"
-              stroke="#ED9F50"
-              strokeWidth={strokeMain}
-              strokeLinecap="round"
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
+              {/* Green arc (Current MTD) */}
+              <path
+                d={arcPath(fullFrom, toDeg_MTD, rCurrent)}
+                fill="none"
+                stroke="#ED9F50"
+                strokeWidth={strokeMain}
+                strokeLinecap="round"
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
 
-            {/* Knobs */}
-            <circle
-              cx={knobYellow.x}
-              cy={knobYellow.y}
-              r={5}
-              // fill="#f59e0b"
-              fill="#9CA3AF"
-              stroke="#fffbeb"
-              strokeWidth={3}
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
+              {/* Knobs */}
+              <circle
+                cx={knobYellow.x}
+                cy={knobYellow.y}
+                r={5}
+                // fill="#f59e0b"
+                fill="#9CA3AF"
+                stroke="#fffbeb"
+                strokeWidth={3}
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
 
-            <circle
-              cx={knobDec.x}
-              cy={knobDec.y}
-              r={5}
-              // fill="#9CA3AF"
-              fill="#5EA68E"
-              stroke="#eef2ff"
-              strokeWidth={3}
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
+              <circle
+                cx={knobDec.x}
+                cy={knobDec.y}
+                r={5}
+                // fill="#9CA3AF"
+                fill="#5EA68E"
+                stroke="#eef2ff"
+                strokeWidth={3}
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
 
-            <circle
-              cx={knobGreen.x}
-              cy={knobGreen.y}
-              r={7}
-              fill="#ED9F50"
-              stroke="#ecfdf3"
-              strokeWidth={2}
-              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
-              onMouseLeave={hideTip}
-            />
-          </svg>
+              <circle
+                cx={knobGreen.x}
+                cy={knobGreen.y}
+                r={7}
+                fill="#ED9F50"
+                stroke="#ecfdf3"
+                strokeWidth={2}
+                onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+                onMouseLeave={hideTip}
+              />
+            </svg>
 
-          {/* Tooltip */}
-          {tip.show && (
-            <div
-              className="pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-md whitespace-nowrap"
-              style={{
-                top: tip.y - 12,
-                left:
-                  tip.x + TOOLTIP_WIDTH + 16 > size
-                    ? tip.x - TOOLTIP_WIDTH - 12 // 🔥 shift left
-                    : tip.x + 12,                // normal right
-              }}
-            >
+            {/* Tooltip */}
+            {tip.show && (
+              <div
+                className="pointer-events-none absolute z-10 rounded-lg border bg-white px-3 py-2 text-xs shadow-md whitespace-nowrap"
+                style={{
+                  top: tip.y - 12,
+                  left:
+                    tip.x + TOOLTIP_WIDTH + 16 > size
+                      ? tip.x - TOOLTIP_WIDTH - 12 // 🔥 shift left
+                      : tip.x + 12,                // normal right
+                }}
+              >
 
-              <div className="font-semibold text-gray-900">{tip.title}</div>
-              <div className="mt-1 space-y-0.5 text-gray-600">
-                {tip.lines.map((l, i) => (
-                  <div key={i}>{l}</div>
-                ))}
+                <div className="font-semibold text-gray-900">{tip.title}</div>
+                <div className="mt-1 space-y-0.5 text-gray-600">
+                  {tip.lines.map((l, i) => (
+                    <div key={i}>{l}</div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Percentage */}
-        <div className="mt-2 text-center">
-          <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
-          <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
-          <div className="mt-2 text-[10px] 2xl:text-xs text-charcoal-500">
-            <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%</span>
-            {" "}of Month Completed vs{" "}
-            <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
-            {" "}of Target Achieved
-          </div>
-        </div>
-      </div>
-
-      {/* Reimbursement Section */}
-      {/* Reimbursement Section */}
-      <div className="mt-6 2xl:mt-7 px-3 pt-2 pb-0">
-        <div className="flex items-center justify-center gap-2">
-          <div className="text-[10px] 2xl:text-xs text-charcoal-500">
-            Monthly Reimbursement
+            )}
           </div>
 
-          {showReimbDelta && (
-            <div
-              className={`text-[10px] 2xl:text-xs font-medium px-2 py-0.5 rounded ${reimbursementDeltaPct! >= 0
-                ? "bg-green-50 text-green-700"
-                : "bg-rose-50 text-rose-700"
-                }`}
-              title="Current vs previous reimbursement (in home currency)"
-            >
-              {reimbursementDeltaPct! >= 0 ? "▲" : "▼"}{" "}
-              {Math.abs(reimbursementDeltaPct!).toFixed(2)}%
+          {/* Percentage */}
+          <div className="mt-2 text-center">
+            <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
+            <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
+            <div className="mt-2 text-[10px] 2xl:text-xs text-charcoal-500">
+              <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%</span>
+              {" "}of Month Completed vs{" "}
+              <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
+              {" "}of Target Achieved
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="mt-2">
-          <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
-            <span className="text-charcoal-500">
-              {toApostropheLabel(reimbNowLabel)}{" "}
-            </span>
-            <span className="font-semibold text-gray-900">
-              {formatWithCurrencySpace(reimbNow)}{" "}
-              <span className="text-charcoal-500 font-medium">
-                ({fmtPct(reimbNowSalesPct)})
+        {/* Reimbursement Section */}
+        <div className="mt-6 2xl:mt-7 px-3 pt-2 pb-0">
+          <div className="flex items-center justify-center gap-2">
+            <div className="text-[10px] 2xl:text-xs text-charcoal-500">
+              Monthly Reimbursement
+            </div>
+
+            {showReimbDelta && (
+              <div
+                className={`text-[10px] 2xl:text-xs font-medium px-2 py-0.5 rounded ${reimbursementDeltaPct! >= 0
+                  ? "bg-green-50 text-green-700"
+                  : "bg-rose-50 text-rose-700"
+                  }`}
+                title="Current vs previous reimbursement (in home currency)"
+              >
+                {reimbursementDeltaPct! >= 0 ? "▲" : "▼"}{" "}
+                {Math.abs(reimbursementDeltaPct!).toFixed(2)}%
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
+              <span className="text-charcoal-500">
+                {toApostropheLabel(reimbNowLabel)}{" "}
               </span>
-            </span>
-          </div>
-          {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+              <span className="font-semibold text-gray-900">
+                {formatWithCurrencySpace(reimbNow)}{" "}
+                <span className="text-charcoal-500 font-medium">
+                  ({fmtPct(reimbNowSalesPct)})
+                </span>
+              </span>
+            </div>
+
+            {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full"
               style={{ width: `${reimbNowPct}%`, backgroundColor: "#ED9F50" }}
             />
           </div> */}
 
+            <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
 
-          {/* <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+              {/* Center line */}
+              <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
 
-            {reimbNowFill.leftPct > 0 && (
-              <div
-                className="absolute right-1/2 top-0 h-full rounded-l-full"
+              {/* 🔴 Center red marker */}
+              <span
+                className="absolute h-2.5 w-0.5 rounded-full z-20"
                 style={{
-                  width: `${reimbNowFill.leftPct}%`,
-                  backgroundColor: "#ED9F50",
+                  backgroundColor: "#C97A2B",
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
                 }}
               />
-            )}
 
-            {reimbNowFill.rightPct > 0 && (
-              <div
-                className="absolute left-1/2 top-0 h-full rounded-r-full"
-                style={{
-                  width: `${reimbNowFill.rightPct}%`,
-                  backgroundColor: "#ED9F50",
-                }}
-              />
-            )}
-          </div> */}
+              {reimbNowFill.leftPct > 0 && (
+                <div
+                  className="absolute right-1/2 top-0 h-full rounded-l-full overflow-hidden"
+                  style={{
+                    width: `${reimbNowFill.leftPct}%`,
+                    backgroundColor: "#ED9F50",
+                  }}
+                >
+                  <span className="bar-shimmer reverse" />
+                </div>
+              )}
 
-          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-
-            {/* Center line */}
-            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
-
-            {/* 🔴 Center red marker */}
-            <span
-              className="absolute h-2.5 w-0.5 rounded-full z-20"
-              style={{
-                backgroundColor: "#414042",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-              }}
-            />
-
-            {reimbNowFill.leftPct > 0 && (
-              <div
-                className="absolute right-1/2 top-0 h-full rounded-l-full border-b-2"
-                style={{
-                  width: `${reimbNowFill.leftPct}%`,
-                  backgroundColor: "#ED9F50",
-                  borderColor: reimbNow < 0 ? "#B75A5A" : "#5EA68E", // 🔴 red / 🟢 green
-                }}
-              />
-            )}
-
-            {reimbNowFill.rightPct > 0 && (
-              <div
-                className="absolute left-1/2 top-0 h-full rounded-r-full border-b-2"
-                style={{
-                  width: `${reimbNowFill.rightPct}%`,
-                  backgroundColor: "#ED9F50",
-                  borderColor: reimbNow < 0 ? "#B75A5A" : "#5EA68E",
-                }}
-              />
-            )}
+              {reimbNowFill.rightPct > 0 && (
+                <div
+                  className="absolute left-1/2 top-0 h-full rounded-r-full overflow-hidden"
+                  style={{
+                    width: `${reimbNowFill.rightPct}%`,
+                    backgroundColor: "#ED9F50",
+                  }}
+                >
+                  <span className="bar-shimmer" />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* <div className="relative h-3">
-          <span className="absolute left-1/2 -translate-x-1/2 text-[10px] 2xl:text-xs text-gray-400">
-            0
-          </span>
-        </div> */}
-
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
-            <span className="text-charcoal-500">
-              {toApostropheLabel(reimbPrevLabel)}{" "}
-            </span>
-            <span className="font-semibold text-gray-900">
-              {formatWithCurrencySpace(reimbPrev)}{" "}
-              <span className="text-charcoal-500 font-medium">
-                ({fmtPct(reimbPrevSalesPct)})
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
+              <span className="text-charcoal-500">
+                {toApostropheLabel(reimbPrevLabel)}{" "}
               </span>
-            </span>
-          </div>
-          {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+              <span className="font-semibold text-gray-900">
+                {formatWithCurrencySpace(reimbPrev)}{" "}
+                <span className="text-charcoal-500 font-medium">
+                  ({fmtPct(reimbPrevSalesPct)})
+                </span>
+              </span>
+            </div>
+            {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full"
               style={{ width: `${reimbPrevPct}%`, backgroundColor: "#9CA3AF" }}
@@ -749,70 +775,49 @@ export default function SalesTargetCard({
           </div> */}
 
 
-          {/* <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+            <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
 
-            {reimbPrevFill.leftPct > 0 && (
-              <div
-                className="absolute right-1/2 top-0 h-full rounded-l-full"
+              {/* Center line */}
+              <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+
+              {/* 🔴 Center red marker */}
+              <span
+                className="absolute h-2.5 w-0.5 rounded-full z-20"
                 style={{
-                  width: `${reimbPrevFill.leftPct}%`,
-                  backgroundColor: "#9CA3AF",
+                  backgroundColor: "#6B7280",
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
                 }}
               />
-            )}
 
-            {reimbPrevFill.rightPct > 0 && (
-              <div
-                className="absolute left-1/2 top-0 h-full rounded-r-full"
-                style={{
-                  width: `${reimbPrevFill.rightPct}%`,
-                  backgroundColor: "#9CA3AF",
-                }}
-              />
-            )}
-          </div> */}
+              {reimbPrevFill.leftPct > 0 && (
+                <div
+                  className="absolute right-1/2 top-0 h-full rounded-l-full overflow-hidden"
+                  style={{
+                    width: `${reimbPrevFill.leftPct}%`,
+                    backgroundColor: "#9CA3AF",
+                  }}
+                >
+                  <span className="bar-shimmer reverse" />
+                </div>
+              )}
 
-          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-
-            {/* Center line */}
-            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
-
-            {/* 🔴 Center red marker */}
-            <span
-              className="absolute h-2.5 w-0.5 rounded-full z-20"
-              style={{
-                backgroundColor: "#414042",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-              }}
-            />
-
-            {reimbPrevFill.leftPct > 0 && (
-              <div
-                className="absolute right-1/2 top-0 h-full rounded-l-full border-b-2"
-                style={{
-                  width: `${reimbPrevFill.leftPct}%`,
-                  backgroundColor: "#9CA3AF",
-                  borderColor: reimbPrev < 0 ? "#B75A5A" : "#5EA68E",
-                }}
-              />
-            )}
-
-            {reimbPrevFill.rightPct > 0 && (
-              <div
-                className="absolute left-1/2 top-0 h-full rounded-r-full border-b-2"
-                style={{
-                  width: `${reimbPrevFill.rightPct}%`,
-                  backgroundColor: "#9CA3AF",
-                  borderColor: reimbPrev < 0 ? "#B75A5A" : "#5EA68E",
-                }}
-              />
-            )}
+              {reimbPrevFill.rightPct > 0 && (
+                <div
+                  className="absolute left-1/2 top-0 h-full rounded-r-full overflow-hidden"
+                  style={{
+                    width: `${reimbPrevFill.rightPct}%`,
+                    backgroundColor: "#9CA3AF",
+                  }}
+                >
+                  <span className="bar-shimmer" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
