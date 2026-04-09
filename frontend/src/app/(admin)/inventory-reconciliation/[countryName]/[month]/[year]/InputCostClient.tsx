@@ -1869,7 +1869,19 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const buildReconExportDataRows = useCallback(() => {
     const cols = getExpandedExportCols();
 
-    const exportRows = displayRows.filter((r) => !r?.__isOthers);
+    const grandTotalRow = rows.find(isTotalRow) || null;
+
+    // export ALL real rows, not the 9-row display version
+    const dataOnly = rows.filter((r) => !isTotalRow(r));
+
+    // sort same as UI logic, but keep every row
+    const sortedDataRows = [...dataOnly].sort(
+      (a, b) => toNum(b?.ending_total) - toNum(a?.ending_total)
+    );
+
+    const exportRows = grandTotalRow
+      ? [...sortedDataRows, { ...grandTotalRow, __isTotal: true }]
+      : sortedDataRows;
 
     let serial = 0;
 
@@ -1878,16 +1890,54 @@ export default function InventoryReconciliationPage({ params }: Params) {
       const rowIndex = row?.__isTotal || isTotalRow(row) ? undefined : serial++;
 
       for (const col of cols) {
-        out[col.header] = getValue(row, col.key, rowIndex);
+        out[col.header] = sanitizeExportValue(getValue(row, col.key, rowIndex));
       }
 
       return out;
     });
-  }, [displayRows, getExpandedExportCols, getValue]);
+  }, [rows, getExpandedExportCols, getValue]);
+
+  const buildLostCompExportRows = useCallback(() => {
+    const exportRows = effectiveLostCompRows || [];
+
+    let serial = 0;
+
+    return exportRows.map((row) => {
+      const isTotal = !!row?.__isTotal;
+
+      return {
+        "S. No.": isTotal ? "" : String(++serial),
+        "Product Name": formatCell(row?.product_name),
+        "SKU": formatCell(row?.msku),
+        "Lost Units": formatCell(row?.lost_units),
+        "Damaged Units": formatCell(row?.damaged_units),
+        "Compensation Units": formatCell(row?.compensation_units),
+        "Remaining Compensation Units": formatCell(row?.net_units),
+        "Total Lost Units": formatCell(row?.total_lost_units),
+        [`Compensation Value Amount`]: formatCell(row?.compensation_value),
+        [`Remaining Compensation Amount`]: formatCell(row?.settlement_loss_event_amount),
+        [`Total Compensation Value`]: formatCell(row?.net_value),
+        __isTotal: isTotal,
+      };
+    });
+  }, [effectiveLostCompRows]);
 
   const handleDownloadXLSX = async () => {
     const dataRows = buildReconExportDataRows();
     if (!dataRows.length) return;
+
+    // ✅ ensure lost/comp data is available before export
+    let lostRows = lostCompRows;
+
+    if (!lostRows || lostRows.length === 0) {
+      try {
+        await fetchInventoryLostCompensation(); // fetch fresh data
+        lostRows = buildLostCompExportRows().map(r => r); // force fresh build
+      } catch (e) {
+        console.error("Lost vs Compensation fetch failed", e);
+        lostRows = [];
+      }
+    }
 
     const periodLabel =
       range === "monthly"
@@ -1910,11 +1960,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
       titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
       countryName,
       titleCountry: countryName?.toUpperCase(),
-      platformLabel: "Amazon",
+      platformLabel: "Phormula",
       periodLabel,
       companyName,
       brandName,
       dataRows,
+      lostCompRows: lostRows.length ? buildLostCompExportRows() : [],
       breakupChartBase64,
       ageingChartBase64,
     });

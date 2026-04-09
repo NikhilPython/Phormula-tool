@@ -1197,7 +1197,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             exportMeta={{
               titleLine: `${productname} - Productwise Performance - ${getHeadingPeriod()}`,
               titleCountry: exportTitleCountry,
-              platformLabel: "Amazon",
+              platformLabel: "Phormula",
               periodLabel: getHeadingPeriod(),
               companyName: userData?.company_name || "",
               brandName: userData?.brand_name || "",

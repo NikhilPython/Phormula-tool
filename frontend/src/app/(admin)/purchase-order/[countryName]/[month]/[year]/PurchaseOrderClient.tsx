@@ -10,6 +10,8 @@ import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
+import { useGetUserDataQuery } from '@/lib/api/profileApi';
+import { exportPurchaseOrderExcel } from '@/lib/excel/exportCurrentInventoryExcel';
 
 interface Row {
   [key: string]: any;
@@ -132,6 +134,21 @@ export default function PurchaseOrderPage({
   };
 
   const router = useRouter();
+  const { data: userData } = useGetUserDataQuery();
+
+  const companyName = String(
+    (userData as any)?.companyName ||
+    (userData as any)?.company_name ||
+    (userData as any)?.company ||
+    ""
+  ).trim();
+
+  const brandName = String(
+    (userData as any)?.brandName ||
+    (userData as any)?.brand_name ||
+    (userData as any)?.brand ||
+    ""
+  ).trim();
 
   const countryName = (countryNameProp ?? params?.countryName ?? '').toString();
   const urlMonth = (selectedMonthProp ?? params?.month ?? '').toString();
@@ -398,42 +415,48 @@ export default function PurchaseOrderPage({
   }, [month, year, isGlobalRoute, fetchDispatchFile, fetchGlobalDispatchFile]);
 
   const handleExportToExcel = useCallback(() => {
-    const worksheetData = skuData.map((row, index) => {
-      const formatted: Record<string, any> = { 'Sno.': index + 1 };
+    const exportRows = skuData.map((row, index) => {
+      const isTotalRow =
+        String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
+
+      const formatted: Record<string, any> = {
+        'Sno.': isTotalRow ? '' : row['Sno.'] ?? index + 1,
+      };
 
       displayedColumns.forEach((col) => {
         if (col === 'Sno.') return;
 
         let value = row[col];
-        if (typeof value === 'number') {
-          value = value.toLocaleString('en-IN', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          });
+
+        if (isTotalRow && col === 'Cost per Unit (in INR)') {
+          value = '';
         }
 
-        formatted[col] = value;
+        formatted[col] = value ?? '';
       });
 
       return formatted;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
+    const titleCountry =
+      countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase();
 
-    XLSX.utils.book_append_sheet(
-      workbook,
-      worksheet,
-      isGlobalRoute ? 'Global PO Data' : 'PO Data'
-    );
+    void exportPurchaseOrderExcel({
+      filename: isGlobalRoute
+        ? `Global_PO_Report_${month}_${year}.xlsx`
+        : `PO_Report_${countryName}_${month}_${year}.xlsx`,
+      titleLine: `Amazon ${titleCountry} - PO Report - ${month} ${year}`,
+      titleCountry,
+      platformLabel: 'Amazon',
+      periodLabel: `${month} ${year}`,
+      companyName,
+      brandName,
+      sheetName: isGlobalRoute ? 'Global PO Data' : 'PO Data',
+      dataRows: exportRows,
+    });
+  }, [skuData, displayedColumns, isGlobalRoute, month, year, countryName, companyName, brandName]);
 
-    const fileName = isGlobalRoute
-      ? `Global_PO_Report_${month}_${year}.xlsx`
-      : `PO_Report_${countryName}_${month}_${year}.xlsx`;
-
-    XLSX.writeFile(workbook, fileName);
-  }, [skuData, displayedColumns, isGlobalRoute, month, year, countryName]);
-
+  
   const handleRedirectToForecast = () => {
     router.push(`/inventory-forecast/${countryName}/${month}/${year}`);
   };

@@ -44,7 +44,11 @@ import { useRouter, useParams } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
-import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+// import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import {
+    exportPnLProductwiseBreakdownMtdExcel,
+    exportCurrentInventoryExcel,
+} from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
 import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
@@ -1177,6 +1181,14 @@ export default function DashboardPage() {
         (state: RootState) => (state as RootState).auth.user?.brand_name
     );
 
+    const companyName = String(
+        (userData as any)?.companyName ||
+        (userData as any)?.company_name ||
+        (userData as any)?.company ||
+        ""
+    ).trim();
+
+
     const biCountryName = useMemo(() => {
         if (platform === "global") return "uk";
         return countryName;
@@ -1492,7 +1504,7 @@ export default function DashboardPage() {
                                 borderRadius: "2px",
                             }}
                         />
-                        <div style={{ fontSize: "15px", fontWeight: 600, color:"#414042" }}>
+                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#414042" }}>
                             {productName}
                         </div>
                     </div>
@@ -4448,7 +4460,7 @@ export default function DashboardPage() {
                 titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
                 countryName,
                 titleCountry,
-                platformLabel: "Amazon",
+                platformLabel: "Phormula",
                 periodLabel,
                 companyName,
                 brandName: String(brandName || ""),
@@ -5601,6 +5613,95 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyLiveBusinessClientData
         : liveBiPayload;
 
+
+    const currentInventoryExportRows = useMemo(() => {
+        const rowsToUse = finalInventoryRows || [];
+
+        return rowsToUse
+            .filter((row) => {
+                const productName = String((row as any)["Product Name"] ?? "").trim();
+                const sku = String((row as any)["SKU"] ?? "").trim();
+                return productName || sku;
+            })
+            .filter((row) => !isInventoryTotalRow(row))
+            .map((row, index) => {
+                const sku = String((row as any)["SKU"] ?? "").trim();
+
+                const currentInventory =
+                    Number(
+                        (row as any)["Current Inventory"] ??
+                        (row as any)["Available Inventory"] ??
+                        (row as any)["Available Quantity"] ??
+                        0
+                    ) || 0;
+
+                const currentMonthUnitsSoldKey = Object.keys(row || {}).find((k) =>
+                    String(k).toLowerCase().startsWith("current month units sold")
+                );
+
+                const currentMonthUnitsSold =
+                    Number(
+                        (row as any)["Current Month Units Sold"] ??
+                        (currentMonthUnitsSoldKey ? (row as any)[currentMonthUnitsSoldKey] : 0) ??
+                        0
+                    ) || 0;
+
+                const explicitDaysInHand = (row as any)["Days in Hand"];
+                const computedDaysInHand =
+                    currentMonthUnitsSold > 0
+                        ? Math.round(currentInventory / currentMonthUnitsSold)
+                        : "";
+
+                const rawAlert = String(inventoryAlerts?.[sku]?.alert ?? "").toLowerCase();
+
+                let status =
+                    (row as any)["Status"] ??
+                    (rawAlert.includes("high")
+                        ? "High Alert"
+                        : rawAlert.includes("low")
+                            ? "Low Stock"
+                            : "Healthy");
+
+                return {
+                    "Sno.": index + 1,
+                    "SKU": sku,
+                    "Product Name": (row as any)["Product Name"] ?? "",
+                    "Current Inventory": currentInventory,
+                    "Current Month Units Sold": currentMonthUnitsSold,
+                    "Days in Hand":
+                        explicitDaysInHand !== undefined && explicitDaysInHand !== null && explicitDaysInHand !== ""
+                            ? explicitDaysInHand
+                            : computedDaysInHand,
+                    "Status": status,
+                };
+            });
+    }, [finalInventoryRows, inventoryAlerts, isInventoryTotalRow]);
+
+    const handleCurrentInventoryExport = useCallback(() => {
+        const titleCountry =
+            graphRegionToUse === "Global" ? "Global" : graphRegionToUse;
+
+        exportCurrentInventoryExcel({
+            filename: `Current_Inventory_${titleCountry}_${formattedMonthYear}.xlsx`,
+            titleLine: `Amazon ${titleCountry} - Current Inventory - ${formattedMonthYear}`,
+            countryName: countryNameForGraph,
+            titleCountry,
+            platformLabel: "Amazon",
+            periodLabel: formattedMonthYear,
+            companyName,
+            brandName,
+            homeCurrencyCode: profileHomeCurrency,
+            dataRows: currentInventoryExportRows,
+        });
+    }, [
+        graphRegionToUse,
+        formattedMonthYear,
+        countryNameForGraph,
+        companyName,
+        brandName,
+        profileHomeCurrency,
+        currentInventoryExportRows,
+    ]);
 
     return (
         <div className="relative w-full">
