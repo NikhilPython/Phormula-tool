@@ -43,18 +43,17 @@ ALLOWED_MARKETPLACES = {
 
 COUNTRY_TO_MARKETPLACE = {
     "us": "ATVPDKIKX0DER",
+    "usa": "ATVPDKIKX0DER",
+    "united states": "ATVPDKIKX0DER",
+
     "uk": "A1F83G8C2ARO7P",
+    "united kingdom": "A1F83G8C2ARO7P",
+
     "ca": "A2EUQ1WTGCTBG2",
+    "canada": "A2EUQ1WTGCTBG2",
 }
 
 def compute_marketplace_ids_from_country(country_value: str) -> str:
-    """
-    country_value can be:
-      - 'uk'
-      - 'uk,us'
-      - 'UK, US'
-    returns comma-separated marketplace ids in stable order.
-    """
     if not country_value:
         return ""
 
@@ -62,11 +61,15 @@ def compute_marketplace_ids_from_country(country_value: str) -> str:
     ids = []
 
     for c in countries:
+        if c == "unitedstates":
+            c = "united states"
+        elif c == "unitedkingdom":
+            c = "united kingdom"
+
         mp = COUNTRY_TO_MARKETPLACE.get(c)
         if mp and mp in ALLOWED_MARKETPLACES:
             ids.append(mp)
 
-    # remove duplicates while preserving order
     seen = set()
     ids = [x for x in ids if not (x in seen or seen.add(x))]
 
@@ -496,53 +499,6 @@ def get_user_countries():
 
 
 
-
-# @user_bp.route('/selectform', methods=['POST'])
-# def add_sales():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload, user_id, member_id = get_effective_user_id_from_token(token)
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     data = request.get_json()
-#     country = data.get('country')  # can be 'uk' or 'uk,us'
-#     annual_sales_range = data.get('annual_sales_range')
-#     brand_name = data.get('brand_name')
-#     company_name = data.get('company_name')
-#     homeCurrency = data.get('homeCurrency')
-
-#     if not country:
-#         return jsonify({'success': False, 'message': 'Country is required.'}), 400
-
-#     user = User.query.filter_by(id=user_id).first()
-#     if not user:
-#         return jsonify({'success': False, 'message': 'User not found.'}), 404
-
-#     user.country = country
-#     user.marketplace_id = compute_marketplace_ids_from_country(country)
-
-#     user.company_name = company_name
-#     user.brand_name = brand_name
-#     user.homeCurrency = homeCurrency
-#     if annual_sales_range:
-#         user.annual_sales_range = annual_sales_range
-
-#     db.session.commit()
-#     db.session.refresh(user)
-
-#     return jsonify({
-#         'success': True,
-#         'message': 'Sales data submitted successfully.',
-#         'marketplace_id': user.marketplace_id
-#     }), 201
-
 @user_bp.route('/selectform', methods=['POST'])
 def add_sales():
     auth_header = request.headers.get('Authorization')
@@ -559,12 +515,11 @@ def add_sales():
 
     data = request.get_json(silent=True) or {}
 
-    country = (data.get('country') or '').strip()
+    country = (data.get('country') or '').strip().lower()
     annual_sales_range = (data.get('annual_sales_range') or '').strip()
     brand_name = data.get('brand_name')
     company_name = data.get('company_name')
     homeCurrency = data.get('homeCurrency')
-    marketplace_id = data.get('marketplace_id')
 
     if not country:
         return jsonify({'success': False, 'message': 'Country is required.'}), 400
@@ -574,12 +529,7 @@ def add_sales():
         return jsonify({'success': False, 'message': 'User not found.'}), 404
 
     user.country = country
-
-    # prefer explicit marketplace_id if sent
-    if marketplace_id and str(marketplace_id).strip():
-        user.marketplace_id = str(marketplace_id).strip()
-    else:
-        user.marketplace_id = compute_marketplace_ids_from_country(country)
+    user.marketplace_id = compute_marketplace_ids_from_country(country)
 
     if company_name is not None and str(company_name).strip():
         user.company_name = str(company_name).strip()
