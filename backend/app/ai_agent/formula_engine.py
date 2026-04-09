@@ -401,6 +401,279 @@ def pick_bottom_skus(metric_result: Dict[str, Any], n: int = 10) -> List[Dict[st
     rows.sort(key=lambda x: float(x.get("__metric__", 0.0)))
     return rows[:n]
 
+OVERALL_MONTH_METRICS = [
+    "total_quantity",
+    "net_sales",
+    "profit",
+    "asp",
+    "advertising_total",
+    "platform_fee",
+    "acos",
+    "cm2_profit",
+]
+
+PRODUCT_MONTH_METRICS = [
+    "total_quantity",
+    "net_sales",
+    "profit",
+    "asp",
+]
+
+def get_metric_pack_for_month(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    metric_names: list[str],
+    month: int,
+    year: int,
+) -> Dict[str, Any]:
+    out = {
+        "period_label": datetime(year, month, 1).strftime("%b %Y"),
+        "metrics": {},
+    }
+
+    for metric_name in metric_names:
+        result = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=month,
+            year=year,
+        )
+        out["metrics"][metric_name] = float(result.get("total", 0.0))
+
+    return out
+
+def get_last_n_month_keys(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    n: int,
+    offset: int = 0,
+) -> list[MonthKey]:
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError("n must be a positive integer")
+
+    latest = latest_available_month(engine, user_id, country)
+
+    months: list[MonthKey] = []
+    y, m = latest.year, latest.month
+
+    for _ in range(offset):
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+
+    for _ in range(n):
+        months.append(MonthKey(year=y, month=m))
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+
+    months.reverse()
+    return months
+
+def get_product_metric_pack_for_month(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    product_match: str,
+    month: int,
+    year: int,
+) -> Dict[str, Any]:
+    df = fetch_nse_month_df(engine, user_id, country, month, year)
+    rows = fetch_non_total_rows(df).copy()
+
+    if "product_name" not in rows.columns:
+        rows["product_name"] = ""
+
+    rows["product_name"] = rows["product_name"].astype(str).fillna("")
+    matched = rows[
+        rows["product_name"].str.lower().str.contains(product_match.lower(), na=False)
+    ].copy()
+
+    if matched.empty:
+        raise ValueError(f"no product rows found for: {product_match}")
+
+    total_quantity = pd.to_numeric(matched.get("total_quantity", 0), errors="coerce").fillna(0).sum()
+    net_sales = pd.to_numeric(matched.get("net_sales", 0), errors="coerce").fillna(0).sum()
+    profit = pd.to_numeric(matched.get("profit", 0), errors="coerce").fillna(0).sum()
+    asp = 0.0 if total_quantity == 0 else float(net_sales / total_quantity)
+
+    return {
+        "period_label": datetime(year, month, 1).strftime("%b %Y"),
+        "product_match": product_match,
+        "metrics": {
+            "total_quantity": float(total_quantity),
+            "net_sales": float(net_sales),
+            "profit": float(profit),
+            "asp": float(asp),
+        },
+    }
+
+def build_time_series_analysis(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    metric_name: str,
+    months: list[MonthKey],
+    product_match: str | None = None,
+) -> Dict[str, Any]:
+    series: list[dict] = []
+
+    for mk in months:
+        result = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=mk.month,
+            year=mk.year,
+        )
+
+        if product_match:
+            rows = result.get("per_sku", [])
+            value = sum(
+                float(r.get("__metric__", 0.0))
+                for r in rows
+                if product_match.lower() in str(r.get("product_name", "")).lower()
+            )
+        else:
+            value = float(result.get("total", 0.0))
+
+        series.append({
+            "period_label": mk.label,
+            "__metric__": float(value),
+        })
+
+    mom: list[dict] = []
+    for i in range(1, len(series)):
+        prev_val = float(series[i - 1]["__metric__"])
+        curr_val = float(series[i]["__metric__"])
+        delta = curr_val - prev_val
+        pct_change = None if prev_val == 0 else (delta / prev_val) * 100.0
+
+        mom.append({
+            "period_label": series[i]["period_label"],
+            "current": curr_val,
+            "previous": prev_val,
+            "delta": delta,
+            "pct_change": pct_change,
+        })
+
+    values = [float(x["__metric__"]) for x in series]
+    overall_delta = values[-1] - values[0] if len(values) >= 2 else 0.0
+    overall_pct_change = None if len(values) < 2 or values[0] == 0 else (overall_delta / values[0]) * 100.0
+
+    if mom:
+        deltas = [x["delta"] for x in mom]
+        if all(d > 0 for d in deltas):
+            movement = "consistently_up"
+        elif all(d < 0 for d in deltas):
+            movement = "consistently_down"
+        else:
+            movement = "mixed"
+    else:
+        movement = "insufficient_data"
+
+    return {
+        "metric": metric_name,
+        "series": series,
+        "mom": mom,
+        "overall_delta": overall_delta,
+        "overall_pct_change": overall_pct_change,
+        "movement": movement,
+        "product_match": product_match,
+    }
+
+def get_growth_driver_insights(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    metric_name: str,
+    month: int,
+    year: int,
+    top_n: int = 3,
+) -> Dict[str, Any] | None:
+    current = get_metric_for_month(
+        engine=engine,
+        user_id=user_id,
+        country=country,
+        metric_name=metric_name,
+        month=month,
+        year=year,
+    )
+
+    if month == 1:
+        prev_month = 12
+        prev_year = year - 1
+    else:
+        prev_month = month - 1
+        prev_year = year
+
+    previous = get_metric_for_month(
+        engine=engine,
+        user_id=user_id,
+        country=country,
+        metric_name=metric_name,
+        month=prev_month,
+        year=prev_year,
+    )
+
+    curr_df = pd.DataFrame(current.get("per_sku", []))
+    prev_df = pd.DataFrame(previous.get("per_sku", []))
+
+    if curr_df.empty and prev_df.empty:
+        return None
+
+    if curr_df.empty:
+        curr_df = pd.DataFrame(columns=["sku", "product_name", "__metric__"])
+    if prev_df.empty:
+        prev_df = pd.DataFrame(columns=["sku", "product_name", "__metric__"])
+
+    merged = curr_df.merge(
+        prev_df,
+        on="sku",
+        how="outer",
+        suffixes=("_curr", "_prev"),
+    ).fillna(0)
+
+    if "product_name_curr" not in merged.columns:
+        merged["product_name_curr"] = ""
+    if "product_name_prev" not in merged.columns:
+        merged["product_name_prev"] = ""
+
+    merged["product_name"] = merged["product_name_curr"].replace("", pd.NA).fillna(merged["product_name_prev"])
+    merged["delta"] = (
+        pd.to_numeric(merged["__metric___curr"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(merged["__metric___prev"], errors="coerce").fillna(0.0)
+    )
+
+    positive = (
+        merged.sort_values("delta", ascending=False)
+        .head(top_n)[["sku", "product_name", "delta"]]
+        .to_dict(orient="records")
+    )
+    negative = (
+        merged.sort_values("delta", ascending=True)
+        .head(top_n)[["sku", "product_name", "delta"]]
+        .to_dict(orient="records")
+    )
+
+    lead = positive[0] if positive else None
+
+    return {
+        "metric": metric_name,
+        "top_positive_drivers": positive,
+        "top_negative_drivers": negative,
+        "primary_driver": lead,
+    }
+
 ####period parser file########
 
 

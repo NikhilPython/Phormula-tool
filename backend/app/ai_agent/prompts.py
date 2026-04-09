@@ -108,6 +108,14 @@ Rules:
 - For chat or explain, metric_name should be null
 - For chat or explain, custom_range should be false and period_1/period_2 should be null
 
+If the user asks about their own business data (even if phrased as "what is"),
+treat it as metric_qa, not explain.
+
+Examples:
+- "what is my profit" → metric_qa
+- "what is growth in last 3 months" → metric_qa
+- "what is MoM" → explain
+
 Date handling:
 - Convert quarter references into exact dates:
   - Q1 YYYY = YYYY-01-01 to YYYY-03-31

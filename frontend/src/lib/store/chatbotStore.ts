@@ -137,7 +137,6 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           country = userData?.country || "uk";
         } catch {}
       }
-
       const res = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: "POST",
         headers: {
