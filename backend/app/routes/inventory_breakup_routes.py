@@ -493,7 +493,7 @@ def inventory_lost_compensation():
             if not existing_settlement_tables:
                 return jsonify({
                     "success": False,
-                    "error": "No settlement tables found for the requested period",
+                    "error": "No MTD data available for the requested period",
                     "settlement_tables_checked": [f"public.{t}" for t in settlement_table_names]
                 }), 404
 
