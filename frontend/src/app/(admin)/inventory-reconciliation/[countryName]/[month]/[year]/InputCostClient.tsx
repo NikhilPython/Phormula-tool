@@ -98,8 +98,11 @@ const formatCell = (v: any) => {
   if (typeof v === "boolean") return v ? "Yes" : "No";
 
   if (isNumericLike(v)) {
-    const n = Math.abs(Math.trunc(Number(v))); // ✅ force integer
-    return n.toLocaleString(); // ✅ no decimals ever
+    const n = Math.abs(Math.trunc(Number(v)));
+
+    if (n === 0) return "-"; // ✅ THIS LINE ADDED
+
+    return n.toLocaleString();
   }
 
   return String(v);

@@ -768,15 +768,23 @@ const AppSidebar: React.FC = () => {
 
         {
           name: "Expense Reconcilliation",
-          path: ({ countryName, month, year }) =>
-            `/expense-reconciliation/${encodeURIComponent(
+          path: ({ countryName, month, year }) => {
+            const idx = monthNames.indexOf(month.toLowerCase());
+            let prevMonthIdx = idx - 1;
+            let prevYear = Number(year);
+
+            if (prevMonthIdx < 0) {
+              prevMonthIdx = 11; // December
+              prevYear -= 1;
+            }
+
+            const prevMonth = monthNames[prevMonthIdx];
+
+            return `/expense-reconciliation/${encodeURIComponent(
               countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
-        },
-        // {
-        //   name: "Targets & Objectives",
-        //   path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        // },
+            )}/${encodeURIComponent(prevMonth)}/${encodeURIComponent(prevYear)}`;
+          },
+        }
       ],
     },
   ];

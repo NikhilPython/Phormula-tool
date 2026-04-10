@@ -245,6 +245,7 @@ export default function InputCostPage({ params }: Params) {
     });
   };
 
+  // 1) REMOVE these from SKU visible columns
   const getVisibleColumns = (data: SkuRow[]) => {
     if (!data || data.length === 0) return [] as string[];
 
@@ -272,14 +273,11 @@ export default function InputCostPage({ params }: Params) {
       'product_barcode',
       'month_year',
       'price',
-
-      // ✅ ADD HERE
-      'local_stock',
-      'in_transit_units'
     ];
+
     const visibleOtherColumns = otherColumns.filter((col) => {
       if (col === 'month_year') {
-        return data.some((row) => (row.month || row.year));
+        return data.some((row) => row.month || row.year);
       }
       return !isColumnEmpty(data, col);
     });
@@ -695,7 +693,6 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const fetchWarehouseData = async () => {
-
     if (isNA) {
       setWarehouseData(DUMMY_WAREHOUSE_DATA);
       setWarehouseColumns(getOrderedWarehouseColumns(Object.keys(DUMMY_WAREHOUSE_DATA[0] || {})));
@@ -706,7 +703,28 @@ export default function InputCostPage({ params }: Params) {
     const token =
       typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-    if (!token) return;
+    // fallback from skuData
+    const skuFallbackRows = skuData
+      .filter((row) => row.local_stock !== undefined || row.in_transit_units !== undefined)
+      .map((row, index) => ({
+        s_no: row.s_no ?? index + 1,
+        sku_us: row.sku_us ?? '',
+        sku_uk: row.sku_uk ?? '',
+        local_stock: row.local_stock ?? '',
+        in_transit_units: row.in_transit_units ?? '',
+        month: row.month ?? '',
+        year: row.year ?? '',
+      }));
+
+    if (!token) {
+      setWarehouseData(skuFallbackRows);
+      setWarehouseColumns(
+        skuFallbackRows.length > 0
+          ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
+          : []
+      );
+      return;
+    }
 
     try {
       setWarehouseLoading(true);
@@ -724,24 +742,41 @@ export default function InputCostPage({ params }: Params) {
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setWarehouseData([]);
-        setWarehouseColumns([]);
+        setWarehouseData(skuFallbackRows);
+        setWarehouseColumns(
+          skuFallbackRows.length > 0
+            ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
+            : []
+        );
         return;
       }
 
       const rows = Array.isArray(result?.data) ? result.data : [];
-      const cols = Array.isArray(result?.columns)
-        ? result.columns
-        : rows.length > 0
-          ? Object.keys(rows[0])
-          : [];
 
-      setWarehouseData(rows);
-      setWarehouseColumns(getOrderedWarehouseColumns(cols));
+      if (rows.length > 0) {
+        const cols = Array.isArray(result?.columns)
+          ? result.columns
+          : Object.keys(rows[0]);
+
+        setWarehouseData(rows);
+        setWarehouseColumns(getOrderedWarehouseColumns(cols));
+      } else {
+        setWarehouseData(skuFallbackRows);
+        setWarehouseColumns(
+          skuFallbackRows.length > 0
+            ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
+            : []
+        );
+      }
     } catch (e) {
       console.error('Failed to fetch warehouse data', e);
-      setWarehouseData([]);
-      setWarehouseColumns([]);
+
+      setWarehouseData(skuFallbackRows);
+      setWarehouseColumns(
+        skuFallbackRows.length > 0
+          ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
+          : []
+      );
     } finally {
       setWarehouseLoading(false);
     }
@@ -810,7 +845,7 @@ export default function InputCostPage({ params }: Params) {
     if (activeTab === 'extra') {
       void fetchWarehouseData();
     }
-  }, [activeTab, countryName]);
+  }, [activeTab, countryName, skuData]);
 
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
@@ -883,7 +918,7 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const tableData: TableRow[] = useMemo(() => {
-    const mappedRows: TableRow[] = skuData.map((row, index) => {
+    return skuData.map((row, index) => {
       const item: TableRow = {
         id: `${row.product_name}-${index}`,
         s_no: row.s_no ?? index + 1,
@@ -895,10 +930,6 @@ export default function InputCostPage({ params }: Params) {
         product_barcode: row.product_barcode ?? '—',
         month_year: getMonthYearDisplay(row),
         price: row.price ?? '',
-
-        // ✅ ADD THESE
-        local_stock: row.local_stock ?? '—',
-        in_transit_units: row.in_transit_units ?? '—',
       };
 
       visibleColumns.forEach((col) => {
@@ -911,31 +942,7 @@ export default function InputCostPage({ params }: Params) {
 
       return item;
     });
-
-    if (mappedRows.length <= 9 || showAllRows) {
-      return mappedRows;
-    }
-
-    const firstNine = mappedRows.slice(0, 9);
-    const remainingCount = mappedRows.length - 9;
-
-    const othersRow: TableRow = {
-      id: 'others-row',
-      s_no: '—',
-      product_name: `Others (${remainingCount} more items)`,
-      month_year: '—',
-      price: '—',
-      isOthersRow: true,
-    };
-
-    visibleColumns.forEach((col) => {
-      if (!(col in othersRow)) {
-        othersRow[col] = '—';
-      }
-    });
-
-    return [...firstNine, othersRow];
-  }, [skuData, visibleColumns, showAllRows]);
+  }, [skuData, visibleColumns]);
 
   const columns: ColumnDef<TableRow>[] = useMemo(() => {
     return visibleColumns.map((column) => {
@@ -952,18 +959,6 @@ export default function InputCostPage({ params }: Params) {
         col.width = '220px';
         col.cellClassName = 'text-left';
         col.render = (tableRow) => {
-          if (tableRow.isOthersRow) {
-            return (
-              <button
-                type="button"
-                onClick={() => setShowAllRows(true)}
-                className="text-blue-600 font-semibold underline cursor-pointer"
-              >
-                {tableRow.product_name}
-              </button>
-            );
-          }
-
           return <span>{tableRow.product_name}</span>;
         };
       }
@@ -1029,6 +1024,7 @@ export default function InputCostPage({ params }: Params) {
     []
   );
 
+  // 3) KEEP warehouse tab ordered exactly like your Excel
   const getOrderedWarehouseColumns = (cols: string[]) => {
     const preferredOrder = [
       's_no',
@@ -1046,14 +1042,15 @@ export default function InputCostPage({ params }: Params) {
     return [...preferred, ...remaining];
   };
 
+  // 4) KEEP warehouse headers matching Excel labels
   const getWarehouseHeaderLabel = (col: string) => {
     switch (col) {
       case 's_no':
         return 'S No';
       case 'sku_us':
-        return 'SKU US';
+        return 'SKU_US';
       case 'sku_uk':
-        return 'SKU UK';
+        return 'SKU_UK';
       case 'local_stock':
         return 'Local Stock';
       case 'in_transit_units':
@@ -1159,7 +1156,6 @@ export default function InputCostPage({ params }: Params) {
     );
   };
 
-
   const handleConnectAmazonPreview = () => {
     const connectCountry = countryName === 'global' ? 'uk' : countryName;
     router.push(`/profile/${connectCountry}/NA/NA`);
@@ -1249,36 +1245,6 @@ export default function InputCostPage({ params }: Params) {
       </div>
 
 
-      {/* 
-      {activeTab === 'sku-info' && (
-        <>
-          {skuData.length > 0 ? (
-            <div className="mt-5">
-              <DataTable<TableRow>
-                columns={columns}
-                data={tableData}
-                loading={loading}
-                paginate={false}
-                pageSize={10}
-                stickyHeader={true}
-                zebra={true}
-                scrollY={false}
-                maxHeight="auto"
-                emptyMessage="No data available"
-                tableClassName="text-sm"
-                className="rounded-xl"
-                rowClassName={(row) =>
-                  row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
-                }
-              />
-            </div>
-          ) : (
-            <p className="mt-5">No data available</p>
-          )}
-        </>
-      )} */}
-
-
       <PreviewLockedSection
         enabled={isNA}
         title="Preview mode"
@@ -1304,9 +1270,6 @@ export default function InputCostPage({ params }: Params) {
                     emptyMessage="No data available"
                     tableClassName="text-sm"
                     className="rounded-xl"
-                    rowClassName={(row) =>
-                      row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
-                    }
                   />
                 </div>
               ) : (
@@ -1317,9 +1280,9 @@ export default function InputCostPage({ params }: Params) {
 
           {activeTab === 'extra' && (
             <div className="mt-5">
-              <div className="mb-2 text-sm font-semibold text-[#414042]">
+              {/* <div className="mb-2 text-sm font-semibold text-[#414042]">
                 Warehouse Data
-              </div>
+              </div> */}
 
               {warehouseLoading ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
@@ -1464,71 +1427,35 @@ export default function InputCostPage({ params }: Params) {
       {showMultiuseCountry && (
         <div
           onClick={() => setShowMultiuseCountry(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9999,
-          }}
+          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '8px',
-              width: '30vw',
-              height: '30vh',
-              overflowY: 'auto',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
+            className="relative m-4 w-full max-w-[500px] rounded-xl border border-[#D9D9D9] bg-white shadow-[6px_6px_7px_0px_#00000026]"
           >
             <button
               onClick={() => setShowMultiuseCountry(false)}
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '10px',
-                border: 'none',
-                background: 'transparent',
-                fontSize: '1.5rem',
-                cursor: 'pointer',
-              }}
+              type="button"
+              className="absolute right-4 top-3 z-10 text-2xl leading-none text-neutral-500 hover:text-neutral-800"
             >
               &times;
             </button>
 
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
+            <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar lg:p-9">
               <SkuMultiuseCountryUpload
-                onClose={function (): void {
-                  throw new Error('Function not implemented.');
-                }}
-                onComplete={function (): void {
-                  throw new Error('Function not implemented.');
+                onClose={() => setShowMultiuseCountry(false)}
+                onComplete={() => {
+                  setShowMultiuseCountry(false);
+
+                  // optional: refresh SKU table after upload
+                  // window.location.reload();
+                  // or call your fetchSkuData() if you expose it outside useEffect
                 }}
               />
             </div>
           </div>
         </div>
       )}
-
       <Modalmsg
         show={showModal}
         message={modalMessage}
