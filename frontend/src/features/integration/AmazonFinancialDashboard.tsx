@@ -1122,13 +1122,18 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       markStepComplete(6);
 
       // Step 7: Inventory Forecast + Purchase Order
-      await runForecastAndPoSequence({
-        country: countryUsed,
-        year: y,
-        month: mNum,
-        setStep,
-      });
-      markStepComplete(7);
+      if (selectedPeriod && selectedPeriod >= 6) {
+        await runForecastAndPoSequence({
+          country: countryUsed,
+          year: y,
+          month: mNum,
+          setStep,
+        });
+        markStepComplete(7);
+      } else {
+        setStep(7, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
+        markStepComplete(7);
+      }
 
       // Step 8: Plotting Graph
       setStep(8, "Plotting Graph", 0, "Preparing charts...");
@@ -1290,13 +1295,23 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         `Running inventory forecast for ${lastMonth.y}-${two(lastMonth.mNum)}...`
       );
 
-      await runForecastAndPoSequence({
-        country: countryUsed,
-        year: lastMonth.y,
-        month: lastMonth.mNum,
-        setStep,
-      });
-      markStepComplete(7);
+      if (selectedPeriod && selectedPeriod >= 6) {
+        await runForecastAndPoSequence({
+          country: countryUsed,
+          year: lastMonth.y,
+          month: lastMonth.mNum,
+          setStep,
+        });
+        markStepComplete(7);
+      } else {
+        setStep(
+          7,
+          "Inventory Forecast",
+          100,
+          "Skipped (requires ≥ 6 months data)"
+        );
+        markStepComplete(7);
+      }
 
       // Step 8: Plotting Graph
       setStep(8, "Plotting Graph", 0, "Preparing charts...");
@@ -1363,6 +1378,30 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         `⚡ Quick forecast + purchase order completed for ${selectedPeriod} months using ${lastMonth.y}-${two(lastMonth.mNum)}.`
       );
     });
+
+  const shouldShowForecastStep = selectedPeriod !== null && selectedPeriod >= 6;
+
+  const steps = shouldShowForecastStep
+    ? [
+      { num: 1, label: "Currency Conversion" },
+      { num: 2, label: "Category Fees" },
+      { num: 3, label: "Fee Preview" },
+      { num: 4, label: "Inventory Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Live Data" },
+      { num: 7, label: "Inventory Forecast" },
+      { num: 8, label: "Plotting Graph" },
+    ]
+    : [
+      { num: 1, label: "Currency Conversion" },
+      { num: 2, label: "Category Fees" },
+      { num: 3, label: "Fee Preview" },
+      { num: 4, label: "Inventory Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Live Data" },
+      { num: 8, label: "Plotting Graph" },
+    ];
+
 
   return (
     <div className="w-full">
@@ -1526,7 +1565,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
             <Button onClick={handleFetchRange} variant="primary" size="sm" disabled={busy}>
               {busy ? "Fetching..." : `Continue`}
             </Button>
-            {selectedPeriod && selectedPeriod >= 6 && (
+            {/* {selectedPeriod && selectedPeriod >= 6 && (
               <Button
                 onClick={handleQuickForecastTest}
                 variant="primary"
@@ -1535,7 +1574,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               >
                 ⚡ Quick Forecast Test
               </Button>
-            )}
+            )} */}
 
           </div>
         )}
@@ -1587,7 +1626,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               <div className="absolute top-6 left-[4%] right-[4%] h-1.5 bg-[#D9D9D9] -z-10">
                 {completedSteps.size > 0 && (() => {
                   const maxCompleted = Math.max(...Array.from(completedSteps));
-                  const progressPercent = maxCompleted > 1 ? ((maxCompleted - 1) / 7) * 100 : 0;
+                  const visibleStepCount = steps.length;
+                  const denominator = Math.max(visibleStepCount - 1, 1);
+
+                  const progressPercent =
+                    maxCompleted > 1 ? ((Math.min(maxCompleted, steps[steps.length - 1].num) - 1) / denominator) * 100 : 0;
                   return (
                     <div
                       className="h-full bg-[#5EA68E] transition-all duration-500"
@@ -1597,16 +1640,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
                 })()}
               </div>
 
-              {[
-                { num: 1, label: "Currency Conversion" },
-                { num: 2, label: "Category Fees" },
-                { num: 3, label: "Fee Preview" },
-                { num: 4, label: "Inventory Data" },
-                { num: 5, label: "Historic Data" },
-                { num: 6, label: "Live Data" },
-                { num: 7, label: "Inventory Forecast" },
-                { num: 8, label: "Plotting Graph" },
-              ].map((step) => {
+              {steps.map((step) => {
                 const isCompleted = completedSteps.has(step.num);
                 const isActive = currentStep === step.num;
                 const isPast = currentStep > step.num;

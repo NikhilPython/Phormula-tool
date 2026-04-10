@@ -8,7 +8,14 @@ import SegmentedToggle from "../ui/SegmentedToggle";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import Loader from "../loader/Loader";
 
-const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
+const ReactECharts = dynamic(() => import("echarts-for-react"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[260px] w-full">
+      <Loader transparent/>
+    </div>
+  ),
+});
 
 type ChartMetric = "net_sales" | "quantity";
 
