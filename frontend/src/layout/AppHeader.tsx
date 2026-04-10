@@ -1,6 +1,4 @@
 "use client";
-import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
-import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
@@ -8,8 +6,7 @@ import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import AmazonConnect from "@/features/integration/AmazonConnect";
 import AmazonFinancialDashboard from "@/features/integration/AmazonFinancialDashboard";
-import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal"; // ⬅️ add this
-// import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
+import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal"; 
 import { useParams } from "next/navigation";
 
 const AppHeader: React.FC = () => {
@@ -83,20 +80,20 @@ const AppHeader: React.FC = () => {
       <header className="sticky top-0 flex w-full bg-white border-gray-200  dark:border-gray-800 dark:bg-gray-900 z-[1100]">
         <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-6">
           <div className="flex items-center justify-between w-full gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-1.5 xl:py-2">
-          {!isExpanded && (
-  <button
-    onClick={handleToggle}
-    className="flex items-center justify-center w-10 h-10 rounded-lg lg:hidden"
-    aria-label="Open sidebar"
-  >
-    <Image
-            src="/images/icons/hamburger.png"
-            alt="Open sidebar"
-            width={20}
-            height={20}
-          />
-  </button>
-)}
+            {!isExpanded && (
+              <button
+                onClick={handleToggle}
+                className="flex items-center justify-center w-10 h-10 rounded-lg lg:hidden"
+                aria-label="Open sidebar"
+              >
+                <Image
+                  src="/images/icons/hamburger.png"
+                  alt="Open sidebar"
+                  width={20}
+                  height={20}
+                />
+              </button>
+            )}
             <Link href={realTimeHref} className="lg:hidden">
               <Image width={154} height={32} className="dark:hidden" src="/images/logo/Logo_Phormula.png" alt="Logo" />
               <Image width={154} height={32} className="hidden dark:block" src="./images/logo/logo-dark.svg" alt="Logo" />
@@ -116,6 +113,13 @@ const AppHeader: React.FC = () => {
     lg:flex shadow-theme-md justify-end lg:px-0 lg:shadow-none`}>
             <UserDropdown />
           </div>
+
+          {/* <div className="flex items-center gap-2 2xsm:gap-3">
+
+            <NotificationDropdown items={items} />
+
+          </div> */}
+
         </div>
       </header>
 

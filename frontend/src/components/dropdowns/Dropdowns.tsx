@@ -3374,14 +3374,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ? (rawComparisons as SummaryComparisons)
                   : undefined;
 
-                const formatMoney = (val: number, opts?: { showPlus?: boolean }) => {
+                const formatMoney = (
+                  val: number,
+                  opts?: { showPlus?: boolean; decimals?: number }
+                ) => {
                   const num = Number(val || 0);
                   const sign = num < 0 ? "-" : opts?.showPlus && num > 0 ? "+" : "";
                   const abs = Math.abs(num);
+                  const decimals = opts?.decimals ?? 2;
 
                   return `${sign}${currencySymbol}${abs.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals,
                   })}`;
                 };
 
@@ -3473,15 +3477,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
 
-                const renderMoneyWithPerUnit = (total: number, units: number) => {
-                  const totalText = formatMoney(total);
+                const renderMoneyWithPerUnit = (
+                  total: number,
+                  units: number,
+                  roundPerUnit = false,
+                  decimals = 2
+                ) => {
+                  const totalText = formatMoney(total, { decimals });
 
                   if (!units) {
                     return <span>{totalText}</span>;
                   }
 
-                  const perUnit = total / units;
-                  const perUnitText = formatMoney(perUnit);
+                  const perUnitRaw = total / units;
+                  const perUnit = roundPerUnit ? Math.round(perUnitRaw) : perUnitRaw;
+                  const perUnitText = formatMoney(perUnit, {
+                    decimals: roundPerUnit ? 0 : decimals,
+                  });
 
                   return (
                     <div className="flex items-baseline gap-1 leading-tight">
@@ -3494,7 +3506,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </span>
                     </div>
                   );
-
                 };
 
                 const formatPercent = (val: number) =>
@@ -3505,6 +3516,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 const getGrossSales = (s?: Summary) =>
                   s?.total_product_sales ?? s?.gross_sales ?? 0;
+
+                const roundMoney = (val: number) => Math.round(val || 0);
 
                 const isSummaryZero =
                   summary.unit_sold === 0 &&
@@ -3755,8 +3768,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "grossSales",
                     title: "Gross Sales",
-                    value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
-                    // className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(getGrossSales(summary)),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
                     comparisons: (() => {
                       const items = getGrossSalesComparisons();
@@ -3786,7 +3803,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "netSales",
                     title: "Net Sales",
-                    value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(netSales),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
                     comparisons: buildComparisonsRows("total_sales", formatMoney),
                   },
