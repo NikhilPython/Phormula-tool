@@ -162,9 +162,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -188,6 +188,28 @@ function wasDone(key: string) {
 function markDone(key: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, "1");
+}
+
+/** ✅ MTD EMAIL (run once per country in this browser) */
+function lsKeyMtdEmail(country: string) {
+  return `mtdEmailSent:${country}`;
+}
+
+async function sendMtdReportEmail(country: string) {
+  return apiJson(`/send-report-email`, {
+    method: "POST",
+    body: JSON.stringify({ country }),
+  });
+}
+
+async function ensureMtdEmailSentOnce(country: string) {
+  const key = lsKeyMtdEmail(country);
+
+  if (wasDone(key)) return;
+
+  await sendMtdReportEmail(country);
+
+  markDone(key);
 }
 
 /** ✅ NEW: hit /amazon_api/inventory/aged with NO params, once per country */
@@ -427,52 +449,6 @@ async function fetchDispatchFile(params: {
   return { ok: true, url, blob };
 }
 
-// async function runPurchaseOrder(params: {
-//   country: string;
-//   year: number | string;
-//   month: number | string;
-// }) {
-//   const token = getAuthToken();
-
-//   // let monthValue = String(params.month).trim().toLowerCase();
-//   let monthValue = "april"
-
-//   const numericMonth = parseInt(monthValue, 10);
-//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-//     monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
-//   }
-
-//   const formData = new FormData();
-//   formData.append("month", monthValue);
-//   formData.append("year", String(params.year));
-//   formData.append("country", params.country.toLowerCase());
-
-//   const url = `${API_BASE}/purchase_order`;
-
-//   const res = await fetch(url, {
-//     method: "POST",
-//     headers: {
-//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-//     },
-//     body: formData,
-//   });
-
-//   const text = await res.text().catch(() => "");
-//   let data: any = {};
-//   try {
-//     data = text ? JSON.parse(text) : {};
-//   } catch {
-//     data = { raw: text };
-//   }
-
-//   if (!res.ok) {
-//     const msg =
-//       data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
-//     throw new Error(msg);
-//   }
-
-//   return data;
-// }
 
 async function fetchGeneratedPOFile(params: {
   country: string;
@@ -576,24 +552,6 @@ async function fetchPurchaseOrderFile(params: {
   const blob = await res.blob();
   return { ok: true, url, blob };
 }
-
-// function getMonthNameFromInput(month: number | string) {
-//   const raw = String(month).trim();
-//   const numericMonth = parseInt(raw, 10);
-
-//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-//     return fullMonthNames[numericMonth - 1];
-//   }
-
-//   const normalized = raw.toLowerCase();
-//   const idx = fullMonthNames.findIndex(
-//     (m) => m.toLowerCase() === normalized
-//   );
-
-//   if (idx !== -1) return fullMonthNames[idx];
-
-//   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-// }
 
 function getMonthNameFromInput(month: number | string) {
   const raw = String(month).trim();
@@ -1172,6 +1130,13 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
       window.dispatchEvent(new Event("storage"));
 
+      // ✅ Send MTD email for first-time users
+      try {
+        await ensureMtdEmailSentOnce(countryUsed);
+      } catch (e) {
+        console.error("MTD email send failed", e);
+      }
+
       if (onClose) onClose();
       router.push(
         `/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}?amazonFetch=success&promptAmazonAds=1`
@@ -1352,6 +1317,13 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
       window.dispatchEvent(new Event("storage"));
+
+      // ✅ Send MTD email for first-time users
+      try {
+        await ensureMtdEmailSentOnce(countryUsed);
+      } catch (e) {
+        console.error("MTD email send failed", e);
+      }
 
       if (onClose) onClose();
       router.push(

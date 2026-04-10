@@ -100,7 +100,7 @@ const formatCell = (v: any) => {
   if (isNumericLike(v)) {
     const n = Math.abs(Math.trunc(Number(v)));
 
-    if (n === 0) return "-"; // ✅ THIS LINE ADDED
+    if (n === 0) return "-";
 
     return n.toLocaleString();
   }
@@ -1042,10 +1042,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
     const { range, year, country } = params;
 
-    const q: Record<string, any> = { 
-  year,
-  sort: sortOrder, // ✅ ADD THIS
-};
+    const q: Record<string, any> = {
+      year,
+      sort: sortOrder, // ✅ ADD THIS
+    };
     if (country) q.country = country;
 
     let endpoint = LEDGER_DB_STORE_YEAR;
@@ -1236,8 +1236,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // ✅ Sort products by "Inventory at month end" (Total) DESC
     // Using ending_total since that is the month-end total shown in your group.
     const sortedDataRows = [...dataRows].sort((a, b) => {
-  return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
-});
+      return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
+    });
 
     // Take first 9 data rows
     const top = sortedDataRows.slice(0, 9);
@@ -1703,9 +1703,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
 
     if (colKey === "inventory_coverage_ratio") {
-      const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
-      if (!n) return "-";
-      return Math.trunc(n).toString();
+      const raw = Number(row?.inventory_coverage_ratio);
+
+      if (!Number.isFinite(raw) || raw === 0) return "-";
+
+      return raw.toFixed(2); // ✅ 2 decimal points
     }
 
 
@@ -1830,11 +1832,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
   // }, [effectiveRows]);
 
   const pieRows = useMemo(() => {
-  const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
-  return [...dataOnly].sort(
-    (a, b) => Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total))
-  );
-}, [rows]);
+    const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
+    return [...dataOnly].sort(
+      (a, b) => Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total))
+    );
+  }, [rows]);
 
 
   const buildExcelRows = useCallback(() => {

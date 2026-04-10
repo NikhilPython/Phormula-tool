@@ -8,7 +8,7 @@ from io import BytesIO
 from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, make_response
 
 from config import Config
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -37,16 +37,25 @@ def get_previous_month_year():
     return month_name, prev_year
 
 
-@email_bp.route("/send-report-email", methods=["POST"])
+@email_bp.route("/send-report-email", methods=["POST", "OPTIONS"])
 def send_report_email():
+    if request.method == "OPTIONS":
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
     try:
         # 1) Authorization
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            return jsonify({
+            response = jsonify({
                 "success": False,
                 "error": "Authorization token is missing or invalid"
-            }), 401
+            })
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 401
 
         token = auth_header.split(" ")[1]
 
@@ -54,17 +63,23 @@ def send_report_email():
             payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = payload["user_id"]
         except jwt.ExpiredSignatureError:
-            return jsonify({"success": False, "error": "Token has expired"}), 401
+            response = jsonify({"success": False, "error": "Token has expired"})
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 401
         except jwt.InvalidTokenError:
-            return jsonify({"success": False, "error": "Invalid token"}), 401
+            response = jsonify({"success": False, "error": "Invalid token"})
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 401
 
         # 2) Recipient email
         to_email = get_user_email_by_id(user_id)
         if not to_email:
-            return jsonify({
+            response = jsonify({
                 "success": False,
                 "error": "User email not found"
-            }), 404
+            })
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 404
 
         # 3) Get country from request
         data = request.get_json(silent=True) or {}
@@ -77,10 +92,12 @@ def send_report_email():
 
         # allow only safe table-name characters
         if not re.fullmatch(r"[a-z0-9_]+", country):
-            return jsonify({
+            response = jsonify({
                 "success": False,
                 "error": "Invalid country value"
-            }), 400
+            })
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 400
 
         # 4) Previous month logic
         month_name, year = get_previous_month_year()
@@ -93,10 +110,12 @@ def send_report_email():
         df = pd.read_sql(query, engine)
 
         if df.empty:
-            return jsonify({
+            response = jsonify({
                 "success": False,
                 "error": f"No data found in table {table_name}"
-            }), 404
+            })
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            return response, 404
 
         # 6) Create Excel in memory
         output = BytesIO()
@@ -140,21 +159,21 @@ def send_report_email():
             mime_type=mime_type,
         )
 
-        return jsonify({
+        response = jsonify({
             "success": True,
             "message": "Email sent successfully",
             "sent_to": to_email,
             "table_name": table_name,
             "file_name": attachment_filename
-        }), 200
+        })
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        return response, 200
 
     except Exception as e:
         print(f"[ERROR] /send-report-email failed: {e}")
-        return jsonify({
+        response = jsonify({
             "success": False,
             "error": str(e)
-        }), 500
-    
-
-
-    
+        })
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        return response, 500 
