@@ -770,16 +770,36 @@ function endOfMonthUTC(year: number, month1: number) {
   return new Date(Date.UTC(year, month1, 0));
 }
 
+// function buildLedgerRange(period: number | "lifetime") {
+//   const now = new Date();
+//   const currentYear = now.getUTCFullYear();
+//   const currentMonth1 = now.getUTCMonth() + 1;
+
+//   const totalMonths = period === "lifetime" ? 24 : Number(period);
+
+//   const start = addMonthsUTC(currentYear, currentMonth1, -(totalMonths - 1));
+//   const startDate = startOfMonthUTC(start.y, start.m1);
+//   const endDate = endOfMonthUTC(currentYear, currentMonth1);
+
+//   return {
+//     start_date: formatYMDUTC(startDate),
+//     end_date: formatYMDUTC(endDate),
+//   };
+// }
+
 function buildLedgerRange(period: number | "lifetime") {
-  const now = new Date();
-  const currentYear = now.getUTCFullYear();
-  const currentMonth1 = now.getUTCMonth() + 1;
+  // Anchor to the latest completed month, not the current ongoing month
+  const latest = getLatestAllowedMonthUTC(); // already returns previous month
 
-  const totalMonths = period === "lifetime" ? 24 : Number(period);
+  // ledger-summary supports only up to 18 past months
+  // so lifetime/24 should fetch 18 completed months max
+  const totalMonths = period === "lifetime" ? 18 : Number(period);
 
-  const start = addMonthsUTC(currentYear, currentMonth1, -(totalMonths - 1));
+  // Start = first day of the month (totalMonths - 1) before latest completed month
+  const start = addMonthsUTC(latest.y, latest.m1, -(totalMonths - 1));
+
   const startDate = startOfMonthUTC(start.y, start.m1);
-  const endDate = endOfMonthUTC(currentYear, currentMonth1);
+  const endDate = endOfMonthUTC(latest.y, latest.m1);
 
   return {
     start_date: formatYMDUTC(startDate),

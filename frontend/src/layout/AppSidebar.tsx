@@ -25,6 +25,7 @@ import { usePlatform } from "@/components/context/PlatformContext";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { buildCountryMarketplaceMap } from "@/lib/utils/countryMarketplace";
 import { useAppSelector } from "@/lib/hooks";
+import { FiChevronRight } from "react-icons/fi";
 
 type NavSubItem = {
   name: string;
@@ -81,12 +82,9 @@ const AppSidebar: React.FC = () => {
 
   const [lastNonGlobalPlatform, setLastNonGlobalPlatform] = useState<string | null>(null);
 
-
-
   // ✅ Auth info (client vs member)
   const authUser = useAppSelector((s: any) => s.auth.user);
   const token = useAppSelector((s: any) => s.auth.token);
-  // ✅ token payload read (refresh pe user null hota hai)
   const getJwtPayload = (jwt?: string | null) => {
     try {
       if (!jwt) return null;
@@ -101,21 +99,17 @@ const AppSidebar: React.FC = () => {
 
   const tokenPayload = React.useMemo(() => getJwtPayload(token), [token]);
 
-  // ✅ member detect: store OR token
   const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
 
-  // ✅ modules: store OR token
   const allowedModules: string[] =
     authUser?.modules || tokenPayload?.modules || [];
 
-  // ✅ Skip client-only user-data call for members (prevents 500 spam)
   const { data: user } = useGetUserDataQuery(undefined, {
     skip: !token || isMember,
   });
 
   const isPreviewMode = routeParams?.month === "NA" && routeParams?.year === "NA";
 
-  // ✅ Smaller / laptop friendly typography
   const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[12px] 2xl:text-[13px]";
   const textSection =
     "text-[10px] sm:text-[11px] lg:text-[11.5px] xl:text-[13px] 2xl:text-[14px] tracking-wide";
@@ -149,7 +143,6 @@ const AppSidebar: React.FC = () => {
   };
 
   // ===== Data from RTK Query =====
-  // ✅ Skip for members (these endpoints usually expect client token)
   useGetProfileCountriesQuery(undefined, { skip: !token || isMember });
   useGetUploadHistoryQuery(undefined, { skip: !token || isMember });
 
@@ -564,43 +557,43 @@ const AppSidebar: React.FC = () => {
     if (!newPath) {
       switch (segments[0]) {
         case "inventory-forecast":
-          newPath = `/inventory-forecast/${ newCountryName }/${month}/${ year }`;
+          newPath = `/inventory-forecast/${newCountryName}/${month}/${year}`;
           break;
         case "pnlforecast":
-          newPath = `/pnlforecast/${ newCountryName }/${month}/${ year }`;
+          newPath = `/pnlforecast/${newCountryName}/${month}/${year}`;
           break;
         case "inventory-reconciliation":
-          newPath = `/inventory-reconciliation/${ newCountryName }/${month}/${ year }`;
+          newPath = `/inventory-reconciliation/${newCountryName}/${month}/${year}`;
           break;
         case "currentInventory":
-          newPath = `/currentInventory/${ newCountryName }/${month}/${ year }`;
+          newPath = `/currentInventory/${newCountryName}/${month}/${year}`;
           break;
         case "dispatch": {
           const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
-          newPath = `/dispatch/${ newCountryName }/${currentMonth}/${ currentYear }`;
+          newPath = `/dispatch/${newCountryName}/${currentMonth}/${currentYear}`;
           break;
         }
         case "purchase-order":
-          newPath = `/purchase-order/${ newCountryName }/${month}/${ year }`;
+          newPath = `/purchase-order/${newCountryName}/${month}/${year}`;
           break;
         case "cashflow":
-          newPath = `/cashflow/${ newCountryName }/${month}/${ year }`;
+          newPath = `/cashflow/${newCountryName}/${month}/${year}`;
           break;
         case "expense-reconciliation":
-          newPath = `/expense-reconciliation/${ newCountryName }/${month}/${ year }`;
+          newPath = `/expense-reconciliation/${newCountryName}/${month}/${year}`;
           break;
         case "fba":
-          newPath = `/fba/${ newCountryName }/${month}/${ year }`;
+          newPath = `/fba/${newCountryName}/${month}/${year}`;
           break;
         case "inputCost":
-          newPath = `/inputCost/${ newCountryName }/${month}/${ year }`;
+          newPath = `/inputCost/${newCountryName}/${month}/${year}`;
           break;
         case "objectives-targets":
-          newPath = `/objectives-targets/${ newCountryName }/${month}/${ year }`;
+          newPath = `/objectives-targets/${newCountryName}/${month}/${year}`;
           break;
         case "skuwiseprofit": {
           const productname = segments[1] ?? "Classic";
-          newPath = `/skuwiseprofit/${ productname }/${newCountryName}/${ month }/${year}`;
+          newPath = `/skuwiseprofit/${productname}/${newCountryName}/${month}/${year}`;
           break;
         }
       }
@@ -939,8 +932,8 @@ const AppSidebar: React.FC = () => {
                     </div>
 
                     {showText && (
-                      <FaChevronDown
-                        className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 ${openSections[section.key] ? "rotate-0" : "rotate-90"
+                      <FiChevronRight
+                        className={`h-3 w-3 sm:h-4.5 sm:w-4.5 font-bold transition-transform duration-200 ${openSections[section.key] ? "rotate-90" : "rotate-0"
                           }`}
                       />
                     )}
