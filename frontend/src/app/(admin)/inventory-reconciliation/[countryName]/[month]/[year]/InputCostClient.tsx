@@ -453,6 +453,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [selectedMonth, setSelectedMonth] = useState<string>(resolvedMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
   const [selectedYear, setSelectedYear] = useState<string>(resolvedYear);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [exportTick, setExportTick] = useState(0);
   const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
   const [lostCompLoading, setLostCompLoading] = useState(false);
@@ -1038,7 +1039,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
     const { range, year, country } = params;
 
-    const q: Record<string, any> = { year };
+    const q: Record<string, any> = { 
+  year,
+  sort: sortOrder, // ✅ ADD THIS
+};
     if (country) q.country = country;
 
     let endpoint = LEDGER_DB_STORE_YEAR;
@@ -1229,8 +1233,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // ✅ Sort products by "Inventory at month end" (Total) DESC
     // Using ending_total since that is the month-end total shown in your group.
     const sortedDataRows = [...dataRows].sort((a, b) => {
-      return toNum(b?.ending_total) - toNum(a?.ending_total);
-    });
+  return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
+});
 
     // Take first 9 data rows
     const top = sortedDataRows.slice(0, 9);
@@ -1823,9 +1827,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
   // }, [effectiveRows]);
 
   const pieRows = useMemo(() => {
-    const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
-    return [...dataOnly].sort((a, b) => toNum(b?.ending_total) - toNum(a?.ending_total));
-  }, [rows]);
+  const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
+  return [...dataOnly].sort(
+    (a, b) => Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total))
+  );
+}, [rows]);
 
 
   const buildExcelRows = useCallback(() => {
