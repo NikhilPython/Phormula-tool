@@ -3,22 +3,21 @@ from werkzeug.security import generate_password_hash
 from flask_mail import Message
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
-import jwt
-import secrets, string
-
+import jwt, secrets, string
 from app import db, mail
 from app.models.user_models import Member
 
 add_member_bp = Blueprint("add_member", __name__)
 
-# ✅ Marketplace -> Country mapping
+# Marketplace -> Country mapping
 ALLOWED_MARKETPLACES = {
     "ATVPDKIKX0DER": "US",
     "A1F83G8C2ARO7P": "UK",
     "A2EUQ1WTGCTBG2": "CA",
+    "A1PA6795UKMFR9": "DE",
 }
 
-# ✅ Modules you allow for members (UI sections)
+# Modules you allow for members (UI sections)
 ALLOWED_MODULES = {
     "LIVE_DASHBOARD",
     "FINANCE_DASHBOARDS",
@@ -28,16 +27,41 @@ ALLOWED_MODULES = {
 
 DEFAULT_MODULES = ["LIVE_DASHBOARD"]
 
-# ✅ Roles you allow for members
-ALLOWED_ROLES = {"MARKETING", "ACCOUNTED", "INVENTORY"}
+# Roles you allow for members
+ALLOWED_ROLES = {"MARKETING", "ACCOUNTANT", "INVENTORY"}
 DEFAULT_ROLE = "MARKETING"
+
 
 # ==========================================================
 # Helpers
 # ==========================================================
 
-def _random_token(n: int = 8) -> str:
+def _random_token(n: int = 10) -> str:
     return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(n))
+
+
+def _generate_temp_password(length: int = 10) -> str:
+    """
+    Generate a temporary password with at least:
+    - 1 uppercase
+    - 1 lowercase
+    - 1 digit
+    """
+    if length < 6:
+        length = 6
+
+    chars = string.ascii_letters + string.digits
+
+    password = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+    ]
+
+    password += [secrets.choice(chars) for _ in range(length - 3)]
+    secrets.SystemRandom().shuffle(password)
+    return "".join(password)
+
 
 def _normalize_list(val):
     """
@@ -54,14 +78,17 @@ def _normalize_list(val):
         return [x.strip() for x in val.split(",") if x.strip()]
     return []
 
+
 def _normalize_role(val):
     return (val or "").strip().upper()
+
 
 def _error(message: str, status: int = 400, **extra):
     payload = {"error": message}
     if extra:
         payload.update(extra)
     return jsonify(payload), status
+
 
 def _get_owner_user_id_from_token():
     """
@@ -82,7 +109,6 @@ def _get_owner_user_id_from_token():
             options={"require": ["exp"]},
         )
 
-        # ✅ Prevent members from adding members
         if payload.get("is_member") is True:
             return None, _error("Members are not allowed to add other members", 403)
 
@@ -97,8 +123,8 @@ def _get_owner_user_id_from_token():
     except jwt.InvalidTokenError:
         return None, _error("Invalid token", 401)
 
+
 def _derive_countries_from_marketplaces(marketplaces):
-    # keep insertion order, unique
     countries = []
     for mp in marketplaces:
         c = ALLOWED_MARKETPLACES.get(mp)
@@ -106,17 +132,20 @@ def _derive_countries_from_marketplaces(marketplaces):
             countries.append(c)
     return countries
 
+
 def _validate_marketplaces(marketplaces):
     invalid = [mp for mp in marketplaces if mp not in ALLOWED_MARKETPLACES]
     if invalid:
         return False, invalid
     return True, []
 
+
 def _validate_modules(modules):
     invalid = [m for m in modules if m not in ALLOWED_MODULES]
     if invalid:
         return False, invalid
     return True, []
+
 
 # ==========================================================
 # Email
@@ -132,7 +161,6 @@ def send_member_invite_email(member_name, email, password, token_name, countries
         recipients=[email],
     )
 
-    # ✅ Update to your real frontend URL
     login_url = "http://localhost:3000/signin"
 
     countries_str = ", ".join(countries) if countries else "-"
@@ -261,26 +289,13 @@ def send_member_invite_email(member_name, email, password, token_name, countries
     """
     mail.send(msg)
 
+
 # ==========================================================
 # Route
 # ==========================================================
 
 @add_member_bp.route("/add_member", methods=["POST"])
 def add_member():
-    """
-    POST /add_member
-    Header: Authorization: Bearer <OWNER_USER_JWT>
-
-    Body:
-    {
-      "member_name": "John Analyst",
-      "email": "analyst@skinelements.com",
-      "password": "Test1234",
-      "role": "MARKETING",
-      "marketplaces": ["ATVPDKIKX0DER","A1F83G8C2ARO7P"],
-      "modules": ["LIVE_DASHBOARD","INVENTORY_PLANNING"]
-    }
-    """
     try:
         owner_user_id, auth_err = _get_owner_user_id_from_token()
         if auth_err:
@@ -288,26 +303,23 @@ def add_member():
 
         data = request.get_json(silent=True) or {}
 
-        member_name = (data.get("member_name") or "").strip()  # ✅ NEW
+        member_name = (data.get("member_name") or "").strip()
         email = (data.get("email") or "").strip().lower()
-        password = data.get("password") or ""
-
         role = _normalize_role(data.get("role")) or DEFAULT_ROLE
         marketplaces = _normalize_list(data.get("marketplaces"))
         modules = _normalize_list(data.get("modules")) or list(DEFAULT_MODULES)
 
-        # ✅ required validation
+        # Auto-generate temporary password
+        temp_password = _generate_temp_password(10)
+
         if not member_name:
             return _error("member_name is required", 400)
 
-        if not email or not password or not marketplaces:
-            return _error("email, password and marketplaces are required", 400)
+        if not email or not marketplaces:
+            return _error("email and marketplaces are required", 400)
 
         if "@" not in email or "." not in email:
             return _error("Invalid email", 400)
-
-        if len(password) < 6:
-            return _error("Password must be at least 6 characters", 400)
 
         if role not in ALLOWED_ROLES:
             return _error(
@@ -343,9 +355,9 @@ def add_member():
 
         new_member = Member(
             owner_user_id=owner_user_id,
-            member_name=member_name,  # ✅ NEW
+            member_name=member_name,
             email=email,
-            password=generate_password_hash(password),
+            password=generate_password_hash(temp_password),
             role=role,
             marketplace_ids=marketplaces,
             countries=countries,
@@ -363,7 +375,7 @@ def add_member():
             send_member_invite_email(
                 member_name,
                 email,
-                password,
+                temp_password,
                 token_name,
                 countries,
                 marketplaces,
@@ -397,18 +409,10 @@ def add_member():
     except Exception as e:
         db.session.rollback()
         return _error(str(e), 500)
-    
+
+
 @add_member_bp.route("/delete_member", methods=["DELETE"])
 def delete_member():
-    """
-    DELETE /delete_member
-    Header: Authorization: Bearer <OWNER_USER_JWT>
-
-    Body (either):
-    { "member_id": 7 }
-    OR
-    { "email": "analyst@skinelements.com" }
-    """
     try:
         owner_user_id, auth_err = _get_owner_user_id_from_token()
         if auth_err:
@@ -444,25 +448,10 @@ def delete_member():
     except Exception as e:
         db.session.rollback()
         return _error(f"Failed to delete member: {str(e)}", 500)
-    
+
+
 @add_member_bp.route("/update_member_access", methods=["PUT", "PATCH"])
 def update_member_access():
-    """
-    PUT/PATCH /update_member_access
-    Header: Authorization: Bearer <OWNER_USER_JWT>
-
-    Body:
-    {
-      "member_id": 7,                       # required (or use email)
-      "email": "analyst@skinelements.com",  # optional alternative key
-
-      "marketplace_ids": ["A1F83G8C2ARO7P"],   # optional
-      "modules": ["LIVE_DASHBOARD"],           # optional
-      "role": "MARKETING"                      # optional
-    }
-
-    countries will be auto-derived from marketplace_ids if marketplace_ids is provided.
-    """
     try:
         owner_user_id, auth_err = _get_owner_user_id_from_token()
         if auth_err:
@@ -486,8 +475,6 @@ def update_member_access():
         if not member:
             return _error("Member not found for this owner", 404)
 
-        # --------- updates (only if provided) ----------
-        # marketplace_ids
         if "marketplace_ids" in data:
             marketplace_ids = _normalize_list(data.get("marketplace_ids"))
             if not marketplace_ids:
@@ -503,10 +490,8 @@ def update_member_access():
                 )
 
             member.marketplace_ids = marketplace_ids
-            # ✅ derive countries from marketplaces
             member.countries = _derive_countries_from_marketplaces(marketplace_ids)
 
-        # modules
         if "modules" in data:
             modules = _normalize_list(data.get("modules"))
             if not modules:
@@ -523,7 +508,6 @@ def update_member_access():
 
             member.modules = modules
 
-        # role (optional)
         if "role" in data:
             role = _normalize_role(data.get("role")) or DEFAULT_ROLE
             if role not in ALLOWED_ROLES:
@@ -535,11 +519,9 @@ def update_member_access():
                 )
             member.role = role
 
-        # optional: verify flag
         if "is_verified" in data:
             member.is_verified = bool(data.get("is_verified"))
 
-        # optional timestamp (only if you have this column)
         if hasattr(member, "updated_at"):
             member.updated_at = datetime.utcnow()
 
@@ -562,4 +544,4 @@ def update_member_access():
         db.session.rollback()
         return _error(f"Failed to update member access: {str(e)}", 500)
     
-
+    

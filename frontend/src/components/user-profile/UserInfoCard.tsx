@@ -86,7 +86,7 @@ type CurrencyRateRow = {
 };
 
 // const REVENUE_OPTIONS = ["", "$0 - $50K", "$50K - $100K", "$100K - $500K", "$500K - $1M", "$1M+"];
-const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
+const CURRENCY_OPTIONS = ["USD"];
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";

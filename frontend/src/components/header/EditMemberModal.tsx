@@ -9,7 +9,7 @@ const MODULE_OPTIONS = [
   "INVENTORY_PLANNING",
 ];
 
-const ROLE_OPTIONS = ["MARKETING", "ACCOUNTED", "INVENTORY"] as const;
+const ROLE_OPTIONS = ["MARKETING", "ACCOUNTANT", "INVENTORY"] as const;
 type RoleOption = (typeof ROLE_OPTIONS)[number];
 
 const COUNTRY_OPTIONS = [
