@@ -538,11 +538,22 @@ def build_time_series_analysis(
 
         if product_match:
             rows = result.get("per_sku", [])
-            value = sum(
-                float(r.get("__metric__", 0.0))
-                for r in rows
-                if product_match.lower() in str(r.get("product_name", "")).lower()
-            )
+
+            # ✅ check if exact match exists
+            exact_rows = [
+                r for r in rows
+                if product_match.lower() == str(r.get("product_name", "")).lower()
+            ]
+
+            if exact_rows:
+                value = sum(float(r.get("__metric__", 0.0)) for r in exact_rows)
+            else:
+                # ✅ fallback → group match
+                group_rows = [
+                    r for r in rows
+                    if product_match.lower() in str(r.get("product_name", "")).lower()
+                ]
+                value = sum(float(r.get("__metric__", 0.0)) for r in group_rows)
         else:
             value = float(result.get("total", 0.0))
 

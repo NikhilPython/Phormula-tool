@@ -77,3 +77,4 @@ class AgentState(TypedDict, total=False):
     insight_context: Optional[Dict[str, Any]]
     product_match: Optional[str]
     multi_metric: Optional[bool]
+    latest_insight_context: Optional[Dict[str, Any]]

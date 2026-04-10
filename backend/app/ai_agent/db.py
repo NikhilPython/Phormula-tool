@@ -130,6 +130,11 @@ def fetch_nse_month_df(
     if df.empty:
         raise ValueError(f"no data found in table {table_name}")
 
+    # ✅ Fix: make only these fee columns absolute
+    for col in ["platform_fee", "platform_fee_inventory_storage"]:
+        if col in df.columns:
+            df[col] = df[col].abs()
+
     return df
 
 

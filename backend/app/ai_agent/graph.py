@@ -9,7 +9,7 @@ from datetime import datetime
 import pandas as pd
 from app.utils.agent_utils import build_plan_langgraph, phormula_engine, amazon_engine
 from app.ai_agent.email_service import build_summary_html, send_agent_email, build_ai_email_summary
-from app.ai_agent.db import get_engine,latest_available_month
+from app.ai_agent.db import get_engine,latest_available_month,fetch_period_dfs, get_metric_def
 from app.ai_agent.formula_engine import (
     parse_period,
     get_metric_for_month,
@@ -23,6 +23,7 @@ from app.ai_agent.formula_engine import (
     get_product_metric_pack_for_month,
     get_last_n_month_keys,
     build_time_series_analysis,
+    _aggregate_sku_rows,
     get_growth_driver_insights,
 )
 from app.ai_agent.prompts import ADVISOR_SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT
@@ -194,6 +195,26 @@ ALIAS_MAP = {
     "refund": "refund_sales",
 }
 
+DISPLAY_NAME_MAP = {
+    "net_sales": "Net Sales",
+    "gross_sales": "Gross Sales",
+    "profit": "CM1 Profit",
+    "cm2_profit": "CM2 Profit",
+    "total_quantity": "Units Sold",
+    "asp": "ASP",
+    "advertising_total": "Ad Spend",
+    "platform_fee": "Platform Fees",
+    "acos": "ACOS",
+    "profit_percentage": "CM1 Profit %",
+    "amazon_fee": "Marketplace Fees",
+    "fba_fees": "FBA Fees",
+    "selling_fees": "Selling Fees",
+    "refund_sales": "Refunds Sales",
+}
+
+def format_metric_name(metric_name: str) -> str:
+    return DISPLAY_NAME_MAP.get(metric_name, metric_name.replace("_", " ").title())
+
 def resolve_metric_from_query(query: str, llm_metric: str = None) -> str:
     q = query.lower()
 
@@ -219,19 +240,29 @@ def find_best_product_match(query: str, rows: list) -> str | None:
         if r.get("product_name")
     ]
 
-    # 1️⃣ exact phrase match
+    # 🔥 Extract words from query
+    words = q.split()
+
+    # ✅ 1. EXACT WORD MATCH (best fix)
+    for p in products:
+        if p in words:
+            return p
+
+    # ✅ 2. CONTAINS MATCH (classic inside sentence)
     for p in products:
         if p and p in q:
             return p
 
-    # 2️⃣ word overlap match
-    for p in products:
-        words = p.split()
-        if any(w in q for w in words):
-            return p
+    # ✅ 3. PREFIX MATCH (variants)
+    matches = [p for p in products if any(w and p.startswith(w) for w in words)]
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if len(matches) > 1:
+        return matches[0]  # or return group logic
 
     return None
-
 
 def extract_products_from_query(query: str):
     # Keep planner lightweight. Product detection should happen in metrics_node
@@ -481,26 +512,36 @@ def planner_node(state: AgentState) -> AgentState:
         state["metric_name"] = None
 
     # 🔥 ROBUST ANALYSIS TYPE NORMALIZATION
+    # ✅ NEW (DO NOT BREAK EXISTING)
+    # ✅ FIXED VERSION
     raw_analysis = (getattr(result, "analysis_type", "") or "").lower()
-    parsed = parse_period(user_query)
 
-    if (
-        any(word in raw_analysis for word in ["trend", "mom", "growth", "change", "movement"])
-        or parsed.get("type") == "last_n"
-    ):
-        analysis_type = "trend"
-    elif intent == "comparison":
-        analysis_type = "comparison"
-    elif any(word in query_l for word in ["performance", "summary", "how was"]):
-        analysis_type = "summary"
+    if raw_analysis:
+
+        if raw_analysis in ["breakdown", "product_breakdown", "sku_breakdown"]:
+            analysis_type = "breakdown"
+
+        elif any(x in raw_analysis for x in ["top", "bottom", "sku"]):
+            analysis_type = "sku_ranking"
+
+        elif any(x in raw_analysis for x in ["best", "worst", "highest", "lowest"]):
+            analysis_type = "time_ranking"
+
+        elif raw_analysis in ["trend", "growth", "mom", "change"]:
+            analysis_type = "trend"
+
+        elif raw_analysis in ["summary"]:
+            analysis_type = "summary"
+
+        else:
+            analysis_type = "absolute"
     else:
         analysis_type = "absolute"
 
     state["analysis_type"] = analysis_type
-
     state["period_mode"] = result.period_mode or "none"
     state["months_back"] = result.months_back
-    state["needs_sku"] = bool(result.needs_sku)
+    state["needs_sku"] = bool(result.needs_sku) or bool(state.get("product_queries"))
     state["needs_advice"] = bool(result.needs_advice)
     state["response_mode"] = result.response_mode or "short"
     state["custom_range"] = bool(result.custom_range)
@@ -539,7 +580,7 @@ def planner_node(state: AgentState) -> AgentState:
         state["period_parsed"] = {"type": "none"}
 
     if intent in {"metric_qa", "comparison", "report", "email"} and any(word in query_l for word in [
-            "productwise", "product wise", "all columns", "raw data", "full data", "export"
+             "all columns", "raw data", "full data", "export"
         ]):
         state["data_mode"] = True
     else:
@@ -713,6 +754,341 @@ def metrics_node(state: AgentState) -> AgentState:
     ptype = payload.get("type", "latest_month")
 
     analysis_type = state.get("analysis_type")
+    # ===============================
+    # 🔥 RANKING MODE (BEST / WORST MONTH)
+    # ===============================
+    if analysis_type == "time_ranking":
+
+        user_query = state.get("user_query", "")
+
+        # 👉 get months (default 12 months)
+        months = get_last_n_month_keys(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            n=12,
+        )
+
+        # -------------------------------
+        # PRODUCT MATCH (reuse your logic)
+        # -------------------------------
+        sample_result = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=months[-1].month,
+            year=months[-1].year,
+        )
+
+        product_match = None
+
+        # ✅ ONLY try product match if user intent suggests it
+        if sample_result.get("per_sku"):
+            product_match = find_best_product_match(user_query, sample_result["per_sku"])
+
+        state["product_match"] = product_match
+
+        # -------------------------------
+        # COMPUTE VALUES
+        # -------------------------------
+        series = []
+
+        for mk in months:
+            try:
+                if product_match:
+                    res = get_product_metric_pack_for_month(
+                        engine=engine,
+                        user_id=user_id,
+                        country=country,
+                        product_match=product_match,
+                        month=mk.month,
+                        year=mk.year,
+                    )
+                    value = float(res["metrics"].get(metric_name, 0))
+                else:
+                    res = get_metric_for_month(
+                        engine=engine,
+                        user_id=user_id,
+                        country=country,
+                        metric_name=metric_name,
+                        month=mk.month,
+                        year=mk.year,
+                    )
+                    value = float(res.get("total", 0))
+
+                series.append({
+                    "period_label": mk.label,
+                    "__metric__": value,
+                })
+
+            except Exception:
+                continue
+
+        if not series:
+            raise ValueError("No data found for ranking")
+
+        # -------------------------------
+        # BEST / WORST
+        # -------------------------------
+        best = max(series, key=lambda x: x["__metric__"])
+        worst = min(series, key=lambda x: x["__metric__"])
+
+        state["analysis_result"] = {
+            "type": "ranking",
+            "metric": metric_name,
+            "best": best,
+            "worst": worst,
+            "series": series,
+        }
+
+        state["current_metrics"] = {
+            "metric": metric_name,
+            "total": best["__metric__"],
+            "period_label": best["period_label"],
+        }
+
+        return state
+    
+    # ===============================
+    # 🔥 SKU RANKING (TOP/BOTTOM PRODUCTS)
+    # ===============================
+    if analysis_type == "sku_ranking":
+
+        result = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=payload["month"],
+            year=payload["year"],
+        )
+
+        rows = result.get("per_sku", [])
+
+        if not rows:
+            raise ValueError("No SKU data found")
+
+        # sort descending
+        sorted_rows = sorted(rows, key=lambda x: float(x.get("__metric__", 0)), reverse=True)
+
+        # 🔥 dynamic top_n extraction
+        top_n = state.get("top_k")
+
+        if not top_n:
+            match = re.search(r"\b(\d+)\b", state.get("user_query", ""))
+            top_n = int(match.group(1)) if match else 3
+
+        top = sorted_rows[:top_n]
+        bottom = sorted_rows[-top_n:]
+
+        state["analysis_result"] = {
+            "type": "sku_ranking",
+            "metric": metric_name,
+            "top": top,
+            "bottom": bottom,
+            "period_label": result.get("period_label"),
+        }
+
+        state["current_metrics"] = result
+        return state
+    
+    # ===============================
+    # 🔥 PRODUCTWISE BREAKDOWN  ← ADD HERE
+    # ===============================
+    if analysis_type == "breakdown":
+
+        # 🔥 PRODUCT MATCH LOGIC (ADD THIS)
+        user_query = state.get("user_query", "")
+
+        latest = latest_available_month(engine, user_id, country)
+
+        sample = get_metric_for_month(
+            engine=engine,
+            user_id=user_id,
+            country=country,
+            metric_name=metric_name,
+            month=latest.month,
+            year=latest.year,
+        )
+
+        product_match = None
+
+        if sample.get("per_sku"):
+            product_match = find_best_product_match(user_query, sample["per_sku"])
+
+        state["product_match"] = product_match
+
+        print("🔥 PRODUCT MATCH (BREAKDOWN):", product_match)
+
+        if ptype == "single":
+            result = get_metric_for_month(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                metric_name=metric_name,
+                month=payload["month"],
+                year=payload["year"],
+            )
+            if product_match and result.get("per_sku"):
+                result["per_sku"] = [
+                    r for r in result["per_sku"]
+                    if product_match in str(r.get("product_name", "")).lower()
+                ]
+
+        elif ptype == "range":
+
+            try:
+                result = get_metric_for_period(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    metric_name=metric_name,
+                    start_month=payload["start_month"],
+                    start_year=payload["start_year"],
+                    end_month=payload["end_month"],
+                    end_year=payload["end_year"],
+                    skip_missing=True,
+                )
+            except Exception as e:
+                print("⚠️ get_metric_for_period failed, using fallback:", e)
+                result = {"per_sku": []}  # force fallback
+
+            # 🔥 FIX: ensure per_sku exists
+            # 🔥 FIX: ensure per_sku exists (SAFE VERSION)
+            if not result.get("per_sku"):
+
+                period_dfs = fetch_period_dfs(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    start_month=payload["start_month"],
+                    start_year=payload["start_year"],
+                    end_month=payload["end_month"],
+                    end_year=payload["end_year"],
+                )
+                print("🔍 period_dfs length:", len(period_dfs))
+
+                all_rows = []
+
+                metric_def = get_metric_def(metric_name)
+
+                for mk, df in period_dfs:
+                    if df is None or df.empty:
+                        continue
+
+                    # 🔥 ALWAYS try to extract SKU-level data
+                    try:
+                        grouped_df = _aggregate_sku_rows([(mk, df)], metric_def.column)
+
+                        if grouped_df is not None and not grouped_df.empty:
+                            all_rows.extend(grouped_df.to_dict(orient="records"))
+
+                    except Exception as e:
+                        print(f"⚠️ aggregation failed for {mk.label}: {e}")
+                        continue
+
+                grouped = {}
+
+                for row in all_rows:
+                    key = row.get("sku") or row.get("product_name") or "unknown"
+
+                    if key not in grouped:
+                        grouped[key] = {
+                            "sku": row.get("sku"),
+                            "product_name": row.get("product_name"),
+                            "__metric__": 0.0,
+                        }
+
+                    grouped[key]["__metric__"] += float(row.get("__metric__", 0.0))
+
+                per_sku = sorted(grouped.values(), key=lambda x: float(x["__metric__"]), reverse=True)
+
+                if product_match:
+                    per_sku = [
+                        r for r in per_sku
+                        if product_match in str(r.get("product_name", "")).lower()
+                    ]
+
+                if not per_sku:
+                    raise ValueError("No SKU-level data found for breakdown")
+                else:
+                    result["per_sku"] = per_sku
+                    result["total"] = sum(float(x["__metric__"]) for x in per_sku)
+                    result["row_count"] = len(per_sku)
+                
+                months_found = [mk.label for mk, _ in period_dfs] if period_dfs else []
+
+                if months_found:
+                    result["period_label"] = f"{months_found[0]} to {months_found[-1]}"
+                else:
+                    result["period_label"] = "No data"
+
+
+        elif ptype == "last_n_months":
+            months = get_last_n_month_keys(
+                engine=engine,
+                user_id=user_id,
+                country=country,
+                n=payload["n"],
+            )
+
+            all_rows = []
+
+            for mk in months:
+                month_result = get_metric_for_month(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    metric_name=metric_name,
+                    month=mk.month,
+                    year=mk.year,
+                )
+                all_rows.extend(month_result.get("per_sku", []))
+
+            grouped = {}
+            for row in all_rows:
+                key = row.get("sku") or row.get("product_name") or "unknown"
+                if key not in grouped:
+                    grouped[key] = {
+                        "sku": row.get("sku"),
+                        "product_name": row.get("product_name"),
+                        "__metric__": 0.0,
+                    }
+                grouped[key]["__metric__"] += float(row.get("__metric__", 0.0))
+
+            per_sku = sorted(grouped.values(), key=lambda x: float(x["__metric__"]), reverse=True)
+
+            if product_match:
+                per_sku = [
+                    r for r in per_sku
+                    if product_match in str(r.get("product_name", "")).lower()
+                ]
+
+            result = {
+                "metric": metric_name,
+                "period_type": "range",
+                "period_label": f"{months[0].label} to {months[-1].label}",
+                "total": sum(float(x["__metric__"]) for x in per_sku),
+                "per_sku": per_sku,
+                "row_count": len(per_sku),
+            }
+
+        else:
+            raise ValueError(f"Unsupported payload type for breakdown: {ptype}")
+
+        state["analysis_result"] = {
+            "type": "breakdown",
+            "metric": metric_name,
+            "period_label": result.get("period_label"),
+            "per_sku": result.get("per_sku", []),
+            "total": result.get("total", 0),
+        }
+
+        state["current_metrics"] = result
+        return state
+
+
     multi_metric = state.get("multi_metric", False)
 
     print("📊 metric:", metric_name)
@@ -746,14 +1122,28 @@ def metrics_node(state: AgentState) -> AgentState:
             )
 
             product_match = None
-            if sample_result.get("per_sku"):
-                product_match = find_best_product_match(
-                    user_query,
-                    sample_result.get("per_sku", [])
-                )
 
-            if not product_match and state.get("product_queries"):
-                product_match = state["product_queries"][0]
+            if sample_result.get("per_sku"):
+                rows = sample_result.get("per_sku", [])
+
+                # 🔍 DEBUG: see what products exist
+                print("Available products:", [r.get("product_name") for r in rows])
+
+                # ✅ main matching
+                product_match = find_best_product_match(user_query, rows)
+
+            # 🔥 HARD FALLBACK (this is what you were missing)
+            if not product_match:
+                q = user_query.lower()
+
+                for r in sample_result.get("per_sku", []):
+                    name = str(r.get("product_name") or r.get("sku") or "").lower()
+                    if name and q in name:
+                        product_match = q  # treat as group
+                        break
+
+            # 🔥 FINAL DEBUG
+            print("✅ FINAL PRODUCT MATCH:", product_match)
 
             state["product_match"] = product_match
 
@@ -763,7 +1153,6 @@ def metrics_node(state: AgentState) -> AgentState:
             if multi_metric:
                 all_results = {}
 
-                # choose correct metric set
                 if product_match:
                     metric_list = PRODUCT_MONTH_METRICS
                 else:
@@ -782,7 +1171,6 @@ def metrics_node(state: AgentState) -> AgentState:
 
                 state["analysis_result"] = all_results
 
-                # lightweight current_metrics for compatibility
                 state["current_metrics"] = {
                     "metric": "multi",
                     "per_period": [],
@@ -791,9 +1179,6 @@ def metrics_node(state: AgentState) -> AgentState:
                 }
 
             else:
-                # -------------------------------
-                # SINGLE METRIC (UNCHANGED)
-                # -------------------------------
                 analysis_result = build_time_series_analysis(
                     engine=engine,
                     user_id=user_id,
@@ -813,6 +1198,21 @@ def metrics_node(state: AgentState) -> AgentState:
                     "total": sum(float(x["__metric__"]) for x in analysis_result["series"]),
                     "period_label": f"{months[0].label} to {months[-1].label}",
                 }
+
+            # 🔥 ADD THIS (LATEST MONTH INSIGHT FOR TREND)
+            try:
+                latest = months[-1]
+                state["latest_insight_context"] = _build_monthly_insight_context(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    month=latest.month,
+                    year=latest.year,
+                    product_match=product_match,
+                )
+            except Exception as e:
+                print("⚠️ latest insight skipped:", e)
+                state["latest_insight_context"] = None
 
             state["comparison"] = None
             return state
@@ -835,6 +1235,20 @@ def metrics_node(state: AgentState) -> AgentState:
 
             state["current_metrics"] = result
 
+            # 🔥 ADD THIS (INSIGHT)
+            try:
+                state["insight_context"] = _build_monthly_insight_context(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    month=latest.month,
+                    year=latest.year,
+                    product_match=state.get("product_match"),
+                )
+            except Exception as e:
+                print("⚠️ insight skipped:", e)
+                state["insight_context"] = None
+
         elif ptype == "single":
             result = get_metric_for_month(
                 engine=engine,
@@ -846,6 +1260,20 @@ def metrics_node(state: AgentState) -> AgentState:
             )
 
             state["current_metrics"] = result
+
+            # 🔥 ADD THIS (INSIGHT)
+            try:
+                state["insight_context"] = _build_monthly_insight_context(
+                    engine=engine,
+                    user_id=user_id,
+                    country=country,
+                    month=payload["month"],
+                    year=payload["year"],
+                    product_match=state.get("product_match"),
+                )
+            except Exception as e:
+                print("⚠️ insight skipped:", e)
+                state["insight_context"] = None
 
         elif ptype == "range":
             result = get_metric_for_period(
@@ -1169,6 +1597,92 @@ def final_node(state: AgentState) -> AgentState:
         # 🔥 MULTI METRIC TREND (NEW)
         # -------------------------------
         analysis = state.get("analysis_result")
+                # ===============================
+        # 🔥 PRODUCTWISE BREAKDOWN RESPONSE
+        # ===============================
+        if analysis and analysis.get("type") == "breakdown":
+            metric_name = analysis["metric"]
+            period = analysis["period_label"]
+            rows = analysis.get("per_sku", [])
+
+            if not rows:
+                state["final_response"] = f"No productwise breakdown found for {format_metric_name(metric_name)} in {period}."
+                return state
+
+            lines = [f"Productwise breakdown of {format_metric_name(metric_name)} in {period}:"]
+
+            for r in rows:
+                name = r.get("product_name") or r.get("sku") or "Unknown Product"
+                val = format_metric_value(r.get("__metric__", 0), metric_name, state.get("country"))
+                lines.append(f"- {name}: {val}")
+
+            state["final_response"] = "\n".join(lines)
+            return state
+
+        # ===============================
+        # 🔥 SKU RANKING RESPONSE
+        # ===============================
+        if analysis and analysis.get("type") == "sku_ranking":
+            metric_name = analysis["metric"]
+            period = analysis["period_label"]
+
+            direction = state.get("ranking_direction", "both")
+
+            lines = []
+
+            # 🔥 TOP PRODUCTS
+            if direction in ["top", "both"]:
+                top_n = len(analysis["top"])
+                lines.append(f"Top {top_n} products in {period}:")
+
+                for r in analysis["top"]:
+                    name = r.get("product_name") or r.get("sku") or "Unknown Product"
+                    val = format_metric_value(r.get("__metric__", 0), metric_name, state.get("country"))
+                    lines.append(f"- {name}: {val}")
+
+            # 🔥 BOTTOM PRODUCTS
+            if direction in ["bottom", "both"]:
+                bottom_n = len(analysis["bottom"])
+
+                if lines:
+                    lines.append("")  # spacing
+
+                lines.append(f"Bottom {bottom_n} products:")
+
+                for r in analysis["bottom"]:
+                    name = r.get("product_name") or r.get("sku") or "Unknown Product"
+                    val = format_metric_value(r.get("__metric__", 0), metric_name, state.get("country"))
+                    lines.append(f"- {name}: {val}")
+
+            state["final_response"] = "\n".join(lines)
+            return state
+        # ===============================
+        # 🔥 RANKING RESPONSE
+        # ===============================
+        if analysis and analysis.get("type") == "ranking":
+            metric_name = analysis["metric"]
+            best = analysis["best"]
+            worst = analysis["worst"]
+            product = state.get("product_match")
+
+            best_val = format_metric_value(best["__metric__"], metric_name, state.get("country"))
+            worst_val = format_metric_value(worst["__metric__"], metric_name, state.get("country"))
+
+            if product:
+                response = (
+                    f"Best month for {product} in terms of {format_metric_name(metric_name)} "
+                    f"was {best['period_label']} ({best_val}).\n"
+                    f"Worst was {worst['period_label']} ({worst_val})."
+                )
+            else:
+                response = (
+                    f"Your best month in terms of {format_metric_name(metric_name)} "
+                    f"was {best['period_label']} ({best_val}).\n"
+                    f"Worst was {worst['period_label']} ({worst_val})."
+                )
+
+            state["final_response"] = response
+            return state
 
         if state.get("multi_metric") and isinstance(analysis, dict):
             lines = ["Overall business trends:"]
@@ -1178,7 +1692,8 @@ def final_node(state: AgentState) -> AgentState:
 
                 if overall is not None:
                     direction = "increased" if overall > 0 else "decreased"
-                    lines.append(f"- {metric_name}: {direction} by {abs(overall):.2f}%")
+                    clean_name = format_metric_name(metric_name)
+                    lines.append(f"- {clean_name}: {direction} by {abs(overall):.2f}%")
 
             state["final_response"] = "\n".join(lines)
             return state
@@ -1204,9 +1719,13 @@ def final_node(state: AgentState) -> AgentState:
                 direction = "increased" if overall > 0 else "decreased"
                 lines.append(f"Overall, {metric_name} {direction} by {abs(overall):.2f}%.")
 
+            clean_name = format_metric_name(metric_name)
+
+            lines.append(f"\n{clean_name} Timeline:")
+
             for s in series:
                 val = format_metric_value(s["__metric__"], metric_name, state.get("country"))
-                lines.append(f"- {s['period_label']}: {val}")
+                lines.append(f"• {s['period_label']} → {val}")
 
             if mom:
                 lines.append("\nMonth-on-month change:")
@@ -1260,9 +1779,11 @@ def final_node(state: AgentState) -> AgentState:
                 pct = c.get(k, {}).get("pct_change")
                 val = format_metric_value(v, k, state.get("country"))
                 if pct:
-                    lines.append(f"- {k}: {val} ({pct:+.2f}%)")
+                    clean_name = format_metric_name(k)
+                    lines.append(f"- {clean_name}: {val} ({pct:+.2f}%)")
                 else:
-                    lines.append(f"- {k}: {val}")
+                    clean_name = format_metric_name(k)
+                    lines.append(f"- {clean_name}: {val}")
 
             state["final_response"] = "\n".join(lines)
             return state
@@ -1304,13 +1825,26 @@ def final_node(state: AgentState) -> AgentState:
         # STANDARD QA
         if intent in {"metric_qa", "report", "email", "top_skus", "loss_making_skus", "advice"}:
             if product_filter:
-                rows = [r for r in per_sku if str(r.get("product_name", "")).lower() == product_filter]
+                # ✅ exact match exists
+                if any(product_filter == str(r.get("product_name", "")).lower() for r in per_sku):
+                    rows = [
+                        r for r in per_sku
+                        if str(r.get("product_name", "")).lower() == product_filter
+                    ]
+                else:
+                    # ✅ group match (e.g. "classic" → classic blue, red, etc.)
+                    rows = [
+                        r for r in per_sku
+                        if product_filter in str(r.get("product_name", "")).lower()
+                    ]
+
                 value = sum(float(r.get("__metric__", 0)) for r in rows)
             else:
                 value = metric.get("total", 0)
 
             formatted = format_metric_value(value, metric_name, country)
-            state["final_response"] = f"In {period_label}, you had {formatted}."
+            clean_name = format_metric_name(metric_name)
+            state["final_response"] = f"In {period_label}, your {clean_name} was {formatted}."
             return state
 
         # FALLBACK
