@@ -4,10 +4,10 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   FaCheckCircle as CheckCircle2,
+  FaTimesCircle as XCircle,
   FaExclamationCircle as AlertCircle,
 } from "react-icons/fa";
 import { ImInfinite } from "react-icons/im";
-
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
@@ -1153,7 +1153,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       window.dispatchEvent(new Event("storage"));
 
       if (onClose) onClose();
-      router.push(`/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}`);
+      router.push(
+        `/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}?amazonFetch=success&promptAmazonAds=1`
+      );
     });
 
   const handleFetchRange = () =>
@@ -1332,7 +1334,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       window.dispatchEvent(new Event("storage"));
 
       if (onClose) onClose();
-      router.push(`/pnl-dashboard/MTD/${countryUsed}/${latestMonthSlug}/${last.y}`);
+      router.push(
+        `/pnl-dashboard/MTD/${countryUsed}/${latestMonthSlug}/${last.y}?amazonFetch=success&promptAmazonAds=1`
+      );
     });
 
   const selectedIsValid =
@@ -1402,10 +1406,86 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       { num: 8, label: "Plotting Graph" },
     ];
 
+  const periodFeatureMap: Record<number, {
+    title: string;
+    comparisons: { label: string; available: boolean }[];
+    analytics: { label: string; available: boolean }[];
+  }> = {
+    1: {
+      title: "Features",
+      comparisons: [
+        { label: "Monthly comparison", available: false },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Current month analytics only", available: true },
+        { label: "Inventory forecast", available: false },
+        { label: "Purchase planning insights", available: false },
+      ],
+    },
+    3: {
+      title: "Features",
+      comparisons: [
+        { label: "2 months comparison", available: true },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Short trend visibility", available: true },
+        { label: "Inventory forecast", available: false },
+        { label: "Purchase planning insights", available: false },
+      ],
+    },
+    6: {
+      title: "Features",
+      comparisons: [
+        { label: "5 months comparison", available: true },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Mid-term trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+    12: {
+      title: "Features",
+      comparisons: [
+        { label: "11 months comparison", available: true },
+        { label: "3 quarterly comparisons", available: true },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Strong seasonal trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+    24: {
+      title: "Features",
+      comparisons: [
+        { label: "23 months comparison", available: true },
+        { label: "7 quarterly comparisons", available: true },
+        { label: "Yearly comparison", available: true },
+      ],
+      analytics: [
+        { label: "Full historical trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+  };
+
+  const selectedFeatures = useMemo(() => {
+    if (selectedPeriod === null) return null;
+    return periodFeatureMap[selectedPeriod] ?? null;
+  }, [selectedPeriod]);
 
   return (
     <div className="w-full">
-      <div className="rounded-xl bg-white">
+      <div className="rounded-xl bg-white max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="items-center mb-2 p-4">
           <div className="text-center">
@@ -1468,15 +1548,69 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         </div>
 
         {/* Note Section */}
-        <div
+        {/* <div
           className="mt-4 max-w-2xl mx-auto rounded-lg bg-[#FDD36F4D] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#FDD36F]"
           style={{ borderLeft: "6px solid #FDD36F" }}
         >
           Note:&nbsp; Your Amazon credentials are encrypted and stored securely. We only access data necessary for
           analytics.
-        </div>
+        </div> */}
 
-        {/* Progress UI with 6-Step Stepper */}
+        {selectedFeatures && (
+          <div className="mt-4 max-w-2xl mx-auto rounded-xl border border-[#D9E7E1] bg-emerald-50/50 p-4 shadow-sm">
+            {/* <h3 className="text-base font-semibold text-[#37455F] mb-3 text-center">
+              {selectedFeatures.title}
+            </h3> */}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg bg-white border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  Comparisons
+                </p>
+
+                <div className="space-y-2">
+                  {selectedFeatures.comparisons.map((item) => (
+                    <div key={item.label} className="flex items-start gap-2">
+                      <span className={`mt-0.5 ${item.available ? "text-[#5EA68E]" : "text-[#E16D6D]"}`}>
+                        {item.available ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                      </span>
+                      <p className={`text-sm leading-5 ${item.available ? "text-slate-700" : "text-slate-500"}`}>
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-white border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  Insights
+                </p>
+
+                <div className="space-y-2">
+                  {selectedFeatures.analytics.map((item) => (
+                    <div key={item.label} className="flex items-start gap-2">
+                      <span className={`mt-0.5 ${item.available ? "text-[#5EA68E]" : "text-[#E16D6D]"}`}>
+                        {item.available ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                      </span>
+                      <p className={`text-sm leading-5 ${item.available ? "text-slate-700" : "text-slate-500"}`}>
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
 
         {/* 1 month controls */}

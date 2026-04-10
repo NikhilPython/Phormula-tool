@@ -26,11 +26,13 @@ import type { TableRow } from "./SKUtable";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import ProductwisePerformance from "@/features/productwiseperformance/ProductwisePerformance";
 import CashFlowPage from "@/app/(admin)/cashflow/[countryName]/[month]/[year]/CashFlowClient";
 import { jwtDecode } from "jwt-decode";
+import AmazonAdsConnect from "@/features/integration/AmazonAdsConnectLegacy";
+import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessModal";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -1823,11 +1825,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const homeCurrency = (userData?.homeCurrency || "USD").toLowerCase();
 
   const router = useRouter();
-
-  // const ranged = initialRanged;
-  // const countryName = initialCountryName;
-  // const month = initialMonth;
-  // const year = initialYear;
+  const searchParams = useSearchParams();
 
   const ranged = initialRanged;
   const countryName = initialCountryName || "";
@@ -1926,10 +1924,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ? getCurrencySymbol(homeCurrency)
       : getCurrencySymbol(countryName || "");
 
-
-
-  const [collapsed, setCollapsed] = useState(false);
-
   const [range, setRange] = useState<RangeType>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<string>("");
@@ -1937,7 +1931,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
   );
-
   const [allDropdownsSelected, setAllDropdownsSelected] = useState(isDemoMode);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1963,6 +1956,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuRows, setSkuRows] = useState<TableRow[]>(
     isDemoMode ? DEMO_SKU_ROWS : []
   );
+
+
+  const [showAmazonFetchSuccess, setShowAmazonFetchSuccess] = useState(false);
+  const [showAmazonAdsConnect, setShowAmazonAdsConnect] = useState(false);
+
+  const [adsStatusLoading] = useState(false);
+  const [adsStatus] = useState<any | null>(null);
+  const [adsConnecting, setAdsConnecting] = useState(false);
+  const [adsError, setAdsError] = useState<string | null>(null);
+
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
   const [pendingHash, setPendingHash] = useState<string>("");
@@ -2243,7 +2246,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     total_amazon_fee: 0,
   };
 
-
   const displayData: Summary =
     isDemoMode
       ? DEMO_SUMMARY
@@ -2511,71 +2513,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-  // const fetchTargetSummary = async () => {
-  //   if (isDemoMode) {
-  //     setTargetSummaryLoading(false);
-  //     setTargetSummary(DEMO_TARGET_SUMMARY);
-  //     return;
-  //   }
-  //   if (!selectedYear || !initialCountryName) return;
-
-  //   const ready =
-  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-  //     (range === "yearly" && !!selectedYear);
-
-  //   if (!ready) {
-  //     setTargetSummary(null);
-  //     return;
-  //   }
-
-  //   let apiMonth = "";
-
-  //   if (range === "monthly" && selectedMonth) {
-  //     apiMonth =
-  //       selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
-  //   } else {
-  //     const now = new Date();
-  //     apiMonth = now.toLocaleString("en-US", { month: "long" });
-  //   }
-
-  //   try {
-  //     setTargetSummaryLoading(true);
-
-  //     const token =
-  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
-  //     url.searchParams.set("month", apiMonth);
-  //     url.searchParams.set("year", selectedYear);
-  //     url.searchParams.set("country", initialCountryName.toLowerCase());
-
-  //     const res = await fetch(url.toString(), {
-  //       method: "GET",
-  //       headers: token ? { Authorization: `Bearer ${token}` } : {},
-  //       cache: "no-store",
-  //     });
-
-  //     if (!res.ok) {
-  //       setTargetSummary(null);
-  //       return;
-  //     }
-
-  //     const data = await res.json();
-
-  //     setTargetSummary({
-  //       target_sales: Number(data?.target_sales ?? 0),
-  //       shortfall_total: Number(data?.shortfall_total ?? 0),
-  //       cashflow_total: Number(data?.cashflow_total ?? 0),
-  //     });
-  //   } catch (error) {
-  //     console.error("Failed to fetch target summary:", error);
-  //     setTargetSummary(null);
-  //   } finally {
-  //     setTargetSummaryLoading(false);
-  //   }
-  // };
-
   const quarterToMonths: Record<Quarter, string[]> = {
     Q1: ["January", "February", "March"],
     Q2: ["April", "May", "June"],
@@ -2711,6 +2648,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   useEffect(() => {
+    const amazonFetch = searchParams.get("amazonFetch");
+    const promptAmazonAds = searchParams.get("promptAmazonAds");
+
+    if (amazonFetch === "success" && promptAmazonAds === "1") {
+      setShowAmazonFetchSuccess(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (isDemoMode) {
       setTargetSummary(DEMO_TARGET_SUMMARY);
       return;
@@ -2736,6 +2682,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     homeCurrency,
     isDemoMode,
   ]);
+
+  const clearAmazonFetchQueryParams = () => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("amazonFetch");
+    url.searchParams.delete("promptAmazonAds");
+
+    router.replace(url.pathname + url.search + url.hash, { scroll: false });
+  };
+
+  const handleCloseAmazonFetchSuccess = () => {
+    setShowAmazonFetchSuccess(false);
+    clearAmazonFetchQueryParams();
+  };
+
+  const handleOpenAmazonAdsFromSuccess = () => {
+    setShowAmazonFetchSuccess(false);
+    clearAmazonFetchQueryParams();
+    setShowAmazonAdsConnect(true);
+  };
+
+  const onConnectOrSyncAds = async () => {
+    try {
+      setAdsConnecting(true);
+      setAdsError(null);
+      console.log("Amazon Ads Connect/Sync clicked");
+    } catch (err) {
+      console.error(err);
+      setAdsError("Amazon Ads action failed");
+    } finally {
+      setAdsConnecting(false);
+    }
+  };
 
   const handleMonthChange = (v: string) => {
     setSelectedMonth(v);
@@ -2875,31 +2855,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchPerformanceTrendFromHistory(range);
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric, isDemoMode]);
 
-  const handleDownloadSkuSheet1 = async () => {
-    try {
-      const wb = new ExcelJS.Workbook();
-      const wsSku = wb.addWorksheet("SKU Profitability");
 
-      if (skuExportPayload?.sheetModel) {
-        buildSkuWorksheetFromModel(wsSku, skuExportPayload.sheetModel);
-      } else {
-        wsSku.addRow(["SKU sheet model not available"]);
-      }
-
-      const buffer = await wb.xlsx.writeBuffer();
-      const periodLabel = getPeriodLabelShort();
-      const fileName = `SKU-wise Profitability - ${periodLabel || String(selectedYear)}.xlsx`;
-
-      saveAs(
-        new Blob([buffer], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
-        fileName
-      );
-    } catch (e) {
-      console.error("SKU Sheet 1 export failed:", e);
-    }
-  };
 
   useEffect(() => {
     if (isDemoMode) {
@@ -4464,6 +4420,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           />
         </div>
       </Modal>
+
+      <AmazonFetchSuccessModal
+        isOpen={showAmazonFetchSuccess}
+        onClose={handleCloseAmazonFetchSuccess}
+        onConnectAds={handleOpenAmazonAdsFromSuccess}
+      />
+
+      {showAmazonAdsConnect && (
+        <AmazonAdsConnect
+          onClose={() => setShowAmazonAdsConnect(false)}
+          onConnected={() => {
+            setShowAmazonAdsConnect(false);
+          }}
+        />
+      )}
     </div>
   );
 
