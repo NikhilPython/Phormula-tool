@@ -2740,23 +2740,22 @@ def _safe_ident(name: str) -> str:
         raise ValueError("Invalid table name")
     return name
 
-def _read_inventory_summary_table(conn, table_name: str):
+def _read_inventory_summary_table(conn, table_name: str, sort_order="desc"):
     t = _safe_ident(table_name)
 
-    # If your tables are in public schema, use public."table"
-    # We quote the identifier to preserve underscores etc.
+    order_clause = "DESC" if sort_order.lower() == "desc" else "ASC"
+
     sql = text(f'''
         SELECT *
         FROM public."{t}"
         ORDER BY
             CASE WHEN UPPER(COALESCE(msku, '')) = 'GRAND TOTAL' THEN 1 ELSE 0 END,
-            msku NULLS LAST
+            ABS(sold_total) {order_clause}
     ''')
 
     result = conn.execute(sql)
-
-    # SQLAlchemy 1.4+/2.0: result.mappings() yields dict-like rows
     return [dict(r) for r in result.mappings().all()]
+
 
 # # ============================================================
 # # ROUTE 1: READ amazon_db -> GROUP BY MSKU + return GRAND TOTAL
@@ -2802,9 +2801,10 @@ def inventory_ledger_summary_store_month():
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+            sort_order = request.args.get("sort", "desc")
 
             # ✅ Read back rows from created table
-            read_items = _read_inventory_summary_table(conn, table_name)
+            read_items = _read_inventory_summary_table(conn, table_name, sort_order=sort_order)
 
         return jsonify({
             "success": True,
@@ -2970,8 +2970,9 @@ def inventory_ledger_summary_store_quarter():
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+            sort_order = request.args.get("sort", "desc")
 
-            read_items = _read_inventory_summary_table(conn, table_name)
+            read_items = _read_inventory_summary_table(conn, table_name, sort_order=sort_order)
 
         return jsonify({
             "success": True,
@@ -3139,8 +3140,9 @@ def inventory_ledger_summary_store_year():
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+            sort_order = request.args.get("sort", "desc")
 
-            read_items = _read_inventory_summary_table(conn, table_name)
+            read_items = _read_inventory_summary_table(conn, table_name, sort_order=sort_order)
 
         return jsonify({
             "success": True,

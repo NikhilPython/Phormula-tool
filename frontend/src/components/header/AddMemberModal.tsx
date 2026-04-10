@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { IoInformationCircleOutline } from "react-icons/io5";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -14,7 +13,7 @@ const MODULE_OPTIONS = [
 
 const ROLE_OPTIONS = [
   { label: "Marketing", value: "MARKETING" },
-  { label: "Accounted", value: "ACCOUNTED" },
+  { label: "Accountant", value: "ACCOUNTANT" },
   { label: "Inventory", value: "INVENTORY" },
 ] as const;
 
@@ -61,23 +60,23 @@ function SectionAccessGrid({
     switch (opt) {
       case "LIVE_DASHBOARD":
         return {
-          title: "Dashboard",
-          subtitle: "Profit, SKU & Cash Flow",
+          title: "Live Dashboard",
+          subtitle: "MTD Sales, AI Insights, P&L Breakdown, Current Inventory",
         };
       case "FINANCE_DASHBOARDS":
         return {
           title: "Finance Dashboards",
-          subtitle: "Profit, SKU & Cash Flow",
+          subtitle: "Financial Dashboard, P&L Breakdown, Cash Flow, SKU wise Profit, AI Insights",
         };
       case "BUSINESS_INTELLIGENCE":
         return {
           title: "Business Intelligence",
-          subtitle: "Insights, Chatbot, Forecast",
+          subtitle: "AI Insights, Inventory Forecast, Dispatch Planing, Purchase Order , P&L Forecast",
         };
       case "INVENTORY_PLANNING":
         return {
-          title: "Inventory",
-          subtitle: "Stock, Dispatches, PO",
+          title: "Inventory Planning",
+          subtitle: "Input Cost, Inventory Reconciliation, Expenses Reconciliation",
         };
       default:
         return {
@@ -88,7 +87,7 @@ function SectionAccessGrid({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {options.map((opt) => {
         const checked = value.includes(opt);
         const meta = getModuleMeta(opt);
@@ -147,50 +146,27 @@ export default function AddMemberModal({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [country, setCountry] = useState<string>("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [modules, setModules] = useState<string[]>([]);
   const [role, setRole] = useState<RoleOption>("MARKETING");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
-  const [showPassword, setShowPassword] = useState(false);
-const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-const [passwordError, setPasswordError] = useState("");
 
   const { data: userData } = useGetUserDataQuery();
-
   const ownerEmail = (userData as any)?.owner_email?.toLowerCase?.() || "";
 
   useEffect(() => {
-  if (!isOpen) {
-    setName("");
-    setEmail("");
-    setCountry("");
-    setPassword("");
-    setConfirmPassword("");
-    setModules([]);
-    setRole("MARKETING");
-    setLoading(false);
-    setError("");
-    setSuccess("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  }
-}, [isOpen]);
-
-useEffect(() => {
-  if (!confirmPassword) {
-    setPasswordError("");
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    setPasswordError("Passwords do not match");
-  } else {
-    setPasswordError("");
-  }
-}, [password, confirmPassword]);
+    if (!isOpen) {
+      setName("");
+      setEmail("");
+      setCountry("");
+      setModules([]);
+      setRole("MARKETING");
+      setLoading(false);
+      setError("");
+      setSuccess("");
+    }
+  }, [isOpen]);
 
   const marketplaces = useMemo(() => {
     return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
@@ -199,39 +175,45 @@ useEffect(() => {
   const isSelfAdd = ownerEmail && email.trim().toLowerCase() === ownerEmail;
 
   const canSubmit =
-  name.trim() &&
-  email.trim() &&
-  password.length >= 6 &&
-  !passwordError &&
-  marketplaces.length > 0 &&
-  modules.length > 0 &&
-  !loading &&
-  !isSelfAdd;
+    !!name.trim() &&
+    !!email.trim() &&
+    marketplaces.length > 0 &&
+    modules.length > 0 &&
+    !loading &&
+    !isSelfAdd;
 
   const handleSave = async () => {
     setSuccess("");
     setError("");
 
-    if (!name.trim()) return setError("Name is required");
-    if (!email.trim()) return setError("Email is required");
+    if (!name.trim()) {
+      setError("Name is required");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
     if (ownerEmail && email.trim().toLowerCase() === ownerEmail) {
-      return setError("You cannot add yourself as a member.");
+      setError("You cannot add yourself as a member.");
+      return;
     }
-    if (!country) return setError("Country is required");
-    if (password.length < 6) {
-      return setError("Password must be at least 6 characters");
+
+    if (!country) {
+      setError("Country is required");
+      return;
     }
-    if (password !== confirmPassword) {
-      return setError("Password and Confirm Password must match");
-    }
+
     if (modules.length === 0) {
-      return setError("Please select at least one Section Access");
+      setError("Please select at least one Section Access");
+      return;
     }
 
     const payload = {
       member_name: name.trim(),
       email: email.trim().toLowerCase(),
-      password,
       marketplaces,
       modules,
       role,
@@ -242,6 +224,7 @@ useEffect(() => {
 
       const baseUrl =
         process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
+
       const res = await fetch(`${baseUrl}/add_member`, {
         method: "POST",
         headers: {
@@ -258,7 +241,10 @@ useEffect(() => {
         return;
       }
 
-      setSuccess("✅ Member added successfully. Access has been granted.");
+      setSuccess(
+        "✅ Member added successfully. A temporary password has been generated and emailed."
+      );
+
       onSuccess?.();
 
       setTimeout(() => {
@@ -279,31 +265,29 @@ useEffect(() => {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[720px] rounded-2xl bg-white dark:bg-gray-dark shadow-theme-lg border border-gray-200 dark:border-gray-800"
+        className="w-full max-w-[720px] rounded-2xl border border-gray-200 bg-white shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Name */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Name <span className="text-red-500">*</span>
               </label>
               <input
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 placeholder="Member Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
 
-            {/* Email */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Email Address <span className="text-red-500">*</span>
               </label>
               <input
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 placeholder="member1@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -315,76 +299,12 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Password */}
-            <div>
-  <label className="text-sm text-gray-700 dark:text-gray-200">
-    Password <span className="text-red-500">*</span>
-  </label>
-
-  <div className="relative mt-1">
-    <input
-      type={showPassword ? "text" : "password"}
-      className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 pr-10 text-sm"
-      placeholder="Min. 6 Characters"
-      value={password}
-      onChange={(e) => setPassword(e.target.value)}
-    />
-
-    <button
-      type="button"
-      onClick={() => setShowPassword((prev) => !prev)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-      aria-label={showPassword ? "Hide password" : "Show password"}
-    >
-      {showPassword ? (
-        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-      ) : (
-        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-      )}
-    </button>
-  </div>
-</div>
-
-            {/* Confirm Password */}
-            <div>
-  <label className="text-sm text-gray-700 dark:text-gray-200">
-    Confirm Password <span className="text-red-500">*</span>
-  </label>
-
-  <div className="relative mt-1">
-    <input
-      type={showConfirmPassword ? "text" : "password"}
-      className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 pr-10 text-sm"
-      placeholder="Re-enter password"
-      value={confirmPassword}
-      onChange={(e) => setConfirmPassword(e.target.value)}
-    />
-    {passwordError && (
-  <p className="mt-1 text-xs text-red-600">{passwordError}</p>
-)}
-
-    <button
-      type="button"
-      onClick={() => setShowConfirmPassword((prev) => !prev)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-    >
-      {showConfirmPassword ? (
-        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-      ) : (
-        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-      )}
-    </button>
-  </div>
-</div>
-
-            {/* Country */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-               Country <span className="text-red-500">*</span>
+                Country <span className="text-red-500">*</span>
               </label>
               <select
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               >
@@ -403,13 +323,12 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Role */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Role
               </label>
               <select
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 value={role}
                 onChange={(e) => setRole(e.target.value as RoleOption)}
               >
@@ -421,22 +340,19 @@ useEffect(() => {
               </select>
             </div>
 
-
-
-            {/* Section Access */}
             <div className="md:col-span-2">
-  <label className="text-sm text-gray-700 dark:text-gray-200">
-    Section Access <span className="text-red-500">*</span>
-  </label>
+              <label className="text-sm text-gray-700 dark:text-gray-200">
+                Section Access <span className="text-red-500">*</span>
+              </label>
 
-  <div className="mt-2">
-    <SectionAccessGrid
-      options={MODULE_OPTIONS}
-      value={modules}
-      onChange={setModules}
-    />
-  </div>
-</div>
+              <div className="mt-2">
+                <SectionAccessGrid
+                  options={MODULE_OPTIONS}
+                  value={modules}
+                  onChange={setModules}
+                />
+              </div>
+            </div>
           </div>
 
           {success && (
@@ -447,11 +363,12 @@ useEffect(() => {
 
           {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
 
-          <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#FDD36F4D] dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
-            <IoInformationCircleOutline className="text-charcoal-500 text-base flex-shrink-0" />
-
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-yellow-100 bg-[#FDD36F4D] px-3 py-2 text-xs text-gray-700 dark:border-gray-800 dark:bg-white/5 dark:text-gray-200">
+            <IoInformationCircleOutline className="text-charcoal-500 flex-shrink-0 text-base" />
             <span>
-              Members can only view the sections you grant access to. You can update permissions anytime.
+              Members can only view the sections you grant access to. A
+              temporary password will be auto-generated and sent to the member's
+              email.
             </span>
           </div>
 
@@ -459,7 +376,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5"
             >
               Cancel
             </button>
@@ -468,7 +385,7 @@ useEffect(() => {
               type="button"
               onClick={handleSave}
               disabled={!canSubmit}
-              className="rounded-lg px-4 py-2 text-sm hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed bg-blue-700"
+              className="rounded-lg bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Saving..." : "Save Info"}
             </button>

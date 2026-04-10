@@ -98,8 +98,11 @@ const formatCell = (v: any) => {
   if (typeof v === "boolean") return v ? "Yes" : "No";
 
   if (isNumericLike(v)) {
-    const n = Math.abs(Math.trunc(Number(v))); // ✅ force integer
-    return n.toLocaleString(); // ✅ no decimals ever
+    const n = Math.abs(Math.trunc(Number(v)));
+
+    if (n === 0) return "-";
+
+    return n.toLocaleString();
   }
 
   return String(v);
@@ -453,6 +456,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [selectedMonth, setSelectedMonth] = useState<string>(resolvedMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
   const [selectedYear, setSelectedYear] = useState<string>(resolvedYear);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [exportTick, setExportTick] = useState(0);
   const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
   const [lostCompLoading, setLostCompLoading] = useState(false);
@@ -1038,7 +1042,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
     const { range, year, country } = params;
 
-    const q: Record<string, any> = { year };
+    const q: Record<string, any> = {
+      year,
+      sort: sortOrder, // ✅ ADD THIS
+    };
     if (country) q.country = country;
 
     let endpoint = LEDGER_DB_STORE_YEAR;
@@ -1229,7 +1236,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // ✅ Sort products by "Inventory at month end" (Total) DESC
     // Using ending_total since that is the month-end total shown in your group.
     const sortedDataRows = [...dataRows].sort((a, b) => {
-      return toNum(b?.ending_total) - toNum(a?.ending_total);
+      return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
     });
 
     // Take first 9 data rows
@@ -1696,9 +1703,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
 
     if (colKey === "inventory_coverage_ratio") {
-      const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
-      if (!n) return "-";
-      return Math.trunc(n).toString();
+      const raw = Number(row?.inventory_coverage_ratio);
+
+      if (!Number.isFinite(raw) || raw === 0) return "-";
+
+      return raw.toFixed(2); // ✅ 2 decimal points
     }
 
 
@@ -1824,7 +1833,9 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   const pieRows = useMemo(() => {
     const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
-    return [...dataOnly].sort((a, b) => toNum(b?.ending_total) - toNum(a?.ending_total));
+    return [...dataOnly].sort(
+      (a, b) => Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total))
+    );
   }, [rows]);
 
 

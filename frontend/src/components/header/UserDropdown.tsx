@@ -10,11 +10,13 @@ import { useAppDispatch } from "@/lib/hooks";
 import { logout, setUser } from "@/lib/features/auth/authSlice";
 import { useAppSelector } from "@/lib/store";
 import { useGetUserQuery } from "@/lib/api/userApi";
+import NotificationDropdown from "./NotificationDropdown";
+import { useHeaderNotifications } from "../context/NotificationContext";
 
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
- 
+
 
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -94,9 +96,10 @@ export default function UserDropdown() {
   const currentCountryName = (routeParams?.countryName as string) || "global";
 
   const showIntegrationButton =
-  !!month && !!year && month !== "NA" && year !== "NA" && !isMember;
+    !!month && !!year && month !== "NA" && year !== "NA" && !isMember;
 
-  // console.log(currentCountryName)
+  
+    const { items } = useHeaderNotifications();
 
   return (
     <div className="relative z-99999">
@@ -115,6 +118,8 @@ export default function UserDropdown() {
 
             {/* <IntegrationToggleButton /> */}
             {showIntegrationButton && <IntegrationToggleButton />}
+
+            <NotificationDropdown items={items} />
           </span>
         </span>
       </div>
@@ -149,10 +154,10 @@ export default function UserDropdown() {
             <li>
               <DropdownItem
                 onItemClick={() => {
-  if (isNAMonthYear) return;
-  closeDropdown();
-  router.push(`/profile/${currentCountryName}/${month || "NA"}/${year || "NA"}?addMember=true`);
-}}
+                  if (isNAMonthYear) return;
+                  closeDropdown();
+                  router.push(`/profile/${currentCountryName}/${month || "NA"}/${year || "NA"}?addMember=true`);
+                }}
                 tag="button"
                 className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${isNAMonthYear
                   ? "cursor-not-allowed text-gray-400 opacity-50 "
@@ -199,7 +204,7 @@ export default function UserDropdown() {
         </button>
       </Dropdown>
 
-      
+
     </div>
   );
 }

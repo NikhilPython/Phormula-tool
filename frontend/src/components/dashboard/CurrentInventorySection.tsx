@@ -101,7 +101,7 @@ const formatInt = (n: number | null | undefined) => {
 const formatRatio = (n: number | null | undefined) => {
   const v = Number(n ?? 0);
   if (!v || !Number.isFinite(v)) return "—";
-  return v.toFixed(1);
+  return v.toFixed(2);
 };
 
 const capitalizeWords = (value: string) =>
@@ -747,7 +747,7 @@ export default function CurrentInventorySection({
       },
       {
         key: "coverageMonths",
-        header: "Inventory Coverage ratio",
+        header: "Inventory Coverage ratio (In Months)",
         width: responsiveWidth,
         cellClassName: "text-center",
         headerClassName: "break-words",

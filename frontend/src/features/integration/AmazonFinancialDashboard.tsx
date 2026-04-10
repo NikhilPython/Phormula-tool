@@ -4,10 +4,10 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   FaCheckCircle as CheckCircle2,
+  FaTimesCircle as XCircle,
   FaExclamationCircle as AlertCircle,
 } from "react-icons/fa";
 import { ImInfinite } from "react-icons/im";
-
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
@@ -162,9 +162,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -188,6 +188,28 @@ function wasDone(key: string) {
 function markDone(key: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, "1");
+}
+
+/** ✅ MTD EMAIL (run once per country in this browser) */
+function lsKeyMtdEmail(country: string) {
+  return `mtdEmailSent:${country}`;
+}
+
+async function sendMtdReportEmail(country: string) {
+  return apiJson(`/send-report-email`, {
+    method: "POST",
+    body: JSON.stringify({ country }),
+  });
+}
+
+async function ensureMtdEmailSentOnce(country: string) {
+  const key = lsKeyMtdEmail(country);
+
+  if (wasDone(key)) return;
+
+  await sendMtdReportEmail(country);
+
+  markDone(key);
 }
 
 /** ✅ NEW: hit /amazon_api/inventory/aged with NO params, once per country */
@@ -427,52 +449,6 @@ async function fetchDispatchFile(params: {
   return { ok: true, url, blob };
 }
 
-// async function runPurchaseOrder(params: {
-//   country: string;
-//   year: number | string;
-//   month: number | string;
-// }) {
-//   const token = getAuthToken();
-
-//   // let monthValue = String(params.month).trim().toLowerCase();
-//   let monthValue = "april"
-
-//   const numericMonth = parseInt(monthValue, 10);
-//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-//     monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
-//   }
-
-//   const formData = new FormData();
-//   formData.append("month", monthValue);
-//   formData.append("year", String(params.year));
-//   formData.append("country", params.country.toLowerCase());
-
-//   const url = `${API_BASE}/purchase_order`;
-
-//   const res = await fetch(url, {
-//     method: "POST",
-//     headers: {
-//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-//     },
-//     body: formData,
-//   });
-
-//   const text = await res.text().catch(() => "");
-//   let data: any = {};
-//   try {
-//     data = text ? JSON.parse(text) : {};
-//   } catch {
-//     data = { raw: text };
-//   }
-
-//   if (!res.ok) {
-//     const msg =
-//       data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
-//     throw new Error(msg);
-//   }
-
-//   return data;
-// }
 
 async function fetchGeneratedPOFile(params: {
   country: string;
@@ -576,24 +552,6 @@ async function fetchPurchaseOrderFile(params: {
   const blob = await res.blob();
   return { ok: true, url, blob };
 }
-
-// function getMonthNameFromInput(month: number | string) {
-//   const raw = String(month).trim();
-//   const numericMonth = parseInt(raw, 10);
-
-//   if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-//     return fullMonthNames[numericMonth - 1];
-//   }
-
-//   const normalized = raw.toLowerCase();
-//   const idx = fullMonthNames.findIndex(
-//     (m) => m.toLowerCase() === normalized
-//   );
-
-//   if (idx !== -1) return fullMonthNames[idx];
-
-//   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-// }
 
 function getMonthNameFromInput(month: number | string) {
   const raw = String(month).trim();
@@ -770,16 +728,36 @@ function endOfMonthUTC(year: number, month1: number) {
   return new Date(Date.UTC(year, month1, 0));
 }
 
+// function buildLedgerRange(period: number | "lifetime") {
+//   const now = new Date();
+//   const currentYear = now.getUTCFullYear();
+//   const currentMonth1 = now.getUTCMonth() + 1;
+
+//   const totalMonths = period === "lifetime" ? 24 : Number(period);
+
+//   const start = addMonthsUTC(currentYear, currentMonth1, -(totalMonths - 1));
+//   const startDate = startOfMonthUTC(start.y, start.m1);
+//   const endDate = endOfMonthUTC(currentYear, currentMonth1);
+
+//   return {
+//     start_date: formatYMDUTC(startDate),
+//     end_date: formatYMDUTC(endDate),
+//   };
+// }
+
 function buildLedgerRange(period: number | "lifetime") {
-  const now = new Date();
-  const currentYear = now.getUTCFullYear();
-  const currentMonth1 = now.getUTCMonth() + 1;
+  // Anchor to the latest completed month, not the current ongoing month
+  const latest = getLatestAllowedMonthUTC(); // already returns previous month
 
-  const totalMonths = period === "lifetime" ? 24 : Number(period);
+  // ledger-summary supports only up to 18 past months
+  // so lifetime/24 should fetch 18 completed months max
+  const totalMonths = period === "lifetime" ? 18 : Number(period);
 
-  const start = addMonthsUTC(currentYear, currentMonth1, -(totalMonths - 1));
+  // Start = first day of the month (totalMonths - 1) before latest completed month
+  const start = addMonthsUTC(latest.y, latest.m1, -(totalMonths - 1));
+
   const startDate = startOfMonthUTC(start.y, start.m1);
-  const endDate = endOfMonthUTC(currentYear, currentMonth1);
+  const endDate = endOfMonthUTC(latest.y, latest.m1);
 
   return {
     start_date: formatYMDUTC(startDate),
@@ -1122,13 +1100,18 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       markStepComplete(6);
 
       // Step 7: Inventory Forecast + Purchase Order
-      await runForecastAndPoSequence({
-        country: countryUsed,
-        year: y,
-        month: mNum,
-        setStep,
-      });
-      markStepComplete(7);
+      if (selectedPeriod && selectedPeriod >= 6) {
+        await runForecastAndPoSequence({
+          country: countryUsed,
+          year: y,
+          month: mNum,
+          setStep,
+        });
+        markStepComplete(7);
+      } else {
+        setStep(7, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
+        markStepComplete(7);
+      }
 
       // Step 8: Plotting Graph
       setStep(8, "Plotting Graph", 0, "Preparing charts...");
@@ -1147,8 +1130,17 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
       window.dispatchEvent(new Event("storage"));
 
+      // ✅ Send MTD email for first-time users
+      try {
+        await ensureMtdEmailSentOnce(countryUsed);
+      } catch (e) {
+        console.error("MTD email send failed", e);
+      }
+
       if (onClose) onClose();
-      router.push(`/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}`);
+      router.push(
+        `/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}?amazonFetch=success&promptAmazonAds=1`
+      );
     });
 
   const handleFetchRange = () =>
@@ -1290,13 +1282,23 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         `Running inventory forecast for ${lastMonth.y}-${two(lastMonth.mNum)}...`
       );
 
-      await runForecastAndPoSequence({
-        country: countryUsed,
-        year: lastMonth.y,
-        month: lastMonth.mNum,
-        setStep,
-      });
-      markStepComplete(7);
+      if (selectedPeriod && selectedPeriod >= 6) {
+        await runForecastAndPoSequence({
+          country: countryUsed,
+          year: lastMonth.y,
+          month: lastMonth.mNum,
+          setStep,
+        });
+        markStepComplete(7);
+      } else {
+        setStep(
+          7,
+          "Inventory Forecast",
+          100,
+          "Skipped (requires ≥ 6 months data)"
+        );
+        markStepComplete(7);
+      }
 
       // Step 8: Plotting Graph
       setStep(8, "Plotting Graph", 0, "Preparing charts...");
@@ -1316,8 +1318,17 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
       window.dispatchEvent(new Event("storage"));
 
+      // ✅ Send MTD email for first-time users
+      try {
+        await ensureMtdEmailSentOnce(countryUsed);
+      } catch (e) {
+        console.error("MTD email send failed", e);
+      }
+
       if (onClose) onClose();
-      router.push(`/pnl-dashboard/MTD/${countryUsed}/${latestMonthSlug}/${last.y}`);
+      router.push(
+        `/pnl-dashboard/MTD/${countryUsed}/${latestMonthSlug}/${last.y}?amazonFetch=success&promptAmazonAds=1`
+      );
     });
 
   const selectedIsValid =
@@ -1364,9 +1375,109 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       );
     });
 
+  const shouldShowForecastStep = selectedPeriod !== null && selectedPeriod >= 6;
+
+  const steps = shouldShowForecastStep
+    ? [
+      { num: 1, label: "Currency Conversion" },
+      { num: 2, label: "Category Fees" },
+      { num: 3, label: "Fee Preview" },
+      { num: 4, label: "Inventory Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Live Data" },
+      { num: 7, label: "Inventory Forecast" },
+      { num: 8, label: "Plotting Graph" },
+    ]
+    : [
+      { num: 1, label: "Currency Conversion" },
+      { num: 2, label: "Category Fees" },
+      { num: 3, label: "Fee Preview" },
+      { num: 4, label: "Inventory Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Live Data" },
+      { num: 8, label: "Plotting Graph" },
+    ];
+
+  const periodFeatureMap: Record<number, {
+    title: string;
+    comparisons: { label: string; available: boolean }[];
+    analytics: { label: string; available: boolean }[];
+  }> = {
+    1: {
+      title: "Features",
+      comparisons: [
+        { label: "Monthly comparison", available: false },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Current month analytics only", available: true },
+        { label: "Inventory forecast", available: false },
+        { label: "Purchase planning insights", available: false },
+      ],
+    },
+    3: {
+      title: "Features",
+      comparisons: [
+        { label: "2 months comparison", available: true },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Short trend visibility", available: true },
+        { label: "Inventory forecast", available: false },
+        { label: "Purchase planning insights", available: false },
+      ],
+    },
+    6: {
+      title: "Features",
+      comparisons: [
+        { label: "5 months comparison", available: true },
+        { label: "Quarterly comparison", available: false },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Mid-term trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+    12: {
+      title: "Features",
+      comparisons: [
+        { label: "11 months comparison", available: true },
+        { label: "3 quarterly comparisons", available: true },
+        { label: "Yearly comparison", available: false },
+      ],
+      analytics: [
+        { label: "Strong seasonal trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+    24: {
+      title: "Features",
+      comparisons: [
+        { label: "23 months comparison", available: true },
+        { label: "7 quarterly comparisons", available: true },
+        { label: "Yearly comparison", available: true },
+      ],
+      analytics: [
+        { label: "Full historical trend visibility", available: true },
+        { label: "Inventory forecast", available: true },
+        { label: "Purchase planning insights", available: true },
+      ],
+    },
+  };
+
+  const selectedFeatures = useMemo(() => {
+    if (selectedPeriod === null) return null;
+    return periodFeatureMap[selectedPeriod] ?? null;
+  }, [selectedPeriod]);
+
   return (
     <div className="w-full">
-      <div className="rounded-xl bg-white">
+      <div className="rounded-xl bg-white max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="items-center mb-2 p-4">
           <div className="text-center">
@@ -1429,15 +1540,69 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         </div>
 
         {/* Note Section */}
-        <div
+        {/* <div
           className="mt-4 max-w-2xl mx-auto rounded-lg bg-[#FDD36F4D] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#FDD36F]"
           style={{ borderLeft: "6px solid #FDD36F" }}
         >
           Note:&nbsp; Your Amazon credentials are encrypted and stored securely. We only access data necessary for
           analytics.
-        </div>
+        </div> */}
 
-        {/* Progress UI with 6-Step Stepper */}
+        {selectedFeatures && (
+          <div className="mt-4 max-w-2xl mx-auto rounded-xl border border-[#D9E7E1] bg-emerald-50/50 p-4 shadow-sm">
+            {/* <h3 className="text-base font-semibold text-[#37455F] mb-3 text-center">
+              {selectedFeatures.title}
+            </h3> */}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg bg-white border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  Comparisons
+                </p>
+
+                <div className="space-y-2">
+                  {selectedFeatures.comparisons.map((item) => (
+                    <div key={item.label} className="flex items-start gap-2">
+                      <span className={`mt-0.5 ${item.available ? "text-[#5EA68E]" : "text-[#E16D6D]"}`}>
+                        {item.available ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                      </span>
+                      <p className={`text-sm leading-5 ${item.available ? "text-slate-700" : "text-slate-500"}`}>
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-white border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  Insights
+                </p>
+
+                <div className="space-y-2">
+                  {selectedFeatures.analytics.map((item) => (
+                    <div key={item.label} className="flex items-start gap-2">
+                      <span className={`mt-0.5 ${item.available ? "text-[#5EA68E]" : "text-[#E16D6D]"}`}>
+                        {item.available ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                      </span>
+                      <p className={`text-sm leading-5 ${item.available ? "text-slate-700" : "text-slate-500"}`}>
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
 
         {/* 1 month controls */}
@@ -1526,7 +1691,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
             <Button onClick={handleFetchRange} variant="primary" size="sm" disabled={busy}>
               {busy ? "Fetching..." : `Continue`}
             </Button>
-            {selectedPeriod && selectedPeriod >= 6 && (
+            {/* {selectedPeriod && selectedPeriod >= 6 && (
               <Button
                 onClick={handleQuickForecastTest}
                 variant="primary"
@@ -1535,7 +1700,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               >
                 ⚡ Quick Forecast Test
               </Button>
-            )}
+            )} */}
 
           </div>
         )}
@@ -1587,7 +1752,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               <div className="absolute top-6 left-[4%] right-[4%] h-1.5 bg-[#D9D9D9] -z-10">
                 {completedSteps.size > 0 && (() => {
                   const maxCompleted = Math.max(...Array.from(completedSteps));
-                  const progressPercent = maxCompleted > 1 ? ((maxCompleted - 1) / 7) * 100 : 0;
+                  const visibleStepCount = steps.length;
+                  const denominator = Math.max(visibleStepCount - 1, 1);
+
+                  const progressPercent =
+                    maxCompleted > 1 ? ((Math.min(maxCompleted, steps[steps.length - 1].num) - 1) / denominator) * 100 : 0;
                   return (
                     <div
                       className="h-full bg-[#5EA68E] transition-all duration-500"
@@ -1597,16 +1766,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
                 })()}
               </div>
 
-              {[
-                { num: 1, label: "Currency Conversion" },
-                { num: 2, label: "Category Fees" },
-                { num: 3, label: "Fee Preview" },
-                { num: 4, label: "Inventory Data" },
-                { num: 5, label: "Historic Data" },
-                { num: 6, label: "Live Data" },
-                { num: 7, label: "Inventory Forecast" },
-                { num: 8, label: "Plotting Graph" },
-              ].map((step) => {
+              {steps.map((step) => {
                 const isCompleted = completedSteps.has(step.num);
                 const isActive = currentStep === step.num;
                 const isPast = currentStep > step.num;

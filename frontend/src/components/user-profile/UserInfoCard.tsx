@@ -86,7 +86,7 @@ type CurrencyRateRow = {
 };
 
 // const REVENUE_OPTIONS = ["", "$0 - $50K", "$50K - $100K", "$100K - $500K", "$500K - $1M", "$1M+"];
-const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
+const CURRENCY_OPTIONS = ["USD"];
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -2334,148 +2334,153 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
             {activeTab === "personal" && (
               <>
-                <div id="tour-product-controls" className="lg:col-span-1 h-full">
-                  <InfoCard
-                    title={
-                      <PageBreadcrumb
-                        pageTitle="Product & Inventory Controls"
-                        variant="table"
-                        align="left"
-                      />
-                    }
-                    disabled={!canAccessProductControls}
-                    disabledMessage="Complete Company Info to unlock this section"
-                    hideDisabledOverlay={tourEnabled}
-                  >
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="flex items-center justify-start gap-2">
-                        <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
-
-                        <button
-                          id="tour-sku-upload-icon"
-                          onClick={canAccessProductControls ? skuModal.openModal : undefined}
-                          disabled={!canAccessProductControls}
-                          className="inline-flex items-center rounded-md p-1 text-gray-700 dark:text-gray-200"
-                          aria-label="Upload SKU"
-                          title="Upload SKU"
-                          type="button"
-                        >
-                          <TiUpload size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <Modal
-                      isOpen={feeModal.isOpen}
-                      onClose={closeFeePreview}
-                      className="m-4 max-w-[800px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
-                    >
-                      <div className="relative w-full rounded-3xl bg-white p-4 no-scrollbar dark:bg-gray-900 lg:p-11">
-                        {selectedCountry ? (
-                          <FeepreviewUpload country={selectedCountry} onClose={closeFeePreview} />
-                        ) : (
-                          <p className="text-center text-gray-500 dark:text-gray-400">
-                            No country selected
-                          </p>
-                        )}
-                      </div>
-                    </Modal>
-
-                    <Modal
-                      isOpen={skuModal.isOpen}
-                      onClose={skuModal.closeModal}
-                      className="m-4 max-w-[500px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
-                    >
-                      <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
-                        <SkuMultiCountryUpload
-                          onClose={skuModal.closeModal}
-                          onComplete={() => {
-                            setIsSkuUploaded(true);
-                            setData((prev: any) => ({
-                              ...prev,
-                              sku_sheet_exists: true,
-                            }));
-                            skuModal.closeModal();
-                          }}
+                {!isMemberUser && (
+                  <div id="tour-product-controls" className="lg:col-span-1 h-full">
+                    <InfoCard
+                      title={
+                        <PageBreadcrumb
+                          pageTitle="Product & Inventory Controls"
+                          variant="table"
+                          align="left"
                         />
-                      </div>
-                    </Modal>
-                  </InfoCard>
-                </div>
-
-                <div className="lg:col-span-1 h-full">
-                  <InfoCard
-                    id="tour-integrations"
-                    title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
-                    action={
-                      <div
-                        id="tour-integration-icon"
-                        className={!canAccessIntegrations ? "pointer-events-none opacity-60" : ""}
-                      >
-                        <IntegrationToggleButton />
-                      </div>
-                    }
-                    disabled={!canAccessIntegrations}
-                    disabledMessage="Upload your SKU sheet to unlock this section"
-                    hideDisabledOverlay={tourEnabled}
-                  >
-                    {(() => {
-                      const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
-                        platformIsConnected(p.id, connected)
-                      );
-
-                      if (connectedPlatforms.length === 0) {
-                        return (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            No platforms connected yet.
-                          </p>
-                        );
                       }
+                      disabled={!canAccessProductControls}
+                      disabledMessage="Complete Company Info to unlock this section"
+                      hideDisabledOverlay={tourEnabled}
+                    >
+                      <div className="grid grid-cols-1 gap-4">
+                        <div className="flex items-center justify-start gap-2">
+                          <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
 
-                      return (
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                          <div className="flex flex-wrap items-center gap-4">
-                            {connectedPlatforms.map((p) => {
-                              const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+                          <button
+                            id="tour-sku-upload-icon"
+                            onClick={canAccessProductControls ? skuModal.openModal : undefined}
+                            disabled={!canAccessProductControls}
+                            className="inline-flex items-center rounded-md p-1 text-gray-700 dark:text-gray-200"
+                            aria-label="Upload SKU"
+                            title="Upload SKU"
+                            type="button"
+                          >
+                            <TiUpload size={16} />
+                          </button>
+                        </div>
+                      </div>
 
-                              return (
-                                <div key={p.id} className="flex items-center gap-3">
-                                  {meta.countryCode ? (
-                                    <ReactCountryFlag
-                                      svg
-                                      countryCode={meta.countryCode as any}
-                                      className="text-[22px] leading-none"
-                                      aria-label={meta.label}
-                                    />
-                                  ) : meta.image ? (
-                                    <img
-                                      src={meta.image}
-                                      alt={meta.label}
-                                      className="h-8 w-8 object-contain"
-                                    />
-                                  ) : null}
+                      <Modal
+                        isOpen={feeModal.isOpen}
+                        onClose={closeFeePreview}
+                        className="m-4 max-w-[800px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+                      >
+                        <div className="relative w-full rounded-3xl bg-white p-4 no-scrollbar dark:bg-gray-900 lg:p-11">
+                          {selectedCountry ? (
+                            <FeepreviewUpload country={selectedCountry} onClose={closeFeePreview} />
+                          ) : (
+                            <p className="text-center text-gray-500 dark:text-gray-400">
+                              No country selected
+                            </p>
+                          )}
+                        </div>
+                      </Modal>
 
-                                  <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                                    {meta.label}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                      <Modal
+                        isOpen={skuModal.isOpen}
+                        onClose={skuModal.closeModal}
+                        className="m-4 max-w-[500px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+                      >
+                        <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
+                          <SkuMultiCountryUpload
+                            onClose={skuModal.closeModal}
+                            onComplete={() => {
+                              setIsSkuUploaded(true);
+                              setData((prev: any) => ({
+                                ...prev,
+                                sku_sheet_exists: true,
+                              }));
+                              skuModal.closeModal();
+                            }}
+                          />
+                        </div>
+                      </Modal>
+                    </InfoCard>
+                  </div>
+                )}
 
-                          {/* <Link
+
+
+                {!isMemberUser && (
+                  <div className="lg:col-span-1 h-full">
+                    <InfoCard
+                      id="tour-integrations"
+                      title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
+                      action={
+                        <div
+                          id="tour-integration-icon"
+                          className={!canAccessIntegrations ? "pointer-events-none opacity-60" : ""}
+                        >
+                          <IntegrationToggleButton />
+                        </div>
+                      }
+                      disabled={!canAccessIntegrations}
+                      disabledMessage="Upload your SKU sheet to unlock this section"
+                      hideDisabledOverlay={tourEnabled}
+                    >
+                      {(() => {
+                        const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+                          platformIsConnected(p.id, connected)
+                        );
+
+                        if (connectedPlatforms.length === 0) {
+                          return (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              No platforms connected yet.
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex flex-wrap items-center gap-4">
+                              {connectedPlatforms.map((p) => {
+                                const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+
+                                return (
+                                  <div key={p.id} className="flex items-center gap-3">
+                                    {meta.countryCode ? (
+                                      <ReactCountryFlag
+                                        svg
+                                        countryCode={meta.countryCode as any}
+                                        className="text-[22px] leading-none"
+                                        aria-label={meta.label}
+                                      />
+                                    ) : meta.image ? (
+                                      <img
+                                        src={meta.image}
+                                        alt={meta.label}
+                                        className="h-8 w-8 object-contain"
+                                      />
+                                    ) : null}
+
+                                    <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                                      {meta.label}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* <Link
                             href=""
                             className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
                           >
                             <FaPlus size={12} />
                             <span>Integrate more marketplaces</span>
                           </Link> */}
-                        </div>
-                      );
-                    })()}
-                  </InfoCard>
-                </div>
-
+                          </div>
+                        );
+                      })()}
+                    </InfoCard>
+                  </div>
+                )}
 
               </>
             )}

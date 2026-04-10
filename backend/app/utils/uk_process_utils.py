@@ -1018,7 +1018,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         # ---------------- PROFIT (FINAL, SKU-WISE) ----------------
 
-        for col in ["Net Sales", "amazon_fee", "net_taxes", "net_credits", "cost_of_unit_sold"]:
+        for col in ["Net Sales", "amazon_fee", "net_taxes", "net_credits", "cost_of_unit_sold", "promotional_rebates"]:
             if col not in sku_grouped.columns:
                 sku_grouped[col] = 0.0
             sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
@@ -1029,6 +1029,7 @@ def process_skuwise_data(user_id, country, month, year):
             - sku_grouped["net_taxes"]
             + sku_grouped["net_credits"]
             - sku_grouped["cost_of_unit_sold"]
+            - sku_grouped["promotional_rebates"]
         )
         
 

@@ -57,6 +57,7 @@ import { ApiResponse } from "@/components/businessInsight/types";
 import DashboardStickyKpis from "./DashboardStickyKpis";
 import { IoMdLock } from "react-icons/io";
 import { Toaster, toast } from "sonner";
+import { useHeaderNotifications } from "@/components/context/NotificationContext";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -1126,6 +1127,8 @@ export default function DashboardPage() {
     const params = useParams();
     const shownInventoryToastIdsRef = useRef<Set<string>>(new Set());
 
+    const { setItems: setHeaderNotifications } = useHeaderNotifications();
+
     const urlMonthParam = Array.isArray(params?.month)
         ? params.month[0]
         : params?.month;
@@ -1206,6 +1209,7 @@ export default function DashboardPage() {
         if (platform === "amazon-ca") return "CAD";
         return "GBP"; // amazon-uk OR global default
     }, [platform]);
+
 
     /* ===================== PLATFORM → DISPLAY CURRENCY ===================== */
     const profileHomeCurrency = ((userData?.homeCurrency || "USD").toUpperCase() as CurrencyCode);
@@ -1323,22 +1327,75 @@ export default function DashboardPage() {
     }, [invRows]);
 
 
+
+
+    const normalizedInventoryAlerts = useMemo(() => {
+        const next: Record<string, { alert?: string; alert_type?: string }> = {};
+
+        Object.entries(inventoryAlerts || {}).forEach(([sku, value]) => {
+            next[String(sku).trim().toUpperCase()] = value;
+        });
+
+        return next;
+    }, [inventoryAlerts]);
+
     const top5InventoryAlerts = useMemo(() => {
-        return Object.entries(inventoryAlerts || {})
+        return Object.entries(normalizedInventoryAlerts || {})
             .filter(([sku, v]) => {
-                return (
-                    top5Skus.includes(sku.toUpperCase()) &&
-                    v.alert === "High alert" // only this specific alert
-                );
+                return top5Skus.includes(sku) && v.alert === "High alert";
             })
             .map(([sku, v]) => ({
                 id: sku,
                 title: sku,
                 message: v.alert || "",
-                variant: "error" as const, // High alert = red
+                variant: "error" as const,
             }));
-    }, [inventoryAlerts, top5Skus]);
+    }, [normalizedInventoryAlerts, top5Skus]);
 
+    const notificationItems = useMemo(() => {
+        return top5Skus
+            .map((sku) => {
+                const alertRow = normalizedInventoryAlerts[sku];
+
+                return {
+                    sku,
+                    productName: skuToProductName[sku] || sku,
+                    alert: alertRow?.alert || "",
+                    alertType: alertRow?.alert_type || "error",
+                };
+            })
+            .filter(
+                (item) =>
+                    item.alert.trim().toLowerCase() === "high alert" &&
+                    !dismissedAlerts.includes(item.sku)
+            )
+            .map((item) => ({
+                id: item.sku,
+                title: item.productName,
+                message: "Top-selling item is running low. Restock recommended.",
+                type: item.alertType,
+                href: `/live-dashboard/${countryName}/${urlMonthParam || ""}/${urlYearParam || ""}#current-inventory`,
+            }));
+    }, [
+        top5Skus,
+        skuToProductName,
+        normalizedInventoryAlerts,
+        dismissedAlerts,
+        countryName,
+        urlMonthParam,
+        urlYearParam,
+    ]);
+
+useEffect(() => {
+  console.log("top5Skus", top5Skus);
+  console.log("inventoryAlerts", inventoryAlerts);
+  console.log("normalizedInventoryAlerts", normalizedInventoryAlerts);
+  console.log("notificationItems", notificationItems);
+}, [top5Skus, inventoryAlerts, normalizedInventoryAlerts, notificationItems]);
+
+    useEffect(() => {
+        setHeaderNotifications(notificationItems);
+    }, [notificationItems, setHeaderNotifications]);
 
     /* ===================== AMAZON / SHOPIFY STATE ===================== */
     const [loading, setLoading] = useState(false);
@@ -1590,37 +1647,39 @@ export default function DashboardPage() {
         );
     };
 
-    useEffect(() => {
-        const top5HighAlerts = top5Skus
-            .map((sku) => ({
-                sku,
-                productName: skuToProductName[sku] || sku,
-                alert: inventoryAlerts?.[sku]?.alert || "",
-                alertType: inventoryAlerts?.[sku]?.alert_type || "error",
-            }))
-            .filter(
-                (item) =>
-                    item.alert.trim().toLowerCase() === "high alert" &&
-                    !dismissedAlerts.includes(item.sku)
-            );
+    // useEffect(() => {
+    //     const top5HighAlerts = top5Skus
+    //         .map((sku) => ({
+    //             sku,
+    //             productName: skuToProductName[sku] || sku,
+    //             alert: inventoryAlerts?.[sku]?.alert || "",
+    //             alertType: inventoryAlerts?.[sku]?.alert_type || "error",
+    //         }))
+    //         .filter(
+    //             (item) =>
+    //                 item.alert.trim().toLowerCase() === "high alert" &&
+    //                 !dismissedAlerts.includes(item.sku)
+    //         );
 
-        top5HighAlerts.forEach(({ sku, productName }) => {
-            if (shownInventoryToastIdsRef.current.has(sku)) return;
+    //     top5HighAlerts.forEach(({ sku, productName }) => {
+    //         if (shownInventoryToastIdsRef.current.has(sku)) return;
 
-            shownInventoryToastIdsRef.current.add(sku);
+    //         shownInventoryToastIdsRef.current.add(sku);
 
-            showInventoryToast({
-                sku,
-                productName,
-                onDismiss: () => handleDismiss(sku),
-                currentParams: {
-                    countryName: countryName,
-                    month: urlMonthParam || "",
-                    year: urlYearParam || "",
-                },
-            });
-        });
-    }, [top5Skus, skuToProductName, inventoryAlerts, dismissedAlerts]);
+    //         showInventoryToast({
+    //             sku,
+    //             productName,
+    //             onDismiss: () => handleDismiss(sku),
+    //             currentParams: {
+    //                 countryName: countryName,
+    //                 month: urlMonthParam || "",
+    //                 year: urlYearParam || "",
+    //             },
+    //         });
+    //     });
+    // }, [top5Skus, skuToProductName, inventoryAlerts, dismissedAlerts]);
+
+
 
     useEffect(() => {
         if (activeTab !== "live") return;
@@ -1775,7 +1834,7 @@ export default function DashboardPage() {
     }, [fetchFxRates]);
 
 
-    console.log("Active Date Region:", activeDateRegion);
+    // console.log("Active Date Region:", activeDateRegion);
 
     useEffect(() => {
         const timezone = getTimezoneForRegion(activeDateRegion);
@@ -3944,8 +4003,6 @@ export default function DashboardPage() {
         timeZone: getTimezoneForRegion(activeDateRegion),
     });
 
-    console.log("shortMonForGraph", shortMonForGraph, { currMonthName, currYear, activeDateRegion });
-
     // const formattedMonthYear = `${shortMonForGraph}'${String(currYear).slice(-2)}`;
 
     const getFormattedMonthYearByRegion = (region: RegionKey) => {
@@ -5686,10 +5743,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
             titleLine: `Amazon ${titleCountry} - Current Inventory - ${formattedMonthYear}`,
             countryName: countryNameForGraph,
             titleCountry,
-            platformLabel: "Amazon",
+            platformLabel: "Phormula",
             periodLabel: formattedMonthYear,
             companyName,
-            brandName,
+            brandName: brandName || "",
             homeCurrencyCode: profileHomeCurrency,
             dataRows: currentInventoryExportRows,
         });
