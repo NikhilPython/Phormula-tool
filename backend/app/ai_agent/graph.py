@@ -767,7 +767,7 @@ def planner_node(state: AgentState) -> AgentState:
     else:
         state["period_parsed"] = {"type": "none"}
 
-    STRUCTURED_METRICS = {"tax", "fees", "refund", "sales", "profit"}
+    STRUCTURED_METRICS = {"tax", "fees", "refund", "sales",}
 
     if intent in {"metric_qa", "comparison", "report", "email"}:
 
