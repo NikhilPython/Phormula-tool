@@ -8,7 +8,7 @@ import React, {
   type JSX,
   useCallback,
 } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import MonthYearPickerTable from "@/components/filters/MonthYearPickerTable";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
@@ -460,18 +460,30 @@ function PreviewLockedSection({
 /* ===================== MAIN DASHBOARD PAGE ===================== */
 export default function ReferralFeesDashboard(): JSX.Element {
   const routeParams = useParams();
-
+  const router = useRouter();
+  const ranged = (routeParams?.ranged as string) || "YTD";
   // ✅ IMPORTANT: pick platform/country from URL
   const country = ((routeParams?.countryName as string) || "global").toLowerCase();
+
+  const routeMonth = (routeParams?.month as string | undefined) ?? "";
+  const routeYear = (routeParams?.year as string | undefined) ?? "";
 
   const [month, setMonth] = useState<string>("");
   const [year, setYear] = useState<string>("");
   const [range, setRange] = useState<Range>("monthly");
   const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
+  useEffect(() => {
+    const r = (routeParams?.ranged as string)?.toUpperCase();
+
+    if (r === "YTD") setRange("yearly");
+    else if (r === "QTD") setRange("quarterly");
+    else setRange("monthly");
+  }, [routeParams?.ranged]);
+
   const isPreviewMode =
-    month === "NA" ||
-    year === "NA";
+    routeMonth.toUpperCase() === "NA" ||
+    routeYear.toUpperCase() === "NA";
 
   const effectiveCountry = isPreviewMode
     ? "global"
@@ -492,6 +504,22 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const handlePreviewAction = () => {
     window.location.href = "/profile/uk/NA/NA";
+  };
+
+  const rangeToSlug = (value: Range) => {
+    if (value === "yearly") return "YTD";
+    if (value === "quarterly") return "QTD";
+    return "MTD";
+  };
+
+  const pushExpenseRoute = (
+    nextRange: Range,
+    nextMonth: string,
+    nextYear: string
+  ) => {
+    router.push(
+      `/expense-reconciliation/${rangeToSlug(nextRange)}/${country}/${nextMonth}/${nextYear}`
+    );
   };
 
   const [card6, setCard6] = useState<Card6Summary>({
@@ -707,12 +735,48 @@ export default function ReferralFeesDashboard(): JSX.Element {
   });
 
   // ✅ hydrate month/year from URL first, else localStorage.latestFetchedPeriod
+  // useEffect(() => {
+  //   const mFromRoute = (routeParams?.month as string | undefined)?.toLowerCase();
+  //   const yFromRoute = routeParams?.year as string | undefined;
+
+  //   if (mFromRoute && yFromRoute) {
+  //     setMonth(mFromRoute);
+  //     setYear(String(yFromRoute));
+  //     setError(null);
+  //     return;
+  //   }
+
+  //   if (typeof window === "undefined") return;
+
+  //   try {
+  //     const raw = localStorage.getItem("latestFetchedPeriod");
+  //     if (raw) {
+  //       const parsed = JSON.parse(raw) as { month?: string; year?: string };
+  //       if (parsed.month && parsed.year) {
+  //         setMonth(String(parsed.month).toLowerCase());
+  //         setYear(String(parsed.year));
+  //         setError(null);
+  //         return;
+  //       }
+  //     }
+  //   } catch { }
+
+  //   setError("Please select both month and year to view referral fees.");
+  // }, [routeParams?.month, routeParams?.year]);
+
   useEffect(() => {
-    const mFromRoute = (routeParams?.month as string | undefined)?.toLowerCase();
-    const yFromRoute = routeParams?.year as string | undefined;
+    const mFromRoute = (routeParams?.month as string | undefined) ?? "";
+    const yFromRoute = (routeParams?.year as string | undefined) ?? "";
+
+    if (mFromRoute.toUpperCase() === "NA" || yFromRoute.toUpperCase() === "NA") {
+      setMonth("NA");
+      setYear("NA");
+      setError(null);
+      return;
+    }
 
     if (mFromRoute && yFromRoute) {
-      setMonth(mFromRoute);
+      setMonth(mFromRoute.toLowerCase());
       setYear(String(yFromRoute));
       setError(null);
       return;
@@ -736,9 +800,17 @@ export default function ReferralFeesDashboard(): JSX.Element {
     setError("Please select both month and year to view referral fees.");
   }, [routeParams?.month, routeParams?.year]);
 
+  // useEffect(() => {
+  //   if (typeof window === "undefined") return;
+  //   if (!month || !year) return;
+  //   localStorage.setItem("latestFetchedPeriod", JSON.stringify({ month, year }));
+  // }, [month, year]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!month || !year) return;
+    if (month === "NA" || year === "NA") return;
+
     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ month, year }));
   }, [month, year]);
 
@@ -1628,26 +1700,52 @@ export default function ReferralFeesDashboard(): JSX.Element {
             selectedYear={year}
             yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
             onRangeChange={(v) => {
-              setRange(v);
+              let nextMonth = month;
+
               if (v === "quarterly") {
-                const m = quarterToMonth(selectedQuarter);
-                if (m) setMonth(m);
+                const m = quarterToMonth(selectedQuarter || "Q1");
+                if (m) nextMonth = m;
               }
-              if (v === "yearly" && !month) setMonth("january");
+
+              if (v === "yearly" && !nextMonth) {
+                nextMonth = "january";
+              }
+
+              setRange(v);
+              if (nextMonth) setMonth(nextMonth);
+              if (nextMonth && year) {
+                setError(null);
+                pushExpenseRoute(v, nextMonth, year);
+              }
             }}
+
             onMonthChange={(v) => {
               setMonth(v);
-              if (v && year) setError(null);
+              if (v && year) {
+                setError(null);
+                pushExpenseRoute(range, v, year);
+              }
             }}
+
             onQuarterChange={(q) => {
               setSelectedQuarter(q);
               const m = quarterToMonth(q);
-              setMonth(m);
-              if (m && year) setError(null);
+              if (m) {
+                setMonth(m);
+                if (year) {
+                  setError(null);
+                  pushExpenseRoute("quarterly", m, year);
+                }
+              }
             }}
+
             onYearChange={(v) => {
-              setYear(String(v));
-              if (v && month) setError(null);
+              const nextYear = String(v);
+              setYear(nextYear);
+              if (nextYear && month) {
+                setError(null);
+                pushExpenseRoute(range, month, nextYear);
+              }
             }}
           />
           {/* </div> */}
