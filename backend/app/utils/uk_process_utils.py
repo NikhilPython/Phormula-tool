@@ -1029,7 +1029,7 @@ def process_skuwise_data(user_id, country, month, year):
             - sku_grouped["net_taxes"]
             + sku_grouped["net_credits"]
             - sku_grouped["cost_of_unit_sold"]
-            - sku_grouped["promotional_rebates"]
+            - sku_grouped["promotional_rebates"].abs()
         )
         
 
