@@ -55,7 +55,10 @@ def notification():
         coverage_df = compute_inventory_coverage_ratio(user_id, country)
 
         coverage_map = {
-            str(row["sku"]).strip(): row["inventory_coverage_ratio"]
+            str(row["sku"]).strip(): {
+                "inventory_coverage_ratio": row["inventory_coverage_ratio"],
+                "product_name": row.get("product_name")
+            }
             for _, row in coverage_df.iterrows()
             if row.get("sku") is not None
         }
@@ -63,8 +66,13 @@ def notification():
         # 5) Merge ratio into alerts response
         final_data = {}
         for sku, alert_info in alerts.items():
-            final_data[sku] = {
-                "inventory_coverage_ratio": coverage_map.get(sku),
+            sku_data = coverage_map.get(sku, {})
+            product_name = sku_data.get("product_name") or sku
+
+            final_data[product_name] = {
+                "sku": sku,
+                "product_name": product_name,
+                "inventory_coverage_ratio": sku_data.get("inventory_coverage_ratio"),
                 "alert": alert_info.get("alert"),
                 "alert_type": alert_info.get("alert_type"),
             }

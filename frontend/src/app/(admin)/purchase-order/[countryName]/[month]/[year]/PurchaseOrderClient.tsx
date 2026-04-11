@@ -55,7 +55,16 @@ function monthToLowerName(value: string) {
   return value ? value.trim().toLowerCase() : '';
 }
 
+function isCurrentMonthYear(selectedMonth: string, selectedYear: string) {
+  const now = new Date();
+  const currentMonth = MONTHS[now.getMonth()].toLowerCase();
+  const currentYear = String(now.getFullYear());
 
+  return (
+    monthToLowerName(selectedMonth) === currentMonth &&
+    String(selectedYear) === currentYear
+  );
+}
 
 async function fetchInventoryForecastFile(
   token: string,
@@ -102,11 +111,11 @@ function toNumber(value: unknown): number {
 function buildOthersPoRow(rows: Row[], displayedColumns: string[]): Row {
   const othersRow: Row = {
     'Product Name': 'Others',
-    'Sno.': '',
+    'S. No.': '',
   }
 
   displayedColumns.forEach((col) => {
-    if (col === 'Sno.' || col === 'Product Name') return
+    if (col === 'S. No.' || col === 'Product Name') return
 
     // keep rate-like fields blank in Others row
     if (col === 'Cost per Unit (in INR)') {
@@ -160,6 +169,7 @@ export default function PurchaseOrderPage({
   const [error, setError] = useState('');
   const [skuData, setSkuData] = useState<Row[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [noData, setNoData] = useState(false);
 
   const isGlobalRoute = useMemo(
     () => countryName.toLowerCase() === 'global',
@@ -170,7 +180,7 @@ export default function PurchaseOrderPage({
     () =>
       isGlobalRoute
         ? [
-          'Sno.',
+          'S. No.',
           'Product Name',
           'Dispatches UK',
           'Dispatches Canada',
@@ -183,7 +193,7 @@ export default function PurchaseOrderPage({
           'PO Cost (in INR)',
         ]
         : [
-          'Sno.',
+          'S. No.',
           'Product Name',
           'Dispatches UK',
           'Total Dispatches',
@@ -283,11 +293,14 @@ export default function PurchaseOrderPage({
 
       if (!selectedMonth || !selectedYear) {
         setError('Please select both month and year.');
+        setNoData(false);
         return;
       }
 
       setLoading(true);
       setError('');
+      setNoData(false);
+      setSkuData([]);
 
       try {
         const token = getTokenOrThrow();
@@ -295,7 +308,17 @@ export default function PurchaseOrderPage({
         let res = await fetchGeneratedPOFile(selectedMonth, selectedYear);
 
         if (!res.ok && res.status === 404) {
-          // Ensure inventory forecast exists first
+          const shouldGenerateForCurrentMonth = isCurrentMonthYear(
+            selectedMonth,
+            selectedYear
+          );
+
+          if (!shouldGenerateForCurrentMonth) {
+            setNoData(true);
+            return;
+          }
+
+          // Only for current month: ensure forecast exists, then generate PO
           await ensureInventoryForecastReady(
             token,
             countryName,
@@ -303,10 +326,8 @@ export default function PurchaseOrderPage({
             selectedYear
           );
 
-          // Then generate PO
           await generatePurchaseOrder(selectedMonth, selectedYear);
 
-          // Then fetch generated PO file again
           res = await fetchGeneratedPOFile(selectedMonth, selectedYear);
         }
 
@@ -317,7 +338,7 @@ export default function PurchaseOrderPage({
             errJson?.error === 'Generated file not found' ||
             errJson?.error === 'Purchase order file not found'
           ) {
-            setError('Please upload your local house inventory file to see PO.');
+            setNoData(true);
             return;
           }
 
@@ -326,9 +347,30 @@ export default function PurchaseOrderPage({
 
         const blob = await res.blob();
         const buffer = await blob.arrayBuffer();
-        setSkuData(parseWorkbookToRows(buffer));
+        const rows = parseWorkbookToRows(buffer);
+
+        if (!rows.length) {
+          setNoData(true);
+          return;
+        }
+
+        setSkuData(rows);
+        setNoData(false);
       } catch (err: any) {
-        setError(err?.message || 'Unknown error');
+        const msg = err?.message || 'Unknown error';
+
+        if (
+          msg.toLowerCase().includes('inventory forecast not found') ||
+          msg.toLowerCase().includes('purchase order file not found') ||
+          msg.toLowerCase().includes('generated file not found')
+        ) {
+          setError('');
+          setNoData(true);
+          return;
+        }
+
+        setError(msg);
+        setNoData(false);
       } finally {
         setLoading(false);
       }
@@ -343,11 +385,14 @@ export default function PurchaseOrderPage({
 
       if (!selectedMonth || !selectedYear) {
         setError('Please select both month and year.');
+        setNoData(false);
         return;
       }
 
       setLoading(true);
       setError('');
+      setNoData(false);
+      setSkuData([]);
 
       try {
         const token = getTokenOrThrow();
@@ -362,8 +407,28 @@ export default function PurchaseOrderPage({
         if (res.ok) {
           const blob = await res.blob();
           const buffer = await blob.arrayBuffer();
-          setSkuData(parseWorkbookToRows(buffer));
+          const rows = parseWorkbookToRows(buffer);
+
+          if (!rows.length) {
+            setNoData(true);
+            return;
+          }
+
+          setSkuData(rows);
+          setNoData(false);
           return;
+        }
+
+        if (res.status === 404) {
+          const shouldGenerateForCurrentMonth = isCurrentMonthYear(
+            selectedMonth,
+            selectedYear
+          );
+
+          if (!shouldGenerateForCurrentMonth) {
+            setNoData(true);
+            return;
+          }
         }
 
         if (res.status !== 404) {
@@ -386,7 +451,8 @@ export default function PurchaseOrderPage({
         const result = await res.json();
 
         if (!result?.data) {
-          throw new Error('Global PO data was empty');
+          setNoData(true);
+          return;
         }
 
         const binary = atob(result.data);
@@ -397,9 +463,18 @@ export default function PurchaseOrderPage({
           view[i] = binary.charCodeAt(i);
         }
 
-        setSkuData(parseWorkbookToRows(buffer));
+        const rows = parseWorkbookToRows(buffer);
+
+        if (!rows.length) {
+          setNoData(true);
+          return;
+        }
+
+        setSkuData(rows);
+        setNoData(false);
       } catch (err: any) {
         setError(err?.message || 'Unknown error');
+        setNoData(false);
       } finally {
         setLoading(false);
       }
@@ -420,7 +495,7 @@ export default function PurchaseOrderPage({
         String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
 
       const formatted: Record<string, any> = {
-        'Sno.': isTotalRow ? '' : row['Sno.'] ?? index + 1,
+        'S. No.': isTotalRow ? '' : row['S. No.'] ?? index + 1,
       };
 
       displayedColumns.forEach((col) => {
@@ -456,7 +531,7 @@ export default function PurchaseOrderPage({
     });
   }, [skuData, displayedColumns, isGlobalRoute, month, year, countryName, companyName, brandName]);
 
-  
+
   const handleRedirectToForecast = () => {
     router.push(`/inventory-forecast/${countryName}/${month}/${year}`);
   };
@@ -521,17 +596,23 @@ export default function PurchaseOrderPage({
       (row) => String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
     )
 
-    const nonTotalRows = skuData.filter(
-      (row) => String(row['Product Name'] ?? '').trim().toLowerCase() !== 'total'
-    )
+    const sortedRows = [...skuData]
+      .filter(
+        (row) => String(row['Product Name'] ?? '').trim().toLowerCase() !== 'total'
+      )
+      .sort((a, b) => {
+        const valA = toNumber(a['Total Dispatches'])
+        const valB = toNumber(b['Total Dispatches'])
+        return valB - valA
+      })
 
     let rowsForDisplay: Row[] = []
 
-    if (nonTotalRows.length <= 9) {
-      rowsForDisplay = [...nonTotalRows]
+    if (sortedRows.length <= 9) {
+      rowsForDisplay = [...sortedRows]
     } else {
-      const firstNine = nonTotalRows.slice(0, 9)
-      const remainingRows = nonTotalRows.slice(9)
+      const firstNine = sortedRows.slice(0, 9)
+      const remainingRows = sortedRows.slice(9)
       const othersRow = buildOthersPoRow(remainingRows, displayedColumns)
 
       rowsForDisplay = [...firstNine, othersRow]
@@ -545,14 +626,12 @@ export default function PurchaseOrderPage({
       const output: Row = {}
 
       displayedColumns.forEach((col) => {
-        let value = col === 'Sno.' ? row[col] ?? index + 1 : row[col]
+        let value = col === 'S. No.' ? row[col] ?? index + 1 : row[col]
 
-        const isOthersRow =
-          String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
         const isTotalRow =
           String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
 
-        if (col === 'Sno.') {
+        if (col === 'S. No.') {
           if (isTotalRow) {
             value = ''
           } else {
@@ -586,14 +665,16 @@ export default function PurchaseOrderPage({
       displayedColumns.map((col) => ({
         key: col,
         header: col,
-        width: col === 'Sno.' ? '60px' : col === 'Product Name' ? '220px' : '140px',
+        width: col === 'S. No.' ? '60px' : col === 'Product Name' ? '220px' : '140px',
         cellClassName:
           col === 'Product Name'
             ? 'text-left'
-            : col === 'Sno.'
+            : col === 'S. No.'
               ? 'text-center'
               : '',
-        headerClassName: col === 'Sno.' ? 'text-center' : '',
+        headerClassName: col === 'S. No.'
+          ? 'text-center whitespace-normal break-words'
+          : 'whitespace-normal break-words text-center',
         render: (row, value) => {
           const text = String(value ?? '');
 
@@ -816,7 +897,7 @@ export default function PurchaseOrderPage({
 
             <DownloadIconButton onClick={handleExportToExcel} size="md" />
 
-            <div className="flex sm:flex-row flex-col gap-4">
+            {/* <div className="flex sm:flex-row flex-col gap-4">
               <button
                 className="fetch-button"
                 onClick={() =>
@@ -827,7 +908,7 @@ export default function PurchaseOrderPage({
               >
                 {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
               </button>
-            </div>
+            </div> */}
           </div>
         </div>
       )}
@@ -845,24 +926,18 @@ export default function PurchaseOrderPage({
           </button>
         </div>
       ) : (
-        <div>
-          {skuData.length > 0 ? (
-            <DataTable<Row>
-              columns={tableColumns}
-              data={tableData}
-              paginate={false}
-              pageSize={10}
-              stickyHeader
-              scrollY
-              maxHeight="90vh"
-              emptyMessage={`Select Month and Year to see ${isGlobalRoute ? 'Global PO' : 'PO'}!`}
-              rowClassName={getTableRowClassName}
-              tableClassName="text-xs 2xl:text-sm"
-            />
-          ) : (
-            <p>Select Month and Year to see {isGlobalRoute ? 'Global PO' : 'PO'}!</p>
-          )}
-        </div>
+        <DataTable<Row>
+          columns={tableColumns}
+          data={tableData}
+          paginate={false}
+          pageSize={10}
+          stickyHeader
+          scrollY
+          maxHeight="90vh"
+          emptyMessage="No Data Available for selected period"
+          rowClassName={getTableRowClassName}
+          tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
+        />
       )}
 
       {showModal && (

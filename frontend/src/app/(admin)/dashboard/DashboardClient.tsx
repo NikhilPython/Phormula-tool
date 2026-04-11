@@ -1127,7 +1127,7 @@ export default function DashboardPage() {
     const params = useParams();
     const shownInventoryToastIdsRef = useRef<Set<string>>(new Set());
 
-    const { setItems: setHeaderNotifications } = useHeaderNotifications();
+    // const { setItems: setHeaderNotifications } = useHeaderNotifications();
 
     const urlMonthParam = Array.isArray(params?.month)
         ? params.month[0]
@@ -1352,50 +1352,44 @@ export default function DashboardPage() {
             }));
     }, [normalizedInventoryAlerts, top5Skus]);
 
-    const notificationItems = useMemo(() => {
-        return top5Skus
-            .map((sku) => {
-                const alertRow = normalizedInventoryAlerts[sku];
+    // const notificationItems = useMemo(() => {
+    //     return top5Skus
+    //         .map((sku) => {
+    //             const alertRow = normalizedInventoryAlerts[sku];
 
-                return {
-                    sku,
-                    productName: skuToProductName[sku] || sku,
-                    alert: alertRow?.alert || "",
-                    alertType: alertRow?.alert_type || "error",
-                };
-            })
-            .filter(
-                (item) =>
-                    item.alert.trim().toLowerCase() === "high alert" &&
-                    !dismissedAlerts.includes(item.sku)
-            )
-            .map((item) => ({
-                id: item.sku,
-                title: item.productName,
-                message: "Top-selling item is running low. Restock recommended.",
-                type: item.alertType,
-                href: `/live-dashboard/${countryName}/${urlMonthParam || ""}/${urlYearParam || ""}#current-inventory`,
-            }));
-    }, [
-        top5Skus,
-        skuToProductName,
-        normalizedInventoryAlerts,
-        dismissedAlerts,
-        countryName,
-        urlMonthParam,
-        urlYearParam,
-    ]);
+    //             return {
+    //                 sku,
+    //                 productName: skuToProductName[sku] || sku,
+    //                 alert: alertRow?.alert || "",
+    //                 alertType: alertRow?.alert_type || "error",
+    //             };
+    //         })
+    //         .filter(
+    //             (item) =>
+    //                 item.alert.trim().toLowerCase() === "high alert" &&
+    //                 !dismissedAlerts.includes(item.sku)
+    //         )
+    //         .map((item) => ({
+    //             id: item.sku,
+    //             title: item.productName,
+    //             message: "Top-selling item is running low. Restock recommended.",
+    //             type: item.alertType,
+    //             href: `/live-dashboard/${countryName}/${urlMonthParam || ""}/${urlYearParam || ""}#current-inventory`,
+    //         }));
+    // }, [
+    //     top5Skus,
+    //     skuToProductName,
+    //     normalizedInventoryAlerts,
+    //     dismissedAlerts,
+    //     countryName,
+    //     urlMonthParam,
+    //     urlYearParam,
+    // ]);
 
-useEffect(() => {
-  console.log("top5Skus", top5Skus);
-  console.log("inventoryAlerts", inventoryAlerts);
-  console.log("normalizedInventoryAlerts", normalizedInventoryAlerts);
-  console.log("notificationItems", notificationItems);
-}, [top5Skus, inventoryAlerts, normalizedInventoryAlerts, notificationItems]);
-
-    useEffect(() => {
-        setHeaderNotifications(notificationItems);
-    }, [notificationItems, setHeaderNotifications]);
+   
+    // useEffect(() => {
+    //     setHeaderNotifications(notificationItems);
+    // }, [notificationItems, setHeaderNotifications]);
 
     /* ===================== AMAZON / SHOPIFY STATE ===================== */
     const [loading, setLoading] = useState(false);

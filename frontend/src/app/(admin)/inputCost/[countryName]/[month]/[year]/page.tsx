@@ -1583,6 +1583,7 @@ import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import { useRouter } from 'next/navigation';
 import { IoMdLock } from "react-icons/io";
+import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCountryUpload";
 
 // =========================
 // Warehouse upload format
@@ -1852,7 +1853,7 @@ export default function InputCostPage({ params }: Params) {
   const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
   const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
   const [warehouseUploadError, setWarehouseUploadError] = useState('');
-  
+
   const router = useRouter();
 
   const isNA =
@@ -1917,7 +1918,7 @@ export default function InputCostPage({ params }: Params) {
   const getColumnDisplayName = (column: string): React.ReactNode => {
     switch (column) {
       case 's_no':
-        return 'Sno.';
+        return 'S.No.';
       case 'product_name':
         return 'Product Name';
       case 'sku_uk':
@@ -2626,7 +2627,7 @@ export default function InputCostPage({ params }: Params) {
 
   const tabOptions = useMemo(
     () => [
-      { value: 'sku-info' as const, label: 'Sku Info' },
+      { value: 'sku-info' as const, label: 'SKU Info' },
       { value: 'extra' as const, label: 'Upload Warehouse Data' },
     ],
     []
@@ -2635,7 +2636,7 @@ export default function InputCostPage({ params }: Params) {
   const getWarehouseHeaderLabel = (col: string) => {
     switch (col) {
       case 's_no':
-        return 'S No';
+        return 'S. No.';
       case 'sku_us':
         return 'SKU_US';
       case 'sku_uk':
@@ -2670,8 +2671,13 @@ export default function InputCostPage({ params }: Params) {
       cellClassName: 'text-center',
       render: (row) => {
         const value = row[col];
+
+        if (col === "month" && typeof value === "string") {
+          return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+        }
+
         return value === null || value === undefined || value === '' ? '—' : String(value);
-      },
+      }
     }));
   }, [warehouseColumns]);
 
@@ -2884,10 +2890,7 @@ export default function InputCostPage({ params }: Params) {
 
       {showWarehouseUpload && (
         <div
-          onClick={() => {
-            setSelectedWarehouseFile(null);
-            setShowWarehouseUpload(false);
-          }}
+          onClick={() => setShowWarehouseUpload(false)}
           className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 p-4"
         >
           <div
@@ -2895,10 +2898,7 @@ export default function InputCostPage({ params }: Params) {
             className="relative m-4 w-full max-w-[500px] rounded-xl border border-[#D9D9D9] bg-white shadow-[6px_6px_7px_0px_#00000026]"
           >
             <button
-              onClick={() => {
-                setSelectedWarehouseFile(null);
-                setShowWarehouseUpload(false);
-              }}
+              onClick={() => setShowWarehouseUpload(false)}
               type="button"
               className="absolute right-4 top-3 z-10 text-2xl leading-none text-neutral-500 hover:text-neutral-800"
             >
@@ -2906,83 +2906,16 @@ export default function InputCostPage({ params }: Params) {
             </button>
 
             <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar lg:p-9">
-              <div className="w-full max-w-[520px] mx-auto flex flex-col gap-3">
-                <PageBreadcrumb
-                  pageTitle="Upload Warehouse Data"
-                  variant="table"
-                  align="center2"
-                />
-
-                <div className="rounded-2xl p-3">
-                  <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-                    <label
-                      htmlFor="warehouse-file"
-                      className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                    >
-                      Upload File
-                    </label>
-
-                    <input
-                      id="warehouse-file"
-                      type="file"
-                      accept=".xlsx,.xls"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] || null;
-                        setSelectedWarehouseFile(file);
-                      }}
-                    />
-
-                    <span className="block w-full truncate px-2 text-xs text-gray-500">
-                      {selectedWarehouseFile?.name || "No File Chosen"}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const link = document.createElement("a");
-                      link.href = "/warehouse-information-template.xlsx";
-                      link.download = "Warehouse Information.xlsx";
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
-                    className="mx-auto mt-6 flex items-center gap-1 text-[13px] font-medium text-[#5EA68E] hover:text-[#4a907a]"
-                  >
-                    Download format here
-                  </button>
-                </div>
-
-                <div className="mt-2 flex justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedWarehouseFile(null);
-                      setShowWarehouseUpload(false);
-                    }}
-                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedWarehouseFile) {
-                        setModalMessage("Please select a file first");
-                        setShowModal(true);
-                        return;
-                      }
-                      void handleWarehouseUpload(selectedWarehouseFile);
-                    }}
-                    className="rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95 disabled:opacity-60"
-                    disabled={warehouseLoading}
-                  >
-                    {warehouseLoading ? "Uploading..." : "Upload File"}
-                  </button>
-                </div>
-              </div>
+              <WarehouseMultiCountryUpload
+                countryName={countryName}
+                onClose={() => setShowWarehouseUpload(false)}
+                onComplete={() => {
+                  setShowWarehouseUpload(false);
+                  void fetchWarehouseData();
+                  setModalMessage("Warehouse file uploaded successfully");
+                  setShowModal(true);
+                }}
+              />
             </div>
           </div>
         </div>

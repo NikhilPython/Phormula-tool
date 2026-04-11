@@ -16,7 +16,7 @@ import { useGetUserDataQuery } from '@/lib/api/profileApi'
 
 interface SkuRow {
   [key: string]: string | number | undefined
-  sku?: string
+  SKU?: string
   'Product Name'?: string
   'Inventory at Month End'?: string | number
   'Inventory Coverage Ratio Before Dispatch'?: string | number
@@ -47,9 +47,9 @@ const monthNames = [
 ] as const
 
 const DISPLAYED_COLUMNS = [
-  'Sno.',
+  'S. No.',
   'Product Name',
-  'sku',
+  'SKU',
   'Inventory at Month End',
   'Inventory Coverage Ratio Before Dispatch',
   'Dispatch',
@@ -88,9 +88,11 @@ function normalizeHeader(header: unknown): string {
     .toLowerCase()
 
   const headerMap: Record<string, string> = {
-    sno: 'Sno.',
-    'sno.': 'Sno.',
-    sku: 'sku',
+    sno: 'S. No.',
+    'sno.': 'S. No.',
+    's. no': 'S. No.',
+    's. no.': 'S. No.',
+    sku: 'SKU',
     'product name': 'Product Name',
     'inventory at month end': 'Inventory at Month End',
     'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
@@ -125,7 +127,7 @@ function findHeaderRowIndex(rows: any[][]): number {
       (
         normalized.includes('Dispatch') ||
         normalized.includes('Inventory at Month End') ||
-        normalized.includes('sku')
+        normalized.includes('SKU')
       )
     )
   })
@@ -133,7 +135,7 @@ function findHeaderRowIndex(rows: any[][]): number {
 
 function isMeaningfulRow(row: SkuRow): boolean {
   const productName = String(row['Product Name'] ?? '').trim()
-  const sku = String(row['sku'] ?? '').trim()
+  const sku = String(row['SKU'] ?? '').trim()
   const inventoryAtMonthEnd = row['Inventory at Month End']
   const dispatch = row['Dispatch']
   const currentInventoryDispatch = row['Current Inventory + Dispatch']
@@ -159,7 +161,7 @@ function toNumber(value: unknown): number {
 function buildOthersRow(rows: SkuRow[]): SkuRow {
   return {
     'Product Name': 'Others',
-    sku: '',
+    'SKU': '',
     'Inventory at Month End': rows.reduce((sum, row) => sum + toNumber(row['Inventory at Month End']), 0),
     'Inventory Coverage Ratio Before Dispatch': rows.reduce(
       (sum, row) => sum + toNumber(row['Inventory Coverage Ratio Before Dispatch']),
@@ -216,27 +218,29 @@ export default function DispatchPage({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [skuData, setSkuData] = useState<SkuRow[]>([])
-  const [showForecastMessage, setShowForecastMessage] = useState(false)
+  // const [showForecastMessage, setShowForecastMessage] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
-
+  const [noData, setNoData] = useState(false)
   const monthdps = monthNames as unknown as string[]
 
   async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
     if (!monthdpValue || !yeardpValue) {
       setError('Please select both month and year.')
+      setNoData(false)
       return
     }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null
     if (!token) {
       setError('Authorization token is missing')
+      setNoData(false)
       return
     }
 
     setLoading(true)
     setError('')
-    setShowForecastMessage(false)
+    setNoData(false)
     setSkuData([])
 
     try {
@@ -265,8 +269,9 @@ export default function DispatchPage({
           msg.includes('No readable UK/US dispatch data found') ||
           msg.includes('No UK or US dispatch files found')
         ) {
-          setShowForecastMessage(true)
           setError('')
+          setNoData(true)
+          setSkuData([])
           return
         }
 
@@ -294,13 +299,17 @@ export default function DispatchPage({
       })
 
       if (!rows || rows.length === 0) {
-        throw new Error('Dispatch file format is invalid')
+        setNoData(true)
+        setSkuData([])
+        return
       }
 
       const headerRowIndex = findHeaderRowIndex(rows)
 
       if (headerRowIndex === -1) {
-        throw new Error('Could not find dispatch header row')
+        setNoData(true)
+        setSkuData([])
+        return
       }
 
       const rawHeaders = (rows[headerRowIndex] || []).map((h) => normalizeHeader(h))
@@ -325,16 +334,18 @@ export default function DispatchPage({
         })
         .filter((row) => isMeaningfulRow(row))
 
-      console.log('Dispatch sheet:', sheetName)
-      console.log('Detected header row index:', headerRowIndex)
-      console.log('Dispatch headers:', rawHeaders)
-      console.log('First parsed row:', jsonData[0])
-      console.log('Dispatch sample rows:', jsonData.slice(0, 5))
+      if (!jsonData.length) {
+        setNoData(true)
+        setSkuData([])
+        return
+      }
 
       setSkuData(jsonData)
+      setNoData(false)
     } catch (err: any) {
       console.error('Fetch error:', err)
       setError(err?.message ?? 'Unknown error')
+      setNoData(false)
       setSkuData([])
     } finally {
       setLoading(false)
@@ -369,7 +380,7 @@ export default function DispatchPage({
   function isTotalRow(row: SkuRow) {
     return (
       String(row['Product Name'] ?? '').trim().toLowerCase() === 'total' ||
-      String(row.sku ?? '').trim().toLowerCase() === 'total'
+      String(row['SKU'] ?? '').trim().toLowerCase() === 'total'
     )
   }
 
@@ -389,197 +400,78 @@ export default function DispatchPage({
 
   const displayedColumns = [...DISPLAYED_COLUMNS]
 
-  // function handleExportToExcel() {
-  //   const worksheetData = skuData.map((row, index) => {
-  //     const formattedRow: Record<string, string | number> = {
-  //       'Sno.': isTotalRow(row) ? '' : index + 1,
-  //     }
-
-  //     displayedColumns.forEach((col) => {
-  //       if (col === 'Sno.') return
-
-  //       if (col === 'sku' && isTotalRow(row)) {
-  //         formattedRow[col] = ''
-  //       } else if (
-  //         isTotalRow(row) &&
-  //         [
-  //           'Inventory at Month End',
-  //           'Dispatch',
-  //           'Current Inventory + Dispatch',
-  //           'Inventory Coverage Ratio Before Dispatch',
-  //         ].includes(col)
-  //       ) {
-  //         formattedRow[col] = calculateColumnTotal(col)
-  //       } else {
-  //         const v = row[col]
-  //         formattedRow[col] =
-  //           typeof v === 'number' || typeof v === 'string' ? v : ''
-  //       }
-  //     })
-
-  //     return formattedRow
-  //   })
-
-  //   const worksheet = XLSX.utils.json_to_sheet(worksheetData)
-
-  //   if (worksheet['!ref']) {
-  //     const range = XLSX.utils.decode_range(worksheet['!ref'])
-  //     for (let R = range.s.r; R <= range.e.r; ++R) {
-  //       for (let C = range.s.c; C <= range.e.c; ++C) {
-  //         const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
-  //         const cell = (worksheet as any)[cellAddress]
-  //         if (cell && typeof cell.v === 'number') {
-  //           cell.z = '#,##0.##'
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   const workbook = XLSX.utils.book_new()
-  //   XLSX.utils.book_append_sheet(workbook, worksheet, 'Dispatch')
-  //   XLSX.writeFile(workbook, `Dispatch Report ${monthdp}-${yeardp}.xlsx`)
-  // }
-
   function handleExportToExcel() {
     const exportRows = skuData.map((row, index) => {
       const formattedRow: Record<string, string | number> = {
-        "Sno.": isTotalRow(row) ? "" : index + 1,
-      };
+        'S. No.': isTotalRow(row) ? '' : index + 1,
+      }
 
       displayedColumns.forEach((col) => {
-        if (col === "Sno.") return;
+        if (col === 'S. No.') return
 
-        if (col === "sku" && isTotalRow(row)) {
-          formattedRow["SKU"] = "";
-          return;
+        if (col === 'SKU' && isTotalRow(row)) {
+          formattedRow['SKU'] = ''
+          return
         }
 
         if (
           isTotalRow(row) &&
           [
-            "Inventory at Month End",
-            "Dispatch",
-            "Current Inventory + Dispatch",
-            "Inventory Coverage Ratio Before Dispatch",
+            'Inventory at Month End',
+            'Dispatch',
+            'Current Inventory + Dispatch',
+            'Inventory Coverage Ratio Before Dispatch',
           ].includes(col)
         ) {
-          formattedRow[col] = calculateColumnTotal(col);
-          return;
+          formattedRow[col] = calculateColumnTotal(col)
+          return
         }
 
-        if (isTotalRow(row) && col === "Product Name") {
-          formattedRow[col] = "Total";
-          return;
+        if (isTotalRow(row) && col === 'Product Name') {
+          formattedRow[col] = 'Total'
+          return
         }
 
-        const v = row[col];
-        formattedRow[col === "sku" ? "SKU" : col] =
-          typeof v === "number" || typeof v === "string" ? v : "";
-      });
+        const v = row[col]
+        formattedRow[col] =
+          typeof v === 'number' || typeof v === 'string' ? v : ''
+      })
 
-      return formattedRow;
-    });
+      return formattedRow
+    })
 
     void exportDispatchExcel({
       filename: `Dispatch Report ${monthdp}-${yeardp}.xlsx`,
-      titleLine: `Amazon ${countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()
+      titleLine: `Amazon ${countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()
         } - Dispatch Report - ${monthdp} ${yeardp}`,
       titleCountry:
-        countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase(),
-      platformLabel: "Phormula",
+        countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase(),
+      platformLabel: 'Phormula',
       periodLabel: `${monthdp} ${yeardp}`,
       companyName,
       brandName,
       dataRows: exportRows,
-    });
+    })
   }
-
-  useEffect(() => {
-    if (!embedded || typeof window === 'undefined') return
-
-    const handleRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<{ month?: string; year?: string }>
-      const nextMonth = customEvent.detail?.month
-      const nextYear = customEvent.detail?.year
-
-      if (!nextMonth || !nextYear) return
-
-      setMonthDp(nextMonth)
-      setYearDp(nextYear)
-      void fetchDispatchFile(nextMonth, nextYear)
-    }
-
-    const handleDownload = () => {
-      handleExportToExcel()
-    }
-
-    window.addEventListener('dispatch-report-refresh', handleRefresh as EventListener)
-    window.addEventListener('dispatch-report-download', handleDownload)
-
-    return () => {
-      window.removeEventListener('dispatch-report-refresh', handleRefresh as EventListener)
-      window.removeEventListener('dispatch-report-download', handleDownload)
-    }
-  }, [embedded, countryName, skuData, monthdp, yeardp])
-
-  // const tableRows = skuData.map((row, index) => {
-  //   const isTotal = isTotalRow(row)
-
-  //   const obj: Record<string, any> = {
-  //     __isTotal: isTotal,
-  //     sno: isTotal ? '' : index + 1,
-  //   }
-
-  //   displayedColumns.forEach((col) => {
-  //     if (col === 'Sno.') return
-
-  //     if (
-  //       isTotal &&
-  //       [
-  //         'Inventory at Month End',
-  //         'Dispatch',
-  //         'Current Inventory + Dispatch',
-  //         'Inventory Coverage Ratio Before Dispatch',
-  //       ].includes(col)
-  //     ) {
-  //       obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
-  //       return
-  //     }
-
-  //     if (isTotal) {
-  //       if (col === 'sku') {
-  //         obj[col] = ''
-  //         return
-  //       }
-  //       if (col === 'Product Name') {
-  //         obj[col] = 'Total'
-  //         return
-  //       }
-  //     }
-
-  //     const v = row[col]
-  //     obj[col] =
-  //       typeof v === 'number'
-  //         ? v.toLocaleString('en-US')
-  //         : v !== undefined && v !== null
-  //           ? String(v)
-  //           : ''
-  //   })
-
-  //   return obj
-  // })
 
   const tableRows = useMemo(() => {
     const totalRow = skuData.find((row) => isTotalRow(row))
-    const nonTotalRows = skuData.filter((row) => !isTotalRow(row))
+
+    const sortedRows = [...skuData]
+      .filter((row) => !isTotalRow(row))
+      .sort((a, b) => {
+        const valA = Number(a['Inventory at Month End'] ?? 0)
+        const valB = Number(b['Inventory at Month End'] ?? 0)
+        return valB - valA
+      })
 
     let rowsForDisplay: SkuRow[] = []
 
-    if (nonTotalRows.length <= 9) {
-      rowsForDisplay = [...nonTotalRows]
+    if (sortedRows.length <= 9) {
+      rowsForDisplay = [...sortedRows]
     } else {
-      const firstNine = nonTotalRows.slice(0, 9)
-      const remainingRows = nonTotalRows.slice(9)
+      const firstNine = sortedRows.slice(0, 9)
+      const remainingRows = sortedRows.slice(9)
       const othersRow = buildOthersRow(remainingRows)
 
       rowsForDisplay = [...firstNine, othersRow]
@@ -600,7 +492,7 @@ export default function DispatchPage({
       }
 
       displayedColumns.forEach((col) => {
-        if (col === 'Sno.') return
+        if (col === 'S. No.') return
 
         if (
           isTotal &&
@@ -616,7 +508,7 @@ export default function DispatchPage({
         }
 
         if (isTotal) {
-          if (col === 'sku') {
+          if (col === 'SKU') {
             obj[col] = ''
             return
           }
@@ -641,25 +533,38 @@ export default function DispatchPage({
 
   const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
     const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
+    const isSNo = col === 'S. No.'
+    const isProduct = col === 'Product Name'
+    const isSku = col === 'SKU'
+    const isInventoryMonthEnd = col === 'Inventory at Month End'
+    const isDispatch = col === 'Dispatch'
+    const isCurrentInventoryDispatch = col === 'Current Inventory + Dispatch'
 
     return {
-      key: col === 'Sno.' ? 'sno' : col,
-      header: isCoverage ? (
-        <div className="one-line-ellipsis" title={col}>
-          {col}
-        </div>
-      ) : (
-        col
-      ),
-      width: isCoverage ? '260px' : col === 'Sno.' ? '60px' : undefined,
+      key: isSNo ? 'sno' : col,
+      header: col,
+      width: isSNo
+        ? '60px'
+        : isProduct
+          ? '220px'
+          : isSku
+            ? '180px'
+            : isCoverage
+              ? '300px'
+              : isInventoryMonthEnd
+                ? '220px'
+                : isDispatch
+                  ? '140px'
+                  : isCurrentInventoryDispatch
+                    ? '250px'
+                    : '160px',
       cellClassName:
-        col === 'Product Name'
-          ? 'text-left whitespace-nowrap'
-          : isCoverage
-            ? 'text-center whitespace-nowrap'
-            : col === 'Sno.'
-              ? 'text-center whitespace-nowrap'
-              : 'text-center',
+        isProduct
+          ? 'text-left'
+          : isSNo
+            ? 'text-center'
+            : 'text-center',
+      headerClassName: 'text-center whitespace-normal break-words',
     }
   })
 
@@ -1001,11 +906,11 @@ export default function DispatchPage({
               valueMode="lower"
             />
 
-            <div className="centralised-fetch-button">
+            {/* <div className="centralised-fetch-button">
               <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
                 Get Report
               </button>
-            </div>
+            </div> */}
 
             <DownloadIconButton onClick={handleExportToExcel} size="md" />
           </div>
@@ -1026,32 +931,26 @@ export default function DispatchPage({
             Run Now <i className="fa-solid fa-chevron-right"></i>
           </button>
         </div>
-      ) : showForecastMessage ? (
-        <div className="forecast-banner lg:w-[40%] w-full">
-          <i className="fa-solid fa-circle-exclamation"></i>
-          <span>Run the Inventory Forecast to view dispatch reports.</span>
-          <button className="forecast-action" onClick={handleRedirectToForecast}>
-            Run Now <i className="fa-solid fa-chevron-right"></i>
-          </button>
-        </div>
       ) : (
         <div className="forecast-data">
-          {skuData.length > 0 ? (
-            <DataTable
-              columns={columns}
-              data={tableRows}
-              paginate={false}
-              scrollY
-              maxHeight="90vh"
-              stickyHeader
-              loading={loading}
-              rowClassName={(row: any) =>
-                row.__isTotal ? 'bg-[#D9D9D9] font-bold' : ''
-              }
-            />
-          ) : (
-            <p>Select Month and Year to see Dispatch!</p>
-          )}
+          <DataTable
+            columns={columns}
+            data={tableRows}
+            paginate={false}
+            scrollY
+            maxHeight="90vh"
+            stickyHeader
+            loading={loading}
+            emptyMessage={
+              noData
+                ? 'No Data Available for selected period'
+                : 'Select Month and Year to see Dispatch!'
+            }
+            rowClassName={(row: any) =>
+              row.__isTotal ? 'bg-[#D9D9D9] font-bold' : ''
+            }
+            tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
+          />
         </div>
       )}
 

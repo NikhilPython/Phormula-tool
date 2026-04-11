@@ -1227,60 +1227,85 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const displayRows = useMemo(() => {
     if (!rows || rows.length === 0) return [];
 
-    // Separate out any backend GRAND TOTAL row (if present)
+    // Separate backend GRAND TOTAL row (if present)
     const grandTotalRow = rows.find(isTotalRow) || null;
 
-    // Only actual products (exclude total rows)
+    // Only actual product rows
     const dataRows = rows.filter((r) => !isTotalRow(r));
 
-    // ✅ Sort products by "Inventory at month end" (Total) DESC
-    // Using ending_total since that is the month-end total shown in your group.
+    // Sort by absolute sold_total desc, same as your current UI
     const sortedDataRows = [...dataRows].sort((a, b) => {
       return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
     });
 
-    // Take first 9 data rows
+    // Top 9 rows shown individually
     const top = sortedDataRows.slice(0, 9);
     const remaining = sortedDataRows.slice(9);
 
-    // Keys we should sum for numeric totals
+    // Sum only additive numeric fields.
+    // Exclude inventory_coverage_ratio because it must be recalculated,
+    // not summed.
     const keys = Array.from(
       new Set(
         dataRows.flatMap((r) =>
-          Object.keys(r || {}).filter((k) => isNumericLike(r?.[k]))
+          Object.keys(r || {}).filter(
+            (k) =>
+              isNumericLike(r?.[k]) &&
+              k !== "inventory_coverage_ratio"
+          )
         )
       )
     );
 
     const out: AnyRow[] = [...top];
 
-    // Add OTHERS if there are remaining rows
+    // Build OTHERS row from remaining rows
     if (remaining.length > 0) {
       const others = sumRowForKeys(remaining, keys, {
-        id: '__OTHERS__',
-        msku: 'OTHERS',
-        product_name: `OTHERS`,
+        id: "__OTHERS__",
+        msku: "OTHERS",
+        product_name: "OTHERS",
         __isOthers: true,
       });
+
+      const endingTotal = toNum(others?.ending_total);
+      const soldTotalAbs = Math.abs(toNum(others?.sold_total));
+
+      others.inventory_coverage_ratio =
+        soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
       out.push(others);
     }
 
-    // Add TOTAL at end (prefer backend grand total)
+    // Build TOTAL row
     const total =
       grandTotalRow
-        ? { ...grandTotalRow, id: '__TOTAL__', __isTotal: true }
-        : sumRowForKeys(dataRows, keys, {
-          id: '__TOTAL__',
-          msku: 'GRAND TOTAL',
-          product_name: 'GRAND TOTAL',
+        ? {
+          ...grandTotalRow,
+          id: "__TOTAL__",
           __isTotal: true,
-        });
+        }
+        : (() => {
+          const totalRow = sumRowForKeys(dataRows, keys, {
+            id: "__TOTAL__",
+            msku: "GRAND TOTAL",
+            product_name: "GRAND TOTAL",
+            __isTotal: true,
+          });
+
+          const endingTotal = toNum(totalRow?.ending_total);
+          const soldTotalAbs = Math.abs(toNum(totalRow?.sold_total));
+
+          totalRow.inventory_coverage_ratio =
+            soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
+          return totalRow;
+        })();
 
     out.push(total);
 
     return out;
   }, [rows]);
-
 
   const totalRow = useMemo(() => {
     const r = displayRows?.find((x) => x?.__isTotal === true) || null;
