@@ -12,6 +12,7 @@ Intent = Literal[
     "comparison",
     "report",
     "email",
+    "schedule_email",
 
     "top_skus",
     "loss_making_skus",
@@ -78,3 +79,7 @@ class AgentState(TypedDict, total=False):
     product_match: Optional[str]
     multi_metric: Optional[bool]
     latest_insight_context: Optional[Dict[str, Any]]
+    # memory restore / scheduling
+    restored_from_memory: Optional[bool]
+    schedule_requested: Optional[bool]
+    schedule_payload: Optional[Dict[str, Any]]

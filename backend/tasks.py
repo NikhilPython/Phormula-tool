@@ -440,67 +440,128 @@ def generate_monthly_forecast_files():
 
 #---------------------------------------------  Celery Beat scheduled tasks for AI Agent summaries ---------------------------------------------------------#
 
-def get_users_for_agent_schedules():
-    try:
-        from app.models.user_models import AgentEmailSchedule
+def should_run_now(schedule, now):
+    # -----------------------
+    # TIME MATCH
+    # -----------------------
+    if now.hour != schedule.preferred_hour:
+        return False
 
-        schedules = (
-            db.session.query(
-                AgentEmailSchedule.user_id,
-                AgentEmailSchedule.country,
-                AgentEmailSchedule.metric_name,
-                AgentEmailSchedule.enabled,
-            )
-            .filter(AgentEmailSchedule.enabled.is_(True))
-            .all()
-        )
+    if abs(now.minute - schedule.preferred_minute) > 5:
+        return False
 
-        return [
-            {
-                "user_id": s.user_id,
-                "country": (s.country or "uk").strip().lower(),
-                "metric_name": s.metric_name or "profit",
-            }
-            for s in schedules
-        ]
+    # -----------------------
+    # DUPLICATE PROTECTION
+    # -----------------------
+    if schedule.last_run_at:
+        last = schedule.last_run_at
 
-    except Exception as e:
-        print(f"[ERROR] get_users_for_agent_schedules failed: {e}")
-        return []
+        # weekly → only once per week
+        if schedule.frequency == "weekly":
+            if (
+                last.isocalendar().year == now.isocalendar().year
+                and last.isocalendar().week == now.isocalendar().week
+            ):
+                return False
 
+        # monthly → only once per month
+        if schedule.frequency == "monthly":
+            if last.year == now.year and last.month == now.month:
+                return False
+
+    # -----------------------
+    # WEEKLY
+    # -----------------------
+    if schedule.frequency == "weekly":
+        return now.weekday() == 0  # Monday
+
+    # -----------------------
+    # MONTHLY
+    # -----------------------
+    if schedule.frequency == "monthly":
+        if getattr(schedule, "day_of_month", None):
+            return now.day == schedule.day_of_month
+        return now.day == 1
+
+    return False
 
 @celery_app.task(name="tasks.run_agent_schedules")
 def run_agent_schedules():
     with flask_app.app_context():
         try:
-            from app.ai_agent.graph import run_agent_for_schedule
+            from datetime import datetime
+            from app.models.user_models import AgentEmailSchedule
+            from app.ai_agent.service import run_agent
+            from app.ai_agent.email_service import send_agent_email
+            from app import db
 
-            schedules = get_users_for_agent_schedules()
+            now = datetime.now()
 
-            processed = set()
+            # 🔥 FETCH FULL SCHEDULES
+            schedules = AgentEmailSchedule.query.filter_by(enabled=True).all()
 
             for schedule in schedules:
                 try:
-                    user_id = schedule["user_id"]
-                    country = schedule["country"]
-                    metric_name = schedule["metric_name"]
-
-                    dedupe_key = (user_id, country)
-                    if dedupe_key in processed:
+                    # -----------------------
+                    # STEP 1: SHOULD RUN?
+                    # -----------------------
+                    if not should_run_now(schedule, now):
                         continue
-                    processed.add(dedupe_key)
 
-                    run_agent_for_schedule(
-                        user_id=user_id,
-                        country=country,
-                        metric_name=metric_name
+                    # -----------------------
+                    # STEP 2: VALIDATE QUERY
+                    # -----------------------
+                    if not schedule.query:
+                        print(f"[WARN] Missing query for schedule_id={schedule.id}")
+                        continue
+
+                    # -----------------------
+                    # STEP 3: RUN AGENT
+                    # -----------------------
+                    result = run_agent(
+                        user_id=schedule.user_id,
+                        country=schedule.country,
+                        user_query=schedule.query
                     )
 
-                    print(f"[INFO] Agent schedule run for user_id={user_id}, country={country}")
+                    # -----------------------
+                    # STEP 4: FORMAT EMAIL
+                    # -----------------------
+                    response_text = result.get("response", "")
+
+                    html_body = f"""
+                    <html><body style='font-family:Arial,sans-serif;color:#1f2937;'>
+                    <p>{response_text.replace(chr(10), '<br>')}</p>
+                    </body></html>
+                    """
+
+                    # -----------------------
+                    # STEP 5: SEND EMAIL
+                    # -----------------------
+                    subject = f"Scheduled Report - {schedule.query[:60]}"
+
+                    send_agent_email(
+                        user_id=schedule.user_id,
+                        subject=subject,
+                        html_body=html_body
+                    )
+
+                    # -----------------------
+                    # STEP 6: MARK AS SENT
+                    # -----------------------
+                    schedule.last_run_at = now
+                    db.session.add(schedule)
+                    db.session.commit()
+
+                    print(
+                        f"[INFO] Scheduled email sent → user={schedule.user_id}, schedule_id={schedule.id}"
+                    )
 
                 except Exception as e:
-                    print(f"[ERROR] Agent schedule failed for user={schedule}: {e}")
+                    db.session.rollback()
+                    print(f"[ERROR] Schedule failed id={schedule.id}: {e}")
 
         except Exception as e:
-            print(f"[ERROR] run_agent_schedules crashed: {e}")            
+            print(f"[ERROR] run_agent_schedules crashed: {e}")
+
             

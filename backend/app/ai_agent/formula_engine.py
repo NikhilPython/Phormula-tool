@@ -412,6 +412,14 @@ OVERALL_MONTH_METRICS = [
     "cm2_profit",
 ]
 
+OVERALL_MONTH_METRICS_2 = [
+    "asp",
+    "advertising_total",
+    "platform_fee",
+    "acos",
+    "cm2_profit",
+]
+
 PRODUCT_MONTH_METRICS = [
     "total_quantity",
     "net_sales",

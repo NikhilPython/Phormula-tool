@@ -91,7 +91,7 @@ class Config:
             },
             "run-agent-summary-every-hour": {
                 "task": "tasks.run_agent_schedules",
-                "schedule": 3600.0,
+                "schedule": 300.0,
             },
             # "generate-forecast-every-month-1st-11-30am": {
             #     "task": "tasks.generate_monthly_forecast_files",

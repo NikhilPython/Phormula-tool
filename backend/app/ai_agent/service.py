@@ -43,11 +43,20 @@ def run_agent(
 
     result = _graph.invoke(state)
 
-    # ✅ save conversation
     save_chat_turn(
         user_id=user_id,
         message=user_query,
-        response=result.get("final_response", "")
+        response=result.get("final_response", ""),
+        meta={
+            "intent": result.get("intent"),
+            "metric_name": result.get("metric_name"),
+            "analysis_type": result.get("analysis_type"),
+            "period_parsed": result.get("period_parsed"),
+            "analysis_result": result.get("analysis_result"),
+            "current_metrics": result.get("current_metrics"),
+            "comparison": result.get("comparison"),
+            "sku_analysis": result.get("sku_analysis", []),
+        }
     )
 
     return {
