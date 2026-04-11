@@ -341,6 +341,28 @@ const AppSidebar: React.FC = () => {
 
   const currentMonthYear = getCurrentMonthYear();
 
+  const getNextMonthYearFromRoute = (month: string, year: string) => {
+    const idx = monthNames.indexOf(String(month).toLowerCase());
+    const y = Number(year);
+
+    if (idx === -1 || Number.isNaN(y)) {
+      return { month, year };
+    }
+
+    const nextIdx = (idx + 1) % 12;
+    const nextYear = idx === 11 ? String(y + 1) : String(y);
+
+    return {
+      month: monthNames[nextIdx],
+      year: nextYear,
+    };
+  };
+
+  const forecastParams = getNextMonthYearFromRoute(
+    currentParams.month,
+    currentParams.year
+  );
+
   const ensureSpReportSeedOnce = async (
     baseUrl: string,
     jwtToken: string,
@@ -713,7 +735,7 @@ const AppSidebar: React.FC = () => {
         // },
         {
           name: "Inventory Forecast",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
+          path: `/inventory-forecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}#inventory-forecast`,
         },
         {
           name: "Dispatch Planning",
@@ -721,24 +743,11 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Purchase Order (PO) Planning",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#purchase-order`,
-          // path: ({ countryName }) => {
-          //   const { month, year } = getCurrentMonthYear();
-          //   return `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`;
-          // },
-          // onClick: async () => {
-          //   const { month, year } = getCurrentMonthYear();
-
-          //   await triggerPurchaseOrderApi(
-          //     currentParams.countryName,
-          //     month,
-          //     year
-          //   );
-          // },
+          path: `/inventory-forecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}#purchase-order`,
         },
         {
           name: "P&L Forecast",
-          path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+          path: `/pnlforecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}`,
         },
 
       ],

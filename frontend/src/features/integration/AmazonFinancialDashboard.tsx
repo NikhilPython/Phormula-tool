@@ -162,9 +162,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -191,9 +191,9 @@ function markDone(key: string) {
 }
 
 /** ✅ MTD EMAIL (run once per country in this browser) */
-function lsKeyMtdEmail(country: string) {
-  return `mtdEmailSent:${country}`;
-}
+// function lsKeyMtdEmail(country: string) {
+//   return `mtdEmailSent:${country}`;
+// }
 
 async function sendMtdReportEmail(country: string) {
   return apiJson(`/send-report-email`, {
@@ -203,13 +203,13 @@ async function sendMtdReportEmail(country: string) {
 }
 
 async function ensureMtdEmailSentOnce(country: string) {
-  const key = lsKeyMtdEmail(country);
+  // const key = lsKeyMtdEmail(country);
 
-  if (wasDone(key)) return;
+  // if (wasDone(key)) return;
 
   await sendMtdReportEmail(country);
 
-  markDone(key);
+  // markDone(key);
 }
 
 /** ✅ NEW: hit /amazon_api/inventory/aged with NO params, once per country */
@@ -1132,7 +1132,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
       // ✅ Send MTD email for first-time users
       try {
-        await ensureMtdEmailSentOnce(countryUsed);
+        await sendMtdReportEmail(countryUsed);
       } catch (e) {
         console.error("MTD email send failed", e);
       }
@@ -1433,7 +1433,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       title: "Features",
       comparisons: [
         { label: "5 months comparison", available: true },
-        { label: "Quarterly comparison", available: false },
+        { label: "1 Quarterly comparison", available: true },
         { label: "Yearly comparison", available: false },
       ],
       analytics: [
@@ -1445,8 +1445,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
     12: {
       title: "Features",
       comparisons: [
-        { label: "11 months comparison", available: true },
-        { label: "3 quarterly comparisons", available: true },
+        { label: "11 Months comparison", available: true },
+        { label: "3 Quarterly comparisons", available: true },
         { label: "Yearly comparison", available: false },
       ],
       analytics: [

@@ -130,13 +130,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     const yr = parseInt(String(year), 10);
     if (!Number.isFinite(yr)) return null;
 
-    const nextMonth = fullMonthIndex;
-
-    if (nextMonth <= 11) {
-      return { y: yr, m: nextMonth };
-    }
-
-    return { y: yr + 1, m: 0 };
+    return { y: yr, m: fullMonthIndex };
   }, [month, year]);
 
   const monthColsSorted = useMemo(() => {
@@ -201,16 +195,29 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const tableRows = useMemo(() => {
     const baseRows = forecastData
       .filter((r) => r && r.sku && r.sku !== 'Total')
-      .map((r) => ({
-        product: r['Product Name'] ?? '',
-        sku: r['sku'] ?? '',
-        sold1: Number(r[last3SoldOldestFirst[0]]) || 0,
-        sold2: Number(r[last3SoldOldestFirst[1]]) || 0,
-        sold3: Number(r[last3SoldOldestFirst[2]]) || 0,
-        f1: Number(r[forecast3[0]]) || 0,
-        f2: Number(r[forecast3[1]]) || 0,
-        f3: Number(r[forecast3[2]]) || 0,
-      }));
+      .map((r) => {
+        const sold1 = Number(r[last3SoldOldestFirst[0]]) || 0
+        const sold2 = Number(r[last3SoldOldestFirst[1]]) || 0
+        const sold3 = Number(r[last3SoldOldestFirst[2]]) || 0
+        const f1 = Number(r[forecast3[0]]) || 0
+        const f2 = Number(r[forecast3[1]]) || 0
+        const f3 = Number(r[forecast3[2]]) || 0
+
+        const totalUnits = sold1 + sold2 + sold3 + f1 + f2 + f3
+
+        return {
+          product: r['Product Name'] ?? '',
+          sku: r['sku'] ?? '',
+          sold1,
+          sold2,
+          sold3,
+          f1,
+          f2,
+          f3,
+          totalUnits, // 👈 important for sorting
+        }
+      })
+      .sort((a, b) => b.totalUnits - a.totalUnits) // 🔥 DESCENDING
 
     const first9 = baseRows.slice(0, 9);
     const remaining = baseRows.slice(9);
@@ -228,6 +235,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           f1: acc.f1 + r.f1,
           f2: acc.f2 + r.f2,
           f3: acc.f3 + r.f3,
+          totalUnits: acc.totalUnits + r.sold1 + r.sold2 + r.sold3 + r.f1 + r.f2 + r.f3,
         }),
         {
           product: 'Others',
@@ -238,6 +246,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           f1: 0,
           f2: 0,
           f3: 0,
+          totalUnits: 0,
         }
       );
 
