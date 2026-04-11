@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useModal } from "../../hooks/useModal";
 import { Modal } from "../ui/modal";
@@ -279,6 +279,9 @@ function InfoItem({ id, label, value, required }: InfoItemProps) {
 
 export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: ProfileTab }) {
   const dispatch = useAppDispatch();
+  const suppressTourOnceRef = useRef(false);
+  const hasShownTourRef = useRef(false);
+
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<"personal" | "company" | "done">("personal");
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
@@ -716,20 +719,22 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-  // useEffect(() => {
-  //   const savedSkuStatus = localStorage.getItem("profile_sku_uploaded") === "true";
-  //   setIsSkuUploaded(savedSkuStatus);
-  // }, []);
-
   useEffect(() => {
     if (!data || activeTab !== "personal") return;
 
     const alreadySeen = data?.steps_exists === true;
 
-    // stop showing once Amazon is connected
+    // stop forever once Amazon is connected
     if (isAmazonConnected) return;
 
+    // backend already marked steps as done
     if (alreadySeen) return;
+
+    // do not retrigger after edit/save in same session
+    if (suppressTourOnceRef.current) return;
+
+    // only once per page load / login
+    if (hasShownTourRef.current) return;
 
     const timer = setTimeout(() => {
       const personalEl = document.querySelector("#tour-personal-info");
@@ -749,6 +754,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       ) {
         return;
       }
+
+      hasShownTourRef.current = true;
 
       setTourEnabled(false);
       setTourPhase("overview");
@@ -789,16 +796,21 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     syncStepsSeen();
   }, [data, isAmazonConnected]);
 
+  // const startCompanyEdit = () => {
+  //   setIsCompanyEditMode(true);
+
+  //   setTourEnabled(false);
+  //   setTourPhase("company-form");
+  //   setTourKey((k) => k + 1);
+
+  //   setTimeout(() => {
+  //     setTourEnabled(true);
+  //   }, 150);
+  // };
+
   const startCompanyEdit = () => {
     setIsCompanyEditMode(true);
-
     setTourEnabled(false);
-    setTourPhase("company-form");
-    setTourKey((k) => k + 1);
-
-    setTimeout(() => {
-      setTourEnabled(true);
-    }, 150);
   };
 
   // const introSteps = useMemo(() => {
@@ -1337,6 +1349,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
     try {
       setIsSaving(true);
+      suppressTourOnceRef.current = true;
 
       await postProfileUpdate({
         name: form.name.trim(),
@@ -1358,53 +1371,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-  // const handleSaveCompany = async () => {
-  //   setCompanyTouched({
-  //     brand_name: true,
-  //     company_name: true,
-  //     homeCurrency: true,
-  //     gst_no: true,
-  //     pan_no: true,
-  //     address_building: true,
-  //     address_city: true,
-  //     address_country: true,
-  //     address_state: true,
-  //     address_zipcode: true,
-  //   });
-
-  //   const result = validateCompany();
-  //   if (!result.success) return;
-
-  //   try {
-  //     const payload = {
-  //       brand_name: form.brand_name.trim(),
-  //       company_name: form.company_name.trim(),
-  //       homeCurrency: form.homeCurrency,
-  //       tax_id: {
-  //         gst_no: form.gst_no.trim(),
-  //         pan_no: form.pan_no.trim(),
-  //       },
-  //       address: {
-  //         building: form.address_building.trim(),
-  //         city: form.address_city.trim(),
-  //         country: form.address_country.trim(),
-  //         state: form.address_state.trim(),
-  //         zipcode: form.address_zipcode.trim(),
-  //       },
-  //     };
-
-  //     const res = await updateProfile(payload).unwrap();
-  //     console.log("Profile update response:", res);
-
-  //     await refetch();
-
-  //     setIsCompanyEditMode(false);
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     alert(err?.data?.error || err?.data?.message || "Failed to update company info");
-  //   }
-  // };
-
   const handleSaveCompany = async () => {
     setCompanyTouched({
       brand_name: true,
@@ -1424,6 +1390,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
     try {
       setIsSaving(true);
+      suppressTourOnceRef.current = true;
 
       const payload = {
         brand_name: form.brand_name.trim(),
@@ -1458,27 +1425,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       setIsSaving(false);
     }
   };
-
-  // const saveInlineTarget = async () => {
-  //   const next = Number(draftTarget);
-
-  //   if (!Number.isFinite(next) || next < 0) {
-  //     alert("Please enter a valid number.");
-  //     return;
-  //   }
-
-  //   try {
-  //     setForm((prev) => ({ ...prev, target_sales: String(next) }));
-  //     await updateProfile({ target_sales: next } as any).unwrap();
-  //     await refetch();
-  //     setIsTargetEditMode(false);
-  //     setEditingPid(null);
-  //     setDraftTarget("");
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     alert(err?.data?.message ?? "Failed to update target.");
-  //   }
-  // };
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);

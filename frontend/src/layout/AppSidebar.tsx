@@ -279,7 +279,7 @@ const AppSidebar: React.FC = () => {
 
   const [initialPeriod] = useState(() => {
     const today = new Date();
-    let ranged = "QTD";
+    let ranged = "YTD";
     let month = monthNames[today.getMonth()];
     let year = String(today.getFullYear());
 
@@ -777,22 +777,27 @@ const AppSidebar: React.FC = () => {
 
         {
           name: "Expense Reconcilliation",
-          path: ({ countryName, month, year }) => {
-            const idx = monthNames.indexOf(month.toLowerCase());
-            let prevMonthIdx = idx - 1;
-            let prevYear = Number(year);
-
-            if (prevMonthIdx < 0) {
-              prevMonthIdx = 11; // December
-              prevYear -= 1;
-            }
-
-            const prevMonth = monthNames[prevMonthIdx];
-
-            return `/expense-reconciliation/${encodeURIComponent(
+          path: ({ ranged, countryName, month, year }) =>
+            `/expense-reconciliation/${encodeURIComponent(ranged)}/${encodeURIComponent(
               countryName
-            )}/${encodeURIComponent(prevMonth)}/${encodeURIComponent(prevYear)}`;
-          },
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`
+
+          // path: ({ countryName, month, year }) => {
+          //   const idx = monthNames.indexOf(month.toLowerCase());
+          //   let prevMonthIdx = idx - 1;
+          //   let prevYear = Number(year);
+
+          //   if (prevMonthIdx < 0) {
+          //     prevMonthIdx = 11; // December
+          //     prevYear -= 1;
+          //   }
+
+          //   const prevMonth = monthNames[prevMonthIdx];
+
+          //   return `/expense-reconciliation/${encodeURIComponent(
+          //     countryName
+          //   )}/${encodeURIComponent(prevMonth)}/${encodeURIComponent(prevYear)}`;
+          // },
         }
       ],
     },

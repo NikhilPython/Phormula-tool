@@ -607,12 +607,12 @@ export default function InventoryFlowPage() {
   const DemoDispatchPreview = () => {
     return (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+        {/* <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
           <h3 className="text-base font-semibold text-[#414042]">Dispatch Report Preview</h3>
           <p className="text-sm text-gray-500 mt-1">
             Demo data shown because month/year is NA.
           </p>
-        </div>
+        </div> */}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -647,12 +647,12 @@ export default function InventoryFlowPage() {
   const DemoPurchaseOrderPreview = () => {
     return (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+        {/* <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
           <h3 className="text-base font-semibold text-[#414042]">PO Report Preview</h3>
           <p className="text-sm text-gray-500 mt-1">
             Demo data shown because month/year is NA.
           </p>
-        </div>
+        </div> */}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
