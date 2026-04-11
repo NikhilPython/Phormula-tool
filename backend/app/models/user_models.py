@@ -184,11 +184,22 @@ class AgentEmailSchedule(db.Model):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False, index=True)
     country = Column(String(16), nullable=False, index=True)
-    frequency = Column(String(16), nullable=False, default="daily")
-    enabled = Column(Boolean, nullable=False, default=True)
+
+    frequency = Column(String(16), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+
     preferred_hour = Column(Integer, nullable=False, default=9)
     preferred_minute = Column(Integer, nullable=False, default=0)
-    metric_name = Column(String(32), nullable=False, default="profit")
+
+    metric_name = Column(String(32), nullable=True)
+
+    query = Column(Text, nullable=True)
+    analysis_type = Column(String(32), nullable=True)
+    period_payload = Column(JSON, nullable=True)
+
+    day_of_month = Column(Integer, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -248,12 +259,19 @@ class StoredFile(db.Model):
 class ChatHistory(db.Model):
     __tablename__ = 'chat_history'
     __bind_key__ = 'chatbot'  
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=False)
+
     message = db.Column(db.String(1000), nullable=False)
-    response = db.Column(db.String(2000), nullable=False)   
+    response = db.Column(db.String(2000), nullable=False)
+
     like_response = db.Column(db.String(2000))
     dislike_response = db.Column(db.String(2000))
+
+    # 🔥 ADD THIS
+    meta = db.Column(db.Text, nullable=True)
+
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class improvment(db.Model):
