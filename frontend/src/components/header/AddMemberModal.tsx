@@ -19,6 +19,15 @@ const ROLE_OPTIONS = [
 
 type RoleOption = (typeof ROLE_OPTIONS)[number]["value"];
 
+type UserDataResponse = {
+  owner_email?: string;
+};
+
+type AddMemberErrorResponse = {
+  error?: string;
+  message?: string;
+};
+
 const COUNTRY_OPTIONS = [
   { label: "United States", value: "US" },
   { label: "United Kingdom", value: "UK" },
@@ -66,17 +75,20 @@ function SectionAccessGrid({
       case "FINANCE_DASHBOARDS":
         return {
           title: "Finance Dashboards",
-          subtitle: "Financial Dashboard, P&L Breakdown, Cash Flow, SKU wise Profit, AI Insights",
+          subtitle:
+            "Financial Dashboard, P&L Breakdown, Cash Flow, SKU wise Profit, AI Insights",
         };
       case "BUSINESS_INTELLIGENCE":
         return {
           title: "Business Intelligence",
-          subtitle: "AI Insights, Inventory Forecast, Dispatch Planing, Purchase Order , P&L Forecast",
+          subtitle:
+            "AI Insights, Inventory Forecast, Dispatch Planing, Purchase Order , P&L Forecast",
         };
       case "INVENTORY_PLANNING":
         return {
           title: "Inventory Planning",
-          subtitle: "Input Cost, Inventory Reconciliation, Expenses Reconciliation",
+          subtitle:
+            "Input Cost, Inventory Reconciliation, Expenses Reconciliation",
         };
       default:
         return {
@@ -153,7 +165,9 @@ export default function AddMemberModal({
   const [success, setSuccess] = useState<string>("");
 
   const { data: userData } = useGetUserDataQuery();
-  const ownerEmail = (userData as any)?.owner_email?.toLowerCase?.() || "";
+  const ownerEmail = (
+    (userData as UserDataResponse | undefined)?.owner_email ?? ""
+  ).toLowerCase();
 
   useEffect(() => {
     if (!isOpen) {
@@ -234,10 +248,12 @@ export default function AddMemberModal({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data: AddMemberErrorResponse = await res
+        .json()
+        .catch(() => ({} as AddMemberErrorResponse));
 
       if (!res.ok) {
-        setError(data?.error || data?.message || "Failed to add member");
+        setError(data.error || data.message || "Failed to add member");
         return;
       }
 
@@ -250,8 +266,8 @@ export default function AddMemberModal({
       setTimeout(() => {
         onClose();
       }, 1200);
-    } catch (e: any) {
-      setError(e?.message || "Something went wrong");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -367,7 +383,7 @@ export default function AddMemberModal({
             <IoInformationCircleOutline className="text-charcoal-500 flex-shrink-0 text-base" />
             <span>
               Members can only view the sections you grant access to. A
-              temporary password will be auto-generated and sent to the member's
+              temporary password will be auto-generated and sent to the member
               email.
             </span>
           </div>
