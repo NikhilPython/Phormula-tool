@@ -747,7 +747,7 @@ export default function CurrentInventorySection({
       },
       {
         key: "coverageMonths",
-        header: "Inventory Coverage ratio (In Months)",
+        header: "Coverage Ratio (In Months)",
         width: responsiveWidth,
         cellClassName: "text-center",
         headerClassName: "break-words",
