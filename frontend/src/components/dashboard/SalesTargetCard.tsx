@@ -673,7 +673,7 @@ export default function SalesTargetCard({
         </div>
 
         {/* Reimbursement Section */}
-        <div className="mt-6 2xl:mt-7 px-3 pt-2 pb-0">
+        <div className="min-[1700px]:mt-7 px-3 pt-2 pb-0">
           <div className="flex items-center justify-center gap-2">
             <div className="text-[10px] 2xl:text-xs text-charcoal-500">
               Monthly Reimbursement
@@ -755,7 +755,7 @@ export default function SalesTargetCard({
             </div>
           </div>
 
-          <div className="mt-3">
+          <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
               <span className="text-charcoal-500">
                 {toApostropheLabel(reimbPrevLabel)}{" "}
