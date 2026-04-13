@@ -68,12 +68,29 @@ const normalizeProductSlug = (slug?: string) => {
 const normalizeCountryKey = (key: string): CountryKey => {
   const lower = key.toLowerCase();
 
-  if (lower.startsWith("global")) return "global";
-  if (lower.startsWith("uk")) return "uk";
-  if (lower.startsWith("us")) return "us";
-  if (lower.startsWith("ca")) return "ca" as CountryKey;
+  if (lower === "global" || lower.startsWith("global_")) return "global";
+  if (lower === "uk" || lower.startsWith("uk")) return "uk";
+  if (lower === "us") return "us";
+  if (lower === "ca") return "ca" as CountryKey;
 
   return lower as CountryKey;
+};
+
+const resolveSourceDataKey = (
+  sourceData: Record<string, any>,
+  country: string
+): string | null => {
+  if (!sourceData) return null;
+
+  if (sourceData[country]) return country;
+
+  const normalizedTarget = normalizeCountryKey(country);
+
+  const exactNormalizedMatch = Object.keys(sourceData).find(
+    (key) => normalizeCountryKey(key) === normalizedTarget
+  );
+
+  return exactNormalizedMatch || null;
 };
 
 const months = [
@@ -169,9 +186,7 @@ const findCountryKeyFor = (
   sourceData: Record<string, any>,
   target: string
 ) => {
-  const t = target.toLowerCase();
-  const keys = Object.keys(sourceData || {});
-  return keys.find((k) => normalizeCountryKey(k) === t) || null;
+  return resolveSourceDataKey(sourceData, target);
 };
 
 const getBestPerformanceForCurrentView = ({
@@ -185,13 +200,18 @@ const getBestPerformanceForCurrentView = ({
 }): BestPerformance | undefined => {
   if (!sourceData) return undefined;
 
-  const key =
+  const resolvedKey =
     countryForApi === "global"
-      ? globalKey
-      : (findCountryKeyFor(sourceData, countryForApi) as CountryKey | null);
+      ? resolveSourceDataKey(sourceData, globalKey) ||
+      resolveSourceDataKey(sourceData, "global")
+      : resolveSourceDataKey(sourceData, countryForApi);
 
-  const monthly: MonthDatum[] = key ? sourceData[key] || [] : [];
-  return computeBestPerformance(Array.isArray(monthly) ? monthly : []);
+  const monthly: MonthDatum[] =
+    resolvedKey && Array.isArray(sourceData[resolvedKey])
+      ? sourceData[resolvedKey]
+      : [];
+
+  return computeBestPerformance(monthly);
 };
 
 const currencySymbolFromCode = (code: string) => {
@@ -276,43 +296,43 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const [selectedProductName, setSelectedProductName] =
     useState(initialProductName);
 
-    const routeCountryName = (params?.countryName as string) || undefined;
+  const routeCountryName = (params?.countryName as string) || undefined;
   const monthParam = (params?.month as string) || undefined;
   const yearParam = (params?.year as string) || undefined;
 
   const isPreviewMode =
-  String(embedded ? selectedMonthProp : monthParam).toUpperCase() === "NA" &&
-  String(embedded ? selectedYearProp : yearParam).toUpperCase() === "NA";
+    String(embedded ? selectedMonthProp : monthParam).toUpperCase() === "NA" &&
+    String(embedded ? selectedYearProp : yearParam).toUpperCase() === "NA";
 
   useEffect(() => {
-  if (!embedded) return;
+    if (!embedded) return;
 
-  setSelectedProductName(
-    isPreviewMode ? (initialProductName || "Demo Product") : (initialProductName || "")
-  );
-  setSelectedSku(null);
-  setSkuInsights({});
-  setIsDrawerOpen(false);
-}, [
-  embedded,
-  initialProductName,
-  rangeProp,
-  selectedMonthProp,
-  selectedQuarterProp,
-  selectedYearProp,
-  countryNameProp,
-  isPreviewMode,
-]);
+    setSelectedProductName(
+      isPreviewMode ? (initialProductName || "Demo Product") : (initialProductName || "")
+    );
+    setSelectedSku(null);
+    setSkuInsights({});
+    setIsDrawerOpen(false);
+  }, [
+    embedded,
+    initialProductName,
+    rangeProp,
+    selectedMonthProp,
+    selectedQuarterProp,
+    selectedYearProp,
+    countryNameProp,
+    isPreviewMode,
+  ]);
 
-  
+
 
   const productname = isPreviewMode
-  ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
-  : embedded
-    ? selectedProductName
-    : initialProductName || urlProductName || "";
+    ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
+    : embedded
+      ? selectedProductName
+      : initialProductName || urlProductName || "";
 
-  
+
 
   const countryName = embedded ? countryNameProp : routeCountryName;
 
@@ -345,7 +365,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   const platformCountryName = platformToCountryName(activePlatform);
 
-  
+
 
   const profileHomeCurrency = (
     userData?.homeCurrency || "USD"
@@ -476,17 +496,17 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     setSelectedCountries((prev) => {
       if (Object.keys(prev).length > 0) return prev;
 
-      const initial: Record<CountryKey, boolean> = {
-        [globalKey]: true,
-      } as Record<CountryKey, boolean>;
+      const initial: Record<string, boolean> = {
+        global: true,
+      };
 
       connectedCountries.forEach((c) => {
         initial[c] = true;
       });
 
-      return initial;
+      return initial as Record<CountryKey, boolean>;
     });
-  }, [globalKey, connectedCountries]);
+  }, [connectedCountries]);
 
   const years = useMemo(
     () => Array.from({ length: 2 }, (_, i) => new Date().getFullYear() - i),
@@ -818,18 +838,22 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     const labels = Array.from(allMonthsSet).sort(sortByCalendarMonth);
 
     const getMetric = (
-      country: CountryKey,
+      country: string,
       month: string,
       metric: keyof MonthDatum
     ) => {
-      const countryArr = (sourceData as any)[country];
-      const monthly: MonthDatum[] = Array.isArray(countryArr)
-        ? countryArr
+      const resolvedKey = resolveSourceDataKey(sourceData, country);
+
+      if (!resolvedKey) return 0;
+
+      const monthly: MonthDatum[] = Array.isArray(sourceData[resolvedKey as CountryKey])
+        ? sourceData[resolvedKey as CountryKey]
         : [];
+
       const found = monthly.find((m) => m.month === month);
 
       if (!found) return 0;
-      return found[metric];
+      return found[metric] ?? 0;
     };
 
     const makeDataset = (
@@ -871,8 +895,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         visibleCountries.push("global");
         visibleCountries.push("uk");
       } else {
-        if (selectedCountries[globalKey] ?? true) {
-          visibleCountries.push(globalKey);
+        const globalDataKey =
+          resolveSourceDataKey(sourceData, globalKey) ||
+          resolveSourceDataKey(sourceData, "global");
+
+        if (globalDataKey && (selectedCountries["global"] ?? true)) {
+          visibleCountries.push(globalDataKey as CountryKey);
         }
 
         visibleCountries.push(
@@ -985,7 +1013,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             },
           },
           grid: {
-            display: false, 
+            display: false,
             drawBorder: false,
           },
         },
@@ -1018,11 +1046,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   };
 
   useEffect(() => {
-  if (!isPreviewMode) return;
-  setData(DUMMY_PRODUCTWISE_DATA);
-  setError("");
-  setLoading(false);
-}, [isPreviewMode]);
+    if (!isPreviewMode) return;
+    setData(DUMMY_PRODUCTWISE_DATA);
+    setError("");
+    setLoading(false);
+  }, [isPreviewMode]);
 
   const cards = useMemo(() => {
     const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;

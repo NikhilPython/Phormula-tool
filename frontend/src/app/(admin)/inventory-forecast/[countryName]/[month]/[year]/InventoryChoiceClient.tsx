@@ -15,6 +15,7 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import { IoMdLock } from 'react-icons/io';
+import IntegrationsModal from '@/features/integration/IntegrationsModal';
 
 type UploadItem = {
   filename?: string;
@@ -38,6 +39,9 @@ const TAB_TO_HASH: Record<InventoryFlowTab, string> = {
   dispatch: 'dispatch',
   purchaseOrder: 'purchase-order',
 };
+
+const INVENTORY_FORECAST_MIN_DATA_MESSAGE =
+  "At least 6 months data to be fetched in order to view inventory forecast";
 
 const DUMMY_INVENTORY_FORECAST = [
   {
@@ -129,6 +133,9 @@ const DUMMY_PO_DATA = [
   },
 ];
 
+const INVENTORY_REQUIREMENT_MESSAGE =
+  "This section requires you to fetch at least 6 months of data";
+
 export default function InventoryFlowPage() {
   const params = useParams() as {
     countryName?: string;
@@ -192,10 +199,10 @@ export default function InventoryFlowPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
-
+  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
   const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
   const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
-
+  const [showInventoryRequirementPopup, setShowInventoryRequirementPopup] = useState(false);
   const uploadHistoryInFlightRef = useRef<string | null>(null);
   const forecastInFlightRef = useRef<string | null>(null);
   const latestForecastRequestRef = useRef<string | null>(null);
@@ -394,13 +401,19 @@ export default function InventoryFlowPage() {
         });
 
         setMissingMonths(formattedMissing);
+        setExcelData([]);
+        setError(INVENTORY_REQUIREMENT_MESSAGE);
+        setShowInventoryRequirementPopup(true);
         setLoading(false);
         return;
       }
 
       setMissingMonths([]);
 
-      if (filtered.length < 5) {
+      if (filtered.length < 6) {
+        setExcelData([]);
+        setError(INVENTORY_REQUIREMENT_MESSAGE);
+        setShowInventoryRequirementPopup(true);
         setLoading(false);
         return;
       }
@@ -460,6 +473,7 @@ export default function InventoryFlowPage() {
           serverMessage = errJson?.error || errJson?.message || errJson?.warning || '';
         } catch { }
 
+        setExcelData([]);
         setError(serverMessage || `Server error (${res.status})`);
         setLoading(false);
         return;
@@ -480,6 +494,7 @@ export default function InventoryFlowPage() {
         });
 
         if (!rows || rows.length < 7) {
+          setExcelData([]);
           setError('Forecast file format is invalid.');
           setLoading(false);
           return;
@@ -518,10 +533,11 @@ export default function InventoryFlowPage() {
         setLoading(false);
         return;
       }
-
+      setExcelData([]);
       setError(data?.warning || data?.message || 'Forecast generated, but no file was returned.');
       setLoading(false);
     } catch (err: any) {
+      setExcelData([]);
       setError(err?.message || 'Failed to fetch forecast');
       setLoading(false);
     } finally {
@@ -603,6 +619,20 @@ export default function InventoryFlowPage() {
 
     void fetchUploadHistory();
   }, [countryName, effectiveMonth, effectiveYear, isDemoMode]);
+
+  useEffect(() => {
+    const hasValidData =
+      Array.isArray(excelData) &&
+      excelData.length > 0 &&
+      missingMonths.length === 0 &&
+      !error;
+
+    if (hasValidData) {
+      setShowInventoryRequirementPopup(false);
+    } else {
+      setShowInventoryRequirementPopup(true);
+    }
+  }, [excelData, missingMonths, error]);
 
   const DemoDispatchPreview = () => {
     return (
@@ -946,45 +976,63 @@ export default function InventoryFlowPage() {
               {loading ? (
                 <Loading />
               ) : activeTab === 'inventory' ? (
-                missingMonths.length > 0 ? (
-                  <div
-                    id="inventory-forecast"
-                    className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100"
-                  >
-                    <p className="text-sm sm:text-base mb-4 text-[#414042]">
-                      The following monthly files are needed to fetch:{' '}
-                      <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
-                    </p>
+                <div id="inventory-forecast" className="scroll-mt-[80px] relative">
+                  <DisplayInventoryForecast
+                    countryName={countryName}
+                    month={effectiveMonth}
+                    year={effectiveYear}
+                    data={excelData ?? []}
+                    isDemoMode={isDemoMode}
+                  />
 
-                    <div className="alert-container">
-                      <div className="alert-message">
-                        <span>Please fetch at least 4 months&apos; files to see the next two months.</span>
-                      </div>
+                  {(missingMonths.length > 0 || !excelData || excelData.length === 0) && (
+                    <div className="fixed inset-0 z-[100] pointer-events-none">
+                      <div className="absolute inset-0 bg-white/45" />
 
-                    </div>
-                  </div>
-                ) : error ? (
-                  <div id="inventory-forecast" className="scroll-mt-[80px]">
-                    <div className="alert-container">
-                      <div className="alert-message">
-                        <span>{error}</span>
+                      <div className="absolute inset-0 flex items-center justify-center px-4 py-8">
+                        <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6 text-center">
+                          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 border border-amber-200">
+                            <svg
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              className="text-amber-600"
+                            >
+                              <path
+                                d="M12 9V13M12 16H12.01M10.29 3.86L1.82 18A2 2 0 0 0 3.55 21H20.45A2 2 0 0 0 22.18 18L13.71 3.86A2 2 0 0 0 10.29 3.86Z"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </div>
+
+                          <h3 className="text-lg font-semibold text-[#414042]">
+                            Data required
+                          </h3>
+
+                          <p className="mt-2 text-sm leading-6 text-gray-600">
+                            This section requires you to fetch at least 6 months of data.
+                          </p>
+
+                          <div className="mt-5 flex items-center justify-center gap-3">
+
+                            <button
+                              onClick={() => {
+                                setShowIntegrationModal(true);
+                              }}
+                              className="rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                            >
+                              Fetch Data
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      {/* <button className="alert-button" onClick={() => setShowUpload(true)}>
-                        Upload Now
-                      </button> */}
                     </div>
-                  </div>
-                ) : (
-                  <div id="inventory-forecast" className="scroll-mt-[80px]">
-                    <DisplayInventoryForecast
-                      countryName={countryName}
-                      month={effectiveMonth}
-                      year={effectiveYear}
-                      data={excelData ?? []}
-                      isDemoMode={isDemoMode}
-                    />
-                  </div>
-                )
+                  )}
+                </div>
               ) : activeTab === 'dispatch' ? (
                 <div id="dispatch" className="scroll-mt-[80px]">
                   {isDemoMode ? (
@@ -1031,6 +1079,10 @@ export default function InventoryFlowPage() {
             }}
           />
         </Modal>
+        <IntegrationsModal
+          open={showIntegrationModal}
+          onClose={() => setShowIntegrationModal(false)}
+        />
       </div>
     </>
   );

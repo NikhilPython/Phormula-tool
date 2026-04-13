@@ -197,6 +197,7 @@ const Pnlforecast: React.FC = () => {
 
   const [showCm1, setshowCm1] = useState<boolean>(false);
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
+  const [noDataAvailable, setNoDataAvailable] = useState<boolean>(false);
 
   const DUMMY_PNL_ROWS: RowData[] = [
     {
@@ -427,9 +428,19 @@ const Pnlforecast: React.FC = () => {
   };
 
   const prepareChartData = (forecastData: RowData[], previousData: ChartDataItem[] = []): ChartDataItem[] => {
-    if (!forecastData || !Array.isArray(forecastData)) return previousData;
-    const totalRow = forecastData.find((row) => row.sku === 'Total');
-    if (!totalRow) return previousData;
+    if (!forecastData || !Array.isArray(forecastData) || forecastData.length === 0) {
+      return [];
+    }
+
+    const totalRow = forecastData.find(
+      (row) =>
+        String(row?.sku || '').trim().toLowerCase() === 'total' ||
+        String(row?.product_name || '').trim().toLowerCase() === 'total'
+    );
+
+    if (!totalRow) {
+      return [];
+    }
 
     const cogs3 = (totalRow.Total_Sales_3rd || 0) - (totalRow.profit_3rd || 0);
 
@@ -516,6 +527,9 @@ const Pnlforecast: React.FC = () => {
       }
 
       try {
+        setNoDataAvailable(false);
+        setError(null);
+
         const previousData = await fetchPreviousMonthsData();
 
         if (countryName.toLowerCase() === 'global') {
@@ -547,11 +561,9 @@ const Pnlforecast: React.FC = () => {
           }
 
           if (!response.ok) {
-            const errJson = await response.json().catch(() => ({}));
-            setError(
-              errJson?.error ||
-              'Unable to load Global P&L Forecast. Generate UK/US inventory and P&L data first.'
-            );
+            setData([]);
+            setChartData([]);
+            setNoDataAvailable(true);
             setLoading(false);
             return;
           }
@@ -564,23 +576,34 @@ const Pnlforecast: React.FC = () => {
             )
           ) {
             const jsonData = await parseExcelResponse(response);
-            if (jsonData.length === 0) {
-              setError('Empty table found in the Excel file');
+
+            if (!jsonData || jsonData.length === 0) {
+              setData([]);
+              setChartData([]);
+              setNoDataAvailable(true);
             } else {
+              const preparedChartData = prepareChartData(jsonData, previousData);
               setData(jsonData);
-              setChartData(prepareChartData(jsonData, previousData));
+              setChartData(preparedChartData);
+              setNoDataAvailable(preparedChartData.length === 0 && jsonData.length === 0);
             }
+
             setLoading(false);
             return;
           }
 
           if (contentType.includes('application/json')) {
             const json = (await response.json()) as RowData[];
-            if (Array.isArray(json)) {
+
+            if (Array.isArray(json) && json.length > 0) {
+              const preparedChartData = prepareChartData(json, previousData);
               setData(json);
-              setChartData(prepareChartData(json, previousData));
+              setChartData(preparedChartData);
+              setNoDataAvailable(preparedChartData.length === 0 && json.length === 0);
             } else {
-              throw new Error('Invalid JSON format');
+              setData([]);
+              setChartData([]);
+              setNoDataAvailable(true);
             }
           }
 
@@ -599,11 +622,9 @@ const Pnlforecast: React.FC = () => {
         });
 
         if (!response.ok) {
-          const errJson = await response.json().catch(() => ({}));
-          setError(
-            errJson?.error ||
-            'You need to load Inventory forecast first to load P&L forecast'
-          );
+          setData([]);
+          setChartData([]);
+          setNoDataAvailable(true);
           setLoading(false);
           return;
         }
@@ -616,27 +637,41 @@ const Pnlforecast: React.FC = () => {
           )
         ) {
           const jsonData = await parseExcelResponse(response);
-          if (jsonData.length === 0) {
-            setError('Empty table found in the Excel file');
+
+          if (!jsonData || jsonData.length === 0) {
+            setData([]);
+            setChartData([]);
+            setNoDataAvailable(true);
           } else {
+            const preparedChartData = prepareChartData(jsonData, previousData);
             setData(jsonData);
-            setChartData(prepareChartData(jsonData, previousData));
+            setChartData(preparedChartData);
+            setNoDataAvailable(preparedChartData.length === 0 && jsonData.length === 0);
           }
+
           setLoading(false);
           return;
         }
 
         if (contentType.includes('application/json')) {
           const json = (await response.json()) as RowData[];
-          if (Array.isArray(json)) {
+
+          if (Array.isArray(json) && json.length > 0) {
+            const preparedChartData = prepareChartData(json, previousData);
             setData(json);
-            setChartData(prepareChartData(json, previousData));
+            setChartData(preparedChartData);
+            setNoDataAvailable(preparedChartData.length === 0 && json.length === 0);
           } else {
-            throw new Error('Invalid JSON format');
+            setData([]);
+            setChartData([]);
+            setNoDataAvailable(true);
           }
         }
       } catch (err: any) {
-        setError(err?.message || 'An error occurred while fetching the data');
+        setData([]);
+        setChartData([]);
+        setNoDataAvailable(true);
+        setError(null);
       } finally {
         setLoading(false);
       }
@@ -646,9 +681,9 @@ const Pnlforecast: React.FC = () => {
   }, [countryName, month, year, isDemoMode]);
 
   useEffect(() => {
-    if (!data || data.length === 0 || isDemoMode) return;
+    if (!data || data.length === 0 || isDemoMode || noDataAvailable) return;
     uploadTableToBackend();
-  }, [data, isDemoMode]);
+  }, [data, isDemoMode, noDataAvailable]);
 
   const uploadTableToBackend = async () => {
     const table = document.querySelector('.tablec') as HTMLTableElement | null;
@@ -992,6 +1027,11 @@ const Pnlforecast: React.FC = () => {
       : [...firstNine, othersRow];
   }, [normalizedProductRows]);
 
+  const tableRows = [
+    ...displayProductRows,
+    ...summaryAsRows,
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center gap-4">
@@ -1037,34 +1077,14 @@ const Pnlforecast: React.FC = () => {
         buttonText="Connect Amazon"
         onAction={handleConnectAmazonPreview}
       >
-        {data && chartData.length > 0 && (
-
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-            <div className="flex flex-col gap-4">
-              {/* <div className="flex items-center justify-between w-full gap-3">
-                <div className="flex flex-col leading-tight">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L Forecast Trend"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
-                    />
-                  </div>
-                  <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-                    Historical data vs forecasted trends
-                  </p>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          <div className="flex flex-col gap-4">
+            <div className="mt-2">
+              {noDataAvailable ? (
+                <div className="flex min-h-[320px] items-center justify-center rounded-lg text-sm text-slate-500">
+                  No data available
                 </div>
-
-                <div className="flex items-center gap-3">
-                  <DownloadIconButton
-                    onClick={handleDownload}
-                    disabled={isDemoMode}
-                  />
-                </div>
-              </div> */}
-
-              <div className="mt-2">
+              ) : (
                 <PnlForecastChart
                   ref={chartRef}
                   chartData={chartData}
@@ -1072,72 +1092,67 @@ const Pnlforecast: React.FC = () => {
                   selectedGraphs={selectedGraphs}
                   handleCheckboxChange={handleCheckboxChange}
                 />
-              </div>
+              )}
             </div>
           </div>
+        </div>
 
-        )}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-2 2xl:mt-4">
+          <PageBreadcrumb
+            pageTitle="Detailed P&L Forecast Data"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
 
-        {data && (
+          <div className="mt-4 w-full overflow-x-auto">
+            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+              <div className="w-full text-xs 2xl:text-sm text-[#414042]">
+                <GroupedCollapsibleTables<RowData>
+                  rows={noDataAvailable ? [] : tableRows}
+                  getRowKey={(r, idx) =>
+                    r.sku && r.sku !== "" ? r.sku : `row-${idx}`
+                  }
+                  leftCols={leftCols}
+                  groups={groups}
+                  singleCols={[]}
+                  getValue={(row, key) => {
+                    if (key === "sr_no") {
+                      const isTotal =
+                        String(row.product_name || '').trim().toLowerCase() === 'total';
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-2 2xl:mt-4">
-            <PageBreadcrumb
-              pageTitle="Detailed P&L Forecast Data"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
+                      const isSummary = summaryRows.some(
+                        (s) => s.label === row.product_name
+                      );
 
-            <div className="mt-4 w-full overflow-x-auto">
-              <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
-                <div className="w-full text-xs 2xl:text-sm text-[#414042]">
-                  <GroupedCollapsibleTables<RowData>
-                    rows={[
-                      ...displayProductRows,
-                      ...summaryAsRows,
-                    ]}
-                    getRowKey={(r, idx) =>
-                      r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
+                      if (isTotal || isSummary) return "";
+
+                      const productIndex = displayProductRows.findIndex((r) => r === row);
+                      return productIndex >= 0 ? productIndex + 1 : "";
                     }
-                    leftCols={leftCols}
-                    groups={groups}
-                    singleCols={[]}
-                    getValue={(row, key, rowIndex) => {
-                      if (key === "sr_no") {
-                        const isTotal =
-                          String(row.product_name || '').trim().toLowerCase() === 'total';
 
-                        const isSummary = summaryRows.some(
-                          (s) => s.label === row.product_name
-                        );
-
-                        if (isTotal || isSummary) {
-                          return "";
-                        }
-
-                        const productIndex = displayProductRows.findIndex((r) => r === row);
-
-                        return productIndex >= 0 ? productIndex + 1 : "";
-                      }
-
-                      return formatCellValue(key, row[key]);
-                    }}
-                    getRowClassName={(row) => {
-                      if (row.product_name === "Total") {
-                        return "bg-[#EFEFEF] font-semibold";
-                      }
-                      if (summaryRows.some(s => s.label === row.product_name)) {
-                        return "bg-white";
-                      }
+                    return formatCellValue(key, row[key]);
+                  }}
+                  getRowClassName={(row) => {
+                    if (row.product_name === "Total") {
+                      return "bg-[#EFEFEF] font-semibold";
+                    }
+                    if (summaryRows.some(s => s.label === row.product_name)) {
                       return "bg-white";
-                    }}
-                  />
-                </div>
+                    }
+                    return "bg-white";
+                  }}
+                />
+
+                {noDataAvailable && (
+                  <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
+                    No Data Available for selected period
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-        )}
+        </div>
       </PreviewLockedSection>
     </div>
   );

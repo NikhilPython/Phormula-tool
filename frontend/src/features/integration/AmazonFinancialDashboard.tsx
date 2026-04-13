@@ -698,6 +698,11 @@ async function runForecastAndPoSequence(params: {
   await poRes.blob();
 
   params.setStep(7, "Forecast", 100, "Forecast, dispatch, and purchase order ready");
+
+  return {
+    redirectMonthSlug: currentGoingMonthLower,
+    redirectYear: currentGoingYearStr,
+  };
 }
 
 function monthValue(y: number, m1: number) {
@@ -1003,6 +1008,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
   const platform = `amazon_${countryUsed}`;
 
+
+
   const handleFetchByMonth = () =>
     wrap(async () => {
       const yRaw = parseInt(selYear, 10);
@@ -1100,13 +1107,23 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       markStepComplete(6);
 
       // Step 7: Inventory Forecast + Purchase Order
+      // Step 7: Inventory Forecast + Purchase Order
+      const latestMonthSlug = fullMonthNames[mNum - 1].toLowerCase();
+
+      let redirectMonthSlug = latestMonthSlug;
+      let redirectYear = String(y);
+
       if (selectedPeriod && selectedPeriod >= 6) {
-        await runForecastAndPoSequence({
+        const forecastResult = await runForecastAndPoSequence({
           country: countryUsed,
           year: y,
           month: mNum,
           setStep,
         });
+
+        redirectMonthSlug = forecastResult.redirectMonthSlug;
+        redirectYear = forecastResult.redirectYear;
+
         markStepComplete(7);
       } else {
         setStep(7, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
@@ -1139,7 +1156,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
       if (onClose) onClose();
       router.push(
-        `/pnl-dashboard/MTD/${countryUsed}/${monthSlug}/${y}?amazonFetch=success&promptAmazonAds=1`
+        `/pnl-dashboard/MTD/${countryUsed}/${redirectMonthSlug}/${redirectYear}?amazonFetch=success&promptAmazonAds=1`
       );
     });
 
@@ -1273,22 +1290,24 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       markStepComplete(6);
 
       // Step 7: Inventory Forecast + Purchase Order
-      const lastMonth = months[months.length - 1];
 
-      setStep(
-        7,
-        "Forecast",
-        0,
-        `Running inventory forecast for ${lastMonth.y}-${two(lastMonth.mNum)}...`
-      );
+      const last = months[months.length - 1];
+      const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
+
+      let redirectMonthSlug = latestMonthSlug;
+      let redirectYear = String(last.y);
 
       if (selectedPeriod && selectedPeriod >= 6) {
-        await runForecastAndPoSequence({
+        const forecastResult = await runForecastAndPoSequence({
           country: countryUsed,
-          year: lastMonth.y,
-          month: lastMonth.mNum,
+          year: last.y,
+          month: last.mNum,
           setStep,
         });
+
+        redirectMonthSlug = forecastResult.redirectMonthSlug;
+        redirectYear = forecastResult.redirectYear;
+
         markStepComplete(7);
       } else {
         setStep(
@@ -1307,9 +1326,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
       await new Promise((r) => setTimeout(r, 600));
 
-      const last = months[months.length - 1];
-      const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
-
       setMessage(
         `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
         }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y}-${two(last.mNum)}.`
@@ -1327,7 +1343,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
       if (onClose) onClose();
       router.push(
-        `/pnl-dashboard/MTD/${countryUsed}/${latestMonthSlug}/${last.y}?amazonFetch=success&promptAmazonAds=1`
+        `/pnl-dashboard/MTD/${countryUsed}/${redirectMonthSlug}/${redirectYear}?amazonFetch=success&promptAmazonAds=1`
       );
     });
 

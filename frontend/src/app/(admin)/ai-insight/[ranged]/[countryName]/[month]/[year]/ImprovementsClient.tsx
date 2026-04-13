@@ -293,6 +293,48 @@ const MonthsforBI: React.FC = () => {
 
   const [is2xlUp, setIs2xlUp] = useState(false);
 
+  const setEmptyChartOption = (
+    instance: echarts.EChartsType,
+  ) => {
+    instance.clear();
+
+    instance.setOption({
+      animation: false,
+      tooltip: { show: false },
+      legend: { show: false },
+      grid: { left: 20, right: 20, top: 40, bottom: 40 },
+
+      xAxis: {
+        show: false,
+        type: 'category',
+        data: [],
+      },
+
+      yAxis: {
+        show: false,
+        type: 'value',
+      },
+
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: 'middle',
+          style: {
+            text: 'No data Available',
+            fontSize: 14,
+            fontWeight: 400,
+            fill: '#6B7280',
+            textAlign: 'center',
+            textVerticalAlign: 'middle',
+          },
+        },
+      ],
+
+      series: [],
+    }, true);
+  };
+
   useEffect(() => {
     const check = () => {
       setIsMobile(window.innerWidth < 768);
@@ -988,10 +1030,9 @@ const MonthsforBI: React.FC = () => {
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny && !isPreviewMode) {
-        chartInstanceRef.current?.clear();
-        chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        chartInstanceRef.current?.resize();
+      if (!hasAny && !isPreviewMode && chartInstanceRef.current) {
+        setEmptyChartOption(chartInstanceRef.current);
+        chartInstanceRef.current.resize();
         return;
       }
 
@@ -1162,10 +1203,9 @@ const MonthsforBI: React.FC = () => {
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny && !isPreviewMode) {
-        profitChartInstanceRef.current?.clear();
-        profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        profitChartInstanceRef.current?.resize();
+      if (!hasAny && !isPreviewMode && profitChartInstanceRef.current) {
+        setEmptyChartOption(profitChartInstanceRef.current);
+        profitChartInstanceRef.current.resize();
         return;
       }
 
@@ -1338,10 +1378,9 @@ const MonthsforBI: React.FC = () => {
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny && !isPreviewMode) {
-        unitsChartInstanceRef.current?.clear();
-        unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        unitsChartInstanceRef.current?.resize();
+      if (!hasAny && !isPreviewMode && unitsChartInstanceRef.current) {
+        setEmptyChartOption(unitsChartInstanceRef.current);
+        unitsChartInstanceRef.current.resize();
         return;
       }
 
@@ -1512,10 +1551,9 @@ const MonthsforBI: React.FC = () => {
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny && !isPreviewMode) {
-        aspChartInstanceRef.current?.clear();
-        aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        aspChartInstanceRef.current?.resize();
+      if (!hasAny && !isPreviewMode && aspChartInstanceRef.current) {
+        setEmptyChartOption(aspChartInstanceRef.current);
+        aspChartInstanceRef.current.resize();
         return;
       }
 
@@ -2516,11 +2554,14 @@ const MonthsforBI: React.FC = () => {
         tension: 0.4,
       }));
 
-    // ✅ RETURN ME OLD datasets array replace karke yeh use karo
+    const isProfitabilityEmpty = datasets.every(
+      (ds: any) => (ds.data || []).every((v: any) => Number(v) === 0)
+    );
+
     return {
       data: {
         labels: [m1Label, m2Label],
-        datasets, // ✅
+        datasets,
       },
       options: {
         responsive: true,
@@ -2531,15 +2572,13 @@ const MonthsforBI: React.FC = () => {
           tooltip: {
             mode: "index" as const,
             intersect: false,
-
-            backgroundColor: "#ffffff",      // ✅ white bg
-            titleColor: "#111827",           // ✅ dark text
+            backgroundColor: "#ffffff",
+            titleColor: "#111827",
             bodyColor: "#111827",
-            borderColor: "#e5e7eb",          // ✅ light border
+            borderColor: "#e5e7eb",
             borderWidth: 1,
             cornerRadius: 8,
             padding: 10,
-
             callbacks: {
               label: (tooltipItem: any) => {
                 const label = tooltipItem.dataset.label || "";
@@ -2554,7 +2593,21 @@ const MonthsforBI: React.FC = () => {
         },
         scales: {
           x: { title: { display: false, text: "Month" } },
-          y: { title: { display: true, text: `Amount (${currency})` } },
+          y: {
+            min: isProfitabilityEmpty ? 0 : undefined,
+            suggestedMax: isProfitabilityEmpty ? 1 : undefined,
+            ticks: {
+              stepSize: isProfitabilityEmpty ? 0.2 : undefined,
+              callback: (value: any) =>
+                isProfitabilityEmpty
+                  ? Number(value).toFixed(1)
+                  : Number(value).toLocaleString(),
+            },
+            title: {
+              display: true,
+              text: `Amount (${currency})`,
+            },
+          },
         },
       },
     };

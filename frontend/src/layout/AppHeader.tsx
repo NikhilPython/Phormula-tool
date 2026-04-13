@@ -6,7 +6,7 @@ import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import AmazonConnect from "@/features/integration/AmazonConnect";
 import AmazonFinancialDashboard from "@/features/integration/AmazonFinancialDashboard";
-import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal"; 
+import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal";
 import { useParams } from "next/navigation";
 
 const AppHeader: React.FC = () => {

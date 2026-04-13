@@ -733,23 +733,48 @@ const AppSidebar: React.FC = () => {
         //   name: "Chatbot",
         //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         // },
+
+        // /${encodeURIComponent(ranged)}/${encodeURIComponent(countryName)}/${encodeURIComponent(month)}/${encodeURIComponent(
+        //       year
+        // )}
         {
           name: "Inventory Forecast",
-          path: `/inventory-forecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}#inventory-forecast`,
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#inventory-forecast`,
         },
+        // path: `/inventory-forecast/${currentParams.countryName}/${currentMonthYear.month}/${currentMonthYear.year}#inventory-forecast`,
+        // },
         {
           name: "Dispatch Planning",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#dispatch`,
         },
         {
           name: "Purchase Order (PO) Planning",
-          path: `/inventory-forecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}#purchase-order`,
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#purchase-order`,
         },
         {
           name: "P&L Forecast",
-          path: `/pnlforecast/${currentParams.countryName}/${forecastParams.month}/${forecastParams.year}`,
+          path: ({ countryName, month, year }) =>
+            `/pnlforecast/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#purchase-order`,
         },
-
       ],
     },
 

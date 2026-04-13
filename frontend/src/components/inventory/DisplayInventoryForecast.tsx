@@ -29,6 +29,7 @@ export interface DisplayInventoryForecastProps {
   data: Array<Record<string, any>>;
   isDemoMode?: boolean;
   platformLabel?: string;
+  externalErrorMessage?: string | null;
 }
 
 const MONTH_ABBR = [
@@ -69,6 +70,9 @@ function parseMonthHeaderToDate(col?: string | null): YM | null {
 
 const compareYM = (a: YM, b: YM) => (a.y !== b.y ? a.y - b.y : a.m - b.m);
 
+const EMPTY_FORECAST_MESSAGE =
+  "At least 6 months data to be fetched in order to view inventory forecast";
+
 const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   countryName,
   month,
@@ -76,6 +80,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   data,
   isDemoMode = false,
   platformLabel = "Amazon",
+  externalErrorMessage = null,
 }) => {
   const { data: userData } = useGetUserDataQuery();
 
@@ -98,7 +103,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     top3: true,
     top4: true,
     top5: true,
-    // total: true,
   });
   const [showToggleModal, setShowToggleModal] = useState(false);
   const chartRef = useRef<any>(null);
@@ -117,9 +121,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     return `${MONTH_ABBR[p.m]}'${String(p.y).slice(-2)}`;
   };
 
-  // FIXED:
-  // Selected month remains in actuals.
-  // Forecast starts from next month.
   const selectedForecastStart = useMemo<YM | null>(() => {
     const fullMonthIndex = FULL_MONTHS.findIndex(
       (m) => m.toLowerCase() === String(month).toLowerCase()
@@ -148,8 +149,19 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     return arr;
   }, [allKeys]);
 
+  const totalMonthColumns = monthColsSorted.length;
+  const hasMinimumMonths = totalMonthColumns >= 6;
+  const hasForecastData = forecastData.length > 0;
+  const hasRenderableData = hasForecastData && hasMinimumMonths;
+
+  const inventoryForecastError = useMemo(() => {
+    if (externalErrorMessage) return externalErrorMessage;
+    if (!hasForecastData || !hasMinimumMonths) return EMPTY_FORECAST_MESSAGE;
+    return null;
+  }, [externalErrorMessage, hasForecastData, hasMinimumMonths]);
+
   const last3SoldOldestFirst = useMemo<string[]>(() => {
-    if (!monthColsSorted.length) return [];
+    if (!monthColsSorted.length || !hasRenderableData) return [];
 
     if (!selectedForecastStart) {
       return monthColsSorted.slice(0, 3).map((x) => x.key);
@@ -160,10 +172,10 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     );
 
     return actuals.slice(-3).map((x) => x.key);
-  }, [monthColsSorted, selectedForecastStart]);
+  }, [monthColsSorted, selectedForecastStart, hasRenderableData]);
 
   const forecast3 = useMemo<string[]>(() => {
-    if (!monthColsSorted.length) return [];
+    if (!monthColsSorted.length || !hasRenderableData) return [];
 
     if (!selectedForecastStart) {
       return monthColsSorted.slice(3, 6).map((x) => x.key);
@@ -174,7 +186,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     );
 
     return forecasts.slice(0, 3).map((x) => x.key);
-  }, [monthColsSorted, selectedForecastStart]);
+  }, [monthColsSorted, selectedForecastStart, hasRenderableData]);
 
   const soldLabels = useMemo(
     () =>
@@ -193,17 +205,19 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   );
 
   const tableRows = useMemo(() => {
+    if (!hasRenderableData) return [];
+
     const baseRows = forecastData
       .filter((r) => r && r.sku && r.sku !== 'Total')
       .map((r) => {
-        const sold1 = Number(r[last3SoldOldestFirst[0]]) || 0
-        const sold2 = Number(r[last3SoldOldestFirst[1]]) || 0
-        const sold3 = Number(r[last3SoldOldestFirst[2]]) || 0
-        const f1 = Number(r[forecast3[0]]) || 0
-        const f2 = Number(r[forecast3[1]]) || 0
-        const f3 = Number(r[forecast3[2]]) || 0
+        const sold1 = Number(r[last3SoldOldestFirst[0]]) || 0;
+        const sold2 = Number(r[last3SoldOldestFirst[1]]) || 0;
+        const sold3 = Number(r[last3SoldOldestFirst[2]]) || 0;
+        const f1 = Number(r[forecast3[0]]) || 0;
+        const f2 = Number(r[forecast3[1]]) || 0;
+        const f3 = Number(r[forecast3[2]]) || 0;
 
-        const totalUnits = sold1 + sold2 + sold3 + f1 + f2 + f3
+        const totalUnits = sold1 + sold2 + sold3 + f1 + f2 + f3;
 
         return {
           product: r['Product Name'] ?? '',
@@ -214,10 +228,10 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           f1,
           f2,
           f3,
-          totalUnits, // 👈 important for sorting
-        }
+          totalUnits,
+        };
       })
-      .sort((a, b) => b.totalUnits - a.totalUnits) // 🔥 DESCENDING
+      .sort((a, b) => b.totalUnits - a.totalUnits);
 
     const first9 = baseRows.slice(0, 9);
     const remaining = baseRows.slice(9);
@@ -255,24 +269,34 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
     return rows.map((r, idx) => ({
       sNo: idx + 1,
-      ...(
-        demoMode
-          ? {
-            product: r.product,
-            sku: r.sku,
-            sold1: 0,
-            sold2: 0,
-            sold3: 0,
-            f1: 0,
-            f2: 0,
-            f3: 0,
-          }
-          : r
-      ),
+      ...(demoMode
+        ? {
+          product: r.product,
+          sku: r.sku,
+          sold1: 0,
+          sold2: 0,
+          sold3: 0,
+          f1: 0,
+          f2: 0,
+          f3: 0,
+        }
+        : r),
     }));
-  }, [forecastData, last3SoldOldestFirst, forecast3]);
+  }, [forecastData, last3SoldOldestFirst, forecast3, demoMode, hasRenderableData]);
 
   const totalsRow = useMemo(() => {
+    const emptyTotal = {
+      label: 'Total',
+      sold1: 0,
+      sold2: 0,
+      sold3: 0,
+      f1: 0,
+      f2: 0,
+      f3: 0,
+    };
+
+    if (!hasRenderableData || demoMode) return emptyTotal;
+
     const sumCol = (key: string) => {
       if (!key) return 0;
       let total = 0;
@@ -284,18 +308,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       return Math.round(total);
     };
 
-    if (demoMode) {
-      return {
-        label: 'Total',
-        sold1: 0,
-        sold2: 0,
-        sold3: 0,
-        f1: 0,
-        f2: 0,
-        f3: 0,
-      };
-    }
-
     return {
       label: 'Total',
       sold1: sumCol(last3SoldOldestFirst[0] || ''),
@@ -305,7 +317,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       f2: sumCol(forecast3[1] || ''),
       f3: sumCol(forecast3[2] || ''),
     };
-  }, [forecastData, last3SoldOldestFirst, forecast3]);
+  }, [forecastData, last3SoldOldestFirst, forecast3, demoMode, hasRenderableData]);
 
   const chartLabels = useMemo(() => [...soldLabels, ...forecastLabels], [soldLabels, forecastLabels]);
 
@@ -319,6 +331,8 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   ];
 
   const top5Rows = useMemo(() => {
+    if (!hasRenderableData) return [];
+
     return forecastData
       .filter((r) => r && r.sku && r.sku !== 'Total')
       .map((r) => {
@@ -327,20 +341,14 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       })
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
-  }, [forecastData, last3SoldOldestFirst, forecast3]);
-
-  const grandTotalSeries = useMemo(
-    () => [totalsRow.sold1 || 0, totalsRow.sold2 || 0, totalsRow.sold3 || 0, totalsRow.f1 || 0, totalsRow.f2 || 0, totalsRow.f3 || 0],
-    [totalsRow]
-  );
+  }, [forecastData, last3SoldOldestFirst, forecast3, hasRenderableData]);
 
   const palette = ["#FDD36F", "#5EA49B", "#ED9F50", "#00627D", "#87AD12", "#C49466"];
-
-  // FIXED:
-  // dynamic forecast start index
   const forecastStartIndex = soldLabels.length;
 
   const datasets = useMemo(() => {
+    if (!hasRenderableData) return [];
+
     return top5Rows
       .map((t, i) => ({
         key: `top${i + 1}`,
@@ -348,9 +356,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           (t.row["Product Name"] as string) ||
           (t.row["sku"] as string) ||
           `Product ${i + 1}`,
-        data: demoMode
-          ? chartLabels.map(() => 0)   // 🔥 FORCE ZERO IN PREVIEW
-          : t.vals,
+        data: demoMode ? chartLabels.map(() => 0) : t.vals,
         borderColor: palette[i % palette.length],
         backgroundColor: palette[i % palette.length],
         borderWidth: 2,
@@ -364,40 +370,93 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         },
       }))
       .filter((ds) => selectedSeries[ds.key] !== false);
-  }, [top5Rows, selectedSeries, forecastStartIndex]);
+  }, [top5Rows, selectedSeries, forecastStartIndex, chartLabels, demoMode, hasRenderableData]);
 
-  const chartData = useMemo(() => ({ labels: chartLabels, datasets }), [chartLabels, datasets]);
+  // const chartData = useMemo(() => ({ labels: chartLabels, datasets }), [chartLabels, datasets]);
 
-  const chartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: { top: 0, bottom: 24 } },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx: any) => {
-              const val = ctx.parsed?.y ?? 0;
-              return `${ctx.dataset.label}: ${Number(val).toLocaleString()}`;
-            },
-          },
+  const emptyChartData = useMemo(() => ({
+    labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+    datasets: [],
+  }), []);
+
+  const chartData = useMemo(() => {
+    if (!hasRenderableData) {
+      return emptyChartData;
+    }
+
+    return {
+      labels: chartLabels,
+      datasets,
+    };
+  }, [hasRenderableData, chartLabels, datasets]);
+
+  // const chartOptions = useMemo(
+  //   () => ({
+  //     responsive: true,
+  //     maintainAspectRatio: false,
+  //     layout: { padding: { top: 0, bottom: 24 } },
+  //     plugins: {
+  //       legend: { display: false },
+  //       tooltip: {
+  //         callbacks: {
+  //           label: (ctx: any) => {
+  //             const val = ctx.parsed?.y ?? 0;
+  //             return `${ctx.dataset.label}: ${Number(val).toLocaleString()}`;
+  //           },
+  //         },
+  //       },
+  //     },
+  //     scales: {
+  //       x: {
+  //         title: { display: false, text: 'Months', font: { size: 12 } },
+  //         ticks: { font: { size: 12 } },
+  //       },
+  //       y: {
+  //         title: { display: true, text: 'Units', font: { size: 12 } },
+  //         ticks: { font: { size: 12 } },
+  //         beginAtZero: true,
+  //       },
+  //     },
+  //   }),
+  //   []
+  // );
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: { padding: { top: 0, bottom: 24 } },
+
+    plugins: {
+      legend: { display: false },
+    },
+
+    scales: {
+      x: {
+        grid: {
+          display: true,
+          color: "#E5E7EB",
+        },
+        ticks: {
+          color: "#6B7280",
         },
       },
-      scales: {
-        x: {
-          title: { display: false, text: 'Months', font: { size: 12 } },
-          ticks: { font: { size: 12 } },
+      y: {
+        beginAtZero: true,
+        suggestedMax: 100, // 👈 important for empty graph height
+        grid: {
+          display: true,
+          color: "#E5E7EB",
         },
-        y: {
-          title: { display: true, text: 'Units', font: { size: 12 } },
-          ticks: { font: { size: 12 } },
-          beginAtZero: true,
+        ticks: {
+          color: "#6B7280",
+        },
+        title: {
+          display: true,
+          text: "Units",
         },
       },
-    }),
-    []
-  );
+    },
+  }), []);
 
   const forecastPlugin = {
     id: 'forecastBackground',
@@ -413,7 +472,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
       ctx.save();
       ctx.fillStyle = 'rgba(217,217,217,0.35)';
-      ctx.fillRect(startX, chartArea.top, chartArea.right - startX, chartArea.bottom - startX + startX - chartArea.top);
+      ctx.fillRect(startX, chartArea.top, chartArea.right - startX, chartArea.bottom - chartArea.top);
       ctx.restore();
     },
   };
@@ -498,6 +557,8 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   }, [month, year, monthRange]);
 
   const handleDownload = async () => {
+    if (!hasRenderableData) return;
+
     const dataUrl = getChartPngWithWhiteBg();
 
     await exportInventoryForecastViewExcel({
@@ -519,11 +580,61 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     });
   };
 
-  if (!forecastData.length) return <p style={{ color: 'gray' }}>No data available.</p>;
+  // const EmptyChartState = () => (
+  //   <div className="w-full h-[550px] rounded-2xl border border-slate-300 bg-slate-50 flex items-center justify-center">
+  //     <div className="text-center px-6">
+  //       {/* <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm">
+  //         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" className="text-slate-400">
+  //           <path
+  //             d="M4 19H20M7 16L10 12L13 14L17 8"
+  //             stroke="currentColor"
+  //             strokeWidth="1.8"
+  //             strokeLinecap="round"
+  //             strokeLinejoin="round"
+  //           />
+  //         </svg>
+  //       </div> */}
+  //       {/* <h3 className="text-base font-semibold text-slate-700">No data available</h3> */}
+  //       <p className="mt-1 text-sm text-slate-500">
+  //         Fetch at least 6 months of data to view the inventory forecast trend.
+  //       </p>
+  //     </div>
+  //   </div>
+  // );
+
+
+
+  const EmptyTableState = () => (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 overflow-hidden min-w-[900px]">
+      <table className="w-full 2xl:text-sm text-xs text-[#414042]">
+        <thead>
+          <tr className="font-normal">
+            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">S.No</th>
+            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left">Product Name</th>
+            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">SKU</th>
+            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">Last 3 Months</th>
+            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">Forecasted Months</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="bg-white">
+            <td colSpan={5} className="py-14 text-center">
+              <div className="flex flex-col items-center justify-center">
+                {/* <p className="text-sm font-medium text-slate-700">No table data available</p> */}
+                <p className="mt-1 text-sm text-slate-500">
+                  Fetch at least 6 months of data to populate this section.
+                </p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div>
-      <div className="flex flex-col gap-6 mt-5 ">
+      <div className="flex flex-col gap-6 mt-5">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <div className="flex flex-col gap-4">
             <div className="flex items-baseline gap-2">
@@ -543,6 +654,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                 textSize="2xl"
               />
             </div>
+
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex flex-col leading-tight">
                 <div className="flex items-baseline gap-2">
@@ -561,71 +673,90 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               <div className="flex items-center gap-3">
                 <DownloadIconButton
                   onClick={handleDownload}
-                  disabled={demoMode}
+                  disabled={demoMode || !hasRenderableData}
                 />
               </div>
             </div>
           </div>
 
-          <div className="shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center gap-4 w-full transition-opacity duration-300">
-            {top5Rows.map((t, i) => ({
-              name: `top${i + 1}`,
-              label:
-                (t.row["Product Name"] as string) ||
-                (t.row["sku"] as string) ||
-                `Product ${i + 1}`,
-              color: palette[i % palette.length],
-            })).map(({ name, label, color }) => {
-              const isChecked = !!selectedSeries[name];
+          {hasRenderableData && (
+            <div className="shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center gap-4 w-full transition-opacity duration-300">
+              {top5Rows.map((t, i) => ({
+                name: `top${i + 1}`,
+                label:
+                  (t.row["Product Name"] as string) ||
+                  (t.row["sku"] as string) ||
+                  `Product ${i + 1}`,
+                color: palette[i % palette.length],
+              })).map(({ name, label, color }) => {
+                const isChecked = !!selectedSeries[name];
 
-              return (
-                <label
-                  key={name}
-                  className="shrink-0 flex items-center gap-1 sm:gap-1.5 font-semibold select-none whitespace-nowrap text-[10px] 2xl:text-xs my-1 2xl:my-3 text-charcoal-500 cursor-pointer"
-                >
-                  <span
-                    className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-                    style={{
-                      borderColor: color,
-                      backgroundColor: isChecked ? color : "white",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleSeries(name);
-                    }}
+                return (
+                  <label
+                    key={name}
+                    className="shrink-0 flex items-center gap-1 sm:gap-1.5 font-semibold select-none whitespace-nowrap text-[10px] 2xl:text-xs my-1 2xl:my-3 text-charcoal-500 cursor-pointer"
                   >
-                    {isChecked && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
-                        <path
-                          fill="currentColor"
-                          d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                        />
-                      </svg>
-                    )}
-                  </span>
+                    <span
+                      className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                      style={{
+                        borderColor: color,
+                        backgroundColor: isChecked ? color : "white",
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSeries(name);
+                      }}
+                    >
+                      {isChecked && (
+                        <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                          <path
+                            fill="currentColor"
+                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                          />
+                        </svg>
+                      )}
+                    </span>
 
-                  <span className="capitalize">{label}</span>
-                </label>
-              );
-            })}
-          </div>
+                    <span className="capitalize">{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
 
-          <div className='w-full h-[550px]'>
-            <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
-          </div>
-
-          <div className="flex justify-center mt-4">
-            <div className="flex flex-wrap justify-center items-center gap-6 text-xs ">
-              <div className="flex items-center gap-2 text-charcoal-500">
-                <span className="inline-block w-8 border-b-2 border-charcoal-500" />
-                <span className="whitespace-nowrap">Last 3 months (Actual)</span>
+          {/* <div className="w-full">
+            {hasRenderableData ? (
+              <div className="w-full h-[550px]">
+                <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-8 border-b-2 border-charcoal-500 border-dashed" />
-                <span className="whitespace-nowrap">Next 3 months (Forecast)</span>
+            ) : (
+              <EmptyChartState />
+            )}
+          </div> */}
+
+          <div className="w-full h-[550px]">
+            <Line
+              ref={chartRef}
+              data={chartData}
+              options={chartOptions}
+              plugins={hasRenderableData ? [forecastPlugin] : []}
+            />
+          </div>
+
+          {hasRenderableData && (
+            <div className="flex justify-center mt-4">
+              <div className="flex flex-wrap justify-center items-center gap-6 text-xs">
+                <div className="flex items-center gap-2 text-charcoal-500">
+                  <span className="inline-block w-8 border-b-2 border-charcoal-500" />
+                  <span className="whitespace-nowrap">Last 3 months (Actual)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-8 border-b-2 border-charcoal-500 border-dashed" />
+                  <span className="whitespace-nowrap">Next 3 months (Forecast)</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
@@ -637,95 +768,99 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           />
 
           <div className="mt-4 w-full overflow-x-auto">
-            <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
-              <table className="w-full 2xl:text-sm text-xs text-[#414042]">
-                <thead>
-                  <tr className="font-normal">
-                    <th
-                      rowSpan={2}
-                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
-                    >
-                      S.No
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left align-middle"
-                    >
-                      Product Name
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
-                    >
-                      SKU
-                    </th>
+            {hasRenderableData ? (
+              <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
+                <table className="w-full 2xl:text-sm text-xs text-[#414042]">
+                  <thead>
+                    <tr className="font-normal">
+                      <th
+                        rowSpan={2}
+                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                      >
+                        S.No
+                      </th>
+                      <th
+                        rowSpan={2}
+                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left align-middle"
+                      >
+                        Product Name
+                      </th>
+                      <th
+                        rowSpan={2}
+                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                      >
+                        SKU
+                      </th>
 
-                    <th
-                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
-                      colSpan={3}
-                    >
-                      Last 3 Months
-                    </th>
+                      <th
+                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
+                        colSpan={3}
+                      >
+                        Last 3 Months
+                      </th>
 
-                    <th
-                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
-                      colSpan={3}
-                    >
-                      Forecasted Months
-                    </th>
-                  </tr>
-
-                  <tr>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {soldLabels[0] || ''}
-                    </th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {soldLabels[1] || ''}
-                    </th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {soldLabels[2] || ''}
-                    </th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {forecastLabels[0] || ''}
-                    </th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {forecastLabels[1] || ''}
-                    </th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                      {forecastLabels[2] || ''}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {tableRows.map((row, i) => (
-                    <tr key={i} className="text-center border-t border-gray-300 bg-white">
-                      <td className="p-2 border border-gray-300">{row.sNo}</td>
-                      <td className="p-2 border border-gray-300 text-left">{row.product}</td>
-                      <td className="p-2 border border-gray-300">{row.sku}</td>
-                      <td className="p-2 border border-gray-300">{row.sold1}</td>
-                      <td className="p-2 border border-gray-300">{row.sold2}</td>
-                      <td className="p-2 border border-gray-300">{row.sold3}</td>
-                      <td className="p-2 border border-gray-300">{row.f1}</td>
-                      <td className="p-2 border border-gray-300">{row.f2}</td>
-                      <td className="p-2 border border-gray-300">{row.f3}</td>
+                      <th
+                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
+                        colSpan={3}
+                      >
+                        Forecasted Months
+                      </th>
                     </tr>
-                  ))}
 
-                  <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
-                    <td className="p-2 border border-gray-300"></td>
-                    <td className="p-2 border border-gray-300 text-left">Total</td>
-                    <td className="p-2 border border-gray-300"></td>
-                    <td className="p-2 border border-gray-300">{totalsRow.sold1}</td>
-                    <td className="p-2 border border-gray-300">{totalsRow.sold2}</td>
-                    <td className="p-2 border border-gray-300">{totalsRow.sold3}</td>
-                    <td className="p-2 border border-gray-300">{totalsRow.f1}</td>
-                    <td className="p-2 border border-gray-300">{totalsRow.f2}</td>
-                    <td className="p-2 border border-gray-300">{totalsRow.f3}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                    <tr>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {soldLabels[0] || ''}
+                      </th>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {soldLabels[1] || ''}
+                      </th>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {soldLabels[2] || ''}
+                      </th>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {forecastLabels[0] || ''}
+                      </th>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {forecastLabels[1] || ''}
+                      </th>
+                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                        {forecastLabels[2] || ''}
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {tableRows.map((row, i) => (
+                      <tr key={i} className="text-center border-t border-gray-300 bg-white">
+                        <td className="p-2 border border-gray-300">{row.sNo}</td>
+                        <td className="p-2 border border-gray-300 text-left">{row.product}</td>
+                        <td className="p-2 border border-gray-300">{row.sku}</td>
+                        <td className="p-2 border border-gray-300">{row.sold1}</td>
+                        <td className="p-2 border border-gray-300">{row.sold2}</td>
+                        <td className="p-2 border border-gray-300">{row.sold3}</td>
+                        <td className="p-2 border border-gray-300">{row.f1}</td>
+                        <td className="p-2 border border-gray-300">{row.f2}</td>
+                        <td className="p-2 border border-gray-300">{row.f3}</td>
+                      </tr>
+                    ))}
+
+                    <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
+                      <td className="p-2 border border-gray-300"></td>
+                      <td className="p-2 border border-gray-300 text-left">Total</td>
+                      <td className="p-2 border border-gray-300"></td>
+                      <td className="p-2 border border-gray-300">{totalsRow.sold1}</td>
+                      <td className="p-2 border border-gray-300">{totalsRow.sold2}</td>
+                      <td className="p-2 border border-gray-300">{totalsRow.sold3}</td>
+                      <td className="p-2 border border-gray-300">{totalsRow.f1}</td>
+                      <td className="p-2 border border-gray-300">{totalsRow.f2}</td>
+                      <td className="p-2 border border-gray-300">{totalsRow.f3}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyTableState />
+            )}
           </div>
         </div>
       </div>
