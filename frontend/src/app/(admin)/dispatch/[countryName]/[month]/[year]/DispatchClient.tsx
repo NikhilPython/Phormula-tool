@@ -163,10 +163,14 @@ function buildOthersRow(rows: SkuRow[]): SkuRow {
     'Product Name': 'Others',
     'SKU': '',
     'Inventory at Month End': rows.reduce((sum, row) => sum + toNumber(row['Inventory at Month End']), 0),
-    'Inventory Coverage Ratio Before Dispatch': rows.reduce(
-      (sum, row) => sum + toNumber(row['Inventory Coverage Ratio Before Dispatch']),
-      0
-    ),
+    'Inventory Coverage Ratio Before Dispatch':
+      rows.length > 0
+        ? (rows.reduce(
+          (sum, row) =>
+            sum + toNumber(row['Inventory Coverage Ratio Before Dispatch']),
+          0
+        ) / rows.length).toFixed(2)
+        : 0,
     'Dispatch': rows.reduce((sum, row) => sum + toNumber(row['Dispatch']), 0),
     'Current Inventory + Dispatch': rows.reduce(
       (sum, row) => sum + toNumber(row['Current Inventory + Dispatch']),

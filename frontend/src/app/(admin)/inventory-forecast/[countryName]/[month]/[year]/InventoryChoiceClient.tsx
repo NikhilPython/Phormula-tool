@@ -910,7 +910,7 @@ export default function InventoryFlowPage() {
 
                 {activeTab === 'dispatch' ? (
                   <>
-                    <button
+                    {/* <button
                       className="fetch-button"
                       disabled={isDemoMode}
                       onClick={() => {
@@ -922,7 +922,7 @@ export default function InventoryFlowPage() {
                       }}
                     >
                       Get Report
-                    </button>
+                    </button> */}
 
                     <DownloadIconButton
                       size="md"
@@ -934,7 +934,7 @@ export default function InventoryFlowPage() {
                   </>
                 ) : (
                   <>
-                    <button
+                    {/* <button
                       className="fetch-button"
                       disabled={isDemoMode}
                       onClick={() => {
@@ -946,7 +946,7 @@ export default function InventoryFlowPage() {
                       }}
                     >
                       {countryName?.toLowerCase() === 'global' ? 'Get Global Report' : 'Get Report'}
-                    </button>
+                    </button> */}
 
                     <DownloadIconButton
                       size="md"

@@ -845,7 +845,7 @@ const Pnlforecast: React.FC = () => {
   const groups: ColGroup<RowData>[] = [
     monthGroup(
       'm1',
-      `P&L Forecast for ${formatMonthYear(currentMonth, currentYear)}`,
+      `P&L Forecast ${formatMonthYear(currentMonth, currentYear)}`,
       'forecast_1st',
       'Total_Sales_1st',
       'profit_1st',
@@ -853,7 +853,7 @@ const Pnlforecast: React.FC = () => {
     ),
     monthGroup(
       'm2',
-      `P&L Forecast for ${formatMonthYear(nextMonth, nextMonthYear)}`,
+      `P&L Forecast ${formatMonthYear(nextMonth, nextMonthYear)}`,
       'forecast_2nd',
       'Total_Sales_2nd',
       'profit_2nd',
@@ -861,7 +861,7 @@ const Pnlforecast: React.FC = () => {
     ),
     monthGroup(
       'm3',
-      `P&L Forecast for ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+      `P&L Forecast ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
       'forecast_3rd',
       'Total_Sales_3rd',
       'profit_3rd',
