@@ -565,7 +565,7 @@ export default function DispatchPage({
             ? 'text-center'
             : 'text-center',
       headerClassName:
-        'text-center whitespace-normal break-words max-w-[120px] lg:max-w-[200px]',
+        'text-center break-words xl:whitespace-nowrap whitespace-normal',
     }
   })
 
@@ -882,26 +882,29 @@ export default function DispatchPage({
           width: 100%;
         }
 
+/* Default → Large screens (NO WRAP) */
 .tablec th {
-  white-space: normal !important;
-  word-break: break-word;
+  white-space: nowrap;
+  word-break: normal;
   line-height: 1.2;
 }
 
-/* Force 2-line wrap on laptop screens */
+/* Laptop screens → allow wrapping */
 @media (max-width: 1440px) {
   .tablec th {
+    white-space: normal;
+    word-break: break-word;
     max-width: 140px;
   }
 }
 
-/* Even tighter on smaller screens */
+/* Smaller screens */
 @media (max-width: 1024px) {
   .tablec th {
     max-width: 110px;
     font-size: 12px;
   }
-}
+} 
 
       `}</style>
 
