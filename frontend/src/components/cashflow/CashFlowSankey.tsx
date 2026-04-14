@@ -82,15 +82,32 @@ const CashFlowSankey: React.FC<Props> = ({
 
   const is2XL = screenWidth >= 1536;
   const isXL = screenWidth >= 1280 && screenWidth < 1536;
+  const isLaptop = screenWidth >= 1024 && screenWidth < 1280;
+  const isTablet = screenWidth >= 640 && screenWidth < 1024;
   const isMobile = screenWidth < 640;
+
   const sankeyCols = {
-    label: isMobile ? 90 : is2XL ? 150 : isXL ? 100 : 100,
-    sign: isMobile ? 18 : is2XL ? 28 : 24,
-    amount: isMobile ? 60 : is2XL ? 90 : isXL ? 70 : 65,
-    pct: isMobile ? 45 : is2XL ? 60 : 50,
+    label: isMobile
+      ? 76
+      : isTablet
+        ? 92
+        : isLaptop
+          ? 105
+          : isXL
+            ? 135
+            : 150,
+    sign: isMobile ? 14 : isTablet ? 16 : isLaptop ? 18 : 20,
+    amount: isMobile
+      ? 54
+      : isTablet
+        ? 70
+        : isLaptop
+          ? 82
+          : isXL
+            ? 96
+            : 110,
+    pct: isMobile ? 0 : isTablet ? 0 : isLaptop ? 0 : isXL ? 42 : 52,
   };
-
-
 
   const formatNumber = (val?: number) =>
     val !== undefined
@@ -260,8 +277,6 @@ const CashFlowSankey: React.FC<Props> = ({
       (v) => v !== undefined && v !== 0
     );
 
-
-
   const option = {
     tooltip: {
       formatter: (p: any) => {
@@ -273,14 +288,28 @@ const CashFlowSankey: React.FC<Props> = ({
       {
         type: "sankey",
         layout: "none",
-        nodeWidth: 22,
-        nodeGap: 18,
+
+        left: isMobile ? "1%" : isTablet ? "1%" : isLaptop ? "2%" : "2%",
+        right: isMobile ? "30%" : isTablet ? "34%" : isLaptop ? "38%" : isXL ? "28%" : "24%",
+        top: "6%",
+        bottom: "6%",
+
+        nodeWidth: isMobile ? 10 : isTablet ? 12 : isLaptop ? 14 : 18,
+        nodeGap: isMobile ? 10 : isTablet ? 12 : isLaptop ? 14 : 18,
         layoutIterations: 0,
         label: {
           show: true,
           position: "right",
-          overflow: "none",
-          width: isMobile ? 170 : is2XL ? 300 : isXL ? 215 : 210,
+          overflow: "truncate",
+          width: isMobile
+            ? 120
+            : is2XL
+              ? 250
+              : isLaptop
+                ? 128
+                : isXL
+                  ? 190
+                  : 175,
           formatter: (n: any) => {
             if (isPreviewSankey) {
               return `{label|${n.name}}`;
@@ -304,57 +333,50 @@ const CashFlowSankey: React.FC<Props> = ({
               `{label|${row.name}}` +
               (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
               `{amount|${formatted}}` +
-              `${!isMobile ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
+              `${!isMobile && !isXL && !isLaptop ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
             );
           },
           rich: {
             label: {
               width: sankeyCols.label,
               align: "left",
-              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontSize: isMobile ? 9 : isTablet ? 10 : isLaptop ? 10 : 11,
               color: "#374151",
               fontWeight: 500,
             },
-
             signPlus: {
               width: sankeyCols.sign,
               align: "center",
-              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontSize: isMobile ? 9 : isTablet ? 10 : isLaptop ? 10 : 11,
               fontWeight: 700,
-              color: "#2E7D32", // 🟢 green
+              color: "#2E7D32",
             },
-
             signMinus: {
               width: sankeyCols.sign,
               align: "center",
-              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontSize: isMobile ? 9 : isTablet ? 10 : isLaptop ? 10 : 11,
               fontWeight: 700,
-              color: "#D32F2F", // 🔴 red
+              color: "#D32F2F",
             },
-
             signEmpty: {
               width: sankeyCols.sign,
             },
-
             amount: {
               width: sankeyCols.amount,
               align: "right",
-              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontSize: isMobile ? 9 : isTablet ? 10 : isLaptop ? 10 : 11,
               fontWeight: 700,
               color: "#111827",
             },
-
             pct: {
               width: sankeyCols.pct,
               align: "right",
-              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontSize: isMobile ? 9 : isTablet ? 10 : isLaptop ? 10 : 11,
               fontWeight: 600,
               color: "#6B7280",
             },
           },
         },
-
-
 
         data: [
           { name: "Summary", itemStyle: { color: "transparent" } },
@@ -377,6 +399,7 @@ const CashFlowSankey: React.FC<Props> = ({
       },
     ],
   };
+
   /* ---------- RENDER ---------- */
 
   return (
@@ -454,8 +477,13 @@ const CashFlowSankey: React.FC<Props> = ({
 
 
         {/* SANKEY */}
-        <div className="sm:h-[520px] h-[350px]  overflow-x-auto">
-          <ReactECharts option={option} style={{ height: "100%" }} />
+        <div className="h-[350px] sm:h-[420px] lg:h-[500px] w-full overflow-hidden">
+          <ReactECharts
+            option={option}
+            notMerge={true}
+            lazyUpdate={true}
+            style={{ height: "100%", width: "100%" }}
+          />
         </div>
         {isPreviewMode && (
           <div className="mt-2 text-center text-xs text-gray-400">

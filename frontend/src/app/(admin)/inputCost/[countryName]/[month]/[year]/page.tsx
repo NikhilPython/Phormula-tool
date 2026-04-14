@@ -12,6 +12,7 @@ import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import { useRouter } from 'next/navigation';
 import { IoMdLock } from "react-icons/io";
 import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCountryUpload";
+import Loader from '@/components/loader/Loader';
 
 // =========================
 // Warehouse upload format
@@ -1068,31 +1069,19 @@ export default function InputCostPage({ params }: Params) {
 
   const tabOptions = useMemo(
     () => [
-      { value: 'sku-info' as const, label: 'SKU Info' },
+      { value: 'sku-info' as const, label: 'SKU Information' },
       { value: 'extra' as const, label: 'Upload Warehouse Data' },
     ],
     []
   );
 
   const getWarehouseHeaderLabel = (col: string) => {
-    switch (col) {
-      case 's_no':
-        return 'S. No.';
-      case 'sku_us':
-        return 'SKU_US';
-      case 'sku_uk':
-        return 'SKU_UK';
-      case 'local_stock':
-        return 'Local Stock';
-      case 'in_transit_units':
-        return 'In Transit Units';
-      case 'month':
-        return 'Month';
-      case 'year':
-        return 'Year';
-      default:
-        return col.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    }
+    // Convert: sku_us → SKU US, in_transit_units → In Transit Units
+    const formatted = col
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    return formatted;
   };
 
   const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
@@ -1122,7 +1111,6 @@ export default function InputCostPage({ params }: Params) {
     }));
   }, [warehouseColumns]);
 
-  if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
 
   const PreviewLockedSection = ({
@@ -1250,7 +1238,7 @@ export default function InputCostPage({ params }: Params) {
                 onClick={() => setShowMultiuseCountry(true)}
                 disabled={isNA}
               >
-                Re-Upload file
+                Upload File
               </button>
 
               <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
@@ -1261,7 +1249,7 @@ export default function InputCostPage({ params }: Params) {
               onClick={() => setShowWarehouseUpload(true)}
               disabled={isNA}
             >
-              Upload Warehouse File
+              Upload File
             </button>
           )}
         </div>
@@ -1277,12 +1265,16 @@ export default function InputCostPage({ params }: Params) {
         <>
           {activeTab === 'sku-info' && (
             <>
-              {skuData.length > 0 ? (
+              {loading ? (
+                <div className="mt-5 rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
+                  <Loader transparent/>
+                </div>
+              ) : skuData.length > 0 ? (
                 <div className="mt-5">
                   <DataTable<TableRow>
                     columns={columns}
                     data={tableData}
-                    loading={loading}
+                    loading={false}
                     paginate={true}
                     pageSize={10}
                     stickyHeader={true}
@@ -1303,8 +1295,8 @@ export default function InputCostPage({ params }: Params) {
           {activeTab === 'extra' && (
             <div className="mt-5">
               {warehouseLoading ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                  Uploading...
+                <div className="rounded-xl border border-slate-200 bg-white min-h-[320px] flex items-center justify-center">
+                  <Loader transparent  />
                 </div>
               ) : warehouseData.length > 0 ? (
                 <DataTable<Record<string, any>>
