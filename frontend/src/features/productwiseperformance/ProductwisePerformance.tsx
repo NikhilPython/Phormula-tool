@@ -496,9 +496,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     setSelectedCountries((prev) => {
       if (Object.keys(prev).length > 0) return prev;
 
-      const initial: Record<string, boolean> = {
-        global: true,
-      };
+      const initial: Record<string, boolean> = {};
 
       connectedCountries.forEach((c) => {
         initial[c] = true;
@@ -892,17 +890,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       const visibleCountries: CountryKey[] = [];
 
       if (isPreviewMode) {
-        visibleCountries.push("global");
-        visibleCountries.push("uk");
+        visibleCountries.push(
+          ...connectedCountries.filter((c) => selectedCountries[c] ?? true)
+        );
       } else {
-        const globalDataKey =
-          resolveSourceDataKey(sourceData, globalKey) ||
-          resolveSourceDataKey(sourceData, "global");
-
-        if (globalDataKey && (selectedCountries["global"] ?? true)) {
-          visibleCountries.push(globalDataKey as CountryKey);
-        }
-
         visibleCountries.push(
           ...nonEmptyCountriesFromApi.filter((c) => selectedCountries[c] ?? true)
         );
@@ -916,10 +907,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     });
   }, [
     data,
-    globalKey,
     nonEmptyCountriesFromApi,
     selectedCountries,
     isPreviewMode,
+    connectedCountries,
   ]);
 
   const formatAxisMonth = (monthName: string) => {
@@ -1066,9 +1057,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         const norm = normalizeCountryKey(country);
         const rows = Array.isArray(rawArray) ? rawArray : [];
 
+        if (norm === "global") return false;
+
         if (isPreviewMode) {
           return (
-            (norm === "global" || norm === "uk") &&
+            connectedSet.has(norm) &&
             rows.some(
               (m: MonthDatum) =>
                 m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
@@ -1076,7 +1069,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           );
         }
 
-        if (norm === "global") return true;
         return connectedSet.has(norm);
       })
       .map(([country, rawArray]) => {

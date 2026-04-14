@@ -299,7 +299,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     chart.destroy();
     return imageDataUrl;
   };
-  
+
 
   const handleDownload = async () => {
     try {
@@ -319,8 +319,8 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         salesCm1Data ? renderChartToImage(salesCm1Data, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
         unitsData ? renderChartToImage(unitsData, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
       ]);
-      
-      
+
+
       const labels: string[] = (processedChartData as any)?.labels || [];
       const datasets: any[] = (processedChartData as any)?.datasets || [];
 
@@ -430,12 +430,12 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
               />
 
               <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
-              {productname || "Select a product"}
+                {productname || "Select a product"}
               </span>
             </div>
 
             <div className="my-4 flex flex-wrap items-center gap-3">
-              {["global", ...nonEmptyCountriesFromApi].map((country) => {
+              {nonEmptyCountriesFromApi.map((country) => {
                 const normalized = normalizeCountryKey(country);
                 const color = getCountryColor(normalized);
                 const isChecked = selectedCountries[country as CountryKey] ?? true;

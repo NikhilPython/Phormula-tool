@@ -550,9 +550,9 @@ export default function DispatchPage({
           : isSku
             ? '180px'
             : isCoverage
-              ? '300px'
+              ? '200px'
               : isInventoryMonthEnd
-                ? '220px'
+                ? '180px'
                 : isDispatch
                   ? '140px'
                   : isCurrentInventoryDispatch
@@ -564,7 +564,8 @@ export default function DispatchPage({
           : isSNo
             ? 'text-center'
             : 'text-center',
-      headerClassName: 'text-center whitespace-normal break-words',
+      headerClassName:
+        'text-center whitespace-normal break-words max-w-[120px] lg:max-w-[200px]',
     }
   })
 
@@ -880,6 +881,28 @@ export default function DispatchPage({
           display: block;
           width: 100%;
         }
+
+.tablec th {
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+/* Force 2-line wrap on laptop screens */
+@media (max-width: 1440px) {
+  .tablec th {
+    max-width: 140px;
+  }
+}
+
+/* Even tighter on smaller screens */
+@media (max-width: 1024px) {
+  .tablec th {
+    max-width: 110px;
+    font-size: 12px;
+  }
+}
+
       `}</style>
 
       {!embedded && (
