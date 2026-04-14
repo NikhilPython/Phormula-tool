@@ -665,7 +665,7 @@ export default function PurchaseOrderPage({
       displayedColumns.map((col) => ({
         key: col,
         header: col,
-        width: col === 'S. No.' ? '60px' : col === 'Product Name' ? '220px' : '140px',
+        width: col === 'S. No.' ? '60px' : col === 'Product Name' ? '180px' : '140px',
         cellClassName:
           col === 'Product Name'
             ? 'text-left'

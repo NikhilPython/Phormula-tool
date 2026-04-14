@@ -542,7 +542,10 @@ export default function DispatchPage({
 
     return {
       key: isSNo ? 'sno' : col,
-      header: col,
+      header:
+        col === 'Inventory Coverage Ratio Before Dispatch'
+          ? 'Coverage Ratio Before Dispatch'
+          : col,
       width: isSNo
         ? '60px'
         : isProduct
@@ -564,8 +567,7 @@ export default function DispatchPage({
           : isSNo
             ? 'text-center'
             : 'text-center',
-      headerClassName:
-        'text-center break-words xl:whitespace-nowrap whitespace-normal',
+      headerClassName: 'text-center whitespace-normal break-words',
     }
   })
 
@@ -881,31 +883,6 @@ export default function DispatchPage({
           display: block;
           width: 100%;
         }
-
-/* Default → Large screens (NO WRAP) */
-.tablec th {
-  white-space: nowrap;
-  word-break: normal;
-  line-height: 1.2;
-}
-
-/* Laptop screens → allow wrapping */
-@media (max-width: 1440px) {
-  .tablec th {
-    white-space: normal;
-    word-break: break-word;
-    max-width: 140px;
-  }
-}
-
-/* Smaller screens */
-@media (max-width: 1024px) {
-  .tablec th {
-    max-width: 110px;
-    font-size: 12px;
-  }
-} 
-
       `}</style>
 
       {!embedded && (

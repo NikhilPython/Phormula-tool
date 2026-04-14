@@ -5,7 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import jwt, secrets, string
 from app import db, mail
-from app.models.user_models import Member
+from app.models.user_models import Member, User, UserAdmin, SuperAdmin
+from sqlalchemy import func
 
 add_member_bp = Blueprint("add_member", __name__)
 
@@ -146,6 +147,29 @@ def _validate_modules(modules):
         return False, invalid
     return True, []
 
+def _email_exists_globally(email: str):
+    """
+    Check whether email already exists in any auth/account table:
+    user, member, admin, superadmin
+    """
+    normalized_email = (email or "").strip().lower()
+
+    if not normalized_email:
+        return False, None
+
+    if db.session.query(User.id).filter(func.lower(User.email) == normalized_email).first():
+        return True, "user"
+
+    if db.session.query(Member.id).filter(func.lower(Member.email) == normalized_email).first():
+        return True, "member"
+
+    if db.session.query(UserAdmin.id).filter(func.lower(UserAdmin.email) == normalized_email).first():
+        return True, "admin"
+
+    if db.session.query(SuperAdmin.id).filter(func.lower(SuperAdmin.email) == normalized_email).first():
+        return True, "superadmin"
+
+    return False, None
 
 # ==========================================================
 # Email
@@ -321,6 +345,13 @@ def add_member():
         if "@" not in email or "." not in email:
             return _error("Invalid email", 400)
 
+        # Global email uniqueness check
+        exists, existing_in = _email_exists_globally(email)
+        if exists:
+            return _error(
+                f"Email already exists. Please use a different email.",
+                409
+            )
         if role not in ALLOWED_ROLES:
             return _error(
                 "Invalid role",
@@ -376,7 +407,6 @@ def add_member():
                 member_name,
                 email,
                 temp_password,
-                token_name,
                 countries,
                 marketplaces,
                 modules,
@@ -397,7 +427,6 @@ def add_member():
             "countries": countries,
             "marketplaces": marketplaces,
             "modules": modules,
-            "token_name": token_name,
             "email_sent": email_sent,
             "email_message": email_message,
         }), 201
