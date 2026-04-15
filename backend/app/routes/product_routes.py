@@ -1264,9 +1264,7 @@ def upload_warehouse_data():
         value = str(value).strip().lower()
         value = re.sub(r'[^a-zA-Z0-9_]+', '_', value)
         value = re.sub(r'_+', '_', value).strip('_')
-        if not value:
-            value = "default"
-        return value
+        return value or "default"
 
     def normalize_column_name(col):
         col = str(col).strip().lower()
@@ -1279,18 +1277,19 @@ def upload_warehouse_data():
         return jsonify({'error': 'country is required'}), 400
 
     safe_country = sanitize_identifier(country)
-    table_name = f"warehouse_{user_id}_{safe_country}_data"
+    warehouse_table_name = f"warehouse_{user_id}_{safe_country}_data"
+    sku_table_name = f"sku_{user_id}_data_table"
+
     user_engine = create_engine(db_url)
 
-    # ---------- GET: READ EXISTING DATA ----------
+    # ---------- GET ----------
     if request.method == 'GET':
         try:
-            df = pd.read_sql(f'SELECT * FROM "{table_name}"', user_engine)
-
+            df = pd.read_sql(f'SELECT * FROM "{warehouse_table_name}"', user_engine)
             return jsonify({
                 'success': True,
                 'message': 'Warehouse data fetched successfully',
-                'table_name': table_name,
+                'table_name': warehouse_table_name,
                 'columns': df.columns.tolist(),
                 'row_count': int(len(df)),
                 'data': df.to_dict(orient="records")
@@ -1302,7 +1301,7 @@ def upload_warehouse_data():
                 'message': str(e)
             }), 404
 
-    # ---------- POST: UPLOAD FILE ----------
+    # ---------- POST ----------
     if 'file' not in request.files:
         return jsonify({'error': 'No file part found'}), 400
 
@@ -1316,28 +1315,126 @@ def upload_warehouse_data():
     try:
         file.save(temp_path)
 
+        # Read uploaded Excel
         df = pd.read_excel(temp_path)
 
         if df.empty:
             return jsonify({'error': 'Uploaded Excel file is empty'}), 400
 
+        # Normalize column names
         df.columns = [normalize_column_name(c) for c in df.columns]
         df = df.dropna(how='all')
 
-        for col in ['local_stock', 'in_transit_units', 'year', 's_no']:
+        # Required stock columns
+        if 'local_stock' not in df.columns:
+            df['local_stock'] = 0
+        if 'in_transit_units' not in df.columns:
+            df['in_transit_units'] = 0
+
+        # Numeric conversions
+        for col in ['local_stock', 'in_transit_units', 'year', 's_no', 'price']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # Clean object columns
         for col in df.columns:
             if df[col].dtype == object:
-                df[col] = df[col].astype(str).replace({'nan': None, 'None': None})
+                df[col] = df[col].astype(str).str.strip()
+                df[col] = df[col].replace({'nan': None, 'None': None, '': None})
 
-        df.to_sql(table_name, user_engine, if_exists='replace', index=False)
+        # Save uploaded warehouse data table
+        df.to_sql(warehouse_table_name, user_engine, if_exists='replace', index=False)
+
+        # ---------------------------------------------------
+        # UPDATE public.sku_{user_id}_data_table
+        # ---------------------------------------------------
+        inspector = inspect(user_engine)
+        existing_tables = inspector.get_table_names()
+
+        if sku_table_name not in existing_tables:
+            return jsonify({
+                'success': True,
+                'message': f'Warehouse data uploaded, but SKU table "{sku_table_name}" not found',
+                'warehouse_table_name': warehouse_table_name,
+                'file_name': filename,
+                'columns': df.columns.tolist(),
+                'row_count': int(len(df)),
+                'data': df.to_dict(orient="records")
+            }), 200
+
+        with user_engine.begin() as conn:
+            # Ensure stock columns exist in SKU table
+            existing_columns = {col["name"] for col in inspect(conn).get_columns(sku_table_name)}
+
+            if "local_stock" not in existing_columns:
+                conn.execute(text(f'''
+                    ALTER TABLE "{sku_table_name}"
+                    ADD COLUMN local_stock INTEGER DEFAULT 0
+                '''))
+
+            if "in_transit_units" not in existing_columns:
+                conn.execute(text(f'''
+                    ALTER TABLE "{sku_table_name}"
+                    ADD COLUMN in_transit_units INTEGER DEFAULT 0
+                '''))
+
+            # Load SKU table
+            sku_df = pd.read_sql(f'SELECT * FROM "{sku_table_name}"', conn)
+            sku_df.columns = [normalize_column_name(c) for c in sku_df.columns]
+
+            # Decide matching key
+            possible_keys = ['asin', 'product_barcode', 'sku_uk', 'sku_us']
+            match_key = None
+            for key in possible_keys:
+                if key in df.columns and key in sku_df.columns:
+                    match_key = key
+                    break
+
+            if not match_key:
+                return jsonify({
+                    'success': False,
+                    'message': 'Warehouse uploaded, but no common matching column found to update SKU table',
+                    'possible_keys_checked': possible_keys,
+                    'warehouse_columns': df.columns.tolist(),
+                    'sku_columns': sku_df.columns.tolist()
+                }), 400
+
+            # Prepare update dataframe
+            update_df = df[[match_key, 'local_stock', 'in_transit_units']].copy()
+            update_df = update_df.dropna(subset=[match_key])
+            update_df[match_key] = update_df[match_key].astype(str).str.strip()
+
+            update_df['local_stock'] = pd.to_numeric(update_df['local_stock'], errors='coerce').fillna(0).astype(int)
+            update_df['in_transit_units'] = pd.to_numeric(update_df['in_transit_units'], errors='coerce').fillna(0).astype(int)
+
+            # If duplicate keys exist in uploaded file, keep last one
+            update_df = update_df.drop_duplicates(subset=[match_key], keep='last')
+
+            # Update rows in sku table
+            updated_count = 0
+            for _, row in update_df.iterrows():
+                result = conn.execute(
+                    text(f'''
+                        UPDATE "{sku_table_name}"
+                        SET local_stock = :local_stock,
+                            in_transit_units = :in_transit_units
+                        WHERE CAST({match_key} AS TEXT) = :match_value
+                    '''),
+                    {
+                        "local_stock": int(row["local_stock"]),
+                        "in_transit_units": int(row["in_transit_units"]),
+                        "match_value": str(row[match_key]).strip()
+                    }
+                )
+                updated_count += result.rowcount
 
         return jsonify({
             'success': True,
-            'message': 'Warehouse Excel uploaded and stored successfully',
-            'table_name': table_name,
+            'message': 'Warehouse Excel uploaded and SKU stock values updated successfully',
+            'warehouse_table_name': warehouse_table_name,
+            'sku_table_name': sku_table_name,
+            'matched_on': match_key,
+            'updated_rows': int(updated_count),
             'file_name': filename,
             'columns': df.columns.tolist(),
             'row_count': int(len(df)),
@@ -1357,3 +1454,7 @@ def upload_warehouse_data():
                 os.remove(temp_path)
         except Exception:
             pass
+
+
+
+        

@@ -205,19 +205,21 @@ const markFetched = (year: string, month?: string) => {
 };
 
 const computeDefaultYearlyYear = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("latestFetchedPeriod");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const y = String(parsed?.year || "").trim();
+        if (y) return y;
+      }
+    } catch { }
+  }
+
+  // Fallback: latest completed month, not current calendar year
   const now = new Date();
-  const cy = now.getFullYear();
-  const cm = now.getMonth(); // 0..11, current month
-
-  const fp = readFetchedPeriods();
-  const monthsFetchedThisYear = fp[String(cy)] || [];
-
-  const hasHistoricMonthInCurrentYear = monthsFetchedThisYear.some((m) => {
-    const idx = monthIndexMap[m.toLowerCase()];
-    return typeof idx === "number" && idx < cm; // strictly historic
-  });
-
-  return hasHistoricMonthInCurrentYear ? String(cy) : String(cy - 1);
+  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return String(latestCompleted.getFullYear());
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
@@ -861,9 +863,9 @@ const PreviewLockedSection = ({
                   {buttonText}
                 </button>
 
-                <p className="mt-3 text-xs text-gray-500">
+                {/* <p className="mt-3 text-xs text-gray-500">
                   Demo data is shown for preview only.
-                </p>
+                </p> */}
               </div>
             </div>
           </div>
@@ -2258,9 +2260,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setRange(v);
     setSelectedMonth("");
     setSelectedQuarter("");
-    setSelectedYear(isDemoMode ? String(new Date().getFullYear()) : "");
 
     if (isDemoMode) {
+      setSelectedYear(String(new Date().getFullYear()));
       setUploadsData(DEMO_UPLOAD_HISTORY);
       setAiPanel(DEMO_AI_PANEL);
       setPerformanceTrend(DEMO_PERFORMANCE_TREND);
@@ -2271,6 +2273,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
+    setSelectedYear(v === "yearly" ? computeDefaultYearlyYear() : "");
     setUploadsData(null);
   };
 
@@ -3352,9 +3355,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       </div>
       <PreviewLockedSection
         enabled={isDemoMode}
-        title="Preview mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
+        title="Preview Mode"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
@@ -3815,14 +3818,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "expenses",
                     title: "Marketplace Fees",
-                    value: renderMoneyWithPerUnit(marketplaceFeesFromTable, summary.unit_sold),
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(marketplaceFeesFromTable),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
                     comparisons: buildComparisonsRows("total_amazon_fee", formatMoney),
                   },
                   {
                     key: "ads",
                     title: "Cost of Advertisement",
-                    value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(costOfAds),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                     comparisons: buildComparisonsRows("advertising_total", formatMoney),
                   },
@@ -3837,8 +3850,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "cm2",
                     title: "CM2 Profit",
-                    value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
-                    // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(summary.cm2_profit),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
                     comparisons: buildComparisonsRows("cm2_profit", formatMoney),
                   },

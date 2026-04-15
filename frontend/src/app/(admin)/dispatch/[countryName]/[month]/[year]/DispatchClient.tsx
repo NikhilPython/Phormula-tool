@@ -380,6 +380,7 @@ export default function DispatchPage({
       void fetchDispatchFile(monthdp, yeardp)
     }
   }, [isInitialized, monthdp, yeardp])
+  
 
   function isTotalRow(row: SkuRow) {
     return (
@@ -400,6 +401,24 @@ export default function DispatchPage({
 
         return sum + (Number.isFinite(num) ? num : 0)
       }, 0)
+  }
+
+  function calculateTotalCoverageRatio() {
+    const nonTotalRows = skuData.filter((row) => !isTotalRow(row))
+
+    const totalCurrentInventoryDispatch = nonTotalRows.reduce(
+      (sum, row) => sum + toNumber(row['Current Inventory + Dispatch']),
+      0
+    )
+
+    const totalDispatch = nonTotalRows.reduce(
+      (sum, row) => sum + toNumber(row['Dispatch']),
+      0
+    )
+
+    if (totalDispatch === 0) return 0
+
+    return totalCurrentInventoryDispatch / totalDispatch
   }
 
   const displayedColumns = [...DISPLAYED_COLUMNS]
@@ -498,17 +517,29 @@ export default function DispatchPage({
       displayedColumns.forEach((col) => {
         if (col === 'S. No.') return
 
-        if (
-          isTotal &&
-          [
-            'Inventory at Month End',
-            'Dispatch',
-            'Current Inventory + Dispatch',
-            'Inventory Coverage Ratio Before Dispatch',
-          ].includes(col)
-        ) {
-          obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
-          return
+        if (isTotal) {
+          if (col === 'Inventory at Month End') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'Dispatch') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'Current Inventory + Dispatch') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'Inventory Coverage Ratio Before Dispatch') {
+            obj[col] = calculateTotalCoverageRatio().toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+            return
+          }
         }
 
         if (isTotal) {

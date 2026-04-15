@@ -53,7 +53,7 @@ export async function generateMetadata(
 
   return {
     title,
-    description: `Purchase Order (PO) report for ${country} for ${monthFormatted} ${year}. Review dispatch requirements, local warehouse inventory, PO already raised, PO to be raised, unit costs (INR), and total PO cost. Export to Excel and upload local inventory when needed.`,
+    description: `Purchase Order (PO) report for ${country} for ${monthFormatted} ${year}. Review dispatch requirements, local warehouse inventory, In Transit Units, PO to be raised, unit costs (INR), and total PO cost. Export to Excel and upload local inventory when needed.`,
     robots: { index: false, follow: false },
   };
 }

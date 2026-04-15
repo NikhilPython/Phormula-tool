@@ -555,9 +555,9 @@ const PreviewLockedSection = ({
                   {buttonText}
                 </button>
 
-                <p className="mt-3 text-xs text-gray-500">
+                {/* <p className="mt-3 text-xs text-gray-500">
                   Demo data is shown for preview only.
-                </p>
+                </p> */}
               </div>
             </div>
           </div>
@@ -1770,8 +1770,8 @@ export default function ObjectivesPageClient({
       <PreviewLockedSection
         enabled={isPreviewMode}
         title="Preview Mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
         {activeTab === "business_summary" && (

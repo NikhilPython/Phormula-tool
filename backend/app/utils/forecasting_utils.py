@@ -8,7 +8,8 @@ from app.models.user_models import CountryProfile
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime, timedelta
+import calendar
+from datetime import datetime, timedelta, date
 import pandas as pd
 import numpy as np
 from io import BytesIO
@@ -1076,48 +1077,69 @@ def _norm_sku(x: str) -> str:
     return re.sub(r"\s+", "", str(x)).upper()
 
 
+def get_inventory_snapshot_date(selected_month: str, selected_year: int) -> str:
+    """
+    Rule:
+    - If selected month/year is current month/year -> use previous month's last date
+    - Else -> use selected month's last date
+
+    Returns: YYYY-MM-DD
+    """
+    month_num = datetime.strptime(selected_month.strip(), "%B").month
+    today = date.today()
+
+    # current month incomplete -> previous month end
+    if selected_year == today.year and month_num == today.month:
+        if today.month == 1:
+            prev_month = 12
+            prev_year = today.year - 1
+        else:
+            prev_month = today.month - 1
+            prev_year = today.year
+
+        last_day = calendar.monthrange(prev_year, prev_month)[1]
+        return f"{prev_year:04d}-{prev_month:02d}-{last_day:02d}"
+
+    # historical/completed month -> selected month end
+    last_day = calendar.monthrange(selected_year, month_num)[1]
+    return f"{selected_year:04d}-{month_num:02d}-{last_day:02d}"
+
+
 def fetch_and_merge_inventory_monthwise_sellable(
     forecast_totals: pd.DataFrame,
     engine1,
     *,
     forecast_sku_col: str = "sku",
-    forecast_marketplace_col: str | None = None,   # e.g. "marketplace_id" if present in forecast_totals
-    inventory_date: str | None = None,             # e.g. "2025-10-31" to force a specific month-end snapshot
+    forecast_marketplace_col: str | None = None,
+    inventory_date: str | None = None,
+    debug: bool = False,
 ) -> pd.DataFrame:
     """
     Adds 'Inventory at Month End' to forecast_totals by pulling inventory from
-    public.monthwise_inventory and using ONLY disposition='SELLABLE'.
+    public.monthwise_inventory using ONLY disposition='SELLABLE'.
 
-    Rules:
-    - Source table: public.monthwise_inventory (msku, disposition, ending_warehouse_balance, date, marketplace_id)
-    - Only SELLABLE rows
+    Logic:
     - If inventory_date is provided:
-        -> pick the LATEST snapshot with date <= inventory_date
-      else:
-        -> pick the latest snapshot per key
-          * key = (msku) if forecast_marketplace_col is None
-          * key = (msku, marketplace_id) if forecast_marketplace_col is provided
+        -> pick latest snapshot with date <= inventory_date
+    - Else:
+        -> pick latest snapshot per key
 
     Merge:
-    - Merge on normalized SKU (_norm_sku) always
-    - If forecast_marketplace_col is provided, also merge marketplace_id
+    - always normalize SKU
+    - optionally merge with marketplace_id also
     """
 
-    # --- validate inputs ---
     if forecast_sku_col not in forecast_totals.columns:
         raise KeyError(f"forecast_totals missing SKU column '{forecast_sku_col}'")
 
     if forecast_marketplace_col is not None and forecast_marketplace_col not in forecast_totals.columns:
         raise KeyError(
-            f"forecast_totals missing marketplace column '{forecast_marketplace_col}'. "
-            f"Pass forecast_marketplace_col=None or fix the column name."
+            f"forecast_totals missing marketplace column '{forecast_marketplace_col}'"
         )
 
     use_marketplace = forecast_marketplace_col is not None
 
-    # --- build SQL ---
     if inventory_date:
-        # ✅ FIX: latest snapshot ON OR BEFORE inventory_date
         if use_marketplace:
             sql = """
                 SELECT DISTINCT ON (msku, marketplace_id)
@@ -1142,9 +1164,7 @@ def fetch_and_merge_inventory_monthwise_sellable(
                 ORDER BY msku, date DESC
             """
         params = {"inv_date": inventory_date}
-
     else:
-        # Latest snapshot per key (original behavior, unchanged)
         if use_marketplace:
             sql = """
                 SELECT DISTINCT ON (msku, marketplace_id)
@@ -1168,48 +1188,71 @@ def fetch_and_merge_inventory_monthwise_sellable(
             """
         params = {}
 
-    # --- fetch inventory ---
     inv_df = pd.read_sql(text(sql), con=engine1, params=params)
 
-    if not inv_df.empty:
-        print(inv_df.head(10).to_string(index=False))
+    if debug:
+        print("inventory_date:", inventory_date)
+        print("inv_df shape:", inv_df.shape)
+        if not inv_df.empty:
+            print(inv_df.head(20).to_string(index=False))
 
-    # --- prepare inventory frame ---
+    if inv_df.empty:
+        out = forecast_totals.copy()
+        out["Inventory at Month End"] = 0
+        return out
+
     keep_cols = ["SKU", "Ending Warehouse Balance"] + (["marketplace_id"] if use_marketplace else [])
     inventory_totals = inv_df[keep_cols].copy()
 
     inventory_totals.rename(columns={"SKU": "sku"}, inplace=True)
     inventory_totals["Ending Warehouse Balance"] = (
         pd.to_numeric(inventory_totals["Ending Warehouse Balance"], errors="coerce")
-          .fillna(0)
-          .astype(int)
+        .fillna(0)
+        .astype(int)
     )
 
-    # Normalize SKU for robust matching
     inventory_totals["sku_norm"] = inventory_totals["sku"].map(_norm_sku)
 
-    # --- prepare forecast frame ---
+    # group duplicates safely
+    if use_marketplace:
+        inventory_totals = (
+            inventory_totals
+            .groupby(["sku_norm", "marketplace_id"], as_index=False)["Ending Warehouse Balance"]
+            .sum()
+        )
+    else:
+        inventory_totals = (
+            inventory_totals
+            .groupby(["sku_norm"], as_index=False)["Ending Warehouse Balance"]
+            .sum()
+        )
+
     out = forecast_totals.copy()
     out["sku_norm"] = out[forecast_sku_col].map(_norm_sku)
 
-    # --- diagnostics ---
-    common = set(out["sku_norm"]) & set(inventory_totals["sku_norm"])
-    if common:
-        print(f"[MERGE] Example keys: {list(sorted(common))[:10]}")
+    if debug:
+        forecast_keys = set(out["sku_norm"])
+        inventory_keys = set(inventory_totals["sku_norm"])
+        common = forecast_keys & inventory_keys
 
-    # --- merge ---
+        print("forecast rows:", len(out))
+        print("inventory rows after group:", len(inventory_totals))
+        print("matched sku count:", len(common))
+        print("example matched sku:", list(sorted(common))[:20])
+
+        missing = forecast_keys - inventory_keys
+        print("example missing forecast sku:", list(sorted(missing))[:20])
+
     if use_marketplace:
-        merge_left_cols = ["sku_norm", forecast_marketplace_col]
         inv_merge = inventory_totals[["sku_norm", "marketplace_id", "Ending Warehouse Balance"]].copy()
 
         out = out.merge(
             inv_merge,
-            left_on=merge_left_cols,
+            left_on=["sku_norm", forecast_marketplace_col],
             right_on=["sku_norm", "marketplace_id"],
             how="left"
         )
         out.drop(columns=["sku_norm", "marketplace_id"], inplace=True, errors="ignore")
-
     else:
         out = out.merge(
             inventory_totals[["sku_norm", "Ending Warehouse Balance"]],
@@ -1221,8 +1264,8 @@ def fetch_and_merge_inventory_monthwise_sellable(
     out.rename(columns={"Ending Warehouse Balance": "Inventory at Month End"}, inplace=True)
     out["Inventory at Month End"] = (
         pd.to_numeric(out["Inventory at Month End"], errors="coerce")
-          .fillna(0)
-          .astype(int)
+        .fillna(0)
+        .astype(int)
     )
 
     return out
@@ -2168,7 +2211,8 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     # ---- inventory snapshot fetch ----
     month_start = datetime(req_year, req_month_num, 1)
     month_end = (month_start + relativedelta(months=1)).replace(day=1)
-    snapshot_date = (month_end - relativedelta(days=1)).strftime("%Y-%m-%d")
+    # ---- inventory snapshot fetch ----
+    snapshot_date = get_inventory_snapshot_date(mv.title(), req_year)
 
     inventory_forecast = fetch_and_merge_inventory_monthwise_sellable(
         forecast_totals,
