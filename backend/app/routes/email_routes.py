@@ -109,6 +109,22 @@ def send_report_email():
         query = f'SELECT * FROM public."{table_name}" ORDER BY id ASC'
         df = pd.read_sql(query, engine)
 
+        # Fix negative values
+        columns_to_fix = [
+            "tax_and_credits",
+            "fba_fees",
+            "lost_total",
+            "promotional_rebates"
+        ]
+
+        for col in columns_to_fix:
+            if col in df.columns:
+                df[col] = df[col].abs()
+
+        # Remove user_id column from email attachment
+        if "user_id" in df.columns:
+            df = df.drop(columns=["user_id"])
+
         if df.empty:
             response = jsonify({
                 "success": False,
