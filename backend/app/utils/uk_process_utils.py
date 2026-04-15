@@ -542,23 +542,23 @@ def process_skuwise_data(user_id, country, month, year):
         df["type"] = df.get("type", "").astype(str).str.strip()
 
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
-        df_non_refund = df.loc[refund_mask].copy()
+        df_refund = df.loc[refund_mask].copy()
         df_non_refund = df.loc[~refund_mask].copy()
 
         # ---------- 1) newrefundsales (refund keyword rows only) ----------
         refund_sales_cols = ["product_sales"]
         for c in refund_sales_cols:
-            if c not in df_non_refund.columns:
-                df_non_refund[c] = 0.0
+            if c not in df_refund.columns:
+                df_refund[c] = 0.0
 
         newrefundsales_df = (
-            df_non_refund.groupby("sku", as_index=False)[refund_sales_cols].sum()
+            df_refund.groupby("sku", as_index=False)[refund_sales_cols].sum()
         )
 
         newrefundsales_df["newrefundsales"] = (
-            pd.to_numeric(newrefundsales_df["product_sales"], errors="coerce").fillna(0.0)
-            
-            
+            pd.to_numeric(newrefundsales_df["product_sales"], errors="coerce")
+            .fillna(0.0)
+            .abs()
         )
 
         newrefundsales_df["newrefundsales"] = newrefundsales_df["newrefundsales"].apply(
@@ -580,19 +580,21 @@ def process_skuwise_data(user_id, country, month, year):
         df["type"] = df.get("type", "").astype(str).str.strip()
 
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
-        df_non_refund   = df.loc[refund_mask].copy()
-        df_non_refund  = df.loc[~refund_mask].copy()
+        df_refund = df.loc[refund_mask].copy()
+        df_non_refund = df.loc[~refund_mask].copy()
 
 
-        refund_fees = df[type_str.eq("Refund")].groupby("sku")["selling_fees"].sum().reset_index()
+        refund_fees = (
+            df_refund.groupby("sku", as_index=False)["selling_fees"]
+            .sum()
+            .rename(columns={"selling_fees": "refund_selling_fees"})
+        )
         refund_fees.rename(columns={"selling_fees": "refund_selling_fees"}, inplace=True)
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
         df["sku"] = df["sku"].astype(str).str.strip()
 
         df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
 
-        # ---------------- REFUND / RETURN QTY ----------------
-        df_refund = df[type_str.eq("Refund")].copy()
 
         # return_quantity = sum(quantity) where type == "Refund" (SKU wise)
         return_qty_df = (
@@ -734,9 +736,8 @@ def process_skuwise_data(user_id, country, month, year):
 
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
 
-        # split
-        df_non_refund   = df.loc[refund_mask].copy()
-        df_non_refund  = df.loc[~refund_mask].copy()
+        df_refund = df.loc[refund_mask].copy()
+        df_non_refund = df.loc[~refund_mask].copy()
 
         # ---------------- merge TOP computed columns into sku_grouped ----------------
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
@@ -1010,9 +1011,22 @@ def process_skuwise_data(user_id, country, month, year):
             sku_grouped[_c] = pd.to_numeric(sku_grouped[_c], errors="coerce").fillna(0.0)
 
 
+        for col in [
+            "product_sales_tax",
+            "postage_credits",
+            "gift_wrap_credits",
+            "giftwrap_credits_tax",
+            "promotional_rebates_tax"
+        ]:
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = 0.0
+
         sku_grouped["tex_and_credits"] = (
-            pd.to_numeric(sku_grouped["net_taxes"], errors="coerce").fillna(0)
-            - pd.to_numeric(sku_grouped["net_credits"], errors="coerce").fillna(0)
+            pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0)
         )
 
 
@@ -1031,9 +1045,18 @@ def process_skuwise_data(user_id, country, month, year):
             - sku_grouped["cost_of_unit_sold"]
             - sku_grouped["promotional_rebates"].abs()
         )
-        
+        # for col in ["Net Sales", "amazon_fee", "net_taxes", "net_credits", "cost_of_unit_sold"]:
+        #     if col not in sku_grouped.columns:
+        #         sku_grouped[col] = 0.0
+        #     sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
-
+        # sku_grouped["profit"] = (
+        #     sku_grouped["Net Sales"]
+        #     - sku_grouped["amazon_fee"]
+        #     - sku_grouped["net_taxes"]
+        #     + sku_grouped["net_credits"]
+        #     - sku_grouped["cost_of_unit_sold"]
+        # )
         total_profit = abs(sku_grouped["profit"].sum())
         total_Previous_profit = abs(sku_grouped["previous_profit"].sum())
         total_Previous_sales = abs(sku_grouped["previous_net_sales"].sum())
@@ -1181,8 +1204,11 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["total_quantity"]  = int(float(sum_row.get("total_quantity", 0) or 0))
         sum_row["misc_transaction"] = float(misc_transaction_total)
         sum_row["tex_and_credits"] = (
-            float(sum_row.get("net_taxes", 0))
-            - float(sum_row.get("net_credits", 0))
+            float(sum_row.get("product_sales_tax", 0) or 0)
+            + float(sum_row.get("postage_credits", 0) or 0)
+            + float(sum_row.get("gift_wrap_credits", 0) or 0)
+            + float(sum_row.get("giftwrap_credits_tax", 0) or 0)
+            + float(sum_row.get("promotional_rebates_tax", 0) or 0)
         )
         # Totals part 2 (derived)
         qty = float(sum_row.get("total_quantity", 0) or 0)
