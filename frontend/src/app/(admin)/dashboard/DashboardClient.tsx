@@ -3350,10 +3350,6 @@ export default function DashboardPage() {
         );
     };
 
-
-
-    const anyLoading = loading || shopifyLoading;
-
     const amazonTabs = useMemo<RegionKey[]>(() => {
         const tabs: RegionKey[] = [];
         (["UK", "US", "CA"] as RegionKey[]).forEach((key) => {
@@ -4094,36 +4090,6 @@ export default function DashboardPage() {
     ]);
 
 
-    const globalPrevRoasPct = useMemo(() => {
-        const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
-        const amazonSales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
-        const shopifySales = toNumberSafe(shopifyPrevDeriv?.netSales ?? 0);
-
-        const amazonSalesUsd =
-            amazonDataCurrency === "GBP" ? amazonSales * gbpToUsd :
-                amazonDataCurrency === "CAD" ? amazonSales * cadToUsd :
-                    amazonSales;
-
-        const shopifySalesUsd = shopifySales * inrToUsd;
-        const globalSalesUsd = onlyAmazon ? amazonSalesUsd : (amazonSalesUsd + shopifySalesUsd);
-
-        const adsUsd =
-            amazonDataCurrency === "GBP" ? ads * gbpToUsd :
-                amazonDataCurrency === "CAD" ? ads * cadToUsd :
-                    ads;
-
-        return globalSalesUsd > 0 ? (adsUsd / globalSalesUsd) * 100 : 0;
-    }, [
-        data?.previous_period?.totals?.advertising_fees,
-        data?.previous_period?.totals?.net_sales,
-        shopifyPrevDeriv?.netSales,
-        onlyAmazon,
-        amazonDataCurrency,
-        gbpToUsd,
-        cadToUsd,
-        inrToUsd,
-    ]);
-
     const globalCurrAspDisp = useMemo(() => {
         return globalCurrUnits > 0 ? globalCurrNetSalesDisp / globalCurrUnits : 0;
     }, [globalCurrUnits, globalCurrNetSalesDisp]);
@@ -4131,15 +4097,6 @@ export default function DashboardPage() {
     const globalPrevAspDisp = useMemo(() => {
         return globalPrevUnits > 0 ? globalPrevNetSalesDisp / globalPrevUnits : 0;
     }, [globalPrevUnits, globalPrevNetSalesDisp]);
-
-
-    const globalCurrCm2Disp = useMemo(() => {
-        return convertToDisplayCurrency(uk.cm2ProfitGBP ?? 0, "GBP");
-    }, [uk.cm2ProfitGBP, convertToDisplayCurrency]);
-
-    const globalPrevCm2Disp = useMemo(() => {
-        return convertToDisplayCurrency(prev.cm2Profit ?? 0, "GBP");
-    }, [prev.cm2Profit, convertToDisplayCurrency]);
 
 
     const globalCurrProfit = useMemo(() => {
@@ -5936,36 +5893,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 buttonText="Complete Setup"
                 onAction={handleConnectAmazonPreview}
             >
-
                 {["summary", "productwise", "inventory"].includes(activeTab) && (
                     <DashboardStickyKpis items={stickyKpiItems} />
                 )}
-
-                {/* Top 5 alerts */}
-                {/* <div className="my-2 md:my-4 space-y-3">
-                    {top5Skus
-                        .map((sku) => ({
-                            sku,
-                            productName: skuToProductName[sku] || sku,
-                            alert: inventoryAlerts?.[sku]?.alert || "",
-                        }))
-                        .filter(
-                            (x) =>
-                                x.alert.trim().toLowerCase() === "high alert" &&
-                                !dismissedAlerts.includes(x.sku) // ✅ don't show dismissed
-                        )
-                        .map(({ sku, productName }) => (
-                            <Alert
-                                key={sku}
-                                variant="error"
-                                title={`Inventory Alert - ${productName}`}
-                                message="This product is in your Top 5 and requires attention."
-                                showLink={false}
-                                closable
-                                onClose={() => handleDismiss(sku)} // ✅ persist dismissal
-                            />
-                        ))}
-                </div> */}
 
                 {activeTab === "live" && (
                     <div
@@ -6857,23 +6787,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         periodCompletedPct={rangeCompletedPct}
                                         periodCompletedLabel="Range"
                                     />
-
                                 </div>
-
                             </div>
                         </aside>
                     </div >
-
                 )}
 
                 {activeTab === "live" && platform === "global" && showLiveBI && (
-
                     <div
                         id="ai-insights"
                         className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
-
                             <LiveBiLineGraph
                                 dailySeries={finalBiDailySeriesHome}
                                 periods={finalBiPeriods}
@@ -6886,7 +6811,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                         </div>
                     </div>
-
                 )
                 }
 
@@ -6915,15 +6839,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                         )}
                     </div>
-
                 )}
 
                 {activeTab === "productwise" && (
-
                     <>
                         <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
-
                                 {/* LEFT: Title */}
                                 <div className="flex items-center gap-2">
                                     <PageBreadcrumb
@@ -6932,12 +6853,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         align="left"
                                         textSize="2xl"
                                     />
-
                                     <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
                                         ({currencySymbol})
                                     </span>
                                 </div>
-
                                 {/* CENTER: Ads loading message */}
                                 {adsLoading && (
                                     <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
@@ -6945,8 +6864,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         Ads data is being fetched, please wait…
                                     </div>
                                 )}
-
-                                {/* RIGHT: Download */}
+                               {/* RIGHT: Download */}
                                 <div className="flex items-center gap-2">
                                     <DownloadIconButton
                                         onClick={handleDownloadPlProductwiseMtd}
@@ -6954,9 +6872,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                                     />
                                 </div>
-
                             </div>
-
 
                             {error ? (
                                 <div className="text-sm text-red-600">{error}</div>
@@ -7010,41 +6926,30 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
                                                 }
-
                                                 if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Number.isFinite(v) ? v : 0);
                                                 }
-
                                                 if (colKey === "ad_type") {
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return formatAdType((row as any).ad_type);
                                                 }
-
-
                                                 if (colKey === "ads_spend")
                                                     return formatAdsNumber(Math.abs(row.ads_spend));
-
                                                 if (colKey === "cogs")
                                                     return formatAdsNumber(Math.abs(row.cogs));
-
                                                 if (colKey === "fba_fees")
                                                     return formatAdsNumber(Math.abs(row.fba_fees));
-
                                                 if (colKey === "selling_fees")
                                                     return formatAdsNumber(Math.abs(row.selling_fees));
-
                                                 if (colKey === "marketplace_total")
                                                     return formatAdsNumber(
                                                         Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
                                                     );
-
                                                 if (colKey === "cm2_profit")
                                                     return formatAdsNumber(row.cm2_profit);
-
                                                 if (colKey === "profit")
                                                     return formatAdsNumber(row.profit);
-
                                                 return (row as any)[colKey] ?? "";
                                             }}
                                             summary={{
@@ -7061,13 +6966,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                 id: "ads_1",
                                                                 label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                                 midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
-                                                                // midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
                                                             },
-                                                            // {
-                                                            //     id: "ads_2",
-                                                            //     label: <>Sponsored Display <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                            //     midValue: formatSummaryValue(sponsoredDisplaySpend, "advertising_total"),
-                                                            // },
                                                             {
                                                                 id: "ads_3",
                                                                 label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
@@ -7164,13 +7063,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                             reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
                                                     },
                                                 ],
-
                                                 valueCols: 2,
                                             }}
                                         />
                                     </div>
                                 </div>
-
                             )}
 
                         </div>
@@ -7188,19 +7085,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
                                             </div>
                                         </div>
-
                                         <div className="flex items-center gap-3">
-
-                                            {/* {!isCountryMode && (
-                                                <>
-                                                    <SegmentedToggle<RegionKey>
-                                                        value={graphRegion}
-                                                        options={graphRegions.map((r) => ({ value: r }))}
-                                                        onChange={setGraphRegion}
-                                                    />
-
-                                                </>
-                                            )} */}
                                             <span className="relative group shrink-0">
                                                 <button
                                                     type="button"
@@ -7274,15 +7159,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     />
                                                 </span>
                                             </span>
-
-
                                         </div>
                                     </div>
 
-
                                     <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
                                         <div className="w-full max-w-full min-w-0 h-full">
-
                                             <DashboardBargraphCard
                                                 countryName={countryNameForGraph}
                                                 formattedMonthYear={formattedMonthYear}
@@ -7296,7 +7177,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 allValuesZero={finalAllValuesZero}
                                                 previewMode={shouldShowDummyUi}
                                             />
-
                                         </div>
                                     </div>
                                 </div>
@@ -7328,15 +7208,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 {activeTab === "inventory" &&
                     (isUsingDummyData || amazonIntegrated) && (
                         <div id="current-inventory" className="scroll-mt-[80px]">
-
-                            {/* <CurrentInventorySection
-                                region={isUsingDummyData ? "UK" : graphRegionToUse}
-                                invLoading={!shouldShowDummyUi && invLoading}
-                                invError={shouldShowDummyUi ? "" : invError}
-                                invRows={finalInventoryRows}
-                                inventoryAlerts={finalInventoryAlerts}
-                                userData={userData}
-                            /> */}
                             <CurrentInventorySection
                                 region={isUsingDummyData ? "UK" : graphRegionToUse}
                                 invLoading={!shouldShowDummyUi && invLoading}
