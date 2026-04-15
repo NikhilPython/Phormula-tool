@@ -1,5 +1,8 @@
+
+from __future__ import annotations
+
 import json
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from app import db
 from app.models.user_models import ChatHistory
@@ -13,9 +16,9 @@ def save_chat_turn(
 ) -> None:
     row = ChatHistory(
         user_id=user_id,
-        message=message[:1000],
-        response=response[:2000],
-        meta=json.dumps(meta or {}),
+        message=(message or "")[:1000],
+        response=(response or "")[:4000],
+        meta=json.dumps(meta or {}, default=str),
     )
     db.session.add(row)
     db.session.commit()
@@ -28,12 +31,28 @@ def recent_chat_history(user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
         .limit(limit)
         .all()
     )
-    items = []
+    items: List[Dict[str, Any]] = []
     for row in reversed(rows):
-                items.append({
-            "message": row.message,
-            "response": row.response,
-            "meta": row.meta,
-            "timestamp": row.timestamp.isoformat() if row.timestamp else None,
-        })
+        items.append(
+            {
+                "message": row.message,
+                "response": row.response,
+                "meta": row.meta,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            }
+        )
     return items
+
+
+def load_last_analysis_from_history(history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for h in reversed(history or []):
+        raw = h.get("meta")
+        if not raw:
+            continue
+        try:
+            meta = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            continue
+        if meta.get("current_metrics") or meta.get("comparison") or meta.get("analysis_result") or meta.get("event_plan_result"):
+            return meta
+    return None

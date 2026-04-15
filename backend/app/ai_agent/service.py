@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -25,19 +26,15 @@ def run_agent(
     conversation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     conversation_id = conversation_id or str(uuid4())
-
-    # ✅ NEW: fetch recent memory
-    history = recent_chat_history(user_id, limit=5)
+    history = recent_chat_history(user_id, limit=6)
 
     state = {
         "user_id": int(user_id),
         "country": (country or "uk").strip().lower(),
         "conversation_id": conversation_id,
-        "user_query": user_query.strip(),
+        "user_query": (user_query or "").strip(),
         "email_requested": bool(email_requested),
         "thresholds": {**DEFAULT_THRESHOLDS, **(thresholds or {})},
-
-        # 🔥 NEW: pass memory into agent
         "chat_history": history,
     }
 
@@ -55,8 +52,10 @@ def run_agent(
             "analysis_result": result.get("analysis_result"),
             "current_metrics": result.get("current_metrics"),
             "comparison": result.get("comparison"),
-            "sku_analysis": result.get("sku_analysis", []),
-        }
+            "advice": result.get("advice", []),
+            "event_plan_result": result.get("event_plan_result"),
+            "sku_intelligence_result": result.get("sku_intelligence_result"),
+        },
     )
 
     return {
@@ -64,13 +63,13 @@ def run_agent(
         "response": result.get("final_response"),
         "intent": result.get("intent"),
         "metric_name": result.get("metric_name"),
-        "latest_completed_month": result.get("latest_completed_month"),
         "current_metrics": result.get("current_metrics"),
         "comparison": result.get("comparison"),
-        "sku_analysis": result.get("sku_analysis", []),
+        "analysis_result": result.get("analysis_result"),
         "advice": result.get("advice", []),
         "email_result": result.get("email_result"),
-
-        # optional: frontend ke liye
+        "event_plan_result": result.get("event_plan_result"),
+        "sku_intelligence_result": result.get("sku_intelligence_result"),
         "memory": history,
+        "error": result.get("error"),
     }

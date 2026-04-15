@@ -345,9 +345,6 @@ def get_forecast_column(future_event):
 
 
 
-       
-
-
 class ExecutionPlan(BaseModel):
     summary: List[str]
     history_story: List[str]
@@ -491,9 +488,6 @@ def get_bau_profit(monthly_df):
 
     recent = monthly_df.sort_values(["year","month"]).tail(3)
     return float(recent["profit"].mean())
-
-
-
 
 def optimize_price_with_constraint(monthly_df, margin_pct):
 

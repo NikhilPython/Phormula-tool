@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -51,7 +52,7 @@ def agent_email_summary():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
         data = request.get_json(silent=True) or {}
-        message = (data.get("message") or "Send me the latest completed month summary").strip()
+        message = (data.get("message") or "Send me the latest completed month profit summary").strip()
         result = run_agent(
             user_id=effective_user_id,
             country=(data.get("country") or payload.get("country") or "uk").strip().lower(),
@@ -93,6 +94,11 @@ def get_agent_schedules():
                 "preferred_hour": row.preferred_hour,
                 "preferred_minute": row.preferred_minute,
                 "metric_name": row.metric_name,
+                "query": row.query,
+                "analysis_type": row.analysis_type,
+                "period_payload": row.period_payload,
+                "day_of_month": row.day_of_month,
+                "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             }
             for row in rows
@@ -111,8 +117,8 @@ def upsert_agent_schedule():
         data = request.get_json(silent=True) or {}
         country = (data.get("country") or payload.get("country") or "uk").strip().lower()
         frequency = (data.get("frequency") or "daily").strip().lower()
-        if frequency not in {"daily", "weekly"}:
-            return jsonify({"error": "frequency must be daily or weekly"}), 400
+        if frequency not in {"daily", "weekly", "monthly"}:
+            return jsonify({"error": "frequency must be daily, weekly, or monthly"}), 400
 
         row = AgentEmailSchedule.query.filter_by(
             user_id=effective_user_id,
@@ -131,6 +137,10 @@ def upsert_agent_schedule():
         row.preferred_hour = int(data.get("preferred_hour", 9))
         row.preferred_minute = int(data.get("preferred_minute", 0))
         row.metric_name = (data.get("metric_name") or "profit").strip().lower()
+        row.query = data.get("query")
+        row.analysis_type = data.get("analysis_type")
+        row.period_payload = data.get("period_payload")
+        row.day_of_month = data.get("day_of_month")
         row.updated_at = datetime.utcnow()
         db.session.commit()
 
@@ -144,8 +154,13 @@ def upsert_agent_schedule():
                 "preferred_hour": row.preferred_hour,
                 "preferred_minute": row.preferred_minute,
                 "metric_name": row.metric_name,
+                "query": row.query,
+                "analysis_type": row.analysis_type,
+                "period_payload": row.period_payload,
+                "day_of_month": row.day_of_month,
+                "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            }
+            },
         }), 200
     except PermissionError as e:
         return jsonify({"error": str(e)}), 401

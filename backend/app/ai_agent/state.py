@@ -2,25 +2,26 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
-
 Intent = Literal[
     "chat",
     "explain",
     "clarify",
-
     "metric_qa",
     "comparison",
     "report",
     "email",
-    "schedule_email",
-
-    "top_skus",
-    "loss_making_skus",
-    "advice",
-
     "event_planner",
-    "pricing_planner",
-    "inventory_planner",
+]
+
+AnalysisType = Literal[
+    "absolute",
+    "comparison",
+    "growth",
+    "trend",
+    "breakdown",
+    "summary",
+    "event_plan",
+    "sku_intelligence",
 ]
 
 
@@ -29,57 +30,44 @@ class AgentState(TypedDict, total=False):
     country: str
     conversation_id: str
     user_query: str
-    intent: Intent
-    metric_name: str
-    period_mode: str
-    filters: Dict[str, Any]
-    thresholds: Dict[str, float]
-
-    months_back: Optional[int]
-    needs_sku: bool
-    needs_advice: bool
-    response_mode: str
     chat_history: List[Dict[str, Any]]
 
-    custom_range: bool
-    period_1: Dict[str, Any]
-    period_2: Dict[str, Any]
+    # -------- Core Intent --------
+    intent: Intent
+    analysis_type: AnalysisType
+    metric_name: Optional[str]
 
-    latest_completed_month: Dict[str, Any]
-    current_df_json: str
-    previous_df_json: str
-    current_metrics: Dict[str, Any]
-    previous_metrics: Dict[str, Any]
-    comparison: Dict[str, Any]
-    sku_analysis: List[Dict[str, Any]]
-    product_query: Optional[str]
-    product_queries: Optional[List[str]]
-    advice: List[str]
-    email_requested: bool
-    email_result: Dict[str, Any]
-    final_response: str
-    citations: List[str]
-    error: Optional[str]
-    data_mode: bool
-    raw_df: Optional[list]
-
-    # 🔥 ADD THESE (CRITICAL FIX)
-    period_parsed: Optional[Dict[str, Any]]
-    period_payload: Optional[Dict[str, Any]]
-    engine: Optional[Any]
-
-    clarification_question: Optional[str]
-    planner_payload: Optional[Dict[str, Any]]
-    planner_result: Optional[Dict[str, Any]]
-
-    # 🔥 NEW: analysis + insight layer
-    analysis_type: Optional[str]
-    analysis_result: Optional[Dict[str, Any]]
-    insight_context: Optional[Dict[str, Any]]
+    # -------- Product --------
     product_match: Optional[str]
-    multi_metric: Optional[bool]
-    latest_insight_context: Optional[Dict[str, Any]]
-    # memory restore / scheduling
-    restored_from_memory: Optional[bool]
-    schedule_requested: Optional[bool]
-    schedule_payload: Optional[Dict[str, Any]]
+    product_query: Optional[str]
+
+    # -------- LLM behavior --------
+    response_mode: str
+    needs_advice: bool
+    email_requested: bool
+    restored_from_memory: bool
+    clarification_question: Optional[str]
+
+    # -------- NEW: Event Planner Fields --------
+    event_name: Optional[str]
+    last_event_month: Optional[int]
+    future_event_month: Optional[int]
+    target_sales: Optional[float]
+
+    # -------- Time / Engine --------
+    period_parsed: Dict[str, Any]
+    period_payload: Dict[str, Any]
+    engine: Any
+
+    # -------- Results --------
+    current_metrics: Dict[str, Any]
+    comparison: Dict[str, Any]
+    analysis_result: Dict[str, Any]
+    advice: List[str]
+    final_response: str
+    email_result: Dict[str, Any]
+    error: Optional[str]
+
+    # -------- Specialized Outputs --------
+    event_plan_result: Dict[str, Any]
+    sku_intelligence_result: Dict[str, Any]

@@ -314,8 +314,10 @@ def get_metric_last_n_months(
         value = float(result.get("total", 0))
 
         per_period.append({
-            "period_label": f"{mk.month:02d}-{mk.year}",
-            "__metric__": value
+            "period_label": mk.label,
+            "month": mk.month,
+            "year": mk.year,
+            "__metric__": value,
         })
 
     total = sum(x["__metric__"] for x in per_period)
@@ -567,6 +569,8 @@ def build_time_series_analysis(
 
         series.append({
             "period_label": mk.label,
+            "month": mk.month,
+            "year": mk.year,
             "__metric__": float(value),
         })
 
@@ -732,8 +736,8 @@ def extract_month(text: str) -> Optional[int]:
     return None
 
 
-def extract_month_year(text: str) -> Optional[Tuple[int, int]]:
-    year = extract_year(text)
+def extract_month_year(text: str, default_year: Optional[int] = None) -> Optional[Tuple[int, int]]:
+    year = extract_year(text) or default_year
     month = extract_month(text)
     if year and month:
         return year, month
@@ -858,8 +862,10 @@ def parse_comparison(text: str):
     left, right = text.split("vs", 1)
 
     # month vs month
-    m1 = extract_month_year(left)
-    m2 = extract_month_year(right)
+    inferred_year = extract_year(text) or datetime.today().year
+
+    m1 = extract_month_year(left, default_year=inferred_year)
+    m2 = extract_month_year(right, default_year=inferred_year)
 
     if m1 and m2:
         return {

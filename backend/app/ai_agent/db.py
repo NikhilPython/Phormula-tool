@@ -31,6 +31,34 @@ MONTH_NAME_TO_NUM = {
 
 MONTH_NUM_TO_NAME = {v: k for k, v in MONTH_NAME_TO_NUM.items()}
 
+MONEY_METRICS = {
+    "net_sales",
+    "gross_sales",
+    "profit",
+    "cm2_profit",
+    "advertising_total",
+    "platform_fee",
+    "amazon_fee",
+    "fba_fees",
+    "selling_fees",
+    "refund_sales",
+    "asp",
+}
+
+def _format_currency(value: float, metric_name: str, country: str) -> str:
+    if metric_name in {"sales_mix", "profit_mix"}:
+        return f"{value:.2%}"
+
+    if metric_name == "total_quantity":
+        return f"{value:,.0f}"
+
+    if metric_name in MONEY_METRICS:
+        if country and country.lower() == "uk":
+            return f"£{value:,.2f}"
+        return f"{value:,.2f}"
+
+    return f"{value:,.2f}"
+
 
 @dataclass(frozen=True)
 class MonthKey:
