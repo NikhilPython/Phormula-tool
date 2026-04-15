@@ -720,7 +720,7 @@ def PO_generated():
         'product_name': 'Product Name DB',
         'price': 'Cost per Unit (in INR)',
         'local_stock': 'Current Inventory - Local Warehouse',
-        'in_transit_units': 'PO Already Raised'
+        'in_transit_units': 'In Transit Units'
     }, inplace=True)
 
     merged_df['Product Name'] = merged_df['Product Name'].replace('', pd.NA)
@@ -730,7 +730,7 @@ def PO_generated():
     for col in [
         'Dispatch',
         'Current Inventory - Local Warehouse',
-        'PO Already Raised',
+        'In Transit Units',
         'Cost per Unit (in INR)'
     ]:
         if col not in merged_df.columns:
@@ -750,7 +750,7 @@ def PO_generated():
     merged_df['PO to be raised'] = (
         merged_df['Total Dispatches']
         - merged_df['Current Inventory - Local Warehouse']
-        - merged_df['PO Already Raised']
+        - merged_df['In Transit Units']
     )
 
     merged_df['PO to be raised'] = pd.to_numeric(
@@ -769,7 +769,7 @@ def PO_generated():
         'Dispatches Amazon US',
         'Total Dispatches',
         'Current Inventory - Local Warehouse',
-        'PO Already Raised',
+        'In Transit Units',
         'PO to be raised',
         'Cost per Unit (in INR)',
         'PO Cost (in INR)'
@@ -794,7 +794,7 @@ def PO_generated():
         'Dispatches Amazon US': totals.get('Dispatches Amazon US', 0),
         'Total Dispatches': totals.get('Total Dispatches', 0),
         'Current Inventory - Local Warehouse': totals.get('Current Inventory - Local Warehouse', 0),
-        'PO Already Raised': totals.get('PO Already Raised', 0),
+        'In Transit Units': totals.get('In Transit Units', 0),
         'PO to be raised': totals.get('PO to be raised', 0),
         'Cost per Unit (in INR)': '',
         'PO Cost (in INR)': totals.get('PO Cost (in INR)', 0)
@@ -928,7 +928,7 @@ def global_PO_generated():
         'Dispatches Amazon US',
         'Total Dispatches',
         'Current Inventory - Local Warehouse',
-        'PO Already Raised',
+        'In Transit Units',
         'PO to be raised',
         'Cost per Unit (in INR)',
         'PO Cost (in INR)'
@@ -1006,8 +1006,8 @@ def global_PO_generated():
         global_df['Dispatches Amazon US'] = 0
     if 'Current Inventory - Local Warehouse' not in global_df.columns:
         global_df['Current Inventory - Local Warehouse'] = 0
-    if 'PO Already Raised' not in global_df.columns:
-        global_df['PO Already Raised'] = 0
+    if 'In Transit Units' not in global_df.columns:
+        global_df['In Transit Units'] = 0
     if 'Cost per Unit (in INR)' not in global_df.columns:
         global_df['Cost per Unit (in INR)'] = 0
 
@@ -1020,7 +1020,7 @@ def global_PO_generated():
     global_df['PO to be raised'] = (
         global_df['Total Dispatches'] -
         global_df['Current Inventory - Local Warehouse'].fillna(0) -
-        global_df['PO Already Raised'].fillna(0)
+        global_df['In Transit Units'].fillna(0)
     ).clip(lower=0)
 
     global_df['PO Cost (in INR)'] = (
@@ -1033,7 +1033,7 @@ def global_PO_generated():
         'Dispatches Amazon US',
         'Total Dispatches',
         'Current Inventory - Local Warehouse',
-        'PO Already Raised',
+        'In Transit Units',
         'PO to be raised',
         'PO Cost (in INR)'
     ]
@@ -1054,7 +1054,7 @@ def global_PO_generated():
     final_df['Dispatches Amazon US'] = grouped_df.get('Dispatches Amazon US', 0)
     final_df['Total Dispatches'] = grouped_df.get('Total Dispatches', 0)
     final_df['Current Inventory - Local Warehouse'] = grouped_df.get('Current Inventory - Local Warehouse', 0)
-    final_df['PO Already Raised'] = grouped_df.get('PO Already Raised', 0)
+    final_df['In Transit Units'] = grouped_df.get('In Transit Units', 0)
     final_df['PO to be raised'] = grouped_df.get('PO to be raised', 0)
     final_df['Cost per Unit (in INR)'] = grouped_df.get('Cost per Unit (in INR)', 0)
     final_df['PO Cost (in INR)'] = grouped_df.get('PO Cost (in INR)', 0)
@@ -1067,7 +1067,7 @@ def global_PO_generated():
         'Dispatches Amazon US': final_df['Dispatches Amazon US'].sum(),
         'Total Dispatches': final_df['Total Dispatches'].sum(),
         'Current Inventory - Local Warehouse': final_df['Current Inventory - Local Warehouse'].sum(),
-        'PO Already Raised': final_df['PO Already Raised'].sum(),
+        'In Transit Units': final_df['In Transit Units'].sum(),
         'PO to be raised': final_df['PO to be raised'].sum(),
         'Cost per Unit (in INR)': '',
         'PO Cost (in INR)': final_df['PO Cost (in INR)'].sum(),

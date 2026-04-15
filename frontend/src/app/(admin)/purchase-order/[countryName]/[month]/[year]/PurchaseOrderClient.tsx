@@ -187,7 +187,7 @@ export default function PurchaseOrderPage({
           'Dispatches Amazon US',
           'Total Dispatches',
           'Current Inventory - Local Warehouse',
-          'PO Already Raised',
+          'In Transit Units',
           'PO to be raised',
           'Cost per Unit (in INR)',
           'PO Cost (in INR)',
@@ -198,7 +198,7 @@ export default function PurchaseOrderPage({
           'Dispatches UK',
           'Total Dispatches',
           'Current Inventory - Local Warehouse',
-          'PO Already Raised',
+          'In Transit Units',
           'PO to be raised',
           'Cost per Unit (in INR)',
           'PO Cost (in INR)',
@@ -212,7 +212,7 @@ export default function PurchaseOrderPage({
       'Dispatches Canada': '(+)',
       'Dispatches Amazon US': '(+)',
       'Current Inventory - Local Warehouse': '(-)',
-      'PO Already Raised': '(-)',
+      'In Transit Units': '(-)',
     }),
     []
   );

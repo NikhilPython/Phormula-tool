@@ -1352,44 +1352,6 @@ export default function DashboardPage() {
             }));
     }, [normalizedInventoryAlerts, top5Skus]);
 
-    // const notificationItems = useMemo(() => {
-    //     return top5Skus
-    //         .map((sku) => {
-    //             const alertRow = normalizedInventoryAlerts[sku];
-
-    //             return {
-    //                 sku,
-    //                 productName: skuToProductName[sku] || sku,
-    //                 alert: alertRow?.alert || "",
-    //                 alertType: alertRow?.alert_type || "error",
-    //             };
-    //         })
-    //         .filter(
-    //             (item) =>
-    //                 item.alert.trim().toLowerCase() === "high alert" &&
-    //                 !dismissedAlerts.includes(item.sku)
-    //         )
-    //         .map((item) => ({
-    //             id: item.sku,
-    //             title: item.productName,
-    //             message: "Top-selling item is running low. Restock recommended.",
-    //             type: item.alertType,
-    //             href: `/live-dashboard/${countryName}/${urlMonthParam || ""}/${urlYearParam || ""}#current-inventory`,
-    //         }));
-    // }, [
-    //     top5Skus,
-    //     skuToProductName,
-    //     normalizedInventoryAlerts,
-    //     dismissedAlerts,
-    //     countryName,
-    //     urlMonthParam,
-    //     urlYearParam,
-    // ]);
-
-   
-    // useEffect(() => {
-    //     setHeaderNotifications(notificationItems);
-    // }, [notificationItems, setHeaderNotifications]);
 
     /* ===================== AMAZON / SHOPIFY STATE ===================== */
     const [loading, setLoading] = useState(false);
@@ -1702,9 +1664,9 @@ export default function DashboardPage() {
         }
     }, [activeTab]);
 
-    useEffect(() => {
-        fetchMonthlySp();
-    }, [fetchMonthlySp]);
+    // useEffect(() => {
+    //     fetchMonthlySp();
+    // }, [fetchMonthlySp]);
 
     useEffect(() => {
         const stored = localStorage.getItem("dismissedInventoryAlerts");
@@ -1745,15 +1707,69 @@ export default function DashboardPage() {
 
     const biUiLoading = biLoading;
 
+    const [dashboardBusy, setDashboardBusy] = useState(false);
+
+    const [currentStep, setCurrentStep] = useState<number>(0); // 0 = idle
+    const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+
+    const [stepProgress, setStepProgress] = useState<{
+        active: boolean;
+        label: string;
+        percentage: number;
+        detail?: string;
+    }>({
+        active: false,
+        label: "",
+        percentage: 0,
+        detail: "",
+    });
+
+    const markStepComplete = (step: number) => {
+        setCompletedSteps((prev) => new Set([...prev, step]));
+    };
+
+    const setStep = (
+        step: number,
+        label: string,
+        percentage: number = 0,
+        detail?: string
+    ) => {
+        setCurrentStep(step);
+        setStepProgress({
+            active: true,
+            label,
+            percentage: Math.min(100, Math.max(0, percentage)),
+            detail,
+        });
+    };
+
+    const resetStepState = () => {
+        setCurrentStep(0);
+        setCompletedSteps(new Set());
+        setStepProgress({
+            active: false,
+            label: "",
+            percentage: 0,
+            detail: "",
+        });
+    };
+
+    const dashboardSteps = [
+        { num: 1, label: "Currency Rates" },
+        { num: 2, label: "MTD Fetching" },
+        { num: 3, label: "Inventory Fetch" },
+        { num: 4, label: "Plotting Graph" },
+    ];
+
     const pageLoading =
+        dashboardBusy ||
         loading ||
         shopifyLoading ||
-        fxLoading ||
-        adsLoading ||
-        monthlySpLoading ||
+        biLoading ||
         invLoading ||
-        biUiLoading;
-
+        monthlySpLoading ||
+        fxLoading ||
+        adsLoading;
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -1815,6 +1831,14 @@ export default function DashboardPage() {
         }
     }, [activeDateRegion]);
 
+    const waitForPaint = () =>
+        new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    resolve();
+                });
+            });
+        });
 
     useEffect(() => {
         if (activeTab !== "summary") return;
@@ -1822,13 +1846,6 @@ export default function DashboardPage() {
             setSummaryLoading(false);
         }
     }, [activeTab, liveBiPayload]);
-
-    useEffect(() => {
-        fetchFxRates();
-    }, [fetchFxRates]);
-
-
-    // console.log("Active Date Region:", activeDateRegion);
 
     useEffect(() => {
         const timezone = getTimezoneForRegion(activeDateRegion);
@@ -1864,174 +1881,171 @@ export default function DashboardPage() {
         if (isCountryMode) setTargetRegion(forcedRegion);
     }, [isCountryMode, forcedRegion]);
 
-    const didAdsManagerSeedRef = useRef(false);
+    // const didAdsManagerSeedRef = useRef(false);
 
     // ===================== EFFECTS =====================
 
-    useEffect(() => {
-        let cancelled = false;
+    // useEffect(() => {
+    //     let cancelled = false;
 
-        const run = async () => {
-            try {
-                setAdsLoading(true);
+    //     const run = async () => {
+    //         try {
+    //             setAdsLoading(true);
 
-                if (platform === "shopify") {
-                    if (!cancelled) setAdsSeeded(true);
-                    return;
-                }
+    //             if (platform === "shopify") {
+    //                 if (!cancelled) setAdsSeeded(true);
+    //                 return;
+    //             }
 
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                if (!jwtToken) {
-                    if (!cancelled) {
-                        setAdsSeeded(false);
-                        setAdsSeedError("No token found. Please sign in.");
-                    }
-                    return;
-                }
+    //             if (!jwtToken) {
+    //                 if (!cancelled) {
+    //                     setAdsSeeded(false);
+    //                     setAdsSeedError("No token found. Please sign in.");
+    //                 }
+    //                 return;
+    //             }
 
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
+    //             if (country === "UK" || country === "US") {
+    //                 await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             }
 
-                if (!cancelled) {
-                    setAdsSeedError(null);
-                    setAdsSeeded(true);
-                }
-            } catch (e: any) {
-                if (!cancelled) {
-                    setAdsSeedError(e?.message || "Ads seed failed");
-                    setAdsSeeded(false);
-                }
-            } finally {
-                if (!cancelled) setAdsLoading(false);
-            }
-        };
+    //             if (!cancelled) {
+    //                 setAdsSeedError(null);
+    //                 setAdsSeeded(true);
+    //             }
+    //         } catch (e: any) {
+    //             if (!cancelled) {
+    //                 setAdsSeedError(e?.message || "Ads seed failed");
+    //                 setAdsSeeded(false);
+    //             }
+    //         } finally {
+    //             if (!cancelled) setAdsLoading(false);
+    //         }
+    //     };
 
-        setAdsSeeded(false);
-        run();
+    //     setAdsSeeded(false);
+    //     run();
 
-        return () => {
-            cancelled = true;
-        };
-    }, [platform, baseURL]);
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [platform, baseURL]);
 
-    const didMonthlyAdsSyncRef = useRef(false);
-    useEffect(() => {
-        if (!adsSeeded) return;
-        if (platform === "shopify") return;
+    // const didMonthlyAdsSyncRef = useRef(false);
+    // useEffect(() => {
+    //     if (!adsSeeded) return;
+    //     if (platform === "shopify") return;
 
-        let cancelled = false;
+    //     let cancelled = false;
 
-        const run = async () => {
-            try {
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-                if (!jwtToken) return;
+    //     const run = async () => {
+    //         try {
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             if (!jwtToken) return;
 
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                const { monthName, year } = getRegionYearMonth(activeDateRegion);
-                const month = monthToNumber(monthName.toLowerCase());
+    //             const { monthName, year } = getRegionYearMonth(activeDateRegion);
+    //             const month = monthToNumber(monthName.toLowerCase());
 
-                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+    //             const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
 
-                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${jwtToken}`,
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ month, year, country, include }),
-                });
+    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+    //                 method: "POST",
+    //                 headers: {
+    //                     Authorization: `Bearer ${jwtToken}`,
+    //                     Accept: "application/json",
+    //                     "Content-Type": "application/json",
+    //                 },
+    //                 body: JSON.stringify({ month, year, country, include }),
+    //             });
 
-                const json = await res.json().catch(() => ({}));
+    //             const json = await res.json().catch(() => ({}));
 
-                if (res.status === 404 && String(json?.error || "").includes("No rows found")) {
-                    console.warn(`No monthly ads rows for ${country} ${month}/${year}. Skipping.`);
-                    return;
-                }
+    //             if (res.status === 404 && String(json?.error || "").includes("No rows found")) {
+    //                 console.warn(`No monthly ads rows for ${country} ${month}/${year}. Skipping.`);
+    //                 return;
+    //             }
 
-                if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
+    //             if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
 
-                if (cancelled) return;
+    //             if (cancelled) return;
 
-                await fetchMonthlySp();
-            } catch (e) {
-                console.error("monthly_sp_sd_to_db error:", e);
-            }
-        };
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
+    //             await fetchMonthlySp();
+    //         } catch (e) {
+    //             console.error("monthly_sp_sd_to_db error:", e);
+    //         }
+    //     };
+    //     run();
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
 
 
-    useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
-            try {
-                setAdsLoading(true);
+    // useEffect(() => {
+    //     let cancelled = false;
+    //     const run = async () => {
+    //         try {
+    //             setAdsLoading(true);
 
-                if (platform === "shopify") {
-                    if (!cancelled) setAdsSeeded(true);
-                    return;
-                }
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             if (platform === "shopify") {
+    //                 if (!cancelled) setAdsSeeded(true);
+    //                 return;
+    //             }
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                if (!jwtToken) {
-                    if (!cancelled) {
-                        setAdsSeeded(false);
-                        setAdsSeedError("No token found. Please sign in.");
-                    }
-                    return;
-                }
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             if (!jwtToken) {
+    //                 if (!cancelled) {
+    //                     setAdsSeeded(false);
+    //                     setAdsSeedError("No token found. Please sign in.");
+    //                 }
+    //                 return;
+    //             }
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
-                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             if (country === "UK" || country === "US") {
+    //                 await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             }
+    //             await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (!cancelled) {
-                    setAdsSeedError(null);
-                    setAdsSeeded(true);
-                }
-            } catch (e: any) {
-                if (!cancelled) {
-                    setAdsSeedError(e?.message || "Ads seed failed");
-                    setAdsSeeded(false);
-                }
-            } finally {
-                if (!cancelled) setAdsLoading(false);
-            }
-        };
+    //             if (!cancelled) {
+    //                 setAdsSeedError(null);
+    //                 setAdsSeeded(true);
+    //             }
+    //         } catch (e: any) {
+    //             if (!cancelled) {
+    //                 setAdsSeedError(e?.message || "Ads seed failed");
+    //                 setAdsSeeded(false);
+    //             }
+    //         } finally {
+    //             if (!cancelled) setAdsLoading(false);
+    //         }
+    //     };
 
-        setAdsSeeded(false);
-        run();
+    //     setAdsSeeded(false);
+    //     run();
 
-        return () => {
-            cancelled = true;
-        };
-    }, [platform, baseURL]);
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [platform, baseURL]);
 
-    // const inventoryCountry = useMemo(() => {
-    //     const v = (graphRegionToUse || "").toString().trim().toLowerCase(); // or your region prop
-    //     return v.length ? v : "global";
-    // }, [graphRegionToUse]);
+
 
     const inventoryCountry = useMemo(() => {
         // Country pages
@@ -2086,9 +2100,9 @@ export default function DashboardPage() {
         }
     }, [inventoryCountry, invMonthYear.month, invMonthYear.year, isMonthYearNA]);
 
-    useEffect(() => {
-        fetchInventory();
-    }, [fetchInventory]);
+    // useEffect(() => {
+    //     fetchInventory();
+    // }, [fetchInventory]);
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
@@ -2876,33 +2890,212 @@ export default function DashboardPage() {
         [fetchBiSeries, selectedStartDay, selectedEndDay]
     );
 
-    useEffect(() => {
-        if (!showLiveBI) return;
-        fetchBiSeries(selectedStartDay, selectedEndDay);
-    }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
+    // useEffect(() => {
+    //     if (!showLiveBI) return;
+    //     fetchBiSeries(selectedStartDay, selectedEndDay);
+    // }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
     /* ===================== REFRESH ALL ===================== */
-    const refreshAll = useCallback(async () => {
-        if (isMonthYearNA) return;
-        await fetchAmazon();
-        if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-            await Promise.all([fetchShopify(), fetchShopifyPrev()]);
+    // const refreshAll = useCallback(async () => {
+    //     if (isMonthYearNA) return;
+    //     await fetchAmazon();
+    //     if (shopifyStore?.shop_name && shopifyStore?.access_token) {
+    //         await Promise.all([fetchShopify(), fetchShopifyPrev()]);
+    //     }
+    // }, [
+    //     fetchAmazon,
+    //     fetchShopify,
+    //     fetchShopifyPrev,
+    //     shopifyStore,
+    // ]);
+
+    const runDashboardLoadWithSteps = useCallback(async () => {
+        if (isMonthYearNA) {
+            resetStepState();
+            return;
+        }
+
+        setDashboardBusy(true);
+        setError(null);
+        setBiError(null);
+        setInvError("");
+        setMonthlySpError(null);
+        setShopifyError(null);
+        setAdsSeedError(null);
+
+        setCurrentStep(1);
+        setCompletedSteps(new Set());
+        setStepProgress({
+            active: true,
+            label: "",
+            percentage: 0,
+            detail: "",
+        });
+
+        try {
+            // STEP 1: Currency Rates
+            setStep(1, "Currency Rates", 15, "Fetching currency conversion rates...");
+            await fetchFxRates();
+            setStep(1, "Currency Rates", 100, "Currency rates ready");
+            markStepComplete(1);
+
+            // STEP 2: MTD Fetching
+            setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
+
+            const jwtToken =
+                typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+            const country =
+                platform === "amazon-us"
+                    ? "US"
+                    : platform === "amazon-ca"
+                        ? "CA"
+                        : "UK";
+
+            if (platform !== "shopify" && jwtToken) {
+                setAdsLoading(true);
+                setAdsSeeded(false);
+
+                setStep(2, "MTD Fetching", 10, "Seeding Sponsored Products report...");
+                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                if (country === "UK" || country === "US") {
+                    setStep(2, "MTD Fetching", 18, "Seeding Sponsored Display report...");
+                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                }
+
+                setStep(2, "MTD Fetching", 26, "Seeding SB keyword report...");
+                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                setAdsSeeded(true);
+                setAdsSeedError(null);
+                setAdsLoading(false);
+
+                setStep(2, "MTD Fetching", 38, "Syncing monthly ads data...");
+                const { monthName, year } = getRegionYearMonth(activeDateRegion);
+                const month = monthToNumber(monthName.toLowerCase());
+                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+
+                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${jwtToken}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ month, year, country, include }),
+                });
+
+                const json = await res.json().catch(() => ({}));
+                const errMsg = String(json?.error || json?.message || json?.detail || "");
+
+                const isNoRows404 =
+                    res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+
+                const isDuplicateOrInProgress =
+                    res.status === 425 ||
+                    errMsg.toLowerCase().includes("duplicate") ||
+                    errMsg.toLowerCase().includes("already exists") ||
+                    errMsg.toLowerCase().includes("request is a duplicate") ||
+                    errMsg.toLowerCase().includes("in progress");
+
+                if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+                    throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+                }
+
+                setStep(2, "MTD Fetching", 48, "Fetching monthly ads summary...");
+                await fetchMonthlySp();
+            } else {
+                setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+            }
+
+            setStep(2, "MTD Fetching", 62, "Fetching Amazon MTD finance data...");
+            await fetchAmazon();
+
+            if (showLiveBI) {
+                setStep(2, "MTD Fetching", 78, "Fetching live business insights...");
+                await fetchBiSeries(selectedStartDay, selectedEndDay);
+            } else {
+                setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+            }
+
+            if (shopifyStore?.shop_name && shopifyStore?.access_token) {
+                setStep(2, "MTD Fetching", 90, "Fetching Shopify current month data...");
+                await fetchShopify();
+
+                setStep(2, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+                await fetchShopifyPrev();
+            } else {
+                setStep(2, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+            }
+
+            setStep(2, "MTD Fetching", 100, "MTD data ready");
+            markStepComplete(2);
+
+            // STEP 3: Inventory Fetch
+            setStep(3, "Inventory Fetch", 20, "Fetching current inventory data...");
+            await fetchInventory();
+            setStep(3, "Inventory Fetch", 100, "Inventory ready");
+            markStepComplete(3);
+
+            // STEP 4: Plotting Graph
+            setStep(4, "Plotting Graph", 40, "Preparing KPI cards...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 95, "Final render in progress...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 100, "Dashboard ready");
+            markStepComplete(4);
+
+            await waitForPaint();
+
+            setStepProgress((prev) => ({
+                ...prev,
+                active: false,
+            }));
+
+            setDashboardBusy(false);
+        } catch (e: any) {
+            console.error("runDashboardLoadWithSteps failed:", e);
+            setError(e?.message || "Failed to load dashboard");
+            setDashboardBusy(false);
+        } finally {
+            setAdsLoading(false);
         }
     }, [
+        isMonthYearNA,
+        platform,
+        baseURL,
+        activeDateRegion,
+        showLiveBI,
+        selectedStartDay,
+        selectedEndDay,
+        shopifyStore,
+        fetchFxRates,
+        fetchMonthlySp,
         fetchAmazon,
+        fetchBiSeries,
         fetchShopify,
         fetchShopifyPrev,
-        shopifyStore,
+        fetchInventory,
     ]);
 
-    const didRefreshRef = useRef(false);
-
     useEffect(() => {
-        if (didRefreshRef.current) return;
-        didRefreshRef.current = true;
+        runDashboardLoadWithSteps().catch((err) => {
+            console.error("Dashboard step load failed:", err);
+        });
+    }, [runDashboardLoadWithSteps]);
 
-        refreshAll();
-    }, []);
+    // useEffect(() => {
+    //     if (didRefreshRef.current) return;
+    //     didRefreshRef.current = true;
+
+    //     refreshAll();
+    // }, []);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
@@ -2952,7 +3145,8 @@ export default function DashboardPage() {
     const safeDeltaPct = (current: number, previous: number) => {
         const c = Number(current) || 0;
         const p = Number(previous) || 0;
-        if (!p) return null;
+
+        if (p === 0) return null; // avoid wrong spikes
         return ((c - p) / Math.abs(p)) * 100;
     };
 
@@ -2980,10 +3174,9 @@ export default function DashboardPage() {
         return convertToDisplayCurrency(ads, amazonDataCurrency);
     }, [data?.previous_period?.totals?.advertising_fees, convertToDisplayCurrency, amazonDataCurrency]);
 
-    const amazonAdsDeltaPct = useMemo(
-        () => safeDeltaPct(amazonCurrAdsDisp, amazonPrevAdsDisp),
-        [amazonCurrAdsDisp, amazonPrevAdsDisp]
-    );
+    const amazonAdsDeltaPct = useMemo(() => {
+        return safeDeltaPct(amazonCurrAdsDisp, amazonPrevAdsDisp);
+    }, [amazonCurrAdsDisp, amazonPrevAdsDisp]);
 
     const amazonCurrRoasPct = useMemo(() => {
         const sales = toNumberSafe(derived?.net_sales ?? 0);
@@ -3092,7 +3285,7 @@ export default function DashboardPage() {
                 grossSales: deltaPct(curr.grossSales, prev.grossSales),
                 asp: deltaPct(currAsp, prevAsp),
                 profit: deltaPct(curr.profit, prev.profit),
-                profitPct: safeDeltaPctFromPct(currProfitPct, prevProfitPct),
+                profitPct: safeDeltaPct(currProfitPct, prevProfitPct),
 
             },
         };
@@ -3376,9 +3569,9 @@ export default function DashboardPage() {
                                         {buttonText}
                                     </button>
 
-                                    <p className="mt-3 text-xs text-gray-500">
+                                    {/* <p className="mt-3 text-xs text-gray-500">
                                         Demo data is shown for preview only.
-                                    </p>
+                                    </p> */}
                                 </div>
                             </div>
                         </div>
@@ -3387,10 +3580,6 @@ export default function DashboardPage() {
             </div>
         );
     };
-
-
-
-    const anyLoading = loading || shopifyLoading;
 
     const amazonTabs = useMemo<RegionKey[]>(() => {
         const tabs: RegionKey[] = [];
@@ -3962,35 +4151,6 @@ export default function DashboardPage() {
     const colors = labels.map((label) => colorMapping[label] || "#75BBDA");
 
     /* ===================== EXCEL EXPORT (USES displayCurrency symbol) ===================== */
-    const captureChartPng = useCallback(async () => {
-        const container = chartRef.current;
-        if (!container) return null;
-
-        const canvas = container.querySelector("canvas") as HTMLCanvasElement | null;
-        if (canvas) {
-            try {
-                const tmpCanvas = document.createElement("canvas");
-                tmpCanvas.width = canvas.width;
-                tmpCanvas.height = canvas.height;
-                const ctx = tmpCanvas.getContext("2d");
-                if (!ctx) return null;
-
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
-                ctx.drawImage(canvas, 0, 0);
-
-                return tmpCanvas.toDataURL("image/png");
-            } catch {
-                return null;
-            }
-        }
-        return null;
-    }, []);
-
-    // const shortMonForGraph = new Date(`${currMonthName} 1, ${currYear}`).toLocaleString("en-US", {
-    //     month: "short",
-    //     timeZone: "Asia/Kolkata",
-    // });
 
     const shortMonForGraph = new Date(`${currMonthName} 1, ${currYear}`).toLocaleString("en-US", {
         month: "short",
@@ -4161,36 +4321,6 @@ export default function DashboardPage() {
     ]);
 
 
-    const globalPrevRoasPct = useMemo(() => {
-        const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
-        const amazonSales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
-        const shopifySales = toNumberSafe(shopifyPrevDeriv?.netSales ?? 0);
-
-        const amazonSalesUsd =
-            amazonDataCurrency === "GBP" ? amazonSales * gbpToUsd :
-                amazonDataCurrency === "CAD" ? amazonSales * cadToUsd :
-                    amazonSales;
-
-        const shopifySalesUsd = shopifySales * inrToUsd;
-        const globalSalesUsd = onlyAmazon ? amazonSalesUsd : (amazonSalesUsd + shopifySalesUsd);
-
-        const adsUsd =
-            amazonDataCurrency === "GBP" ? ads * gbpToUsd :
-                amazonDataCurrency === "CAD" ? ads * cadToUsd :
-                    ads;
-
-        return globalSalesUsd > 0 ? (adsUsd / globalSalesUsd) * 100 : 0;
-    }, [
-        data?.previous_period?.totals?.advertising_fees,
-        data?.previous_period?.totals?.net_sales,
-        shopifyPrevDeriv?.netSales,
-        onlyAmazon,
-        amazonDataCurrency,
-        gbpToUsd,
-        cadToUsd,
-        inrToUsd,
-    ]);
-
     const globalCurrAspDisp = useMemo(() => {
         return globalCurrUnits > 0 ? globalCurrNetSalesDisp / globalCurrUnits : 0;
     }, [globalCurrUnits, globalCurrNetSalesDisp]);
@@ -4198,15 +4328,6 @@ export default function DashboardPage() {
     const globalPrevAspDisp = useMemo(() => {
         return globalPrevUnits > 0 ? globalPrevNetSalesDisp / globalPrevUnits : 0;
     }, [globalPrevUnits, globalPrevNetSalesDisp]);
-
-
-    const globalCurrCm2Disp = useMemo(() => {
-        return convertToDisplayCurrency(uk.cm2ProfitGBP ?? 0, "GBP");
-    }, [uk.cm2ProfitGBP, convertToDisplayCurrency]);
-
-    const globalPrevCm2Disp = useMemo(() => {
-        return convertToDisplayCurrency(prev.cm2Profit ?? 0, "GBP");
-    }, [prev.cm2Profit, convertToDisplayCurrency]);
 
 
     const globalCurrProfit = useMemo(() => {
@@ -4354,6 +4475,8 @@ export default function DashboardPage() {
         toNumber(grandTotalRowDisplay?.profit) -
         adsSpendTotal -
         Math.abs(toNumber(grandTotalRowDisplay?.platform_fee));
+
+    console.log("cm2Profit", cm2Profit);
 
     const reimbursementForSummary = useMemo(() => {
         return toNumber(reimbursementHome?.current);
@@ -5304,6 +5427,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                             : 0)
                         : adsSpendTotal),
+
             previous: shouldShowDummyUi
                 ? dummyStatData.costOfAds.previous
                 : isStickyGlobal
@@ -5323,6 +5447,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                             : 0)
                         : amazonPrevAdsDisp),
+
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.costOfAds.deltaPct
                 : isStickyGlobal
@@ -5339,7 +5464,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 )
                             )
                             : null)
-                        : amazonAdsDeltaPct)
+                        : safeDeltaPct(
+                            adsSpendTotal,
+                            amazonPrevAdsDisp
+                        ))
                     : (useBiForAmazonCards
                         ? (cm2Ready
                             ? safeDeltaPct(
@@ -5353,7 +5481,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 )
                             )
                             : null)
-                        : amazonAdsDeltaPct),
+                        : safeDeltaPct(
+                            adsSpendTotal,
+                            amazonPrevAdsDisp
+                        )),
+            inverseDelta: true,
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
@@ -5366,7 +5498,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
             bottomLabel: prevLabel,
             className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
         },
-
         {
             label: "TACoS",
             current: shouldShowDummyUi
@@ -5387,14 +5518,16 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (useBiForAmazonCards
                         ? (cm2Ready
                             ? (() => {
+                                const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                 const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                                return sales > 0 ? (ads / sales) * 100 : 0;
                             })()
                             : 0)
                         : (() => {
                             const sales = toNumber(plSummaryTotals.net_sales);
                             return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
                         })()),
+
             previous: shouldShowDummyUi
                 ? dummyStatData.tacos.previous
                 : isStickyGlobal
@@ -5416,12 +5549,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             })()
                             : 0)
                         : amazonPrevRoasPct),
+
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
                 : isStickyGlobal
                     ? (globalUseBi
                         ? (globalCm2Ready
-                            ? deltaPctAbs(
+                            ? safeDeltaPct(
                                 (() => {
                                     const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                     const sales = biAlignedTotals?.total_current_net_sales ?? 0;
@@ -5434,20 +5568,16 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 })()
                             )
                             : null)
-                        : deltaPctAbs(
-                            (() => {
-                                const sales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
-                                const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
-                                return sales > 0 ? (ads / sales) * 100 : 0;
-                            })(),
+                        : safeDeltaPct(
                             (() => {
                                 const sales = toNumber(plSummaryTotals.net_sales);
                                 return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                            })()
+                            })(),
+                            amazonPrevRoasPct
                         ))
                     : (useBiForAmazonCards
                         ? (cm2Ready
-                            ? deltaPctAbs(
+                            ? safeDeltaPct(
                                 (() => {
                                     const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                     const sales = biAlignedTotals?.total_current_net_sales ?? 0;
@@ -5460,13 +5590,14 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 })()
                             )
                             : null)
-                        : deltaPctAbs(
+                        : safeDeltaPct(
                             (() => {
                                 const sales = toNumber(plSummaryTotals.net_sales);
                                 return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
                             })(),
                             amazonPrevRoasPct
                         )),
+
             inverseDelta: true,
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
@@ -5499,6 +5630,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                             : 0)
                         : cm2Profit),
+
             previous: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.previous
                 : isStickyGlobal
@@ -5518,25 +5650,45 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                             : 0)
                         : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)),
+
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
                 : isStickyGlobal
                     ? (globalUseBi
                         ? (globalCm2Ready
                             ? safeDeltaPct(
-                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                    biSourceCurrency
+                                ),
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                                    biSourceCurrency
+                                )
                             )
                             : null)
-                        : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0))
+                        : safeDeltaPct(
+                            cm2Profit ?? 0,
+                            convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+                        ))
                     : (useBiCm2
                         ? (cm2Ready
                             ? safeDeltaPct(
-                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                    rangeCurrency
+                                ),
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                                    rangeCurrency
+                                )
                             )
                             : null)
-                        : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)),
+                        : safeDeltaPct(
+                            cm2Profit ?? 0,
+                            convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+                        )),
+
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
@@ -5754,6 +5906,129 @@ Keep enough stock for validation but avoid over-committing too early.`,
         currentInventoryExportRows,
     ]);
 
+
+    const mtdCm2ProfitCurrent = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.current
+        : useBiForAmazonCards
+            ? (cm2Ready
+                ? (
+                    Number(biAlignedTotals?.total_current_net_sales ?? 0) !== 0
+                        ? (
+                            (
+                                Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) /
+                                Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                            ) *
+                            Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                        )
+                        : 0
+                )
+                : 0)
+            : Number(uk?.cm2ProfitGBP ?? 0);
+
+    console.log("MTD CM2 Profit Current:", mtdCm2ProfitCurrent);
+
+    const mtdCm2ProfitPrevious = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.previous
+        : useBiForAmazonCards
+            ? (cm2Ready
+                ? (
+                    Number(biAlignedTotals?.total_previous_net_sales ?? 0) !== 0
+                        ? (
+                            (
+                                Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) /
+                                Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                            ) *
+                            Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                        )
+                        : 0
+                )
+                : 0)
+            : Number(prev?.cm2Profit ?? 0);
+    const mtdCm2ProfitCurrentDisplay = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.current
+        : useBiCm2
+            ? (cm2Ready
+                ? convertToDisplayCurrency(
+                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                    rangeCurrency
+                )
+                : 0)
+            : Number(cm2Profit ?? 0);
+
+    const mtdCm2ProfitPreviousDisplay = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.previous
+        : useBiCm2
+            ? (cm2Ready
+                ? convertToDisplayCurrency(
+                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                    rangeCurrency
+                )
+                : 0)
+            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
+
+    const mtdCm2ProfitDelta = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.deltaPct
+        : safeDeltaPct(
+            mtdCm2ProfitCurrentDisplay,
+            mtdCm2ProfitPreviousDisplay
+        );
+
+    const globalCm2ProfitCurrentRaw = globalUseBi
+        ? (globalCm2Ready ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) : 0)
+        : Number(globalBottomCards.currentCm2Profit ?? 0);
+
+    const globalCm2ProfitPreviousRaw = globalUseBi
+        ? (globalCm2Ready ? Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) : 0)
+        : Number(prev.cm2Profit ?? 0);
+
+    const globalCm2ProfitCurrentDisplay = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.current
+        : (globalUseBi
+            ? convertToDisplayCurrency(globalCm2ProfitCurrentRaw, biSourceCurrency)
+            : globalCm2ProfitCurrentRaw);
+
+    const globalCm2ProfitPreviousDisplay = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.previous
+        : (globalUseBi
+            ? convertToDisplayCurrency(globalCm2ProfitPreviousRaw, biSourceCurrency)
+            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency));
+
+    const globalCm2ProfitDelta = shouldShowDummyUi
+        ? dummyStatData.cm2Profit.deltaPct
+        : safeDeltaPct(globalCm2ProfitCurrentDisplay, globalCm2ProfitPreviousDisplay);
+
+    const globalCm2ProfitPctCurrent = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.current
+        : (() => {
+            const sales = globalUseBi
+                ? Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                : Number(globalCurrNetSalesDisp ?? 0);
+
+            const profit = globalUseBi
+                ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0)
+                : Number(globalCm2ProfitCurrentDisplay ?? 0);
+
+            return sales > 0 ? (profit / sales) * 100 : 0;
+        })();
+
+    const globalCm2ProfitPctPrevious = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.previous
+        : (() => {
+            const sales = globalUseBi
+                ? Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                : Number(globalPrevNetSalesDisp ?? 0);
+
+            const profit = globalUseBi
+                ? Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0)
+                : Number(globalCm2ProfitPreviousDisplay ?? 0);
+
+            return sales > 0 ? (profit / sales) * 100 : 0;
+        })();
+
+    const globalCm2ProfitPctDelta = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.deltaPct
+        : safeDeltaPct(globalCm2ProfitPctCurrent, globalCm2ProfitPctPrevious);
+
     return (
         <div className="relative w-full">
             <Toaster
@@ -5765,19 +6040,232 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 }}
             />
             <HashScroll offset={80} />
-            {/* {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
-                <Loader fullscreen backgroundClass="bg-white/80" />
-            )} */}
+
+
+            {/* {activeTab === "live" &&
+                !shouldShowDummyUi &&
+                pageLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
+                        <div className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+                            <div className="mb-4">
+                                <div className="text-sm font-semibold text-slate-700">
+                                    {stepProgress.label || "Loading Dashboard"}
+                                </div>
+
+                                <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-[#D9D9D9]">
+                                    <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                            width: `${stepProgress.percentage}%`,
+                                            background:
+                                                "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                                        }}
+                                    />
+                                </div>
+
+                                {stepProgress.detail && (
+                                    <div className="mt-2 text-xs text-slate-500">
+                                        {stepProgress.detail}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between relative">
+                                <div className="absolute top-5 left-[6%] right-[6%] h-1.5 bg-[#D9D9D9] -z-10">
+                                    {completedSteps.size > 0 &&
+                                        (() => {
+                                            const maxCompleted = Math.max(...Array.from(completedSteps));
+                                            const denominator = Math.max(dashboardSteps.length - 1, 1);
+                                            const progressPercent =
+                                                maxCompleted > 1
+                                                    ? ((Math.min(
+                                                        maxCompleted,
+                                                        dashboardSteps[dashboardSteps.length - 1].num
+                                                    ) - 1) /
+                                                        denominator) *
+                                                    100
+                                                    : 0;
+
+                                            return (
+                                                <div
+                                                    className="h-full bg-[#5EA68E] transition-all duration-500"
+                                                    style={{ width: `${progressPercent}%` }}
+                                                />
+                                            );
+                                        })()}
+                                </div>
+
+                                {dashboardSteps.map((step) => {
+                                    const isCompleted = completedSteps.has(step.num);
+                                    const isActive = currentStep === step.num;
+
+                                    return (
+                                        <div
+                                            key={step.num}
+                                            className="flex flex-col items-center flex-1 relative z-10"
+                                        >
+                                            <div
+                                                className={[
+                                                    "flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold",
+                                                    isCompleted
+                                                        ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                                                        : isActive
+                                                            ? "border-[#37455F] bg-white text-[#37455F]"
+                                                            : "border-slate-300 bg-white text-slate-400",
+                                                ].join(" ")}
+                                            >
+                                                {step.num}
+                                            </div>
+
+                                            <div
+                                                className={`mt-2 text-center text-[11px] sm:text-xs font-medium leading-tight ${isCompleted || isActive
+                                                    ? "text-[#5EA68E]"
+                                                    : "text-[#414042]"
+                                                    }`}
+                                            >
+                                                {step.label}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )} */}
 
             {activeTab === "live" &&
                 !shouldShowDummyUi &&
-                (loading || shopifyLoading || biLoading) &&
-                !data && !shopify && !liveBiPayload && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
-                        <Loader backgroundClass="bg-transparent" />
+                pageLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
+                        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
+
+                            {/* ── Header ── */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                            stroke="#5EA68E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-semibold text-[#37455F] leading-tight">
+                                            Syncing dashboard data
+                                        </p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                            {stepProgress.detail || "Initialising…"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
+                                    {stepProgress.percentage}%
+                                </span>
+                            </div>
+
+                            {/* ── Progress bar ── */}
+                            <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
+                                <div
+                                    className="h-full rounded-full transition-all duration-500 ease-in-out"
+                                    style={{
+                                        width: `${stepProgress.percentage}%`,
+                                        background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                                    }}
+                                />
+                            </div>
+
+                            {/* ── Steps row ── */}
+                            <div className="relative flex items-start justify-between">
+
+                                {/* connector track */}
+                                <div
+                                    className="absolute top-4 z-0 h-px bg-slate-200"
+                                    style={{ left: "calc(12.5% + 10px)", right: "calc(12.5% + 10px)" }}
+                                >
+                                    {completedSteps.size > 0 && (() => {
+                                        const maxCompleted = Math.max(...Array.from(completedSteps));
+                                        const denominator = Math.max(dashboardSteps.length - 1, 1);
+                                        const pct = maxCompleted > 1
+                                            ? ((Math.min(maxCompleted, dashboardSteps[dashboardSteps.length - 1].num) - 1) / denominator) * 100
+                                            : 0;
+                                        return (
+                                            <div
+                                                className="h-full bg-[#5EA68E] transition-all duration-500"
+                                                style={{ width: `${pct}%` }}
+                                            />
+                                        );
+                                    })()}
+                                </div>
+
+                                {dashboardSteps.map((step) => {
+                                    const isCompleted = completedSteps.has(step.num);
+                                    const isActive = currentStep === step.num;
+
+                                    return (
+                                        <div
+                                            key={step.num}
+                                            className="flex flex-col items-center flex-1 relative z-10 gap-2"
+                                        >
+                                            {/* circle */}
+                                            <div className={[
+                                                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
+                                                isCompleted
+                                                    ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                                                    : isActive
+                                                        ? "border-[#5EA68E] bg-[#E8F5F0] text-[#37455F]"
+                                                        : "border-slate-200 bg-white text-slate-400",
+                                            ].join(" ")}>
+                                                {isCompleted ? (
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                        stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                ) : isActive ? (
+                                                    <span
+                                                        className="w-3 h-3 rounded-full border-2 border-[#b8ddd4] border-t-[#5EA68E] animate-spin"
+                                                        style={{ display: "inline-block" }}
+                                                    />
+                                                ) : (
+                                                    <span>{step.num}</span>
+                                                )}
+                                            </div>
+
+                                            {/* step name */}
+                                            <p className={[
+                                                "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
+                                                isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
+                                            ].join(" ")}>
+                                                {step.label}
+                                            </p>
+
+                                            {/* badge */}
+                                            <span className={[
+                                                "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
+                                                isCompleted
+                                                    ? "bg-[#E8F5F0] text-[#5EA68E]"
+                                                    : isActive
+                                                        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+                                                        : "bg-slate-100 text-slate-400",
+                                            ].join(" ")}>
+                                                {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* ── Bottom status bar ── */}
+                            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                <p className="text-[11px] text-slate-400 truncate">
+                                    {stepProgress.detail || "Initialising dashboard…"}
+                                </p>
+                                <span className="text-[11px] text-slate-400 shrink-0 ml-3">
+                                    Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                                </span>
+                            </div>
+
+                        </div>
                     </div>
                 )}
-
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
                 <div className="flex items-center justify-between gap-2">
@@ -5809,7 +6297,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     </div>
 
                     {/* RIGHT SIDE BUTTON */}
-                    <button
+                    {/* <button
                         onClick={refreshAll}
                         disabled={loading || shopifyLoading || biLoading}
                         className={`shrink-0 rounded-md border shadow-sm
@@ -5822,6 +6310,26 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             }`}
                     >
                         {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
+                    </button> */}
+
+                    <button
+                        onClick={() => {
+                            resetStepState();
+                            runDashboardLoadWithSteps().catch((err) => {
+                                console.error("Dashboard refresh failed:", err);
+                            });
+                        }}
+                        disabled={pageLoading}
+                        className={`shrink-0 rounded-md border shadow-sm
+px-2 py-1 text-[10px]
+sm:px-3 sm:py-1.5 sm:text-xs
+2xl:text-sm
+${pageLoading
+                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                : "border-gray-300 bg-white hover:bg-gray-50"
+                            }`}
+                    >
+                        {pageLoading ? "Refreshing…" : "Refresh"}
                     </button>
 
                 </div>
@@ -5844,41 +6352,14 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
             <PreviewLockedSection
                 enabled={isUsingDummyData}
-                title="Preview mode"
-                description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-                buttonText="Connect Amazon"
+                title="Preview Mode"
+                description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+                buttonText="Complete Setup"
                 onAction={handleConnectAmazonPreview}
             >
-
                 {["summary", "productwise", "inventory"].includes(activeTab) && (
                     <DashboardStickyKpis items={stickyKpiItems} />
                 )}
-
-                {/* Top 5 alerts */}
-                {/* <div className="my-2 md:my-4 space-y-3">
-                    {top5Skus
-                        .map((sku) => ({
-                            sku,
-                            productName: skuToProductName[sku] || sku,
-                            alert: inventoryAlerts?.[sku]?.alert || "",
-                        }))
-                        .filter(
-                            (x) =>
-                                x.alert.trim().toLowerCase() === "high alert" &&
-                                !dismissedAlerts.includes(x.sku) // ✅ don't show dismissed
-                        )
-                        .map(({ sku, productName }) => (
-                            <Alert
-                                key={sku}
-                                variant="error"
-                                title={`Inventory Alert - ${productName}`}
-                                message="This product is in your Top 5 and requires attention."
-                                showLink={false}
-                                closable
-                                onClose={() => handleDismiss(sku)} // ✅ persist dismissal
-                            />
-                        ))}
-                </div> */}
 
                 {activeTab === "live" && (
                     <div
@@ -6070,8 +6551,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     )
                                                                 )
                                                                 : null)
-                                                            : amazonAdsDeltaPct
+                                                            : safeDeltaPct(
+                                                                globalBottomCards.currentCostOfAds,
+                                                                amazonPrevAdsDisp
+                                                            )
                                                 }
+                                                inverseDelta
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
                                                 formatter={formatDisplayAmount}
                                                 previousFormatter={formatDisplayAmount}
@@ -6112,7 +6597,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                         ? dummyStatData.tacos.deltaPct
                                                         : globalUseBi
                                                             ? (globalCm2Ready
-                                                                ? deltaPctAbs(
+                                                                ? safeDeltaPct(
                                                                     (() => {
                                                                         const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                                                         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
@@ -6125,16 +6610,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     })()
                                                                 )
                                                                 : null)
-                                                            : deltaPctAbs(
-                                                                (() => {
-                                                                    const sales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
-                                                                    const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
-                                                                    return sales > 0 ? (ads / sales) * 100 : 0;
-                                                                })(),
-                                                                (() => {
-                                                                    const sales = toNumber(plSummaryTotals.net_sales);
-                                                                    return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                                })()
+                                                            : safeDeltaPct(
+                                                                globalBottomCards.currentTacos,
+                                                                amazonPrevRoasPct
                                                             )
                                                 }
                                                 inverseDelta
@@ -6149,40 +6627,22 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 current={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2Profit.current
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready
-                                                                ? convertToDisplayCurrency(
-                                                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                                    biSourceCurrency
-                                                                )
-                                                                : 0)
-                                                            : globalBottomCards.currentCm2Profit
+                                                        : cm2Profit
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2Profit.previous
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready
-                                                                ? convertToDisplayCurrency(
-                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                                                                    biSourceCurrency
-                                                                )
-                                                                : 0)
-                                                            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+                                                        : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2Profit.deltaPct
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready
-                                                                ? safeDeltaPct(
-                                                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0
-                                                                )
-                                                                : null)
-                                                            : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)
+                                                        : safeDeltaPct(
+                                                            cm2Profit,
+                                                            convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+                                                        )
                                                 }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={formatDisplayAmount}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
@@ -6193,38 +6653,38 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 current={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.current
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready
-                                                                ? (biAlignedTotals?.total_current_profit_percentage ?? 0)
-                                                                : 0)
-                                                            : globalBottomCards.currentCm2Pct
+                                                        : (
+                                                            Number(curr?.netSales ?? 0) !== 0
+                                                                ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
+                                                                : 0
+                                                        )
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.previous
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
-                                                            : (prev.profitPct ?? 0)
+                                                        : (
+                                                            Number(prev?.netSales ?? 0) !== 0
+                                                                ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
+                                                                : 0
+                                                        )
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.deltaPct
-                                                        : globalUseBi
-                                                            ? (globalCm2Ready
-                                                                ? deltaPctPoints(
-                                                                    biAlignedTotals?.total_current_profit_percentage ?? 0,
-                                                                    biAlignedTotals?.total_previous_profit_percentage ?? 0
-                                                                )
-                                                                : null)
-                                                            : deltaPctPoints(cm2MarginPctForSummary ?? 0, prev.profitPct ?? 0)
+                                                        : safeDeltaPct(
+                                                            Number(curr?.netSales ?? 0) !== 0
+                                                                ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
+                                                                : 0,
+                                                            Number(prev?.netSales ?? 0) !== 0
+                                                                ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
+                                                                : 0
+                                                        )
                                                 }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={fmtPct}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                             />
-
-
                                         </div>
 
                                     </div>
@@ -6416,8 +6876,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     )
                                                                 )
                                                                 : null)
-                                                            : amazonAdsDeltaPct
+                                                            : safeDeltaPct(
+                                                                adsSpendTotal,
+                                                                amazonPrevAdsDisp
+                                                            )
                                                 }
+                                                inverseDelta
                                                 loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
                                                 formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                                                 previousFormatter={formatDisplayAmount}
@@ -6460,7 +6924,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                         ? dummyStatData.tacos.deltaPct
                                                         : useBiForAmazonCards
                                                             ? (cm2Ready
-                                                                ? deltaPctAbs(
+                                                                ? safeDeltaPct(
                                                                     (() => {
                                                                         const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                                                         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
@@ -6473,7 +6937,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     })()
                                                                 )
                                                                 : null)
-                                                            : deltaPctAbs(
+                                                            : safeDeltaPct(
                                                                 (() => {
                                                                     const sales = toNumber(plSummaryTotals.net_sales);
                                                                     return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
@@ -6490,42 +6954,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                                             <AmazonStatCard
                                                 label="CM2 Profit"
-                                                current={
-                                                    shouldShowDummyUi
-                                                        ? dummyStatData.cm2Profit.current
-                                                        : useBiCm2
-                                                            ? (cm2Ready
-                                                                ? convertToDisplayCurrency(
-                                                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                                    rangeCurrency
-                                                                )
-                                                                : 0)
-                                                            : cm2Profit
-                                                }
-                                                previous={
-                                                    shouldShowDummyUi
-                                                        ? dummyStatData.cm2Profit.previous
-                                                        : useBiCm2
-                                                            ? (cm2Ready
-                                                                ? convertToDisplayCurrency(
-                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                                                                    rangeCurrency
-                                                                )
-                                                                : 0)
-                                                            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
-                                                }
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? dummyStatData.cm2Profit.deltaPct
-                                                        : useBiCm2
-                                                            ? (cm2Ready
-                                                                ? safeDeltaPct(
-                                                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0
-                                                                )
-                                                                : null)
-                                                            : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)
-                                                }
+                                                current={mtdCm2ProfitCurrentDisplay}
+                                                previous={mtdCm2ProfitPreviousDisplay}
+                                                deltaPct={mtdCm2ProfitDelta}
                                                 loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
                                                 formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                                                 previousFormatter={formatDisplayAmount}
@@ -6538,31 +6969,75 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 current={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.current
-                                                        : useBiCm2
-                                                            ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                            : cm2MarginPctForSummary
+                                                        : useBiForAmazonCards
+                                                            ? (cm2Ready
+                                                                ? (
+                                                                    Number(biAlignedTotals?.total_current_net_sales ?? 0) !== 0
+                                                                        ? (
+                                                                            Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) /
+                                                                            Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                                                                        ) * 100
+                                                                        : 0
+                                                                )
+                                                                : 0)
+                                                            : (
+                                                                Number(curr?.netSales ?? 0) !== 0
+                                                                    ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
+                                                                    : 0
+                                                            )
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.previous
-                                                        : useBiCm2
-                                                            ? (cm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
-                                                            : (prev.profitPct ?? 0)
+                                                        : useBiForAmazonCards
+                                                            ? (cm2Ready
+                                                                ? (
+                                                                    Number(biAlignedTotals?.total_previous_net_sales ?? 0) !== 0
+                                                                        ? (
+                                                                            Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) /
+                                                                            Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                                                                        ) * 100
+                                                                        : 0
+                                                                )
+                                                                : 0)
+                                                            : (
+                                                                Number(prev?.netSales ?? 0) !== 0
+                                                                    ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
+                                                                    : 0
+                                                            )
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.deltaPct
-                                                        : useBiCm2
+                                                        : useBiForAmazonCards
                                                             ? (cm2Ready
-                                                                ? deltaPctPoints(
-                                                                    biAlignedTotals?.total_current_profit_percentage ?? 0,
-                                                                    biAlignedTotals?.total_previous_profit_percentage ?? 0
+                                                                ? safeDeltaPct(
+                                                                    Number(biAlignedTotals?.total_current_net_sales ?? 0) !== 0
+                                                                        ? (
+                                                                            Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) /
+                                                                            Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                                                                        ) * 100
+                                                                        : 0,
+                                                                    Number(biAlignedTotals?.total_previous_net_sales ?? 0) !== 0
+                                                                        ? (
+                                                                            Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) /
+                                                                            Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                                                                        ) * 100
+                                                                        : 0
                                                                 )
                                                                 : null)
-                                                            : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
+                                                            : safeDeltaPct(
+                                                                Number(curr?.netSales ?? 0) !== 0
+                                                                    ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
+                                                                    : 0,
+                                                                Number(prev?.netSales ?? 0) !== 0
+                                                                    ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
+                                                                    : 0
+                                                            )
                                                 }
-                                                loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
-                                                formatter={fmtPct}
+                                                loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
+                                                formatter={(v) => `${Number(v || 0).toFixed(2)}%`}
+                                                previousFormatter={(v) => `${Number(v || 0).toFixed(2)}%`}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                             />
@@ -6776,23 +7251,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         periodCompletedPct={rangeCompletedPct}
                                         periodCompletedLabel="Range"
                                     />
-
                                 </div>
-
                             </div>
                         </aside>
                     </div >
-
                 )}
 
                 {activeTab === "live" && platform === "global" && showLiveBI && (
-
                     <div
                         id="ai-insights"
                         className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
-
                             <LiveBiLineGraph
                                 dailySeries={finalBiDailySeriesHome}
                                 periods={finalBiPeriods}
@@ -6805,7 +7275,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                         </div>
                     </div>
-
                 )
                 }
 
@@ -6834,15 +7303,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             )
                         )}
                     </div>
-
                 )}
 
                 {activeTab === "productwise" && (
-
                     <>
                         <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
-
                                 {/* LEFT: Title */}
                                 <div className="flex items-center gap-2">
                                     <PageBreadcrumb
@@ -6851,12 +7317,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         align="left"
                                         textSize="2xl"
                                     />
-
                                     <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
                                         ({currencySymbol})
                                     </span>
                                 </div>
-
                                 {/* CENTER: Ads loading message */}
                                 {adsLoading && (
                                     <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
@@ -6864,7 +7328,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         Ads data is being fetched, please wait…
                                     </div>
                                 )}
-
                                 {/* RIGHT: Download */}
                                 <div className="flex items-center gap-2">
                                     <DownloadIconButton
@@ -6873,16 +7336,15 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                                     />
                                 </div>
-
                             </div>
 
-
-                            {error ? (
-                                <div className="text-sm text-red-600">{error}</div>
-                            ) : !shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
+                            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
                                 <div className="text-sm text-gray-500">Loading…</div>
+                            ) : finalMonthlySkuwiseRowsForTable.length === 0 ? (
+                                <div className="text-sm text-red-600">
+                                    No P&L productwise rows available for this period.
+                                </div>
                             ) : (
-
                                 <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
                                     <div className="min-w-full">
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
@@ -6929,41 +7391,30 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
                                                 }
-
                                                 if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Number.isFinite(v) ? v : 0);
                                                 }
-
                                                 if (colKey === "ad_type") {
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return formatAdType((row as any).ad_type);
                                                 }
-
-
                                                 if (colKey === "ads_spend")
                                                     return formatAdsNumber(Math.abs(row.ads_spend));
-
                                                 if (colKey === "cogs")
                                                     return formatAdsNumber(Math.abs(row.cogs));
-
                                                 if (colKey === "fba_fees")
                                                     return formatAdsNumber(Math.abs(row.fba_fees));
-
                                                 if (colKey === "selling_fees")
                                                     return formatAdsNumber(Math.abs(row.selling_fees));
-
                                                 if (colKey === "marketplace_total")
                                                     return formatAdsNumber(
                                                         Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
                                                     );
-
                                                 if (colKey === "cm2_profit")
                                                     return formatAdsNumber(row.cm2_profit);
-
                                                 if (colKey === "profit")
                                                     return formatAdsNumber(row.profit);
-
                                                 return (row as any)[colKey] ?? "";
                                             }}
                                             summary={{
@@ -6980,13 +7431,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                 id: "ads_1",
                                                                 label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                                 midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
-                                                                // midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
                                                             },
-                                                            // {
-                                                            //     id: "ads_2",
-                                                            //     label: <>Sponsored Display <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                            //     midValue: formatSummaryValue(sponsoredDisplaySpend, "advertising_total"),
-                                                            // },
                                                             {
                                                                 id: "ads_3",
                                                                 label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
@@ -7083,13 +7528,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                             reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
                                                     },
                                                 ],
-
                                                 valueCols: 2,
                                             }}
                                         />
                                     </div>
                                 </div>
-
                             )}
 
                         </div>
@@ -7107,19 +7550,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
                                             </div>
                                         </div>
-
                                         <div className="flex items-center gap-3">
-
-                                            {/* {!isCountryMode && (
-                                                <>
-                                                    <SegmentedToggle<RegionKey>
-                                                        value={graphRegion}
-                                                        options={graphRegions.map((r) => ({ value: r }))}
-                                                        onChange={setGraphRegion}
-                                                    />
-
-                                                </>
-                                            )} */}
                                             <span className="relative group shrink-0">
                                                 <button
                                                     type="button"
@@ -7193,15 +7624,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     />
                                                 </span>
                                             </span>
-
-
                                         </div>
                                     </div>
 
-
                                     <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
                                         <div className="w-full max-w-full min-w-0 h-full">
-
                                             <DashboardBargraphCard
                                                 countryName={countryNameForGraph}
                                                 formattedMonthYear={formattedMonthYear}
@@ -7215,7 +7642,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 allValuesZero={finalAllValuesZero}
                                                 previewMode={shouldShowDummyUi}
                                             />
-
                                         </div>
                                     </div>
                                 </div>
@@ -7247,15 +7673,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 {activeTab === "inventory" &&
                     (isUsingDummyData || amazonIntegrated) && (
                         <div id="current-inventory" className="scroll-mt-[80px]">
-
-                            {/* <CurrentInventorySection
-                                region={isUsingDummyData ? "UK" : graphRegionToUse}
-                                invLoading={!shouldShowDummyUi && invLoading}
-                                invError={shouldShowDummyUi ? "" : invError}
-                                invRows={finalInventoryRows}
-                                inventoryAlerts={finalInventoryAlerts}
-                                userData={userData}
-                            /> */}
                             <CurrentInventorySection
                                 region={isUsingDummyData ? "UK" : graphRegionToUse}
                                 invLoading={!shouldShowDummyUi && invLoading}

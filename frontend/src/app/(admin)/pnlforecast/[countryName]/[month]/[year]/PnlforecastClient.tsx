@@ -782,9 +782,9 @@ const Pnlforecast: React.FC = () => {
                     {buttonText}
                   </button>
 
-                  <p className="mt-3 text-xs text-gray-500">
+                  {/* <p className="mt-3 text-xs text-gray-500">
                     Demo data is shown for preview only.
-                  </p>
+                  </p> */}
                 </div>
               </div>
             </div>
@@ -1072,9 +1072,9 @@ const Pnlforecast: React.FC = () => {
       )}
       <PreviewLockedSection
         enabled={isDemoMode}
-        title="Preview mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
+        title="Preview Mode"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">

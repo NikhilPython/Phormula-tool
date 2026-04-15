@@ -1411,7 +1411,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
       { num: 4, label: "Inventory Data" },
       { num: 5, label: "Historic Data" },
       { num: 6, label: "Live Data" },
-      { num: 8, label: "Plotting Graph" },
+      { num: 7, label: "Plotting Graph" },
     ];
 
   const periodFeatureMap: Record<number, {
@@ -1490,6 +1490,13 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
     if (selectedPeriod === null) return null;
     return periodFeatureMap[selectedPeriod] ?? null;
   }, [selectedPeriod]);
+
+  const shouldHideStep8 =
+    selectedPeriod === 1 || selectedPeriod === 3;
+
+  const visibleSteps = shouldHideStep8
+    ? steps.filter((s) => s.num !== 8)
+    : steps;
 
   return (
     <div className="w-full">
@@ -1732,82 +1739,181 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
         )}
 
         {busy && stepProgress.active && currentStep > 0 && (
-          <div className="mt-6 max-w-4xl mx-auto">
-            {/* Current Step Progress Bar */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4 mb-4">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="text-sm font-semibold text-slate-700">{stepProgress.label}</div>
-                <div className="text-xs text-slate-500 tabular-nums">
-                  {stepProgress.percentage}%
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 backdrop-blur-[1px] px-4">
+            <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#5EA68E"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-[#37455F] leading-tight">
+                      Syncing dashboard data
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                      {stepProgress.detail || "Initialising…"}
+                    </p>
+                  </div>
                 </div>
+
+                <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
+                  {stepProgress.percentage}%
+                </span>
               </div>
 
-              <div className="h-3 w-full overflow-hidden rounded-full bg-[#D9D9D9]">
+              {/* Progress bar */}
+              <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
                 <div
-                  className="h-full  transition-all duration-300 shin"
+                  className="h-full rounded-full transition-all duration-500 ease-in-out"
                   style={{
                     width: `${stepProgress.percentage}%`,
                     background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
-
                   }}
                 />
               </div>
 
-              {stepProgress.detail && (
-                <div className="mt-2 text-xs text-slate-500">{stepProgress.detail}</div>
-              )}
+              {/* Steps row */}
+              <div className="relative flex items-start justify-between">
+                <div
+                  className="absolute top-4 z-0 h-px bg-slate-200"
+                  style={{ left: "calc(9% )", right: "calc(5%)" }}
+                >
+                  {completedSteps.size > 0 &&
+                    (() => {
+                      const maxCompleted = Math.max(...Array.from(completedSteps));
+                      const denominator = Math.max(steps.length - 1, 1);
+                      const pct =
+                        maxCompleted > 1
+                          ? ((Math.min(maxCompleted, steps[steps.length - 1].num) - 1) /
+                            denominator) *
+                          100
+                          : 0;
 
-              {/* Range progress for Historic Data step */}
+                      return (
+                        <div
+                          className="h-full bg-[#5EA68E] transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      );
+                    })()}
+                </div>
 
-            </div>
+                {visibleSteps.map((step) => {
+                  const isCompleted = completedSteps.has(step.num);
+                  const isActive = currentStep === step.num;
 
-            {/* 6-Step Stepper */}
-
-            <div className="flex items-center justify-between relative">
-              {/* Connecting lines - spans from first to last step */}
-              <div className="absolute top-6 left-[4%] right-[4%] h-1.5 bg-[#D9D9D9] -z-10">
-                {completedSteps.size > 0 && (() => {
-                  const maxCompleted = Math.max(...Array.from(completedSteps));
-                  const visibleStepCount = steps.length;
-                  const denominator = Math.max(visibleStepCount - 1, 1);
-
-                  const progressPercent =
-                    maxCompleted > 1 ? ((Math.min(maxCompleted, steps[steps.length - 1].num) - 1) / denominator) * 100 : 0;
                   return (
                     <div
-                      className="h-full bg-[#5EA68E] transition-all duration-500"
-                      style={{ width: `${progressPercent}%` }}
-                    />
+                      key={step.num}
+                      className="flex flex-col items-center flex-1 relative z-10 gap-2"
+                    >
+                      <div
+                        className={[
+                          "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
+                          isCompleted
+                            ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                            : isActive
+                              ? "border-[#5EA68E] bg-[#E8F5F0] text-[#37455F]"
+                              : "border-slate-200 bg-white text-slate-400",
+                        ].join(" ")}
+                      >
+                        {isCompleted ? (
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="white"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : isActive ? (
+                          <span
+                            className="w-3 h-3 rounded-full border-2 border-[#b8ddd4] border-t-[#5EA68E] animate-spin"
+                            style={{ display: "inline-block" }}
+                          />
+                        ) : (
+                          <span>{step.num}</span>
+                        )}
+                      </div>
+
+                      <p
+                        className={[
+                          "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
+                          isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
+                        ].join(" ")}
+                      >
+                        {step.label}
+                      </p>
+
+                      <span
+                        className={[
+                          "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
+                          isCompleted
+                            ? "bg-[#E8F5F0] text-[#5EA68E]"
+                            : isActive
+                              ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+                              : "bg-slate-100 text-slate-400",
+                        ].join(" ")}
+                      >
+                        {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+                      </span>
+                    </div>
                   );
-                })()}
+                })}
               </div>
 
-              {steps.map((step) => {
-                const isCompleted = completedSteps.has(step.num);
-                const isActive = currentStep === step.num;
-                const isPast = currentStep > step.num;
+              {/* Bottom status bar */}
+              <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                <p className="text-[11px] text-slate-400 truncate">
+                  {stepProgress.detail || "Initialising dashboard…"}
+                </p>
+                <span className="text-[11px] text-slate-400 shrink-0 ml-3">
+                  Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
+                </span>
+              </div>
 
-                return (
-                  <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
-                    <StepBadge
-                      completed={isCompleted}
-                      label={step.num}
-                    />
-                    <div className="mt-2 text-center">
-                      <div
-                        className={`text-[10px] sm:text-xs font-medium leading-tight text-center w-20 h-8 flex flex-col justify-center ${isActive || isCompleted ? "text-[#5EA68E]" : "text-[#414042]"
-                          }`}
-                      >
-                        {step.label.split(" ").map((word, i) => (
-                          <span key={i} className="block">
-                            {word}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {/* {currentStep === 5 && rangeProgress.totalMonths > 0 && (
+        <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3">
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <span>
+              Month {rangeProgress.currentMonth} of {rangeProgress.totalMonths}
+            </span>
+            <span>
+              OK {rangeProgress.ok} • Failed {rangeProgress.fail}
+            </span>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full bg-[#5EA68E] transition-all duration-300"
+              style={{
+                width: `${
+                  rangeProgress.totalMonths > 0
+                    ? (rangeProgress.currentMonth / rangeProgress.totalMonths) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+        </div>
+      )} */}
             </div>
           </div>
         )}
