@@ -1168,9 +1168,9 @@ export default function InputCostPage({ params }: Params) {
                     {buttonText}
                   </button>
 
-                  <p className="mt-3 text-xs text-gray-500">
+                  {/* <p className="mt-3 text-xs text-gray-500">
                     Demo data is shown for preview only.
-                  </p>
+                  </p> */}
                 </div>
               </div>
             </div>
@@ -1257,9 +1257,9 @@ export default function InputCostPage({ params }: Params) {
 
       <PreviewLockedSection
         enabled={isNA}
-        title="Preview mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
+        title="Preview Mode"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
         <>
@@ -1267,7 +1267,7 @@ export default function InputCostPage({ params }: Params) {
             <>
               {loading ? (
                 <div className="mt-5 rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
-                  <Loader transparent/>
+                  <Loader transparent />
                 </div>
               ) : skuData.length > 0 ? (
                 <div className="mt-5">
@@ -1296,7 +1296,7 @@ export default function InputCostPage({ params }: Params) {
             <div className="mt-5">
               {warehouseLoading ? (
                 <div className="rounded-xl border border-slate-200 bg-white min-h-[320px] flex items-center justify-center">
-                  <Loader transparent  />
+                  <Loader transparent />
                 </div>
               ) : warehouseData.length > 0 ? (
                 <DataTable<Record<string, any>>

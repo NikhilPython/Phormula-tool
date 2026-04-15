@@ -861,9 +861,9 @@ const PreviewLockedSection = ({
                   {buttonText}
                 </button>
 
-                <p className="mt-3 text-xs text-gray-500">
+                {/* <p className="mt-3 text-xs text-gray-500">
                   Demo data is shown for preview only.
-                </p>
+                </p> */}
               </div>
             </div>
           </div>
@@ -3352,9 +3352,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       </div>
       <PreviewLockedSection
         enabled={isDemoMode}
-        title="Preview mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
+        title="Preview Mode"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
@@ -3815,14 +3815,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "expenses",
                     title: "Marketplace Fees",
-                    value: renderMoneyWithPerUnit(marketplaceFeesFromTable, summary.unit_sold),
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(marketplaceFeesFromTable),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
                     comparisons: buildComparisonsRows("total_amazon_fee", formatMoney),
                   },
                   {
                     key: "ads",
                     title: "Cost of Advertisement",
-                    value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(costOfAds),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                     comparisons: buildComparisonsRows("advertising_total", formatMoney),
                   },
@@ -3837,8 +3847,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "cm2",
                     title: "CM2 Profit",
-                    value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
-                    // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                    value: renderMoneyWithPerUnit(
+                      roundMoney(summary.cm2_profit),
+                      summary.unit_sold,
+                      true,
+                      0
+                    ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
                     comparisons: buildComparisonsRows("cm2_profit", formatMoney),
                   },

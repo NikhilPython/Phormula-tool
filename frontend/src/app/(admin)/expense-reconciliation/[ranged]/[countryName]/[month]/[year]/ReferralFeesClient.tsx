@@ -445,9 +445,9 @@ function PreviewLockedSection({
                   </button>
                 )}
 
-                <p className="mt-3 text-xs text-gray-500">
+                {/* <p className="mt-3 text-xs text-gray-500">
                   Demo data is shown for preview only.
-                </p>
+                </p> */}
               </div>
             </div>
           </div>
@@ -1775,9 +1775,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
       {canShowContent && (
         <PreviewLockedSection
           enabled={isPreviewMode}
-          title="Preview mode"
-          description="You're viewing demo expense reconciliation data. Connect your Amazon account to unlock your real reconciliation insights."
-          buttonText="Connect Amazon"
+          title="Preview Mode"
+          description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+          buttonText="Complete Setup"
           onAction={handlePreviewAction}
         >
           <>
