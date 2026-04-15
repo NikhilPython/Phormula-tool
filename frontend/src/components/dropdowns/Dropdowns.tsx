@@ -205,19 +205,21 @@ const markFetched = (year: string, month?: string) => {
 };
 
 const computeDefaultYearlyYear = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("latestFetchedPeriod");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const y = String(parsed?.year || "").trim();
+        if (y) return y;
+      }
+    } catch { }
+  }
+
+  // Fallback: latest completed month, not current calendar year
   const now = new Date();
-  const cy = now.getFullYear();
-  const cm = now.getMonth(); // 0..11, current month
-
-  const fp = readFetchedPeriods();
-  const monthsFetchedThisYear = fp[String(cy)] || [];
-
-  const hasHistoricMonthInCurrentYear = monthsFetchedThisYear.some((m) => {
-    const idx = monthIndexMap[m.toLowerCase()];
-    return typeof idx === "number" && idx < cm; // strictly historic
-  });
-
-  return hasHistoricMonthInCurrentYear ? String(cy) : String(cy - 1);
+  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return String(latestCompleted.getFullYear());
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
@@ -2258,9 +2260,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setRange(v);
     setSelectedMonth("");
     setSelectedQuarter("");
-    setSelectedYear(isDemoMode ? String(new Date().getFullYear()) : "");
 
     if (isDemoMode) {
+      setSelectedYear(String(new Date().getFullYear()));
       setUploadsData(DEMO_UPLOAD_HISTORY);
       setAiPanel(DEMO_AI_PANEL);
       setPerformanceTrend(DEMO_PERFORMANCE_TREND);
@@ -2271,6 +2273,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
+    setSelectedYear(v === "yearly" ? computeDefaultYearlyYear() : "");
     setUploadsData(null);
   };
 

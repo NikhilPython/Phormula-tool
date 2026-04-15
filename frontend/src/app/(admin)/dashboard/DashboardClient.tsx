@@ -1664,9 +1664,9 @@ export default function DashboardPage() {
         }
     }, [activeTab]);
 
-    useEffect(() => {
-        fetchMonthlySp();
-    }, [fetchMonthlySp]);
+    // useEffect(() => {
+    //     fetchMonthlySp();
+    // }, [fetchMonthlySp]);
 
     useEffect(() => {
         const stored = localStorage.getItem("dismissedInventoryAlerts");
@@ -1707,15 +1707,69 @@ export default function DashboardPage() {
 
     const biUiLoading = biLoading;
 
+    const [dashboardBusy, setDashboardBusy] = useState(false);
+
+    const [currentStep, setCurrentStep] = useState<number>(0); // 0 = idle
+    const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+
+    const [stepProgress, setStepProgress] = useState<{
+        active: boolean;
+        label: string;
+        percentage: number;
+        detail?: string;
+    }>({
+        active: false,
+        label: "",
+        percentage: 0,
+        detail: "",
+    });
+
+    const markStepComplete = (step: number) => {
+        setCompletedSteps((prev) => new Set([...prev, step]));
+    };
+
+    const setStep = (
+        step: number,
+        label: string,
+        percentage: number = 0,
+        detail?: string
+    ) => {
+        setCurrentStep(step);
+        setStepProgress({
+            active: true,
+            label,
+            percentage: Math.min(100, Math.max(0, percentage)),
+            detail,
+        });
+    };
+
+    const resetStepState = () => {
+        setCurrentStep(0);
+        setCompletedSteps(new Set());
+        setStepProgress({
+            active: false,
+            label: "",
+            percentage: 0,
+            detail: "",
+        });
+    };
+
+    const dashboardSteps = [
+        { num: 1, label: "Currency Rates" },
+        { num: 2, label: "MTD Fetching" },
+        { num: 3, label: "Inventory Fetch" },
+        { num: 4, label: "Plotting Graph" },
+    ];
+
     const pageLoading =
+        dashboardBusy ||
         loading ||
         shopifyLoading ||
-        fxLoading ||
-        adsLoading ||
-        monthlySpLoading ||
+        biLoading ||
         invLoading ||
-        biUiLoading;
-
+        monthlySpLoading ||
+        fxLoading ||
+        adsLoading;
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -1777,6 +1831,14 @@ export default function DashboardPage() {
         }
     }, [activeDateRegion]);
 
+    const waitForPaint = () =>
+        new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    resolve();
+                });
+            });
+        });
 
     useEffect(() => {
         if (activeTab !== "summary") return;
@@ -1784,13 +1846,6 @@ export default function DashboardPage() {
             setSummaryLoading(false);
         }
     }, [activeTab, liveBiPayload]);
-
-    useEffect(() => {
-        fetchFxRates();
-    }, [fetchFxRates]);
-
-
-    // console.log("Active Date Region:", activeDateRegion);
 
     useEffect(() => {
         const timezone = getTimezoneForRegion(activeDateRegion);
@@ -1826,174 +1881,171 @@ export default function DashboardPage() {
         if (isCountryMode) setTargetRegion(forcedRegion);
     }, [isCountryMode, forcedRegion]);
 
-    const didAdsManagerSeedRef = useRef(false);
+    // const didAdsManagerSeedRef = useRef(false);
 
     // ===================== EFFECTS =====================
 
-    useEffect(() => {
-        let cancelled = false;
+    // useEffect(() => {
+    //     let cancelled = false;
 
-        const run = async () => {
-            try {
-                setAdsLoading(true);
+    //     const run = async () => {
+    //         try {
+    //             setAdsLoading(true);
 
-                if (platform === "shopify") {
-                    if (!cancelled) setAdsSeeded(true);
-                    return;
-                }
+    //             if (platform === "shopify") {
+    //                 if (!cancelled) setAdsSeeded(true);
+    //                 return;
+    //             }
 
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                if (!jwtToken) {
-                    if (!cancelled) {
-                        setAdsSeeded(false);
-                        setAdsSeedError("No token found. Please sign in.");
-                    }
-                    return;
-                }
+    //             if (!jwtToken) {
+    //                 if (!cancelled) {
+    //                     setAdsSeeded(false);
+    //                     setAdsSeedError("No token found. Please sign in.");
+    //                 }
+    //                 return;
+    //             }
 
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
+    //             if (country === "UK" || country === "US") {
+    //                 await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             }
 
-                if (!cancelled) {
-                    setAdsSeedError(null);
-                    setAdsSeeded(true);
-                }
-            } catch (e: any) {
-                if (!cancelled) {
-                    setAdsSeedError(e?.message || "Ads seed failed");
-                    setAdsSeeded(false);
-                }
-            } finally {
-                if (!cancelled) setAdsLoading(false);
-            }
-        };
+    //             if (!cancelled) {
+    //                 setAdsSeedError(null);
+    //                 setAdsSeeded(true);
+    //             }
+    //         } catch (e: any) {
+    //             if (!cancelled) {
+    //                 setAdsSeedError(e?.message || "Ads seed failed");
+    //                 setAdsSeeded(false);
+    //             }
+    //         } finally {
+    //             if (!cancelled) setAdsLoading(false);
+    //         }
+    //     };
 
-        setAdsSeeded(false);
-        run();
+    //     setAdsSeeded(false);
+    //     run();
 
-        return () => {
-            cancelled = true;
-        };
-    }, [platform, baseURL]);
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [platform, baseURL]);
 
-    const didMonthlyAdsSyncRef = useRef(false);
-    useEffect(() => {
-        if (!adsSeeded) return;
-        if (platform === "shopify") return;
+    // const didMonthlyAdsSyncRef = useRef(false);
+    // useEffect(() => {
+    //     if (!adsSeeded) return;
+    //     if (platform === "shopify") return;
 
-        let cancelled = false;
+    //     let cancelled = false;
 
-        const run = async () => {
-            try {
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-                if (!jwtToken) return;
+    //     const run = async () => {
+    //         try {
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             if (!jwtToken) return;
 
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                const { monthName, year } = getRegionYearMonth(activeDateRegion);
-                const month = monthToNumber(monthName.toLowerCase());
+    //             const { monthName, year } = getRegionYearMonth(activeDateRegion);
+    //             const month = monthToNumber(monthName.toLowerCase());
 
-                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+    //             const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
 
-                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${jwtToken}`,
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ month, year, country, include }),
-                });
+    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+    //                 method: "POST",
+    //                 headers: {
+    //                     Authorization: `Bearer ${jwtToken}`,
+    //                     Accept: "application/json",
+    //                     "Content-Type": "application/json",
+    //                 },
+    //                 body: JSON.stringify({ month, year, country, include }),
+    //             });
 
-                const json = await res.json().catch(() => ({}));
+    //             const json = await res.json().catch(() => ({}));
 
-                if (res.status === 404 && String(json?.error || "").includes("No rows found")) {
-                    console.warn(`No monthly ads rows for ${country} ${month}/${year}. Skipping.`);
-                    return;
-                }
+    //             if (res.status === 404 && String(json?.error || "").includes("No rows found")) {
+    //                 console.warn(`No monthly ads rows for ${country} ${month}/${year}. Skipping.`);
+    //                 return;
+    //             }
 
-                if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
+    //             if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
 
-                if (cancelled) return;
+    //             if (cancelled) return;
 
-                await fetchMonthlySp();
-            } catch (e) {
-                console.error("monthly_sp_sd_to_db error:", e);
-            }
-        };
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
+    //             await fetchMonthlySp();
+    //         } catch (e) {
+    //             console.error("monthly_sp_sd_to_db error:", e);
+    //         }
+    //     };
+    //     run();
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
 
 
-    useEffect(() => {
-        let cancelled = false;
-        const run = async () => {
-            try {
-                setAdsLoading(true);
+    // useEffect(() => {
+    //     let cancelled = false;
+    //     const run = async () => {
+    //         try {
+    //             setAdsLoading(true);
 
-                if (platform === "shopify") {
-                    if (!cancelled) setAdsSeeded(true);
-                    return;
-                }
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             if (platform === "shopify") {
+    //                 if (!cancelled) setAdsSeeded(true);
+    //                 return;
+    //             }
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                if (!jwtToken) {
-                    if (!cancelled) {
-                        setAdsSeeded(false);
-                        setAdsSeedError("No token found. Please sign in.");
-                    }
-                    return;
-                }
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             if (!jwtToken) {
+    //                 if (!cancelled) {
+    //                     setAdsSeeded(false);
+    //                     setAdsSeedError("No token found. Please sign in.");
+    //                 }
+    //                 return;
+    //             }
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
-                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             if (country === "UK" || country === "US") {
+    //                 await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             }
+    //             await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (!cancelled) {
-                    setAdsSeedError(null);
-                    setAdsSeeded(true);
-                }
-            } catch (e: any) {
-                if (!cancelled) {
-                    setAdsSeedError(e?.message || "Ads seed failed");
-                    setAdsSeeded(false);
-                }
-            } finally {
-                if (!cancelled) setAdsLoading(false);
-            }
-        };
+    //             if (!cancelled) {
+    //                 setAdsSeedError(null);
+    //                 setAdsSeeded(true);
+    //             }
+    //         } catch (e: any) {
+    //             if (!cancelled) {
+    //                 setAdsSeedError(e?.message || "Ads seed failed");
+    //                 setAdsSeeded(false);
+    //             }
+    //         } finally {
+    //             if (!cancelled) setAdsLoading(false);
+    //         }
+    //     };
 
-        setAdsSeeded(false);
-        run();
+    //     setAdsSeeded(false);
+    //     run();
 
-        return () => {
-            cancelled = true;
-        };
-    }, [platform, baseURL]);
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [platform, baseURL]);
 
-    // const inventoryCountry = useMemo(() => {
-    //     const v = (graphRegionToUse || "").toString().trim().toLowerCase(); // or your region prop
-    //     return v.length ? v : "global";
-    // }, [graphRegionToUse]);
+
 
     const inventoryCountry = useMemo(() => {
         // Country pages
@@ -2048,9 +2100,9 @@ export default function DashboardPage() {
         }
     }, [inventoryCountry, invMonthYear.month, invMonthYear.year, isMonthYearNA]);
 
-    useEffect(() => {
-        fetchInventory();
-    }, [fetchInventory]);
+    // useEffect(() => {
+    //     fetchInventory();
+    // }, [fetchInventory]);
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
@@ -2838,33 +2890,212 @@ export default function DashboardPage() {
         [fetchBiSeries, selectedStartDay, selectedEndDay]
     );
 
-    useEffect(() => {
-        if (!showLiveBI) return;
-        fetchBiSeries(selectedStartDay, selectedEndDay);
-    }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
+    // useEffect(() => {
+    //     if (!showLiveBI) return;
+    //     fetchBiSeries(selectedStartDay, selectedEndDay);
+    // }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
     /* ===================== REFRESH ALL ===================== */
-    const refreshAll = useCallback(async () => {
-        if (isMonthYearNA) return;
-        await fetchAmazon();
-        if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-            await Promise.all([fetchShopify(), fetchShopifyPrev()]);
+    // const refreshAll = useCallback(async () => {
+    //     if (isMonthYearNA) return;
+    //     await fetchAmazon();
+    //     if (shopifyStore?.shop_name && shopifyStore?.access_token) {
+    //         await Promise.all([fetchShopify(), fetchShopifyPrev()]);
+    //     }
+    // }, [
+    //     fetchAmazon,
+    //     fetchShopify,
+    //     fetchShopifyPrev,
+    //     shopifyStore,
+    // ]);
+
+    const runDashboardLoadWithSteps = useCallback(async () => {
+        if (isMonthYearNA) {
+            resetStepState();
+            return;
+        }
+
+        setDashboardBusy(true);
+        setError(null);
+        setBiError(null);
+        setInvError("");
+        setMonthlySpError(null);
+        setShopifyError(null);
+        setAdsSeedError(null);
+
+        setCurrentStep(1);
+        setCompletedSteps(new Set());
+        setStepProgress({
+            active: true,
+            label: "",
+            percentage: 0,
+            detail: "",
+        });
+
+        try {
+            // STEP 1: Currency Rates
+            setStep(1, "Currency Rates", 15, "Fetching currency conversion rates...");
+            await fetchFxRates();
+            setStep(1, "Currency Rates", 100, "Currency rates ready");
+            markStepComplete(1);
+
+            // STEP 2: MTD Fetching
+            setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
+
+            const jwtToken =
+                typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+            const country =
+                platform === "amazon-us"
+                    ? "US"
+                    : platform === "amazon-ca"
+                        ? "CA"
+                        : "UK";
+
+            if (platform !== "shopify" && jwtToken) {
+                setAdsLoading(true);
+                setAdsSeeded(false);
+
+                setStep(2, "MTD Fetching", 10, "Seeding Sponsored Products report...");
+                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                if (country === "UK" || country === "US") {
+                    setStep(2, "MTD Fetching", 18, "Seeding Sponsored Display report...");
+                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                }
+
+                setStep(2, "MTD Fetching", 26, "Seeding SB keyword report...");
+                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                setAdsSeeded(true);
+                setAdsSeedError(null);
+                setAdsLoading(false);
+
+                setStep(2, "MTD Fetching", 38, "Syncing monthly ads data...");
+                const { monthName, year } = getRegionYearMonth(activeDateRegion);
+                const month = monthToNumber(monthName.toLowerCase());
+                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+
+                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${jwtToken}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ month, year, country, include }),
+                });
+
+                const json = await res.json().catch(() => ({}));
+                const errMsg = String(json?.error || json?.message || json?.detail || "");
+
+                const isNoRows404 =
+                    res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+
+                const isDuplicateOrInProgress =
+                    res.status === 425 ||
+                    errMsg.toLowerCase().includes("duplicate") ||
+                    errMsg.toLowerCase().includes("already exists") ||
+                    errMsg.toLowerCase().includes("request is a duplicate") ||
+                    errMsg.toLowerCase().includes("in progress");
+
+                if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+                    throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+                }
+
+                setStep(2, "MTD Fetching", 48, "Fetching monthly ads summary...");
+                await fetchMonthlySp();
+            } else {
+                setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+            }
+
+            setStep(2, "MTD Fetching", 62, "Fetching Amazon MTD finance data...");
+            await fetchAmazon();
+
+            if (showLiveBI) {
+                setStep(2, "MTD Fetching", 78, "Fetching live business insights...");
+                await fetchBiSeries(selectedStartDay, selectedEndDay);
+            } else {
+                setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+            }
+
+            if (shopifyStore?.shop_name && shopifyStore?.access_token) {
+                setStep(2, "MTD Fetching", 90, "Fetching Shopify current month data...");
+                await fetchShopify();
+
+                setStep(2, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+                await fetchShopifyPrev();
+            } else {
+                setStep(2, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+            }
+
+            setStep(2, "MTD Fetching", 100, "MTD data ready");
+            markStepComplete(2);
+
+            // STEP 3: Inventory Fetch
+            setStep(3, "Inventory Fetch", 20, "Fetching current inventory data...");
+            await fetchInventory();
+            setStep(3, "Inventory Fetch", 100, "Inventory ready");
+            markStepComplete(3);
+
+            // STEP 4: Plotting Graph
+            setStep(4, "Plotting Graph", 40, "Preparing KPI cards...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 95, "Final render in progress...");
+            await waitForPaint();
+
+            setStep(4, "Plotting Graph", 100, "Dashboard ready");
+            markStepComplete(4);
+
+            await waitForPaint();
+
+            setStepProgress((prev) => ({
+                ...prev,
+                active: false,
+            }));
+
+            setDashboardBusy(false);
+        } catch (e: any) {
+            console.error("runDashboardLoadWithSteps failed:", e);
+            setError(e?.message || "Failed to load dashboard");
+            setDashboardBusy(false);
+        } finally {
+            setAdsLoading(false);
         }
     }, [
+        isMonthYearNA,
+        platform,
+        baseURL,
+        activeDateRegion,
+        showLiveBI,
+        selectedStartDay,
+        selectedEndDay,
+        shopifyStore,
+        fetchFxRates,
+        fetchMonthlySp,
         fetchAmazon,
+        fetchBiSeries,
         fetchShopify,
         fetchShopifyPrev,
-        shopifyStore,
+        fetchInventory,
     ]);
 
-    const didRefreshRef = useRef(false);
-
     useEffect(() => {
-        if (didRefreshRef.current) return;
-        didRefreshRef.current = true;
+        runDashboardLoadWithSteps().catch((err) => {
+            console.error("Dashboard step load failed:", err);
+        });
+    }, [runDashboardLoadWithSteps]);
 
-        refreshAll();
-    }, []);
+    // useEffect(() => {
+    //     if (didRefreshRef.current) return;
+    //     didRefreshRef.current = true;
+
+    //     refreshAll();
+    // }, []);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
@@ -5809,19 +6040,232 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 }}
             />
             <HashScroll offset={80} />
-            {/* {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
-                <Loader fullscreen backgroundClass="bg-white/80" />
-            )} */}
+
+
+            {/* {activeTab === "live" &&
+                !shouldShowDummyUi &&
+                pageLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
+                        <div className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+                            <div className="mb-4">
+                                <div className="text-sm font-semibold text-slate-700">
+                                    {stepProgress.label || "Loading Dashboard"}
+                                </div>
+
+                                <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-[#D9D9D9]">
+                                    <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                            width: `${stepProgress.percentage}%`,
+                                            background:
+                                                "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                                        }}
+                                    />
+                                </div>
+
+                                {stepProgress.detail && (
+                                    <div className="mt-2 text-xs text-slate-500">
+                                        {stepProgress.detail}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between relative">
+                                <div className="absolute top-5 left-[6%] right-[6%] h-1.5 bg-[#D9D9D9] -z-10">
+                                    {completedSteps.size > 0 &&
+                                        (() => {
+                                            const maxCompleted = Math.max(...Array.from(completedSteps));
+                                            const denominator = Math.max(dashboardSteps.length - 1, 1);
+                                            const progressPercent =
+                                                maxCompleted > 1
+                                                    ? ((Math.min(
+                                                        maxCompleted,
+                                                        dashboardSteps[dashboardSteps.length - 1].num
+                                                    ) - 1) /
+                                                        denominator) *
+                                                    100
+                                                    : 0;
+
+                                            return (
+                                                <div
+                                                    className="h-full bg-[#5EA68E] transition-all duration-500"
+                                                    style={{ width: `${progressPercent}%` }}
+                                                />
+                                            );
+                                        })()}
+                                </div>
+
+                                {dashboardSteps.map((step) => {
+                                    const isCompleted = completedSteps.has(step.num);
+                                    const isActive = currentStep === step.num;
+
+                                    return (
+                                        <div
+                                            key={step.num}
+                                            className="flex flex-col items-center flex-1 relative z-10"
+                                        >
+                                            <div
+                                                className={[
+                                                    "flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold",
+                                                    isCompleted
+                                                        ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                                                        : isActive
+                                                            ? "border-[#37455F] bg-white text-[#37455F]"
+                                                            : "border-slate-300 bg-white text-slate-400",
+                                                ].join(" ")}
+                                            >
+                                                {step.num}
+                                            </div>
+
+                                            <div
+                                                className={`mt-2 text-center text-[11px] sm:text-xs font-medium leading-tight ${isCompleted || isActive
+                                                    ? "text-[#5EA68E]"
+                                                    : "text-[#414042]"
+                                                    }`}
+                                            >
+                                                {step.label}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )} */}
 
             {activeTab === "live" &&
                 !shouldShowDummyUi &&
-                (loading || shopifyLoading || biLoading) &&
-                !data && !shopify && !liveBiPayload && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
-                        <Loader backgroundClass="bg-transparent" />
+                pageLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
+                        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
+
+                            {/* ── Header ── */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                            stroke="#5EA68E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-semibold text-[#37455F] leading-tight">
+                                            Syncing dashboard data
+                                        </p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                            {stepProgress.detail || "Initialising…"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
+                                    {stepProgress.percentage}%
+                                </span>
+                            </div>
+
+                            {/* ── Progress bar ── */}
+                            <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
+                                <div
+                                    className="h-full rounded-full transition-all duration-500 ease-in-out"
+                                    style={{
+                                        width: `${stepProgress.percentage}%`,
+                                        background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                                    }}
+                                />
+                            </div>
+
+                            {/* ── Steps row ── */}
+                            <div className="relative flex items-start justify-between">
+
+                                {/* connector track */}
+                                <div
+                                    className="absolute top-4 z-0 h-px bg-slate-200"
+                                    style={{ left: "calc(12.5% + 10px)", right: "calc(12.5% + 10px)" }}
+                                >
+                                    {completedSteps.size > 0 && (() => {
+                                        const maxCompleted = Math.max(...Array.from(completedSteps));
+                                        const denominator = Math.max(dashboardSteps.length - 1, 1);
+                                        const pct = maxCompleted > 1
+                                            ? ((Math.min(maxCompleted, dashboardSteps[dashboardSteps.length - 1].num) - 1) / denominator) * 100
+                                            : 0;
+                                        return (
+                                            <div
+                                                className="h-full bg-[#5EA68E] transition-all duration-500"
+                                                style={{ width: `${pct}%` }}
+                                            />
+                                        );
+                                    })()}
+                                </div>
+
+                                {dashboardSteps.map((step) => {
+                                    const isCompleted = completedSteps.has(step.num);
+                                    const isActive = currentStep === step.num;
+
+                                    return (
+                                        <div
+                                            key={step.num}
+                                            className="flex flex-col items-center flex-1 relative z-10 gap-2"
+                                        >
+                                            {/* circle */}
+                                            <div className={[
+                                                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
+                                                isCompleted
+                                                    ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                                                    : isActive
+                                                        ? "border-[#5EA68E] bg-[#E8F5F0] text-[#37455F]"
+                                                        : "border-slate-200 bg-white text-slate-400",
+                                            ].join(" ")}>
+                                                {isCompleted ? (
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                        stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                ) : isActive ? (
+                                                    <span
+                                                        className="w-3 h-3 rounded-full border-2 border-[#b8ddd4] border-t-[#5EA68E] animate-spin"
+                                                        style={{ display: "inline-block" }}
+                                                    />
+                                                ) : (
+                                                    <span>{step.num}</span>
+                                                )}
+                                            </div>
+
+                                            {/* step name */}
+                                            <p className={[
+                                                "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
+                                                isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
+                                            ].join(" ")}>
+                                                {step.label}
+                                            </p>
+
+                                            {/* badge */}
+                                            <span className={[
+                                                "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
+                                                isCompleted
+                                                    ? "bg-[#E8F5F0] text-[#5EA68E]"
+                                                    : isActive
+                                                        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+                                                        : "bg-slate-100 text-slate-400",
+                                            ].join(" ")}>
+                                                {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* ── Bottom status bar ── */}
+                            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                <p className="text-[11px] text-slate-400 truncate">
+                                    {stepProgress.detail || "Initialising dashboard…"}
+                                </p>
+                                <span className="text-[11px] text-slate-400 shrink-0 ml-3">
+                                    Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                                </span>
+                            </div>
+
+                        </div>
                     </div>
                 )}
-
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
                 <div className="flex items-center justify-between gap-2">
@@ -5853,7 +6297,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     </div>
 
                     {/* RIGHT SIDE BUTTON */}
-                    <button
+                    {/* <button
                         onClick={refreshAll}
                         disabled={loading || shopifyLoading || biLoading}
                         className={`shrink-0 rounded-md border shadow-sm
@@ -5866,6 +6310,26 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             }`}
                     >
                         {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
+                    </button> */}
+
+                    <button
+                        onClick={() => {
+                            resetStepState();
+                            runDashboardLoadWithSteps().catch((err) => {
+                                console.error("Dashboard refresh failed:", err);
+                            });
+                        }}
+                        disabled={pageLoading}
+                        className={`shrink-0 rounded-md border shadow-sm
+px-2 py-1 text-[10px]
+sm:px-3 sm:py-1.5 sm:text-xs
+2xl:text-sm
+${pageLoading
+                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                : "border-gray-300 bg-white hover:bg-gray-50"
+                            }`}
+                    >
+                        {pageLoading ? "Refreshing…" : "Refresh"}
                     </button>
 
                 </div>
@@ -6864,7 +7328,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         Ads data is being fetched, please wait…
                                     </div>
                                 )}
-                               {/* RIGHT: Download */}
+                                {/* RIGHT: Download */}
                                 <div className="flex items-center gap-2">
                                     <DownloadIconButton
                                         onClick={handleDownloadPlProductwiseMtd}
@@ -6874,12 +7338,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 </div>
                             </div>
 
-                            {error ? (
-                                <div className="text-sm text-red-600">{error}</div>
-                            ) : !shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
+                            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
                                 <div className="text-sm text-gray-500">Loading…</div>
+                            ) : finalMonthlySkuwiseRowsForTable.length === 0 ? (
+                                <div className="text-sm text-red-600">
+                                    No P&L productwise rows available for this period.
+                                </div>
                             ) : (
-
                                 <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
                                     <div className="min-w-full">
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
