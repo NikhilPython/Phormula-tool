@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 
@@ -15,22 +15,19 @@ type NotificationItem = {
 
 export default function NotificationDropdown({
   items,
+  isOpen,
+  onToggle,
+  onClose,
 }: {
   items: NotificationItem[];
+  isOpen: boolean;
+  onToggle: (e: React.MouseEvent<HTMLElement>) => void;
+  onClose: () => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
   const [notifying, setNotifying] = useState(true);
 
-  function toggleDropdown() {
-    setIsOpen((prev) => !prev);
-  }
-
-  function closeDropdown() {
-    setIsOpen(false);
-  }
-
-  const handleClick = () => {
-    toggleDropdown();
+  const handleClick = (e: React.MouseEvent<HTMLElement>) => {
+    onToggle(e);
     setNotifying(false);
   };
 
@@ -53,12 +50,13 @@ export default function NotificationDropdown({
   return (
     <div className="relative">
       <button
-        className="relative dropdown-toggle flex items-center justify-center transition-colors bg-blue-700 text-yellow-200 text-xs rounded-full  w-7 h-7 sm:w-8 sm:h-8 "
+        className="relative dropdown-toggle flex items-center justify-center transition-colors bg-blue-700 text-yellow-200 text-xs rounded-full w-7 h-7 sm:w-8 sm:h-8"
         onClick={handleClick}
       >
         <span
-          className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-[#B75A5A] ${!unread ? "hidden" : "flex"
-            }`}
+          className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-[#B75A5A] ${
+            !unread ? "hidden" : "flex"
+          }`}
         >
           <span className="absolute inline-flex w-full h-full bg-[#B75A5A] rounded-full opacity-75 animate-ping"></span>
         </span>
@@ -81,7 +79,7 @@ export default function NotificationDropdown({
 
       <Dropdown
         isOpen={isOpen}
-        onClose={closeDropdown}
+        onClose={onClose}
         className="absolute -right-[240px] mt-[17px] flex w-[350px] max-h-[480px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark sm:w-[361px] lg:right-0"
       >
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-gray-700">
@@ -89,7 +87,7 @@ export default function NotificationDropdown({
             Notification
           </h5>
           <button
-            onClick={toggleDropdown}
+            onClick={onClose}
             className="text-gray-500 transition dropdown-toggle dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             <svg
@@ -118,14 +116,12 @@ export default function NotificationDropdown({
             items.map((item) => (
               <li key={item.id}>
                 <DropdownItem
-                  onItemClick={closeDropdown}
+                  onItemClick={onClose}
                   className="flex gap-3 rounded-lg border-b border-gray-100 p-3 px-4.5 py-3 hover:bg-gray-100 dark:border-gray-800 dark:hover:bg-white/5"
                 >
                   <span className="pt-1">
                     <span
-                      className={`block h-2.5 w-2.5 rounded-full ${getDotColor(
-                        item.type
-                      )}`}
+                      className={`block h-2.5 w-2.5 rounded-full ${getDotColor(item.type)}`}
                     />
                   </span>
 
@@ -144,7 +140,7 @@ export default function NotificationDropdown({
                       <Link
                         href={item.href}
                         className="mt-2 inline-block text-xs font-semibold text-[#B75A5A] hover:underline"
-                        onClick={closeDropdown}
+                        onClick={onClose}
                       >
                         View inventory
                       </Link>

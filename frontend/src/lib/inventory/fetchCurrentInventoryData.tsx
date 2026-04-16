@@ -29,18 +29,12 @@ async function hitAgedInventoryOnce(baseURL: string, jwtToken: string) {
     try {
       const j = await res.json();
       if (j?.error) msg = j.error;
-    } catch { }
+    } catch {}
     throw new Error(msg);
   }
 
   return res.json().catch(() => ({}));
 }
-
-// function getCurrentInventoryEndpoint(baseURL: string, inventoryCountry: string) {
-//   return inventoryCountry === "global"
-//     ? `${baseURL}/current_inventory`
-//     : `${baseURL}/current_inventory`;
-// }
 
 function getCurrentInventoryEndpoint(baseURL: string) {
   return `${baseURL}/current_inventory`;
@@ -57,16 +51,102 @@ function base64ToArrayBuffer(base64: string) {
     buffers.push(new Uint8Array(byteNumbers).buffer as ArrayBuffer);
   }
 
-  // merge chunks
   const totalLen = buffers.reduce((sum, b) => sum + b.byteLength, 0);
   const merged = new Uint8Array(totalLen);
   let pos = 0;
+
   for (const b of buffers) {
     merged.set(new Uint8Array(b), pos);
     pos += b.byteLength;
   }
 
   return merged.buffer;
+}
+
+function toNumberOrZero(v: any): number {
+  if (v === null || v === undefined || v === "" || v === "-") return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  const n = Number(String(v).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeInventoryRow(row: InventoryRow): InventoryRow {
+  return {
+    ...row,
+
+    // force exact keys used by the UI table
+    "Sales Rank": toNumberOrZero(
+      row["Sales Rank"] ??
+      row["Sales rank"] ??
+      row["sales_rank"]
+    ),
+
+    "Estimated Storage Cost ($)": toNumberOrZero(
+      row["Estimated Storage Cost ($)"] ??
+      row["Estimated Storage Cost"] ??
+      row["estimated_storage_cost"] ??
+      row["Estimated Storage Cost ($ )"]
+    ),
+
+    "Coverage Ratio (In Months)": toNumberOrZero(
+      row["Coverage Ratio (In Months)"] ??
+      row["Coverage Ratio"] ??
+      row["coverage_ratio"]
+    ),
+  };
+}
+
+function getDummyInventoryRows(): InventoryRow[] {
+  return [
+    {
+      "S.No": 1,
+      "Product Name": "Dummy Product 1",
+      "SKU": "DUMMY-SKU-001",
+      "MTD Sales": 0,
+      "Sales Last 30 Days": 0,
+      "Sales Rank": 0,
+      "Current Inventory": 0,
+      "Inventory 180+ Days": 0,
+      "Estimated Storage Cost ($)": 0,
+      "Coverage Ratio (In Months)": 0,
+      "Inventory Alerts": "High alert",
+    },
+    {
+      "S.No": 2,
+      "Product Name": "Dummy Product 2",
+      "SKU": "DUMMY-SKU-002",
+      "MTD Sales": 0,
+      "Sales Last 30 Days": 0,
+      "Sales Rank": 0,
+      "Current Inventory": 0,
+      "Inventory 180+ Days": 0,
+      "Estimated Storage Cost ($)": 0,
+      "Coverage Ratio (In Months)": 0,
+      "Inventory Alerts": "High alert",
+    },
+    {
+      "S.No": 3,
+      "Product Name": "Dummy Product 3",
+      "SKU": "DUMMY-SKU-003",
+      "MTD Sales": 0,
+      "Sales Last 30 Days": 0,
+      "Sales Rank": 0,
+      "Current Inventory": 0,
+      "Inventory 180+ Days": 0,
+      "Estimated Storage Cost ($)": 0,
+      "Coverage Ratio (In Months)": 0,
+      "Inventory Alerts": "High alert",
+    },
+  ].map(normalizeInventoryRow);
+}
+
+function getDummyInventoryAlerts() {
+  return {
+    "DUMMY-SKU-001": { alert: "High alert", alert_type: "error" },
+    "DUMMY-SKU-002": { alert: "High alert", alert_type: "error" },
+    "DUMMY-SKU-003": { alert: "High alert", alert_type: "error" },
+  };
 }
 
 export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
@@ -95,16 +175,22 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
 
   const json = await res.json().catch(() => ({}));
 
-  // alerts
   const rawAlerts = json?.inventory_alerts || {};
   const normalizedAlerts: Record<string, { alert?: string; alert_type?: string }> = {};
+
   Object.keys(rawAlerts).forEach((k) => {
     normalizedAlerts[normalizeSku(k)] = rawAlerts[k];
   });
 
-  // file
   const fileData: string | undefined = json?.data;
-  if (!fileData) throw new Error(json?.message || "Empty file received from server");
+
+  // fallback dummy rows
+  if (!fileData) {
+    return {
+      rows: getDummyInventoryRows(),
+      alerts: getDummyInventoryAlerts(),
+    };
+  }
 
   const ab = base64ToArrayBuffer(fileData);
   const arr = new Uint8Array(ab);
@@ -113,7 +199,12 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
   const sheetName = wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
 
-  const rows = (XLSX.utils.sheet_to_json as <T>(sheet: any, opts?: any) => T[])<InventoryRow>(sheet, { defval: "" });
+  const rawRows = (XLSX.utils.sheet_to_json as <T>(sheet: any, opts?: any) => T[])<InventoryRow>(
+    sheet,
+    { defval: "" }
+  );
+
+  const rows = rawRows.map(normalizeInventoryRow);
 
   return { rows, alerts: normalizedAlerts };
 }

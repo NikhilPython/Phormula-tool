@@ -290,7 +290,7 @@ const MonthsforBI: React.FC = () => {
   const [month2, setMonth2] = useState<string>(isPreviewMode ? PREVIEW_MONTH2 : '');
   const [year2, setYear2] = useState<string>(isPreviewMode ? PREVIEW_YEAR2 : '');
   const [isMobile, setIsMobile] = useState(false);
-
+  const [loadingCompare, setLoadingCompare] = useState(false);
   const [is2xlUp, setIs2xlUp] = useState(false);
 
   const setEmptyChartOption = (
@@ -1960,46 +1960,35 @@ const MonthsforBI: React.FC = () => {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (isPreviewMode) {
       setError(null);
-
       setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
-
       setAdvertisingTotals({ month1: 0, month2: 0 });
       setExpenseTotals({ month1: 0, month2: 0 });
       setReimbursementTotals({ month1: 0, month2: 0 });
-
       setMonth2Label("Preview");
-
       return;
     }
 
     e?.preventDefault?.();
     setError(null);
-    if (!isPreviewMode) {
-      setCategorizedGrowth({
-        top_80_skus: [],
-        new_or_reviving_skus: [],
-        other_skus: [],
-        all_skus: [],
-        top_80_total: null,
-        new_or_reviving_total: null,
-        other_total: null,
-        all_skus_total: null,
-      });
-    }
+    setLoadingCompare(true);
 
-    setMonth2Label('');
+    // keep old chart data visible while fetching
+    // do NOT clear categorizedGrowth here
+    // do NOT clear month2Label here unless you really want blank header during loading
+
     setSkuInsights({});
     setModalOpen(false);
-    // Clear previous persisted insights if any (fresh compare)
     saveInsightsToStorage({});
 
-    // ✅ NEW: basic + availability validation
     if (!month1 || !year1 || !month2 || !year2) {
       setError('Please select both months and years.');
+      setLoadingCompare(false);
       return;
     }
+
     if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) {
       setError('Selected month ka data available nahi hai. Sirf highlighted months select karein.');
+      setLoadingCompare(false);
       return;
     }
 
@@ -2009,8 +1998,6 @@ const MonthsforBI: React.FC = () => {
       });
 
       const newMonth2Label = res.data?.comparison_range?.month2_label || '';
-
-      // ✅ normalize here
       const raw = res.data?.categorized_growth;
       const newCategorized = normalizeCategorizedGrowth(raw);
 
@@ -2029,10 +2016,11 @@ const MonthsforBI: React.FC = () => {
         month2Label: newMonth2Label,
         countryName,
       });
-
     } catch (err: any) {
       console.error('MonthsforBI error:', err?.response?.data || err.message);
       setError(err?.response?.data?.error || 'An error occurred');
+    } finally {
+      setLoadingCompare(false);
     }
   };
 
@@ -2054,7 +2042,12 @@ const MonthsforBI: React.FC = () => {
   // =====================
   // AI insights generate
   // =====================
-  const analyzeSkus = async () => {
+  const analyzeSkus = async (
+    e?: React.MouseEvent<HTMLButtonElement> | React.FormEvent
+  ) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
     setLoadingInsight(true);
     try {
       const allSkus: SkuItem[] = [
@@ -2062,18 +2055,24 @@ const MonthsforBI: React.FC = () => {
         ...categorizedGrowth.new_or_reviving_skus,
         ...categorizedGrowth.other_skus,
       ];
-      const res = await api.post<{ insights: Record<string, SkuInsight> }>('/analyze_skus', {
-        month1, year1, month2, year2,
-        country: countryName,
-        skus: allSkus,
-      });
+
+      const res = await api.post<{ insights: Record<string, SkuInsight> }>(
+        "/analyze_skus",
+        {
+          month1,
+          year1,
+          month2,
+          year2,
+          country: countryName,
+          skus: allSkus,
+        }
+      );
+
       const insights = res.data?.insights || {};
       setSkuInsights(insights);
-
-      // persist insights so returning to route still shows "View Insights" etc.
       saveInsightsToStorage(insights);
     } catch (err: any) {
-      console.error('analyze_skus error:', err?.response?.data || err.message);
+      console.error("analyze_skus error:", err?.response?.data || err.message);
     } finally {
       setLoadingInsight(false);
     }
@@ -3331,7 +3330,7 @@ const MonthsforBI: React.FC = () => {
             <h2 className="text-[18px] font-bold text-[#414042] 2xl:text-2xl">
               Business Insights - AI Analyst&nbsp;-
               <span className="pl-1 text-[#5EA68E]">
-                {effectiveCountry && formatCountryLabel(effectiveCountry)}
+                Amazon {effectiveCountry && formatCountryLabel(effectiveCountry)}
                 <span className="px-2 text-[#5EA68E]"></span>
               </span>
             </h2>

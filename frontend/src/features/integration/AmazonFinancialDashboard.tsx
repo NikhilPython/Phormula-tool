@@ -162,9 +162,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -1760,12 +1760,12 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
                   </div>
 
                   <div>
-                    <p className="text-sm font-semibold text-[#37455F] leading-tight">
+                    <p className="text-lg font-semibold text-[#37455F] leading-tight">
                       Syncing dashboard data
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                    {/* <p className="text-xs text-slate-400 mt-0.5 leading-tight">
                       {stepProgress.detail || "Initialising…"}
-                    </p>
+                    </p> */}
                   </div>
                 </div>
 
@@ -1775,7 +1775,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               </div>
 
               {/* Progress bar */}
-              <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
+              <div className="h-[7px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
                 <div
                   className="h-full rounded-full transition-all duration-500 ease-in-out"
                   style={{
@@ -1855,7 +1855,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
                       <p
                         className={[
-                          "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
+                          "text-center text-[10px] sm:text-xs font-medium leading-tight",
                           isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
                         ].join(" ")}
                       >
@@ -1881,10 +1881,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
               {/* Bottom status bar */}
               <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                <p className="text-[11px] text-slate-400 truncate">
+                <p className="text-xs text-slate-400 truncate">
                   {stepProgress.detail || "Initialising dashboard…"}
                 </p>
-                <span className="text-[11px] text-slate-400 shrink-0 ml-3">
+                <span className="text-xs text-slate-400 shrink-0 ml-3">
                   Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
                 </span>
               </div>
