@@ -78,58 +78,67 @@ const DUMMY_INVENTORY_FORECAST = [
 
 const DUMMY_DISPATCH_DATA = [
   {
-    sku: 'DSP-DEMO-1',
+    sNo: 1,
     productName: 'Demo Product A',
-    dispatchQty: 120,
-    warehouse: 'Amazon FC',
-    dispatchDate: '2026-03-05',
-    status: 'Dispatched',
+    sku: 'DSP-DEMO-1',
+    inventoryAtMonthEnd: 0,
+    coverageRatioBeforeDispatch: 0,
+    dispatch: 0,
+    currentInventoryPlusDispatch: 0,
   },
   {
-    sku: 'DSP-DEMO-2',
+    sNo: 2,
     productName: 'Demo Product B',
-    dispatchQty: 80,
-    warehouse: 'Amazon FC',
-    dispatchDate: '2026-03-08',
-    status: 'In Transit',
+    sku: 'DSP-DEMO-1',
+    inventoryAtMonthEnd: 0,
+    coverageRatioBeforeDispatch: 0,
+    dispatch: 0,
+    currentInventoryPlusDispatch: 0,
   },
   {
-    sku: 'DSP-DEMO-3',
+    sNo: 3,
     productName: 'Demo Product C',
-    dispatchQty: 150,
-    warehouse: 'Amazon FC',
-    dispatchDate: '2026-03-10',
-    status: 'Delivered',
+    sku: 'DSP-DEMO-3',
+    inventoryAtMonthEnd: 0,
+    coverageRatioBeforeDispatch: 0,
+    dispatch: 0,
+    currentInventoryPlusDispatch: 0,
   },
 ];
 
 const DUMMY_PO_DATA = [
   {
-    poNumber: 'PO-DEMO-1001',
-    supplier: 'Demo Supplier A',
-    sku: 'PO-DEMO-1',
+    sNo: 1,
     productName: 'Demo Product A',
-    orderQty: 500,
-    eta: '2026-03-20',
-    status: 'Open',
+    dispatchesUK: 0,
+    totalDispatches: 0,
+    currentInventory: 0,
+    inTransitUnits: 0,
+    poToBeRaised: 0,
+    costPerUnit: 0,
+    poCost: 0,
   },
   {
-    poNumber: 'PO-DEMO-1002',
-    supplier: 'Demo Supplier B',
-    sku: 'PO-DEMO-2',
+    sNo: 2,
     productName: 'Demo Product B',
-    orderQty: 320,
-    eta: '2026-03-24',
-    status: 'In Progress',
+    dispatchesUK: 0,
+    totalDispatches: 0,
+    currentInventory: 0,
+    inTransitUnits: 0,
+    poToBeRaised: 0,
+    costPerUnit: 0,
+    poCost: 0,
   },
   {
-    poNumber: 'PO-DEMO-1003',
-    supplier: 'Demo Supplier C',
-    sku: 'PO-DEMO-3',
+    sNo: 3,
     productName: 'Demo Product C',
-    orderQty: 210,
-    eta: '2026-03-28',
-    status: 'Confirmed',
+    dispatchesUK: 0,
+    totalDispatches: 0,
+    currentInventory: 0,
+    inTransitUnits: 0,
+    poToBeRaised: 0,
+    costPerUnit: 0,
+    poCost: 0,
   },
 ];
 
@@ -634,87 +643,79 @@ export default function InventoryFlowPage() {
     }
   }, [excelData, missingMonths, error]);
 
-  const DemoDispatchPreview = () => {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {/* <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-          <h3 className="text-base font-semibold text-[#414042]">Dispatch Report Preview</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Demo data shown because month/year is NA.
-          </p>
-        </div> */}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-green-500 text-[#F8EDCE]">
-              <tr>
-                <th className="px-4 py-3 text-left">SKU</th>
-                <th className="px-4 py-3 text-left">Product</th>
-                <th className="px-4 py-3 text-left">Dispatch Qty</th>
-                <th className="px-4 py-3 text-left">Warehouse</th>
-                <th className="px-4 py-3 text-left">Dispatch Date</th>
-                <th className="px-4 py-3 text-left">Status</th>
+const DemoDispatchPreview = () => {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-green-500 text-[#F8EDCE]">
+            <tr>
+              <th className="px-4 py-3 text-left">S. No.</th>
+              <th className="px-4 py-3 text-left">Product Name</th>
+              <th className="px-4 py-3 text-left">SKU</th>
+              <th className="px-4 py-3 text-left">Inventory At Month End</th>
+              <th className="px-4 py-3 text-left">Coverage Ratio Before Dispatch</th>
+              <th className="px-4 py-3 text-left">Dispatch</th>
+              <th className="px-4 py-3 text-left">Current Inventory + Dispatch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DUMMY_DISPATCH_DATA.map((row, idx) => (
+              <tr key={idx} className="border-b border-slate-100">
+                <td className="px-4 py-3">{row.sNo}</td>
+                <td className="px-4 py-3">{row.productName}</td>
+                <td className="px-4 py-3">{row.sku}</td>
+                <td className="px-4 py-3">{row.inventoryAtMonthEnd}</td>
+                <td className="px-4 py-3">{row.coverageRatioBeforeDispatch}</td>
+                <td className="px-4 py-3">{row.dispatch}</td>
+                <td className="px-4 py-3">{row.currentInventoryPlusDispatch}</td>
               </tr>
-            </thead>
-            <tbody>
-              {DUMMY_DISPATCH_DATA.map((row, idx) => (
-                <tr key={idx} className="border-b border-slate-100">
-                  <td className="px-4 py-3">{row.sku}</td>
-                  <td className="px-4 py-3">{row.productName}</td>
-                  <td className="px-4 py-3">{row.dispatchQty}</td>
-                  <td className="px-4 py-3">{row.warehouse}</td>
-                  <td className="px-4 py-3">{row.dispatchDate}</td>
-                  <td className="px-4 py-3">{row.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
-  const DemoPurchaseOrderPreview = () => {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {/* <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-          <h3 className="text-base font-semibold text-[#414042]">PO Report Preview</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Demo data shown because month/year is NA.
-          </p>
-        </div> */}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-green-500 text-[#F8EDCE]">
-              <tr>
-                <th className="px-4 py-3 text-left">PO Number</th>
-                <th className="px-4 py-3 text-left">Supplier</th>
-                <th className="px-4 py-3 text-left">SKU</th>
-                <th className="px-4 py-3 text-left">Product</th>
-                <th className="px-4 py-3 text-left">Order Qty</th>
-                <th className="px-4 py-3 text-left">ETA</th>
-                <th className="px-4 py-3 text-left">Status</th>
+const DemoPurchaseOrderPreview = () => {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-green-500 text-[#F8EDCE]">
+            <tr>
+              <th className="px-4 py-3 text-left">S. No.</th>
+              <th className="px-4 py-3 text-left">Product Name</th>
+              <th className="px-4 py-3 text-left">Dispatches UK</th>
+              <th className="px-4 py-3 text-left">Total Dispatches</th>
+              <th className="px-4 py-3 text-left">Current Inventory - Local Warehouse</th>
+              <th className="px-4 py-3 text-left">In Transit Units</th>
+              <th className="px-4 py-3 text-left">PO To Be Raised</th>
+              <th className="px-4 py-3 text-left">Cost Per Unit (in INR)</th>
+              <th className="px-4 py-3 text-left">PO Cost (in INR)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DUMMY_PO_DATA.map((row, idx) => (
+              <tr key={idx} className="border-b border-slate-100">
+                <td className="px-4 py-3">{row.sNo}</td>
+                <td className="px-4 py-3">{row.productName}</td>
+                <td className="px-4 py-3">{row.dispatchesUK}</td>
+                <td className="px-4 py-3">{row.totalDispatches}</td>
+                <td className="px-4 py-3">{row.currentInventory}</td>
+                <td className="px-4 py-3">{row.inTransitUnits}</td>
+                <td className="px-4 py-3">{row.poToBeRaised}</td>
+                <td className="px-4 py-3">{row.costPerUnit}</td>
+                <td className="px-4 py-3">{row.poCost}</td>
               </tr>
-            </thead>
-            <tbody>
-              {DUMMY_PO_DATA.map((row, idx) => (
-                <tr key={idx} className="border-b border-slate-100">
-                  <td className="px-4 py-3">{row.poNumber}</td>
-                  <td className="px-4 py-3">{row.supplier}</td>
-                  <td className="px-4 py-3">{row.sku}</td>
-                  <td className="px-4 py-3">{row.productName}</td>
-                  <td className="px-4 py-3">{row.orderQty}</td>
-                  <td className="px-4 py-3">{row.eta}</td>
-                  <td className="px-4 py-3">{row.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   const PreviewLockedSection = ({
     enabled,
