@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
 from app.ai_agent.prompts import ADVICE_PROMPT, REQUEST_PLANNER_PROMPT
-from app.ai_agent.db import get_engine, latest_available_month, _format_currency
+from app.ai_agent.db import get_engine, latest_available_month, _format_value
 from app.ai_agent.email_service import build_email_html, send_agent_email
 from app.ai_agent.formula_engine import (
     OVERALL_MONTH_METRICS,
@@ -1269,19 +1269,19 @@ def _render_response(state: AgentState) -> AgentState:
         res = state["sku_intelligence_result"]
         lines = [f"SKU intelligence for {res.get('product_match') or 'selected product'}:"]
         current = res.get("current", {})
-        lines.append(f"- Current sales: {_format_currency(float(current.get('net_sales', 0.0)), state.get('country'))}")
-        lines.append(f"- Current profit: {_format_currency(float(current.get('profit', 0.0)),state.get('country'))}")
+        lines.append(f"- Current sales: {_format_value(float(current.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
+        lines.append(f"- Current profit: {_format_value(float(current.get('profit', 0.0)), 'profit', state.get('country'))}")
         lines.append(f"- Current units: {float(current.get('total_quantity', 0.0)):,.2f}")
-        lines.append(f"- Current ASP: {_format_currency(float(current.get('asp', 0.0)),state.get('country'))}")
+        lines.append(f"- Current ASP: {_format_value(float(current.get('asp', 0.0)), 'asp' ,state.get('country'))}")
         lines.append(f"- Current sales mix: {float(current.get('sales_mix', 0.0)):.2%}")
         lines.append(f"- Current profit mix: {float(current.get('profit_mix', 0.0)):.2%}")
 
         previous = res.get("previous") or {}
         if previous:
-            lines.append(f"- Previous sales: {_format_currency(float(current.get('net_sales', 0.0)), state.get('country'))}")
-            lines.append(f"- Previous profit: {_format_currency(float(current.get('profit', 0.0)),state.get('country'))}")
+            lines.append(f"- Previous sales: {_format_value(float(previous.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
+            lines.append(f"- Previous profit: {_format_value(float(previous.get('profit', 0.0)),'profit',state.get('country'))}")
             lines.append(f"- Previous units: {float(previous.get('total_quantity', 0.0)):,.2f}")
-            lines.append(f"- Previous ASP: {_format_currency(float(current.get('asp', 0.0)),state.get('country'))}")
+            lines.append(f"- Previous ASP: {_format_value(float(previous.get('asp', 0.0)), 'asp' ,state.get('country'))}")
             lines.append(f"- Previous sales mix: {float(previous.get('sales_mix', 0.0)):.2%}")
             lines.append(f"- Previous profit mix: {float(previous.get('profit_mix', 0.0)):.2%}")
 
@@ -1321,10 +1321,10 @@ def _render_response(state: AgentState) -> AgentState:
         curr = float(comp.get("left", {}).get("total", 0.0))
         prev = float(comp.get("right", {}).get("total", 0.0))
         if pct is None:
-            msg = f"{metric_name} was {_format_currency(curr, state.get('country'))} vs {_format_currency(prev, state.get('country'))}"
+            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}"
         else:
             direction = "higher" if pct > 0 else "lower"
-            msg = f"{metric_name} was {_format_currency(curr, state.get('country'))} vs {_format_currency(prev, state.get('country'))}, which is {abs(pct):.2f}% {direction}."
+            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}, which is {abs(pct):.2f}% {direction}."
         if state.get("advice"):
             msg += "\n" + "\n".join(f"- {a}" for a in state["advice"])
         state["final_response"] = msg
@@ -1355,7 +1355,7 @@ def _render_response(state: AgentState) -> AgentState:
             if metric_name in {"sales_mix", "profit_mix"}:
                 lines.append(f"- {label}: {val:.2%}")
             else:
-                lines.append(f"- {label}: {_format_currency(val, state.get('country'))}")
+                lines.append(f"- {label}: {_format_value(val, metric_name, state.get('country'))}")
 
         if state.get("advice"):
             lines.append("")
@@ -1378,7 +1378,7 @@ def _render_response(state: AgentState) -> AgentState:
             if metric_name in {"sales_mix", "profit_mix"}:
                 lines.append(f"- {name}: {value:.2%}")
             else:
-                lines.append(f"- {name}: {_format_currency(value, state.get('country'))}")
+                lines.append(f"- {name}: {_format_value(value, metric_name, state.get('country'))}")
 
         if state.get("advice"):
             lines.append("")
@@ -1400,7 +1400,7 @@ def _render_response(state: AgentState) -> AgentState:
             "cm2_profit",
         ]:
             if key in metrics:
-                parts.append(f"{key}: {_format_currency(metrics[key], state.get('country'))}")
+                parts.append(f"{key}: {_format_value(metrics[key], key, state.get('country'))}")
 
         msg = f"Overall summary for {period_label}: " + ", ".join(parts)
         if state.get("advice"):

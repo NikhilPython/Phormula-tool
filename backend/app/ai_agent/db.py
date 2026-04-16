@@ -45,7 +45,7 @@ MONEY_METRICS = {
     "asp",
 }
 
-def _format_currency(value: float, metric_name: str, country: str) -> str:
+def _format_value(value: float, metric_name: str, country: str) -> str:
     if metric_name in {"sales_mix", "profit_mix"}:
         return f"{value:.2%}"
 
