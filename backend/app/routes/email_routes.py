@@ -114,7 +114,13 @@ def send_report_email():
             "tax_and_credits",
             "fba_fees",
             "lost_total",
-            "promotional_rebates"
+            "promotional_rebates",
+            "promotional_rebates_percentage",
+            "visible_ads",
+            "dealsvouchar_ads",
+            "platformfeenew",
+            "platform_fee",
+            "platform_fee_inventory_storage"
         ]
 
         for col in columns_to_fix:
