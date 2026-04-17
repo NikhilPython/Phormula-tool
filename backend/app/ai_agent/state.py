@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
+
+# -------------------------------
+# CORE INTENT TYPES
+# -------------------------------
+
 Intent = Literal[
     "chat",
     "explain",
@@ -24,6 +29,39 @@ AnalysisType = Literal[
     "sku_intelligence",
 ]
 
+
+# -------------------------------
+# NEW EXECUTION TYPES
+# -------------------------------
+
+AnswerShape = Literal[
+    "single_value",
+    "trend",
+    "comparison",
+    "ranking",
+    "summary",
+    "extreme",
+    "multi_month",
+    "multi_dimensional",
+]
+
+SubjectScope = Literal[
+    "business",
+    "product",
+    "products",
+    "metric",
+]
+
+RankingDirection = Literal["top", "bottom"]
+
+ExtremeType = Literal["max", "min"]
+
+TimeGranularity = Literal["month", "quarter", "year"]
+
+
+# -------------------------------
+# AGENT STATE
+# -------------------------------
 
 class AgentState(TypedDict, total=False):
     user_id: int
@@ -48,7 +86,17 @@ class AgentState(TypedDict, total=False):
     restored_from_memory: bool
     clarification_question: Optional[str]
 
-    # -------- NEW: Event Planner Fields --------
+    # -------- NEW: Execution Plan --------
+    answer_shape: AnswerShape
+    subject_scope: SubjectScope
+    ranking_direction: Optional[RankingDirection]
+    extreme_type: Optional[ExtremeType]
+    time_granularity: Optional[TimeGranularity]
+
+    # For multi-month queries
+    target_months: Optional[List[Dict[str, int]]]
+
+    # -------- Event Planner --------
     event_name: Optional[str]
     last_event_month: Optional[int]
     future_event_month: Optional[int]
@@ -71,3 +119,5 @@ class AgentState(TypedDict, total=False):
     # -------- Specialized Outputs --------
     event_plan_result: Dict[str, Any]
     sku_intelligence_result: Dict[str, Any]
+    metric_names: Optional[List[str]]
+    product_queries: Optional[List[str]]

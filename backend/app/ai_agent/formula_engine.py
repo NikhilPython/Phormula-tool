@@ -120,40 +120,63 @@ def get_metric_for_month(
     month: int | str,
     year: int,
 ) -> Dict[str, Any]:
-    metric_def = get_metric_def(metric_name)
-    df = fetch_nse_month_df(engine, user_id, country, month, year)
 
+    metric_def = get_metric_def(metric_name)
+
+    # 🔥 Normalize month
+    if isinstance(month, str):
+        if str(month).isdigit():
+            month_int = int(month)
+        else:
+            month_int = datetime.strptime(str(month), "%B").month
+    else:
+        month_int = month
+
+    # 🔥 Fetch data
+    df = fetch_nse_month_df(engine, user_id, country, month_int, year)
+
+    # 🔥 Build base result
     result: Dict[str, Any] = {
         "metric": metric_def.name,
         "column": metric_def.column,
         "metric_kind": metric_def.kind,
         "period_type": "single_month",
-        "period_label": datetime(year, int(month) if str(month).isdigit() else datetime.strptime(str(month), "%B").month, 1).strftime("%b %Y")
-        if isinstance(month, str) and str(month).isdigit()
-        else datetime(year, month if isinstance(month, int) else datetime.strptime(str(month), "%B").month, 1).strftime("%b %Y"),
+        "period_label": datetime(year, month_int, 1).strftime("%b %Y"),
     }
 
+    # =========================
+    # SKU LEVEL METRICS
+    # =========================
     if metric_def.kind == "sku_additive":
-        grouped = _aggregate_sku_rows([(MonthKey(year=year, month=(month if isinstance(month, int) else datetime.strptime(str(month), "%B").month)), df)], metric_def.column)
-        result["total"] = float(grouped["__metric__"].sum()) if not grouped.empty else 0.0
+        grouped = _aggregate_sku_rows(
+            [(MonthKey(year=year, month=month_int), df)],
+            metric_def.column
+        )
+
+        # 🔥 total (only meaningful for additive metrics like sales/profit)
+        total_value = float(grouped["__metric__"].sum()) if not grouped.empty else 0.0
+
+        result["total"] = total_value
         result["per_sku"] = grouped.to_dict(orient="records")
         result["row_count"] = int(len(grouped))
+
         return result
 
+    # =========================
+    # TOTAL LEVEL METRICS
+    # =========================
     if metric_def.kind == "total_additive":
         total = _monthly_total_value(df, metric_def.column)
+
         result["total"] = total
         result["per_sku"] = []
         result["row_count"] = 1
+
         return result
 
-    if metric_def.kind == "ratio":
-        total = _compute_ratio_single_month(df, metric_def)
-        result["total"] = total
-        result["per_sku"] = []
-        result["row_count"] = 1
-        return result
-
+    # =========================
+    # SAFETY FALLBACK
+    # =========================
     raise ValueError(f"unsupported metric kind: {metric_def.kind}")
 
 
@@ -697,6 +720,174 @@ def get_growth_driver_insights(
         "primary_driver": lead,
     }
 
+def rank_skus(
+    per_sku,
+    direction="top",
+    limit=5,
+):
+    if direction == "top":
+        return pick_top_skus(per_sku, limit)
+    else:
+        return pick_bottom_skus(per_sku, limit)
+
+def find_extreme_month(
+    engine,
+    user_id,
+    country,
+    metric_name,
+    months,
+    extreme_type="max",
+    product_match=None,
+):
+    if not months:
+        return None
+
+    series = build_time_series_analysis(
+        engine,
+        user_id,
+        country,
+        metric_name,
+        months,
+        product_match=product_match,
+    )
+
+    rows = series.get("series", [])
+
+    if not rows:
+        return None
+
+    if extreme_type == "max":
+        best = max(rows, key=lambda x: x["__metric__"])
+    else:
+        best = min(rows, key=lambda x: x["__metric__"])
+
+    return {
+        "metric": metric_name,
+        "extreme_type": extreme_type,
+        "month": best.get("month"),
+        "year": best.get("year"),
+        "period_label": best.get("period_label"),
+        "value": best.get("__metric__"),
+    }
+
+def get_metric_for_multiple_months(
+    engine,
+    user_id,
+    country,
+    metric_name,
+    month_year_pairs,
+    product_queries=None,
+):
+    results = []
+
+    for item in month_year_pairs:
+        res = get_metric_for_month(
+            engine,
+            user_id,
+            country,
+            metric_name,
+            item["month"],
+            item["year"],
+        )
+
+        if not res:
+            continue
+
+        # 🔥 APPLY PRODUCT FILTER HERE
+        if product_queries:
+            product_map = {}
+            rows = res.get("per_sku", [])
+
+            for pq in product_queries:
+                pq_norm = str(pq).strip().lower()
+
+                # 1. exact match first
+                exact_rows = [
+                    row for row in rows
+                    if str(row.get("product_name", "")).strip().lower() == pq_norm
+                ]
+
+                if exact_rows:
+                    product_map[pq] = sum(
+                            float(row.get("ratio", row.get("__metric__", 0.0)))
+                            for row in exact_rows
+                        )
+                    continue
+
+                # 2. fallback only if exact match does not exist
+                contains_rows = [
+                    row for row in rows
+                    if pq_norm in str(row.get("product_name", "")).strip().lower()
+                ]
+
+                if contains_rows:
+                    product_map[pq] = sum(
+                            float(row.get("ratio", row.get("__metric__", 0.0)))
+                            for row in contains_rows
+                        )
+
+            res["product_breakdown"] = product_map
+
+        results.append(res)
+
+    return {
+        "metric": metric_name,
+        "months": results
+    }
+
+
+def get_multi_dimensional_data(
+    engine,
+    user_id,
+    country,
+    metric_names,
+    months,
+    product_queries=None,
+):
+    data = []
+
+    for item in months:
+        month = item["month"]
+        year = item["year"]
+
+        for metric in metric_names:
+            result = get_metric_for_month(
+                engine,
+                user_id,
+                country,
+                metric,
+                month,
+                year,
+            )
+
+            rows = result.get("per_sku", [])
+
+            # filter products if needed
+            if product_queries:
+                filtered = []
+                for pq in product_queries:
+                    for row in rows:
+                        name = str(row.get("product_name", "")).lower()
+                        if pq.lower() in name:
+                            filtered.append((pq, row))
+            else:
+                filtered = [("all", r) for r in rows]
+
+            for pq, row in filtered:
+                data.append({
+                    "month": result.get("period_label"),
+                    "product": pq,
+                    "metric": metric,
+                    "value": float(row.get("__metric__", 0.0)),
+                })
+
+    return {
+        "data": data,
+        "metrics": metric_names,
+        "products": product_queries,
+        "months": [m for m in months],
+    }
+
 ####period parser file########
 
 
@@ -725,9 +916,17 @@ def normalize_text(text: str) -> str:
 
 
 def extract_year(text: str) -> Optional[int]:
-    match = re.search(r"\b(20\d{2})\b", text)
-    return int(match.group(1)) if match else None
+    match = re.search(r"\b(20\d{2}|\d{2})\b", text)
+    if not match:
+        return None
 
+    year = int(match.group(1))
+
+    # convert short year (26 → 2026)
+    if year < 100:
+        year += 2000
+
+    return year
 
 def extract_month(text: str) -> Optional[int]:
     for k, v in MONTH_MAP.items():
@@ -831,7 +1030,7 @@ def parse_last_n(text: str) -> Optional[int]:
 # -------------------------------
 
 def parse_range(text: str):
-    parts = re.split(r"\bto\b|-", text)
+    parts = re.split(r"\bto\b|\s*-\s*", text)
 
     if len(parts) != 2:
         return None
@@ -840,12 +1039,27 @@ def parse_range(text: str):
     right = extract_month_year(parts[1])
 
     if left and right:
+        start_year, start_month = left
+        end_year, end_month = right
+
+        months = []
+        cur_month = start_month
+        cur_year = start_year
+
+        while (cur_year < end_year) or (cur_year == end_year and cur_month <= end_month):
+            months.append({
+                "month": cur_month,
+                "year": cur_year
+            })
+
+            cur_month += 1
+            if cur_month > 12:
+                cur_month = 1
+                cur_year += 1
+
         return {
-            "type": "range",
-            "start_month": left[1],
-            "start_year": left[0],
-            "end_month": right[1],
-            "end_year": right[0],
+            "type": "multi_month",
+            "months": months
         }
 
     return None
@@ -971,12 +1185,39 @@ def parse_single(text: str):
 def parse_period(query: str) -> Dict:
     text = normalize_text(query)
 
+    # -------- RANGE DETECTION (FIXED) --------
+    rng = parse_range(text)
+    if rng:
+        return rng
+
+    # -------- MULTI MONTH (LIST, NOT RANGE) --------
+    month_matches = re.findall(
+        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+        text
+    )
+
+    year = extract_year(text)
+
+    # only treat as multi-month if NO range words
+    if len(month_matches) >= 2 and not re.search(r"\b(to|from|-)\b", text):
+        months = []
+        for m in month_matches:
+            months.append({
+                "month": MONTH_MAP.get(m[:3]),
+                "year": year or datetime.today().year
+            })
+
+        return {
+            "type": "multi_month",
+            "months": months
+        }
+
     # 1️⃣ comparison first (highest priority)
     cmp = parse_comparison(text)
     if cmp:
         return cmp
 
-    # 2️⃣ relative periods (NEW 🔥)
+    # 2️⃣ relative periods
     rel = parse_relative_period(text)
     if rel:
         return rel
@@ -994,7 +1235,7 @@ def parse_period(query: str) -> Dict:
     if rng:
         return rng
 
-    # 5️⃣ single (includes quarter fix already)
+    # 5️⃣ single
     single = parse_single(text)
     if single:
         return single
