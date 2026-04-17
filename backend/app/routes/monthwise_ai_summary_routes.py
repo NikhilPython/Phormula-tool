@@ -15,6 +15,7 @@ summary_bp = Blueprint("summary_bp", __name__)
 ALLOWED_PRIMARY_GOALS = {"profit", "growth", "rank", "inventory_clearance", "balanced"}
 ALLOWED_RISK_LEVELS = {"conservative", "balanced", "aggressive"}
 
+
 def _safe_bool(v, default=False):
     if v is None:
         return default
@@ -25,6 +26,7 @@ def _safe_bool(v, default=False):
     if isinstance(v, str):
         return v.strip().lower() in ("true", "1", "yes", "y", "on")
     return default
+
 
 def _norm_objective(payload: dict) -> dict:
     """
@@ -109,6 +111,22 @@ def _objective_from_row(row):
     }
 
 
+def build_objective_response(row, objective_month):
+    return {
+        "id": row.id if row else None,
+        "month": objective_month.strftime("%Y-%m"),
+        "growth_intent": (row.growth_intent if row and row.growth_intent else "balanced"),
+        "profit_priority": (row.profit_priority if row and row.profit_priority else "protect_growth"),
+        "inventory_clearance_priority": (
+            row.inventory_clearance_priority
+            if row and row.inventory_clearance_priority is not None
+            else False
+        ),
+        "business_context": row.business_context if row else None,
+        "website_url": row.website_url if row else None,
+        "ppt_file_name": row.ppt_file_name if row else None,
+    }
+
 
 @summary_bp.route("/summary", methods=["GET"])
 def summary():
@@ -151,9 +169,6 @@ def summary():
             if timeline not in ("ALL", ""):
                 return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400
 
-        # ==========================================================
-        # Generate or fetch summary
-        # ==========================================================
         result = get_or_create_summary(
             user_id=user_id,
             country=country,
@@ -163,10 +178,6 @@ def summary():
             year=year,
             force_regenerate=False
         )
-
-        # Attach objective snapshot to response
-    
-    
 
         return jsonify(result), 200
 
@@ -183,8 +194,6 @@ def summary():
             "error": "Server error",
             "details": str(e)
         }), 500
-
-
 
 
 def get_month_start(value=None):
@@ -204,7 +213,7 @@ def get_month_start(value=None):
         return date(dt.year, dt.month, 1)
     except ValueError:
         raise ValueError("month must be in 'YYYY-MM' or 'YYYY-MM-DD'")
-    
+
 
 @summary_bp.route("/objective", methods=["POST"])
 def save_user_objective():
@@ -223,18 +232,15 @@ def save_user_objective():
 
         body = request.get_json() or {}
 
-        # -------- Country --------
         country = (body.get("country") or "").strip().lower()
         if not country:
             return jsonify({"error": "country is required"}), 400
 
-        # -------- Month --------
         try:
             objective_month = get_month_start(body.get("month"))
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        # -------- Fields --------
         growth_intent = body.get("growth_intent", "balanced")
         profit_priority = body.get("profit_priority", "protect_growth")
         inventory_clearance_priority = body.get("inventory_clearance_priority", False)
@@ -242,7 +248,6 @@ def save_user_objective():
         website_url = body.get("website_url")
         ppt_file_name = body.get("ppt_file_name")
 
-        # -------- CHECK EXISTING --------
         existing = UserObjective.query.filter_by(
             user_id=user_id,
             country=country,
@@ -250,7 +255,6 @@ def save_user_objective():
         ).first()
 
         if existing:
-            # UPDATE
             existing.growth_intent = growth_intent
             existing.profit_priority = profit_priority
             existing.inventory_clearance_priority = inventory_clearance_priority
@@ -265,10 +269,18 @@ def save_user_objective():
                 "objective": {
                     "id": existing.id,
                     "month": existing.objective_month.strftime("%Y-%m"),
+                    "growth_intent": existing.growth_intent or "balanced",
+                    "profit_priority": existing.profit_priority or "protect_growth",
+                    "inventory_clearance_priority": (
+                        existing.inventory_clearance_priority
+                        if existing.inventory_clearance_priority is not None else False
+                    ),
+                    "business_context": existing.business_context,
+                    "website_url": existing.website_url,
+                    "ppt_file_name": existing.ppt_file_name,
                 }
             }), 200
 
-        # -------- CREATE NEW --------
         new_obj = UserObjective(
             user_id=user_id,
             country=country,
@@ -289,6 +301,15 @@ def save_user_objective():
             "objective": {
                 "id": new_obj.id,
                 "month": new_obj.objective_month.strftime("%Y-%m"),
+                "growth_intent": new_obj.growth_intent or "balanced",
+                "profit_priority": new_obj.profit_priority or "protect_growth",
+                "inventory_clearance_priority": (
+                    new_obj.inventory_clearance_priority
+                    if new_obj.inventory_clearance_priority is not None else False
+                ),
+                "business_context": new_obj.business_context,
+                "website_url": new_obj.website_url,
+                "ppt_file_name": new_obj.ppt_file_name,
             }
         }), 201
 
@@ -296,7 +317,7 @@ def save_user_objective():
         traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": "Server error", "details": str(e)}), 500
-    
+
 
 @summary_bp.route("/objective", methods=["GET"])
 def get_user_objective():
@@ -322,20 +343,36 @@ def get_user_objective():
 
         query = UserObjective.query.filter_by(user_id=user_id, country=country)
 
+        def build_objective(row, objective_month):
+            return {
+                "id": row.id if row else None,
+                "month": objective_month.strftime("%Y-%m"),
+                "growth_intent": row.growth_intent if row and row.growth_intent else "balanced",
+                "profit_priority": row.profit_priority if row and row.profit_priority else "protect_growth",
+                "inventory_clearance_priority": (
+                    row.inventory_clearance_priority
+                    if row and row.inventory_clearance_priority is not None else False
+                ),
+                "business_context": row.business_context if row else None,
+                "website_url": row.website_url if row else None,
+                "ppt_file_name": row.ppt_file_name if row else None,
+            }
+
         # -------- ALL DATA --------
         if get_all:
             rows = query.order_by(UserObjective.objective_month.desc()).all()
 
+            if not rows:
+                default_month = get_month_start(month) if month else get_month_start()
+                return jsonify({
+                    "objectives": [
+                        build_objective(None, default_month)
+                    ]
+                }), 200
+
             return jsonify({
                 "objectives": [
-                    {
-                        "id": r.id,
-                        "month": r.objective_month.strftime("%Y-%m"),
-                        "growth_intent": r.growth_intent,
-                        "profit_priority": r.profit_priority,
-                        "inventory_clearance_priority": r.inventory_clearance_priority,
-                        "business_context": r.business_context,
-                    }
+                    build_objective(r, r.objective_month)
                     for r in rows
                 ]
             }), 200
@@ -348,22 +385,12 @@ def get_user_objective():
 
         row = query.filter_by(objective_month=objective_month).first()
 
-        if not row:
-            return jsonify({"message": "No data found"}), 404
-
         return jsonify({
-            "objective": {
-                "id": row.id,
-                "month": row.objective_month.strftime("%Y-%m"),
-                "growth_intent": row.growth_intent,
-                "profit_priority": row.profit_priority,
-                "inventory_clearance_priority": row.inventory_clearance_priority,
-                "business_context": row.business_context,
-            }
+            "objective": build_objective(row, objective_month)
         }), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Server error", "details": str(e)}), 500
     
-
+    

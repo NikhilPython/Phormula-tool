@@ -577,6 +577,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // ✅ refetch when user changes filters
   }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
 
+  const suppressModalErrors = true;
+
+  const handlePageError = (message: string, err?: unknown) => {
+    console.error(message, err);
+
+    if (!suppressModalErrors) {
+      setModalMessage(message);
+      setShowModal(true);
+    }
+  };
 
   async function fetchInventoryLostCompensation() {
     if (!hasValidPeriod) {
@@ -662,8 +672,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     } catch (e: any) {
       console.error(e);
       setLostCompRows([]);
-      setModalMessage(e?.message || "Failed to fetch inventory lost compensation");
-      setShowModal(true);
+      handlePageError(e?.message || "Failed to fetch inventory lost compensation", e);
     } finally {
       setLostCompLoading(false);
     }
@@ -1148,8 +1157,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       console.error(e);
       setRows([]);
       setMeta(null);
-      setModalMessage(e?.message || 'Failed to load DB summary');
-      setShowModal(true);
+      handlePageError(e?.message || "Failed to load DB summary", e);
     } finally {
       setFetching(false);
       setHasLoadedOnce(true);
@@ -1181,8 +1189,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
         await seedAmazonLedgerOnce(selectedYear);
       } catch (e: any) {
         console.error(e);
-        setModalMessage(e?.message || "Seed failed");
-        setShowModal(true);
+        handlePageError(e?.message || "Seed failed", e);
       } finally {
         await runDBFetchForFilters();
       }
@@ -2225,12 +2232,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
         </div>
       )}
 
-      <Modalmsg
-        show={showModal}
-        message={modalMessage}
-        onClose={() => setShowModal(false)}
-        onCancel={() => setShowModal(false)}
-      />
+      {!suppressModalErrors && showModal && modalMessage ? (
+        <Modalmsg
+          show={showModal}
+          message={modalMessage}
+          onClose={() => setShowModal(false)}
+          onCancel={() => setShowModal(false)}
+        />
+      ) : null}
     </div>
   );
 }

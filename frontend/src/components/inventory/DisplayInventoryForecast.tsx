@@ -196,14 +196,29 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     [last3SoldOldestFirst]
   );
 
-  const forecastLabels = useMemo(
-    () =>
-      forecast3.map((k) =>
-        monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
-      ),
-    [forecast3]
-  );
+  const addMonths = (month: string, year: string, offset: number) => {
+    const monthIndex = FULL_MONTHS.findIndex(
+      (m) => m.toLowerCase() === month.toLowerCase()
+    );
 
+    if (monthIndex === -1) return `Month ${offset + 1}`;
+
+    const baseDate = new Date(Number(year), monthIndex + offset, 1);
+    return `${MONTH_ABBR[baseDate.getMonth()]}'${String(baseDate.getFullYear()).slice(-2)}`;
+  };
+
+  const forecastLabels = useMemo(() => {
+    const parsed = forecast3.map((k) =>
+      monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
+    );
+
+    return [
+      parsed[0] || addMonths(month, year, 0),
+      parsed[1] || addMonths(month, year, 1),
+      parsed[2] || addMonths(month, year, 2),
+    ];
+  }, [forecast3, month, year]);
+  
   const tableRows = useMemo(() => {
     if (!hasRenderableData) return [];
 

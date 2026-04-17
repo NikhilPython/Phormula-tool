@@ -2956,22 +2956,22 @@ export default function DashboardPage() {
                 setAdsLoading(true);
                 setAdsSeeded(false);
 
-                setStep(2, "MTD Fetching", 10, "Seeding Sponsored Products report...");
+                setStep(2, "MTD Fetching", 10, "Fetching Amazon MTD finance data...");
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (country === "UK" || country === "US") {
-                    setStep(2, "MTD Fetching", 18, "Seeding Sponsored Display report...");
+                    setStep(2, "MTD Fetching", 18, "Fetching Amazon MTD finance data...");
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
 
-                setStep(2, "MTD Fetching", 26, "Seeding SB keyword report...");
+                setStep(2, "MTD Fetching", 26, "Fetching Amazon MTD finance data...");
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(2, "MTD Fetching", 38, "Syncing monthly ads data...");
+                setStep(2, "MTD Fetching", 38, "Fetching Monthly Ads data...");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -3003,7 +3003,7 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(2, "MTD Fetching", 48, "Fetching monthly ads summary...");
+                setStep(2, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
                 await fetchMonthlySp();
             } else {
                 setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
@@ -3039,7 +3039,7 @@ export default function DashboardPage() {
             markStepComplete(3);
 
             // STEP 4: Plotting Graph
-            setStep(4, "Plotting Graph", 40, "Preparing KPI cards...");
+            setStep(4, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
             setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
@@ -4291,16 +4291,17 @@ export default function DashboardPage() {
     ]);
 
 
-    const tacosPctForSummary = useMemo(() => {
-        if (globalUseBi) {
-            if (!globalCm2Ready) return 0;
-            const ads = biAlignedTotals?.total_current_advertising ?? 0;
-            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-            return sales > 0 ? (ads / sales) * 100 : 0;
-        }
 
-        return globalCurrRoasPct;
-    }, [globalUseBi, globalCm2Ready, biAlignedTotals, globalCurrRoasPct]);
+    // const tacosPctForSummary = useMemo(() => {
+    //     if (globalUseBi) {
+    //         if (!globalCm2Ready) return 0;
+    //         const ads = biAlignedTotals?.total_current_advertising ?? 0;
+    //         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+    //         return sales > 0 ? (ads / sales) * 100 : 0;
+    //     }
+
+    //     return globalCurrRoasPct;
+    // }, [globalUseBi, globalCm2Ready, biAlignedTotals, globalCurrRoasPct]);
 
     const costOfAdsForSummary = useMemo(() => {
         if (useBiForAmazonCards) {
@@ -4414,18 +4415,23 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
+    const row = grandTotalRowRaw;
+
+    const rawAdsSpend = toNumber(row?.ads_spend ?? 0);
+    const rawBrandSpend = toNumber(row?.brand_spend ?? 0);
+    const rawDealVouchers = toNumber(row?.dealsvouchar_ads ?? 0);
+    const rawPlatformFee = toNumber(row?.platform_fee ?? 0);
+    const rawProfit = toNumber(row?.profit ?? 0);
+
+    const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
+    const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
+    const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
+
+    console.log("rawAdsSpendTotal", rawAdsSpendTotal);
+
+
     const globalBottomCards = useMemo(() => {
-        const row = grandTotalRowRaw;
 
-        const rawAdsSpend = toNumber(row?.ads_spend ?? 0);
-        const rawBrandSpend = toNumber(row?.brand_spend ?? 0);
-        const rawDealVouchers = toNumber(row?.dealsvouchar_ads ?? 0);
-        const rawPlatformFee = toNumber(row?.platform_fee ?? 0);
-        const rawProfit = toNumber(row?.profit ?? 0);
-
-        const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
-        const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
-        const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
 
         const currentCostOfAds =
             platform === "global"
@@ -4459,6 +4465,41 @@ export default function DashboardPage() {
         globalCurrNetSalesDisp,
         uk.netSalesGBP,
     ]);
+
+    // const tacosPctForSummary = useMemo(() => {
+    //     if (globalUseBi) {
+    //         if (!globalCm2Ready) return 0;
+    //         const ads = rawAdsSpendTotal;
+    //         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+    //         console.log("tacos",ads, sales)
+    //         return sales > 0 ? (ads / sales) * 100 : 0;
+    //     }
+
+    //     return globalCurrRoasPct;
+    // }, [globalUseBi, globalCm2Ready, biAlignedTotals, globalCurrRoasPct]);
+
+    const tacosPctForSummary = useMemo(() => {
+        const salesBase =
+            platform === "global"
+                ? globalCurrNetSalesDisp
+                : convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP");
+
+        const adsBase =
+            platform === "global"
+                ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
+                : rawAdsSpendTotal;
+
+        return salesBase > 0 ? (adsBase / salesBase) * 100 : 0;
+    }, [
+        platform,
+        rawAdsSpendTotal,
+        globalCurrNetSalesDisp,
+        uk.netSalesGBP,
+        convertToDisplayCurrency,
+        amazonDataCurrency,
+    ]);
+
+    console.log(tacosPctForSummary)
 
     const ads_spend = grandTotalRowDisplay?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRowDisplay?.product_spend ?? 0;
@@ -5259,33 +5300,49 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const dummyInventoryRows: InventoryRow[] = [
         {
+            "S.No": 1,
             "Product Name": "Dummy Product 1",
             "SKU": "DUMMY-SKU-001",
+            "MTD Sales": 0,
+            "Sales Last 30 Days": 0,
+            "Sales Rank": 0,
             "Current Inventory": 0,
-            "Current Month Units Sold": 0,
-            "Days in Hand": 0,
-            "Status": "Healthy",
+            "Inventory 180+ Days": 0,
+            "Estimated Storage Cost ($)": 0,
+            "Coverage Ratio (In Months)": 0,
+            "Inventory Alerts": "High alert",
         } as InventoryRow,
         {
+            "S.No": 2,
             "Product Name": "Dummy Product 2",
             "SKU": "DUMMY-SKU-002",
+            "MTD Sales": 0,
+            "Sales Last 30 Days": 0,
+            "Sales Rank": 0,
             "Current Inventory": 0,
-            "Current Month Units Sold": 0,
-            "Days in Hand": 0,
-            "Status": "Low Stock",
+            "Inventory 180+ Days": 0,
+            "Estimated Storage Cost ($)": 0,
+            "Coverage Ratio (In Months)": 0,
+            "Inventory Alerts": "High alert",
         } as InventoryRow,
         {
+            "S.No": 3,
             "Product Name": "Dummy Product 3",
             "SKU": "DUMMY-SKU-003",
+            "MTD Sales": 0,
+            "Sales Last 30 Days": 0,
+            "Sales Rank": 0,
             "Current Inventory": 0,
-            "Current Month Units Sold": 0,
-            "Days in Hand": 0,
-            "Status": "High Alert",
+            "Inventory 180+ Days": 0,
+            "Estimated Storage Cost ($)": 0,
+            "Coverage Ratio (In Months)": 0,
+            "Inventory Alerts": "High alert",
         } as InventoryRow,
     ];
 
     const dummyInventoryAlerts: InventoryAlertRecord = {
-        "DUMMY-SKU-002": { alert: "Low alert", alert_type: "warning" },
+        "DUMMY-SKU-001": { alert: "High alert", alert_type: "warning" },
+        "DUMMY-SKU-002": { alert: "High alert", alert_type: "warning" },
         "DUMMY-SKU-003": { alert: "High alert", alert_type: "error" },
     };
 
@@ -5925,7 +5982,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 : 0)
             : Number(uk?.cm2ProfitGBP ?? 0);
 
-    console.log("MTD CM2 Profit Current:", mtdCm2ProfitCurrent);
 
     const mtdCm2ProfitPrevious = shouldShowDummyUi
         ? dummyStatData.cm2Profit.previous
@@ -6133,13 +6189,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     </div>
                 )} */}
 
-            {activeTab === "live" &&
+            {/*   {activeTab === "live" &&
                 !shouldShowDummyUi &&
                 pageLoading && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
                         <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
-
-                            {/* ── Header ── */}
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
@@ -6162,7 +6216,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 </span>
                             </div>
 
-                            {/* ── Progress bar ── */}
                             <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
                                 <div
                                     className="h-full rounded-full transition-all duration-500 ease-in-out"
@@ -6173,10 +6226,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 />
                             </div>
 
-                            {/* ── Steps row ── */}
                             <div className="relative flex items-start justify-between">
 
-                                {/* connector track */}
                                 <div
                                     className="absolute top-4 z-0 h-px bg-slate-200"
                                     style={{ left: "calc(12.5% + 10px)", right: "calc(12.5% + 10px)" }}
@@ -6205,7 +6256,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                             key={step.num}
                                             className="flex flex-col items-center flex-1 relative z-10 gap-2"
                                         >
-                                            {/* circle */}
                                             <div className={[
                                                 "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
                                                 isCompleted
@@ -6229,7 +6279,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 )}
                                             </div>
 
-                                            {/* step name */}
                                             <p className={[
                                                 "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
                                                 isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
@@ -6237,7 +6286,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 {step.label}
                                             </p>
 
-                                            {/* badge */}
                                             <span className={[
                                                 "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
                                                 isCompleted
@@ -6253,7 +6301,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 })}
                             </div>
 
-                            {/* ── Bottom status bar ── */}
                             <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                                 <p className="text-[11px] text-slate-400 truncate">
                                     {stepProgress.detail || "Initialising dashboard…"}
@@ -6265,7 +6312,167 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                         </div>
                     </div>
-                )}
+                )} */}
+
+            {!shouldShowDummyUi && pageLoading && (
+                <div className="absolute inset-0 z-[99999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
+                    <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
+                        {/* ── Header ── */}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
+                                    <svg
+                                        width="15"
+                                        height="15"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="#5EA68E"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                    </svg>
+                                </div>
+
+                                <div>
+                                    <p className="text-lg font-semibold text-[#37455F] leading-tight">
+                                        Syncing dashboard data
+                                    </p>
+                                    {/* <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                                        {stepProgress.detail || "Initialising…"}
+                                    </p> */}
+                                </div>
+                            </div>
+
+                            <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
+                                {stepProgress.percentage}%
+                            </span>
+                        </div>
+
+                        {/* ── Progress bar ── */}
+                        <div className="h-[7px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
+                            <div
+                                className="h-full rounded-full transition-all duration-500 ease-in-out"
+                                style={{
+                                    width: `${stepProgress.percentage}%`,
+                                    background:
+                                        "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                                }}
+                            />
+                        </div>
+
+                        {/* ── Steps row ── */}
+                        <div className="relative flex items-start justify-between">
+                            <div
+                                className="absolute top-4 z-0 h-px bg-slate-200"
+                                style={{ left: "calc(12.5% + 10px)", right: "calc(12.5% + 10px)" }}
+                            >
+                                {completedSteps.size > 0 && (() => {
+                                    const maxCompleted = Math.max(...Array.from(completedSteps));
+                                    const denominator = Math.max(dashboardSteps.length - 1, 1);
+                                    const pct =
+                                        maxCompleted > 1
+                                            ? ((Math.min(
+                                                maxCompleted,
+                                                dashboardSteps[dashboardSteps.length - 1].num
+                                            ) - 1) /
+                                                denominator) *
+                                            100
+                                            : 0;
+
+                                    return (
+                                        <div
+                                            className="h-full bg-[#5EA68E] transition-all duration-500"
+                                            style={{ width: `${pct}%` }}
+                                        />
+                                    );
+                                })()}
+                            </div>
+
+                            {dashboardSteps.map((step) => {
+                                const isCompleted = completedSteps.has(step.num);
+                                const isActive = currentStep === step.num;
+
+                                return (
+                                    <div
+                                        key={step.num}
+                                        className="flex flex-col items-center flex-1 relative z-10 gap-2"
+                                    >
+                                        <div
+                                            className={[
+                                                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
+                                                isCompleted
+                                                    ? "border-[#5EA68E] bg-[#5EA68E] text-white"
+                                                    : isActive
+                                                        ? "border-[#5EA68E] bg-[#E8F5F0] text-[#37455F]"
+                                                        : "border-slate-200 bg-white text-slate-400",
+                                            ].join(" ")}
+                                        >
+                                            {isCompleted ? (
+                                                <svg
+                                                    width="12"
+                                                    height="12"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="white"
+                                                    strokeWidth="3.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
+                                            ) : isActive ? (
+                                                <span
+                                                    className="w-3 h-3 rounded-full border-2 border-[#b8ddd4] border-t-[#5EA68E] animate-spin"
+                                                    style={{ display: "inline-block" }}
+                                                />
+                                            ) : (
+                                                <span>{step.num}</span>
+                                            )}
+                                        </div>
+
+                                        <p
+                                            className={[
+                                                "text-center text-[10px] sm:text-xs font-medium leading-tight",
+                                                isCompleted || isActive
+                                                    ? "text-[#37455F]"
+                                                    : "text-slate-400",
+                                            ].join(" ")}
+                                        >
+                                            {step.label}
+                                        </p>
+
+                                        <span
+                                            className={[
+                                                "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
+                                                isCompleted
+                                                    ? "bg-[#E8F5F0] text-[#5EA68E]"
+                                                    : isActive
+                                                        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+                                                        : "bg-slate-100 text-slate-400",
+                                            ].join(" ")}
+                                        >
+                                            {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                            <p className="text-xs text-slate-400 truncate">
+                                {stepProgress.detail || "Initialising dashboard…"}
+                            </p>
+                            <span className="text-xs text-slate-400 shrink-0 ml-3">
+                                Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+            )
+            }
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
                 <div className="flex items-center justify-between gap-2">

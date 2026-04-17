@@ -467,8 +467,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 isPreviewMode ||
                                 !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
                                     (k) =>
-                                        (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])
-                                            ?.length > 0
+                                        (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                                 )
                             }
                             className="inline-flex h-9 min-w-[120px] items-center justify-center gap-1 whitespace-nowrap rounded-sm bg-custom-effect px-4 text-xs text-[#F8EDCE] transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none 2xl:text-sm"
