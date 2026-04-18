@@ -91,7 +91,6 @@ def _safe_admin_dict(ua: UserAdmin):
 
 @superadmin_dashboard_bp.route("/superadmin/dashboard", methods=["GET"])
 def get_superadmin_dashboard():
-    # ✅ Auth
     ok, err = _is_superadmin_authenticated()
     if not ok:
         payload, code = err
@@ -99,7 +98,6 @@ def get_superadmin_dashboard():
 
     email_to_search = request.args.get("email")
 
-    # ✅ CASE 1: Email provided -> return detailed dashboard for that user
     if email_to_search:
         user = User.query.filter_by(email=email_to_search).first()
         user_admin = UserAdmin.query.filter_by(email=email_to_search).first()
@@ -132,13 +130,11 @@ def get_superadmin_dashboard():
             "december": 12,
         }
 
-        # Count only real monthly uploaded rows, not derived global/currency rows
         base_month_rows = [
             row for row in related_upload_history
             if (row.country or "").lower() == (getattr(selected_user, "country", "") or "").lower()
         ]
 
-        # fallback: if no exact country rows found, use all non-global/non-converted rows
         if not base_month_rows:
             excluded_countries = {"global", "global_inr", "global_cad", "global_gbp", "uk_usd"}
             base_month_rows = [
@@ -146,7 +142,6 @@ def get_superadmin_dashboard():
                 if (row.country or "").lower() not in excluded_countries
             ]
 
-        # unique month-year pairs
         unique_months = {}
         for row in base_month_rows:
             month_name = (row.month or "").strip().lower()
@@ -189,6 +184,10 @@ def get_superadmin_dashboard():
         sku_table_name = f"sku_{user_id}_data_table"
         sku_table_count = 0
         sku_table_exists = False
+
+        # NEW
+        profitability = None
+        profitability_table = None
 
         with engine.connect() as conn:
             for c in related_upload_history:
@@ -234,13 +233,35 @@ def get_superadmin_dashboard():
                                 "error": f"Table '{quarter_table}' does not exist"
                             })
                         break
-            # NEW: count rows from sku_{user_id}_data_table
+
             if inspector.has_table(sku_table_name):
                 sku_table_exists = True
                 count_result = conn.execute(
                     text(f'SELECT COUNT(*) AS total FROM "{sku_table_name}"')
                 )
                 sku_table_count = count_result.scalar() or 0
+
+            # NEW: fetch last month's profitability from cm2_profit
+            if last_month_data:
+                user_country = (getattr(selected_user, "country", "") or "").strip().lower()
+                last_month_name = last_month_data["month"]
+                last_year = last_month_data["year"]
+
+                profitability_table = f"skuwisemonthly_{user_id}_{user_country}_{last_month_name}{last_year}"
+
+                if inspector.has_table(profitability_table):
+                    try:
+                        profitability_result = conn.execute(
+                            text(f'''
+                                SELECT COALESCE(SUM(cm2_profit), 0) AS profitability
+                                FROM "{profitability_table}"
+                            ''')
+                        )
+                        profitability = profitability_result.scalar()
+                        if profitability is not None:
+                            profitability = round(float(profitability), 2)
+                    except Exception:
+                        profitability = None
 
         latest_objective = (
             UserObjective.query
@@ -260,13 +281,16 @@ def get_superadmin_dashboard():
             "annual_sales_range": getattr(selected_user, "annual_sales_range", None),
             "target_sales": float(selected_user.target_sales) if getattr(selected_user, "target_sales", None) is not None else None,
             "address": getattr(selected_user, "address", None),
-            # ✅ ADD THIS
             "created_at": selected_user.created_at.isoformat() if getattr(selected_user, "created_at", None) else None,
             "months_of_data_count": months_count,
             "data_from_month": first_month_label,
             "data_to_month": last_month_label,
             "data_month_range": months_range,
 
+            # NEW
+            "profitability": profitability,
+            "profitability_month": last_month_label,
+            "profitability_table": profitability_table,
 
             "related_country_profiles": [
                 {
@@ -277,43 +301,10 @@ def get_superadmin_dashboard():
                 }
                 for cp in related_profiles
             ],
-            # "related_upload_history": [
-            #     {
-            #         "id": c.id,
-            #         "user_id": c.user_id,
-            #         "country": c.country,
-            #         "month": c.month,
-            #         "year": c.year,
-            #         "total_sales": c.total_sales,
-            #         "total_profit": c.total_profit,
-            #         "total_expense": c.total_expense,
-            #     }
-            #     for c in related_upload_history
-            # ],
-            # "user_objectives": [
-            #     {
-            #         "id": obj.id,
-            #         "user_id": obj.user_id,
-            #         "country": obj.country,
-            #         "growth_intent": obj.growth_intent,
-            #         "profit_priority": obj.profit_priority,
-            #         "inventory_clearance_priority": obj.inventory_clearance_priority,
-            #         "business_context": obj.business_context,
-            #         "ai_business_journey": obj.ai_business_journey,
-            #         "website_url": obj.website_url,
-            #         "ppt_file_name": obj.ppt_file_name,
-            #         "objective_month": obj.objective_month.isoformat() if obj.objective_month else None,
-            #         "created_at": obj.created_at.isoformat() if obj.created_at else None,
-            #         "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
-            #     }
-            #     for obj in related_objectives
-            # ],
             "ai_business_journey": latest_objective.ai_business_journey if latest_objective else None,
             "sku_table_name": sku_table_name,
             "sku_table_exists": sku_table_exists,
             "sku_count": sku_table_count,
-
-            # "skuwise_tables": skuwise_data,
         }), 200
 
     # ✅ CASE 2: No email -> return USERS + ADMINS with requested fields

@@ -50,6 +50,8 @@ type ViewUserData = {
   target_sales?: string | number | null;
   sku_count?: number;
   country?: string;
+  profitability?: number | null;
+  profitability_month?: string | null;
   related_upload_history?: UploadHistoryRow[];
   related_country_profiles?: CountryProfileRow[];
   skuwise_tables?: SkuWiseTable[];
@@ -373,12 +375,10 @@ export default function ViewUserPage() {
   }, [data?.months_of_data_count]);
 
   const profitabilityLabel = useMemo(() => {
-    const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
-    const lastRow = rows[rows.length - 1];
-    const val = Number(lastRow?.cm2_margins);
-    if (Number.isNaN(val)) return "Not available";
-    return `${val.toFixed(2)}%`;
-  }, [data?.skuwise_tables]);
+  const val = Number(data?.profitability);
+  if (data?.profitability == null || Number.isNaN(val)) return "Not available";
+  return Math.round(val).toLocaleString("en-US");
+}, [data?.profitability]);
 
   const savingsLabel = useMemo(() => {
     const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
@@ -435,11 +435,11 @@ export default function ViewUserPage() {
       className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
     },
     {
-      key: "profitability",
-      title: "Profitability",
-      value: profitabilityLabel,
-      className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-    },
+  key: "profitability",
+  title: "CM2 Profit (Last Month)",   // 👈 changed here
+  value: profitabilityLabel,
+  className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+},
     {
       key: "savings",
       title: "Savings",
