@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Optional
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -270,129 +270,189 @@ class MetricDef:
     name: str
     column: str
     kind: str
-    numerator: str | None = None
-    denominator: str | None = None
+
+    # -------- NEW NON-DEFAULT FIELDS (MOVE UP) --------
+    display_type: str          # money / quantity / percentage
+    entity_level: str          # sku / total / ratio
+    supports_ranking: bool
+    supports_trend: bool
+    supports_summary: bool
+    supports_extreme_search: bool
+
+    # -------- DEFAULT FIELDS (MUST COME LAST) --------
+    numerator: Optional[str] = None
+    denominator: Optional[str] = None
     multiplier: float = 1.0
     absolute: bool = False
 
 
 SKU_ADDITIVE_METRICS: Dict[str, MetricDef] = {
-    "sales": MetricDef(name="sales", column="net_sales", kind="sku_additive"),
-    "net_sales": MetricDef(name="net_sales", column="net_sales", kind="sku_additive"),
-    "gross_sales": MetricDef(name="gross_sales", column="gross_sales", kind="sku_additive"),
-    "quantity": MetricDef(name="quantity", column="quantity", kind="sku_additive"),
-    "units": MetricDef(name="units", column="quantity", kind="sku_additive"),
-    "return_quantity": MetricDef(name="return_quantity", column="return_quantity", kind="sku_additive"),
-    "total_quantity": MetricDef(name="total_quantity", column="total_quantity", kind="sku_additive"),
-    "refund_sales": MetricDef(name="refund_sales", column="refund_sales", kind="sku_additive"),
-    "tax": MetricDef(name="tax", column="net_taxes", kind="sku_additive"),
-    "net_taxes": MetricDef(name="net_taxes", column="net_taxes", kind="sku_additive"),
-    "credits": MetricDef(name="credits", column="net_credits", kind="sku_additive"),
-    "net_credits": MetricDef(name="net_credits", column="net_credits", kind="sku_additive"),
-    "tax_and_credits": MetricDef(name="tax_and_credits", column="tex_and_credits", kind="sku_additive"),
-    "tex_and_credits": MetricDef(name="tex_and_credits", column="tex_and_credits", kind="sku_additive"),
-    "cogs": MetricDef(name="cogs", column="cost_of_unit_sold", kind="sku_additive"),
-    "cost_of_unit_sold": MetricDef(name="cost_of_unit_sold", column="cost_of_unit_sold", kind="sku_additive"),
-    "selling_fees": MetricDef(name="selling_fees", column="selling_fees", kind="sku_additive"),
-    "refund_selling_fees": MetricDef(name="refund_selling_fees", column="refund_selling_fees", kind="sku_additive"),
-    "fba_fees": MetricDef(name="fba_fees", column="fba_fees", kind="sku_additive"),
-    "amazon_fee": MetricDef(name="amazon_fee", column="amazon_fee", kind="sku_additive"),
-    "profit": MetricDef(name="profit", column="profit", kind="sku_additive"),
-    "lost_total": MetricDef(name="lost_total", column="lost_total", kind="sku_additive"),
-    "product_sales": MetricDef(name="product_sales", column="product_sales", kind="sku_additive"),
+    "sales": MetricDef("sales", "net_sales", "sku_additive", "money", "sku", True, True, True, True),
+    "net_sales": MetricDef("net_sales", "net_sales", "sku_additive", "money", "sku", True, True, True, True),
+    "gross_sales": MetricDef("gross_sales", "gross_sales", "sku_additive", "money", "sku", True, True, True, True),
+    "quantity": MetricDef("quantity", "quantity", "sku_additive", "quantity", "sku", True, True, True, True),
+    "units": MetricDef("units", "quantity", "sku_additive", "quantity", "sku", True, True, True, True),
+    "total_quantity": MetricDef("total_quantity", "total_quantity", "sku_additive", "quantity", "sku", True, True, True, True),
+    "return_quantity": MetricDef("return_quantity", "return_quantity", "sku_additive", "quantity", "sku", True, True, True, True),
+    "refund_sales": MetricDef("refund_sales", "refund_sales", "sku_additive", "money", "sku", True, True, True, True),
+    "tax": MetricDef("tax", "net_taxes", "sku_additive", "money", "sku", True, True, True, True),
+    "net_taxes": MetricDef("net_taxes", "net_taxes", "sku_additive", "money", "sku", True, True, True, True),
+    "credits": MetricDef("credits", "net_credits", "sku_additive", "money", "sku", True, True, True, True),
+    "net_credits": MetricDef("net_credits", "net_credits", "sku_additive", "money", "sku", True, True, True, True),
+    "tax_and_credits": MetricDef("tax_and_credits", "tex_and_credits", "sku_additive", "money", "sku", True, True, True, True),
+    "tex_and_credits": MetricDef("tex_and_credits", "tex_and_credits", "sku_additive", "money", "sku", True, True, True, True),
+    "cogs": MetricDef("cogs", "cost_of_unit_sold", "sku_additive", "money", "sku", True, True, True, True),
+    "cost_of_unit_sold": MetricDef("cost_of_unit_sold", "cost_of_unit_sold", "sku_additive", "money", "sku", True, True, True, True),
+
+    "selling_fees": MetricDef("selling_fees", "selling_fees", "sku_additive", "money", "sku", True, True, True, True),
+    "refund_selling_fees": MetricDef("refund_selling_fees", "refund_selling_fees", "sku_additive", "money", "sku", True, True, True, True),
+
+    "fba_fees": MetricDef("fba_fees", "fba_fees", "sku_additive", "money", "sku", True, True, True, True),
+    "amazon_fee": MetricDef("amazon_fee", "amazon_fee", "sku_additive", "money", "sku", True, True, True, True),
+
+    "profit": MetricDef("profit", "profit", "sku_additive", "money", "sku", True, True, True, True),
+
+    "lost_total": MetricDef("lost_total", "lost_total", "sku_additive", "money", "sku", True, True, True, True),
+    "product_sales": MetricDef("product_sales", "product_sales", "sku_additive", "money", "sku", True, True, True, True),
+    "sales_mix": MetricDef(
+    "sales_mix",
+    "sales_mix",          # ✅ DB column
+    "sku_additive",       # 🔥 IMPORTANT
+    "percentage",         # display type
+    "sku",
+    True,
+    True,
+    True,
+    True
+),
+
+"profit_mix": MetricDef(
+    "profit_mix",
+    "profit_mix",
+    "sku_additive",
+    "percentage",
+    "sku",
+    True,
+    True,
+    True,
+    True
+),
 }
 
 TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
-    "advertising": MetricDef(name="advertising", column="advertising_total", kind="total_additive"),
-    "advertising_total": MetricDef(name="advertising_total", column="advertising_total", kind="total_additive"),
-    "visible_ads": MetricDef(name="visible_ads", column="visible_ads", kind="total_additive"),
-    "dealsvouchar_ads": MetricDef(name="dealsvouchar_ads", column="dealsvouchar_ads", kind="total_additive"),
-    "platform_fee": MetricDef(name="platform_fee", column="platform_fee", kind="total_additive"),
-    "platformfeenew": MetricDef(name="platformfeenew", column="platformfeenew", kind="total_additive"),
+    "advertising": MetricDef("advertising", "advertising_total", "total_additive", "money", "total", False, True, True, True),
+    "advertising_total": MetricDef("advertising_total", "advertising_total", "total_additive", "money", "total", False, True, True, True),
+    "visible_ads": MetricDef("visible_ads", "visible_ads", "total_additive", "money", "total", False, True, True, True),
+    "dealsvouchar_ads": MetricDef("dealsvouchar_ads", "dealsvouchar_ads", "total_additive", "money", "total", False, True, True, True),
+    "platform_fee": MetricDef("platform_fee", "platform_fee", "total_additive", "money", "total", False, True, True, True),
+    "platformfeenew": MetricDef("platformfeenew", "platformfeenew", "total_additive", "money", "total", False, True, True, True),
     "platform_fee_inventory_storage": MetricDef(
-        name="platform_fee_inventory_storage",
-        column="platform_fee_inventory_storage",
-        kind="total_additive",
+        "platform_fee_inventory_storage",
+        "platform_fee_inventory_storage",
+        "total_additive",
+        "money",
+        "total",
+        False,
+        True,
+        True,
+        True,
     ),
-    "cm2_profit": MetricDef(name="cm2_profit", column="cm2_profit", kind="total_additive"),
-    "rembursement_fee": MetricDef(name="rembursement_fee", column="rembursement_fee", kind="total_additive"),
-    "misc_transaction": MetricDef(name="misc_transaction", column="misc_transaction", kind="total_additive"),
+    "cm2_profit": MetricDef("cm2_profit", "cm2_profit", "total_additive", "money", "total", False, True, True, True),
+    "rembursement_fee": MetricDef("rembursement_fee", "rembursement_fee", "total_additive", "money", "total", False, True, True, True),
+    "misc_transaction": MetricDef("misc_transaction", "misc_transaction", "total_additive", "money", "total", False, True, True, True),
 }
 
-RATIO_METRICS: Dict[str, MetricDef] = {
+PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "profit_percentage": MetricDef(
-        name="profit_percentage",
-        column="profit_percentage",
-        kind="ratio",
-        numerator="profit",
-        denominator="net_sales",
-        multiplier=100.0,
+        "profit_percentage",
+        "profit_percentage",
+        "sku_additive",
+        "percentage",
+        "sku",
+        False,
+        True,
+        True,
+        True,
     ),
+
     "cm2_profit_percentage": MetricDef(
-        name="cm2_profit_percentage",
-        column="cm2_profit_percentage",
-        kind="ratio",
-        numerator="cm2_profit",
-        denominator="net_sales",
-        multiplier=100.0,
+        "cm2_profit_percentage",
+        "cm2_profit_percentage",
+        "sku_additive",
+        "percentage",
+        "sku",
+        False,
+        True,
+        True,
+        True,
     ),
+
     "acos": MetricDef(
-        name="acos",
-        column="acos",
-        kind="ratio",
-        numerator="advertising_total",
-        denominator="net_sales",
-        multiplier=100.0,
-        absolute=True,
+        "acos",
+        "acos",
+        "sku_additive",
+        "percentage",
+        "sku",
+        False,
+        True,
+        True,
+        True,
     ),
-    "reimbursement_vs_sales": MetricDef(
-        name="reimbursement_vs_sales",
-        column="reimbursement_vs_sales",
-        kind="ratio",
-        numerator="rembursement_fee",
-        denominator="net_sales",
-        multiplier=100.0,
-        absolute=True,
-    ),
-    "cm2_margins": MetricDef(
-        name="cm2_margins",
-        column="cm2_margins",
-        kind="ratio",
-        numerator="cm2_profit",
-        denominator="net_sales",
-        multiplier=100.0,
-    ),
-    "rembursment_vs_cm2_margins": MetricDef(
-        name="rembursment_vs_cm2_margins",
-        column="rembursment_vs_cm2_margins",
-        kind="ratio",
-        numerator="rembursement_fee",
-        denominator="cm2_profit",
-        multiplier=100.0,
-        absolute=True,
-    ),
+
     "asp": MetricDef(
-        name="asp",
-        column="asp",
-        kind="ratio",
-        numerator="net_sales",
-        denominator="total_quantity",
-        multiplier=1.0,
+        "asp",
+        "asp",
+        "sku_additive",
+        "money",
+        "sku",
+        False,
+        True,
+        True,
+        True,
     ),
+
     "unit_wise_profitability": MetricDef(
-        name="unit_wise_profitability",
-        column="unit_wise_profitability",
-        kind="ratio",
-        numerator="profit",
-        denominator="total_quantity",
-        multiplier=1.0,
+        "unit_wise_profitability",
+        "unit_wise_profitability",
+        "sku_additive",
+        "money",
+        "sku",
+        False,
+        True,
+        True,
+        True,
+    ),
+
+    # 🔥 ADD THESE ALSO HERE
+    "sales_mix": MetricDef(
+        "sales_mix",
+        "sales_mix",
+        "sku_additive",
+        "percentage",
+        "sku",
+        False,
+        True,
+        True,
+        True,
+    ),
+
+    "profit_mix": MetricDef(
+        "profit_mix",
+        "profit_mix",
+        "sku_additive",
+        "percentage",
+        "sku",
+        False,
+        True,
+        True,
+        True,
     ),
 }
 
-ALL_METRICS: Dict[str, MetricDef] = {
+ALL_METRICS = {
     **SKU_ADDITIVE_METRICS,
     **TOTAL_ADDITIVE_METRICS,
-    **RATIO_METRICS,
+    **PRECOMPUTED_METRICS,
 }
 
 
