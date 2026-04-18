@@ -145,6 +145,35 @@ def get_metric_for_month(
     }
 
     # =========================
+    # PRECOMPUTED SKU METRICS
+    # =========================
+    if metric_def.kind == "sku_precomputed":
+        rows = fetch_non_total_rows(df).copy()
+
+        if "product_name" not in rows.columns:
+            rows["product_name"] = ""
+
+        rows["sku"] = rows["sku"].astype(str).str.strip()
+        rows["product_name"] = rows["product_name"].astype(str).fillna("")
+
+        rows[metric_def.column] = pd.to_numeric(
+            rows.get(metric_def.column, 0),
+            errors="coerce"
+        ).fillna(0.0)
+
+        per_sku = rows[["sku", "product_name", metric_def.column]].copy()
+        per_sku = per_sku.rename(columns={metric_def.column: "__metric__"})
+
+        # 🔥 IMPORTANT: total comes from TOTAL ROW (NOT SUM)
+        total_value = _monthly_total_value(df, metric_def.column)
+
+        result["total"] = float(total_value)
+        result["per_sku"] = per_sku.to_dict(orient="records")
+        result["row_count"] = int(len(per_sku))
+
+        return result
+
+    # =========================
     # SKU LEVEL METRICS
     # =========================
     if metric_def.kind == "sku_additive":
@@ -212,6 +241,59 @@ def get_metric_for_period(
         "period_label": _period_label(start_month, start_year, end_month, end_year),
         "months_found": [mk.label for mk, _ in period_dfs],
     }
+
+    # =========================
+    # PRECOMPUTED SKU METRICS (PERIOD)
+    # =========================
+    if metric_def.kind == "sku_precomputed":
+        frames = []
+
+        for mk, df in period_dfs:
+            rows = fetch_non_total_rows(df).copy()
+
+            if "product_name" not in rows.columns:
+                rows["product_name"] = ""
+
+            rows["sku"] = rows["sku"].astype(str).str.strip()
+            rows["product_name"] = rows["product_name"].astype(str).fillna("")
+
+            rows[metric_def.column] = pd.to_numeric(
+                rows.get(metric_def.column, 0),
+                errors="coerce"
+            ).fillna(0.0)
+
+            part = rows[["sku", "product_name", metric_def.column]].copy()
+            part["month_label"] = mk.label
+
+            frames.append(part)
+
+        if not frames:
+            result["total"] = 0.0
+            result["per_sku"] = []
+            result["row_count"] = 0
+            return result
+
+        merged = pd.concat(frames, ignore_index=True)
+
+        # 🔥 CRITICAL: average (NOT sum)
+        grouped = (
+            merged.groupby("sku", as_index=False)
+            .agg(
+                product_name=("product_name", "first"),
+                __metric__=(metric_def.column, "mean"),
+            )
+        )
+
+        totals = [
+            _monthly_total_value(df, metric_def.column)
+            for _, df in period_dfs
+        ]
+
+        result["total"] = float(sum(totals) / len(totals)) if totals else 0.0
+        result["per_sku"] = grouped.to_dict(orient="records")
+        result["row_count"] = len(grouped)
+
+        return result
 
     if metric_def.kind == "sku_additive":
         grouped = _aggregate_sku_rows(period_dfs, metric_def.column)
@@ -809,7 +891,7 @@ def get_metric_for_multiple_months(
 
                 if exact_rows:
                     product_map[pq] = sum(
-                            float(row.get("ratio", row.get("__metric__", 0.0)))
+                            float(row.get("__metric__", 0.0))
                             for row in exact_rows
                         )
                     continue
@@ -822,9 +904,9 @@ def get_metric_for_multiple_months(
 
                 if contains_rows:
                     product_map[pq] = sum(
-                            float(row.get("ratio", row.get("__metric__", 0.0)))
-                            for row in contains_rows
-                        )
+                        float(row.get("__metric__", 0.0))
+                        for row in contains_rows
+                    )
 
             res["product_breakdown"] = product_map
 

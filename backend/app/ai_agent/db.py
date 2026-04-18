@@ -46,8 +46,9 @@ MONEY_METRICS = {
 }
 
 def _format_value(value: float, metric_name: str, country: str) -> str:
-    if metric_name in {"sales_mix", "profit_mix"}:
-        return f"{value:.2%}"
+    # 🔥 FIX: already % values — DO NOT use .2%
+    if metric_name in {"sales_mix", "profit_mix", "acos"}:
+        return f"{value:.2f}%"
 
     if metric_name == "total_quantity":
         return f"{value:,.0f}"
@@ -314,29 +315,7 @@ SKU_ADDITIVE_METRICS: Dict[str, MetricDef] = {
 
     "lost_total": MetricDef("lost_total", "lost_total", "sku_additive", "money", "sku", True, True, True, True),
     "product_sales": MetricDef("product_sales", "product_sales", "sku_additive", "money", "sku", True, True, True, True),
-    "sales_mix": MetricDef(
-    "sales_mix",
-    "sales_mix",          # ✅ DB column
-    "sku_additive",       # 🔥 IMPORTANT
-    "percentage",         # display type
-    "sku",
-    True,
-    True,
-    True,
-    True
-),
-
-"profit_mix": MetricDef(
-    "profit_mix",
-    "profit_mix",
-    "sku_additive",
-    "percentage",
-    "sku",
-    True,
-    True,
-    True,
-    True
-),
+   
 }
 
 TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
@@ -366,7 +345,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "profit_percentage": MetricDef(
         "profit_percentage",
         "profit_percentage",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "percentage",
         "sku",
         False,
@@ -378,7 +357,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "cm2_profit_percentage": MetricDef(
         "cm2_profit_percentage",
         "cm2_profit_percentage",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "percentage",
         "sku",
         False,
@@ -390,7 +369,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "acos": MetricDef(
         "acos",
         "acos",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "percentage",
         "sku",
         False,
@@ -402,7 +381,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "asp": MetricDef(
         "asp",
         "asp",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "money",
         "sku",
         False,
@@ -414,7 +393,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "unit_wise_profitability": MetricDef(
         "unit_wise_profitability",
         "unit_wise_profitability",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "money",
         "sku",
         False,
@@ -423,11 +402,10 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
         True,
     ),
 
-    # 🔥 ADD THESE ALSO HERE
     "sales_mix": MetricDef(
         "sales_mix",
         "sales_mix",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "percentage",
         "sku",
         False,
@@ -439,7 +417,7 @@ PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
     "profit_mix": MetricDef(
         "profit_mix",
         "profit_mix",
-        "sku_additive",
+        "sku_precomputed",   # ✅ FIX
         "percentage",
         "sku",
         False,

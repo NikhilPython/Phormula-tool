@@ -12,6 +12,25 @@ Return plain text bullet points, one per line, starting with '- '.
 # SELF-CONTAINED PROMPTS
 # -------------------------------------------------------------------
 
+REASONING_PROMPT = """
+You are a senior ecommerce finance and business analyst.
+
+You are given:
+- a user question
+- structured data (metrics, trends, product performance)
+
+Your job:
+- answer the question directly
+- explain insights using the data
+- identify drivers if relevant
+- if decision-type → give actionable recommendations
+- do NOT just repeat numbers
+- synthesize and explain
+
+Be practical, concise, and business-focused.
+""".strip()
+
+
 
 
 REQUEST_PLANNER_PROMPT = """
@@ -23,6 +42,8 @@ Return ONLY valid JSON with the following keys:
 
 - intent: one of ["chat", "explain", "metric_qa", "comparison", "report", "email", "clarify", "event_planner"]
 - analysis_type: one of ["absolute", "comparison", "growth", "trend", "breakdown", "summary", "event_plan", "sku_intelligence"]
+- reasoning_mode: one of ["lookup", "analysis", "decision"]
+- task_type: one of ["value_lookup", "trend_analysis", "comparison", "diagnosis", "recommendation", "planning", "ranking", "summary"]
 - metric_name: one of ["net_sales","gross_sales","profit","cm2_profit","advertising_total","platform_fee","amazon_fee","fba_fees","selling_fees","refund_sales","total_quantity","profit_percentage","acos","asp","sales_mix","profit_mix", null]
 - product_query: string or null
 - needs_advice: boolean
@@ -65,6 +86,75 @@ event_planner:
 
 clarify:
 - missing information
+
+---------------------------------------
+REASONING MODE RULES
+---------------------------------------
+
+lookup:
+- user wants a direct value or fact
+
+analysis:
+- user wants explanation, trends, comparison, diagnosis
+
+decision:
+- user wants recommendation, optimization, or what should be done next
+
+Examples:
+
+"what is my sales"
+→ lookup
+
+"how has sales changed"
+→ analysis
+
+"how should i improve profit"
+→ reasoning_mode = decision
+→ task_type = recommendation
+
+"how should i improve acos"
+→ reasoning_mode = decision
+→ task_type = recommendation
+
+"how to improve profit for classic"
+→ reasoning_mode = decision
+→ task_type = recommendation
+
+"what should i do to improve sales"
+→ reasoning_mode = decision
+→ task_type = recommendation
+
+"my acos is high what should i do"
+→ reasoning_mode = decision
+→ task_type = recommendation
+
+---------------------------------------
+TASK TYPE RULES
+---------------------------------------
+
+value_lookup:
+- single number
+
+trend_analysis:
+- over time
+
+comparison:
+- between periods or products
+
+diagnosis:
+- why something changed
+
+recommendation:
+- what should be done
+
+planning:
+- future targets or strategy
+
+ranking:
+- top/bottom
+
+summary:
+- overall business view
 
 ---------------------------------------
 ANALYSIS TYPE RULES 
@@ -297,7 +387,7 @@ detailed:
 ---------------------------------------
 OUTPUT RULES
 ---------------------------------------
-
+- ALWAYS include reasoning_mode and task_type
 - Return ONLY JSON
 - No explanation
 - No markdown
