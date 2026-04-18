@@ -203,6 +203,7 @@ const MANUAL_LAST_MONTH_USD_US = Number(
 const MANUAL_LAST_MONTH_USD_CA = Number(
     process.env.NEXT_PUBLIC_MANUAL_LAST_MONTH_USD_CA || "0"
 );
+const LAST_REFRESH_KEY = "live-dashboard-last-refresh";
 
 /* ===================== BI TYPES (for shared cards + graph) ===================== */
 type ChartMetric = "net_sales" | "quantity";
@@ -1755,9 +1756,8 @@ export default function DashboardPage() {
     };
 
     const dashboardSteps = [
-        { num: 1, label: "Currency Rates" },
-        { num: 2, label: "MTD Fetching" },
-        { num: 3, label: "Inventory Fetch" },
+        { num: 2, label: "Live MTD" },
+        { num: 3, label: "Current Inventory" },
         { num: 4, label: "Plotting Graph" },
     ];
 
@@ -2933,11 +2933,6 @@ export default function DashboardPage() {
         });
 
         try {
-            // STEP 1: Currency Rates
-            setStep(1, "Currency Rates", 15, "Fetching currency conversion rates...");
-            await fetchFxRates();
-            setStep(1, "Currency Rates", 100, "Currency rates ready");
-            markStepComplete(1);
 
             // STEP 2: MTD Fetching
             setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
@@ -2956,15 +2951,15 @@ export default function DashboardPage() {
                 setAdsLoading(true);
                 setAdsSeeded(false);
 
-                setStep(2, "MTD Fetching", 10, "Fetching Amazon MTD finance data...");
+                setStep(2, "MTD Fetching", 10);
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (country === "UK" || country === "US") {
-                    setStep(2, "MTD Fetching", 18, "Fetching Amazon MTD finance data...");
+                    setStep(2, "MTD Fetching", 18);
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
 
-                setStep(2, "MTD Fetching", 26, "Fetching Amazon MTD finance data...");
+                setStep(2, "MTD Fetching", 26);
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
@@ -3009,11 +3004,11 @@ export default function DashboardPage() {
                 setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(2, "MTD Fetching", 62, "Fetching Amazon MTD finance data...");
+            setStep(2, "MTD Fetching", 62);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(2, "MTD Fetching", 78, "Fetching live business insights...");
+                setStep(2, "MTD Fetching", 78);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
                 setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
@@ -3033,7 +3028,7 @@ export default function DashboardPage() {
             markStepComplete(2);
 
             // STEP 3: Inventory Fetch
-            setStep(3, "Inventory Fetch", 20, "Fetching current inventory data...");
+            setStep(3, "Inventory Fetch", 20);
             await fetchInventory();
             setStep(3, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(3);
@@ -3151,8 +3146,52 @@ export default function DashboardPage() {
         monthlySpTotalSpend,
         liveBiReady,
     ]);
+
+
+    const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const saved = localStorage.getItem(LAST_REFRESH_KEY);
+        if (saved) {
+            const ts = Number(saved);
+            if (!Number.isNaN(ts)) {
+                setLastRefreshAt(ts);
+            }
+        }
+    }, []);
+
+    const getRelativeRefreshText = useCallback((ts: number | null) => {
+        if (!ts) return "Never refreshed";
+
+        const diffMs = Date.now() - ts;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHr = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHr / 24);
+
+        if (diffSec < 60) return "just now";
+        if (diffMin < 60) return `${diffMin} min ago`;
+        if (diffHr < 24) return `${diffHr} hr ago`;
+        return `${diffDay} day ago`;
+    }, []);
+
+    useEffect(() => {
+        if (!lastRefreshAt) return;
+
+        const interval = setInterval(() => {
+            setLastRefreshAt((prev) => (prev ? prev : null));
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [lastRefreshAt]);
     const handleHardRefresh = useCallback(() => {
         if (typeof window === "undefined") return;
+
+        const now = Date.now();
+        localStorage.setItem(LAST_REFRESH_KEY, String(now));
+        setLastRefreshAt(now);
 
         localStorage.removeItem(liveCacheKey);
 
@@ -6609,20 +6648,28 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
                     </button> */}
 
-                    <button
-                        onClick={handleHardRefresh}
-                        disabled={pageLoading}
-                        className={`shrink-0 rounded-md border shadow-sm
+                    <div className="flex flex-col items-end gap-1">
+
+
+
+                        <button
+                            onClick={handleHardRefresh}
+                            disabled={pageLoading}
+                            className={`shrink-0 rounded-md border shadow-sm
 px-2 py-1 text-[10px]
 sm:px-3 sm:py-1.5 sm:text-xs
 2xl:text-sm
 ${pageLoading
-                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                : "border-gray-300 bg-white hover:bg-gray-50"
-                            }`}
-                    >
-                        {pageLoading ? "Refreshing…" : "Refresh"}
-                    </button>
+                                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                    : "border-gray-300 bg-white hover:bg-gray-50"
+                                }`}
+                        >
+                            {pageLoading ? "Refreshing…" : "Refresh"}
+                        </button>
+                        <span className="text-sm text-gray-500">
+                            Updated {getRelativeRefreshText(lastRefreshAt)}
+                        </span>
+                    </div>
 
                 </div>
             </div>
