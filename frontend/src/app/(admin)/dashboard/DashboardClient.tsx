@@ -3084,11 +3084,101 @@ export default function DashboardPage() {
         fetchInventory,
     ]);
 
+    const liveCacheKey = useMemo(() => {
+        return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
+    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+
+    const restoreLiveCache = useCallback(() => {
+        if (typeof window === "undefined") return false;
+
+        const raw = localStorage.getItem(liveCacheKey);
+        if (!raw) return false;
+
+        try {
+            const parsed = JSON.parse(raw);
+
+            setData(parsed.data ?? null);
+            setBiDailySeries(parsed.biDailySeries ?? null);
+            setBiPeriods(parsed.biPeriods ?? null);
+            setLiveBiPayload(parsed.liveBiPayload ?? null);
+            setBiAlignedTotals(parsed.biAlignedTotals ?? null);
+            setInvRows(parsed.invRows ?? []);
+            setInventoryAlerts(parsed.inventoryAlerts ?? {});
+            setMonthlySpRows(parsed.monthlySpRows ?? []);
+            setMonthlySpTotalSpend(parsed.monthlySpTotalSpend ?? null);
+            setLiveBiReady(!!parsed.liveBiReady);
+
+            setBiStatus(parsed.biStatus ?? (parsed.biDailySeries ? "ready" : "idle"));
+            setBiLoading(false);
+            setBiError(null);
+
+            return true;
+        } catch {
+            return false;
+        }
+    }, [liveCacheKey]);
+
+    const saveLiveCache = useCallback(() => {
+        if (typeof window === "undefined") return;
+
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                data,
+                biDailySeries,
+                biPeriods,
+                liveBiPayload,
+                biAlignedTotals,
+                invRows,
+                inventoryAlerts,
+                monthlySpRows,
+                monthlySpTotalSpend,
+                liveBiReady,
+                biStatus,
+                savedAt: Date.now(),
+            })
+        );
+    }, [
+        liveCacheKey,
+        data,
+        biDailySeries,
+        biPeriods,
+        liveBiPayload,
+        biAlignedTotals,
+        invRows,
+        inventoryAlerts,
+        monthlySpRows,
+        monthlySpTotalSpend,
+        liveBiReady,
+    ]);
+    const handleHardRefresh = useCallback(() => {
+        if (typeof window === "undefined") return;
+
+        localStorage.removeItem(liveCacheKey);
+
+        Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith("live-dashboard-cache:")) {
+                localStorage.removeItem(key);
+            }
+        });
+
+        resetStepState();
+        window.location.reload();
+    }, [liveCacheKey]);
+
     useEffect(() => {
+        const restored = restoreLiveCache();
+        if (restored) return;
+
         runDashboardLoadWithSteps().catch((err) => {
             console.error("Dashboard step load failed:", err);
         });
-    }, [runDashboardLoadWithSteps]);
+    }, [restoreLiveCache, runDashboardLoadWithSteps]);
+
+    useEffect(() => {
+        if (!data && !liveBiPayload && !invRows.length) return;
+        saveLiveCache();
+    }, [saveLiveCache, data, liveBiPayload, invRows]);
 
     // useEffect(() => {
     //     if (didRefreshRef.current) return;
@@ -6520,12 +6610,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     </button> */}
 
                     <button
-                        onClick={() => {
-                            resetStepState();
-                            runDashboardLoadWithSteps().catch((err) => {
-                                console.error("Dashboard refresh failed:", err);
-                            });
-                        }}
+                        onClick={handleHardRefresh}
                         disabled={pageLoading}
                         className={`shrink-0 rounded-md border shadow-sm
 px-2 py-1 text-[10px]
