@@ -1328,6 +1328,118 @@ def finances_mtd_transactions():
     return jsonify(_json_safe(payload_out)), 200
 
 
+from sqlalchemy import text
+import json
 
+@amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
+def live_dashboard_data():
 
+    # ---------------- AUTH ----------------
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"success": False, "error": "Missing token"}), 401
 
+    token = auth_header.split(" ")[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(payload["user_id"])
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    # =========================================================
+    # ======================= POST =============================
+    # =========================================================
+    if request.method == "POST":
+        body = request.get_json(silent=True)
+        if not body:
+            return jsonify({"success": False, "error": "Missing JSON body"}), 400
+
+        country = (body.get("country") or "uk").lower()
+        table_name = f"live_data_{user_id}_{country}"
+
+        try:
+            # create table
+            create_sql = f"""
+            CREATE TABLE IF NOT EXISTS public."{table_name}" (
+                id SERIAL PRIMARY KEY,
+                user_id INT,
+                country TEXT,
+                saved_at BIGINT,
+                month TEXT,
+                year INT,
+                payload JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+
+            with PHORMULA_ENGINE.begin() as conn:
+                conn.execute(text(create_sql))
+
+            saved_at = body.get("savedAt")
+            data_block = body.get("data", {})
+            month = data_block.get("month")
+
+            insert_sql = f"""
+            INSERT INTO public."{table_name}"
+            (user_id, country, saved_at, month, payload)
+            VALUES (:user_id, :country, :saved_at, :month, :payload)
+            """
+
+            with PHORMULA_ENGINE.begin() as conn:
+                conn.execute(
+                    text(insert_sql),
+                    {
+                        "user_id": user_id,
+                        "country": country,
+                        "saved_at": saved_at,
+                        "month": month,
+                        "payload": json.dumps(body),
+                    },
+                )
+
+            return jsonify({
+                "success": True,
+                "table": table_name,
+                "message": "Data stored successfully"
+            })
+
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    # =========================================================
+    # ======================= GET ==============================
+    # =========================================================
+    elif request.method == "GET":
+
+        country = (request.args.get("country") or "uk").lower()
+        limit = int(request.args.get("limit", 10))
+
+        table_name = f"live_data_{user_id}_{country}"
+
+        try:
+            query = f"""
+            SELECT id, saved_at, month, payload, created_at
+            FROM public."{table_name}"
+            ORDER BY created_at DESC
+            LIMIT :limit
+            """
+
+            with PHORMULA_ENGINE.begin() as conn:
+                result = conn.execute(text(query), {"limit": limit})
+                rows = [dict(row._mapping) for row in result]
+
+            return jsonify({
+                "success": True,
+                "table": table_name,
+                "count": len(rows),
+                "data": rows
+            })
+
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+        
+
+        
