@@ -1757,9 +1757,9 @@ export default function DashboardPage() {
     };
 
     const dashboardSteps = [
-        { num: 2, label: "Live MTD" },
-        { num: 3, label: "Current Inventory" },
-        { num: 4, label: "Plotting Graph" },
+        { num: 1, label: "Live MTD" },
+        { num: 2, label: "Current Inventory" },
+        { num: 3, label: "Plotting Graph" },
     ];
 
     const pageLoading =
@@ -2937,7 +2937,7 @@ export default function DashboardPage() {
         try {
 
             // STEP 2: MTD Fetching
-            setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
+            setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
 
             const jwtToken =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2953,22 +2953,22 @@ export default function DashboardPage() {
                 setAdsLoading(true);
                 setAdsSeeded(false);
 
-                setStep(2, "MTD Fetching", 10);
+                setStep(1, "MTD Fetching", 10);
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (country === "UK" || country === "US") {
-                    setStep(2, "MTD Fetching", 18);
+                    setStep(1, "MTD Fetching", 18);
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
 
-                setStep(2, "MTD Fetching", 26);
+                setStep(1, "MTD Fetching", 26);
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(2, "MTD Fetching", 38, "Fetching Monthly Ads data...");
+                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -3000,53 +3000,53 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(2, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
                 await fetchMonthlySp();
             } else {
-                setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(2, "MTD Fetching", 62);
+            setStep(1, "MTD Fetching", 62);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(2, "MTD Fetching", 78);
+                setStep(1, "MTD Fetching", 78);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
-                setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-                setStep(2, "MTD Fetching", 90, "Fetching Shopify current month data...");
+                setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
                 await fetchShopify();
 
-                setStep(2, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+                setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
                 await fetchShopifyPrev();
             } else {
-                setStep(2, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+                setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
-            setStep(2, "MTD Fetching", 100, "MTD data ready");
-            markStepComplete(2);
+            setStep(1, "MTD Fetching", 100, "MTD data ready");
+            markStepComplete(1);
 
             // STEP 3: Inventory Fetch
-            setStep(3, "Inventory Fetch", 20);
+            setStep(2, "Inventory Fetch", 20);
             await fetchInventory();
-            setStep(3, "Inventory Fetch", 100, "Inventory ready");
-            markStepComplete(3);
+            setStep(2, "Inventory Fetch", 100, "Inventory ready");
+            markStepComplete(2);
 
             // STEP 4: Plotting Graph
-            setStep(4, "Plotting Graph", 40, "Preparing charts and tables...");
+            setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
+            setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 95, "Final render in progress...");
+            setStep(3, "Plotting Graph", 95, "Final render in progress...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 100, "Dashboard ready");
-            markStepComplete(4);
+            setStep(3, "Plotting Graph", 100, "Dashboard ready");
+            markStepComplete(3);
 
             await waitForPaint();
 
@@ -3087,6 +3087,59 @@ export default function DashboardPage() {
         return "uk";
     }, [platform]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const key = "live-dashboard-cache-init";
+
+        if (!localStorage.getItem(key)) {
+            localStorage.setItem(key, "initialized");
+        }
+    }, []);
+
+    const hasSavedRef = useRef(false);
+
+    const saveDashboardCacheToBackend = useCallback(
+        async (payload: DashboardCachePayload) => {
+            if (typeof window === "undefined") return;
+
+            if (hasSavedRef.current) return;
+            hasSavedRef.current = true;
+
+            try {
+                const token = localStorage.getItem("jwtToken");
+                if (!token) return;
+
+                await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+            } catch (err) {
+                console.error(err);
+                hasSavedRef.current = false;
+            }
+        },
+        []
+    );
+
+    const ensureLocalStorageThenSave = async (
+        payload: DashboardCachePayload
+    ) => {
+        if (typeof window === "undefined") return;
+
+        const key = "live-dashboard-cache";
+
+        if (!localStorage.getItem(key)) {
+            localStorage.setItem(key, JSON.stringify({ initialized: true }));
+        }
+
+        await saveDashboardCacheToBackend(payload);
+    };
+
     const buildDashboardCachePayload = useCallback(() => {
         return {
             data,
@@ -3115,6 +3168,8 @@ export default function DashboardPage() {
         liveBiReady,
         biStatus,
     ]);
+
+    type DashboardCachePayload = ReturnType<typeof buildDashboardCachePayload>;
 
     const applyDashboardCachePayload = useCallback((parsed: any) => {
         setData(parsed?.data ?? null);
@@ -3233,62 +3288,62 @@ export default function DashboardPage() {
     //     selectedEndDay,
     // ]);
 
-    const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
-        if (typeof window === "undefined") return;
+    // const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
+    //     if (typeof window === "undefined") return;
 
-        const token = localStorage.getItem("jwtToken");
-        if (!token) return;
+    //     const token = localStorage.getItem("jwtToken");
+    //     if (!token) return;
 
-        const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+    //     const payloadToSave = cachePayload ?? buildDashboardCachePayload();
 
-        // keep browser cache in sync too
-        localStorage.setItem(
-            liveCacheKey,
-            JSON.stringify({
-                ...payloadToSave,
-                savedAt: Date.now(),
-            })
-        );
+    //     // keep browser cache in sync too
+    //     localStorage.setItem(
+    //         liveCacheKey,
+    //         JSON.stringify({
+    //             ...payloadToSave,
+    //             savedAt: Date.now(),
+    //         })
+    //     );
 
-        const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                country: liveDashboardCountry,
-                platform: String(platform || "").toLowerCase(),
-                region: String(activeDateRegion || ""),
-                startDay: selectedStartDay,
-                endDay: selectedEndDay,
-                savedAt: Date.now(),
-                cachePayload: payloadToSave,
-            }),
-        });
+    //     const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+    //         method: "POST",
+    //         headers: {
+    //             "Content-Type": "application/json",
+    //             Accept: "application/json",
+    //             Authorization: `Bearer ${token}`,
+    //         },
+    //         body: JSON.stringify({
+    //             country: liveDashboardCountry,
+    //             platform: String(platform || "").toLowerCase(),
+    //             region: String(activeDateRegion || ""),
+    //             startDay: selectedStartDay,
+    //             endDay: selectedEndDay,
+    //             savedAt: Date.now(),
+    //             cachePayload: payloadToSave,
+    //         }),
+    //     });
 
-        const json = await res.json().catch(() => null);
+    //     const json = await res.json().catch(() => null);
 
-        if (!res.ok || !json?.success) {
-            throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
-        }
+    //     if (!res.ok || !json?.success) {
+    //         throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
+    //     }
 
-        if (json?.data?.updated_at) {
-            const ts = new Date(json.data.updated_at).getTime();
-            if (!Number.isNaN(ts)) {
-                setDbUpdatedAt(ts);
-            }
-        }
-    }, [
-        buildDashboardCachePayload,
-        liveCacheKey,
-        liveDashboardCountry,
-        platform,
-        activeDateRegion,
-        selectedStartDay,
-        selectedEndDay,
-    ]);
+    //     if (json?.data?.updated_at) {
+    //         const ts = new Date(json.data.updated_at).getTime();
+    //         if (!Number.isNaN(ts)) {
+    //             setDbUpdatedAt(ts);
+    //         }
+    //     }
+    // }, [
+    //     buildDashboardCachePayload,
+    //     liveCacheKey,
+    //     liveDashboardCountry,
+    //     platform,
+    //     activeDateRegion,
+    //     selectedStartDay,
+    //     selectedEndDay,
+    // ]);
 
 
     const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
@@ -3390,6 +3445,7 @@ export default function DashboardPage() {
     const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
     const [refreshNow, setRefreshNow] = useState(Date.now());
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
+
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
         2: 45, // MTD Fetching
@@ -6916,7 +6972,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 )} */}
 
             {!shouldShowDummyUi && pageLoading && (
-                <div className="absolute inset-0 z-[99999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
+                <div className="absolute inset-0 z-[999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
                     <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
                         {/* ── Header ── */}
                         <div className="flex items-center justify-between mb-4">
@@ -7078,12 +7134,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             </p>
 
                             {/* CENTER (Estimated Time) */}
-                            <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
+                            {/* <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
                                 <span className="text-xs text-slate-400">Estimated:</span>
                                 <span className="text-xs font-medium text-slate-600">
                                     {estimatedTime}
                                 </span>
-                            </div>
+                            </div> */}
 
                             {/* RIGHT */}
                             <span className="text-xs text-slate-400 shrink-0">
