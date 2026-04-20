@@ -115,6 +115,7 @@ type MonthlySkuwiseRow = {
     fba_fees: number;
     selling_fees: number;
     ads_spend: number;
+    acos: number;
     cm2_profit: number;
     tax: number;
     credits: number;
@@ -179,7 +180,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 // const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
-
+const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
@@ -1756,9 +1757,9 @@ export default function DashboardPage() {
     };
 
     const dashboardSteps = [
-        { num: 2, label: "Live MTD" },
-        { num: 3, label: "Current Inventory" },
-        { num: 4, label: "Plotting Graph" },
+        { num: 1, label: "Live MTD" },
+        { num: 2, label: "Current Inventory" },
+        { num: 3, label: "Plotting Graph" },
     ];
 
     const pageLoading =
@@ -2915,6 +2916,7 @@ export default function DashboardPage() {
             return;
         }
 
+        setLoadingStartedAt(Date.now());
         setDashboardBusy(true);
         setError(null);
         setBiError(null);
@@ -2935,7 +2937,7 @@ export default function DashboardPage() {
         try {
 
             // STEP 2: MTD Fetching
-            setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
+            setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
 
             const jwtToken =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2951,22 +2953,22 @@ export default function DashboardPage() {
                 setAdsLoading(true);
                 setAdsSeeded(false);
 
-                setStep(2, "MTD Fetching", 10);
+                setStep(1, "MTD Fetching", 10);
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (country === "UK" || country === "US") {
-                    setStep(2, "MTD Fetching", 18);
+                    setStep(1, "MTD Fetching", 18);
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
 
-                setStep(2, "MTD Fetching", 26);
+                setStep(1, "MTD Fetching", 26);
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(2, "MTD Fetching", 38, "Fetching Monthly Ads data...");
+                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -2998,53 +3000,53 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(2, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
                 await fetchMonthlySp();
             } else {
-                setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(2, "MTD Fetching", 62);
+            setStep(1, "MTD Fetching", 62);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(2, "MTD Fetching", 78);
+                setStep(1, "MTD Fetching", 78);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
-                setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-                setStep(2, "MTD Fetching", 90, "Fetching Shopify current month data...");
+                setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
                 await fetchShopify();
 
-                setStep(2, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+                setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
                 await fetchShopifyPrev();
             } else {
-                setStep(2, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+                setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
-            setStep(2, "MTD Fetching", 100, "MTD data ready");
-            markStepComplete(2);
+            setStep(1, "MTD Fetching", 100, "MTD data ready");
+            markStepComplete(1);
 
             // STEP 3: Inventory Fetch
-            setStep(3, "Inventory Fetch", 20);
+            setStep(2, "Inventory Fetch", 20);
             await fetchInventory();
-            setStep(3, "Inventory Fetch", 100, "Inventory ready");
-            markStepComplete(3);
+            setStep(2, "Inventory Fetch", 100, "Inventory ready");
+            markStepComplete(2);
 
             // STEP 4: Plotting Graph
-            setStep(4, "Plotting Graph", 40, "Preparing charts and tables...");
+            setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
+            setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 95, "Final render in progress...");
+            setStep(3, "Plotting Graph", 95, "Final render in progress...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 100, "Dashboard ready");
-            markStepComplete(4);
+            setStep(3, "Plotting Graph", 100, "Dashboard ready");
+            markStepComplete(3);
 
             await waitForPaint();
 
@@ -3079,62 +3081,81 @@ export default function DashboardPage() {
         fetchInventory,
     ]);
 
-    const liveCacheKey = useMemo(() => {
-        return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
-    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+    const liveDashboardCountry = useMemo(() => {
+        if (platform === "amazon-us") return "us";
+        if (platform === "amazon-ca") return "ca";
+        return "uk";
+    }, [platform]);
 
-    const restoreLiveCache = useCallback(() => {
-        if (typeof window === "undefined") return false;
-
-        const raw = localStorage.getItem(liveCacheKey);
-        if (!raw) return false;
-
-        try {
-            const parsed = JSON.parse(raw);
-
-            setData(parsed.data ?? null);
-            setBiDailySeries(parsed.biDailySeries ?? null);
-            setBiPeriods(parsed.biPeriods ?? null);
-            setLiveBiPayload(parsed.liveBiPayload ?? null);
-            setBiAlignedTotals(parsed.biAlignedTotals ?? null);
-            setInvRows(parsed.invRows ?? []);
-            setInventoryAlerts(parsed.inventoryAlerts ?? {});
-            setMonthlySpRows(parsed.monthlySpRows ?? []);
-            setMonthlySpTotalSpend(parsed.monthlySpTotalSpend ?? null);
-            setLiveBiReady(!!parsed.liveBiReady);
-
-            setBiStatus(parsed.biStatus ?? (parsed.biDailySeries ? "ready" : "idle"));
-            setBiLoading(false);
-            setBiError(null);
-
-            return true;
-        } catch {
-            return false;
-        }
-    }, [liveCacheKey]);
-
-    const saveLiveCache = useCallback(() => {
+    useEffect(() => {
         if (typeof window === "undefined") return;
 
-        localStorage.setItem(
-            liveCacheKey,
-            JSON.stringify({
-                data,
-                biDailySeries,
-                biPeriods,
-                liveBiPayload,
-                biAlignedTotals,
-                invRows,
-                inventoryAlerts,
-                monthlySpRows,
-                monthlySpTotalSpend,
-                liveBiReady,
-                biStatus,
-                savedAt: Date.now(),
-            })
-        );
+        const key = "live-dashboard-cache-init";
+
+        if (!localStorage.getItem(key)) {
+            localStorage.setItem(key, "initialized");
+        }
+    }, []);
+
+    const hasSavedRef = useRef(false);
+
+    const saveDashboardCacheToBackend = useCallback(
+        async (payload: DashboardCachePayload) => {
+            if (typeof window === "undefined") return;
+
+            if (hasSavedRef.current) return;
+            hasSavedRef.current = true;
+
+            try {
+                const token = localStorage.getItem("jwtToken");
+                if (!token) return;
+
+                await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+            } catch (err) {
+                console.error(err);
+                hasSavedRef.current = false;
+            }
+        },
+        []
+    );
+
+    const ensureLocalStorageThenSave = async (
+        payload: DashboardCachePayload
+    ) => {
+        if (typeof window === "undefined") return;
+
+        const key = "live-dashboard-cache";
+
+        if (!localStorage.getItem(key)) {
+            localStorage.setItem(key, JSON.stringify({ initialized: true }));
+        }
+
+        await saveDashboardCacheToBackend(payload);
+    };
+
+    const buildDashboardCachePayload = useCallback(() => {
+        return {
+            data,
+            biDailySeries,
+            biPeriods,
+            liveBiPayload,
+            biAlignedTotals,
+            invRows,
+            inventoryAlerts,
+            monthlySpRows,
+            monthlySpTotalSpend,
+            liveBiReady,
+            biStatus,
+            savedAt: Date.now(),
+        };
     }, [
-        liveCacheKey,
         data,
         biDailySeries,
         biPeriods,
@@ -3145,10 +3166,313 @@ export default function DashboardPage() {
         monthlySpRows,
         monthlySpTotalSpend,
         liveBiReady,
+        biStatus,
     ]);
+
+    type DashboardCachePayload = ReturnType<typeof buildDashboardCachePayload>;
+
+    const applyDashboardCachePayload = useCallback((parsed: any) => {
+        setData(parsed?.data ?? null);
+        setBiDailySeries(parsed?.biDailySeries ?? null);
+        setBiPeriods(parsed?.biPeriods ?? null);
+        setLiveBiPayload(parsed?.liveBiPayload ?? null);
+        setBiAlignedTotals(parsed?.biAlignedTotals ?? null);
+        setInvRows(parsed?.invRows ?? []);
+        setInventoryAlerts(parsed?.inventoryAlerts ?? {});
+        setMonthlySpRows(parsed?.monthlySpRows ?? []);
+        setMonthlySpTotalSpend(parsed?.monthlySpTotalSpend ?? null);
+        setLiveBiReady(!!parsed?.liveBiReady);
+
+        setBiStatus(parsed?.biStatus ?? (parsed?.biDailySeries ? "ready" : "idle"));
+        setBiLoading(false);
+        setBiError(null);
+    }, []);
+
+    const getDashboardCacheFromBackend = useCallback(async () => {
+        if (typeof window === "undefined") return null;
+
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return null;
+
+        const params = new URLSearchParams({
+            country: liveDashboardCountry,
+            platform: String(platform || "").toLowerCase(),
+            region: String(activeDateRegion || ""),
+        });
+
+        if (selectedStartDay != null) {
+            params.set("start_day", String(selectedStartDay));
+        }
+
+        if (selectedEndDay != null) {
+            params.set("end_day", String(selectedEndDay));
+        }
+
+        const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params.toString()}`, {
+            method: "GET",
+            headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json?.success) {
+            throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
+        }
+
+        if (json?.found === false) {
+            return { found: false, payload: null, updatedAt: null };
+        }
+
+        if (!json?.data?.payload) {
+            return { found: false, payload: null, updatedAt: null };
+        }
+
+        return {
+            found: true,
+            payload: json.data.payload,
+            updatedAt: json.data.updated_at ?? null,
+        };
+    }, [
+        liveDashboardCountry,
+        platform,
+        activeDateRegion,
+        selectedStartDay,
+        selectedEndDay,
+    ]);
+
+    const liveCacheKey = useMemo(() => {
+        return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
+    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+
+
+    // const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
+    //     if (typeof window === "undefined") return;
+
+    //     const token = localStorage.getItem("jwtToken");
+    //     if (!token) return;
+
+    //     const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+    //     const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+    //         method: "POST",
+    //         headers: {
+    //             "Content-Type": "application/json",
+    //             Accept: "application/json",
+    //             Authorization: `Bearer ${token}`,
+    //         },
+    //         body: JSON.stringify({
+    //             country: liveDashboardCountry,
+    //             platform: String(platform || "").toLowerCase(),
+    //             region: String(activeDateRegion || ""),
+    //             startDay: selectedStartDay,
+    //             endDay: selectedEndDay,
+    //             savedAt: Date.now(),
+    //             cachePayload: payloadToSave,
+    //         }),
+    //     });
+
+    //     const json = await res.json().catch(() => null);
+
+    //     if (!res.ok || !json?.success) {
+    //         throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
+    //     }
+    // }, [
+    //     buildDashboardCachePayload,
+    //     liveDashboardCountry,
+    //     platform,
+    //     activeDateRegion,
+    //     selectedStartDay,
+    //     selectedEndDay,
+    // ]);
+
+    // const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
+    //     if (typeof window === "undefined") return;
+
+    //     const token = localStorage.getItem("jwtToken");
+    //     if (!token) return;
+
+    //     const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+    //     // keep browser cache in sync too
+    //     localStorage.setItem(
+    //         liveCacheKey,
+    //         JSON.stringify({
+    //             ...payloadToSave,
+    //             savedAt: Date.now(),
+    //         })
+    //     );
+
+    //     const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+    //         method: "POST",
+    //         headers: {
+    //             "Content-Type": "application/json",
+    //             Accept: "application/json",
+    //             Authorization: `Bearer ${token}`,
+    //         },
+    //         body: JSON.stringify({
+    //             country: liveDashboardCountry,
+    //             platform: String(platform || "").toLowerCase(),
+    //             region: String(activeDateRegion || ""),
+    //             startDay: selectedStartDay,
+    //             endDay: selectedEndDay,
+    //             savedAt: Date.now(),
+    //             cachePayload: payloadToSave,
+    //         }),
+    //     });
+
+    //     const json = await res.json().catch(() => null);
+
+    //     if (!res.ok || !json?.success) {
+    //         throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
+    //     }
+
+    //     if (json?.data?.updated_at) {
+    //         const ts = new Date(json.data.updated_at).getTime();
+    //         if (!Number.isNaN(ts)) {
+    //             setDbUpdatedAt(ts);
+    //         }
+    //     }
+    // }, [
+    //     buildDashboardCachePayload,
+    //     liveCacheKey,
+    //     liveDashboardCountry,
+    //     platform,
+    //     activeDateRegion,
+    //     selectedStartDay,
+    //     selectedEndDay,
+    // ]);
+
+
+    const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
+        if (typeof window === "undefined") return;
+
+        const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payloadToSave,
+                savedAt: Date.now(),
+            })
+        );
+    }, [buildDashboardCachePayload, liveCacheKey]);
+
+    const restoreLiveCacheFromLocalStorage = useCallback(() => {
+        if (typeof window === "undefined") return false;
+
+        const raw = localStorage.getItem(liveCacheKey);
+        if (!raw) return false;
+
+        try {
+            const parsed = JSON.parse(raw);
+            applyDashboardCachePayload(parsed);
+            return true;
+        } catch (err) {
+            console.error("Failed to restore live cache from localStorage:", err);
+            return false;
+        }
+    }, [liveCacheKey, applyDashboardCachePayload]);
+
+    // const restoreLiveCache = useCallback(() => {
+    //     if (typeof window === "undefined") return false;
+
+    //     const raw = localStorage.getItem(liveCacheKey);
+    //     if (!raw) return false;
+
+    //     try {
+    //         const parsed = JSON.parse(raw);
+
+    //         setData(parsed.data ?? null);
+    //         setBiDailySeries(parsed.biDailySeries ?? null);
+    //         setBiPeriods(parsed.biPeriods ?? null);
+    //         setLiveBiPayload(parsed.liveBiPayload ?? null);
+    //         setBiAlignedTotals(parsed.biAlignedTotals ?? null);
+    //         setInvRows(parsed.invRows ?? []);
+    //         setInventoryAlerts(parsed.inventoryAlerts ?? {});
+    //         setMonthlySpRows(parsed.monthlySpRows ?? []);
+    //         setMonthlySpTotalSpend(parsed.monthlySpTotalSpend ?? null);
+    //         setLiveBiReady(!!parsed.liveBiReady);
+
+    //         setBiStatus(parsed.biStatus ?? (parsed.biDailySeries ? "ready" : "idle"));
+    //         setBiLoading(false);
+    //         setBiError(null);
+
+    //         return true;
+    //     } catch {
+    //         return false;
+    //     }
+    // }, [liveCacheKey]);
+
+    // const saveLiveCache = useCallback(() => {
+    //     if (typeof window === "undefined") return;
+
+    //     localStorage.setItem(
+    //         liveCacheKey,
+    //         JSON.stringify({
+    //             data,
+    //             biDailySeries,
+    //             biPeriods,
+    //             liveBiPayload,
+    //             biAlignedTotals,
+    //             invRows,
+    //             inventoryAlerts,
+    //             monthlySpRows,
+    //             monthlySpTotalSpend,
+    //             liveBiReady,
+    //             biStatus,
+    //             savedAt: Date.now(),
+    //         })
+    //     );
+    // }, [
+    //     liveCacheKey,
+    //     data,
+    //     biDailySeries,
+    //     biPeriods,
+    //     liveBiPayload,
+    //     biAlignedTotals,
+    //     invRows,
+    //     inventoryAlerts,
+    //     monthlySpRows,
+    //     monthlySpTotalSpend,
+    //     liveBiReady,
+    // ]);
 
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
+    const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
+    const [refreshNow, setRefreshNow] = useState(Date.now());
+    const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
+
+
+    const STEP_ESTIMATED_SECONDS: Record<number, number> = {
+        2: 45, // MTD Fetching
+        3: 15, // Inventory Fetch
+        4: 8,  // Plotting Graph
+    };
+
+    const estimatedLoaderSeconds = STEP_ESTIMATED_SECONDS[currentStep] || 20;
+
+
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
+
+    //     const saved = localStorage.getItem(LAST_REFRESH_KEY);
+    //     if (saved) {
+    //         const ts = Number(saved);
+    //         if (!Number.isNaN(ts)) {
+    //             setLastRefreshAt(ts);
+    //             return;
+    //         }
+    //     }
+
+    //     // first time landing on page -> seed it now
+    //     const now = Date.now();
+    //     localStorage.setItem(LAST_REFRESH_KEY, String(now));
+    //     setLastRefreshAt(now);
+    // }, []);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -3162,10 +3486,18 @@ export default function DashboardPage() {
         }
     }, []);
 
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setRefreshNow(Date.now());
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, []);
+
     const getRelativeRefreshText = useCallback((ts: number | null) => {
         if (!ts) return "Never refreshed";
 
-        const diffMs = Date.now() - ts;
+        const diffMs = refreshNow - ts;
         const diffSec = Math.floor(diffMs / 1000);
         const diffMin = Math.floor(diffSec / 60);
         const diffHr = Math.floor(diffMin / 60);
@@ -3175,7 +3507,7 @@ export default function DashboardPage() {
         if (diffMin < 60) return `${diffMin} min ago`;
         if (diffHr < 24) return `${diffHr} hr ago`;
         return `${diffDay} day ago`;
-    }, []);
+    }, [refreshNow]);
 
     useEffect(() => {
         if (!lastRefreshAt) return;
@@ -3186,45 +3518,194 @@ export default function DashboardPage() {
 
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
-    const handleHardRefresh = useCallback(() => {
+
+    // const handleHardRefresh = useCallback(async () => {
+    //     if (typeof window === "undefined") return;
+
+    //     try {
+    //         const now = Date.now();
+    //         localStorage.setItem(LAST_REFRESH_KEY, String(now));
+    //         setLastRefreshAt(now);
+
+    //         resetStepState();
+
+    //         await runDashboardLoadWithSteps();
+
+    //         const payload = {
+    //             data,
+    //             biDailySeries,
+    //             biPeriods,
+    //             liveBiPayload,
+    //             biAlignedTotals,
+    //             invRows,
+    //             inventoryAlerts,
+    //             monthlySpRows,
+    //             monthlySpTotalSpend,
+    //             liveBiReady,
+    //             biStatus,
+    //             savedAt: Date.now(),
+    //         };
+
+    //         await saveDashboardCacheToBackend(payload);
+    //     } catch (err) {
+    //         console.error("Hard refresh failed:", err);
+    //     }
+    // }, [
+    //     runDashboardLoadWithSteps,
+    //     saveDashboardCacheToBackend,
+    //     data,
+    //     biDailySeries,
+    //     biPeriods,
+    //     liveBiPayload,
+    //     biAlignedTotals,
+    //     invRows,
+    //     inventoryAlerts,
+    //     monthlySpRows,
+    //     monthlySpTotalSpend,
+    //     liveBiReady,
+    //     biStatus,
+    // ]);
+
+
+    const isManualRefreshRef = useRef(false);
+
+    const shouldPostCacheRef = useRef(false);
+
+    const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
-        const now = Date.now();
-        localStorage.setItem(LAST_REFRESH_KEY, String(now));
-        setLastRefreshAt(now);
-
-        localStorage.removeItem(liveCacheKey);
-
-        Object.keys(localStorage).forEach((key) => {
-            if (key.startsWith("live-dashboard-cache:")) {
-                localStorage.removeItem(key);
-            }
-        });
+        isManualRefreshRef.current = true;   // ✅ mark refresh
+        shouldPostCacheRef.current = true;   // ✅ allow POST
 
         resetStepState();
-        window.location.reload();
-    }, [liveCacheKey]);
+
+        try {
+            await runDashboardLoadWithSteps(); // fetch fresh APIs
+        } catch (err) {
+            console.error("Hard refresh failed:", err);
+            isManualRefreshRef.current = false;
+            shouldPostCacheRef.current = false;
+        }
+    }, [runDashboardLoadWithSteps]);
+
 
     useEffect(() => {
-        const restored = restoreLiveCache();
-        if (restored) return;
+        let cancelled = false;
 
-        runDashboardLoadWithSteps().catch((err) => {
-            console.error("Dashboard step load failed:", err);
-        });
-    }, [restoreLiveCache, runDashboardLoadWithSteps]);
+        const bootstrapDashboard = async () => {
+            try {
+                const cacheResult = await getDashboardCacheFromBackend();
+
+                if (cancelled) return;
+
+                if (cacheResult?.found && cacheResult.payload) {
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+
+                    applyDashboardCachePayload(cacheResult.payload);
+
+                    // keep localStorage synced from DB too
+                    localStorage.setItem(
+                        liveCacheKey,
+                        JSON.stringify({
+                            ...cacheResult.payload,
+                            savedAt: Date.now(),
+                        })
+                    );
+
+                    const backendUpdatedAt = cacheResult.updatedAt
+                        ? new Date(cacheResult.updatedAt).getTime()
+                        : null;
+
+                    setDbUpdatedAt(
+                        backendUpdatedAt != null && !Number.isNaN(backendUpdatedAt)
+                            ? backendUpdatedAt
+                            : null
+                    );
+
+                    return;
+                }
+
+                // fallback: try browser cache before refetching
+                const restoredFromLocal = restoreLiveCacheFromLocalStorage();
+                if (restoredFromLocal) {
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+                    return;
+                }
+
+                shouldPostCacheRef.current = false;
+                await runDashboardLoadWithSteps();
+
+                shouldPostCacheRef.current = true;
+                await runDashboardLoadWithSteps();
+            } catch (err) {
+                console.error("Dashboard bootstrap failed:", err);
+
+                if (cancelled) return;
+
+                shouldPostCacheRef.current = true;
+                await runDashboardLoadWithSteps();
+            }
+        };
+
+        bootstrapDashboard();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [liveCacheKey, restoreLiveCacheFromLocalStorage, getDashboardCacheFromBackend, applyDashboardCachePayload, runDashboardLoadWithSteps]);
 
     useEffect(() => {
+        if (!shouldPostCacheRef.current || !isManualRefreshRef.current) return;
         if (!data && !liveBiPayload && !invRows.length) return;
-        saveLiveCache();
-    }, [saveLiveCache, data, liveBiPayload, invRows]);
 
-    // useEffect(() => {
-    //     if (didRefreshRef.current) return;
-    //     didRefreshRef.current = true;
+        const shouldPersist =
+            !pageLoading &&
+            !dashboardBusy &&
+            !loading &&
+            !biLoading &&
+            !invLoading &&
+            !monthlySpLoading &&
+            !shopifyLoading;
 
-    //     refreshAll();
-    // }, []);
+        if (!shouldPersist) return;
+
+        const payload = buildDashboardCachePayload();
+
+        saveDashboardCacheToBackend(payload)
+            .then(() => {
+                const now = Date.now();
+
+                setDbUpdatedAt(now);
+                setLastRefreshAt(now);
+                localStorage.setItem(LAST_REFRESH_KEY, String(now));
+
+                shouldPostCacheRef.current = false;
+
+                if (isManualRefreshRef.current) {
+                    isManualRefreshRef.current = false;
+                }
+            })
+            .catch((err) => {
+                console.error("Failed to persist dashboard cache:", err);
+                shouldPostCacheRef.current = false;
+                isManualRefreshRef.current = false;
+            });
+    }, [
+        buildDashboardCachePayload,
+        saveDashboardCacheToBackend,
+        pageLoading,
+        dashboardBusy,
+        loading,
+        biLoading,
+        invLoading,
+        monthlySpLoading,
+        shopifyLoading,
+        data,
+        liveBiPayload,
+        invRows,
+    ]);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
@@ -3760,6 +4241,7 @@ export default function DashboardPage() {
             fba_fees: Number(r.fba_fees ?? 0),
             selling_fees: Number(r.selling_fees ?? 0),
             ads_spend: Number(r.ads_spend ?? 0),
+            acos: Number(r.acos ?? 0),
             cm2_profit: Number(r.cm2_profit ?? 0),
             tax: Number(r.tax ?? 0),
             credits: Number(r.credits ?? 0),
@@ -4016,6 +4498,7 @@ export default function DashboardPage() {
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: sum("ads_spend"),
+            acos: othersNetSales ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100 : 0,
             cm2_profit: sum("cm2_profit"),
             profit: sum("profit"),
             platform_fee: sum("platform_fee"),
@@ -4187,6 +4670,7 @@ export default function DashboardPage() {
         { key: "cogs", label: "COGS", align: "center" as const },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const },
+        { key: "acos", label: "ACOS %", align: "center" as const },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
@@ -4744,33 +5228,60 @@ export default function DashboardPage() {
                 (userData as any)?.company ||
                 "";
 
-            const dataRows = rows.map((r) => {
-                const marketplaceTotal =
-                    Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
+            // const dataRows = rows.map((r) => {
+            //     const marketplaceTotal =
+            //         Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
 
-                return {
-                    "S.No": r.isTotal ? "" : (r.sno ?? ""),
-                    "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
-                    SKU: r.isTotal ? "" : (r.sku ?? ""),
-                    "Net Units Sold": Number(r.quantity || 0),
-                    ASP: Number(r.asp || 0),
-                    "Net Sales": Number(r.net_sales || 0),
-                    COGS: Number(r.cogs || 0),
-                    "FBA Fees": Number(r.fba_fees || 0),
-                    "Selling Fees": Number(r.selling_fees || 0),
-                    "Marketplace Fees Total": marketplaceTotal,
-                    "Net Taxes": Number(r.tax || 0),
-                    "Net Credits": Number(r.credits || 0),
-                    "Tax & Credits": Number(r.tax_and_credits || 0),
-                    "CM1 Profit %": Number(r.cm1_profit_per || 0),
-                    "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-                    "CM1 Profit": Number(r.profit || 0),
-                    "Ads Spend": Number(r.ads_spend || 0),
-                    "CM2 Profit": Number(r.cm2_profit || 0),
-                    "CM2 Profit %": Number(r.cm2_profit_per || 0),
-                    "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-                };
-            });
+            //     return {
+            //         "S.No": r.isTotal ? "" : (r.sno ?? ""),
+            //         "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
+            //         SKU: r.isTotal ? "" : (r.sku ?? ""),
+            //         "Net Units Sold": Number(r.quantity || 0),
+            //         ASP: Number(r.asp || 0),
+            //         "Net Sales": Number(r.net_sales || 0),
+            //         COGS: Number(r.cogs || 0),
+            //         "FBA Fees": Number(r.fba_fees || 0),
+            //         "Selling Fees": Number(r.selling_fees || 0),
+            //         "Marketplace Fees Total": marketplaceTotal,
+            //         "Net Taxes": Number(r.tax || 0),
+            //         "Net Credits": Number(r.credits || 0),
+            //         "Tax & Credits": Number(r.tax_and_credits || 0),
+            //         "CM1 Profit %": Number(r.cm1_profit_per || 0),
+            //         "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+            //         "CM1 Profit": Number(r.profit || 0),
+            //         "Ads Spend": Number(r.ads_spend || 0),
+            //         "CM2 Profit": Number(r.cm2_profit || 0),
+            //         "CM2 Profit %": Number(r.cm2_profit_per || 0),
+            //         "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
+            //     };
+            // });
+
+            const dataRows = monthlySkuwiseRows.map((r) => ({
+                "S.No": r.isTotal ? "" : r.sno ?? "",
+                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                "Ad Type": r.isOthers || r.isTotal ? "-" : (r.ad_type || "-"),
+                "Net Units Sold": Number(r.quantity || 0),
+                "ASP": Number(r.asp || 0),
+                "Net Sales": Number(r.net_sales || 0),
+                "COGS": Number(r.cogs || 0),
+                "Selling Fees": Number(r.selling_fees || 0),
+                "FBA Fees": Number(r.fba_fees || 0),
+                "Ads Spend": Number(r.ads_spend || 0),
+
+                // add this
+                "ACOS %": Number(r.acos || 0),
+
+                "Tax": Number(r.tax || 0),
+                "Credits": Number(r.credits || 0),
+                "Tax & Credits": Number(r.tax_and_credits || 0),
+                "CM1 Profit": Number(r.profit || 0),
+                "CM1 Profit %": Number(r.cm1_profit_per || 0),
+                "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+                "CM2 Profit": Number(r.cm2_profit || 0),
+                "CM2 Profit %": Number(r.cm2_profit_per || 0),
+                "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
+            }));
 
             const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 ...(countryName === "us" || countryName === "global"
@@ -5350,6 +5861,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+            acos: 0,
             cm2_profit: 0,
             profit: 0,
         },
@@ -5371,6 +5883,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+
+            acos: 0,
             cm2_profit: 0,
             profit: 0,
         },
@@ -5392,6 +5906,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+            acos: 0,
+
             cm2_profit: 0,
             profit: 0,
             isTotal: true,
@@ -6214,6 +6730,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyStatData.cm2ProfitPct.deltaPct
         : safeDeltaPct(globalCm2ProfitPctCurrent, globalCm2ProfitPctPrevious);
 
+    const remainingSteps = dashboardSteps.length - currentStep;
+
+    // assume ~30 seconds per step (adjust if needed)
+    const secondsLeft = remainingSteps * 30;
+
+    // format as mm:ss
+    const estimatedTime = `${Math.floor(secondsLeft / 60)
+        .toString()
+        .padStart(2, "0")}:${(secondsLeft % 60)
+            .toString()
+            .padStart(2, "0")}`;
+
     return (
         <div className="relative w-full">
             <Toaster
@@ -6444,7 +6972,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 )} */}
 
             {!shouldShowDummyUi && pageLoading && (
-                <div className="absolute inset-0 z-[99999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
+                <div className="absolute inset-0 z-[999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
                     <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
                         {/* ── Header ── */}
                         <div className="flex items-center justify-between mb-4">
@@ -6589,13 +7117,35 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             })}
                         </div>
 
-                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                        {/* <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                             <p className="text-xs text-slate-400 truncate">
                                 {stepProgress.detail || "Initialising dashboard…"}
                             </p>
                             <span className="text-xs text-slate-400 shrink-0 ml-3">
                                 Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
                             </span>
+                        </div> */}
+
+                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+
+                            {/* LEFT */}
+                            <p className="text-xs text-slate-400 truncate">
+                                {stepProgress.detail || "Initialising dashboard…"}
+                            </p>
+
+                            {/* CENTER (Estimated Time) */}
+                            {/* <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
+                                <span className="text-xs text-slate-400">Estimated:</span>
+                                <span className="text-xs font-medium text-slate-600">
+                                    {estimatedTime}
+                                </span>
+                            </div> */}
+
+                            {/* RIGHT */}
+                            <span className="text-xs text-slate-400 shrink-0">
+                                Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                            </span>
+
                         </div>
                     </div>
                 </div>
@@ -6667,7 +7217,7 @@ ${pageLoading
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
                         <span className="text-sm text-gray-500">
-                            Updated {getRelativeRefreshText(lastRefreshAt)}
+                            Updated {getRelativeRefreshText(dbUpdatedAt)}
                         </span>
                     </div>
 
@@ -7703,6 +8253,7 @@ ${pageLoading
                                                 { type: "group", id: "tax_and_credits" },
                                                 { type: "group", id: "profit" },
                                                 { type: "single", key: "ads_spend" },
+                                                { type: "single", key: "acos" },
                                                 { type: "group", id: "cm2_profit" },
 
                                             ]}
@@ -7726,13 +8277,36 @@ ${pageLoading
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
                                                 if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
 
-                                                if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
+                                                if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
                                                 }
-                                                if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-                                                    return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                                                // CM1 %
+                                                if (colKey === "cm1_profit_per") {
+                                                    const v = Number(row.cm1_profit_per ?? 0);
+                                                    return `${formatAdsNumber(Math.abs(v))}%`;
+                                                }
+
+                                                // CM1 per unit (no %)
+                                                if (colKey === "cm1_profit_per_unit") {
+                                                    const v = Number(row.cm1_profit_per_unit ?? 0);
+                                                    return formatAdsNumber(Math.abs(v));
+                                                }
+
+                                                // if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                                                //     const v = Number((row as any)[colKey] ?? 0);
+                                                //     return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                                                // }
+                                                // CM2 %
+                                                if (colKey === "cm2_profit_per") {
+                                                    const v = Number(row.cm2_profit_per ?? 0);
+                                                    return `${formatAdsNumber(v)}%`;
+                                                }
+
+                                                // CM2 per unit (no %)
+                                                if (colKey === "cm2_profit_per_unit") {
+                                                    const v = Number(row.cm2_profit_per_unit ?? 0);
+                                                    return formatAdsNumber(v);
                                                 }
                                                 if (colKey === "ad_type") {
                                                     if (row.isOthers || row.isTotal) return "-";
@@ -7740,6 +8314,10 @@ ${pageLoading
                                                 }
                                                 if (colKey === "ads_spend")
                                                     return formatAdsNumber(Math.abs(row.ads_spend));
+                                                if (colKey === "acos") {
+                                                    const v = Number(row.acos ?? 0);
+                                                    return `${formatAdsNumber(v)}%`;
+                                                }
                                                 if (colKey === "cogs")
                                                     return formatAdsNumber(Math.abs(row.cogs));
                                                 if (colKey === "fba_fees")

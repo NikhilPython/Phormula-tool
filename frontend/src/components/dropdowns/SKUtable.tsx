@@ -1548,7 +1548,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     {
                       id: "net_reimb",
                       label: "Net Reimbursement",
-                      endValue: formatValue(totals.net_reimbursement, "net_reimbursement"),
+                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
                     },
                     {
                       id: "rv_cm2",

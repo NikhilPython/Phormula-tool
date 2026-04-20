@@ -862,12 +862,25 @@ def process_skuwise_us_data(user_id, country, month, year):
                 profit_percentage REAL,
                 amazon_fee REAL,
                 quantity INTEGER,
+                return_quantity INTEGER,
+                total_quantity INTEGER,
+                gross_sales REAL,
+                refund_sales REAL,
+                tex_and_credits REAL,
                 cost_of_unit_sold REAL,
                 other_transaction_fees REAL,
                 platform_fee REAL,
                 shipment_charges Real,
                 rembursement_fee REAL,
                 advertising_total REAL,
+                visible_ads REAL,
+                dealsvouchar_ads REAL,
+                platformfeenew REAL,
+                platform_fee_inventory_storage REAL,
+                lost_total REAL,
+                misc_transaction REAL,
+                cm2_profit_percentage REAL,
+                promotional_rebates_percentage REAL,
                 reimbursement_vs_sales REAL,
                 cm2_profit REAL,
                 cm2_margins REAL,
@@ -970,12 +983,25 @@ def process_skuwise_us_data(user_id, country, month, year):
                 profit_percentage REAL,
                 amazon_fee REAL,
                 quantity INTEGER,
+                return_quantity INTEGER,
+                total_quantity INTEGER,
+                gross_sales REAL,
+                refund_sales REAL,
+                tex_and_credits REAL,
                 cost_of_unit_sold REAL,
                 other_transaction_fees REAL,
                 platform_fee REAL,
                 shipment_charges Real,
                 rembursement_fee REAL,
                 advertising_total REAL,
+                visible_ads REAL,
+                dealsvouchar_ads REAL,
+                platformfeenew REAL,
+                platform_fee_inventory_storage REAL,
+                lost_total REAL,
+                misc_transaction REAL,
+                cm2_profit_percentage REAL,
+                promotional_rebates_percentage REAL,
                 reimbursement_vs_sales REAL,
                 cm2_profit REAL,
                 cm2_margins REAL,
@@ -1112,11 +1138,30 @@ def process_skuwise_us_data(user_id, country, month, year):
                     'cross_check_analysis_backup', 'text_credit_increase', 'final_total_analysis'
         ]
 
-        # 4 alag DF – base sku_grouped se
+        # ✅ FIRST add default columns
+        for col, default in {
+            "return_quantity": 0,
+            "total_quantity": 0,
+            "gross_sales": 0.0,
+            "refund_sales": 0.0,
+            "tex_and_credits": 0.0,
+            "visible_ads": 0.0,
+            "dealsvouchar_ads": 0.0,
+            "platformfeenew": 0.0,
+            "platform_fee_inventory_storage": 0.0,
+            "lost_total": 0.0,
+            "misc_transaction": 0.0,
+            "cm2_profit_percentage": 0.0,
+            "promotional_rebates_percentage": 0.0,
+        }.items():
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = default
+
+        # ✅ THEN create copies
         df_usd  = sku_grouped.copy()
         df_ind  = sku_grouped.copy()
         df_can  = sku_grouped.copy()
-        df_gbp  = sku_grouped.copy()  # GBP table (rate = 1)
+        df_gbp  = sku_grouped.copy()
 
         def apply_rate(df_conv, rate):
             if not rate:
@@ -1173,12 +1218,25 @@ def process_skuwise_us_data(user_id, country, month, year):
                     profit_percentage REAL,
                     amazon_fee REAL,
                     quantity INTEGER,
+                    return_quantity INTEGER,
+                    total_quantity INTEGER,
+                    gross_sales REAL,
+                    refund_sales REAL,
+                    tex_and_credits REAL,
                     cost_of_unit_sold REAL,
                     other_transaction_fees REAL,
                     platform_fee REAL,
                     shipment_charges Real,
                     rembursement_fee REAL,
                     advertising_total REAL,
+                    visible_ads REAL,
+                    dealsvouchar_ads REAL,
+                    platformfeenew REAL,
+                    platform_fee_inventory_storage REAL,
+                    lost_total REAL,
+                    misc_transaction REAL,
+                    cm2_profit_percentage REAL,
+                    promotional_rebates_percentage REAL,
                     reimbursement_vs_sales REAL,
                     cm2_profit REAL,
                     cm2_margins REAL,
@@ -1311,8 +1369,18 @@ def process_skuwise_us_data(user_id, country, month, year):
         total_expense = total_sales - cm2_profit
         otherwplatform = platform_fee
         taxncredit = (total_tax) + abs(total_credits)
+        total_product_sales = float(
+            pd.to_numeric(sku_grouped.get("product_sales", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("shipping_credits", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("shipping_credits_tax", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("gift_wrap_credits", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("promotional_rebates", 0), errors="coerce").fillna(0).sum()
+            + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0).sum()
+        )
 
-        return platform_fee, rembursement_fee, total_cous, total_amazon_fee, total_profit, total_expense, total_fba_fees, cm2_profit, cm2_margins, acos, rembursment_vs_cm2_margins, advertising_total, reimbursement_vs_sales, total_quantity, total_sales, otherwplatform,taxncredit
+        return platform_fee, rembursement_fee, total_cous, total_amazon_fee, total_profit, total_expense, total_fba_fees, cm2_profit, cm2_margins, acos, rembursment_vs_cm2_margins, advertising_total, reimbursement_vs_sales, total_quantity, total_sales, otherwplatform,taxncredit, total_product_sales
     except Exception as e:
         print(f"Error processing SKU-wise data: {e}")
     finally:
