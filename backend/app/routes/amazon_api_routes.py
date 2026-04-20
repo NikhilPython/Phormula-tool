@@ -1087,6 +1087,12 @@ def finances_mtd_transactions():
 
         # ✅ ads_spend = product + display
         df_sku["ads_spend"] = (df_sku["product_spend"] + df_sku["display_spend"]).fillna(0.0)
+        # ✅ ACOS column
+        df_sku["acos"] = df_sku.apply(
+            lambda r: (float(r["ads_spend"]) / float(r["net_sales"]) * 100.0)
+            if float(r["net_sales"]) else 0.0,
+            axis=1,
+        )
 
         # ensure ads metrics exist
         for col in ["ads_impressions", "ads_clicks", "ads_sale_units", "ads_sale_amount"]:
@@ -1198,6 +1204,11 @@ def finances_mtd_transactions():
         total_row["display_spend"] = round(float(ads_total_display_spend or 0.0), 2)
         total_row["brand_spend"] = round(float(ads_total_brand_spend or 0.0), 2)
         total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"], 2)
+        # ✅ ACOS for total
+        g_spend = float(total_row["ads_spend"])
+        g_net_sales = float(total_row["net_sales"])
+
+        total_row["acos"] = (g_spend / g_net_sales * 100.0) if g_net_sales else 0.0
 
         # store totals
         total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
