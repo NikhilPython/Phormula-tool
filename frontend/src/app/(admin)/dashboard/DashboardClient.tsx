@@ -115,6 +115,7 @@ type MonthlySkuwiseRow = {
     fba_fees: number;
     selling_fees: number;
     ads_spend: number;
+    acos: number;
     cm2_profit: number;
     tax: number;
     credits: number;
@@ -2915,6 +2916,7 @@ export default function DashboardPage() {
             return;
         }
 
+        setLoadingStartedAt(Date.now());
         setDashboardBusy(true);
         setError(null);
         setBiError(null);
@@ -3149,6 +3151,17 @@ export default function DashboardPage() {
 
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
+    const [refreshNow, setRefreshNow] = useState(Date.now());
+    const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
+
+    const STEP_ESTIMATED_SECONDS: Record<number, number> = {
+        2: 45, // MTD Fetching
+        3: 15, // Inventory Fetch
+        4: 8,  // Plotting Graph
+    };
+
+    const estimatedLoaderSeconds = STEP_ESTIMATED_SECONDS[currentStep] || 20;
+
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -3158,14 +3171,28 @@ export default function DashboardPage() {
             const ts = Number(saved);
             if (!Number.isNaN(ts)) {
                 setLastRefreshAt(ts);
+                return;
             }
         }
+
+        // first time landing on page -> seed it now
+        const now = Date.now();
+        localStorage.setItem(LAST_REFRESH_KEY, String(now));
+        setLastRefreshAt(now);
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setRefreshNow(Date.now());
+        }, 30000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const getRelativeRefreshText = useCallback((ts: number | null) => {
         if (!ts) return "Never refreshed";
 
-        const diffMs = Date.now() - ts;
+        const diffMs = refreshNow - ts;
         const diffSec = Math.floor(diffMs / 1000);
         const diffMin = Math.floor(diffSec / 60);
         const diffHr = Math.floor(diffMin / 60);
@@ -3175,7 +3202,7 @@ export default function DashboardPage() {
         if (diffMin < 60) return `${diffMin} min ago`;
         if (diffHr < 24) return `${diffHr} hr ago`;
         return `${diffDay} day ago`;
-    }, []);
+    }, [refreshNow]);
 
     useEffect(() => {
         if (!lastRefreshAt) return;
@@ -3186,6 +3213,7 @@ export default function DashboardPage() {
 
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
+
     const handleHardRefresh = useCallback(() => {
         if (typeof window === "undefined") return;
 
@@ -3760,6 +3788,7 @@ export default function DashboardPage() {
             fba_fees: Number(r.fba_fees ?? 0),
             selling_fees: Number(r.selling_fees ?? 0),
             ads_spend: Number(r.ads_spend ?? 0),
+            acos: Number(r.acos ?? 0),
             cm2_profit: Number(r.cm2_profit ?? 0),
             tax: Number(r.tax ?? 0),
             credits: Number(r.credits ?? 0),
@@ -4016,6 +4045,7 @@ export default function DashboardPage() {
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: sum("ads_spend"),
+            acos: othersNetSales ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100 : 0,
             cm2_profit: sum("cm2_profit"),
             profit: sum("profit"),
             platform_fee: sum("platform_fee"),
@@ -4187,6 +4217,7 @@ export default function DashboardPage() {
         { key: "cogs", label: "COGS", align: "center" as const },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const },
+        { key: "acos", label: "ACOS", align: "center" as const },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
@@ -4744,33 +4775,60 @@ export default function DashboardPage() {
                 (userData as any)?.company ||
                 "";
 
-            const dataRows = rows.map((r) => {
-                const marketplaceTotal =
-                    Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
+            // const dataRows = rows.map((r) => {
+            //     const marketplaceTotal =
+            //         Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
 
-                return {
-                    "S.No": r.isTotal ? "" : (r.sno ?? ""),
-                    "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
-                    SKU: r.isTotal ? "" : (r.sku ?? ""),
-                    "Net Units Sold": Number(r.quantity || 0),
-                    ASP: Number(r.asp || 0),
-                    "Net Sales": Number(r.net_sales || 0),
-                    COGS: Number(r.cogs || 0),
-                    "FBA Fees": Number(r.fba_fees || 0),
-                    "Selling Fees": Number(r.selling_fees || 0),
-                    "Marketplace Fees Total": marketplaceTotal,
-                    "Net Taxes": Number(r.tax || 0),
-                    "Net Credits": Number(r.credits || 0),
-                    "Tax & Credits": Number(r.tax_and_credits || 0),
-                    "CM1 Profit %": Number(r.cm1_profit_per || 0),
-                    "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-                    "CM1 Profit": Number(r.profit || 0),
-                    "Ads Spend": Number(r.ads_spend || 0),
-                    "CM2 Profit": Number(r.cm2_profit || 0),
-                    "CM2 Profit %": Number(r.cm2_profit_per || 0),
-                    "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-                };
-            });
+            //     return {
+            //         "S.No": r.isTotal ? "" : (r.sno ?? ""),
+            //         "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
+            //         SKU: r.isTotal ? "" : (r.sku ?? ""),
+            //         "Net Units Sold": Number(r.quantity || 0),
+            //         ASP: Number(r.asp || 0),
+            //         "Net Sales": Number(r.net_sales || 0),
+            //         COGS: Number(r.cogs || 0),
+            //         "FBA Fees": Number(r.fba_fees || 0),
+            //         "Selling Fees": Number(r.selling_fees || 0),
+            //         "Marketplace Fees Total": marketplaceTotal,
+            //         "Net Taxes": Number(r.tax || 0),
+            //         "Net Credits": Number(r.credits || 0),
+            //         "Tax & Credits": Number(r.tax_and_credits || 0),
+            //         "CM1 Profit %": Number(r.cm1_profit_per || 0),
+            //         "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+            //         "CM1 Profit": Number(r.profit || 0),
+            //         "Ads Spend": Number(r.ads_spend || 0),
+            //         "CM2 Profit": Number(r.cm2_profit || 0),
+            //         "CM2 Profit %": Number(r.cm2_profit_per || 0),
+            //         "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
+            //     };
+            // });
+
+            const dataRows = monthlySkuwiseRows.map((r) => ({
+                "S.No": r.isTotal ? "" : r.sno ?? "",
+                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                "Ad Type": r.isOthers || r.isTotal ? "-" : (r.ad_type || "-"),
+                "Net Units Sold": Number(r.quantity || 0),
+                "ASP": Number(r.asp || 0),
+                "Net Sales": Number(r.net_sales || 0),
+                "COGS": Number(r.cogs || 0),
+                "Selling Fees": Number(r.selling_fees || 0),
+                "FBA Fees": Number(r.fba_fees || 0),
+                "Ads Spend": Number(r.ads_spend || 0),
+
+                // add this
+                "ACOS %": Number(r.acos || 0),
+
+                "Tax": Number(r.tax || 0),
+                "Credits": Number(r.credits || 0),
+                "Tax & Credits": Number(r.tax_and_credits || 0),
+                "CM1 Profit": Number(r.profit || 0),
+                "CM1 Profit %": Number(r.cm1_profit_per || 0),
+                "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+                "CM2 Profit": Number(r.cm2_profit || 0),
+                "CM2 Profit %": Number(r.cm2_profit_per || 0),
+                "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
+            }));
 
             const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 ...(countryName === "us" || countryName === "global"
@@ -7703,6 +7761,7 @@ ${pageLoading
                                                 { type: "group", id: "tax_and_credits" },
                                                 { type: "group", id: "profit" },
                                                 { type: "single", key: "ads_spend" },
+                                                { type: "single", key: "acos" },
                                                 { type: "group", id: "cm2_profit" },
 
                                             ]}
@@ -7726,13 +7785,36 @@ ${pageLoading
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
                                                 if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
 
-                                                if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
+                                                if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
                                                 }
-                                                if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-                                                    return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                                                // CM1 %
+                                                if (colKey === "cm1_profit_per") {
+                                                    const v = Number(row.cm1_profit_per ?? 0);
+                                                    return `${formatAdsNumber(Math.abs(v))}%`;
+                                                }
+
+                                                // CM1 per unit (no %)
+                                                if (colKey === "cm1_profit_per_unit") {
+                                                    const v = Number(row.cm1_profit_per_unit ?? 0);
+                                                    return formatAdsNumber(Math.abs(v));
+                                                }
+
+                                                // if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                                                //     const v = Number((row as any)[colKey] ?? 0);
+                                                //     return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                                                // }
+                                                // CM2 %
+                                                if (colKey === "cm2_profit_per") {
+                                                    const v = Number(row.cm2_profit_per ?? 0);
+                                                    return `${formatAdsNumber(v)}%`;
+                                                }
+
+                                                // CM2 per unit (no %)
+                                                if (colKey === "cm2_profit_per_unit") {
+                                                    const v = Number(row.cm2_profit_per_unit ?? 0);
+                                                    return formatAdsNumber(v);
                                                 }
                                                 if (colKey === "ad_type") {
                                                     if (row.isOthers || row.isTotal) return "-";
@@ -7740,6 +7822,10 @@ ${pageLoading
                                                 }
                                                 if (colKey === "ads_spend")
                                                     return formatAdsNumber(Math.abs(row.ads_spend));
+                                                if (colKey === "acos") {
+                                                    const v = Number(row.acos ?? 0);
+                                                    return `${formatAdsNumber(v)}%`;
+                                                }
                                                 if (colKey === "cogs")
                                                     return formatAdsNumber(Math.abs(row.cogs));
                                                 if (colKey === "fba_fees")
