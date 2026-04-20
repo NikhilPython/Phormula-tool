@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -54,6 +53,11 @@ def build_email_html(state: Dict[str, Any]) -> str:
         if actions:
             items = "".join(f"<li>{x}</li>" for x in actions[:12])
             parts.append(f"<p><strong>Actions</strong></p><ul>{items}</ul>")
+        if not summary and not actions:
+            raw_items = event_plan.get("items") or []
+            if raw_items:
+                items = "".join(f"<li>{str(x)[:400]}</li>" for x in raw_items[:3])
+                parts.append(f"<p><strong>Planner details</strong></p><ul>{items}</ul>")
         parts.append(f"<p>Generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.</p></body></html>")
         return "".join(parts)
 
@@ -110,8 +114,8 @@ def build_email_html(state: Dict[str, Any]) -> str:
         )
 
     if analysis.get("type") == "trend":
-        rows = analysis.get("series", [])[:12]
-        items = "".join(f"<li>{r.get('period_label')}: {float(r.get('__metric__', 0.0)):,.2f}</li>" for r in rows)
+        rows = analysis.get("series_display") or analysis.get("series", [])
+        items = "".join(f"<li>{r.get('period_label')}: {float(r.get('__metric__', 0.0)):,.2f}</li>" for r in rows[:12])
         parts.append(f"<p><strong>Trend</strong></p><ul>{items}</ul>")
     elif analysis.get("type") == "breakdown":
         rows = analysis.get("per_sku", [])[:10]
@@ -124,6 +128,20 @@ def build_email_html(state: Dict[str, Any]) -> str:
         metrics = analysis.get("metrics", {})
         items = "".join(f"<li>{k}: {float(v):,.2f}</li>" for k, v in metrics.items())
         parts.append(f"<p><strong>Business summary</strong></p><ul>{items}</ul>")
+        top_products = analysis.get("top_products", [])[:5]
+        if top_products:
+            items = "".join(
+                f"<li>{r.get('product_name') or r.get('sku') or 'Unknown'}: {float(r.get('__metric__', 0.0)):,.2f}</li>"
+                for r in top_products
+            )
+            parts.append(f"<p><strong>Top products</strong></p><ul>{items}</ul>")
+    elif analysis.get("type") == "multi_dimensional":
+        rows = analysis.get("data", [])[:30]
+        items = "".join(
+            f"<li>{r.get('month')} | {r.get('product')} | {r.get('metric')}: {float(r.get('value', 0.0)):,.2f}</li>"
+            for r in rows
+        )
+        parts.append(f"<p><strong>Comparison breakdown</strong></p><ul>{items}</ul>")
 
     if advice:
         items = "".join(f"<li>{a}</li>" for a in advice)

@@ -274,6 +274,44 @@ class ChatHistory(db.Model):
 
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class AgentConversationState(db.Model):
+    __tablename__ = "agent_conversation_state"
+    __bind_key__ = "chatbot"
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    country = db.Column(db.String(8), nullable=True)
+
+    active_intent = db.Column(db.String(64), nullable=True)
+    active_analysis_type = db.Column(db.String(64), nullable=True)
+    active_reasoning_mode = db.Column(db.String(64), nullable=True)
+    active_task_type = db.Column(db.String(64), nullable=True)
+
+    active_metric_name = db.Column(db.String(128), nullable=True)
+    active_metric_names = db.Column(db.Text, nullable=True)      # json
+    active_product_query = db.Column(db.String(256), nullable=True)
+    active_product_queries = db.Column(db.Text, nullable=True)   # json
+
+    active_period_parsed = db.Column(db.Text, nullable=True)     # json
+    active_period_payload = db.Column(db.Text, nullable=True)    # json
+    active_scope = db.Column(db.Text, nullable=True)             # json
+
+    pending_slot = db.Column(db.String(64), nullable=True)
+    pending_question = db.Column(db.String(512), nullable=True)
+
+    last_current_metrics = db.Column(db.Text, nullable=True)     # json
+    last_comparison = db.Column(db.Text, nullable=True)          # json
+    last_analysis_result = db.Column(db.Text, nullable=True)     # json
+    last_event_plan_result = db.Column(db.Text, nullable=True)   # json
+    last_sku_intelligence_result = db.Column(db.Text, nullable=True)  # json
+
+    inherit_context = db.Column(db.Boolean, default=True, nullable=False)
+    turn_count = db.Column(db.Integer, default=0, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)    
+
 class improvment(db.Model):
     __tablename__ = 'improvment'
     __bind_key__ = 'chatbot'
