@@ -1769,9 +1769,9 @@ export default function DashboardPage() {
     };
 
     const dashboardSteps = [
-        { num: 2, label: "Live MTD" },
-        { num: 3, label: "Current Inventory" },
-        { num: 4, label: "Plotting Graph" },
+        { num: 1, label: "Live MTD" },
+        { num: 2, label: "Current Inventory" },
+        { num: 3, label: "Plotting Graph" },
     ];
 
     const pageLoading =
@@ -2948,8 +2948,8 @@ export default function DashboardPage() {
 
         try {
 
-            // STEP 2: MTD Fetching
-            setStep(2, "MTD Fetching", 5, "Preparing MTD fetch...");
+            // STEP 1: MTD Fetching
+            setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
 
             const jwtToken =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2965,22 +2965,22 @@ export default function DashboardPage() {
                 setAdsLoading(true);
                 setAdsSeeded(false);
 
-                setStep(2, "MTD Fetching", 10);
+                setStep(1, "MTD Fetching", 10);
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (country === "UK" || country === "US") {
-                    setStep(2, "MTD Fetching", 18);
+                    setStep(1, "MTD Fetching", 18);
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
 
-                setStep(2, "MTD Fetching", 26);
+                setStep(1, "MTD Fetching", 26);
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(2, "MTD Fetching", 38, "Fetching Monthly Ads data...");
+                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -3012,52 +3012,52 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(2, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
                 await fetchMonthlySp();
             } else {
-                setStep(2, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(2, "MTD Fetching", 62);
+            setStep(1, "MTD Fetching", 62);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(2, "MTD Fetching", 78);
+                setStep(1, "MTD Fetching", 78);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
-                setStep(2, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-                setStep(2, "MTD Fetching", 90, "Fetching Shopify current month data...");
+                setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
                 await fetchShopify();
 
-                setStep(2, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+                setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
                 await fetchShopifyPrev();
             } else {
-                setStep(2, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+                setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
-            setStep(2, "MTD Fetching", 100, "MTD data ready");
+            setStep(1, "MTD Fetching", 100, "MTD data ready");
+            markStepComplete(1);
+
+            // STEP 2: Inventory Fetch
+            setStep(2, "Inventory Fetch", 20);
+            await fetchInventory();
+            setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            // STEP 3: Inventory Fetch
-            setStep(3, "Inventory Fetch", 20);
-            await fetchInventory();
-            setStep(3, "Inventory Fetch", 100, "Inventory ready");
-            markStepComplete(3);
-
-            // STEP 4: Plotting Graph
-            setStep(4, "Plotting Graph", 40, "Preparing charts and tables...");
+            // STEP 3: Plotting Graph
+            setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 75, "Preparing charts and tables...");
+            setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 95, "Final render in progress...");
+            setStep(3, "Plotting Graph", 95, "Final render in progress...");
             await waitForPaint();
 
-            setStep(4, "Plotting Graph", 100, "Dashboard ready");
+            setStep(3, "Plotting Graph", 100, "Dashboard ready");
             markStepComplete(4);
 
             await waitForPaint();
