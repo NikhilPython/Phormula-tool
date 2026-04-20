@@ -3188,6 +3188,51 @@ export default function DashboardPage() {
         selectedEndDay,
     ]);
 
+    const liveCacheKey = useMemo(() => {
+        return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
+    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+
+
+    // const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
+    //     if (typeof window === "undefined") return;
+
+    //     const token = localStorage.getItem("jwtToken");
+    //     if (!token) return;
+
+    //     const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+    //     const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+    //         method: "POST",
+    //         headers: {
+    //             "Content-Type": "application/json",
+    //             Accept: "application/json",
+    //             Authorization: `Bearer ${token}`,
+    //         },
+    //         body: JSON.stringify({
+    //             country: liveDashboardCountry,
+    //             platform: String(platform || "").toLowerCase(),
+    //             region: String(activeDateRegion || ""),
+    //             startDay: selectedStartDay,
+    //             endDay: selectedEndDay,
+    //             savedAt: Date.now(),
+    //             cachePayload: payloadToSave,
+    //         }),
+    //     });
+
+    //     const json = await res.json().catch(() => null);
+
+    //     if (!res.ok || !json?.success) {
+    //         throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
+    //     }
+    // }, [
+    //     buildDashboardCachePayload,
+    //     liveDashboardCountry,
+    //     platform,
+    //     activeDateRegion,
+    //     selectedStartDay,
+    //     selectedEndDay,
+    // ]);
+
     const saveDashboardCacheToBackend = useCallback(async (cachePayload?: any) => {
         if (typeof window === "undefined") return;
 
@@ -3195,6 +3240,15 @@ export default function DashboardPage() {
         if (!token) return;
 
         const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+        // keep browser cache in sync too
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payloadToSave,
+                savedAt: Date.now(),
+            })
+        );
 
         const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
             method: "POST",
@@ -3219,8 +3273,16 @@ export default function DashboardPage() {
         if (!res.ok || !json?.success) {
             throw new Error(json?.error || `Failed to save dashboard cache (${res.status})`);
         }
+
+        if (json?.data?.updated_at) {
+            const ts = new Date(json.data.updated_at).getTime();
+            if (!Number.isNaN(ts)) {
+                setDbUpdatedAt(ts);
+            }
+        }
     }, [
         buildDashboardCachePayload,
+        liveCacheKey,
         liveDashboardCountry,
         platform,
         activeDateRegion,
@@ -3228,9 +3290,36 @@ export default function DashboardPage() {
         selectedEndDay,
     ]);
 
-    // const liveCacheKey = useMemo(() => {
-    //     return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
-    // }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+
+    const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
+        if (typeof window === "undefined") return;
+
+        const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payloadToSave,
+                savedAt: Date.now(),
+            })
+        );
+    }, [buildDashboardCachePayload, liveCacheKey]);
+
+    const restoreLiveCacheFromLocalStorage = useCallback(() => {
+        if (typeof window === "undefined") return false;
+
+        const raw = localStorage.getItem(liveCacheKey);
+        if (!raw) return false;
+
+        try {
+            const parsed = JSON.parse(raw);
+            applyDashboardCachePayload(parsed);
+            return true;
+        } catch (err) {
+            console.error("Failed to restore live cache from localStorage:", err);
+            return false;
+        }
+    }, [liveCacheKey, applyDashboardCachePayload]);
 
     // const restoreLiveCache = useCallback(() => {
     //     if (typeof window === "undefined") return false;
@@ -3311,6 +3400,24 @@ export default function DashboardPage() {
     const estimatedLoaderSeconds = STEP_ESTIMATED_SECONDS[currentStep] || 20;
 
 
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
+
+    //     const saved = localStorage.getItem(LAST_REFRESH_KEY);
+    //     if (saved) {
+    //         const ts = Number(saved);
+    //         if (!Number.isNaN(ts)) {
+    //             setLastRefreshAt(ts);
+    //             return;
+    //         }
+    //     }
+
+    //     // first time landing on page -> seed it now
+    //     const now = Date.now();
+    //     localStorage.setItem(LAST_REFRESH_KEY, String(now));
+    //     setLastRefreshAt(now);
+    // }, []);
+
     useEffect(() => {
         if (typeof window === "undefined") return;
 
@@ -3319,14 +3426,8 @@ export default function DashboardPage() {
             const ts = Number(saved);
             if (!Number.isNaN(ts)) {
                 setLastRefreshAt(ts);
-                return;
             }
         }
-
-        // first time landing on page -> seed it now
-        const now = Date.now();
-        localStorage.setItem(LAST_REFRESH_KEY, String(now));
-        setLastRefreshAt(now);
     }, []);
 
     useEffect(() => {
@@ -3417,16 +3518,13 @@ export default function DashboardPage() {
     const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
-        const now = Date.now();
-        localStorage.setItem(LAST_REFRESH_KEY, String(now));
-        setLastRefreshAt(now);
+        isManualRefreshRef.current = true;   // ✅ mark refresh
+        shouldPostCacheRef.current = true;   // ✅ allow POST
 
-        isManualRefreshRef.current = true;
-        shouldPostCacheRef.current = true;
         resetStepState();
 
         try {
-            await runDashboardLoadWithSteps();
+            await runDashboardLoadWithSteps(); // fetch fresh APIs
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
@@ -3434,46 +3532,6 @@ export default function DashboardPage() {
         }
     }, [runDashboardLoadWithSteps]);
 
-    // useEffect(() => {
-    //     if (!data && !liveBiPayload && !invRows.length) return;
-
-    //     const shouldPersist =
-    //         !pageLoading &&
-    //         !dashboardBusy &&
-    //         !loading &&
-    //         !biLoading &&
-    //         !invLoading &&
-    //         !monthlySpLoading &&
-    //         !shopifyLoading;
-
-    //     if (!shouldPersist) return;
-
-    //     const payload = buildDashboardCachePayload();
-
-    //     saveDashboardCacheToBackend(payload)
-    //         .then(() => {
-    //             if (isManualRefreshRef.current) {
-    //                 isManualRefreshRef.current = false;
-    //             }
-    //         })
-    //         .catch((err) => {
-    //             console.error("Failed to persist dashboard cache:", err);
-    //             isManualRefreshRef.current = false;
-    //         });
-    // }, [
-    //     buildDashboardCachePayload,
-    //     saveDashboardCacheToBackend,
-    //     pageLoading,
-    //     dashboardBusy,
-    //     loading,
-    //     biLoading,
-    //     invLoading,
-    //     monthlySpLoading,
-    //     shopifyLoading,
-    //     data,
-    //     liveBiPayload,
-    //     invRows,
-    // ]);
 
     useEffect(() => {
         let cancelled = false;
@@ -3486,7 +3544,18 @@ export default function DashboardPage() {
 
                 if (cacheResult?.found && cacheResult.payload) {
                     shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+
                     applyDashboardCachePayload(cacheResult.payload);
+
+                    // keep localStorage synced from DB too
+                    localStorage.setItem(
+                        liveCacheKey,
+                        JSON.stringify({
+                            ...cacheResult.payload,
+                            savedAt: Date.now(),
+                        })
+                    );
 
                     const backendUpdatedAt = cacheResult.updatedAt
                         ? new Date(cacheResult.updatedAt).getTime()
@@ -3500,6 +3569,17 @@ export default function DashboardPage() {
 
                     return;
                 }
+
+                // fallback: try browser cache before refetching
+                const restoredFromLocal = restoreLiveCacheFromLocalStorage();
+                if (restoredFromLocal) {
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+                    return;
+                }
+
+                shouldPostCacheRef.current = false;
+                await runDashboardLoadWithSteps();
 
                 shouldPostCacheRef.current = true;
                 await runDashboardLoadWithSteps();
@@ -3518,10 +3598,10 @@ export default function DashboardPage() {
         return () => {
             cancelled = true;
         };
-    }, [getDashboardCacheFromBackend, applyDashboardCachePayload, runDashboardLoadWithSteps]);
+    }, [liveCacheKey, restoreLiveCacheFromLocalStorage, getDashboardCacheFromBackend, applyDashboardCachePayload, runDashboardLoadWithSteps]);
 
     useEffect(() => {
-        if (!shouldPostCacheRef.current) return;
+        if (!shouldPostCacheRef.current || !isManualRefreshRef.current) return;
         if (!data && !liveBiPayload && !invRows.length) return;
 
         const shouldPersist =
@@ -6594,6 +6674,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyStatData.cm2ProfitPct.deltaPct
         : safeDeltaPct(globalCm2ProfitPctCurrent, globalCm2ProfitPctPrevious);
 
+    const remainingSteps = dashboardSteps.length - currentStep;
+
+    // assume ~30 seconds per step (adjust if needed)
+    const secondsLeft = remainingSteps * 30;
+
+    // format as mm:ss
+    const estimatedTime = `${Math.floor(secondsLeft / 60)
+        .toString()
+        .padStart(2, "0")}:${(secondsLeft % 60)
+            .toString()
+            .padStart(2, "0")}`;
+
     return (
         <div className="relative w-full">
             <Toaster
@@ -6969,13 +7061,35 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             })}
                         </div>
 
-                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                        {/* <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                             <p className="text-xs text-slate-400 truncate">
                                 {stepProgress.detail || "Initialising dashboard…"}
                             </p>
                             <span className="text-xs text-slate-400 shrink-0 ml-3">
                                 Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
                             </span>
+                        </div> */}
+
+                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+
+                            {/* LEFT */}
+                            <p className="text-xs text-slate-400 truncate">
+                                {stepProgress.detail || "Initialising dashboard…"}
+                            </p>
+
+                            {/* CENTER (Estimated Time) */}
+                            <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
+                                <span className="text-xs text-slate-400">Estimated:</span>
+                                <span className="text-xs font-medium text-slate-600">
+                                    {estimatedTime}
+                                </span>
+                            </div>
+
+                            {/* RIGHT */}
+                            <span className="text-xs text-slate-400 shrink-0">
+                                Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                            </span>
+
                         </div>
                     </div>
                 </div>
