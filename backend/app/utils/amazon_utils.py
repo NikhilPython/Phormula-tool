@@ -1194,7 +1194,7 @@ def run_upload_pipeline_from_df(
         ytd_pie_chart = process_yearly_skuwise_data(user_id, country, year)
         qtd_pie_chart = process_quarterly_skuwise_data(user_id, country, month, year, quarter, db_url)
     else:
-        platform_fee, rembursement_fee, total_cous, total_amazon_fee, total_profit, total_expense, total_fba_fees, cm2_profit, cm2_margins, acos, rembursment_vs_cm2_margins, advertising_total, reimbursement_vs_sales, unit_sold, total_sales, otherwplatform, taxncredit = \
+        platform_fee, rembursement_fee, total_cous, total_amazon_fee, total_profit, total_expense, total_fba_fees, cm2_profit, cm2_margins, acos, rembursment_vs_cm2_margins, advertising_total, reimbursement_vs_sales, unit_sold, total_sales, otherwplatform, taxncredit, total_product_sales = \
             process_skuwise_us_data(user_id, country, month, year)
         ytd_pie_chart = process_us_yearly_skuwise_data(user_id, country, year)
         qtd_pie_chart = process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db_url)
