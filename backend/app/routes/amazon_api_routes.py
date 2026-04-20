@@ -1328,13 +1328,184 @@ def finances_mtd_transactions():
     return jsonify(_json_safe(payload_out)), 200
 
 
+# from flask import request, jsonify
+# from sqlalchemy import text
+# import json
+# import re
+
+# def _safe_ident(value: str) -> str:
+#     value = (value or "").lower().strip()
+#     value = re.sub(r"[^a-z0-9_]+", "_", value)
+#     return value or "uk"
+
+# @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
+# def save_live_dashboard_data():
+#     auth_header = request.headers.get("Authorization")
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({"success": False, "error": "Missing token"}), 401
+
+#     token = auth_header.split(" ")[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         user_id = int(payload["user_id"])
+#     except Exception:
+#         return jsonify({"success": False, "error": "Invalid token"}), 401
+
+#     if request.method == "POST":
+#         body = request.get_json(silent=True) or {}
+
+#         country = _safe_ident(body.get("country") or "uk")
+#         platform = (body.get("platform") or "").strip().lower()
+#         region = (body.get("region") or "").strip()
+#         start_day = body.get("startDay")
+#         end_day = body.get("endDay")
+#         cache_payload = body.get("cachePayload") or {}
+#         saved_at = body.get("savedAt") or int(time.time() * 1000)
+
+#         table_name = f"live_data_{user_id}_{country}"
+#         cache_key = f"{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
+
+#         try:
+#             create_sql = f"""
+#             CREATE TABLE IF NOT EXISTS public."{table_name}" (
+#                 id SERIAL PRIMARY KEY,
+#                 user_id INT NOT NULL,
+#                 country TEXT NOT NULL,
+#                 platform TEXT,
+#                 region TEXT,
+#                 start_day INT NULL,
+#                 end_day INT NULL,
+#                 cache_key TEXT UNIQUE,
+#                 saved_at BIGINT,
+#                 payload JSONB NOT NULL,
+#                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+#                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+#             );
+#             """
+
+#             upsert_sql = f"""
+#             INSERT INTO public."{table_name}"
+#             (user_id, country, platform, region, start_day, end_day, cache_key, saved_at, payload)
+#             VALUES
+#             (:user_id, :country, :platform, :region, :start_day, :end_day, :cache_key, :saved_at, :payload)
+#             ON CONFLICT (cache_key)
+#             DO UPDATE SET
+#                 payload = EXCLUDED.payload,
+#                 saved_at = EXCLUDED.saved_at,
+#                 updated_at = CURRENT_TIMESTAMP
+#             """
+
+#             with PHORMULA_ENGINE.begin() as conn:
+#                 conn.execute(text(create_sql))
+#                 conn.execute(
+#                     text(upsert_sql),
+#                     {
+#                         "user_id": user_id,
+#                         "country": country,
+#                         "platform": platform,
+#                         "region": region,
+#                         "start_day": start_day,
+#                         "end_day": end_day,
+#                         "cache_key": cache_key,
+#                         "saved_at": saved_at,
+#                         "payload": json.dumps(cache_payload),
+#                     },
+#                 )
+
+#             return jsonify({
+#                 "success": True,
+#                 "table": table_name,
+#                 "cache_key": cache_key,
+#                 "message": "Live dashboard data stored successfully"
+#             }), 200
+
+#         except Exception as e:
+#             return jsonify({"success": False, "error": str(e)}), 500
+
+#     # ---------------- GET ----------------
+#     country = _safe_ident(request.args.get("country") or "uk")
+#     platform = (request.args.get("platform") or "").strip().lower()
+#     region = (request.args.get("region") or "").strip()
+#     start_day = request.args.get("start_day")
+#     end_day = request.args.get("end_day")
+
+#     start_day = int(start_day) if start_day not in (None, "", "null", "undefined") else None
+#     end_day = int(end_day) if end_day not in (None, "", "null", "undefined") else None
+
+#     table_name = f"live_data_{user_id}_{country}"
+#     cache_key = f"{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
+
+#     try:
+#         create_sql = f"""
+#         CREATE TABLE IF NOT EXISTS public."{table_name}" (
+#             id SERIAL PRIMARY KEY,
+#             user_id INT NOT NULL,
+#             country TEXT NOT NULL,
+#             platform TEXT,
+#             region TEXT,
+#             start_day INT NULL,
+#             end_day INT NULL,
+#             cache_key TEXT UNIQUE,
+#             saved_at BIGINT,
+#             payload JSONB NOT NULL,
+#             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+#             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+#         );
+#         """
+
+#         select_sql = f"""
+#         SELECT id, user_id, country, platform, region, start_day, end_day, cache_key,
+#                saved_at, payload, created_at, updated_at
+#         FROM public."{table_name}"
+#         WHERE cache_key = :cache_key
+#         ORDER BY updated_at DESC
+#         LIMIT 1
+#         """
+
+#         with PHORMULA_ENGINE.begin() as conn:
+#             conn.execute(text(create_sql))
+#             row = conn.execute(text(select_sql), {"cache_key": cache_key}).mappings().first()
+
+#         if not row:
+#             return jsonify({
+#                 "success": True,
+#                 "found": False,
+#                 "table": table_name,
+#                 "cache_key": cache_key,
+#                 "data": None
+#             }), 200
+
+#         return jsonify({
+#             "success": True,
+#             "found": True,
+#             "table": table_name,
+#             "cache_key": cache_key,
+#             "data": dict(row)
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
+
+
+
+
+from flask import request, jsonify
 from sqlalchemy import text
 import json
+import re
+import time
+
+def _safe_ident(value: str) -> str:
+    value = (value or "").lower().strip()
+    value = re.sub(r"[^a-z0-9_]+", "_", value)
+    return value or "uk"
 
 @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
-def live_dashboard_data():
-
-    # ---------------- AUTH ----------------
+def save_live_dashboard_data():
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"success": False, "error": "Missing token"}), 401
@@ -1346,100 +1517,166 @@ def live_dashboard_data():
     except Exception:
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
-    # =========================================================
-    # ======================= POST =============================
-    # =========================================================
     if request.method == "POST":
-        body = request.get_json(silent=True)
-        if not body:
-            return jsonify({"success": False, "error": "Missing JSON body"}), 400
+        body = request.get_json(silent=True) or {}
 
-        country = (body.get("country") or "uk").lower()
+        country = _safe_ident(body.get("country") or "uk")
+        platform = (body.get("platform") or "").strip().lower()
+        region = (body.get("region") or "").strip()
+        start_day = body.get("startDay")
+        end_day = body.get("endDay")
+        cache_payload = body.get("cachePayload") or {}
+        saved_at = body.get("savedAt") or int(time.time() * 1000)
+
         table_name = f"live_data_{user_id}_{country}"
+        cache_key = f"{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
 
         try:
-            # create table
             create_sql = f"""
             CREATE TABLE IF NOT EXISTS public."{table_name}" (
                 id SERIAL PRIMARY KEY,
-                user_id INT,
-                country TEXT,
+                user_id INT NOT NULL,
+                country TEXT NOT NULL,
+                platform TEXT,
+                region TEXT,
+                start_day INT NULL,
+                end_day INT NULL,
+                cache_key TEXT UNIQUE,
                 saved_at BIGINT,
-                month TEXT,
-                year INT,
-                payload JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                payload JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            """
+
+            upsert_sql = f"""
+            INSERT INTO public."{table_name}"
+            (user_id, country, platform, region, start_day, end_day, cache_key, saved_at, payload)
+            VALUES
+            (:user_id, :country, :platform, :region, :start_day, :end_day, :cache_key, :saved_at, :payload)
+            ON CONFLICT (cache_key)
+            DO UPDATE SET
+                payload = EXCLUDED.payload,
+                saved_at = EXCLUDED.saved_at,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id, user_id, country, platform, region, start_day, end_day,
+                      cache_key, saved_at, created_at, updated_at
             """
 
             with PHORMULA_ENGINE.begin() as conn:
                 conn.execute(text(create_sql))
-
-            saved_at = body.get("savedAt")
-            data_block = body.get("data", {})
-            month = data_block.get("month")
-
-            insert_sql = f"""
-            INSERT INTO public."{table_name}"
-            (user_id, country, saved_at, month, payload)
-            VALUES (:user_id, :country, :saved_at, :month, :payload)
-            """
-
-            with PHORMULA_ENGINE.begin() as conn:
-                conn.execute(
-                    text(insert_sql),
+                row = conn.execute(
+                    text(upsert_sql),
                     {
                         "user_id": user_id,
                         "country": country,
+                        "platform": platform,
+                        "region": region,
+                        "start_day": start_day,
+                        "end_day": end_day,
+                        "cache_key": cache_key,
                         "saved_at": saved_at,
-                        "month": month,
-                        "payload": json.dumps(body),
+                        "payload": json.dumps(cache_payload),
                     },
-                )
+                ).mappings().first()
 
             return jsonify({
                 "success": True,
                 "table": table_name,
-                "message": "Data stored successfully"
-            })
+                "cache_key": cache_key,
+                "data": {
+                    "id": row["id"] if row else None,
+                    "user_id": row["user_id"] if row else user_id,
+                    "country": row["country"] if row else country,
+                    "platform": row["platform"] if row else platform,
+                    "region": row["region"] if row else region,
+                    "start_day": row["start_day"] if row else start_day,
+                    "end_day": row["end_day"] if row else end_day,
+                    "saved_at": row["saved_at"] if row else saved_at,
+                    "created_at": row["created_at"].isoformat() if row and row.get("created_at") else None,
+                    "updated_at": row["updated_at"].isoformat() if row and row.get("updated_at") else None,
+                },
+                "message": "Live dashboard data stored successfully"
+            }), 200
 
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
 
-    # =========================================================
-    # ======================= GET ==============================
-    # =========================================================
-    elif request.method == "GET":
+    country = _safe_ident(request.args.get("country") or "uk")
+    platform = (request.args.get("platform") or "").strip().lower()
+    region = (request.args.get("region") or "").strip()
+    start_day = request.args.get("start_day")
+    end_day = request.args.get("end_day")
 
-        country = (request.args.get("country") or "uk").lower()
-        limit = int(request.args.get("limit", 10))
+    start_day = int(start_day) if start_day not in (None, "", "null", "undefined") else None
+    end_day = int(end_day) if end_day not in (None, "", "null", "undefined") else None
 
-        table_name = f"live_data_{user_id}_{country}"
+    table_name = f"live_data_{user_id}_{country}"
+    cache_key = f"{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
 
-        try:
-            query = f"""
-            SELECT id, saved_at, month, payload, created_at
-            FROM public."{table_name}"
-            ORDER BY created_at DESC
-            LIMIT :limit
-            """
+    try:
+        create_sql = f"""
+        CREATE TABLE IF NOT EXISTS public."{table_name}" (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL,
+            country TEXT NOT NULL,
+            platform TEXT,
+            region TEXT,
+            start_day INT NULL,
+            end_day INT NULL,
+            cache_key TEXT UNIQUE,
+            saved_at BIGINT,
+            payload JSONB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
 
-            with PHORMULA_ENGINE.begin() as conn:
-                result = conn.execute(text(query), {"limit": limit})
-                rows = [dict(row._mapping) for row in result]
+        select_sql = f"""
+        SELECT id, user_id, country, platform, region, start_day, end_day,
+               cache_key, saved_at, payload, created_at, updated_at
+        FROM public."{table_name}"
+        WHERE cache_key = :cache_key
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """
 
+        with PHORMULA_ENGINE.begin() as conn:
+            conn.execute(text(create_sql))
+            row = conn.execute(
+                text(select_sql),
+                {"cache_key": cache_key}
+            ).mappings().first()
+
+        if not row:
             return jsonify({
                 "success": True,
+                "found": False,
                 "table": table_name,
-                "count": len(rows),
-                "data": rows
-            })
+                "cache_key": cache_key,
+                "data": None
+            }), 200
 
-        except Exception as e:
-            return jsonify({
-                "success": False,
-                "error": str(e)
-            }), 500
-        
+        return jsonify({
+            "success": True,
+            "found": True,
+            "table": table_name,
+            "cache_key": cache_key,
+            "data": {
+                "id": row["id"],
+                "user_id": row["user_id"],
+                "country": row["country"],
+                "platform": row["platform"],
+                "region": row["region"],
+                "start_day": row["start_day"],
+                "end_day": row["end_day"],
+                "cache_key": row["cache_key"],
+                "saved_at": row["saved_at"],
+                "payload": row["payload"],
+                "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+                "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+            }
+        }), 200
 
-        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

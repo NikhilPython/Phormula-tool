@@ -187,6 +187,7 @@ const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
 const SB_KEYWORD_ENDPOINT = `${baseURL}/api/ads/manager/sb_keyword_report`;
+const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
 
 const USE_MANUAL_LAST_MONTH =
     (process.env.NEXT_PUBLIC_USE_MANUAL_LAST_MONTH || "false").toLowerCase() ===
@@ -1383,6 +1384,9 @@ export default function DashboardPage() {
 
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
+
+
+
     const forcedRegion: RegionKey = useMemo(() => {
         switch (platform) {
             case "amazon-uk":
@@ -1637,6 +1641,14 @@ export default function DashboardPage() {
     //     });
     // }, [top5Skus, skuToProductName, inventoryAlerts, dismissedAlerts]);
 
+    const getJwtToken = () =>
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    const liveCacheCountry = useMemo(() => {
+        if (platform === "amazon-us") return "us";
+        if (platform === "amazon-ca") return "ca";
+        return "uk";
+    }, [platform]);
 
 
     useEffect(() => {
@@ -3081,77 +3093,10 @@ export default function DashboardPage() {
         fetchInventory,
     ]);
 
-    const liveCacheKey = useMemo(() => {
-        return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
-    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
-
-    const restoreLiveCache = useCallback(() => {
-        if (typeof window === "undefined") return false;
-
-        const raw = localStorage.getItem(liveCacheKey);
-        if (!raw) return false;
-
-        try {
-            const parsed = JSON.parse(raw);
-
-            setData(parsed.data ?? null);
-            setBiDailySeries(parsed.biDailySeries ?? null);
-            setBiPeriods(parsed.biPeriods ?? null);
-            setLiveBiPayload(parsed.liveBiPayload ?? null);
-            setBiAlignedTotals(parsed.biAlignedTotals ?? null);
-            setInvRows(parsed.invRows ?? []);
-            setInventoryAlerts(parsed.inventoryAlerts ?? {});
-            setMonthlySpRows(parsed.monthlySpRows ?? []);
-            setMonthlySpTotalSpend(parsed.monthlySpTotalSpend ?? null);
-            setLiveBiReady(!!parsed.liveBiReady);
-
-            setBiStatus(parsed.biStatus ?? (parsed.biDailySeries ? "ready" : "idle"));
-            setBiLoading(false);
-            setBiError(null);
-
-            return true;
-        } catch {
-            return false;
-        }
-    }, [liveCacheKey]);
-
-    const saveLiveCache = useCallback(() => {
-        if (typeof window === "undefined") return;
-
-        localStorage.setItem(
-            liveCacheKey,
-            JSON.stringify({
-                data,
-                biDailySeries,
-                biPeriods,
-                liveBiPayload,
-                biAlignedTotals,
-                invRows,
-                inventoryAlerts,
-                monthlySpRows,
-                monthlySpTotalSpend,
-                liveBiReady,
-                biStatus,
-                savedAt: Date.now(),
-            })
-        );
-    }, [
-        liveCacheKey,
-        data,
-        biDailySeries,
-        biPeriods,
-        liveBiPayload,
-        biAlignedTotals,
-        invRows,
-        inventoryAlerts,
-        monthlySpRows,
-        monthlySpTotalSpend,
-        liveBiReady,
-    ]);
-
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
     const [refreshNow, setRefreshNow] = useState(Date.now());
+    const [dbUpdatedAt, setDbUpdatedAt] = useState<string | null>(null);
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
@@ -3214,39 +3159,180 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
 
-    const handleHardRefresh = useCallback(() => {
+    const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
         const now = Date.now();
         localStorage.setItem(LAST_REFRESH_KEY, String(now));
         setLastRefreshAt(now);
 
-        localStorage.removeItem(liveCacheKey);
+        resetStepState();
+        await runDashboardLoadWithSteps();
+    }, [runDashboardLoadWithSteps]);
 
-        Object.keys(localStorage).forEach((key) => {
-            if (key.startsWith("live-dashboard-cache:")) {
-                localStorage.removeItem(key);
-            }
+
+    const buildLiveDashboardCachePayload = useCallback(() => {
+        return {
+            data,
+            biDailySeries,
+            biPeriods,
+            liveBiPayload,
+            biAlignedTotals,
+            invRows,
+            inventoryAlerts,
+            monthlySpRows,
+            monthlySpTotalSpend,
+            liveBiReady,
+            biStatus,
+            savedAt: Date.now(),
+        };
+    }, [
+        data,
+        biDailySeries,
+        biPeriods,
+        liveBiPayload,
+        biAlignedTotals,
+        invRows,
+        inventoryAlerts,
+        monthlySpRows,
+        monthlySpTotalSpend,
+        liveBiReady,
+        biStatus,
+    ]);
+
+    const restoreLiveCacheFromDb = useCallback(async (): Promise<boolean> => {
+        const token = getJwtToken();
+        if (!token) return false;
+
+        const params = new URLSearchParams({
+            country: liveCacheCountry,
+            platform,
+            region: activeDateRegion,
         });
 
-        resetStepState();
-        window.location.reload();
-    }, [liveCacheKey]);
+        if (selectedStartDay != null) {
+            params.set("start_day", String(selectedStartDay));
+        }
+        if (selectedEndDay != null) {
+            params.set("end_day", String(selectedEndDay));
+        }
+
+        const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params.toString()}`, {
+            method: "GET",
+            headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        if (!res.ok) return false;
+
+        const json = await res.json();
+        if (!json?.success || !json?.found || !json?.data?.payload) return false;
+
+        const parsed = json.data.payload;
+        setDbUpdatedAt(json.data.updated_at ?? null);
+        setData(parsed.data ?? null);
+        setBiDailySeries(parsed.biDailySeries ?? null);
+        setBiPeriods(parsed.biPeriods ?? null);
+        setLiveBiPayload(parsed.liveBiPayload ?? null);
+        setBiAlignedTotals(parsed.biAlignedTotals ?? null);
+        setInvRows(parsed.invRows ?? []);
+        setInventoryAlerts(parsed.inventoryAlerts ?? {});
+        setMonthlySpRows(parsed.monthlySpRows ?? []);
+        setMonthlySpTotalSpend(parsed.monthlySpTotalSpend ?? null);
+        setLiveBiReady(!!parsed.liveBiReady);
+
+        setBiStatus(parsed.biStatus ?? (parsed.biDailySeries ? "ready" : "idle"));
+        setBiLoading(false);
+        setBiError(null);
+
+        return true;
+    }, [
+        liveCacheCountry,
+        platform,
+        activeDateRegion,
+        selectedStartDay,
+        selectedEndDay,
+    ]);
+
+    const saveLiveCacheToDb = useCallback(async (): Promise<void> => {
+        const token = getJwtToken();
+        if (!token) return;
+
+        const payload = buildLiveDashboardCachePayload();
+
+        const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                country: liveCacheCountry,
+                platform,
+                region: activeDateRegion,
+                startDay: selectedStartDay,
+                endDay: selectedEndDay,
+                savedAt: Date.now(),
+                cachePayload: payload,
+            }),
+        });
+
+        const json = await res.json().catch(() => null);
+        if (json?.data?.updated_at) {
+            setDbUpdatedAt(json.data.updated_at);
+        }
+    }, [
+        buildLiveDashboardCachePayload,
+        liveCacheCountry,
+        platform,
+        activeDateRegion,
+        selectedStartDay,
+        selectedEndDay,
+    ]);
 
     useEffect(() => {
-        const restored = restoreLiveCache();
-        if (restored) return;
+        const boot = async () => {
+            const restored = await restoreLiveCacheFromDb();
+            if (restored) return;
 
-        runDashboardLoadWithSteps().catch((err) => {
+            await runDashboardLoadWithSteps();
+        };
+
+        boot().catch((err: unknown) => {
             console.error("Dashboard step load failed:", err);
         });
-    }, [restoreLiveCache, runDashboardLoadWithSteps]);
+    }, [restoreLiveCacheFromDb, runDashboardLoadWithSteps]);
 
     useEffect(() => {
         if (!data && !liveBiPayload && !invRows.length) return;
-        saveLiveCache();
-    }, [saveLiveCache, data, liveBiPayload, invRows]);
 
+        saveLiveCacheToDb().catch((err: unknown) => {
+            console.error("Failed to save dashboard cache to DB:", err);
+        });
+    }, [saveLiveCacheToDb, data, liveBiPayload, invRows]);
+
+
+    const getRelativeDbRefreshText = useCallback((ts: string | null) => {
+        if (!ts) return "Never updated";
+
+        const updatedMs = new Date(ts).getTime();
+        if (Number.isNaN(updatedMs)) return "Never updated";
+
+        const diffMs = refreshNow - updatedMs;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHr = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHr / 24);
+
+        if (diffSec < 60) return "Updated just now";
+        if (diffMin < 60) return `Updated ${diffMin} min ago`;
+        if (diffHr < 24) return `Updated ${diffHr} hr ago`;
+        return `Updated ${diffDay} day ago`;
+    }, [refreshNow]);
+    
     // useEffect(() => {
     //     if (didRefreshRef.current) return;
     //     didRefreshRef.current = true;
@@ -5408,6 +5494,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+            acos: 0,
             cm2_profit: 0,
             profit: 0,
         },
@@ -5429,6 +5516,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+            acos: 0,
             cm2_profit: 0,
             profit: 0,
         },
@@ -5450,6 +5538,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
             ads_spend: 0,
+            acos: 0,
             cm2_profit: 0,
             profit: 0,
             isTotal: true,
