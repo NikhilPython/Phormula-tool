@@ -69,8 +69,6 @@ amazon_api_bp = Blueprint("amazon_api", __name__)
 # ------------------------------------------------- Routes -------------------------------------------------
 @amazon_api_bp.route("/amazon_api/login", methods=["GET"])
 def amazon_login():
-
-    # -------- auth --------
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
@@ -82,32 +80,38 @@ def amazon_login():
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
-    
+
     _apply_region_and_marketplace_from_request()
 
     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    # Store in DB (create or update record for this user)
-    au = amazon_user.query.filter_by(user_id=user_id).first()
+    marketplace_id = amazon_client.marketplace_id
+    region = amazon_client.region
+
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=marketplace_id
+    ).first()
+
     if not au:
         au = amazon_user(
             user_id=user_id,
-            region=amazon_client.region,
-            marketplace_id=amazon_client.marketplace_id,
-            marketplace_name=amazon_client.marketplace_id,
+            region=region,
+            marketplace_id=marketplace_id,
+            marketplace_name=marketplace_id,
             currency=None,
-            refresh_token=""
+            refresh_token="",
+            is_connected=False
         )
         db.session.add(au)
     else:
-        au.region = amazon_client.region
-        au.marketplace_id = amazon_client.marketplace_id
+        au.region = region
+        au.marketplace_id = marketplace_id
 
     db.session.commit()
 
-    # IMPORTANT: encode user_id into state
-    state = f"uid_{user_id}_{int(time.time())}"
+    state = f"uid|{user_id}|{marketplace_id}|{int(time.time())}"
 
     return jsonify({
         "success": True,
@@ -115,24 +119,22 @@ def amazon_login():
         "state": state
     })
 
-
 @amazon_api_bp.route("/amazon_api/callback", methods=["GET"])
 def amazon_oauth_callback():
     code = request.args.get("spapi_oauth_code")
     state = request.args.get("state") or ""
 
-    # ------------------ Validate state ------------------
-    # Expected: uid_{user_id}_{timestamp}
-    if not state.startswith("uid_"):
+    if not state.startswith("uid|"):
         return make_response("Invalid state received", 400)
 
     try:
-        parts = state.split("_")  # ["uid", "5", "1732451234"]
+        # uid|123|ATVPDKIKX0DER|1713680000
+        parts = state.split("|")
         user_id = int(parts[1])
+        marketplace_id = parts[2]
     except Exception:
         return make_response("Invalid state format", 400)
 
-    # ------------------ Exchange code for refresh token ------------------
     r = requests.post(
         AmazonSPAPIClient.TOKEN_URL,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -153,32 +155,34 @@ def amazon_oauth_callback():
     if not refresh:
         return make_response("No refresh token returned", 400)
 
-    # ------------------ Save refresh token to DB ------------------
-    au = amazon_user.query.filter_by(user_id=user_id).first()
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=marketplace_id
+    ).first()
 
     if not au:
-        # In case login row wasn’t created (fallback safety)
         au = amazon_user(
             user_id=user_id,
             region=amazon_client.region,
-            marketplace_id=amazon_client.marketplace_id,
+            marketplace_id=marketplace_id,
             refresh_token=refresh,
+            is_connected=True
         )
         db.session.add(au)
     else:
         au.refresh_token = refresh
+        au.is_connected = True
+        au.updated_at = datetime.utcnow()
 
     db.session.commit()
 
-    # save to local memory & .refresh_token (optional)
     amazon_client.refresh_token = refresh
     try:
         with open(".refresh_token", "w") as f:
             f.write(refresh)
-    except:
+    except Exception:
         pass
 
-    # ------------------ Success HTML ------------------
     return """
         <html><body style='font-family: system-ui;'>
             <p>✅ Amazon account linked successfully. You may close this window.</p>
@@ -196,10 +200,8 @@ def amazon_oauth_callback():
         </body></html>
     """ % refresh
 
-
 @amazon_api_bp.route("/amazon_api/status", methods=["GET"])
 def amazon_status():
-    # -------- auth (same as amazon_login) --------
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'success': False, 'error': 'Authorization token is missing or invalid'}), 401
@@ -212,20 +214,18 @@ def amazon_status():
     except jwt.InvalidTokenError:
         return jsonify({'success': False, 'error': 'Invalid token'}), 401
 
-    # -------- region + marketplace from request --------
     _apply_region_and_marketplace_from_request()
 
     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    # -------- load from DB for this user & region --------
-    # if you support multi-region per user, filter by both user + region
+    marketplace_id = amazon_client.marketplace_id
+
     au = amazon_user.query.filter_by(
         user_id=user_id,
-        region=amazon_client.region
+        marketplace_id=marketplace_id
     ).first()
 
-    # No row at all: user hasn't even started the connect flow
     if not au:
         return jsonify({
             "success": False,
@@ -233,7 +233,6 @@ def amazon_status():
             "has_refresh_token": False,
         }), 200
 
-    # Row exists but refresh_token is blank / null: OAuth not finished
     if not au.refresh_token:
         return jsonify({
             "success": False,
@@ -241,7 +240,6 @@ def amazon_status():
             "has_refresh_token": False,
         }), 200
 
-    # We DO have a refresh token in DB → set on client and make the API call
     amazon_client.refresh_token = au.refresh_token
 
     res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
@@ -256,9 +254,10 @@ def amazon_status():
     return jsonify({
         "success": False,
         "status": "sp_api_error",
-        "has_refresh_token": True,  # token exists but API call failed
+        "has_refresh_token": True,
         "error": res
     }), 502
+
 
 @amazon_api_bp.route("/amazon_api/health", methods=["GET"])
 def amazon_health():
@@ -281,25 +280,56 @@ def list_skus():
     token = auth_header.split(" ")[1]
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = payload.get("user_id")
+        user_id = int(payload["user_id"])
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"error": "Invalid token payload"}), 401
 
     _apply_region_and_marketplace_from_request()
 
-    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+    marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    # Load refresh token from DB for this exact marketplace
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=marketplace_id
+    ).first()
+
+    if not au:
+        return jsonify({
+            "success": False,
+            "error": "Amazon connection not found for this marketplace",
+            "marketplace_id": marketplace_id
+        }), 404
+
+    if not au.refresh_token:
+        return jsonify({
+            "success": False,
+            "error": "No refresh token found for this marketplace. Complete OAuth first.",
+            "marketplace_id": marketplace_id
+        }), 400
+
+    amazon_client.refresh_token = au.refresh_token
+
     store_in_db = request.args.get("store_in_db", "true").lower() != "false"
 
-    skus = _fetch_fba_skus_all(mp)
+    try:
+        skus = _fetch_fba_skus_all(marketplace_id)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to fetch SKUs from Amazon: {str(e)}",
+            "marketplace_id": marketplace_id
+        }), 502
 
     out = {
         "success": True,
-        "marketplace_id": mp,
+        "marketplace_id": marketplace_id,
         "count": len(skus),
         "skus": skus,
         "empty_message": "There is no SKU listed in this seller account." if not skus else None,
@@ -311,7 +341,7 @@ def list_skus():
     if store_in_db and skus:
         try:
             out["open_date"]["attempted"] = True
-            saved_count = _upsert_products_to_db_with_open_date(skus, mp, user_id)
+            saved_count = _upsert_products_to_db_with_open_date(skus, marketplace_id, user_id)
             out["db"] = {"saved_products": saved_count}
             out["open_date"]["updated"] = saved_count
         except Exception as e:
@@ -325,15 +355,58 @@ def list_skus():
 
 @amazon_api_bp.route("/amazon_api/account", methods=["GET"])
 def amazon_account():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+    token = auth_header.split(" ")[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(payload["user_id"])
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"error": "Invalid token payload"}), 401
+
     _apply_region_and_marketplace_from_request()
 
-    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+    marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    if not amazon_client.refresh_token:
-        return jsonify({"success": False, "error": "No refresh token. Complete OAuth."}), 400
+    # Load refresh token from DB for this exact marketplace
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=marketplace_id
+    ).first()
 
-    res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
+    if not au:
+        return jsonify({
+            "success": False,
+            "error": "Amazon connection not found for this marketplace",
+            "marketplace_id": marketplace_id
+        }), 404
+
+    if not au.refresh_token:
+        return jsonify({
+            "success": False,
+            "error": "No refresh token found. Complete OAuth first.",
+            "marketplace_id": marketplace_id
+        }), 400
+
+    amazon_client.refresh_token = au.refresh_token
+
+    try:
+        res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Failed to fetch account info",
+            "details": str(e)
+        }), 502
+
     if not res or "error" in res:
         return jsonify({
             "success": False,
@@ -350,9 +423,12 @@ def amazon_account():
         }), 502
 
     accounts = []
-    for item in (data if isinstance(data, list) else data.get("marketplaceParticipations", [])):
+    items = data if isinstance(data, list) else data.get("marketplaceParticipations", [])
+
+    for item in items:
         mkt = (item or {}).get("marketplace", {})
         part = (item or {}).get("participation", {})
+
         accounts.append({
             "marketplaceId": mkt.get("id"),
             "marketplaceName": mkt.get("name"),
@@ -366,11 +442,15 @@ def amazon_account():
 
     return jsonify({
         "success": True,
-        "region": amazon_client.region,
-        "marketplace_id": amazon_client.marketplace_id,
+        "region": au.region,
+        "marketplace_id": marketplace_id,
+        "marketplace_name": au.marketplace_name,
+        "db_country": au.country_name,
+        "db_currency": au.currency,
         "count": len(accounts),
         "accounts": accounts,
     }), 200
+
 
 
 @amazon_api_bp.route("/amazon_api/connections", methods=["GET"])
@@ -398,6 +478,10 @@ def list_amazon_connections():
                 "marketplace_id": r.marketplace_id,
                 "marketplace_name": r.marketplace_name,
                 "currency": r.currency,
+                "is_connected": r.is_connected,
+                "country": r.country_name,
+                "stock_unit": r.stock_unit,
+                "transit_time": r.transit_time
             }
             for r in rows
         ]
@@ -664,7 +748,10 @@ def finances_mtd_transactions():
     # ---------------- Region + marketplace ----------------
     _apply_region_and_marketplace_from_request()
 
-    au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=amazon_client.marketplace_id
+    ).first()
     if not au or not au.refresh_token:
         return (
             jsonify(

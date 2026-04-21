@@ -99,6 +99,8 @@ class User(db.Model):
     # ✅ NEW
     sku_sheet_exists = db.Column(db.Boolean, default=False)
     steps_exists = db.Column(db.Boolean, default=False)
+    amazon_connected = db.Column(db.Boolean, default=False)
+    connected_marketplaces_count = db.Column(db.Integer, default=0)
 
 
 class Category(db.Model):
@@ -898,22 +900,34 @@ class amazon_user(db.Model):
     __bind_key__ = 'amazon'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+
     refresh_token = db.Column(db.Text, nullable=False)
-    region = db.Column(db.String(50), nullable=True)
-    marketplace_id = db.Column(db.String(20), nullable=True)
+    region = db.Column(db.String(50), nullable=False)
+    marketplace_id = db.Column(db.String(20), nullable=False)
     marketplace_name = db.Column(db.String(255), nullable=True)
     currency = db.Column(db.String(10), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    country_code = db.Column(db.String(10), nullable=True)
+    country_name = db.Column(db.String(50), nullable=True)
+
+    stock_unit = db.Column(db.Integer, nullable=True)
+    transit_time = db.Column(db.Integer, nullable=True)
+
+    is_connected = db.Column(db.Boolean, default=False)
+
     amazon_ads_refresh_token = db.Column(db.Text, nullable=True)
     amazon_ads_refresh_token_updated_at = db.Column(db.DateTime, nullable=True)
 
-    amazon_ads_profile_id_uk = db.Column(db.String(32), nullable=True)
-    amazon_ads_profile_id_us = db.Column(db.String(32), nullable=True)
-    amazon_ads_profile_id_ca = db.Column(db.String(32), nullable=True)
+    amazon_ads_profile_id = db.Column(db.String(32), nullable=True)
     amazon_ads_manager_profile_id = db.Column(db.String(32), nullable=True)
 
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'marketplace_id', name='uq_user_marketplace'),
+    )
 
 class amazon_sponsored_products(db.Model):
     __tablename__ = "amazon_sponsored_products"
