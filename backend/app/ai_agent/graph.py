@@ -467,7 +467,12 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
 def _build_tool_plan(state: AgentState) -> List[str]:
     metric_name = state.get("metric_name")
 
-    # -------- 🔥 METRIC-AWARE ROUTING (NEW CORE FIX) --------
+    # -------- 🔥 GLOBAL PRIORITY FIX: GROWTH FIRST --------
+    if state.get("analysis_type") == "growth":
+        logger.info("[ROUTE_FIX] growth → standard_analysis")
+        return ["standard_analysis"]
+
+    # -------- 🔥 METRIC-AWARE ROUTING --------
     if metric_name:
         try:
             metric_def = get_metric_def(metric_name)
@@ -479,37 +484,29 @@ def _build_tool_plan(state: AgentState) -> List[str]:
                 f"time_breakdown={metric_def.supports_time_breakdown}"
             )
 
-            # -------- BREAKDOWN FIX --------
+            # -------- BREAKDOWN --------
             if state.get("analysis_type") == "breakdown":
-                if not metric_def.supports_product_breakdown:
-                    logger.info("[ROUTE_FIX] total metric → forcing standard_analysis (time breakdown)")
-                    return ["standard_analysis"]
-                else:
-                    logger.info("[ROUTE_FIX] sku metric → standard breakdown")
-                    return ["standard_analysis"]
+                return ["standard_analysis"]
 
             # -------- TREND --------
             if state.get("analysis_type") == "trend":
-                logger.info("[ROUTE] trend → standard_analysis")
                 return ["standard_analysis"]
 
             # -------- COMPARISON --------
             if state.get("analysis_type") == "comparison":
-                logger.info("[ROUTE] comparison → standard_analysis")
                 return ["standard_analysis"]
 
         except Exception:
             logger.exception("[METRIC_BEHAVIOR_ERROR]")
 
-    # -------- ORIGINAL LOGIC --------
-
+    # -------- INTENT --------
     if state.get("intent") == "event_planner" or state.get("analysis_type") == "event_plan":
         return ["event_plan"]
 
     if state.get("intent") in {"chat", "explain", "clarify"}:
         return []
 
-    # -------- 🔥 CRITICAL FIX: DECISION OVERRIDE FIRST --------
+    # -------- 🔥 DECISION MODE --------
     if state.get("reasoning_mode") == "decision":
         logger.info("[ROUTE_FIX] decision mode → decision tool")
         return ["decision"]
@@ -517,26 +514,25 @@ def _build_tool_plan(state: AgentState) -> List[str]:
     # -------- SKU LOGIC --------
     if state.get("dimension") == "sku":
 
+        # multi product → standard
         if state.get("product_queries") and len(state.get("product_queries") or []) > 1:
             return ["standard_analysis"]
 
+        # single product deep dive
         if state.get("product_query") and state.get("reasoning_mode") == "analysis":
             return ["sku_intelligence"]
 
-        # 🔥 FORCE growth to standard_analysis
-        if state.get("analysis_type") == "growth":
-            return ["standard_analysis"]
-
+        # ranking
         if state.get("answer_shape") == "ranking":
             return ["ranking"]
 
+        # trend
         if state.get("analysis_type") == "trend":
             return ["sku_trend"]
 
         return ["standard_analysis"]
 
-    # -------- FALLBACK LOGIC --------
-
+    # -------- FALLBACK --------
     if state.get("analysis_type") == "sku_intelligence":
         return ["sku_intelligence"]
 
@@ -891,12 +887,13 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         analysis_type = state.get("analysis_type") or "absolute"
         metric_names = state.get("metric_names")
         product_queries = state.get("product_queries")
+        months = state.get("target_months") or state.get("period_parsed", {}).get("months")
+
         # -------- 🔥 FIX: NORMALIZE PRODUCT FILTER --------
         if not product_queries and state.get("product_query"):
             product_queries = [state.get("product_query")]
 
         state["product_queries"] = product_queries
-        months = state.get("target_months") or state.get("period_parsed", {}).get("months")
 
         logger.info(
             f"[STANDARD_ANALYSIS_START] metric={metric_name}, "
@@ -909,9 +906,21 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             if payload.get("type") == "single":
                 months = [{"month": payload["month"], "year": payload["year"]}]
             elif payload.get("type") == "last_n_months":
-                months = [{"month": mk.month, "year": mk.year} for mk in _last_n_window(engine, state["user_id"], state["country"], payload["n"])]
+                months = [
+                    {"month": mk.month, "year": mk.year}
+                    for mk in _last_n_window(engine, state["user_id"], state["country"], payload["n"])
+                ]
             elif payload.get("type") == "range":
-                dfs = fetch_period_dfs(engine, state["user_id"], state["country"], payload["start_month"], payload["start_year"], payload["end_month"], payload["end_year"], skip_missing=True)
+                dfs = fetch_period_dfs(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    payload["start_month"],
+                    payload["start_year"],
+                    payload["end_month"],
+                    payload["end_year"],
+                    skip_missing=True,
+                )
                 months = [{"month": mk.month, "year": mk.year} for mk, _ in dfs]
 
             if months:
@@ -950,155 +959,153 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             state["current_metrics"] = {
                 "metric": metric_name,
                 "period_label": f"{comp['left']['label']} vs {comp['right']['label']}",
-                "total": comp["left"]["total"]
+                "total": comp["left"]["total"],
             }
             state["analysis_result"] = {"type": "comparison"}
             return state
 
-       # -------- 🔥 FIX 1: SMART TIME HANDLING --------
-        base = payload.get("base", payload)
+        # -------- GROWTH ONLY --------
+        if analysis_type == "growth":
+            base = payload.get("base", payload)
 
-        if base.get("type") == "last_n":
-            n = base.get("n", 6)
-            n = min(n, 12)
+            if base.get("type") == "last_n":
+                n = base.get("n", 6)
+                n = min(n, 12)
 
-            months_full = _last_n_window(
-                engine,
-                state["user_id"],
-                state["country"],
-                n,
-                extra_for_mom=True
-            )
-
-        elif base.get("type") in {"range", "multi_month"}:
-            logger.info("[GROWTH] Using parsed range")
-
-            if "months" in base:
-                # multi_month
-                months_full = [
-                    MonthKey(year=m["year"], month=m["month"])
-                    for m in base.get("months", [])
-                ]
-            else:
-                # start-end range
-                months_full = []
-                cur_month = base["start_month"]
-                cur_year = base["start_year"]
-
-                while (
-                    cur_year < base["end_year"]
-                    or (cur_year == base["end_year"] and cur_month <= base["end_month"])
-                ):
-                    months_full.append(MonthKey(year=cur_year, month=cur_month))
-
-                    cur_month += 1
-                    if cur_month > 12:
-                        cur_month = 1
-                        cur_year += 1
-
-        elif base.get("type") == "single":
-            logger.info("[GROWTH] Single month → expanding for growth")
-
-            months_full = _last_n_window(
-                engine,
-                state["user_id"],
-                state["country"],
-                2,
-                extra_for_mom=True
-            )
-
-        else:
-            logger.info("[GROWTH] Fallback window")
-
-            months_full = _last_n_window(
-                engine,
-                state["user_id"],
-                state["country"],
-                6,
-                extra_for_mom=True
-            )
-
-        # -------- 🔥 MOVE EVERYTHING BELOW OUTSIDE IF/ELSE --------
-
-        if len(months_full) < 2:
-            logger.warning("[GROWTH] Not enough months")
-            state["analysis_result"] = {"type": "growth", "series": []}
-            return state
-
-        logger.info(f"[GROWTH_MONTHS] {[m.label for m in months_full]}")
-
-        series_result = build_time_series_analysis(
-            engine,
-            state["user_id"],
-            state["country"],
-            metric_name,
-            months_full
-        )
-
-        # -------- 🔥 PRODUCT-AWARE GROWTH --------
-        product_query = state.get("product_query")
-
-        if product_query:
-            logger.info(f"[GROWTH_PRODUCT] Filtering for product: {product_query}")
-
-            series = []
-            for mk in months_full:
-                result_month = get_metric_for_month(
+                months_full = _last_n_window(
                     engine,
                     state["user_id"],
                     state["country"],
-                    metric_name,
-                    mk.month,
-                    mk.year
+                    n,
+                    extra_for_mom=True,
                 )
 
-                rows = result_month.get("per_sku", [])
-                value = 0.0
+            elif base.get("type") in {"range", "multi_month"}:
+                logger.info("[GROWTH] Using parsed range")
 
-                for r in rows:
-                    name = r.get("product_name", "").lower()
-                    if product_query.lower() in name or name in product_query.lower():
-                        value = float(r.get("__metric__", 0.0))
-                        break
+                if "months" in base:
+                    months_full = [
+                        MonthKey(year=m["year"], month=m["month"])
+                        for m in base.get("months", [])
+                    ]
+                else:
+                    months_full = []
+                    cur_month = base["start_month"]
+                    cur_year = base["start_year"]
 
-                series.append({
-                    "period_label": mk.label,
-                    "__metric__": value,
-                    "month": mk.month,
-                    "year": mk.year
-                })
+                    while (
+                        cur_year < base["end_year"]
+                        or (cur_year == base["end_year"] and cur_month <= base["end_month"])
+                    ):
+                        months_full.append(MonthKey(year=cur_year, month=cur_month))
 
-            series_result["series"] = series
+                        cur_month += 1
+                        if cur_month > 12:
+                            cur_month = 1
+                            cur_year += 1
 
-            # 🔥 RECOMPUTE MOM FOR PRODUCT SERIES
-            mom = []
-            for i in range(1, len(series)):
-                curr = series[i]["__metric__"]
-                prev = series[i-1]["__metric__"]
+            elif base.get("type") == "single":
+                logger.info("[GROWTH] Single month → expanding for growth")
 
-                pct = ((curr - prev) / prev * 100) if prev else 0.0
+                months_full = _last_n_window(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    2,
+                    extra_for_mom=True,
+                )
 
-                mom.append({
-                    "period_label": series[i]["period_label"],
-                    "current": curr,
-                    "pct_change": pct
-                })
+            else:
+                logger.info("[GROWTH] Fallback window")
 
-            series_result["mom"] = mom
+                months_full = _last_n_window(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    6,
+                    extra_for_mom=True,
+                )
 
-        # -------- 🔥 FINAL OUTPUT --------
-        state["analysis_result"] = {
-            "type": "growth",
-            **series_result
-        }
+            if len(months_full) < 2:
+                logger.warning("[GROWTH] Not enough months")
+                state["analysis_result"] = {"type": "growth", "series": []}
+                return state
 
-        state["current_metrics"] = {
-            "metric": metric_name,
-            "period_label": f"{months_full[0].label} to {months_full[-1].label}",
-            "total": sum(float(x.get("__metric__", 0.0)) for x in series_result.get("series", []))
-        }
+            logger.info(f"[GROWTH_MONTHS] {[m.label for m in months_full]}")
 
-        return state
+            series_result = build_time_series_analysis(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name,
+                months_full,
+            )
+
+            # -------- PRODUCT-AWARE GROWTH --------
+            product_query = state.get("product_query")
+
+            if product_query:
+                logger.info(f"[GROWTH_PRODUCT] Filtering for product: {product_query}")
+
+                series = []
+                for mk in months_full:
+                    result_month = get_metric_for_month(
+                        engine,
+                        state["user_id"],
+                        state["country"],
+                        metric_name,
+                        mk.month,
+                        mk.year,
+                    )
+
+                    rows = result_month.get("per_sku", [])
+                    value = 0.0
+
+                    for r in rows:
+                        name = str(r.get("product_name", "")).strip().lower()
+                        pq = str(product_query).strip().lower()
+
+                        if name == pq:
+                            value = float(r.get("__metric__", 0.0))
+                            break
+
+                    series.append({
+                        "period_label": mk.label,
+                        "__metric__": value,
+                        "month": mk.month,
+                        "year": mk.year,
+                    })
+
+                series_result["series"] = series
+
+                # -------- RECOMPUTE MOM FOR PRODUCT SERIES --------
+                mom = []
+                for i in range(1, len(series)):
+                    curr = series[i]["__metric__"]
+                    prev = series[i - 1]["__metric__"]
+
+                    pct = ((curr - prev) / prev * 100) if prev else 0.0
+
+                    mom.append({
+                        "period_label": series[i]["period_label"],
+                        "current": curr,
+                        "pct_change": pct,
+                    })
+
+                series_result["mom"] = mom
+
+            state["analysis_result"] = {
+                "type": "growth",
+                **series_result,
+            }
+
+            state["current_metrics"] = {
+                "metric": metric_name,
+                "period_label": f"{months_full[0].label} to {months_full[-1].label}",
+                "total": sum(float(x.get("__metric__", 0.0)) for x in series_result.get("series", [])),
+            }
+
+            return state
 
         # -------- TREND --------
         if analysis_type == "trend":
@@ -1116,12 +1123,37 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
             logger.info(f"[TREND_MONTHS] {[m.label for m in months_full]}")
 
+            # 🔥 ADD THIS BLOCK
+            product_query = state.get("product_query")
+            product_match = None
+
+            if product_query:
+                latest = months_full[-1]
+
+                sample = get_metric_for_month(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    metric_name,
+                    latest.month,
+                    latest.year,
+                )
+
+                product_match = _match_product(
+                    sample.get("per_sku", []),
+                    product_query
+                )
+
+                state["product_match"] = product_match
+
+            # 🔥 MODIFY THIS CALL
             series_result = build_time_series_analysis(
                 engine,
                 state["user_id"],
                 state["country"],
                 metric_name,
-                months_full
+                months_full,
+                product_match=product_match
             )
 
             logger.info(f"[TREND_RESULT] {series_result}")
@@ -1130,7 +1162,7 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             state["current_metrics"] = {
                 "metric": metric_name,
                 "period_label": f"{months_full[0].label} to {months_full[-1].label}",
-                "total": sum(float(x.get("__metric__", 0.0)) for x in series_result.get("series", []))
+                "total": sum(float(x.get("__metric__", 0.0)) for x in series_result.get("series", [])),
             }
 
             return state
@@ -1141,7 +1173,6 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
             metric_def = get_metric_def(metric_name)
 
-            # -------- MONTH RESOLUTION FIX --------
             if payload.get("type") == "last_n_months":
                 months = _last_n_window(engine, state["user_id"], state["country"], payload.get("n", 6))
 
@@ -1150,7 +1181,7 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                     SimpleNamespace(
                         month=payload["month"],
                         year=payload["year"],
-                        label=f"{payload['month']}/{payload['year']}"
+                        label=f"{payload['month']}/{payload['year']}",
                     )
                 ]
 
@@ -1163,19 +1194,15 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                     payload["start_year"],
                     payload["end_month"],
                     payload["end_year"],
-                    skip_missing=True
+                    skip_missing=True,
                 )
                 months = [mk for mk, _ in dfs]
 
             else:
                 months = _last_n_window(engine, state["user_id"], state["country"], 6)
 
-            period_label = (
-                f"{months[0].label} to {months[-1].label}"
-                if months else "No data"
-            )
+            period_label = f"{months[0].label} to {months[-1].label}" if months else "No data"
 
-            # -------- SKU BREAKDOWN --------
             if metric_def.supports_product_breakdown:
                 logger.info("[BREAKDOWN_MODE] SKU breakdown")
 
@@ -1187,7 +1214,7 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                         state["country"],
                         metric_name,
                         mk.month,
-                        mk.year
+                        mk.year,
                     )
                     rows.extend(result_month.get("per_sku", []))
 
@@ -1196,18 +1223,17 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                 state["current_metrics"] = {
                     "metric": metric_name,
                     "period_label": period_label,
-                    "total": total
+                    "total": total,
                 }
 
                 state["analysis_result"] = {
                     "type": "breakdown",
                     "per_sku": rows,
-                    "total": total
+                    "total": total,
                 }
 
                 return state
 
-            # -------- TOTAL → TIME BREAKDOWN --------
             elif metric_def.supports_time_breakdown:
                 logger.info("[BREAKDOWN_MODE] TOTAL → time breakdown")
 
@@ -1219,36 +1245,93 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                         state["country"],
                         metric_name,
                         mk.month,
-                        mk.year
+                        mk.year,
                     )
                     series.append({
                         "period_label": mk.label,
-                        "__metric__": result_month.get("total", 0.0)
+                        "__metric__": result_month.get("total", 0.0),
                     })
 
                 state["analysis_result"] = {
                     "type": "trend",
-                    "series": series
+                    "series": series,
                 }
 
                 state["current_metrics"] = {
                     "metric": metric_name,
                     "period_label": period_label,
-                    "total": sum(float(x["__metric__"]) for x in series)
+                    "total": sum(float(x["__metric__"]) for x in series),
                 }
 
                 return state
 
-            # -------- INVALID CASE --------
             else:
                 logger.warning("[BREAKDOWN_INVALID] metric does not support any breakdown")
 
                 state["analysis_result"] = {
                     "type": "invalid",
-                    "message": f"{metric_name} does not support breakdown analysis"
+                    "message": f"{metric_name} does not support breakdown analysis",
                 }
 
                 return state
+
+        # -------- ABSOLUTE MULTI-METRIC + PRODUCT --------
+        if analysis_type == "absolute" and metric_names and len(metric_names) > 1 and product_queries and len(product_queries) == 1:
+            logger.info("[ROUTE] Absolute single-product multi-metric analysis")
+
+            month = None
+            year = None
+
+            if payload.get("type") == "single":
+                month = payload["month"]
+                year = payload["year"]
+            else:
+                latest = latest_available_month(engine, state["user_id"], state["country"])
+                month = latest.month
+                year = latest.year
+
+            product_query = product_queries[0]
+            rows_out = []
+
+            for metric in metric_names:
+                result_month = get_metric_for_month(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    metric,
+                    month,
+                    year,
+                )
+
+                matched_value = 0.0
+                matched_name = product_query
+
+                for row in result_month.get("per_sku", []):
+                    name = str(row.get("product_name", "")).strip().lower()
+                    pq = str(product_query).strip().lower()
+
+                    if name == pq:
+                        matched_value = float(row.get("__metric__", 0.0))
+                        matched_name = row.get("product_name") or product_query
+                        break
+
+                rows_out.append({
+                    "month": datetime(year, month, 1).strftime("%b %Y"),
+                    "product": matched_name,
+                    "metric": metric,
+                    "value": matched_value,
+                })
+
+            result = {
+                "data": rows_out,
+                "metrics": metric_names,
+                "products": [product_queries[0]],
+                "months": [{"month": month, "year": year}],
+            }
+
+            state["current_metrics"] = result
+            state["analysis_result"] = {"type": "multi_dimensional", **result}
+            return state
 
         # -------- DEFAULT --------
         logger.info("[ROUTE] Standard absolute analysis")
@@ -1257,7 +1340,7 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             engine,
             state["user_id"],
             state["country"],
-            metric_name
+            metric_name,
         )
 
         logger.info(
