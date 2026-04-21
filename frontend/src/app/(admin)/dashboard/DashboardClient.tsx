@@ -1163,6 +1163,38 @@ export default function DashboardPage() {
         }
     }, [router]);
 
+    const formatUKTime12hr = (timestamp: string | number | Date | null | undefined) => {
+        if (timestamp == null) return "Never updated";
+
+        let date: Date;
+
+        if (timestamp instanceof Date) {
+            date = timestamp;
+        } else if (typeof timestamp === "number") {
+            date = new Date(timestamp);
+        } else if (typeof timestamp === "string") {
+            const normalized = timestamp.includes("T")
+                ? timestamp
+                : timestamp.replace(" ", "T");
+
+            date = new Date(normalized);
+        } else {
+            return "Invalid Date";
+        }
+
+        if (Number.isNaN(date.getTime())) return "Invalid Date";
+
+        const formatted = new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Europe/London",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            timeZoneName: "short",
+        }).format(date);
+
+        return formatted;
+    };
+
     const { platform } = usePlatform();
     const { data: userData } = useGetUserDataQuery();
     const isCountryMode = platform !== "global" && platform !== "shopify";
@@ -3099,43 +3131,13 @@ export default function DashboardPage() {
 
     const hasSavedRef = useRef(false);
 
-    // const saveDashboardCacheToBackend = useCallback(
-    //     async (payload: DashboardCachePayload) => {
-    //         if (typeof window === "undefined") return;
-
-    //         if (hasSavedRef.current) return;
-    //         hasSavedRef.current = true;
-
-    //         try {
-    //             const token = localStorage.getItem("jwtToken");
-    //             if (!token) return;
-
-    //             await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
-    //                 method: "POST",
-    //                 headers: {
-    //                     "Content-Type": "application/json",
-    //                     Authorization: `Bearer ${token}`,
-    //                 },
-    //                 body: JSON.stringify(payload),
-    //             });
-    //         } catch (err) {
-    //             console.error(err);
-    //             hasSavedRef.current = false;
-    //         }
-    //     },
-    //     []
-    // );
-
     const saveDashboardCacheToBackend = useCallback(
-        async (payload: DashboardCachePayload) => {
-            if (typeof window === "undefined") return;
-
-            if (hasSavedRef.current) return;
-            hasSavedRef.current = true;
+        async (payload: DashboardCachePayload): Promise<number | null> => {
+            if (typeof window === "undefined") return null;
 
             try {
                 const token = localStorage.getItem("jwtToken");
-                if (!token) return;
+                if (!token) return null;
 
                 const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
                     method: "POST",
@@ -3150,7 +3152,6 @@ export default function DashboardPage() {
                         region: String(activeDateRegion || ""),
                         startDay: selectedStartDay,
                         endDay: selectedEndDay,
-                        savedAt: Date.now(),
                         cachePayload: payload,
                     }),
                 });
@@ -3166,12 +3167,14 @@ export default function DashboardPage() {
                 if (json?.data?.updated_at) {
                     const ts = new Date(json.data.updated_at).getTime();
                     if (!Number.isNaN(ts)) {
-                        setDbUpdatedAt(ts);
+                        return ts;
                     }
                 }
+
+                return null;
             } catch (err) {
                 console.error(err);
-                hasSavedRef.current = false;
+                return null;
             }
         },
         [
@@ -3700,13 +3703,27 @@ export default function DashboardPage() {
             console.error("Failed to write local cache:", e);
         }
 
-        saveDashboardCacheToBackend(payload)
-            .then(() => {
-                const now = Date.now();
+        // saveDashboardCacheToBackend(payload)
+        //     .then(() => {
+        //         const now = Date.now();
 
-                setDbUpdatedAt(now);
-                setLastRefreshAt(now);
-                localStorage.setItem(LAST_REFRESH_KEY, String(now));
+        //         setDbUpdatedAt(now);
+        //         setLastRefreshAt(now);
+        //         localStorage.setItem(LAST_REFRESH_KEY, String(now));
+
+        //         shouldPostCacheRef.current = false;
+        //         isManualRefreshRef.current = false;
+        //     })
+        //     .catch((err) => {
+        //         console.error("Failed to persist dashboard cache:", err);
+        //         shouldPostCacheRef.current = false;
+        //         isManualRefreshRef.current = false;
+        //     });
+        saveDashboardCacheToBackend(payload)
+            .then((serverUpdatedAt) => {
+                if (serverUpdatedAt != null) {
+                    setDbUpdatedAt(serverUpdatedAt);
+                }
 
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
@@ -4695,7 +4712,7 @@ export default function DashboardPage() {
         { key: "cogs", label: "COGS", align: "center" as const },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const },
-        { key: "acos", label: "ACOS %", align: "center" as const },
+        { key: "acos", label: "ACoS %", align: "center" as const },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
@@ -7242,10 +7259,9 @@ ${pageLoading
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
                         <span className="text-sm text-gray-500">
-                            Updated {getRelativeRefreshText(dbUpdatedAt)}
+                            Last Updated at {formatUKTime12hr(dbUpdatedAt)}
                         </span>
                     </div>
-
                 </div>
             </div>
 
