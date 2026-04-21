@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
-
-# -------------------------------
-# CORE INTENT TYPES
-# -------------------------------
-
 Intent = Literal[
     "chat",
     "explain",
@@ -27,12 +22,8 @@ AnalysisType = Literal[
     "summary",
     "event_plan",
     "sku_intelligence",
+    "sku_trend",
 ]
-
-
-# -------------------------------
-# NEW EXECUTION TYPES
-# -------------------------------
 
 AnswerShape = Literal[
     "single_value",
@@ -45,23 +36,11 @@ AnswerShape = Literal[
     "multi_dimensional",
 ]
 
-SubjectScope = Literal[
-    "business",
-    "product",
-    "products",
-    "metric",
-]
-
+SubjectScope = Literal["business", "product", "products", "metric"]
 RankingDirection = Literal["top", "bottom"]
-
 ExtremeType = Literal["max", "min"]
-
 TimeGranularity = Literal["month", "quarter", "year"]
 
-
-# -------------------------------
-# AGENT STATE
-# -------------------------------
 
 class AgentState(TypedDict, total=False):
     user_id: int
@@ -70,44 +49,42 @@ class AgentState(TypedDict, total=False):
     user_query: str
     chat_history: List[Dict[str, Any]]
 
-    # -------- Core Intent --------
     intent: Intent
     analysis_type: AnalysisType
     metric_name: Optional[str]
+    metric_names: Optional[List[str]]
 
-    # -------- Product --------
     product_match: Optional[str]
     product_query: Optional[str]
+    product_queries: Optional[List[str]]
 
-    # -------- LLM behavior --------
     response_mode: str
     needs_advice: bool
     email_requested: bool
     restored_from_memory: bool
     clarification_question: Optional[str]
 
-    # -------- NEW: Execution Plan --------
     answer_shape: AnswerShape
     subject_scope: SubjectScope
     ranking_direction: Optional[RankingDirection]
     extreme_type: Optional[ExtremeType]
     time_granularity: Optional[TimeGranularity]
-
-    # For multi-month queries
     target_months: Optional[List[Dict[str, int]]]
 
-    # -------- Event Planner --------
+    reasoning_mode: str
+    task_type: str
+    dimension: Optional[str]
+    top_n: Optional[int]
+
     event_name: Optional[str]
     last_event_month: Optional[int]
     future_event_month: Optional[int]
     target_sales: Optional[float]
 
-    # -------- Time / Engine --------
     period_parsed: Dict[str, Any]
     period_payload: Dict[str, Any]
     engine: Any
 
-    # -------- Results --------
     current_metrics: Dict[str, Any]
     comparison: Dict[str, Any]
     analysis_result: Dict[str, Any]
@@ -116,8 +93,7 @@ class AgentState(TypedDict, total=False):
     email_result: Dict[str, Any]
     error: Optional[str]
 
-    # -------- Specialized Outputs --------
     event_plan_result: Dict[str, Any]
     sku_intelligence_result: Dict[str, Any]
-    metric_names: Optional[List[str]]
-    product_queries: Optional[List[str]]
+    thresholds: Dict[str, float]
+    tool_trace: List[str]

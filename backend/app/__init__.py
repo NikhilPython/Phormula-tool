@@ -20,6 +20,34 @@ sess = Session()
 
 def create_app():
     app = Flask(__name__)
+
+    # ---------------- LOGGING FIX (CRITICAL) ----------------
+    import logging
+
+    root_logger = logging.getLogger()
+
+    # Remove existing handlers (Flask/Werkzeug adds its own)
+    if root_logger.handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+    # Add fresh handler
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+    handler.setFormatter(formatter)
+
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO)
+
+    # Make Flask logger use same handlers
+    app.logger.handlers = root_logger.handlers
+    app.logger.setLevel(logging.INFO)
+    # -------------------------------------------------------
+
     app.config.from_object(Config)
 
     # Database configuration
