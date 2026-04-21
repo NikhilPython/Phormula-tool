@@ -2954,15 +2954,15 @@ export default function DashboardPage() {
                 setAdsSeeded(false);
 
                 setStep(1, "MTD Fetching", 10);
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+                // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    setStep(1, "MTD Fetching", 18);
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
+                // if (country === "UK" || country === "US") {
+                //     setStep(1, "MTD Fetching", 18);
+                //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                // }
 
                 setStep(1, "MTD Fetching", 26);
-                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+                // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
@@ -2973,35 +2973,35 @@ export default function DashboardPage() {
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
 
-                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${jwtToken}`,
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ month, year, country, include }),
-                });
+                // const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                //     method: "POST",
+                //     headers: {
+                //         Authorization: `Bearer ${jwtToken}`,
+                //         Accept: "application/json",
+                //         "Content-Type": "application/json",
+                //     },
+                //     body: JSON.stringify({ month, year, country, include }),
+                // });
 
-                const json = await res.json().catch(() => ({}));
-                const errMsg = String(json?.error || json?.message || json?.detail || "");
+                // const json = await res.json().catch(() => ({}));
+                // const errMsg = String(json?.error || json?.message || json?.detail || "");
 
-                const isNoRows404 =
-                    res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+                // const isNoRows404 =
+                //     res.status === 404 && errMsg.toLowerCase().includes("no rows found");
 
-                const isDuplicateOrInProgress =
-                    res.status === 425 ||
-                    errMsg.toLowerCase().includes("duplicate") ||
-                    errMsg.toLowerCase().includes("already exists") ||
-                    errMsg.toLowerCase().includes("request is a duplicate") ||
-                    errMsg.toLowerCase().includes("in progress");
+                // const isDuplicateOrInProgress =
+                //     res.status === 425 ||
+                //     errMsg.toLowerCase().includes("duplicate") ||
+                //     errMsg.toLowerCase().includes("already exists") ||
+                //     errMsg.toLowerCase().includes("request is a duplicate") ||
+                //     errMsg.toLowerCase().includes("in progress");
 
-                if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
-                    throw new Error(errMsg || "monthly_sp_sd_to_db failed");
-                }
+                // if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+                //     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+                // }
 
-                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
-                await fetchMonthlySp();
+                // setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                // await fetchMonthlySp();
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
@@ -3099,6 +3099,33 @@ export default function DashboardPage() {
 
     const hasSavedRef = useRef(false);
 
+    // const saveDashboardCacheToBackend = useCallback(
+    //     async (payload: DashboardCachePayload) => {
+    //         if (typeof window === "undefined") return;
+
+    //         if (hasSavedRef.current) return;
+    //         hasSavedRef.current = true;
+
+    //         try {
+    //             const token = localStorage.getItem("jwtToken");
+    //             if (!token) return;
+
+    //             await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+    //                 method: "POST",
+    //                 headers: {
+    //                     "Content-Type": "application/json",
+    //                     Authorization: `Bearer ${token}`,
+    //                 },
+    //                 body: JSON.stringify(payload),
+    //             });
+    //         } catch (err) {
+    //             console.error(err);
+    //             hasSavedRef.current = false;
+    //         }
+    //     },
+    //     []
+    // );
+
     const saveDashboardCacheToBackend = useCallback(
         async (payload: DashboardCachePayload) => {
             if (typeof window === "undefined") return;
@@ -3110,32 +3137,62 @@ export default function DashboardPage() {
                 const token = localStorage.getItem("jwtToken");
                 if (!token) return;
 
-                await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+                const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        Accept: "application/json",
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({
+                        country: liveDashboardCountry,
+                        platform: String(platform || "").toLowerCase(),
+                        region: String(activeDateRegion || ""),
+                        startDay: selectedStartDay,
+                        endDay: selectedEndDay,
+                        savedAt: Date.now(),
+                        cachePayload: payload,
+                    }),
                 });
+
+                const json = await res.json().catch(() => null);
+
+                if (!res.ok || !json?.success) {
+                    throw new Error(
+                        json?.error || `Failed to save dashboard cache (${res.status})`
+                    );
+                }
+
+                if (json?.data?.updated_at) {
+                    const ts = new Date(json.data.updated_at).getTime();
+                    if (!Number.isNaN(ts)) {
+                        setDbUpdatedAt(ts);
+                    }
+                }
             } catch (err) {
                 console.error(err);
                 hasSavedRef.current = false;
             }
         },
-        []
+        [
+            liveDashboardCountry,
+            platform,
+            activeDateRegion,
+            selectedStartDay,
+            selectedEndDay,
+        ]
     );
 
-    const ensureLocalStorageThenSave = async (
-        payload: DashboardCachePayload
-    ) => {
+    const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
         if (typeof window === "undefined") return;
 
-        const key = "live-dashboard-cache";
-
-        if (!localStorage.getItem(key)) {
-            localStorage.setItem(key, JSON.stringify({ initialized: true }));
-        }
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payload,
+                savedAt: Date.now(),
+            })
+        );
 
         await saveDashboardCacheToBackend(payload);
     };
@@ -3519,54 +3576,6 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
 
-    // const handleHardRefresh = useCallback(async () => {
-    //     if (typeof window === "undefined") return;
-
-    //     try {
-    //         const now = Date.now();
-    //         localStorage.setItem(LAST_REFRESH_KEY, String(now));
-    //         setLastRefreshAt(now);
-
-    //         resetStepState();
-
-    //         await runDashboardLoadWithSteps();
-
-    //         const payload = {
-    //             data,
-    //             biDailySeries,
-    //             biPeriods,
-    //             liveBiPayload,
-    //             biAlignedTotals,
-    //             invRows,
-    //             inventoryAlerts,
-    //             monthlySpRows,
-    //             monthlySpTotalSpend,
-    //             liveBiReady,
-    //             biStatus,
-    //             savedAt: Date.now(),
-    //         };
-
-    //         await saveDashboardCacheToBackend(payload);
-    //     } catch (err) {
-    //         console.error("Hard refresh failed:", err);
-    //     }
-    // }, [
-    //     runDashboardLoadWithSteps,
-    //     saveDashboardCacheToBackend,
-    //     data,
-    //     biDailySeries,
-    //     biPeriods,
-    //     liveBiPayload,
-    //     biAlignedTotals,
-    //     invRows,
-    //     inventoryAlerts,
-    //     monthlySpRows,
-    //     monthlySpTotalSpend,
-    //     liveBiReady,
-    //     biStatus,
-    // ]);
-
-
     const isManualRefreshRef = useRef(false);
 
     const shouldPostCacheRef = useRef(false);
@@ -3574,13 +3583,15 @@ export default function DashboardPage() {
     const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
-        isManualRefreshRef.current = true;   // ✅ mark refresh
-        shouldPostCacheRef.current = true;   // ✅ allow POST
-
         resetStepState();
+        isManualRefreshRef.current = true;
+        shouldPostCacheRef.current = true;
 
         try {
-            await runDashboardLoadWithSteps(); // fetch fresh APIs
+            await runDashboardLoadWithSteps(); // fetch everything and update state
+            // persistence effect will automatically:
+            // 1. write localStorage
+            // 2. POST to backend
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
@@ -3634,17 +3645,17 @@ export default function DashboardPage() {
                     return;
                 }
 
-                shouldPostCacheRef.current = false;
+                shouldPostCacheRef.current = true;
+                isManualRefreshRef.current = true;
                 await runDashboardLoadWithSteps();
 
-                shouldPostCacheRef.current = true;
-                await runDashboardLoadWithSteps();
             } catch (err) {
                 console.error("Dashboard bootstrap failed:", err);
 
                 if (cancelled) return;
 
                 shouldPostCacheRef.current = true;
+                isManualRefreshRef.current = true;
                 await runDashboardLoadWithSteps();
             }
         };
@@ -3673,6 +3684,22 @@ export default function DashboardPage() {
 
         const payload = buildDashboardCachePayload();
 
+        try {
+            // 1) always store browser cache first
+            localStorage.setItem(
+                liveCacheKey,
+                JSON.stringify({
+                    ...payload,
+                    savedAt: Date.now(),
+                })
+            );
+
+            // optional init marker if you still want it
+            localStorage.setItem("live-dashboard-cache-init", "initialized");
+        } catch (e) {
+            console.error("Failed to write local cache:", e);
+        }
+
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 const now = Date.now();
@@ -3682,10 +3709,7 @@ export default function DashboardPage() {
                 localStorage.setItem(LAST_REFRESH_KEY, String(now));
 
                 shouldPostCacheRef.current = false;
-
-                if (isManualRefreshRef.current) {
-                    isManualRefreshRef.current = false;
-                }
+                isManualRefreshRef.current = false;
             })
             .catch((err) => {
                 console.error("Failed to persist dashboard cache:", err);
@@ -3695,6 +3719,7 @@ export default function DashboardPage() {
     }, [
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
+        liveCacheKey,
         pageLoading,
         dashboardBusy,
         loading,
