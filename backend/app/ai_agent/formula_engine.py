@@ -639,6 +639,7 @@ def build_time_series_analysis(
     months: list[MonthKey],
     product_match: str | None = None,
 ) -> Dict[str, Any]:
+
     series: list[dict] = []
 
     for mk in months:
@@ -651,25 +652,23 @@ def build_time_series_analysis(
             year=mk.year,
         )
 
+        # -------- 🔥 FIXED PRODUCT FILTERING --------
         if product_match:
             rows = result.get("per_sku", [])
 
-            # ✅ check if exact match exists
-            exact_rows = [
-                r for r in rows
-                if product_match.lower() == str(r.get("product_name", "")).lower()
-            ]
-
-            if exact_rows:
-                value = sum(float(r.get("__metric__", 0.0)) for r in exact_rows)
-            else:
-                # ✅ fallback → group match
-                group_rows = [
+            matched_row = next(
+                (
                     r for r in rows
-                    if product_match.lower() in str(r.get("product_name", "")).lower()
-                ]
-                value = sum(float(r.get("__metric__", 0.0)) for r in group_rows)
+                    if str(r.get("product_name", "")).strip().lower()
+                    == product_match.strip().lower()
+                ),
+                None,
+            )
+
+            value = float(matched_row.get("__metric__", 0.0)) if matched_row else 0.0
+
         else:
+            # overall
             value = float(result.get("total", 0.0))
 
         series.append({
@@ -679,10 +678,13 @@ def build_time_series_analysis(
             "__metric__": float(value),
         })
 
+    # -------- MOM CALCULATION --------
     mom: list[dict] = []
+
     for i in range(1, len(series)):
         prev_val = float(series[i - 1]["__metric__"])
         curr_val = float(series[i]["__metric__"])
+
         delta = curr_val - prev_val
         pct_change = None if prev_val == 0 else (delta / prev_val) * 100.0
 
@@ -694,12 +696,19 @@ def build_time_series_analysis(
             "pct_change": pct_change,
         })
 
+    # -------- OVERALL CHANGE --------
     values = [float(x["__metric__"]) for x in series]
-    overall_delta = values[-1] - values[0] if len(values) >= 2 else 0.0
-    overall_pct_change = None if len(values) < 2 or values[0] == 0 else (overall_delta / values[0]) * 100.0
 
+    overall_delta = values[-1] - values[0] if len(values) >= 2 else 0.0
+    overall_pct_change = (
+        None if len(values) < 2 or values[0] == 0
+        else (overall_delta / values[0]) * 100.0
+    )
+
+    # -------- MOVEMENT CLASSIFICATION --------
     if mom:
         deltas = [x["delta"] for x in mom]
+
         if all(d > 0 for d in deltas):
             movement = "consistently_up"
         elif all(d < 0 for d in deltas):
@@ -944,24 +953,41 @@ def get_multi_dimensional_data(
 
             rows = result.get("per_sku", [])
 
-            # filter products if needed
+            # -------- 🔥 FIXED PRODUCT FILTER --------
             if product_queries:
-                filtered = []
                 for pq in product_queries:
-                    for row in rows:
-                        name = str(row.get("product_name", "")).lower()
-                        if pq.lower() in name:
-                            filtered.append((pq, row))
-            else:
-                filtered = [("all", r) for r in rows]
+                    pq_clean = pq.strip().lower()
 
-            for pq, row in filtered:
-                data.append({
-                    "month": result.get("period_label"),
-                    "product": pq,
-                    "metric": metric,
-                    "value": float(row.get("__metric__", 0.0)),
-                })
+                    matched = False
+
+                    for row in rows:
+                        name = str(row.get("product_name", "")).strip().lower()
+
+                        # ✅ STRICT MATCH ONLY
+                        if name == pq_clean:
+                            data.append({
+                                "month": result.get("period_label"),
+                                "product": row.get("product_name"),
+                                "metric": metric,
+                                "value": float(row.get("__metric__", 0.0)),
+                            })
+                            matched = True
+                            break  # 🔥 STOP after first match
+
+                    # optional: handle no match case
+                    if not matched:
+                        # you can skip or add 0
+                        pass
+
+            else:
+                # fallback (no product filter)
+                for row in rows:
+                    data.append({
+                        "month": result.get("period_label"),
+                        "product": row.get("product_name"),
+                        "metric": metric,
+                        "value": float(row.get("__metric__", 0.0)),
+                    })
 
     return {
         "data": data,
