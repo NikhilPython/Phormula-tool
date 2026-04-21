@@ -1163,38 +1163,25 @@ export default function DashboardPage() {
         }
     }, [router]);
 
-    const formatUKTime12hr = (
-        timestamp: string | number | Date | null | undefined
-    ) => {
-        if (timestamp == null) return "";
+    const formatUKTime12hr = (timestamp: string | null | undefined) => {
+        if (!timestamp) return "Never updated";
 
-        let date: Date;
+        // expects: YYYY-MM-DD HH:mm:ss(.ffffff)
+        const match = timestamp.match(
+            /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/
+        );
 
-        if (timestamp instanceof Date) {
-            date = timestamp;
-        } else if (typeof timestamp === "number") {
-            date = new Date(timestamp);
-        } else if (typeof timestamp === "string") {
-            const normalized = timestamp.includes("T")
-                ? timestamp
-                : timestamp.replace(" ", "T");
+        if (!match) return "Invalid Date";
 
-            date = new Date(normalized);
-        } else {
-            return "";
-        }
+        const hour24 = Number(match[4]);
+        const minute = match[5];
 
-        if (Number.isNaN(date.getTime())) return "";
+        if (!Number.isFinite(hour24)) return "Invalid Date";
 
-        const formatted = new Intl.DateTimeFormat("en-GB", {
-            timeZone: "Europe/London",
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-            timeZoneName: "short",
-        }).format(date);
+        const hour12 = hour24 % 12 || 12;
+        const ampm = hour24 >= 12 ? "PM" : "AM";
 
-        return formatted.replace("am", "AM").replace("pm", "PM");
+        return `${hour12}:${minute} ${ampm} UK`;
     };
 
     const { platform } = usePlatform();
@@ -3134,7 +3121,7 @@ export default function DashboardPage() {
     const hasSavedRef = useRef(false);
 
     const saveDashboardCacheToBackend = useCallback(
-        async (payload: DashboardCachePayload): Promise<number | null> => {
+        async (payload: DashboardCachePayload): Promise<string | null> => {
             if (typeof window === "undefined") return null;
 
             try {
@@ -3166,11 +3153,8 @@ export default function DashboardPage() {
                     );
                 }
 
-                if (json?.data?.updated_at) {
-                    const ts = new Date(json.data.updated_at).getTime();
-                    if (!Number.isNaN(ts)) {
-                        return ts;
-                    }
+                if (typeof json?.data?.updated_at === "string") {
+                    return json.data.updated_at;
                 }
 
                 return null;
@@ -3504,7 +3488,7 @@ export default function DashboardPage() {
 
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
-    const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
+    const [dbUpdatedAt, setDbUpdatedAt] = useState<string | null>(null);
     const [refreshNow, setRefreshNow] = useState(Date.now());
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
@@ -3629,14 +3613,8 @@ export default function DashboardPage() {
                         })
                     );
 
-                    const backendUpdatedAt = cacheResult.updatedAt
-                        ? new Date(cacheResult.updatedAt).getTime()
-                        : null;
-
                     setDbUpdatedAt(
-                        backendUpdatedAt != null && !Number.isNaN(backendUpdatedAt)
-                            ? backendUpdatedAt
-                            : null
+                        typeof cacheResult.updatedAt === "string" ? cacheResult.updatedAt : null
                     );
 
                     return;
