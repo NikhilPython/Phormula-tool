@@ -465,6 +465,14 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
 
 
 def _build_tool_plan(state: AgentState) -> List[str]:
+
+
+    # -------- 🔥 EMAIL PRIORITY (ADD HERE) --------
+    if state.get("intent") == "email":
+        logger.info("[ROUTE] email → standard_analysis + email")
+        return ["standard_analysis"]
+
+    
     metric_name = state.get("metric_name")
 
     # -------- 🔥 GLOBAL PRIORITY FIX: GROWTH FIRST --------
@@ -1465,20 +1473,83 @@ def _generate_advice(state: AgentState) -> AgentState:
 
 
 def _send_email_if_requested(state: AgentState) -> AgentState:
+    # -------- ENTRY LOG --------
+    logger.info("[EMAIL] Entered _send_email_if_requested")
+
     if not state.get("email_requested"):
+        logger.info("[EMAIL] Skipped (email_requested=False)")
         return state
-    subject_metric = state.get("metric_name") or (state.get("current_metrics") or {}).get("metric") or "summary"
-    subject_period = (state.get("current_metrics") or {}).get("period_label") or "selected period"
+
+    # -------- SUBJECT BUILD --------
+    subject_metric = (
+        state.get("metric_name")
+        or (state.get("current_metrics") or {}).get("metric")
+        or "summary"
+    )
+
+    subject_period = (
+        (state.get("current_metrics") or {}).get("period_label")
+        or "selected period"
+    )
+
     if state.get("event_plan_result"):
         subject_metric = "event plan"
+
     if state.get("sku_intelligence_result"):
         subject_metric = f"sku intelligence - {state.get('product_match') or 'product'}"
-    html = build_email_html(state)
-    state["email_result"] = send_agent_email(
-        user_id=state["user_id"],
-        subject=f"Phormula AI {subject_metric.replace('_', ' ').title()} - {subject_period}",
-        html_body=html,
-    )
+
+    subject = f"Phormula AI {subject_metric.replace('_', ' ').title()} - {subject_period}"
+
+    logger.info(f"[EMAIL] Subject: {subject}")
+
+    # -------- BODY BUILD --------
+    final_text = state.get("final_response", "")
+
+    if not final_text:
+        logger.warning("[EMAIL] final_response is EMPTY → email will be blank")
+
+    logger.info(f"[EMAIL] Body preview (first 200 chars): {final_text[:200]}")
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Phormula AI Report</h2>
+        <div style="white-space: pre-line; font-size: 14px;">
+            {final_text}
+        </div>
+    </div>
+    """
+
+    # -------- SEND EMAIL --------
+    try:
+        logger.info("[EMAIL] Sending email...")
+
+        result = send_agent_email(
+            user_id=state["user_id"],
+            subject=subject,
+            html_body=html,
+        )
+
+        logger.info(f"[EMAIL] SUCCESS: {result}")
+
+        state["email_result"] = result
+
+    except Exception as e:
+        logger.exception("[EMAIL_ERROR] Failed to send email")
+
+        state["email_result"] = {
+            "status": "failed",
+            "error": str(e)
+        }
+
+    # -------- EXIT LOG --------
+    logger.info(f"[EMAIL] Final email_result: {state.get('email_result')}")
+
+    # -------- 🔥 FINAL RESPONSE AFTER EMAIL --------
+    if state.get("email_result", {}).get("status") == "sent":
+        state["final_response"] = f"📩 Email sent to {state['email_result'].get('recipient')}."
+    else:
+        state["final_response"] = "❌ Failed to send email. Please try again."
+
     return state
 
 
@@ -1550,9 +1621,11 @@ def _render_response(state: AgentState) -> AgentState:
         state["final_response"] = "📩 I've sent the SKU intelligence email." if state.get("email_requested") else "\n".join(lines)
         return state
     
-    if state.get("email_requested"):
-        state["final_response"] = "📩 I've sent the email."
-        return state
+    # -------- 🔥 EMAIL RESPONSE HANDLING (FIXED) --------
+    # Do NOT override final_response here
+    # Let _send_email_if_requested handle confirmation after sending
+    pass
+    
     current = state.get("current_metrics") or {}
     metric_name = current.get("metric") or state.get("metric_name") or "metric"
     period_label = current.get("period_label") or "selected period"
@@ -1840,24 +1913,47 @@ def _render_response(state: AgentState) -> AgentState:
 
 def _restore_memory_email(state: AgentState, plan: RequestPlan, history: List[Dict[str, Any]]) -> Optional[AgentState]:
     last_meta = load_last_analysis_from_history(history)
-    if not (state.get("email_requested") and last_meta and plan.intent == "email" and not plan.metric_name and not plan.product_query and plan.analysis_type in {"absolute", "summary"}):
+
+    if not (
+        state.get("email_requested")
+        and last_meta
+        and plan.intent == "email"
+        and not plan.metric_name
+        and not plan.product_query
+        and plan.analysis_type in {"absolute", "summary"}
+    ):
         return None
+
+    # -------- RESTORE STATE --------
     state["intent"] = "email"
     state["email_requested"] = True
     state["restored_from_memory"] = True
+
     state["metric_name"] = last_meta.get("metric_name")
     state["period_parsed"] = last_meta.get("period_parsed") or {"type": "latest_month"}
     state["analysis_type"] = last_meta.get("analysis_type") or "absolute"
-    state["period_payload"] = _prepare_period_payload(state["period_parsed"], state["analysis_type"])
+
+    state["period_payload"] = _prepare_period_payload(
+        state["period_parsed"],
+        state["analysis_type"]
+    )
+
     state["current_metrics"] = last_meta.get("current_metrics") or {}
     state["comparison"] = last_meta.get("comparison") or {}
     state["analysis_result"] = last_meta.get("analysis_result") or {}
     state["event_plan_result"] = last_meta.get("event_plan_result") or {}
     state["sku_intelligence_result"] = last_meta.get("sku_intelligence_result") or {}
     state["advice"] = last_meta.get("advice") or []
+
     state["engine"] = get_engine()
+
+    # -------- 🔥 FIX 1: BUILD RESPONSE FIRST --------
+    state = _render_response(state)
+
+    # -------- 🔥 FIX 2: THEN SEND EMAIL --------
     state = _send_email_if_requested(state)
-    return _render_response(state)
+
+    return state
 
 
 def _invoke_agent(state: AgentState) -> AgentState:
@@ -2062,6 +2158,9 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         # -------- FINAL --------
         state = _render_response(state)
+  
+        # -------- 🔥 EMAIL TRIGGER --------
+        state = _send_email_if_requested(state)
 
         logger.info("[END] Response generated successfully")
         return state
