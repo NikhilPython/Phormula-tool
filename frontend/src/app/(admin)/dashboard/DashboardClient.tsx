@@ -6803,223 +6803,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
             />
             <HashScroll offset={80} />
 
-
-            {/* {activeTab === "live" &&
-                !shouldShowDummyUi &&
-                pageLoading && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
-                        <div className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-                            <div className="mb-4">
-                                <div className="text-sm font-semibold text-slate-700">
-                                    {stepProgress.label || "Loading Dashboard"}
-                                </div>
-
-                                <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-[#D9D9D9]">
-                                    <div
-                                        className="h-full transition-all duration-300"
-                                        style={{
-                                            width: `${stepProgress.percentage}%`,
-                                            background:
-                                                "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
-                                        }}
-                                    />
-                                </div>
-
-                                {stepProgress.detail && (
-                                    <div className="mt-2 text-xs text-slate-500">
-                                        {stepProgress.detail}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex items-center justify-between relative">
-                                <div className="absolute top-5 left-[6%] right-[6%] h-1.5 bg-[#D9D9D9] -z-10">
-                                    {completedSteps.size > 0 &&
-                                        (() => {
-                                            const maxCompleted = Math.max(...Array.from(completedSteps));
-                                            const denominator = Math.max(dashboardSteps.length - 1, 1);
-                                            const progressPercent =
-                                                maxCompleted > 1
-                                                    ? ((Math.min(
-                                                        maxCompleted,
-                                                        dashboardSteps[dashboardSteps.length - 1].num
-                                                    ) - 1) /
-                                                        denominator) *
-                                                    100
-                                                    : 0;
-
-                                            return (
-                                                <div
-                                                    className="h-full bg-[#5EA68E] transition-all duration-500"
-                                                    style={{ width: `${progressPercent}%` }}
-                                                />
-                                            );
-                                        })()}
-                                </div>
-
-                                {dashboardSteps.map((step) => {
-                                    const isCompleted = completedSteps.has(step.num);
-                                    const isActive = currentStep === step.num;
-
-                                    return (
-                                        <div
-                                            key={step.num}
-                                            className="flex flex-col items-center flex-1 relative z-10"
-                                        >
-                                            <div
-                                                className={[
-                                                    "flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold",
-                                                    isCompleted
-                                                        ? "border-[#5EA68E] bg-[#5EA68E] text-white"
-                                                        : isActive
-                                                            ? "border-[#37455F] bg-white text-[#37455F]"
-                                                            : "border-slate-300 bg-white text-slate-400",
-                                                ].join(" ")}
-                                            >
-                                                {step.num}
-                                            </div>
-
-                                            <div
-                                                className={`mt-2 text-center text-[11px] sm:text-xs font-medium leading-tight ${isCompleted || isActive
-                                                    ? "text-[#5EA68E]"
-                                                    : "text-[#414042]"
-                                                    }`}
-                                            >
-                                                {step.label}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )} */}
-
-            {/*   {activeTab === "live" &&
-                !shouldShowDummyUi &&
-                pageLoading && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-4">
-                        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
-                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                                            stroke="#5EA68E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-semibold text-[#37455F] leading-tight">
-                                            Syncing dashboard data
-                                        </p>
-                                        <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
-                                            {stepProgress.detail || "Initialising…"}
-                                        </p>
-                                    </div>
-                                </div>
-                                <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
-                                    {stepProgress.percentage}%
-                                </span>
-                            </div>
-
-                            <div className="h-[3px] w-full bg-slate-100 rounded-full overflow-hidden mb-6">
-                                <div
-                                    className="h-full rounded-full transition-all duration-500 ease-in-out"
-                                    style={{
-                                        width: `${stepProgress.percentage}%`,
-                                        background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
-                                    }}
-                                />
-                            </div>
-
-                            <div className="relative flex items-start justify-between">
-
-                                <div
-                                    className="absolute top-4 z-0 h-px bg-slate-200"
-                                    style={{ left: "calc(12.5% + 10px)", right: "calc(12.5% + 10px)" }}
-                                >
-                                    {completedSteps.size > 0 && (() => {
-                                        const maxCompleted = Math.max(...Array.from(completedSteps));
-                                        const denominator = Math.max(dashboardSteps.length - 1, 1);
-                                        const pct = maxCompleted > 1
-                                            ? ((Math.min(maxCompleted, dashboardSteps[dashboardSteps.length - 1].num) - 1) / denominator) * 100
-                                            : 0;
-                                        return (
-                                            <div
-                                                className="h-full bg-[#5EA68E] transition-all duration-500"
-                                                style={{ width: `${pct}%` }}
-                                            />
-                                        );
-                                    })()}
-                                </div>
-
-                                {dashboardSteps.map((step) => {
-                                    const isCompleted = completedSteps.has(step.num);
-                                    const isActive = currentStep === step.num;
-
-                                    return (
-                                        <div
-                                            key={step.num}
-                                            className="flex flex-col items-center flex-1 relative z-10 gap-2"
-                                        >
-                                            <div className={[
-                                                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
-                                                isCompleted
-                                                    ? "border-[#5EA68E] bg-[#5EA68E] text-white"
-                                                    : isActive
-                                                        ? "border-[#5EA68E] bg-[#E8F5F0] text-[#37455F]"
-                                                        : "border-slate-200 bg-white text-slate-400",
-                                            ].join(" ")}>
-                                                {isCompleted ? (
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                                        stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                                                        <polyline points="20 6 9 17 4 12" />
-                                                    </svg>
-                                                ) : isActive ? (
-                                                    <span
-                                                        className="w-3 h-3 rounded-full border-2 border-[#b8ddd4] border-t-[#5EA68E] animate-spin"
-                                                        style={{ display: "inline-block" }}
-                                                    />
-                                                ) : (
-                                                    <span>{step.num}</span>
-                                                )}
-                                            </div>
-
-                                            <p className={[
-                                                "text-center text-[10px] sm:text-[11px] font-medium leading-tight",
-                                                isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
-                                            ].join(" ")}>
-                                                {step.label}
-                                            </p>
-
-                                            <span className={[
-                                                "text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium",
-                                                isCompleted
-                                                    ? "bg-[#E8F5F0] text-[#5EA68E]"
-                                                    : isActive
-                                                        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
-                                                        : "bg-slate-100 text-slate-400",
-                                            ].join(" ")}>
-                                                {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                                <p className="text-[11px] text-slate-400 truncate">
-                                    {stepProgress.detail || "Initialising dashboard…"}
-                                </p>
-                                <span className="text-[11px] text-slate-400 shrink-0 ml-3">
-                                    Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
-                                </span>
-                            </div>
-
-                        </div>
-                    </div>
-                )} */}
-
             {!shouldShowDummyUi && pageLoading && (
                 <div className="absolute inset-0 z-[999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
                     <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
@@ -7166,15 +6949,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             })}
                         </div>
 
-                        {/* <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                            <p className="text-xs text-slate-400 truncate">
-                                {stepProgress.detail || "Initialising dashboard…"}
-                            </p>
-                            <span className="text-xs text-slate-400 shrink-0 ml-3">
-                                Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
-                            </span>
-                        </div> */}
-
                         <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
 
                             {/* LEFT */}
@@ -7191,9 +6965,17 @@ Keep enough stock for validation but avoid over-committing too early.`,
                             </div> */}
 
                             {/* RIGHT */}
-                            <span className="text-xs text-slate-400 shrink-0">
+                            {/* <span className="text-xs text-slate-400 shrink-0">
                                 Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
-                            </span>
+                            </span> */}
+                            <div className="flex items-center gap-4">
+                                <span>
+                                    {estimatedRemainingSec > 0
+                                        ? `${estimatedRemainingSec}s left`
+                                        : "Almost done..."}
+                                </span>
+                                <span>{`Step ${currentStep} of 3`}</span>
+                            </div>
 
                         </div>
                     </div>

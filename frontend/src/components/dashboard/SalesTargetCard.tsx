@@ -430,60 +430,7 @@ export default function SalesTargetCard({
 
   return (
     <>
-      <style jsx>{`
-.bar-shimmer {
-  position: absolute;
-  inset: -60%;
-  background: linear-gradient(
-    115deg,
-    transparent 35%,
-    rgba(255, 255, 255, 0.35) 48%,
-    rgba(255, 255, 255, 0.7) 52%,
-    rgba(255, 255, 255, 0.35) 56%,
-    transparent 70%
-  );
-
-  animation: shimmer-right 2s linear infinite;
-  mix-blend-mode: screen;
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* 👇 negative direction */
-.bar-shimmer.reverse {
-  animation: shimmer-left 2s linear infinite;
-}
-
-/* ➡️ positive (default) */
-@keyframes shimmer-right {
-  0% {
-    transform: translateX(-70%) rotate(12deg);
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateX(70%) rotate(12deg);
-    opacity: 0.4;
-  }
-}
-
-/* ⬅️ negative */
-@keyframes shimmer-left {
-  0% {
-    transform: translateX(70%) rotate(12deg);
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateX(-70%) rotate(12deg);
-    opacity: 0.4;
-  }
-}
-`}</style>
+     
       <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
         {/* Legend */}
         <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">

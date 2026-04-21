@@ -3126,6 +3126,39 @@ export default function LiveBusinessClient({
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
+  const parseMetricNumber = (value?: string): number => {
+    if (!value) return 0;
+
+    // Takes only the main numeric part before the percentage bracket
+    const mainPart = value.split("(")[0].trim();
+
+    // Remove currency symbols, commas, spaces etc.
+    const numeric = Number(mainPart.replace(/[^\d.-]/g, ""));
+
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const sortedRecommendations = useMemo(() => {
+    return Object.entries(recommendedActions)
+      .map(([key, text]) => {
+        const parsed = parseRecommendedAction(text);
+
+        const netSalesMetric = parsed.metrics.find(
+          (m) => m.label.trim().toLowerCase() === "net sales"
+        );
+
+        const netSales = parseMetricNumber(netSalesMetric?.value);
+
+        return {
+          key,
+          text,
+          parsed,
+          netSales,
+        };
+      })
+      .sort((a, b) => b.netSales - a.netSales);
+  }, [recommendedActions, convertMetricValueString, displayCurrency]);
+
   return (
     <>
       <style>{`
@@ -3194,23 +3227,20 @@ export default function LiveBusinessClient({
                   </div>
                 </div>
 
-
-
                 {/* 3) Recommended Actions (cards) */}
                 {recommendedActions && Object.keys(recommendedActions).length > 0 && (
                   <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
                     <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
 
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {Object.entries(recommendedActions).map(([_, text], idx) => {
-                        const parsed = parseRecommendedAction(text);
+                      {sortedRecommendations.map(({ key, text, parsed, netSales }, idx) => {
                         const recommendationPoints = parsed.recommendationPoints;
 
                         const borderColor = topBorderColors[idx % topBorderColors.length];
 
                         return (
                           <motion.div
-                            key={idx}
+                            key={key}
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.35, delay: idx * 0.06 }}

@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import { IoMdLock } from "react-icons/io";
 import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCountryUpload";
 import Loader from '@/components/loader/Loader';
+import { exportSkuInformationExcel, exportWarehouseDataExcel } from '@/lib/excel/exportCurrentInventoryExcel';
+import { useGetUserDataQuery } from '@/lib/api/profileApi';
 
 // =========================
 // Warehouse upload format
@@ -286,7 +288,21 @@ export default function InputCostPage({ params }: Params) {
   const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
   const [warehouseUploadError, setWarehouseUploadError] = useState('');
 
+  const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
+
+  const companyName =
+    (userData as any)?.companyName ||
+    (userData as any)?.company_name ||
+    (userData as any)?.company ||
+    "";
+
+  const brandName =
+    (userData as any)?.brandName ||
+    (userData as any)?.brand_name ||
+    (userData as any)?.brand ||
+    "";
+    
 
   const isNA =
     monthParam?.toLowerCase() === 'na' ||
@@ -354,11 +370,11 @@ export default function InputCostPage({ params }: Params) {
       case 'product_name':
         return 'Product Name';
       case 'sku_uk':
-        return 'SKU (UK)';
+        return countryName === 'global' ? 'SKU (UK)' : 'SKU';
       case 'sku_us':
-        return 'SKU (US)';
+        return countryName === 'global' ? 'SKU (US)' : 'SKU';
       case 'sku_canada':
-        return 'SKU (CANADA)';
+        return countryName === 'global' ? 'SKU (CANADA)' : 'SKU';
       case 'asin':
         return 'ASIN';
       case 'product_barcode':
@@ -369,6 +385,8 @@ export default function InputCostPage({ params }: Params) {
         return 'Landing Cost';
       default:
         if (column.startsWith('sku_')) {
+          if (countryName !== 'global') return 'SKU';
+
           const c = column.replace('sku_', '').toUpperCase();
           return `SKU (${c})`;
         }
@@ -378,12 +396,16 @@ export default function InputCostPage({ params }: Params) {
           return (
             <div className="text-center leading-tight">
               <span className="hidden xl:inline whitespace-nowrap">
-                Gross Margin (%) {c}
+                {countryName === 'global'
+                  ? `Gross Margin (%) ${c}`
+                  : 'Gross Margin (%)'}
               </span>
 
               <span className="xl:hidden flex flex-col items-center justify-center whitespace-normal">
                 <span>Gross Margin</span>
-                <span>(%) {c}</span>
+                <span>
+                  (%) {countryName === 'global' ? c : ''}
+                </span>
               </span>
 
               <span
@@ -970,52 +992,57 @@ export default function InputCostPage({ params }: Params) {
     return '—';
   };
 
-  const handleDownloadXLSX = () => {
+  const handleDownloadXLSX = async () => {
     if (!skuData || skuData.length === 0) {
       alert('No data available to download.');
       return;
     }
 
     const dataToExport = skuData.map((row) => {
-      const newRow = { ...row } as SkuRow;
-      if (editedPrices[row.product_name] !== undefined) {
-        newRow.price = editedPrices[row.product_name];
-      }
-      return newRow;
-    });
+      const updatedPrice =
+        editedPrices[row.product_name] !== undefined
+          ? editedPrices[row.product_name]
+          : row.price;
 
-    const exportData = dataToExport.map((row) => {
-      const filtered: Record<string, any> = {};
+      const exportRow: Record<string, any> = {
+        s_no: row.s_no ?? '',
+        product_name: row.product_name ?? '',
+      };
+
       visibleColumns.forEach((col) => {
         if (col.startsWith('gross_margin_')) {
-          const c = col.replace('gross_margin_', '');
+          const targetCountry = col.replace('gross_margin_', '');
           const gm = calculateGrossMargin(
-            editedPrices[row.product_name] !== undefined ? editedPrices[row.product_name] : row.price,
+            updatedPrice,
             row.currency,
-            c,
+            targetCountry,
             row.product_name
           );
-          filtered[String(getColumnDisplayName(col))] = gm !== 'N/A' ? `${gm}%` : 'N/A';
+
+          exportRow[col] = gm !== 'N/A' ? Number(gm) : '';
         } else if (col === 'price') {
-          const priceValue =
-            editedPrices[row.product_name] !== undefined ? editedPrices[row.product_name] : row.price;
-          const symbol = getCurrencySymbol(row.currency);
-          filtered[String(getColumnDisplayName(col))] = `${symbol}${priceValue ?? ''}`;
+          exportRow.price = updatedPrice ?? '';
         } else if (col === 'month_year') {
-          filtered[String(getColumnDisplayName(col))] = getMonthYearDisplay(row);
+          exportRow.month_year = getMonthYearDisplay(row);
         } else {
-          filtered[String(getColumnDisplayName(col))] = (row as any)[col];
+          exportRow[col] = row[col] ?? '';
         }
       });
-      return filtered;
+
+      return exportRow;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'SKU Price Data');
-
-    const fileName = `SKU_Price_Data_${countryName?.toUpperCase() || 'EXPORT'}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+    await exportSkuInformationExcel({
+      filename: `SKU_Information_${countryName?.toUpperCase() || 'EXPORT'}.xlsx`,
+      countryName,
+      titleLine: 'SKU Information',
+      titleCountry: countryName === 'global' ? 'Global' : countryName.toUpperCase(),
+      platformLabel: 'Phormula',
+      periodLabel: `${monthParam} ${yearParam}`,
+      companyName,
+      brandName,
+      dataRows: dataToExport,
+    });
   };
 
   const tableData: TableRow[] = useMemo(() => {
@@ -1120,6 +1147,12 @@ export default function InputCostPage({ params }: Params) {
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
     if (col === 'product_name') return 'Product Name';
+
+    if (col === 'sku_uk' || col === 'sku_us' || col === 'sku_canada') {
+      return countryName === 'global'
+        ? col.replace('sku_', 'SKU ').toUpperCase()
+        : 'SKU';
+    }
 
     const formatted = col
       .replaceAll('_', ' ')
@@ -1237,6 +1270,44 @@ export default function InputCostPage({ params }: Params) {
     router.push(`/profile/${connectCountry}/NA/NA`);
   };
 
+  const handleWarehouseDownload = async () => {
+    if (!warehouseData || warehouseData.length === 0) {
+      alert('No warehouse data available to download.');
+      return;
+    }
+
+    const exportData = warehouseData.map((row, index) => {
+      const exportRow: Record<string, any> = {};
+
+      warehouseColumns.forEach((col) => {
+        if (col === 's_no') {
+          exportRow.s_no = row.s_no ?? index + 1;
+        } else if (col === 'product_name') {
+          exportRow.product_name = row.product_name ?? '';
+        } else if (col === 'month' && typeof row[col] === 'string') {
+          exportRow.month =
+            row[col].charAt(0).toUpperCase() + row[col].slice(1).toLowerCase();
+        } else {
+          exportRow[col] = row[col] ?? '';
+        }
+      });
+
+      return exportRow;
+    });
+
+    await exportWarehouseDataExcel({
+      filename: `Warehouse_Data_${countryName?.toUpperCase() || 'EXPORT'}.xlsx`,
+      countryName,
+      titleLine: 'Warehouse Data',
+      titleCountry: countryName === 'global' ? 'Global' : countryName.toUpperCase(),
+      platformLabel: 'Phormula',
+      periodLabel: `${monthParam} ${yearParam}`,
+      companyName,
+      brandName,
+      dataRows: exportData,
+    });
+  };
+
   return (
     <div>
       <style>{`
@@ -1296,13 +1367,22 @@ export default function InputCostPage({ params }: Params) {
               <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
             </>
           ) : (
-            <button
-              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-              onClick={() => setShowWarehouseUpload(true)}
-              disabled={isNA}
-            >
-              Upload File
-            </button>
+            <>
+              <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowWarehouseUpload(true)}
+                disabled={isNA}
+              >
+                Upload File
+              </button>
+
+              {/* ✅ ADD THIS */}
+              <DownloadIconButton
+                onClick={handleWarehouseDownload}
+                size="md"
+                disabled={isNA}
+              />
+            </>
           )}
         </div>
       </div>

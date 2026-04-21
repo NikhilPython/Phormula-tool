@@ -2027,3 +2027,333 @@ if (n !== null) {
     filename
   );
 }
+
+
+
+
+
+
+
+const normalizeCountryLabel = (countryName: string) => {
+  const c = (countryName || "").toLowerCase();
+  if (c === "uk") return "UK";
+  if (c === "us") return "US";
+  if (c === "canada" || c === "ca") return "Canada";
+  if (c === "eu") return "EU";
+  if (c === "europe") return "Europe";
+  if (c === "global") return "Global";
+  return countryName || "";
+};
+
+const formatSkuHeader = (countryName: string, skuKey: string) => {
+  const isGlobal = (countryName || "").toLowerCase() === "global";
+  if (!isGlobal) return "SKU";
+
+  const suffix = String(skuKey || "")
+    .replace(/^sku_/, "")
+    .replace(/_/g, " ")
+    .toUpperCase();
+
+  return `SKU ${suffix}`;
+};
+
+const formatGrossMarginHeader = (countryName: string, grossKey: string) => {
+  const isGlobal = (countryName || "").toLowerCase() === "global";
+  if (!isGlobal) return "Gross Margin (%)";
+
+  const suffix = String(grossKey || "")
+    .replace(/^gross_margin_/, "")
+    .replace(/_/g, " ")
+    .toUpperCase();
+
+  return `Gross Margin (%) ${suffix}`;
+};
+
+
+
+
+
+
+
+
+
+
+export async function exportWarehouseDataExcel(params: {
+  filename: string;
+  countryName: string;
+
+  titleLine: string;
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    countryName,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet(safeSheetName("Warehouse Data"), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  const firstRow = dataRows[0] || {};
+  const inputHeaders = Object.keys(firstRow);
+
+  const orderedHeaders = [
+    "s_no",
+    "product_name",
+    "sku_uk",
+    "sku_us",
+    "sku_canada",
+    "local_stock",
+    "in_transit_units",
+    "month",
+    "year",
+  ].filter((h) => inputHeaders.includes(h));
+
+  const headers = orderedHeaders.length ? orderedHeaders : inputHeaders;
+  const headerCount = headers.length || 1;
+
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).font = { bold: false };
+  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(2, headerCount).font = { bold: true };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry || normalizeCountryLabel(countryName)}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  const displayHeaders = headers.map((h) => {
+    switch (h) {
+      case "s_no":
+        return "S.No.";
+      case "product_name":
+        return "Product Name";
+      case "local_stock":
+        return "Local Stock";
+      case "in_transit_units":
+        return "In Transit Units";
+      case "month":
+        return "Month";
+      case "year":
+        return "Year";
+      case "sku_uk":
+      case "sku_us":
+      case "sku_canada":
+        return formatSkuHeader(countryName, h);
+      default:
+        if (h.startsWith("sku_")) return formatSkuHeader(countryName, h);
+        return h
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  });
+
+  displayHeaders.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+  });
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws.getRow(startDataRow + idx);
+
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h];
+
+      if (h === "s_no") {
+        cell.value = v ?? idx + 1;
+        cell.alignment = { horizontal: "center" };
+        return;
+      }
+
+      if (h === "product_name") {
+        cell.value = v ?? "";
+        cell.alignment = { horizontal: "left" };
+        return;
+      }
+
+      if (h === "month") {
+        const monthVal =
+          typeof v === "string" && v.length
+            ? v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+            : v ?? "";
+        cell.value = monthVal;
+        cell.alignment = { horizontal: "center" };
+        return;
+      }
+
+      const n = toNumberLoose(v);
+      if (n !== null && !String(h).includes("sku")) {
+        cell.value = Number.isInteger(n) ? n : n;
+        cell.numFmt = Number.isInteger(n) ? "#,##0" : "#,##0.00";
+      } else {
+        cell.value = v ?? "";
+      }
+
+      cell.alignment = {
+        horizontal: h === "product_name" ? "left" : "center",
+      };
+    });
+  });
+
+  ws.columns = headers.map((h) => {
+    if (h === "s_no") return { width: 10 };
+    if (h === "product_name") return { width: 28 };
+    if (h.startsWith("sku_")) return { width: 18 };
+    if (h === "local_stock") return { width: 16 };
+    if (h === "in_transit_units") return { width: 18 };
+    if (h === "month") return { width: 14 };
+    if (h === "year") return { width: 12 };
+    return { width: 16 };
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+export async function exportSkuInformationExcel(params: {
+  filename: string;
+  countryName: string;
+
+  titleLine: string;
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    countryName,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("SKU Information", {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  // Header section
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName}`;
+  ws.getCell(2, headerCount).value = brandName;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel}`;
+
+  // Table header
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    cell.font = { bold: true };
+    cell.alignment = { horizontal: "center" };
+  });
+
+  // Data
+  const startRow = headerRowNumber + 1;
+
+  dataRows.forEach((row, idx) => {
+    const excelRow = ws.getRow(startRow + idx);
+
+    headers.forEach((h, colIdx) => {
+      const cell = excelRow.getCell(colIdx + 1);
+      cell.value = row[h] ?? "";
+      cell.alignment = {
+        horizontal: h === "product_name" ? "left" : "center",
+      };
+    });
+  });
+
+  ws.columns = headers.map((h) => ({
+    width: Math.min(Math.max(h.length + 2, 14), 30),
+  }));
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
