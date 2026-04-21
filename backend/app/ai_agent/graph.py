@@ -1344,12 +1344,52 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         # -------- DEFAULT --------
         logger.info("[ROUTE] Standard absolute analysis")
 
-        result = _latest_month_result(
-            engine,
-            state["user_id"],
-            state["country"],
-            metric_name,
-        )
+        payload = state.get("period_payload", {})
+
+        if payload.get("type") == "single":
+            result = get_metric_for_month(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name,
+                payload["month"],
+                payload["year"],
+            )
+        else:
+            result = _latest_month_result(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name,
+            )
+
+        # -------- 🔥 PASTE HERE --------
+        product_query = state.get("product_query")
+
+        if product_query:
+            logger.info(f"[ABSOLUTE_PRODUCT_FILTER] {product_query}")
+
+            rows = result.get("per_sku", [])
+            value = 0.0
+
+            pq = product_query.strip().lower()
+
+            for r in rows:
+                name = str(r.get("product_name", "")).strip().lower()
+
+                if name == pq:
+                    value = float(r.get("__metric__", 0.0))
+                    break
+
+            # fallback contains match
+            if value == 0.0:
+                for r in rows:
+                    name = str(r.get("product_name", "")).lower()
+                    if pq in name:
+                        value += float(r.get("__metric__", 0.0))
+
+            result["total"] = value
+        # -------- 🔥 END --------
 
         logger.info(
             f"[STANDARD_RESULT] total={result.get('total')}, "
@@ -1360,7 +1400,6 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         state["analysis_result"] = {"type": "absolute"}
 
         return state
-
     except Exception as e:
         logger.exception("[STANDARD_ANALYSIS_ERROR]")
         state["error"] = str(e)
