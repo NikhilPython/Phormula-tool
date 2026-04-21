@@ -1163,8 +1163,10 @@ export default function DashboardPage() {
         }
     }, [router]);
 
-    const formatUKTime12hr = (timestamp: string | number | Date | null | undefined) => {
-        if (timestamp == null) return "Never updated";
+    const formatUKTime12hr = (
+        timestamp: string | number | Date | null | undefined
+    ) => {
+        if (timestamp == null) return "";
 
         let date: Date;
 
@@ -1179,10 +1181,10 @@ export default function DashboardPage() {
 
             date = new Date(normalized);
         } else {
-            return "Invalid Date";
+            return "";
         }
 
-        if (Number.isNaN(date.getTime())) return "Invalid Date";
+        if (Number.isNaN(date.getTime())) return "";
 
         const formatted = new Intl.DateTimeFormat("en-GB", {
             timeZone: "Europe/London",
@@ -1192,7 +1194,7 @@ export default function DashboardPage() {
             timeZoneName: "short",
         }).format(date);
 
-        return formatted;
+        return formatted.replace("am", "AM").replace("pm", "PM");
     };
 
     const { platform } = usePlatform();
@@ -7258,9 +7260,11 @@ ${pageLoading
                         >
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
-                        <span className="text-sm text-gray-500">
-                            Last Updated at {formatUKTime12hr(dbUpdatedAt)}
-                        </span>
+                        {dbUpdatedAt && (
+                            <span className="text-sm text-gray-500">
+                                Last Updated at {formatUKTime12hr(dbUpdatedAt)}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
