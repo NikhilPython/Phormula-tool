@@ -1728,7 +1728,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
           </div>
         )}
 
-        {busy && remainingSeconds !== null && (
+        {/* {busy && remainingSeconds !== null && (
           <div className="mt-2 text-center text-xs text-slate-500">
             Estimated time remaining:{" "}
             <span className="font-medium tabular-nums">
@@ -1736,7 +1736,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               {String(remainingSeconds % 60).padStart(2, "0")}
             </span>
           </div>
-        )}
+        )} */}
 
         {busy && stepProgress.active && currentStep > 0 && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 backdrop-blur-[1px] px-4">
@@ -1880,40 +1880,40 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
               </div>
 
               {/* Bottom status bar */}
-              <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+              {/* <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                 <p className="text-xs text-slate-400 truncate">
                   {stepProgress.detail || "Initialising dashboard…"}
                 </p>
                 <span className="text-xs text-slate-400 shrink-0 ml-3">
                   Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
                 </span>
+              </div> */}
+
+              <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 items-center">
+
+                {/* Left */}
+                <p className="text-xs text-slate-400 truncate text-left">
+                  {stepProgress.detail || "Initialising dashboard…"}
+                </p>
+
+                {/* Center */}
+                {remainingSeconds !== null && (
+                  <div className="text-xs text-slate-100 bg-slate-100 rounded-full text-center tabular-nums">
+                    Estimated time remaining:{" "}
+                    <span className="font-medium">
+                      {Math.floor(remainingSeconds / 60)}:
+                      {String(remainingSeconds % 60).padStart(2, "0")}
+                    </span>
+                  </div>
+                )}
+
+                {/* Right */}
+                <span className="text-xs text-slate-400 text-right">
+                  Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
+                </span>
+
               </div>
 
-              {/* {currentStep === 5 && rangeProgress.totalMonths > 0 && (
-        <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span>
-              Month {rangeProgress.currentMonth} of {rangeProgress.totalMonths}
-            </span>
-            <span>
-              OK {rangeProgress.ok} • Failed {rangeProgress.fail}
-            </span>
-          </div>
-
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full bg-[#5EA68E] transition-all duration-300"
-              style={{
-                width: `${
-                  rangeProgress.totalMonths > 0
-                    ? (rangeProgress.currentMonth / rangeProgress.totalMonths) * 100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-        </div>
-      )} */}
             </div>
           </div>
         )}
