@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useCallback, useMemo } from "react";
-import * as XLSX from "xlsx-js-style";
+// import * as XLSX from "xlsx-js-style";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
 import type { RegionKey } from "@/lib/dashboard/types";
 import DataTable, { ColumnDef } from "../ui/table/DataTable";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
-import { saveAs } from "file-saver";
+// import { saveAs } from "file-saver";
+import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 type InventoryRow = Record<string, string | number>;
 
@@ -104,171 +105,171 @@ const formatRatio = (n: number | null | undefined) => {
   return v.toFixed(2);
 };
 
-const capitalizeWords = (value: string) =>
-  (value || "")
-    .toString()
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+// const capitalizeWords = (value: string) =>
+//   (value || "")
+//     .toString()
+//     .toLowerCase()
+//     .replace(/\b\w/g, (char) => char.toUpperCase());
 
 /* ========= Export Header Cleanup ========= */
 
-const HEADER_RENAME_MAP: Record<string, string | null> = {
-  synced_at: null,
+// const HEADER_RENAME_MAP: Record<string, string | null> = {
+//   synced_at: null,
 
-  available: "Available Inventory",
+//   available: "Available Inventory",
 
-  "inv-age-0-to-90-days": "Inventory Age 0 to 90 Days",
-  "inv-age-91-to-180-days": "Inventory Age 91 to 180 Days",
-  "inv-age-181-to-270-days": "Inventory Age 181 to 270 Days",
-  "inv-age-271-to-365-days": "Inventory Age 271 to 365 Days",
-  "inv-age-365-plus-days": "Inventory Age 365 Plus Days",
+//   "inv-age-0-to-90-days": "Inventory Age 0 to 90 Days",
+//   "inv-age-91-to-180-days": "Inventory Age 91 to 180 Days",
+//   "inv-age-181-to-270-days": "Inventory Age 181 to 270 Days",
+//   "inv-age-271-to-365-days": "Inventory Age 271 to 365 Days",
+//   "inv-age-365-plus-days": "Inventory Age 365 Plus Days",
 
-  "sales-rank": "Sales Rank",
-  "estimated-storage-cost-next-month": "Estimated Storage Cost Next Month",
-};
+//   "sales-rank": "Sales Rank",
+//   "estimated-storage-cost-next-month": "Estimated Storage Cost Next Month",
+// };
 
-const toTitleCase = (s: string) =>
-  String(s || "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+// const toTitleCase = (s: string) =>
+//   String(s || "")
+//     .replace(/[_-]+/g, " ")
+//     .replace(/\s+/g, " ")
+//     .trim()
+//     .toLowerCase()
+//     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const normalizeExportRows = (rows: InventoryRow[]) => {
-  return rows.map((row) => {
-    const cleanRow: Record<string, any> = {};
+// const normalizeExportRows = (rows: InventoryRow[]) => {
+//   return rows.map((row) => {
+//     const cleanRow: Record<string, any> = {};
 
-    Object.entries(row).forEach(([key, value]) => {
-      const normalizedKey = key.trim().toLowerCase();
-      if (normalizedKey === "synced_at") return;
+//     Object.entries(row).forEach(([key, value]) => {
+//       const normalizedKey = key.trim().toLowerCase();
+//       if (normalizedKey === "synced_at") return;
 
-      const mapped = HEADER_RENAME_MAP[normalizedKey];
-      if (mapped === null) return;
+//       const mapped = HEADER_RENAME_MAP[normalizedKey];
+//       if (mapped === null) return;
 
-      const newKey = mapped ?? toTitleCase(normalizedKey);
-      cleanRow[newKey] = value;
-    });
+//       const newKey = mapped ?? toTitleCase(normalizedKey);
+//       cleanRow[newKey] = value;
+//     });
 
-    return cleanRow;
-  });
-};
+//     return cleanRow;
+//   });
+// };
 
-const getAbbr = (m?: string) => (m ? m.slice(0, 3) : "");
+// const getAbbr = (m?: string) => (m ? m.slice(0, 3) : "");
 
-const buildTopAoA = ({
-  headerCount,
-  title,
-  companyName,
-  brandName,
-  brandAnchorColIndex1Based,
-  extraLines = [],
-}: {
-  headerCount: number;
-  title: string;
-  companyName: string;
-  brandName: string;
-  brandAnchorColIndex1Based: number;
-  extraLines?: string[];
-}) => {
-  const aoa: any[][] = [];
+// const buildTopAoA = ({
+//   headerCount,
+//   title,
+//   companyName,
+//   brandName,
+//   brandAnchorColIndex1Based,
+//   extraLines = [],
+// }: {
+//   headerCount: number;
+//   title: string;
+//   companyName: string;
+//   brandName: string;
+//   brandAnchorColIndex1Based: number;
+//   extraLines?: string[];
+// }) => {
+//   const aoa: any[][] = [];
 
-  const titleRow = new Array(headerCount).fill("");
-  titleRow[0] = title || "";
-  aoa.push(titleRow);
+//   const titleRow = new Array(headerCount).fill("");
+//   titleRow[0] = title || "";
+//   aoa.push(titleRow);
 
-  const companyBrandRow = new Array(headerCount).fill("");
-  companyBrandRow[0] = `Company Name : ${companyName || ""}`;
+//   const companyBrandRow = new Array(headerCount).fill("");
+//   companyBrandRow[0] = `Company Name : ${companyName || ""}`;
 
-  const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
-  companyBrandRow[Math.min(headerCount - 1, anchor0)] = `${brandName || ""}`;
-  aoa.push(companyBrandRow);
+//   const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
+//   companyBrandRow[Math.min(headerCount - 1, anchor0)] = `${brandName || ""}`;
+//   aoa.push(companyBrandRow);
 
-  for (const line of extraLines) {
-    const r = new Array(headerCount).fill("");
-    r[0] = line;
-    aoa.push(r);
-  }
+//   for (const line of extraLines) {
+//     const r = new Array(headerCount).fill("");
+//     r[0] = line;
+//     aoa.push(r);
+//   }
 
-  aoa.push(new Array(headerCount).fill(""));
-  return aoa;
-};
+//   aoa.push(new Array(headerCount).fill(""));
+//   return aoa;
+// };
 
-const applyTopStyles = (
-  ws: XLSX.WorkSheet,
-  headerCount: number,
-  brandAnchorColIndex1Based: number
-) => {
-  ws["!merges"] = ws["!merges"] || [];
-  ws["!rows"] = ws["!rows"] || [];
+// const applyTopStyles = (
+//   ws: XLSX.WorkSheet,
+//   headerCount: number,
+//   brandAnchorColIndex1Based: number
+// ) => {
+//   ws["!merges"] = ws["!merges"] || [];
+//   ws["!rows"] = ws["!rows"] || [];
 
-  ws["!rows"][0] = { hpt: 18 };
-  ws["!rows"][1] = { hpt: 18 };
+//   ws["!rows"][0] = { hpt: 18 };
+//   ws["!rows"][1] = { hpt: 18 };
 
-  ws["!merges"].push({
-    s: { r: 0, c: 0 },
-    e: { r: 0, c: headerCount - 1 },
-  });
+//   ws["!merges"].push({
+//     s: { r: 0, c: 0 },
+//     e: { r: 0, c: headerCount - 1 },
+//   });
 
-  const companyAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
-  if (ws[companyAddr]) {
-    ws[companyAddr].s = {
-      alignment: { horizontal: "left", vertical: "center" },
-    };
-  }
+//   const companyAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
+//   if (ws[companyAddr]) {
+//     ws[companyAddr].s = {
+//       alignment: { horizontal: "left", vertical: "center" },
+//     };
+//   }
 
-  const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
-  const brandAddr = XLSX.utils.encode_cell({
-    r: 1,
-    c: Math.min(headerCount - 1, anchor0),
-  });
-  if (ws[brandAddr]) {
-    ws[brandAddr].s = {
-      alignment: { horizontal: "right", vertical: "center" },
-    };
-  }
-};
+//   const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
+//   const brandAddr = XLSX.utils.encode_cell({
+//     r: 1,
+//     c: Math.min(headerCount - 1, anchor0),
+//   });
+//   if (ws[brandAddr]) {
+//     ws[brandAddr].s = {
+//       alignment: { horizontal: "right", vertical: "center" },
+//     };
+//   }
+// };
 
-const applyBoldRow = (ws: XLSX.WorkSheet, rowIndex: number) => {
-  const ref = ws["!ref"];
-  if (!ref) return;
-  const range = XLSX.utils.decode_range(ref);
+// const applyBoldRow = (ws: XLSX.WorkSheet, rowIndex: number) => {
+//   const ref = ws["!ref"];
+//   if (!ref) return;
+//   const range = XLSX.utils.decode_range(ref);
 
-  for (let C = range.s.c; C <= range.e.c; C++) {
-    const addr = XLSX.utils.encode_cell({ r: rowIndex, c: C });
-    const cell = ws[addr];
-    const base = cell || { t: "s", v: "" };
+//   for (let C = range.s.c; C <= range.e.c; C++) {
+//     const addr = XLSX.utils.encode_cell({ r: rowIndex, c: C });
+//     const cell = ws[addr];
+//     const base = cell || { t: "s", v: "" };
 
-    ws[addr] = {
-      ...base,
-      s: {
-        ...((base as any).s || {}),
-        font: { ...(((base as any).s)?.font || {}), bold: true },
-      },
-    };
-  }
-};
+//     ws[addr] = {
+//       ...base,
+//       s: {
+//         ...((base as any).s || {}),
+//         font: { ...(((base as any).s)?.font || {}), bold: true },
+//       },
+//     };
+//   }
+// };
 
-const boldHeaderRows = (ws: XLSX.WorkSheet, headerRows: number[]) => {
-  headerRows.forEach((r) => applyBoldRow(ws, r));
-};
+// const boldHeaderRows = (ws: XLSX.WorkSheet, headerRows: number[]) => {
+//   headerRows.forEach((r) => applyBoldRow(ws, r));
+// };
 
-const boldRowsByColValue = (
-  ws: XLSX.WorkSheet,
-  colIndex0: number,
-  labels: string[]
-) => {
-  const ref = ws["!ref"];
-  if (!ref) return;
-  const range = XLSX.utils.decode_range(ref);
-  const set = new Set(labels.map((s) => s.toLowerCase()));
+// const boldRowsByColValue = (
+//   ws: XLSX.WorkSheet,
+//   colIndex0: number,
+//   labels: string[]
+// ) => {
+//   const ref = ws["!ref"];
+//   if (!ref) return;
+//   const range = XLSX.utils.decode_range(ref);
+//   const set = new Set(labels.map((s) => s.toLowerCase()));
 
-  for (let R = range.s.r; R <= range.e.r; R++) {
-    const addr = XLSX.utils.encode_cell({ r: R, c: colIndex0 });
-    const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
-    if (set.has(v)) applyBoldRow(ws, R);
-  }
-};
+//   for (let R = range.s.r; R <= range.e.r; R++) {
+//     const addr = XLSX.utils.encode_cell({ r: R, c: colIndex0 });
+//     const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
+//     if (set.has(v)) applyBoldRow(ws, R);
+//   }
+// };
 
 const getCurrencySymbol = (currency: CurrencyCode) => {
   switch (currency) {
@@ -365,101 +366,101 @@ export default function CurrentInventorySection({
 
   /* ===================== DOWNLOAD EXCEL (FULL DATA) ===================== */
 
-  const exportRows = useMemo(() => {
-    if (!invRows?.length) return [];
+  // const exportRows = useMemo(() => {
+  //   if (!invRows?.length) return [];
 
-    return invRows
-      .filter((r) => {
-        const name = String(r["Product Name"] ?? "").trim();
-        const sku = String(r["SKU"] ?? "").trim();
-        if (!name && !sku) return false;
-        if (isInventoryTotalRow(r)) return false;
-        return true;
-      })
-      .map((row, index) => {
-        const sku = String(row["SKU"] ?? "").trim();
+  //   return invRows
+  //     .filter((r) => {
+  //       const name = String(r["Product Name"] ?? "").trim();
+  //       const sku = String(r["SKU"] ?? "").trim();
+  //       if (!name && !sku) return false;
+  //       if (isInventoryTotalRow(r)) return false;
+  //       return true;
+  //     })
+  //     .map((row, index) => {
+  //       const sku = String(row["SKU"] ?? "").trim();
 
-        const currentInventory =
-          toNumberSafe(row["Inventory at the end of the month"]) ||
-          toNumberSafe(row["Available Inventory"]);
+  //       const currentInventory =
+  //         toNumberSafe(row["Inventory at the end of the month"]) ||
+  //         toNumberSafe(row["Available Inventory"]);
 
-        const mtdKey = findMtdKey(row);
-        const currentMonthUnitsSold = toNumberSafe(
-          mtdKey ? (row as any)[mtdKey] : 0
-        );
+  //       const mtdKey = findMtdKey(row);
+  //       const currentMonthUnitsSold = toNumberSafe(
+  //         mtdKey ? (row as any)[mtdKey] : 0
+  //       );
 
-        const daysInHand =
-          currentMonthUnitsSold > 0
-            ? Math.round(currentInventory / currentMonthUnitsSold)
-            : "";
+  //       const daysInHand =
+  //         currentMonthUnitsSold > 0
+  //           ? Math.round(currentInventory / currentMonthUnitsSold)
+  //           : "";
 
-        const rawAlert = String(inventoryAlerts?.[sku]?.alert ?? "").toLowerCase();
+  //       const rawAlert = String(inventoryAlerts?.[sku]?.alert ?? "").toLowerCase();
 
-        let status =
-          rawAlert.includes("high")
-            ? "High Alert"
-            : rawAlert.includes("low")
-              ? "Low Stock"
-              : "Healthy";
+  //       let status =
+  //         rawAlert.includes("high")
+  //           ? "High Alert"
+  //           : rawAlert.includes("low")
+  //             ? "Low Stock"
+  //             : "Healthy";
 
-        return {
-          "Sno.": index + 1,
-          "SKU": sku,
-          "Product Name": row["Product Name"] ?? "",
-          "Current Inventory": currentInventory,
-          "Current Month Units Sold": currentMonthUnitsSold,
-          "Days in Hand": daysInHand,
-          "Status": status,
-        } as Record<string, string | number>;
-      });
-  }, [invRows, inventoryAlerts, findMtdKey]);
+  //       return {
+  //         "Sno.": index + 1,
+  //         "SKU": sku,
+  //         "Product Name": row["Product Name"] ?? "",
+  //         "Current Inventory": currentInventory,
+  //         "Current Month Units Sold": currentMonthUnitsSold,
+  //         "Days in Hand": daysInHand,
+  //         "Status": status,
+  //       } as Record<string, string | number>;
+  //     });
+  // }, [invRows, inventoryAlerts, findMtdKey]);
 
-  const downloadInventoryExcel = useCallback(() => {
-    if (!exportRows.length) return;
+  // const downloadInventoryExcel = useCallback(() => {
+  //   if (!exportRows.length) return;
 
-    const headerOrder = Object.keys(exportRows[0]);
-    const bodyAoA = exportRows.map((row) =>
-      headerOrder.map((h) => (row as Record<string, any>)[h] ?? "")
-    );
+  //   const headerOrder = Object.keys(exportRows[0]);
+  //   const bodyAoA = exportRows.map((row) =>
+  //     headerOrder.map((h) => (row as Record<string, any>)[h] ?? "")
+  //   );
 
-    const { monthName, year } = getISTYearMonth();
-    const abbr = monthName.slice(0, 3);
-    const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${String(year).slice(2)}`;
+  //   const { monthName, year } = getISTYearMonth();
+  //   const abbr = monthName.slice(0, 3);
+  //   const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${String(year).slice(2)}`;
 
-    const companyNameForExcel = capitalizeWords((userData as any)?.company_name || "");
-    const brandNameForExcel = capitalizeWords((userData as any)?.brand_name || "");
+  //   const companyNameForExcel = capitalizeWords((userData as any)?.company_name || "");
+  //   const brandNameForExcel = capitalizeWords((userData as any)?.brand_name || "");
 
-    const topAoA = buildTopAoA({
-      headerCount: headerOrder.length,
-      title: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
-      companyName: companyNameForExcel,
-      brandName: brandNameForExcel,
-      brandAnchorColIndex1Based: headerOrder.length,
-      extraLines: [
-        `Country : ${displayRegion}`,
-        `Platform : Amazon`,
-        `Period : ${periodLabel}`,
-      ],
-    });
+  //   const topAoA = buildTopAoA({
+  //     headerCount: headerOrder.length,
+  //     title: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
+  //     companyName: companyNameForExcel,
+  //     brandName: brandNameForExcel,
+  //     brandAnchorColIndex1Based: headerOrder.length,
+  //     extraLines: [
+  //       `Country : ${displayRegion}`,
+  //       `Platform : Amazon`,
+  //       `Period : ${periodLabel}`,
+  //     ],
+  //   });
 
-    const sheetAoA = [...topAoA, headerOrder, ...bodyAoA];
-    const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+  //   const sheetAoA = [...topAoA, headerOrder, ...bodyAoA];
+  //   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
 
-    const HEADER_ROW_INDEX = topAoA.length;
-    boldHeaderRows(ws, [HEADER_ROW_INDEX]);
+  //   const HEADER_ROW_INDEX = topAoA.length;
+  //   boldHeaderRows(ws, [HEADER_ROW_INDEX]);
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
+  //   const wb = XLSX.utils.book_new();
+  //   XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
 
-    const fileName = `Current-Inventory_${displayRegion}_${monthName}_${year}.xlsx`;
-    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  //   const fileName = `Current-Inventory_${displayRegion}_${monthName}_${year}.xlsx`;
+  //   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
 
-    const blob = new Blob([out], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
+  //   const blob = new Blob([out], {
+  //     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //   });
 
-    saveAs(blob, fileName);
-  }, [exportRows, displayRegion, userData]);
+  //   saveAs(blob, fileName);
+  // }, [exportRows, displayRegion, userData]);
 
   /* -------- Transform backend rows → UI rows for DataTable -------- */
 
@@ -700,6 +701,137 @@ export default function CurrentInventorySection({
     storageSourceCurrency,
   ]);
 
+  const exportDataRows = useMemo(() => {
+    if (!invRows?.length) return [];
+
+    return invRows
+      .filter((r) => {
+        const name = String(r["Product Name"] ?? "").trim();
+        const sku = String(r["SKU"] ?? "").trim();
+        const isEmpty = !name && !sku;
+        if (isEmpty) return false;
+
+        // optional:
+        // keep this false if you DO NOT want total row in excel
+        if (isInventoryTotalRow(r)) return false;
+
+        return true;
+      })
+      .map((row, index) => {
+        const sku = normalizeSku((row as any)["SKU"]);
+        const mtdKey = findMtdKey(row);
+        const sales30Key = findSales30Key(row);
+
+        const currentInventory =
+          toNumberSafe((row as any)["Inventory at the end of the month"]) ||
+          toNumberSafe((row as any)["Available Inventory"]);
+
+        const mtdSales = toNumberSafe(mtdKey ? (row as any)[mtdKey] : 0);
+        const sales30Only = toNumberSafe(sales30Key ? (row as any)[sales30Key] : 0);
+        const salesLast30Days = mtdSales + sales30Only;
+
+        const age181to270 = getNumberByPossibleKeys(row, [
+          "inv-age-181-to-270-days",
+          "inv_age_181_to_270_days",
+          "Inventory Age 181 to 270 Days",
+          "inv age 181 to 270 days",
+        ]);
+
+        const age271to365 = getNumberByPossibleKeys(row, [
+          "inv-age-271-to-365-days",
+          "inv_age_271_to_365_days",
+          "Inventory Age 271 to 365 Days",
+          "inv age 271 to 365 days",
+        ]);
+
+        const age365plus = getNumberByPossibleKeys(row, [
+          "inv-age-365-plus-days",
+          "inv_age_365_plus_days",
+          "Inventory Age 365+ Days",
+          "Inventory Age 365 Plus Days",
+          "inv age 365 plus days",
+          "inv-age-365+-days",
+        ]);
+
+        const inventory180Plus = age181to270 + age271to365 + age365plus;
+
+        const salesRank = toNumberSafe((row as any)["sales-rank"]);
+        const estStorage = toNumberSafe((row as any)["estimated-storage-cost-next-month"]);
+
+        const denom = mtdSales + sales30Only;
+        const coverage = denom > 0 ? currentInventory / denom : 0;
+
+        return {
+          "S.No.": index + 1,
+          "Product Name": (row as any)["Product Name"] ?? "",
+          "SKU": (row as any)["SKU"] || (row as any)["ASIN"] || "",
+          "MTD Sales": mtdSales,
+          "Sales Last 30 Days": salesLast30Days,
+          "Sales Rank": salesRank || "",
+          "Current Inventory": currentInventory,
+          "Inventory 180+ Days": inventory180Plus,
+          "Estimated Storage Cost": estStorage
+            ? Number(
+              formatMoneyNumberOnly(
+                convertToDisplayCurrency(estStorage, storageSourceCurrency)
+              ).replace(/,/g, "")
+            )
+            : "",
+          "Inventory Coverage Ratio": coverage
+            ? Number(coverage.toFixed(2))
+            : "",
+          "Inventory Alerts": inventoryAlerts?.[sku]?.alert || "",
+        };
+      });
+  }, [
+    invRows,
+    inventoryAlerts,
+    findMtdKey,
+    findSales30Key,
+    convertToDisplayCurrency,
+    storageSourceCurrency,
+  ]);
+
+  const downloadInventoryExcel = useCallback(() => {
+    if (!exportDataRows.length) return;
+
+    const { monthName, year } = getISTYearMonth();
+    const abbr = monthName.slice(0, 3);
+    const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${String(year).slice(2)}`;
+
+    const companyNameForExcel = String(
+      (userData as any)?.company_name || (userData as any)?.companyName || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    const brandNameForExcel = String(
+      (userData as any)?.brand_name || (userData as any)?.brandName || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    exportPnLProductwiseBreakdownMtdExcel({
+      filename: `Current-Inventory_${displayRegion}_${monthName}_${year}.xlsx`,
+      titleLine: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
+      countryName: displayRegion.toLowerCase(),
+      titleCountry: displayRegion,
+      platformLabel: "Amazon",
+      periodLabel,
+      companyName: companyNameForExcel,
+      brandName: brandNameForExcel,
+      homeCurrencyCode: homeCurrencyCodeForExcel,
+      dataRows: exportDataRows,
+    });
+  }, [
+    exportDataRows,
+    displayRegion,
+    userData,
+    homeCurrencyCodeForExcel,
+  ]);
+
   /* -------- Build DataTable columns -------- */
 
   const columns: ColumnDef<InventoryUiRow>[] = useMemo(() => {
@@ -836,7 +968,8 @@ export default function CurrentInventorySection({
 
         <DownloadIconButton
           onClick={downloadInventoryExcel}
-          disabled={invLoading || !invRows?.length}
+          // disabled={invLoading || !invRows?.length}
+          disabled={invLoading || !exportDataRows.length}
           className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
         />
       </div>
