@@ -293,98 +293,61 @@ class MetricDef:
     absolute: bool = False
 
 
-SKU_ADDITIVE_METRICS: Dict[str, MetricDef] = {
-    "sales": MetricDef("sales", "net_sales", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+SKU_ADDITIVE_METRICS = {
 
-    "net_sales": MetricDef("net_sales", "net_sales", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # SALES
+    "gross_sales": MetricDef("gross_sales", "gross_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "refund_sales": MetricDef("refund_sales", "refund_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "net_sales": MetricDef("net_sales", "net_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "gross_sales": MetricDef("gross_sales", "gross_sales", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # REBATES
+    "promotional_rebates": MetricDef("promotional_rebates", "promotional_rebates", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "quantity": MetricDef("quantity", "quantity", "sku_additive", "quantity", "sku",
-        True, True, True, True,
-        True, True, True),
+    # COSTS
+    "cost_of_unit_sold": MetricDef("cost_of_unit_sold", "cost_of_unit_sold", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "units": MetricDef("units", "quantity", "sku_additive", "quantity", "sku",
-        True, True, True, True,
-        True, True, True),
+    # FEES
+    "selling_fees": MetricDef("selling_fees", "selling_fees", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "fba_fees": MetricDef("fba_fees", "fba_fees", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "amazon_fee": MetricDef("amazon_fee", "amazon_fee", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "total_quantity": MetricDef("total_quantity", "total_quantity", "sku_additive", "quantity", "sku",
-        True, True, True, True,
-        True, True, True),
+    # TAX / CREDIT
+    "net_taxes": MetricDef("net_taxes", "net_taxes", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "net_credits": MetricDef("net_credits", "net_credits", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "return_quantity": MetricDef("return_quantity", "return_quantity", "sku_additive", "quantity", "sku",
-        True, True, True, True,
-        True, True, True),
+    # OTHER
+    "misc_transaction": MetricDef("misc_transaction", "misc_transaction", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "other_transaction_fees": MetricDef("other_transaction_fees", "other_transaction_fees", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "refund_sales": MetricDef("refund_sales", "refund_sales", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # PROFIT
+    "profit": MetricDef("profit", "profit", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "cm2_profit": MetricDef("cm2_profit", "cm2_profit", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "tax": MetricDef("tax", "net_taxes", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # ADS
+    "visible_ads": MetricDef("visible_ads", "visible_ads", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "dealsvouchar_ads": MetricDef("dealsvouchar_ads", "dealsvouchar_ads", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "advertising_total": MetricDef("advertising_total", "advertising_total", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "net_taxes": MetricDef("net_taxes", "net_taxes", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # LOSSES
+    "lost_total": MetricDef("lost_total", "lost_total", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "credits": MetricDef("credits", "net_credits", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # PLATFORM
+    "platform_fee": MetricDef("platform_fee", "platform_fee", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "platform_fee_inventory_storage": MetricDef("platform_fee_inventory_storage", "platform_fee_inventory_storage", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
-    "net_credits": MetricDef("net_credits", "net_credits", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
+    # REIMBURSEMENT
+    "rembursement_fee": MetricDef("rembursement_fee", "rembursement_fee", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    
+    "return_quantity": MetricDef(
+    "return_quantity",
+    "return_quantity",
+    "sku_additive",
+    "count",   # 🔥 IMPORTANT (not money)
+    "sku",
+    True, True, True, True,
+    True, True, True,
+),
 
-    "tax_and_credits": MetricDef("tax_and_credits", "tex_and_credits", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "tex_and_credits": MetricDef("tex_and_credits", "tex_and_credits", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "cogs": MetricDef("cogs", "cost_of_unit_sold", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "cost_of_unit_sold": MetricDef("cost_of_unit_sold", "cost_of_unit_sold", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "selling_fees": MetricDef("selling_fees", "selling_fees", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "refund_selling_fees": MetricDef("refund_selling_fees", "refund_selling_fees", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "fba_fees": MetricDef("fba_fees", "fba_fees", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "amazon_fee": MetricDef("amazon_fee", "amazon_fee", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "profit": MetricDef("profit", "profit", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "lost_total": MetricDef("lost_total", "lost_total", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
-
-    "product_sales": MetricDef("product_sales", "product_sales", "sku_additive", "money", "sku",
-        True, True, True, True,
-        True, True, True),
 }
 
 TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
@@ -477,111 +440,27 @@ TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
 }
 
 
-PRECOMPUTED_METRICS: Dict[str, MetricDef] = {
-    "profit_percentage": MetricDef(
-        "profit_percentage",
-        "profit_percentage",
-        "sku_precomputed",
-        "percentage",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,   # product filter
-        True,   # product breakdown
-        True,   # time breakdown
-    ),
+PRECOMPUTED_METRICS = {
 
-    "cm2_profit_percentage": MetricDef(
-        "cm2_profit_percentage",
-        "cm2_profit_percentage",
-        "sku_precomputed",
-        "percentage",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "asp": MetricDef("asp", "asp", "sku_precomputed", "money", "sku", False, True, True, True, True, True, True),
 
-    "acos": MetricDef(
-        "acos",
-        "acos",
-        "sku_precomputed",
-        "percentage",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "promotional_rebates_percentage": MetricDef("promotional_rebates_percentage", "promotional_rebates_percentage", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
 
-    "asp": MetricDef(
-        "asp",
-        "asp",
-        "sku_precomputed",
-        "money",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "profit_percentage": MetricDef("profit_percentage", "profit_percentage", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
 
-    "unit_wise_profitability": MetricDef(
-        "unit_wise_profitability",
-        "unit_wise_profitability",
-        "sku_precomputed",
-        "money",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "cm2_profit_percentage": MetricDef("cm2_profit_percentage", "cm2_profit_percentage", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
 
-    "sales_mix": MetricDef(
-        "sales_mix",
-        "sales_mix",
-        "sku_precomputed",
-        "percentage",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "acos": MetricDef("acos", "acos", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
 
-    "profit_mix": MetricDef(
-        "profit_mix",
-        "profit_mix",
-        "sku_precomputed",
-        "percentage",
-        "sku",
-        False,
-        True,
-        True,
-        True,
-        True,
-        True,
-        True,
-    ),
+    "sales_mix": MetricDef("sales_mix", "sales_mix", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
+
+    "profit_mix": MetricDef("profit_mix", "profit_mix", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
+
+    "reimbursement_vs_sales": MetricDef("reimbursement_vs_sales", "reimbursement_vs_sales", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
+
+    "rembursment_vs_cm2_margins": MetricDef("rembursment_vs_cm2_margins", "rembursment_vs_cm2_margins", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
+
+    "unit_wise_profitability": MetricDef("unit_wise_profitability", "unit_wise_profitability", "sku_precomputed", "money", "sku", False, True, True, True, True, True, True),
 }
 
 ALL_METRICS = {
