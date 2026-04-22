@@ -279,22 +279,31 @@ const AppSidebar: React.FC = () => {
 
   const [initialPeriod] = useState(() => {
     const today = new Date();
+    const currentYear = String(today.getFullYear());
+
     let ranged = "YTD";
     let month = monthNames[today.getMonth()];
-    let year = String(today.getFullYear());
+    let year = currentYear;
 
     if (typeof window !== "undefined") {
       try {
         const raw = localStorage.getItem("latestFetchedPeriod");
         if (raw) {
           const parsed = JSON.parse(raw) as { month?: string; year?: string };
-          if (parsed.month && parsed.year) {
+          const savedYear = String(parsed?.year || "").trim();
+
+          if (parsed.month && savedYear === currentYear) {
             month = String(parsed.month).toLowerCase();
-            year = String(parsed.year);
+            year = currentYear;
+          } else if (savedYear && savedYear !== currentYear) {
+            localStorage.removeItem("latestFetchedPeriod");
           }
         }
-      } catch { }
+      } catch {
+        localStorage.removeItem("latestFetchedPeriod");
+      }
     }
+
     return { ranged, month, year };
   });
 

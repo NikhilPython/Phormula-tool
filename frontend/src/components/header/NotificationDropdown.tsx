@@ -56,9 +56,8 @@ export default function NotificationDropdown({
         onClick={handleClick}
       >
         <span
-          className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-[#B75A5A] ${
-            !unread ? "hidden" : "flex"
-          }`}
+          className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-[#B75A5A] ${!unread ? "hidden" : "flex"
+            }`}
         >
           <span className="absolute inline-flex w-full h-full bg-[#B75A5A] rounded-full opacity-75 animate-ping"></span>
         </span>
@@ -128,21 +127,27 @@ export default function NotificationDropdown({
                   </span>
 
                   <span className="block flex-1">
-                    <span className="mb-1.5 block text-theme-sm text-gray-500 dark:text-gray-400">
+                    <div className="mb-1.5 flex items-start justify-between text-theme-sm text-gray-500 dark:text-gray-400">
                       <span className="font-medium text-gray-800 dark:text-white/90">
                         {item.title}
                       </span>
-                    </span>
+
+                      {item.timeAgo && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2">
+                          {item.timeAgo}
+                        </span>
+                      )}
+                    </div>
 
                     <span className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
                       {item.message}
                     </span>
 
-                    {item.timeAgo && (
+                    {/* {item.timeAgo && (
                       <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                         {item.timeAgo}
                       </span>
-                    )}
+                    )} */}
 
                     {item.href && (
                       <Link

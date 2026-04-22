@@ -168,12 +168,37 @@ const monthIndexMap: Record<string, number> = {
 
 type FetchedPeriods = Record<string, string[]>;
 
+// const readFetchedPeriods = (): FetchedPeriods => {
+//   if (typeof window === "undefined") return {};
+//   try {
+//     const raw = localStorage.getItem("fetchedPeriods");
+//     return raw ? (JSON.parse(raw) as FetchedPeriods) : {};
+//   } catch {
+//     return {};
+//   }
+// };
+
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
+
+  const currentYear = String(new Date().getFullYear());
+
   try {
     const raw = localStorage.getItem("fetchedPeriods");
-    return raw ? (JSON.parse(raw) as FetchedPeriods) : {};
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as FetchedPeriods;
+
+    // keep only current year data
+    if (parsed[currentYear]) {
+      return { [currentYear]: parsed[currentYear] };
+    }
+
+    // stale years like 2025 -> clear storage
+    localStorage.removeItem("fetchedPeriods");
+    return {};
   } catch {
+    localStorage.removeItem("fetchedPeriods");
     return {};
   }
 };
@@ -183,43 +208,100 @@ const writeFetchedPeriods = (fp: FetchedPeriods) => {
   localStorage.setItem("fetchedPeriods", JSON.stringify(fp));
 };
 
+// const markFetched = (year: string, month?: string) => {
+//   if (typeof window === "undefined") return;
+//   const y = String(year);
+//   const m = month ? month.toLowerCase() : "";
+
+//   const fp = readFetchedPeriods();
+//   if (!fp[y]) fp[y] = [];
+//   if (m && !fp[y].includes(m)) fp[y].push(m);
+
+//   // keep months sorted
+//   fp[y] = fp[y]
+//     .filter(Boolean)
+//     .sort((a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99));
+
+//   writeFetchedPeriods(fp);
+
+//   if (m) {
+//     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
+//   }
+// };
+
+// const computeDefaultYearlyYear = () => {
+//   if (typeof window !== "undefined") {
+//     try {
+//       const raw = localStorage.getItem("latestFetchedPeriod");
+//       if (raw) {
+//         const parsed = JSON.parse(raw);
+//         const y = String(parsed?.year || "").trim();
+//         if (y) return y;
+//       }
+//     } catch { }
+//   }
+
+//   // Fallback: latest completed month, not current calendar year
+//   const now = new Date();
+//   const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+//   return String(latestCompleted.getFullYear());
+// };
+
 const markFetched = (year: string, month?: string) => {
   if (typeof window === "undefined") return;
-  const y = String(year);
+
+  const currentYear = String(new Date().getFullYear());
+  const y = String(year).trim();
   const m = month ? month.toLowerCase() : "";
 
-  const fp = readFetchedPeriods();
-  if (!fp[y]) fp[y] = [];
-  if (m && !fp[y].includes(m)) fp[y].push(m);
+  // do not store stale years like 2025
+  if (y !== currentYear) return;
 
-  // keep months sorted
-  fp[y] = fp[y]
+  const fp: FetchedPeriods = { [currentYear]: [] };
+
+  if (m && !fp[currentYear].includes(m)) {
+    fp[currentYear].push(m);
+  }
+
+  fp[currentYear] = fp[currentYear]
     .filter(Boolean)
     .sort((a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99));
 
   writeFetchedPeriods(fp);
 
   if (m) {
-    localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
+    localStorage.setItem(
+      "latestFetchedPeriod",
+      JSON.stringify({ year: currentYear, month: m })
+    );
   }
 };
 
 const computeDefaultYearlyYear = () => {
+  const currentYear = String(new Date().getFullYear());
+
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem("latestFetchedPeriod");
+
       if (raw) {
         const parsed = JSON.parse(raw);
-        const y = String(parsed?.year || "").trim();
-        if (y) return y;
+        const savedYear = String(parsed?.year || "").trim();
+
+        // only use saved year if it is current year
+        if (savedYear === currentYear) {
+          return currentYear;
+        }
+
+        // stale year like 2025 -> remove it
+        localStorage.removeItem("latestFetchedPeriod");
       }
-    } catch { }
+    } catch {
+      localStorage.removeItem("latestFetchedPeriod");
+    }
   }
 
-  // Fallback: latest completed month, not current calendar year
-  const now = new Date();
-  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return String(latestCompleted.getFullYear());
+  return currentYear;
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {

@@ -704,94 +704,80 @@ export default function CurrentInventorySection({
   const exportDataRows = useMemo(() => {
     if (!invRows?.length) return [];
 
-    return invRows
-      .filter((r) => {
-        const name = String(r["Product Name"] ?? "").trim();
-        const sku = String(r["SKU"] ?? "").trim();
-        const isEmpty = !name && !sku;
-        if (isEmpty) return false;
+    const normalRows: InventoryRow[] = [];
+    let totalRow: InventoryRow | null = null;
 
-        // optional:
-        // keep this false if you DO NOT want total row in excel
-        if (isInventoryTotalRow(r)) return false;
+    invRows.forEach((r) => {
+      const name = String(r["Product Name"] ?? "").trim();
+      const sku = String(r["SKU"] ?? "").trim();
+      const isEmpty = !name && !sku;
+      if (isEmpty) return;
 
-        return true;
-      })
-      .map((row, index) => {
-        const sku = normalizeSku((row as any)["SKU"]);
-        const mtdKey = findMtdKey(row);
-        const sales30Key = findSales30Key(row);
+      if (isInventoryTotalRow(r)) {
+        totalRow = r;
+      } else {
+        normalRows.push(r);
+      }
+    });
 
-        const currentInventory =
-          toNumberSafe((row as any)["Inventory at the end of the month"]) ||
-          toNumberSafe((row as any)["Available Inventory"]);
+    const buildRow = (row: InventoryRow, index: number, isTotal = false) => {
+      const sku = normalizeSku((row as any)["SKU"]);
+      const mtdKey = findMtdKey(row);
+      const sales30Key = findSales30Key(row);
 
-        const mtdSales = toNumberSafe(mtdKey ? (row as any)[mtdKey] : 0);
-        const sales30Only = toNumberSafe(sales30Key ? (row as any)[sales30Key] : 0);
-        const salesLast30Days = mtdSales + sales30Only;
+      const currentInventory =
+        toNumberSafe((row as any)["Inventory at the end of the month"]) ||
+        toNumberSafe((row as any)["Available Inventory"]);
 
-        const age181to270 = getNumberByPossibleKeys(row, [
-          "inv-age-181-to-270-days",
-          "inv_age_181_to_270_days",
-          "Inventory Age 181 to 270 Days",
-          "inv age 181 to 270 days",
-        ]);
+      const mtdSales = toNumberSafe(mtdKey ? (row as any)[mtdKey] : 0);
+      const sales30Only = toNumberSafe(sales30Key ? (row as any)[sales30Key] : 0);
+      const salesLast30Days = mtdSales + sales30Only;
 
-        const age271to365 = getNumberByPossibleKeys(row, [
-          "inv-age-271-to-365-days",
-          "inv_age_271_to_365_days",
-          "Inventory Age 271 to 365 Days",
-          "inv age 271 to 365 days",
-        ]);
+      const age181to270 = getNumberByPossibleKeys(row, ["inv-age-181-to-270-days"]);
+      const age271to365 = getNumberByPossibleKeys(row, ["inv-age-271-to-365-days"]);
+      const age365plus = getNumberByPossibleKeys(row, ["inv-age-365-plus-days"]);
 
-        const age365plus = getNumberByPossibleKeys(row, [
-          "inv-age-365-plus-days",
-          "inv_age_365_plus_days",
-          "Inventory Age 365+ Days",
-          "Inventory Age 365 Plus Days",
-          "inv age 365 plus days",
-          "inv-age-365+-days",
-        ]);
+      const inventory180Plus = age181to270 + age271to365 + age365plus;
 
-        const inventory180Plus = age181to270 + age271to365 + age365plus;
+      const salesRank = toNumberSafe((row as any)["sales-rank"]);
+      const estStorage = toNumberSafe((row as any)["estimated-storage-cost-next-month"]);
 
-        const salesRank = toNumberSafe((row as any)["sales-rank"]);
-        const estStorage = toNumberSafe((row as any)["estimated-storage-cost-next-month"]);
+      const denom = mtdSales + sales30Only;
+      const coverage = denom > 0 ? currentInventory / denom : 0;
 
-        const denom = mtdSales + sales30Only;
-        const coverage = denom > 0 ? currentInventory / denom : 0;
+      return {
+        "S.No.": isTotal ? "" : index + 1,
+        "Product Name": isTotal ? "Total" : (row as any)["Product Name"] ?? "",
+        "SKU": isTotal ? "" : (row as any)["SKU"] || "",
+        "MTD Sales": mtdSales,
+        "Sales Last 30 Days": salesLast30Days,
+        "Sales Rank": isTotal ? "" : salesRank,
+        "Current Inventory": currentInventory,
+        "Inventory 180+ Days": inventory180Plus,
+        "Estimated Storage Cost": estStorage,
+        "Inventory Coverage Ratio": coverage,
+        "Inventory Alerts": isTotal ? "" : (inventoryAlerts?.[sku]?.alert || ""),
+      };
+    };
 
-        return {
-          "S.No.": index + 1,
-          "Product Name": (row as any)["Product Name"] ?? "",
-          "SKU": (row as any)["SKU"] || (row as any)["ASIN"] || "",
-          "MTD Sales": mtdSales,
-          "Sales Last 30 Days": salesLast30Days,
-          "Sales Rank": salesRank || "",
-          "Current Inventory": currentInventory,
-          "Inventory 180+ Days": inventory180Plus,
-          "Estimated Storage Cost": estStorage
-            ? Number(
-              formatMoneyNumberOnly(
-                convertToDisplayCurrency(estStorage, storageSourceCurrency)
-              ).replace(/,/g, "")
-            )
-            : "",
-          "Inventory Coverage Ratio": coverage
-            ? Number(coverage.toFixed(2))
-            : "",
-          "Inventory Alerts": inventoryAlerts?.[sku]?.alert || "",
-        };
-      });
-  }, [
-    invRows,
-    inventoryAlerts,
-    findMtdKey,
-    findSales30Key,
-    convertToDisplayCurrency,
-    storageSourceCurrency,
-  ]);
+    const sortedNormalRows = [...normalRows].sort((a, b) => {
+      const aMtdKey = findMtdKey(a);
+      const bMtdKey = findMtdKey(b);
 
+      const aMtdSales = toNumberSafe(aMtdKey ? (a as any)[aMtdKey] : 0);
+      const bMtdSales = toNumberSafe(bMtdKey ? (b as any)[bMtdKey] : 0);
+
+      return bMtdSales - aMtdSales;
+    });
+
+    const finalRows = sortedNormalRows.map((r, i) => buildRow(r, i));
+
+    if (totalRow) {
+      finalRows.push(buildRow(totalRow, finalRows.length, true));
+    }
+
+    return finalRows;
+  }, [invRows, inventoryAlerts, findMtdKey, findSales30Key]);
   const downloadInventoryExcel = useCallback(() => {
     if (!exportDataRows.length) return;
 

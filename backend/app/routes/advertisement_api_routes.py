@@ -147,14 +147,17 @@ def ads_callback():
         else:
             child_profiles_by_region = top_profiles_by_region
 
-        # Save best-effort advertiser profile IDs by country
+        # Pick a single advertiser profile id and store it in one column
         eu_child = child_profiles_by_region.get("EU", []) or []
         na_child = child_profiles_by_region.get("NA", []) or []
 
-        # Amazon uses GB for UK
-        u.amazon_ads_profile_id_uk = pick_profile_id(eu_child, {"GB", "UK"})
-        u.amazon_ads_profile_id_us = pick_profile_id(na_child, {"US"})
-        u.amazon_ads_profile_id_ca = pick_profile_id(na_child, {"CA"})
+        selected_profile_id = (
+            pick_profile_id(eu_child, {"GB", "UK"}) or
+            pick_profile_id(na_child, {"US"}) or
+            pick_profile_id(na_child, {"CA"})
+        )
+
+        u.amazon_ads_profile_id = str(selected_profile_id) if selected_profile_id else None
 
         db.session.commit()
 
@@ -166,9 +169,7 @@ def ads_callback():
                     if u.amazon_ads_refresh_token_updated_at else None
                 ),
                 "amazon_ads_manager_profile_id": u.amazon_ads_manager_profile_id,
-                "amazon_ads_profile_id_uk": u.amazon_ads_profile_id_uk,
-                "amazon_ads_profile_id_us": u.amazon_ads_profile_id_us,
-                "amazon_ads_profile_id_ca": u.amazon_ads_profile_id_ca,
+                "amazon_ads_profile_id": u.amazon_ads_profile_id,
             },
             "counts": {
                 "top_level": {k: len(v or []) for k, v in top_profiles_by_region.items()},
@@ -280,9 +281,7 @@ def ads_status():
             "saved": {
                 "amazon_ads_refresh_token_updated_at": None,
                 "amazon_ads_manager_profile_id": getattr(u, "amazon_ads_manager_profile_id", None),
-                "amazon_ads_profile_id_uk": getattr(u, "amazon_ads_profile_id_uk", None),
-                "amazon_ads_profile_id_us": getattr(u, "amazon_ads_profile_id_us", None),
-                "amazon_ads_profile_id_ca": getattr(u, "amazon_ads_profile_id_ca", None),
+                "amazon_ads_profile_id": getattr(u, "amazon_ads_profile_id", None),
             }
         }), 200
 
@@ -303,10 +302,10 @@ def ads_status():
             "saved": {
                 "amazon_ads_refresh_token_updated_at": u.amazon_ads_refresh_token_updated_at.isoformat()
                 if getattr(u, "amazon_ads_refresh_token_updated_at", None) else None,
+
                 "amazon_ads_manager_profile_id": getattr(u, "amazon_ads_manager_profile_id", None),
-                "amazon_ads_profile_id_uk": getattr(u, "amazon_ads_profile_id_uk", None),
-                "amazon_ads_profile_id_us": getattr(u, "amazon_ads_profile_id_us", None),
-                "amazon_ads_profile_id_ca": getattr(u, "amazon_ads_profile_id_ca", None),
+
+                "amazon_ads_profile_id": getattr(u, "amazon_ads_profile_id", None),
             },
             "counts": {
                 "top_level": {k: len(v or []) for k, v in (profiles_by_region or {}).items()}
@@ -322,10 +321,10 @@ def ads_status():
             "saved": {
                 "amazon_ads_refresh_token_updated_at": u.amazon_ads_refresh_token_updated_at.isoformat()
                 if getattr(u, "amazon_ads_refresh_token_updated_at", None) else None,
+
                 "amazon_ads_manager_profile_id": getattr(u, "amazon_ads_manager_profile_id", None),
-                "amazon_ads_profile_id_uk": getattr(u, "amazon_ads_profile_id_uk", None),
-                "amazon_ads_profile_id_us": getattr(u, "amazon_ads_profile_id_us", None),
-                "amazon_ads_profile_id_ca": getattr(u, "amazon_ads_profile_id_ca", None),
+
+                "amazon_ads_profile_id": getattr(u, "amazon_ads_profile_id", None),
             },
             "error": str(e)
         }), 502

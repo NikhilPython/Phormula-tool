@@ -492,9 +492,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const totalRow = hasTotal ? { ...lastRow } : null;
     const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
 
-    const sortKey: keyof TableRow = "profit";
     const sorted = [...productRows].sort(
-      (a, b) => toNumber((b as any)[sortKey]) - toNumber((a as any)[sortKey])
+      (a, b) => toNumber(b.net_sales) - toNumber(a.net_sales)
     );
 
     const top9 = sorted.slice(0, 9);
