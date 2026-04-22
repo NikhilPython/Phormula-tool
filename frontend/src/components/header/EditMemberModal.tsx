@@ -46,6 +46,12 @@ function ChipsMultiSelect({
 
   const remove = (opt: string) => onChange(value.filter((v) => v !== opt));
 
+  const formatLabel = (text: string) =>
+    text
+      .toLowerCase()
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (l) => l.toUpperCase());
+
   return (
     <div className="relative">
       <div
@@ -57,14 +63,15 @@ function ChipsMultiSelect({
         ) : (
           value.map((v) => (
             <span
-              key={v}
-              className="inline-flex items-center gap-2 rounded-full bg-gray-100 dark:bg-white/5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
+              key={formatLabel(v)}
+              className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium
+  transition-all duration-150 hover:shadow-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              {v}
+              {formatLabel(v)}
               <button
                 type="button"
-                className="text-gray-500 hover:text-gray-800 dark:hover:text-white"
+                className="text-charcoal-500 hover:text-gray-800 dark:hover:text-white"
                 onClick={() => remove(v)}
                 aria-label={`Remove ${v}`}
               >
@@ -99,22 +106,19 @@ function ChipsMultiSelect({
                   type="button"
                   key={opt}
                   onClick={() => toggle(opt)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all
-    ${checked
-                      ? "bg-blue-50 border-blue-200"
-                      : "border-transparent hover:bg-gray-50"}
-  `}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
+    `}
                 >
                   <span
-                    className={`text-xs font-medium px-2 py-1 rounded-full border `}
+                    className={`text-xs capitalize font-medium px-2 py-1 rounded-full border `}
                   >
-                    {opt.replaceAll("_", " ")}
+                    {formatLabel(opt)}
                   </span>
 
                   <div
                     className={`w-4 h-4 flex items-center justify-center rounded border 
       ${checked
-                        ? "bg-blue-600 border-blue-600 text-white"
+                        ? "bg-green-500 border-green-500 text-white"
                         : "border-gray-300"}
     `}
                   >

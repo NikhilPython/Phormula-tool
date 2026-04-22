@@ -2937,178 +2937,6 @@ export default function DashboardPage() {
         [fetchBiSeries, selectedStartDay, selectedEndDay]
     );
 
-    // const runDashboardLoadWithSteps = useCallback(async () => {
-    //     if (isMonthYearNA) {
-    //         resetStepState();
-    //         return;
-    //     }
-
-    //     setLoadingStartedAt(Date.now());
-    //     setDashboardBusy(true);
-    //     setError(null);
-    //     setBiError(null);
-    //     setInvError("");
-    //     setMonthlySpError(null);
-    //     setShopifyError(null);
-    //     setAdsSeedError(null);
-
-    //     setCurrentStep(1);
-    //     setCompletedSteps(new Set());
-    //     setStepProgress({
-    //         active: true,
-    //         label: "",
-    //         percentage: 0,
-    //         detail: "",
-    //     });
-
-    //     try {
-
-    //         // STEP 2: MTD Fetching
-    //         setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
-
-    //         const jwtToken =
-    //             typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-    //         const country =
-    //             platform === "amazon-us"
-    //                 ? "US"
-    //                 : platform === "amazon-ca"
-    //                     ? "CA"
-    //                     : "UK";
-
-    //         if (platform !== "shopify" && jwtToken) {
-    //             setAdsLoading(true);
-    //             setAdsSeeded(false);
-
-    //             setStep(1, "MTD Fetching", 10);
-    //             // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
-
-    //             // if (country === "UK" || country === "US") {
-    //             //     setStep(1, "MTD Fetching", 18);
-    //             //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-    //             // }
-
-    //             setStep(1, "MTD Fetching", 26);
-    //             // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
-
-    //             setAdsSeeded(true);
-    //             setAdsSeedError(null);
-    //             setAdsLoading(false);
-
-    //             setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
-    //             const { monthName, year } = getRegionYearMonth(activeDateRegion);
-    //             const month = monthToNumber(monthName.toLowerCase());
-    //             const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
-
-    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-    //                 method: "POST",
-    //                 headers: {
-    //                     Authorization: `Bearer ${jwtToken}`,
-    //                     Accept: "application/json",
-    //                     "Content-Type": "application/json",
-    //                 },
-    //                 body: JSON.stringify({ month, year, country, include }),
-    //             });
-
-    //             const json = await res.json().catch(() => ({}));
-    //             const errMsg = String(json?.error || json?.message || json?.detail || "");
-
-    //             const isNoRows404 =
-    //                 res.status === 404 && errMsg.toLowerCase().includes("no rows found");
-
-    //             const isDuplicateOrInProgress =
-    //                 res.status === 425 ||
-    //                 errMsg.toLowerCase().includes("duplicate") ||
-    //                 errMsg.toLowerCase().includes("already exists") ||
-    //                 errMsg.toLowerCase().includes("request is a duplicate") ||
-    //                 errMsg.toLowerCase().includes("in progress");
-
-    //             if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
-    //                 throw new Error(errMsg || "monthly_sp_sd_to_db failed");
-    //             }
-
-    //             setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
-    //             await fetchMonthlySp();
-    //         } else {
-    //             setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
-    //         }
-
-    //         setStep(1, "MTD Fetching", 62);
-    //         await fetchAmazon();
-
-    //         if (showLiveBI) {
-    //             setStep(1, "MTD Fetching", 78);
-    //             await fetchBiSeries(selectedStartDay, selectedEndDay);
-    //         } else {
-    //             setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
-    //         }
-
-    //         if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-    //             setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
-    //             await fetchShopify();
-
-    //             setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
-    //             await fetchShopifyPrev();
-    //         } else {
-    //             setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
-    //         }
-
-    //         setStep(1, "MTD Fetching", 100, "MTD data ready");
-    //         markStepComplete(1);
-
-    //         // STEP 3: Inventory Fetch
-    //         setStep(2, "Inventory Fetch", 20);
-    //         await fetchInventory();
-    //         setStep(2, "Inventory Fetch", 100, "Inventory ready");
-    //         markStepComplete(2);
-
-    //         // STEP 4: Plotting Graph
-    //         setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
-    //         await waitForPaint();
-
-    //         setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
-    //         await waitForPaint();
-
-    //         setStep(3, "Plotting Graph", 95, "Final render in progress...");
-    //         await waitForPaint();
-
-    //         setStep(3, "Plotting Graph", 100, "Dashboard ready");
-    //         markStepComplete(3);
-
-    //         await waitForPaint();
-
-    //         setStepProgress((prev) => ({
-    //             ...prev,
-    //             active: false,
-    //         }));
-    //         setLoadingStartedAt(null);
-
-    //         setDashboardBusy(false);
-    //     } catch (e: any) {
-    //         console.error("runDashboardLoadWithSteps failed:", e);
-    //         setError(e?.message || "Failed to load dashboard");
-    //         setDashboardBusy(false);
-    //     } finally {
-    //         setAdsLoading(false);
-    //     }
-    // }, [
-    //     isMonthYearNA,
-    //     platform,
-    //     baseURL,
-    //     activeDateRegion,
-    //     showLiveBI,
-    //     selectedStartDay,
-    //     selectedEndDay,
-    //     shopifyStore,
-    //     fetchFxRates,
-    //     fetchMonthlySp,
-    //     fetchAmazon,
-    //     fetchBiSeries,
-    //     fetchShopify,
-    //     fetchShopifyPrev,
-    //     fetchInventory,
-    // ]);
-
     const runDashboardLoadWithSteps = useCallback(async () => {
         if (isMonthYearNA) {
             resetStepState();
@@ -3134,6 +2962,8 @@ export default function DashboardPage() {
         });
 
         try {
+
+            // STEP 2: MTD Fetching
             setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
 
             const jwtToken =
@@ -3151,21 +2981,21 @@ export default function DashboardPage() {
                 setAdsSeeded(false);
 
                 setStep(1, "MTD Fetching", 10);
-                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+                // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                if (country === "UK" || country === "US") {
-                    setStep(1, "MTD Fetching", 18);
-                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                }
+                // if (country === "UK" || country === "US") {
+                //     setStep(1, "MTD Fetching", 18);
+                //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                // }
 
                 setStep(1, "MTD Fetching", 26);
-                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+                // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data.");
+                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -3197,20 +3027,20 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary.");
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
                 await fetchMonthlySp();
             } else {
-                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode.");
+                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(1, "MTD Fetching", 68);
+            setStep(1, "MTD Fetching", 62);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(1, "MTD Fetching", 80);
+                setStep(1, "MTD Fetching", 78);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
-                setStep(1, "MTD Fetching", 80, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -3226,11 +3056,13 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
+            // STEP 3: Inventory Fetch
             setStep(2, "Inventory Fetch", 20);
             await fetchInventory();
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
+            // STEP 4: Plotting Graph
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
@@ -3250,6 +3082,7 @@ export default function DashboardPage() {
                 active: false,
             }));
             setLoadingStartedAt(null);
+
             setDashboardBusy(false);
         } catch (e: any) {
             console.error("runDashboardLoadWithSteps failed:", e);
@@ -3267,6 +3100,7 @@ export default function DashboardPage() {
         selectedStartDay,
         selectedEndDay,
         shopifyStore,
+        fetchFxRates,
         fetchMonthlySp,
         fetchAmazon,
         fetchBiSeries,
@@ -3670,9 +3504,9 @@ export default function DashboardPage() {
 
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 240,
-        2: 30,
-        3: 20,
+        1: 45,
+        2: 25,
+        3: 10,
     };
 
     useEffect(() => {
