@@ -1250,6 +1250,13 @@ export default function DashboardPage() {
         return "GBP"; // amazon-uk OR global default
     }, [platform]);
 
+    const platformLabel = useMemo(() => {
+        if (platform === "global") return "Amazon Global";
+        if (platform === "amazon-uk") return "Amazon UK";
+        if (platform === "amazon-us") return "Amazon US";
+        if (platform === "amazon-ca") return "Amazon CA";
+        return "Amazon";
+    }, [platform]);
 
     /* ===================== PLATFORM → DISPLAY CURRENCY ===================== */
     const profileHomeCurrency = ((userData?.homeCurrency || "USD").toUpperCase() as CurrencyCode);
@@ -2930,23 +2937,176 @@ export default function DashboardPage() {
         [fetchBiSeries, selectedStartDay, selectedEndDay]
     );
 
-    // useEffect(() => {
-    //     if (!showLiveBI) return;
-    //     fetchBiSeries(selectedStartDay, selectedEndDay);
-    // }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
+    // const runDashboardLoadWithSteps = useCallback(async () => {
+    //     if (isMonthYearNA) {
+    //         resetStepState();
+    //         return;
+    //     }
 
-    /* ===================== REFRESH ALL ===================== */
-    // const refreshAll = useCallback(async () => {
-    //     if (isMonthYearNA) return;
-    //     await fetchAmazon();
-    //     if (shopifyStore?.shop_name && shopifyStore?.access_token) {
-    //         await Promise.all([fetchShopify(), fetchShopifyPrev()]);
+    //     setLoadingStartedAt(Date.now());
+    //     setDashboardBusy(true);
+    //     setError(null);
+    //     setBiError(null);
+    //     setInvError("");
+    //     setMonthlySpError(null);
+    //     setShopifyError(null);
+    //     setAdsSeedError(null);
+
+    //     setCurrentStep(1);
+    //     setCompletedSteps(new Set());
+    //     setStepProgress({
+    //         active: true,
+    //         label: "",
+    //         percentage: 0,
+    //         detail: "",
+    //     });
+
+    //     try {
+
+    //         // STEP 2: MTD Fetching
+    //         setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
+
+    //         const jwtToken =
+    //             typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    //         const country =
+    //             platform === "amazon-us"
+    //                 ? "US"
+    //                 : platform === "amazon-ca"
+    //                     ? "CA"
+    //                     : "UK";
+
+    //         if (platform !== "shopify" && jwtToken) {
+    //             setAdsLoading(true);
+    //             setAdsSeeded(false);
+
+    //             setStep(1, "MTD Fetching", 10);
+    //             // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+
+    //             // if (country === "UK" || country === "US") {
+    //             //     setStep(1, "MTD Fetching", 18);
+    //             //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+    //             // }
+
+    //             setStep(1, "MTD Fetching", 26);
+    //             // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+
+    //             setAdsSeeded(true);
+    //             setAdsSeedError(null);
+    //             setAdsLoading(false);
+
+    //             setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
+    //             const { monthName, year } = getRegionYearMonth(activeDateRegion);
+    //             const month = monthToNumber(monthName.toLowerCase());
+    //             const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+
+    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+    //                 method: "POST",
+    //                 headers: {
+    //                     Authorization: `Bearer ${jwtToken}`,
+    //                     Accept: "application/json",
+    //                     "Content-Type": "application/json",
+    //                 },
+    //                 body: JSON.stringify({ month, year, country, include }),
+    //             });
+
+    //             const json = await res.json().catch(() => ({}));
+    //             const errMsg = String(json?.error || json?.message || json?.detail || "");
+
+    //             const isNoRows404 =
+    //                 res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+
+    //             const isDuplicateOrInProgress =
+    //                 res.status === 425 ||
+    //                 errMsg.toLowerCase().includes("duplicate") ||
+    //                 errMsg.toLowerCase().includes("already exists") ||
+    //                 errMsg.toLowerCase().includes("request is a duplicate") ||
+    //                 errMsg.toLowerCase().includes("in progress");
+
+    //             if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+    //                 throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+    //             }
+
+    //             setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+    //             await fetchMonthlySp();
+    //         } else {
+    //             setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+    //         }
+
+    //         setStep(1, "MTD Fetching", 62);
+    //         await fetchAmazon();
+
+    //         if (showLiveBI) {
+    //             setStep(1, "MTD Fetching", 78);
+    //             await fetchBiSeries(selectedStartDay, selectedEndDay);
+    //         } else {
+    //             setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+    //         }
+
+    //         if (shopifyStore?.shop_name && shopifyStore?.access_token) {
+    //             setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
+    //             await fetchShopify();
+
+    //             setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
+    //             await fetchShopifyPrev();
+    //         } else {
+    //             setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
+    //         }
+
+    //         setStep(1, "MTD Fetching", 100, "MTD data ready");
+    //         markStepComplete(1);
+
+    //         // STEP 3: Inventory Fetch
+    //         setStep(2, "Inventory Fetch", 20);
+    //         await fetchInventory();
+    //         setStep(2, "Inventory Fetch", 100, "Inventory ready");
+    //         markStepComplete(2);
+
+    //         // STEP 4: Plotting Graph
+    //         setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
+    //         await waitForPaint();
+
+    //         setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
+    //         await waitForPaint();
+
+    //         setStep(3, "Plotting Graph", 95, "Final render in progress...");
+    //         await waitForPaint();
+
+    //         setStep(3, "Plotting Graph", 100, "Dashboard ready");
+    //         markStepComplete(3);
+
+    //         await waitForPaint();
+
+    //         setStepProgress((prev) => ({
+    //             ...prev,
+    //             active: false,
+    //         }));
+    //         setLoadingStartedAt(null);
+
+    //         setDashboardBusy(false);
+    //     } catch (e: any) {
+    //         console.error("runDashboardLoadWithSteps failed:", e);
+    //         setError(e?.message || "Failed to load dashboard");
+    //         setDashboardBusy(false);
+    //     } finally {
+    //         setAdsLoading(false);
     //     }
     // }, [
+    //     isMonthYearNA,
+    //     platform,
+    //     baseURL,
+    //     activeDateRegion,
+    //     showLiveBI,
+    //     selectedStartDay,
+    //     selectedEndDay,
+    //     shopifyStore,
+    //     fetchFxRates,
+    //     fetchMonthlySp,
     //     fetchAmazon,
+    //     fetchBiSeries,
     //     fetchShopify,
     //     fetchShopifyPrev,
-    //     shopifyStore,
+    //     fetchInventory,
     // ]);
 
     const runDashboardLoadWithSteps = useCallback(async () => {
@@ -2974,8 +3134,6 @@ export default function DashboardPage() {
         });
 
         try {
-
-            // STEP 2: MTD Fetching
             setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
 
             const jwtToken =
@@ -2993,21 +3151,21 @@ export default function DashboardPage() {
                 setAdsSeeded(false);
 
                 setStep(1, "MTD Fetching", 10);
-                // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                // if (country === "UK" || country === "US") {
-                //     setStep(1, "MTD Fetching", 18);
-                //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                // }
+                if (country === "UK" || country === "US") {
+                    setStep(1, "MTD Fetching", 18);
+                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                }
 
                 setStep(1, "MTD Fetching", 26);
-                // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 setAdsSeeded(true);
                 setAdsSeedError(null);
                 setAdsLoading(false);
 
-                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
+                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data.");
                 const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -3039,20 +3197,20 @@ export default function DashboardPage() {
                     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
                 }
 
-                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary.");
                 await fetchMonthlySp();
             } else {
-                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
+                setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode.");
             }
 
-            setStep(1, "MTD Fetching", 62);
+            setStep(1, "MTD Fetching", 68);
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(1, "MTD Fetching", 78);
+                setStep(1, "MTD Fetching", 80);
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
-                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 80, "Live BI not enabled, skipping...");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -3068,13 +3226,11 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
-            // STEP 3: Inventory Fetch
             setStep(2, "Inventory Fetch", 20);
             await fetchInventory();
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            // STEP 4: Plotting Graph
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
@@ -3094,7 +3250,6 @@ export default function DashboardPage() {
                 active: false,
             }));
             setLoadingStartedAt(null);
-
             setDashboardBusy(false);
         } catch (e: any) {
             console.error("runDashboardLoadWithSteps failed:", e);
@@ -3112,7 +3267,6 @@ export default function DashboardPage() {
         selectedStartDay,
         selectedEndDay,
         shopifyStore,
-        fetchFxRates,
         fetchMonthlySp,
         fetchAmazon,
         fetchBiSeries,
@@ -3516,9 +3670,9 @@ export default function DashboardPage() {
 
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 45,
-        2: 25,
-        3: 10,
+        1: 240,
+        2: 30,
+        3: 20,
     };
 
     useEffect(() => {
@@ -4296,8 +4450,10 @@ export default function DashboardPage() {
         if (shouldShowDummyUi || !pageLoading) return null;
 
         return (
-            <div className="absolute inset-0 z-[999] bg-white/80 flex items-center justify-center px-4 rounded-xl">
-                <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
+            <div className="fixed inset-0 z-[999] flex items-center justify-center px-4 pointer-events-none">
+                <div className="absolute inset-0 bg-white/40" />
+
+                <div className="relative pointer-events-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-[#E8F5F0] flex items-center justify-center flex-shrink-0">
@@ -4441,7 +4597,7 @@ export default function DashboardPage() {
                         </p>
 
                         <div className="justify-self-center flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
-                            <span className="text-xs text-slate-400">Estimated:</span>
+                            <span className="text-xs text-slate-400">Estimated Time:</span>
                             <span className="text-xs font-medium text-slate-600 tabular-nums min-w-[42px] text-right">
                                 {estimatedTime}
                             </span>
@@ -5492,34 +5648,6 @@ export default function DashboardPage() {
                 (userData as any)?.company_name ||
                 (userData as any)?.company ||
                 "";
-
-            // const dataRows = rows.map((r) => {
-            //     const marketplaceTotal =
-            //         Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
-
-            //     return {
-            //         "S.No": r.isTotal ? "" : (r.sno ?? ""),
-            //         "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
-            //         SKU: r.isTotal ? "" : (r.sku ?? ""),
-            //         "Net Units Sold": Number(r.quantity || 0),
-            //         ASP: Number(r.asp || 0),
-            //         "Net Sales": Number(r.net_sales || 0),
-            //         COGS: Number(r.cogs || 0),
-            //         "FBA Fees": Number(r.fba_fees || 0),
-            //         "Selling Fees": Number(r.selling_fees || 0),
-            //         "Marketplace Fees Total": marketplaceTotal,
-            //         "Net Taxes": Number(r.tax || 0),
-            //         "Net Credits": Number(r.credits || 0),
-            //         "Tax & Credits": Number(r.tax_and_credits || 0),
-            //         "CM1 Profit %": Number(r.cm1_profit_per || 0),
-            //         "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-            //         "CM1 Profit": Number(r.profit || 0),
-            //         "Ads Spend": Number(r.ads_spend || 0),
-            //         "CM2 Profit": Number(r.cm2_profit || 0),
-            //         "CM2 Profit %": Number(r.cm2_profit_per || 0),
-            //         "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-            //     };
-            // });
 
             const dataRows = monthlySkuwiseRows.map((r) => ({
                 "S.No": r.isTotal ? "" : r.sno ?? "",
@@ -6997,15 +7125,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const remainingSteps = dashboardSteps.length - currentStep;
 
-    // assume ~30 seconds per step (adjust if needed)
     const secondsLeft = remainingSteps * 30;
-
-    // // format as mm:ss
-    // const estimatedTime = `${Math.floor(secondsLeft / 60)
-    //     .toString()
-    //     .padStart(2, "0")}:${(secondsLeft % 60)
-    //         .toString()
-    //         .padStart(2, "0")}`;
 
     return (
         <div className="relative w-full">
@@ -7211,11 +7331,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 textSize="2xl"
                             />
 
-                            {countryName !== "global" && (
-                                <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                                    {countryName.toUpperCase()}
-                                </span>
-                            )}
+                            <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                                {countryName === "global" ? "Global" : countryName.toUpperCase()}
+                            </span>
 
                             <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
                                 - {formattedMonthYear}

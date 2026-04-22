@@ -302,7 +302,7 @@ export default function InputCostPage({ params }: Params) {
     (userData as any)?.brand_name ||
     (userData as any)?.brand ||
     "";
-    
+
 
   const isNA =
     monthParam?.toLowerCase() === 'na' ||
@@ -1146,6 +1146,8 @@ export default function InputCostPage({ params }: Params) {
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
+    if (col === 's_no') return 'S.No.';   // ✅ ADD THIS
+
     if (col === 'product_name') return 'Product Name';
 
     if (col === 'sku_uk' || col === 'sku_us' || col === 'sku_canada') {
