@@ -69,6 +69,79 @@ class Member(db.Model):
         UniqueConstraint("owner_user_id", "email", name="uq_member_owner_email"),
     )
 
+# ------------------------------------------------- Notification Models -------------------------------------------------
+
+class Notification(db.Model):
+    __tablename__ = "notification"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    country = db.Column(db.String(20), nullable=False, index=True)
+
+    success = db.Column(db.Boolean, nullable=False, default=True)
+    message = db.Column(db.Text, nullable=True)
+
+    data = db.Column(JSONB, nullable=False)
+    full_response = db.Column(JSONB, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "country", name="uq_notification_user_country"),
+    )
+
+
+class NotificationAlertSKU(db.Model):
+    __tablename__ = "notification_alert_sku"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    country = db.Column(db.String(20), nullable=False, index=True)
+
+    sku = db.Column(db.String(255), nullable=False, index=True)
+    product_name = db.Column(db.String(255), nullable=True)
+
+    alert = db.Column(db.String(100), nullable=True)
+    alert_type = db.Column(db.String(100), nullable=True)
+
+    first_alert_time = db.Column(db.DateTime, nullable=True)
+    first_alert_date = db.Column(db.Date, nullable=True)
+    first_alert_day_name = db.Column(db.String(20), nullable=True)
+
+    last_alert_time = db.Column(db.DateTime, nullable=True)
+    last_alert_date = db.Column(db.Date, nullable=True)
+    last_alert_day_name = db.Column(db.String(20), nullable=True)
+
+    days_since_first_alert = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "country",
+            "sku",
+            name="uq_notification_alert_user_country_sku"
+        ),
+    )
+
+
 # ------------------------------------------------- User Models -------------------------------------------------
 
 class User(db.Model):

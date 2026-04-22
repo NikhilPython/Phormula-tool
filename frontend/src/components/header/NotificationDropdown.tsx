@@ -11,6 +11,8 @@ type NotificationItem = {
   message: string;
   type?: string;
   href?: string;
+  timeAgo?: string;
+  alertTime?: string | null;
 };
 
 export default function NotificationDropdown({
@@ -132,9 +134,15 @@ export default function NotificationDropdown({
                       </span>
                     </span>
 
-                    <span className="block text-sm text-gray-600 dark:text-gray-300">
+                    <span className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
                       {item.message}
                     </span>
+
+                    {item.timeAgo && (
+                      <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {item.timeAgo}
+                      </span>
+                    )}
 
                     {item.href && (
                       <Link
