@@ -1473,7 +1473,46 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
         payload = state.get("period_payload", {})
 
-        if payload.get("type") == "single":
+# -------- 🔥 FIX: HANDLE RANGE PROPERLY --------
+        if payload.get("type") == "range":
+            logger.info("[ABSOLUTE_RANGE_FIX] Aggregating full range")
+
+            total_value = 0.0
+            all_rows = []
+
+            dfs = fetch_period_dfs(
+                engine,
+                state["user_id"],
+                state["country"],
+                payload["start_month"],
+                payload["start_year"],
+                payload["end_month"],
+                payload["end_year"],
+                skip_missing=True,
+            )
+
+            for mk, _ in dfs:
+                result_month = get_metric_for_month(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    metric_name,
+                    mk.month,
+                    mk.year,
+                )
+
+                total_value += float(result_month.get("total", 0.0))
+                all_rows.extend(result_month.get("per_sku", []))
+
+            result = {
+                "metric": metric_name,
+                "period_label": f"{payload['start_year']}",
+                "total": total_value,
+                "per_sku": all_rows,
+            }
+
+        # -------- SINGLE MONTH --------
+        elif payload.get("type") == "single":
             result = get_metric_for_month(
                 engine,
                 state["user_id"],
@@ -1482,6 +1521,8 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
                 payload["month"],
                 payload["year"],
             )
+
+        # -------- DEFAULT --------
         else:
             result = _latest_month_result(
                 engine,
