@@ -3012,35 +3012,35 @@ export default function DashboardPage() {
                 const month = monthToNumber(monthName.toLowerCase());
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
 
-                // const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                //     method: "POST",
-                //     headers: {
-                //         Authorization: `Bearer ${jwtToken}`,
-                //         Accept: "application/json",
-                //         "Content-Type": "application/json",
-                //     },
-                //     body: JSON.stringify({ month, year, country, include }),
-                // });
+                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${jwtToken}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ month, year, country, include }),
+                });
 
-                // const json = await res.json().catch(() => ({}));
-                // const errMsg = String(json?.error || json?.message || json?.detail || "");
+                const json = await res.json().catch(() => ({}));
+                const errMsg = String(json?.error || json?.message || json?.detail || "");
 
-                // const isNoRows404 =
-                //     res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+                const isNoRows404 =
+                    res.status === 404 && errMsg.toLowerCase().includes("no rows found");
 
-                // const isDuplicateOrInProgress =
-                //     res.status === 425 ||
-                //     errMsg.toLowerCase().includes("duplicate") ||
-                //     errMsg.toLowerCase().includes("already exists") ||
-                //     errMsg.toLowerCase().includes("request is a duplicate") ||
-                //     errMsg.toLowerCase().includes("in progress");
+                const isDuplicateOrInProgress =
+                    res.status === 425 ||
+                    errMsg.toLowerCase().includes("duplicate") ||
+                    errMsg.toLowerCase().includes("already exists") ||
+                    errMsg.toLowerCase().includes("request is a duplicate") ||
+                    errMsg.toLowerCase().includes("in progress");
 
-                // if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
-                //     throw new Error(errMsg || "monthly_sp_sd_to_db failed");
-                // }
+                if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+                    throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+                }
 
-                // setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
-                // await fetchMonthlySp();
+                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
+                await fetchMonthlySp();
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
