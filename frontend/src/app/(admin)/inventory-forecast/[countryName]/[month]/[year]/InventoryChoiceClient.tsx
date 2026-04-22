@@ -643,79 +643,80 @@ export default function InventoryFlowPage() {
     }
   }, [excelData, missingMonths, error]);
 
-const DemoDispatchPreview = () => {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-green-500 text-[#F8EDCE]">
-            <tr>
-              <th className="px-4 py-3 text-left">S. No.</th>
-              <th className="px-4 py-3 text-left">Product Name</th>
-              <th className="px-4 py-3 text-left">SKU</th>
-              <th className="px-4 py-3 text-left">Inventory At Month End</th>
-              <th className="px-4 py-3 text-left">Coverage Ratio Before Dispatch</th>
-              <th className="px-4 py-3 text-left">Dispatch</th>
-              <th className="px-4 py-3 text-left">Current Inventory + Dispatch</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DUMMY_DISPATCH_DATA.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-100">
-                <td className="px-4 py-3">{row.sNo}</td>
-                <td className="px-4 py-3">{row.productName}</td>
-                <td className="px-4 py-3">{row.sku}</td>
-                <td className="px-4 py-3">{row.inventoryAtMonthEnd}</td>
-                <td className="px-4 py-3">{row.coverageRatioBeforeDispatch}</td>
-                <td className="px-4 py-3">{row.dispatch}</td>
-                <td className="px-4 py-3">{row.currentInventoryPlusDispatch}</td>
+  const DemoDispatchPreview = () => {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-green-500 text-[#F8EDCE]">
+              <tr>
+                <th className="px-4 py-3 text-center">S. No.</th>
+                <th className="px-4 py-3 text-center">Product Name</th>
+                <th className="px-4 py-3 text-center">SKU</th>
+                <th className="px-4 py-3 text-center">Inventory At Month End</th>
+                <th className="px-4 py-3 text-center">Coverage Ratio Before Dispatch</th>
+                <th className="px-4 py-3 text-center">Dispatch</th>
+                <th className="px-4 py-3 text-center">Current Inventory + Dispatch</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
+            </thead>
 
-const DemoPurchaseOrderPreview = () => {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-green-500 text-[#F8EDCE]">
-            <tr>
-              <th className="px-4 py-3 text-left">S. No.</th>
-              <th className="px-4 py-3 text-left">Product Name</th>
-              <th className="px-4 py-3 text-left">Dispatches UK</th>
-              <th className="px-4 py-3 text-left">Total Dispatches</th>
-              <th className="px-4 py-3 text-left">Current Inventory - Local Warehouse</th>
-              <th className="px-4 py-3 text-left">In Transit Units</th>
-              <th className="px-4 py-3 text-left">PO To Be Raised</th>
-              <th className="px-4 py-3 text-left">Cost Per Unit (in INR)</th>
-              <th className="px-4 py-3 text-left">PO Cost (in INR)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DUMMY_PO_DATA.map((row, idx) => (
-              <tr key={idx} className="border-b border-slate-100">
-                <td className="px-4 py-3">{row.sNo}</td>
-                <td className="px-4 py-3">{row.productName}</td>
-                <td className="px-4 py-3">{row.dispatchesUK}</td>
-                <td className="px-4 py-3">{row.totalDispatches}</td>
-                <td className="px-4 py-3">{row.currentInventory}</td>
-                <td className="px-4 py-3">{row.inTransitUnits}</td>
-                <td className="px-4 py-3">{row.poToBeRaised}</td>
-                <td className="px-4 py-3">{row.costPerUnit}</td>
-                <td className="px-4 py-3">{row.poCost}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            <tbody>
+              {DUMMY_DISPATCH_DATA.map((row, idx) => (
+                <tr key={idx} className="border-b border-slate-100">
+                  <td className="px-4 py-3 text-center">{row.sNo}</td>
+                  <td className="px-4 py-3 text-center">{row.productName}</td>
+                  <td className="px-4 py-3 text-center">{row.sku}</td>
+                  <td className="px-4 py-3 text-center">{row.inventoryAtMonthEnd}</td>
+                  <td className="px-4 py-3 text-center">{row.coverageRatioBeforeDispatch}</td>
+                  <td className="px-4 py-3 text-center">{row.dispatch}</td>
+                  <td className="px-4 py-3 text-center">{row.currentInventoryPlusDispatch}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
+
+  const DemoPurchaseOrderPreview = () => {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-green-500 text-[#F8EDCE]">
+              <tr>
+                <th className="px-4 py-3 text-center">S. No.</th>
+                <th className="px-4 py-3 text-center">Product Name</th>
+                <th className="px-4 py-3 text-center">Dispatches UK</th>
+                <th className="px-4 py-3 text-center">Total Dispatches</th>
+                <th className="px-4 py-3 text-center">Current Inventory - Local Warehouse</th>
+                <th className="px-4 py-3 text-center">In Transit Units</th>
+                <th className="px-4 py-3 text-center">PO To Be Raised</th>
+                <th className="px-4 py-3 text-center">Cost Per Unit (in INR)</th>
+                <th className="px-4 py-3 text-center">PO Cost (in INR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DUMMY_PO_DATA.map((row, idx) => (
+                <tr key={idx} className="border-b border-slate-100">
+                  <td className="px-4 py-3 text-center">{row.sNo}</td>
+                  <td className="px-4 py-3 text-center">{row.productName}</td>
+                  <td className="px-4 py-3 text-center">{row.dispatchesUK}</td>
+                  <td className="px-4 py-3 text-center">{row.totalDispatches}</td>
+                  <td className="px-4 py-3 text-center">{row.currentInventory}</td>
+                  <td className="px-4 py-3 text-center">{row.inTransitUnits}</td>
+                  <td className="px-4 py-3 text-center">{row.poToBeRaised}</td>
+                  <td className="px-4 py-3 text-center">{row.costPerUnit}</td>
+                  <td className="px-4 py-3 text-center">{row.poCost}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   const PreviewLockedSection = ({
     enabled,

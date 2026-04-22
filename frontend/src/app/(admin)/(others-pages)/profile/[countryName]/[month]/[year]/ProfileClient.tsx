@@ -14,7 +14,7 @@ import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataT
 import { IoEyeOutline } from "react-icons/io5";
 import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import { MdOutlineDeleteOutline } from "react-icons/md";
-
+import { FiSearch } from "react-icons/fi";
 
 type TeamMemberRow = Row & {
   sno: number;
@@ -207,6 +207,14 @@ export default function ProfileClient() {
     []
   );
 
+  const moduleColors: Record<string, string> = {
+    LIVE_DASHBOARD: "border-green-500 bg-green-50 text-green-500",
+    FINANCE_DASHBOARDS: "border-[#B75A5A] bg-[#B75A5A26] text-[#B75A5A]",
+    INVENTORY_PLANNING: "border-[#3A8EA4] bg-[#3A8EA426] text-[#3A8EA4]",
+    BUSINESS_INTELLIGENCE: "border-[#ED9F50] bg-[#ED9F5026] text-[#ED9F50]",
+    DEFAULT: "border-gray-200 bg-gray-50 text-gray-600",
+  };
+
   const memberRows = React.useMemo<TeamMemberRow[]>(() => {
     return filteredMembers.map((m, idx) => {
       const name = String(m?.member_name || "-");
@@ -242,9 +250,18 @@ export default function ProfileClient() {
         sectionAccess: (
           <div className="flex flex-wrap items-center justify-center gap-2">
             {showModules.map((mod: string) => (
+              // <span
+              //   key={mod}
+              //   className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
+              // >
+              //   {mod
+              //     .replaceAll("_", " ")
+              //     .replace(/\b\w/g, (l) => l.toUpperCase())}
+              // </span>
               <span
                 key={mod}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
+                className={`rounded-full px-2 py-1 text-[10px] border ${moduleColors[mod] || moduleColors.DEFAULT
+                  }`}
               >
                 {mod
                   .replaceAll("_", " ")
@@ -370,12 +387,21 @@ export default function ProfileClient() {
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               {/* Search */}
-              <input
-                className="h-10 sm:h-11 w-full sm:max-w-[380px] rounded-md border border-gray-200 bg-white px-3 text-sm"
-                placeholder="Search by name or email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <div className="relative w-full sm:max-w-[380px]">
+                <FiSearch
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  size={16}
+                />
+
+                <input
+                  className="h-10 sm:h-11 w-full rounded-md border border-gray-200 bg-white pl-10 pr-3 text-sm
+               focus:outline-none focus:border-green-500 
+               transition-all duration-200"
+                  placeholder="Search by name or email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
 
               {/* Add Member Button */}
               <Button
