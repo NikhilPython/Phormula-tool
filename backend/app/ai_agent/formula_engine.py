@@ -638,10 +638,12 @@ def build_time_series_analysis(
     metric_name: str,
     months: list[MonthKey],
     product_match: str | None = None,
+    time_unit: str | None = None,  # 🔥 NEW
 ) -> Dict[str, Any]:
 
     series: list[dict] = []
 
+    # -------- BUILD RAW MONTHLY SERIES --------
     for mk in months:
         result = get_metric_for_month(
             engine=engine,
@@ -652,7 +654,7 @@ def build_time_series_analysis(
             year=mk.year,
         )
 
-        # -------- 🔥 FIXED PRODUCT FILTERING --------
+        # -------- PRODUCT FILTER --------
         if product_match:
             rows = result.get("per_sku", [])
 
@@ -668,7 +670,6 @@ def build_time_series_analysis(
             value = float(matched_row.get("__metric__", 0.0)) if matched_row else 0.0
 
         else:
-            # overall
             value = float(result.get("total", 0.0))
 
         series.append({
@@ -678,7 +679,55 @@ def build_time_series_analysis(
             "__metric__": float(value),
         })
 
-    # -------- MOM CALCULATION --------
+    # =========================================================
+    # 🔥 CONDITIONAL AGGREGATION (CORE FIX)
+    # =========================================================
+
+    if time_unit == "quarter" and len(series) >= 3:
+        grouped = []
+
+        for i in range(0, len(series), 3):
+            chunk = series[i:i+3]
+
+            if len(chunk) < 3:
+                continue
+
+            total = sum(x["__metric__"] for x in chunk)
+
+            year = chunk[-1]["year"]
+            month = chunk[-1]["month"]
+            q = (month - 1) // 3 + 1
+
+            grouped.append({
+                "period_label": f"Q{q} {year}",
+                "__metric__": total,
+                "year": year,
+                "quarter": q,
+            })
+
+        series = grouped
+
+    elif time_unit == "year" and len(series) >= 12:
+        grouped = {}
+
+        for item in series:
+            y = item["year"]
+            grouped.setdefault(y, 0.0)
+            grouped[y] += item["__metric__"]
+
+        series = [
+            {
+                "period_label": str(y),
+                "__metric__": v,
+                "year": y,
+            }
+            for y, v in sorted(grouped.items())
+        ]
+
+    # =========================================================
+    # 🔥 MOM CALCULATION (AFTER aggregation if any)
+    # =========================================================
+
     mom: list[dict] = []
 
     for i in range(1, len(series)):
@@ -705,7 +754,7 @@ def build_time_series_analysis(
         else (overall_delta / values[0]) * 100.0
     )
 
-    # -------- MOVEMENT CLASSIFICATION --------
+    # -------- MOVEMENT --------
     if mom:
         deltas = [x["delta"] for x in mom]
 
@@ -1122,13 +1171,30 @@ def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
 # LAST N MONTHS
 # -------------------------------
 
-def parse_last_n(text: str) -> Optional[int]:
+def parse_last_n(text: str):
+    # -------- MONTHS --------
     match = re.search(r"last\s+(\d+)\s+months?", text)
     if match:
-        return int(match.group(1))
+        return {"unit": "month", "n": int(match.group(1))}
 
     if "last month" in text:
-        return 1
+        return {"unit": "month", "n": 1}
+
+    # -------- QUARTERS --------
+    match = re.search(r"last\s+(\d+)\s+quarters?", text)
+    if match:
+        return {"unit": "quarter", "n": int(match.group(1))}
+
+    if "last quarter" in text:
+        return {"unit": "quarter", "n": 1}
+
+    # -------- YEARS --------
+    match = re.search(r"last\s+(\d+)\s+years?", text)
+    if match:
+        return {"unit": "year", "n": int(match.group(1))}
+
+    if "last year" in text:
+        return {"unit": "year", "n": 1}
 
     return None
 
@@ -1330,15 +1396,30 @@ def parse_period(query: str) -> Dict:
     if rel:
         return rel
 
-    # 3️⃣ last n months
+    # 3️⃣ last n (month / quarter / year) 🔥 FIX
     last_n = parse_last_n(text)
+
     if last_n:
+        unit = last_n["unit"]
+        n = last_n["n"]
+
+        # -------- NORMALIZE TO MONTHS --------
+        if unit == "month":
+            months = n
+        elif unit == "quarter":
+            months = n * 3
+        elif unit == "year":
+            months = n * 12
+        else:
+            months = n  # safety fallback
+
         return {
             "type": "last_n",
-            "n": last_n,
+            "n": months,
+            "unit": unit,  # optional (future use)
         }
 
-    # 4️⃣ range
+    # 4️⃣ range (secondary safety)
     rng = parse_range(text)
     if rng:
         return rng
