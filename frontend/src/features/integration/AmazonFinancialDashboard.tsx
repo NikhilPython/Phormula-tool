@@ -25,11 +25,16 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   us: "ATVPDKIKX0DER",
   canada: "A2EUQ1WTGCTBG2",
 };
+const MARKETPLACE_TO_COUNTRY: Record<string, string> = {
+  A1F83G8C2ARO7P: "uk",
+  ATVPDKIKX0DER: "us",
+  A2EUQ1WTGCTBG2: "canada",
+};
 
 const COUNTRY_TO_REGION: Record<string, string> = {
   uk: "eu-west-1",
   us: "us-east-1",
-  canada: "us-east-1",
+  canada: "ap-southeast-1",
 };
 
 /** ======= HARD OVERRIDE FOR TESTING ======= **/
@@ -868,10 +873,16 @@ function buildLifetimeRange() {
 type Props = {
   region?: string;
   country?: string;
+  marketplaceId?: string;
   onClose?: () => void;
 };
 
-const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose }) => {
+const AmazonFinancialDashboard: React.FC<Props> = ({
+  region,
+  country,
+  marketplaceId,
+  onClose,
+}) => {
   const router = useRouter();
 
   const { data: user } = useGetUserDataQuery();
@@ -883,14 +894,49 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
     };
   }, [user]);
 
-  let countryUsed = (country || "uk").toLowerCase();
+  let countryUsed = (country || "").toLowerCase().trim();
 
-  // normalize dropdown values just in case
-  if (countryUsed === "united kingdom") countryUsed = "uk";
-  if (countryUsed === "united states") countryUsed = "us";
+if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
+if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
+if (countryUsed === "ca") countryUsed = "canada";
 
-  let marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed];
-  let regionUsed = COUNTRY_TO_REGION[countryUsed];
+const storedCountry =
+  typeof window !== "undefined"
+    ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase().trim()
+    : "";
+
+const storedRegion =
+  typeof window !== "undefined"
+    ? localStorage.getItem("amazonMarketplaceRegion") || ""
+    : "";
+
+const storedMarketplaceId =
+  typeof window !== "undefined"
+    ? localStorage.getItem("amazonMarketplaceId") || ""
+    : "";
+
+// first resolve marketplace
+let marketplaceIdUsed =
+  marketplaceId ||
+  storedMarketplaceId ||
+  COUNTRY_TO_MARKETPLACE[countryUsed] ||
+  "";
+
+// then resolve country
+if (!countryUsed) {
+  countryUsed =
+    storedCountry ||
+    MARKETPLACE_TO_COUNTRY[marketplaceIdUsed] ||
+    "us";
+}
+
+// re-resolve marketplace if country was filled from fallback
+if (!marketplaceIdUsed) {
+  marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed] || "";
+}
+
+let regionUsed =
+  region || storedRegion || COUNTRY_TO_REGION[countryUsed];
 
   if (FORCE.enabled) {
     countryUsed = FORCE.country;
@@ -1889,30 +1935,30 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
                 </span>
               </div> */}
 
-            <div className="mt-5 pt-4 border-t border-slate-100">
-  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-    {/* Left */}
-    <p className="text-[13px] text-slate-400 truncate text-left">
-      {stepProgress.detail || "Initialising dashboard..."}
-    </p>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  {/* Left */}
+                  <p className="text-[13px] text-slate-400 truncate text-left">
+                    {stepProgress.detail || "Initialising dashboard..."}
+                  </p>
 
-    {/* Center */}
-    {remainingSeconds !== null && (
-      <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
-        <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
-        <span className="font-medium tabular-nums text-slate-600">
-          {Math.floor(remainingSeconds / 60)}:
-          {String(remainingSeconds % 60).padStart(2, "0")}
-        </span>
-      </div>
-    )}
+                  {/* Center */}
+                  {remainingSeconds !== null && (
+                    <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
+                      <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
+                      <span className="font-medium tabular-nums text-slate-600">
+                        {Math.floor(remainingSeconds / 60)}:
+                        {String(remainingSeconds % 60).padStart(2, "0")}
+                      </span>
+                    </div>
+                  )}
 
-    {/* Right */}
-    <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">
-      Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
-    </span>
-  </div>
-</div>
+                  {/* Right */}
+                  <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">
+                    Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
+                  </span>
+                </div>
+              </div>
 
             </div>
           </div>

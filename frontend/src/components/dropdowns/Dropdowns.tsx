@@ -504,6 +504,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   return blocks;
 };
 
+
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
   if (!md) return {};
 
@@ -1695,8 +1696,8 @@ const DEMO_AI_PANEL: AiPanelData = {
     "CM1 profit per unit: $0 (+0%)",
     "Product Journey",
     "- Demo Product A maintained momentum with better pricing and stable returns.",
-    "Recommendation: Continue scaling on high-converting keywords and protect margin.",
-    "Inventory Action: Maintain healthy stock cover for next cycle.",
+    "Recommendation: Push top-performing campaigns and monitor TACoS closely.",
+    "Inventory Action: Replenish aggressively to avoid stock-outs.",
 
     "Demo Product B",
     "ASP: $0 (+0%)",
@@ -1707,6 +1708,39 @@ const DEMO_AI_PANEL: AiPanelData = {
     "Product Journey",
     "- Demo Product B showed strong revenue growth and healthy profitability.",
     "Recommendation: Push top-performing campaigns and monitor TACoS closely.",
+    "Inventory Action: Replenish aggressively to avoid stock-outs.",
+
+    "Demo Product C",
+    "ASP: $0 (+0%)",
+    "Units: 0 (+0%)",
+    "Net sales: $0 (+0%)",
+    "CM1 profit: $0 (+0%)",
+    "CM1 profit per unit: $0 (+0%)",
+    "Product Journey",
+    "- Demo Product C showed strong revenue growth and healthy profitability.",
+    "Recommendation: Push top-performing campaigns and monitor TACoS closely.",
+    "Inventory Action: Replenish aggressively to avoid stock-outs.",
+
+    "Demo Product D",
+    "ASP: $0 (+0%)",
+    "Units: 0 (+0%)",
+    "Net sales: $0 (+0%)",
+    "CM1 profit: $0 (+0%)",
+    "CM1 profit per unit: $0 (+0%)",
+    "Product Journey",
+    "- Demo Product C showed strong revenue growth and healthy profitability.",
+    "Recommendation: Push top-performing campaigns and monitor TACoS closely.",
+    "Inventory Action: Replenish aggressively to avoid stock-outs.",
+
+    "Other SKUs",
+    "ASP: $0 (+0%)",
+    "Units: 0 (+0%)",
+    "Net sales: $0 (+0%)",
+    "CM1 profit: $0 (+0%)",
+    "CM1 profit per unit: $0 (+0%)",
+    "Product Journey",
+    "- Other SKUs showed mixed performance with varying revenue and profitability.",
+    "Recommendation: Focus on high-performing SKUs and optimize underperforming ones.",
     "Inventory Action: Replenish aggressively to avoid stock-outs.",
   ],
   recommendationBullets: [],
@@ -1789,7 +1823,7 @@ const DEMO_UPLOADS: UploadRow[] = [
 
 const DEMO_SKU_ROWS: TableRow[] = [
   {
-    product_name: "Sample Product A",
+    product_name: "Dummy Product 1",
     sku: "SKU-DEMO-1",
     quantity: 0,
     return_quantity: 0,
@@ -1822,8 +1856,107 @@ const DEMO_SKU_ROWS: TableRow[] = [
     sales_mix: 0,
   },
   {
-    product_name: "Sample Product B",
+    product_name: "Dummy Product 2",
     sku: "SKU-DEMO-2",
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
+    lost_total: 0,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
+  },
+  {
+    product_name: "Dummy Product 3",
+    sku: "SKU-DEMO-3",
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
+    lost_total: 0,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
+  },
+  {
+    product_name: "Dummy Product 4",
+    sku: "SKU-DEMO-4",
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
+    lost_total: 0,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
+  },
+  {
+    product_name: "Dummy Product 5",
+    sku: "SKU-DEMO-5",
     quantity: 0,
     return_quantity: 0,
     total_quantity: 0,
@@ -1920,6 +2053,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const globalHomeCurrency = isGlobalPage ? homeCurrency : undefined;
+
+  const adsCountry = useMemo<"UK" | "US" | "CA">(() => {
+    const c = String(initialCountryName || "").toLowerCase();
+
+    if (c === "us") return "US";
+    if (c === "ca") return "CA";
+    return "UK";
+  }, [initialCountryName]);
 
   const token = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -2783,7 +2924,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     clearAmazonFetchQueryParams();
   };
 
-  const handleOpenAmazonAdsFromSuccess = () => {
+  // const handleOpenAmazonAdsFromSuccess = () => {
+  //   setShowAmazonFetchSuccess(false);
+  //   clearAmazonFetchQueryParams();
+  //   setShowAmazonAdsConnect(true);
+  // };
+
+  const handleOpenAmazonAdsFromSuccess = (country: "UK" | "US" | "CA") => {
     setShowAmazonFetchSuccess(false);
     clearAmazonFetchQueryParams();
     setShowAmazonAdsConnect(true);
@@ -4542,18 +4689,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
       </Modal>
 
+      {/* <AmazonFetchSuccessModal
+        isOpen={showAmazonFetchSuccess}
+        onClose={handleCloseAmazonFetchSuccess}
+        onConnectAds={handleOpenAmazonAdsFromSuccess}
+      /> */}
+
       <AmazonFetchSuccessModal
         isOpen={showAmazonFetchSuccess}
         onClose={handleCloseAmazonFetchSuccess}
         onConnectAds={handleOpenAmazonAdsFromSuccess}
+        country={adsCountry}
       />
 
       {showAmazonAdsConnect && (
         <AmazonAdsConnect
           onClose={() => setShowAmazonAdsConnect(false)}
-          onConnected={() => {
-            setShowAmazonAdsConnect(false);
-          }}
+          onConnected={onConnectOrSyncAds}
+          country={adsCountry}
         />
       )}
     </div>

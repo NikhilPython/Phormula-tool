@@ -200,10 +200,7 @@ const MonthsforBI: React.FC = () => {
       "CM1 Profit Impact": { category: "High Growth", value: 0 },
       "Profit Per Unit": { category: "High Growth", value: 0 },
     },
-  ];
-
-  const NEW_REV_DUMMY: SkuItem[] = [
-    {
+     {
       product_name: "Demo Product B",
       sku: "DEMO-B",
 
@@ -229,10 +226,61 @@ const MonthsforBI: React.FC = () => {
     },
   ];
 
-  const OTHER_DUMMY: SkuItem[] = [
+  const NEW_REV_DUMMY: SkuItem[] = [
     {
       product_name: "Demo Product C",
       sku: "DEMO-C",
+
+      total_quantity_month1: 0,
+      total_quantity_month2: 0,
+
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+
+      asp_month1: 0,
+      asp_month2: 0,
+
+      profit_month1: 0,
+      profit_month2: 0,
+
+      "Sales Mix (Month2)": 0,
+
+      "Unit Growth": { category: "High Growth", value: 0 },
+      "ASP Growth": { category: "Low Growth", value: 0 },
+      "Net Sales Growth": { category: "High Growth", value: 0 },
+      "CM1 Profit Impact": { category: "High Growth", value: 0 },
+      "Profit Per Unit": { category: "High Growth", value: 0 },
+    },
+    {
+      product_name: "Demo Product D",
+      sku: "DEMO-D",
+
+      total_quantity_month1: 0,
+      total_quantity_month2: 0,
+
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+
+      asp_month1: 0,
+      asp_month2: 0,
+
+      profit_month1: 0,
+      profit_month2: 0,
+
+      "Sales Mix (Month2)": 0,
+
+      "Unit Growth": { category: "High Growth", value: 0 },
+      "ASP Growth": { category: "Low Growth", value: 0 },
+      "Net Sales Growth": { category: "High Growth", value: 0 },
+      "CM1 Profit Impact": { category: "High Growth", value: 0 },
+      "Profit Per Unit": { category: "High Growth", value: 0 },
+    },
+  ];
+
+  const OTHER_DUMMY: SkuItem[] = [
+    {
+      product_name: "Demo Product E",
+      sku: "DEMO-E",
 
       total_quantity_month1: 0,
       total_quantity_month2: 0,
