@@ -1889,30 +1889,30 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
                 </span>
               </div> */}
 
-            <div className="mt-5 pt-4 border-t border-slate-100">
-  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-    {/* Left */}
-    <p className="text-[13px] text-slate-400 truncate text-left">
-      {stepProgress.detail || "Initialising dashboard..."}
-    </p>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  {/* Left */}
+                  <p className="text-[13px] text-slate-400 truncate text-left">
+                    {stepProgress.detail || "Initialising dashboard..."}
+                  </p>
 
-    {/* Center */}
-    {remainingSeconds !== null && (
-      <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
-        <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
-        <span className="font-medium tabular-nums text-slate-600">
-          {Math.floor(remainingSeconds / 60)}:
-          {String(remainingSeconds % 60).padStart(2, "0")}
-        </span>
-      </div>
-    )}
+                  {/* Center */}
+                  {remainingSeconds !== null && (
+                    <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
+                      <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
+                      <span className="font-medium tabular-nums text-slate-600">
+                        {Math.floor(remainingSeconds / 60)}:
+                        {String(remainingSeconds % 60).padStart(2, "0")}
+                      </span>
+                    </div>
+                  )}
 
-    {/* Right */}
-    <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">
-      Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
-    </span>
-  </div>
-</div>
+                  {/* Right */}
+                  <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">
+                    Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
+                  </span>
+                </div>
+              </div>
 
             </div>
           </div>
