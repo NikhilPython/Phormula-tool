@@ -6726,10 +6726,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? 0
                 : (stats_targetHome ?? 0),
             previous: shouldShowDummyUi
-                ? 16500
+                ? 0
                 : (targets_lastMonthTotalHome ?? 0),
             deltaPct: shouldShowDummyUi
-                ? safeDeltaPct(18000, 16500)
+                ? safeDeltaPct(0, 0)
                 : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
             loading: !shouldShowDummyUi && loading,
             formatter: formatDisplayAmount,
@@ -6740,13 +6740,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
         {
             label: "Target Trend",
             current: shouldShowDummyUi
-                ? 8.5
+                ? 0
                 : (stats_targetTrendPct ?? 0),
             previous: shouldShowDummyUi
-                ? 5.2
+                ? 0
                 : (stats_targetTrendPrevPct ?? 0),
             deltaPct: shouldShowDummyUi
-                ? deltaPctAbs(8.5, 5.2)
+                ? deltaPctAbs(0, 0)
                 : deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
             loading: !shouldShowDummyUi && loading,
             formatter: fmtPct,

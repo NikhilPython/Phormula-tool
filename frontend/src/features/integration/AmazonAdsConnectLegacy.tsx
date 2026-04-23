@@ -5,6 +5,7 @@ import { FaLink } from "react-icons/fa";
 import { TiTick } from "react-icons/ti";
 import Button from "@/components/ui/button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { usePlatform } from "@/components/context/PlatformContext";
 
 const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -141,7 +142,7 @@ async function ensureSpReportOncePerDay(country: "UK" | "US" | "CA") {
         start_date,
         end_date,
         time_unit: "SUMMARY",
-        countries: ["UK"],
+        countries: [country],
         return_excel: false,
     });
 
@@ -179,10 +180,18 @@ async function seedAdsReportsOnConnect(country: "UK" | "US" | "CA") {
             ? ["SP", "SD"]
             : ["SP"];
 
-    await postJson(`/api/ads/monthly_sp_sd_to_db`, {
+    console.log("PAYLOAD:", {
         month: monthToNumber(month),
         year,
         country,
+        include,
+    });
+
+
+    await postJson(`/api/ads/monthly_sp_sd_to_db`, {
+        month: monthToNumber(month),
+        year,
+        country: country || "UK",
         include,
     });
 }
@@ -193,7 +202,6 @@ type Props = {
     redirectUrl?: string;
     pollIntervalMs?: number;
     maxWaitMs?: number;
-    country: "UK" | "US" | "CA";
 };
 
 export default function AmazonAdsConnect({
@@ -202,8 +210,13 @@ export default function AmazonAdsConnect({
     redirectUrl,
     pollIntervalMs = 1500,
     maxWaitMs = 2 * 60 * 1000,
-    country,
 }: Props) {
+    const { platform } = usePlatform();
+
+    const resolvedCountry: "UK" | "US" | "CA" =
+        platform === "amazon-us" ? "US" :
+            platform === "amazon-ca" ? "CA" :
+                "UK";
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
@@ -259,7 +272,7 @@ export default function AmazonAdsConnect({
         try {
             setIsConnecting(true);
 
-            await seedAdsReportsOnConnect(country);
+            await seedAdsReportsOnConnect(resolvedCountry);
             await onConnected?.();
         } catch (e: any) {
             setError(e?.message || "Amazon Ads connected, but ads sync failed.");
