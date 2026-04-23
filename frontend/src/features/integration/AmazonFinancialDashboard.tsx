@@ -29,7 +29,7 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
 const COUNTRY_TO_REGION: Record<string, string> = {
   uk: "eu-west-1",
   us: "us-east-1",
-  canada: "us-east-1",
+  canada: "ap-southeast-1",
 };
 
 /** ======= HARD OVERRIDE FOR TESTING ======= **/
@@ -868,10 +868,16 @@ function buildLifetimeRange() {
 type Props = {
   region?: string;
   country?: string;
+  marketplaceId?: string;
   onClose?: () => void;
 };
 
-const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose }) => {
+const AmazonFinancialDashboard: React.FC<Props> = ({
+  region,
+  country,
+  marketplaceId,
+  onClose,
+}) => {
   const router = useRouter();
 
   const { data: user } = useGetUserDataQuery();
@@ -883,14 +889,36 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
     };
   }, [user]);
 
-  let countryUsed = (country || "uk").toLowerCase();
+  let countryUsed = (country || "").toLowerCase().trim();
 
-  // normalize dropdown values just in case
-  if (countryUsed === "united kingdom") countryUsed = "uk";
-  if (countryUsed === "united states") countryUsed = "us";
+  if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
+  if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
+  if (countryUsed === "ca") countryUsed = "canada";
 
-  let marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed];
-  let regionUsed = COUNTRY_TO_REGION[countryUsed];
+  const storedCountry =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase()
+      : "";
+
+  const storedRegion =
+    typeof window !== "undefined"
+      ? localStorage.getItem("amazonMarketplaceRegion") || ""
+      : "";
+
+  const storedMarketplaceId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("amazonMarketplaceId") || ""
+      : "";
+
+  if (!countryUsed) {
+    countryUsed = storedCountry || "uk";
+  }
+
+  let marketplaceIdUsed =
+    marketplaceId || storedMarketplaceId || COUNTRY_TO_MARKETPLACE[countryUsed];
+
+  let regionUsed =
+    region || storedRegion || COUNTRY_TO_REGION[countryUsed];
 
   if (FORCE.enabled) {
     countryUsed = FORCE.country;
