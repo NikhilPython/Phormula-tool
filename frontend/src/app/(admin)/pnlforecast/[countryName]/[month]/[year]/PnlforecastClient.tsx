@@ -1094,13 +1094,16 @@ const Pnlforecast: React.FC = () => {
       <div className="flex justify-between items-center gap-4">
         <div className="flex items-center justify-between w-full gap-3">
           <div className="flex flex-col leading-tight">
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
               <PageBreadcrumb
-                pageTitle="P&L Forecast"
+                pageTitle="P&L Forecast - Amazon"
                 variant="page"
                 align="left"
                 textSize="2xl"
               />
+              <span className="text-green-500 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                {countryName?.toUpperCase()}
+              </span>
             </div>
             <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
               Historical Data vs Forecasted Trends

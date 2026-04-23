@@ -2176,7 +2176,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 pageTitle={
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-[#414042] font-bold">
-                      Inventory Reconciliation -
+                      Inventory Reconciliation - Amazon
                     </span>
                     <span className="text-[#60a68e] font-bold">
                       {countryName?.toUpperCase()}

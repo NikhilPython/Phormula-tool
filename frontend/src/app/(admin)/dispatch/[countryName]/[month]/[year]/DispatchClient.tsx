@@ -924,13 +924,13 @@ export default function DispatchPage({
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-start">
             <PageBreadcrumb
-              pageTitle="Dispatch Report - "
+              pageTitle="Dispatch Report - Amazon"
               variant="page"
               align="left"
               className=""
             />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+              {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
             </span>
           </div>
 

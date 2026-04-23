@@ -955,17 +955,17 @@ export default function InventoryFlowPage() {
               <PageBreadcrumb
                 pageTitle={
                   activeTab === 'dispatch'
-                    ? 'Dispatch Report -'
+                    ? 'Dispatch Report - Amazon'
                     : activeTab === 'purchaseOrder'
-                      ? 'PO Report -'
-                      : 'Inventory Forecast -'
+                      ? 'PO Report - Amazon'
+                      : 'Inventory Forecast - Amazon'
                 }
                 variant="page"
                 align="left"
                 textSize="2xl"
               />
               <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+                {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
               </span>
             </div>
 
