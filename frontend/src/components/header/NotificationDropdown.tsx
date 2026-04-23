@@ -165,9 +165,9 @@ export default function NotificationDropdown({
           )}
         </ul>
 
-        <div className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+        {/* <div className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
           {items.length} active notification{items.length === 1 ? "" : "s"}
-        </div>
+        </div> */}
       </Dropdown>
     </div>
   );
