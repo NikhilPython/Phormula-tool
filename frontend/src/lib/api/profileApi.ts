@@ -1,8 +1,12 @@
 import { baseApi } from "./baseApi";
 
 export type UserData = {
-  marketplace_id: any;
+  marketplace_id?: string;
+  marketplace_ids?: string[];
+
   country?: string;
+  countries?: string[];
+
   id?: string;
   name?: string;
   email?: string;
@@ -13,8 +17,11 @@ export type UserData = {
   onboarding_complete?: boolean;
   homeCurrency?: string;
   target_sales?: number;
-  amazon_user_exist?: boolean;
+
+  amazon_user_exists?: boolean;
   amazon_ads_exists?: boolean;
+  amazon_connected?: boolean;
+  connected_marketplaces_count?: number;
 
   tax_id?: {
     gst_no?: string;

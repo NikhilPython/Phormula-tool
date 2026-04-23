@@ -72,6 +72,7 @@ def process_skuwise_us_data(user_id, country, month, year):
                 marketplace_facilitator_tax REAL,
                 shipping_credits_tax REAL,
                 giftwrap_credits_tax REAL,
+                postage_credits REAL,
                 shipping_credits REAL,
                 gift_wrap_credits REAL,
                 net_sales REAL,
@@ -861,6 +862,13 @@ def process_skuwise_us_data(user_id, country, month, year):
         other_rows = sku_grouped[sku_grouped['sku'].str.lower() != 'total']
         other_rows_sorted = other_rows.sort_values(by="profit", ascending=False)
         sku_grouped = pd.concat([other_rows_sorted, total_row], ignore_index=True)
+        if "postage_credits" not in sku_grouped.columns:
+            sku_grouped["postage_credits"] = 0.0
+        else:
+            sku_grouped["postage_credits"] = pd.to_numeric(
+                sku_grouped["postage_credits"], errors="coerce"
+            ).fillna(0.0)
+
 
         for col, default in {
             "return_quantity": 0,

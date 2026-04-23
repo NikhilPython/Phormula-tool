@@ -25,6 +25,11 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   us: "ATVPDKIKX0DER",
   canada: "A2EUQ1WTGCTBG2",
 };
+const MARKETPLACE_TO_COUNTRY: Record<string, string> = {
+  A1F83G8C2ARO7P: "uk",
+  ATVPDKIKX0DER: "us",
+  A2EUQ1WTGCTBG2: "canada",
+};
 
 const COUNTRY_TO_REGION: Record<string, string> = {
   uk: "eu-west-1",
@@ -891,34 +896,47 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   let countryUsed = (country || "").toLowerCase().trim();
 
-  if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
-  if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
-  if (countryUsed === "ca") countryUsed = "canada";
+if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
+if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
+if (countryUsed === "ca") countryUsed = "canada";
 
-  const storedCountry =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase()
-      : "";
+const storedCountry =
+  typeof window !== "undefined"
+    ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase().trim()
+    : "";
 
-  const storedRegion =
-    typeof window !== "undefined"
-      ? localStorage.getItem("amazonMarketplaceRegion") || ""
-      : "";
+const storedRegion =
+  typeof window !== "undefined"
+    ? localStorage.getItem("amazonMarketplaceRegion") || ""
+    : "";
 
-  const storedMarketplaceId =
-    typeof window !== "undefined"
-      ? localStorage.getItem("amazonMarketplaceId") || ""
-      : "";
+const storedMarketplaceId =
+  typeof window !== "undefined"
+    ? localStorage.getItem("amazonMarketplaceId") || ""
+    : "";
 
-  if (!countryUsed) {
-    countryUsed = storedCountry || "uk";
-  }
+// first resolve marketplace
+let marketplaceIdUsed =
+  marketplaceId ||
+  storedMarketplaceId ||
+  COUNTRY_TO_MARKETPLACE[countryUsed] ||
+  "";
 
-  let marketplaceIdUsed =
-    marketplaceId || storedMarketplaceId || COUNTRY_TO_MARKETPLACE[countryUsed];
+// then resolve country
+if (!countryUsed) {
+  countryUsed =
+    storedCountry ||
+    MARKETPLACE_TO_COUNTRY[marketplaceIdUsed] ||
+    "us";
+}
 
-  let regionUsed =
-    region || storedRegion || COUNTRY_TO_REGION[countryUsed];
+// re-resolve marketplace if country was filled from fallback
+if (!marketplaceIdUsed) {
+  marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed] || "";
+}
+
+let regionUsed =
+  region || storedRegion || COUNTRY_TO_REGION[countryUsed];
 
   if (FORCE.enabled) {
     countryUsed = FORCE.country;

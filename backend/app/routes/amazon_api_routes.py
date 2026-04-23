@@ -525,8 +525,17 @@ def finances_monthly_transactions():
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
     run_upload = (request.args.get("run_upload_pipeline", "false").lower() == "true")
     ui_country = (request.args.get("country") or "").strip().lower()
+
     if not ui_country:
-        ui_country = "uk"
+        mkt = (marketplace_id or amazon_client.marketplace_id or "").strip()
+        if mkt == "ATVPDKIKX0DER":
+            ui_country = "us"
+        elif mkt == "A1F83G8C2ARO7P":
+            ui_country = "uk"
+        elif mkt == "A2EUQ1WTGCTBG2":
+            ui_country = "canada"
+        else:
+            ui_country = "us"
 
     if run_upload and not ui_country:
         return jsonify({"success": False, "error": "country is required when run_upload_pipeline=true"}), 400
