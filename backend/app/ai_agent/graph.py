@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey
+from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS
 from app.ai_agent.email_service import send_agent_email, build_email_html
 from app.ai_agent.formula_engine import (
     OVERALL_MONTH_METRICS,
@@ -118,6 +118,14 @@ ALIAS_MAP = {
 
     "sales mix": "sales_mix",
     "profit mix": "profit_mix",
+
+    "stock": "available",
+    "available stock": "available",
+    "inventory": "available",
+    "available inventory": "available",
+    "sell through": "sell_through",
+    "days of supply": "days_of_supply",
+
 }
 
 STOPWORDS = {
@@ -127,7 +135,6 @@ STOPWORDS = {
     "bottom", "products", "product", "sku", "goal", "target", "sales", "profit", "net", "gross",
     "spend", "advertising", "acos", "asp", "units", "summary", "plan", "event", "build", "underperforming",
 }
-
 
 class RequestPlanModel(BaseModel):
     intent: str = "chat"
@@ -977,39 +984,6 @@ def _compute_sku_trend(state: AgentState) -> AgentState:
     state["current_metrics"] = {"metric": metric_name, "period_label": f"{months[0].label} to {months[-1].label}", "total": None}
     return state
 
-
-def _compute_mix_time_series(engine: Any, user_id: int, country: str, metric_name: str, months: List[Any], product_match: Optional[str]) -> Dict[str, Any]:
-    base_metric = "net_sales" if metric_name == "sales_mix" else "profit"
-    series: List[Dict[str, Any]] = []
-    for mk in months:
-        month_result = get_metric_for_month(engine, user_id, country, base_metric, mk.month, mk.year)
-        overall_total = float(month_result.get("total", 0.0))
-        if product_match:
-            rows = month_result.get("per_sku", [])
-            matched = next((row for row in rows if product_match in str(row.get("product_name", "")).lower()), None)
-            product_value = float((matched or {}).get("__metric__", 0.0))
-            value = _safe_div(product_value, overall_total)
-        else:
-            value = 1.0 if overall_total else 0.0
-        series.append({"period_label": mk.label, "month": mk.month, "year": mk.year, "__metric__": value})
-    movement = "flat"
-    if len(series) >= 2:
-        first = float(series[0]["__metric__"])
-        last = float(series[-1]["__metric__"])
-        if last > first:
-            movement = "upward"
-        elif last < first:
-            movement = "downward"
-    mom: List[Dict[str, Any]] = []
-    for i in range(1, len(series)):
-        prev_val = float(series[i - 1]["__metric__"])
-        curr_val = float(series[i]["__metric__"])
-        delta = curr_val - prev_val
-        pct_change = None if prev_val == 0 else (delta / prev_val) * 100.0
-        mom.append({"period_label": series[i]["period_label"], "current": curr_val, "previous": prev_val, "delta": delta, "pct_change": pct_change})
-    return {"metric": metric_name, "series": series, "mom": mom, "movement": movement, "product_match": product_match}
-
-
 def _compute_standard_analysis(state: AgentState) -> AgentState:
     try:
         engine = state["engine"]
@@ -1181,10 +1155,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
                 series = []
                 for mk in months_full:
-                    result_month = get_metric_for_month(
+                    result_month = get_unified_metric(
                         engine,
-                        state["user_id"],
-                        state["country"],
+                        state,
                         metric_name,
                         mk.month,
                         mk.year,
@@ -1262,10 +1235,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             if product_query:
                 latest = months_full[-1]
 
-                sample = get_metric_for_month(
+                sample = get_unified_metric(
                     engine,
-                    state["user_id"],
-                    state["country"],
+                    state,
                     metric_name,
                     latest.month,
                     latest.year,
@@ -1341,10 +1313,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
                 rows = []
                 for mk in months:
-                    result_month = get_metric_for_month(
+                    result_month = get_unified_metric(
                         engine,
-                        state["user_id"],
-                        state["country"],
+                        state,
                         metric_name,
                         mk.month,
                         mk.year,
@@ -1372,10 +1343,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
                 series = []
                 for mk in months:
-                    result_month = get_metric_for_month(
+                    result_month = get_unified_metric(
                         engine,
-                        state["user_id"],
-                        state["country"],
+                        state,
                         metric_name,
                         mk.month,
                         mk.year,
@@ -1427,10 +1397,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             rows_out = []
 
             for metric in metric_names:
-                result_month = get_metric_for_month(
+                result_month = get_unified_metric(
                     engine,
-                    state["user_id"],
-                    state["country"],
+                    state,
                     metric,
                     month,
                     year,
@@ -1490,10 +1459,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             )
 
             for mk, _ in dfs:
-                result_month = get_metric_for_month(
+                result_month = get_unified_metric(
                     engine,
-                    state["user_id"],
-                    state["country"],
+                    state,
                     metric_name,
                     mk.month,
                     mk.year,
@@ -1511,10 +1479,9 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
         # -------- SINGLE MONTH --------
         elif payload.get("type") == "single":
-            result = get_metric_for_month(
+            result = get_unified_metric(
                 engine,
-                state["user_id"],
-                state["country"],
+                state,
                 metric_name,
                 payload["month"],
                 payload["year"],
@@ -1571,6 +1538,36 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         state["error"] = str(e)
         return state
 
+def get_unified_metric(engine, state, metric_name, month=None, year=None):
+
+    # -------- SAFE PERIOD --------
+    if month is None or year is None:
+        payload = state.get("period_payload", {})
+        month = payload.get("month")
+        year = payload.get("year")
+
+    # -------- VALIDATION --------
+    if metric_name not in INVENTORY_METRICS and metric_name not in FINANCE_METRICS:
+        raise ValueError(f"Unsupported metric: {metric_name}")
+
+    # -------- INVENTORY --------
+    if metric_name in INVENTORY_METRICS:
+        return get_inventory_snapshot(
+            user_id=state["user_id"],
+            metric_name=metric_name,
+            month=month,
+            year=year,
+        )
+
+    # -------- FINANCE --------
+    return get_metric_for_month(
+        engine=engine,
+        user_id=state["user_id"],
+        country=state["country"],
+        metric_name=metric_name,
+        month=month,
+        year=year,
+    )
 
 def _execute_tool(state: AgentState, tool_name: str) -> AgentState:
     registry: Dict[str, Callable[[AgentState], AgentState]] = {
@@ -2213,7 +2210,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
             state["metric_name"] = "asp"
 
         # -------- PLAN --------
-        plan = _plan_request(q_lower,email_requested=bool(state.get("email_requested")))
+        plan = _plan_request(q_lower, email_requested=bool(state.get("email_requested")))
 
         logger.info(
             f"[PLAN] intent={plan.intent}, analysis_type={plan.analysis_type}, "
@@ -2231,7 +2228,6 @@ def _invoke_agent(state: AgentState) -> AgentState:
         # -------- STATE SETUP --------
         state["intent"] = plan.intent
 
-        # 🔥 DO NOT OVERRIDE analysis_type if already set
         if not state.get("analysis_type"):
             state["analysis_type"] = plan.analysis_type
         else:
@@ -2241,7 +2237,6 @@ def _invoke_agent(state: AgentState) -> AgentState:
         state["reasoning_mode"] = plan.reasoning_mode or "lookup"
         state["task_type"] = plan.task_type or "value_lookup"
 
-        # 🔥 DO NOT OVERRIDE metric if normalized
         if not state.get("metric_name"):
             state["metric_name"] = plan.metric_name
         else:
@@ -2269,25 +2264,38 @@ def _invoke_agent(state: AgentState) -> AgentState:
             logger.info(f"[SHORT-CIRCUIT] intent={state['intent']}")
             return _render_response(state)
 
-        # -------- 🔥 DECISION-AWARE METRIC HANDLING --------
+        # -------- 🔥 METRIC RECOVERY (CRITICAL FIX) --------
         if not state.get("metric_name") and not state.get("metric_names"):
 
-            # ✅ NEW: allow decision queries without metric
-            if state.get("reasoning_mode") == "decision":
+            # 🔥 STEP 1: Try alias-based resolution
+            resolved_metric = _metric_from_query(q_lower)
+
+            if resolved_metric:
+                logger.info(f"[METRIC_RECOVERED] {resolved_metric}")
+                state["metric_name"] = resolved_metric
+
+            # 🔥 STEP 2: Decision fallback
+            elif state.get("reasoning_mode") == "decision":
                 logger.info("[DECISION] No metric → defaulting intelligently")
 
-                # primary metric (for compatibility)
                 state["metric_name"] = "profit"
-
-                # multi-metric reasoning
                 state["metric_names"] = ["profit", "net_sales"]
-
                 state["use_multi_metric"] = True
 
+            # 🔥 STEP 3: Product fallback (SAFE NOW)
             elif state.get("product_query"):
-                state["metric_name"] = "profit"
-                logger.info("[METRIC] Defaulted to 'profit' due to product query")
+                logger.info("[PRODUCT_QUERY] trying metric recovery")
 
+                resolved_metric = _metric_from_query(q_lower)
+
+                if resolved_metric:
+                    state["metric_name"] = resolved_metric
+                    logger.info(f"[METRIC_FROM_PRODUCT_QUERY] {resolved_metric}")
+                else:
+                    state["metric_name"] = "profit"
+                    logger.info("[METRIC] Defaulted to 'profit'")
+
+            # 🔥 STEP 4: Final clarify
             elif (
                 state.get("analysis_type") not in {"summary"}
                 and state.get("answer_shape") not in {"summary"}
@@ -2309,7 +2317,9 @@ def _invoke_agent(state: AgentState) -> AgentState:
         if state["period_parsed"].get("type") in {"single", "range", "comparison"}:
             state["period_payload"] = state["period_parsed"]
         else:
-            state["period_payload"] = _prepare_period_payload(state["period_parsed"], state["analysis_type"])
+            state["period_payload"] = _prepare_period_payload(
+                state["period_parsed"], state["analysis_type"]
+            )
 
         logger.info(f"[PERIOD_PAYLOAD] {state['period_payload']}")
 
@@ -2362,7 +2372,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
                     return _render_response(state)
 
             except Exception:
-                logger.exception("[COMPATIBILITY_CHECK_ERROR]")
+                logger.exception("[COMPATIBILITY_CHECK_ERROR]")        
 
         # -------- TOOL PLAN --------
         planned_tools = _build_tool_plan(state)
@@ -2376,8 +2386,8 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         # -------- FINAL --------
         state = _render_response(state)
-  
-        # -------- 🔥 EMAIL TRIGGER --------
+
+        # -------- EMAIL --------
         state = _send_email_if_requested(state)
 
         logger.info("[END] Response generated successfully")

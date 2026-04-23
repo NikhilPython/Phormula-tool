@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -88,6 +88,11 @@ class MonthKey:
 def get_engine() -> Engine:
     return create_engine(Config.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)
 
+def get_amazon_engine() -> Engine:
+    return create_engine(
+        Config.SQLALCHEMY_DATABASE_AMAZON_URL,
+        pool_pre_ping=True
+    )
 
 def validate_user_id(user_id: int) -> None:
     if not isinstance(user_id, int) or user_id <= 0:
@@ -467,10 +472,36 @@ PRECOMPUTED_METRICS = {
     "tex_and_credits": MetricDef("tex_and_credits", "tex_and_credits", "sku_precomputed", "money", "sku", False, True, True, True, True, True, True),
 }
 
+# -------- INVENTORY METRICS --------
+INVENTORY_METRIC_DEFS = {
+    "available": MetricDef("available", "available", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "inbound_quantity": MetricDef("inbound_quantity", "inbound_quantity", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "total_reserved_quantity": MetricDef("total_reserved_quantity", "total_reserved_quantity", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "unfulfillable_quantity": MetricDef("unfulfillable_quantity", "unfulfillable_quantity", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "units_shipped_t30": MetricDef("units_shipped_t30", "units_shipped_t30", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "units_shipped_t60": MetricDef("units_shipped_t60", "units_shipped_t60", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "units_shipped_t90": MetricDef("units_shipped_t90", "units_shipped_t90", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    "estimated_excess_quantity": MetricDef("estimated_excess_quantity", "estimated_excess_quantity", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+
+    # ratios
+    "sell_through": MetricDef("sell_through", "sell_through", "sku_precomputed", "percentage", "sku", False, True, True, True, True, True, True),
+
+    "days_of_supply": MetricDef("days_of_supply", "days_of_supply", "sku_precomputed", "count", "sku", False, True, True, True, True, True, True),
+}
+
+
 ALL_METRICS = {
     **SKU_ADDITIVE_METRICS,
     **TOTAL_ADDITIVE_METRICS,
     **PRECOMPUTED_METRICS,
+    **INVENTORY_METRIC_DEFS,
 }
 
 
@@ -507,3 +538,86 @@ def validate_metric_compatibility(
 
 def available_metrics() -> list[str]:
     return sorted(ALL_METRICS.keys())
+
+
+
+######################################################################################################################################
+# -------------------------
+# INVENTORY FETCH
+# -------------------------
+
+def get_inventory_snapshot(
+    user_id: int,
+    metric_name: str,
+    month: int,
+    year: int,
+) -> Dict[str, Any]:
+
+    engine = get_amazon_engine()
+
+    query = text(f"""
+        SELECT "product-name" AS product_name, "{metric_name}" AS value
+        FROM inventory_aged
+        WHERE user_id = :user_id
+        AND "snapshot-date" = (
+            SELECT MAX("snapshot-date")
+            FROM inventory_aged
+            WHERE user_id = :user_id
+            AND EXTRACT(MONTH FROM "snapshot-date") = :month
+            AND EXTRACT(YEAR FROM "snapshot-date") = :year
+        )
+    """)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            query,
+            {
+                "user_id": user_id,
+                "month": month,
+                "year": year,
+            },
+        ).mappings().all()
+
+    # -------- 🔥 HANDLE NO DATA CASE --------
+    if not rows:
+        return {
+            "metric": metric_name,
+            "total": None,
+            "per_sku": [],
+            "period_label": f"{month}/{year}",
+            "metric_kind": "inventory",
+            "note": "No inventory snapshot available for this month",
+        }
+
+    per_sku = [
+        {
+            "product_name": r["product_name"],
+            "__metric__": float(r["value"] or 0),
+        }
+        for r in rows
+    ]
+
+    total = sum(r["__metric__"] for r in per_sku)
+
+    return {
+        "metric": metric_name,
+        "total": total,
+        "per_sku": per_sku,
+        "period_label": f"{month}/{year}",
+        "metric_kind": "inventory",
+    }
+
+INVENTORY_METRICS = {
+    "available",
+    "inbound_quantity",
+    "total_reserved_quantity",
+    "unfulfillable_quantity",
+    "sell_through",
+    "days_of_supply",
+    "units_shipped_t30",
+    "units_shipped_t60",
+    "units_shipped_t90",
+    "estimated_excess_quantity",
+}
+
+FINANCE_METRICS = set(SKU_ADDITIVE_METRICS.keys()) | set(PRECOMPUTED_METRICS.keys()) | set(TOTAL_ADDITIVE_METRICS.keys())
