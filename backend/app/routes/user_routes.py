@@ -75,6 +75,24 @@ def compute_marketplace_ids_from_country(country_value: str) -> str:
 
     return ",".join(ids)
 
+def update_amazon_connection_summary(user_id):
+    from app.models.user_models import User, amazon_user
+    from app import db
+
+    # count only connected marketplaces
+    count = amazon_user.query.filter_by(
+        user_id=user_id,
+        is_connected=True
+    ).count()
+
+    user = User.query.get(user_id)
+    if not user:
+        return
+
+    user.amazon_connected = count > 0
+    user.connected_marketplaces_count = count
+
+    db.session.commit()
 
 @user_bp.route('/register', methods=['POST'])
 def register():
@@ -380,6 +398,10 @@ def get_user_data():
 
     spapi_connected = False
     ads_connected = False
+    rows = amazon_user.query.filter_by(user_id=int(user_id)).all()
+
+    countries_list = [r.country_name for r in rows if r.country_name]
+    marketplace_ids_list = [r.marketplace_id for r in rows if r.marketplace_id]
 
     if arow:
         spapi_connected = _has_token(arow.refresh_token)
@@ -428,9 +450,10 @@ def get_user_data():
         "owner_email": user.email,
         "member_email": token_email if is_member else None,
 
-        "marketplace_ids": marketplace_ids,
+        "countries": countries_list,
+        "marketplace_ids": marketplace_ids_list,
         "modules": modules,
-        "countries": countries,
+       
 
         "amazon_user_exists": user.amazon_user_exists,
         "amazon_ads_exists": user.amazon_ads_exists,
@@ -440,8 +463,6 @@ def get_user_data():
         "brand_name": user.brand_name,
         "phone_number": user.phone_number,
         "annual_sales_range": user.annual_sales_range,
-        "marketplace_id": user.marketplace_id,
-        "country": user.country,
         "homeCurrency": user.homeCurrency,
         "target_sales": float(user.target_sales) if user.target_sales is not None else None,
         "tax_id": user.tax_id,
@@ -490,10 +511,9 @@ def get_user_countries():
     if not user:
         return jsonify({'error': 'User not found.'}), 404
 
-    if not user.country:
-        country_list = []
-    else:
-        country_list = [c.strip() for c in user.country.split(',')]  
+    rows = amazon_user.query.filter_by(user_id=user_id).all()
+
+    country_list = [r.country_name for r in rows if r.country_name]  
 
     return jsonify({'countries': country_list}), 200
 
@@ -528,8 +548,27 @@ def add_sales():
     if not user:
         return jsonify({'success': False, 'message': 'User not found.'}), 404
 
-    user.country = country
-    user.marketplace_id = compute_marketplace_ids_from_country(country)
+    marketplace_ids = compute_marketplace_ids_from_country(country).split(',')
+    for mp_id in marketplace_ids:
+        if not mp_id:
+            continue
+
+        au = amazon_user.query.filter_by(
+            user_id=user_id,
+            marketplace_id=mp_id
+        ).first()
+
+        if not au:
+            au = amazon_user(
+                user_id=user_id,
+                marketplace_id=mp_id,
+                country_name=country,
+                is_connected=True
+            )
+            db.session.add(au)
+        else:
+            au.country_name = country
+            au.is_connected = True
 
     if company_name is not None and str(company_name).strip():
         user.company_name = str(company_name).strip()
@@ -545,11 +584,12 @@ def add_sales():
 
     db.session.commit()
     db.session.refresh(user)
+    update_amazon_connection_summary(user_id)
 
     return jsonify({
         'success': True,
         'message': 'Sales data submitted successfully.',
-        'marketplace_id': user.marketplace_id
+        'marketplace_id': marketplace_ids,
     }), 201
 
 
@@ -701,9 +741,30 @@ def profileupdate():
 
     # ---------- COUNTRY + MARKETPLACE ----------
     new_country = data.get('country')
+
     if new_country:
-        user.country = new_country
-        user.marketplace_id = compute_marketplace_ids_from_country(new_country)
+        marketplace_ids = compute_marketplace_ids_from_country(new_country).split(',')
+
+        for mp_id in marketplace_ids:
+            if not mp_id:
+                continue
+
+            au = amazon_user.query.filter_by(
+                user_id=user_id,
+                marketplace_id=mp_id
+            ).first()
+
+            if not au:
+                au = amazon_user(
+                    user_id=user_id,
+                    marketplace_id=mp_id,
+                    country_name=new_country,
+                    is_connected=True
+                )
+                db.session.add(au)
+            else:
+                au.country_name = new_country
+                au.is_connected = True
 
     # ---------- TARGET SALES (VALIDATED) ----------
     target_sales = data.get('target_sales')
@@ -721,6 +782,7 @@ def profileupdate():
     # ---------- COMMIT ----------
     try:
         db.session.commit()
+        update_amazon_connection_summary(user_id)
         return jsonify({'message': 'Profile updated successfully'}), 200
     except Exception as e:
         db.session.rollback()
@@ -1071,14 +1133,19 @@ def check_user_country_table_exists():
                 "message": "User not found"
             }), 404
 
-        if not user.country:
-            return jsonify({
-                "success": False,
-                "message": "User country not set"
-            }), 400
 
         # Use country from DB
-        country = user.country.strip().lower()
+        rows = amazon_user.query.filter_by(user_id=user_id).all()
+        countries = [r.country_name for r in rows if r.country_name]
+
+        if not countries:
+            return jsonify({
+                "success": False,
+                "message": "No countries connected"
+            }), 400
+
+        # Example: pick first or loop
+        country = countries[0].strip().lower()
 
         table_name = f"user_{user_id}_{country}_merge_data_of_all_months"
 
