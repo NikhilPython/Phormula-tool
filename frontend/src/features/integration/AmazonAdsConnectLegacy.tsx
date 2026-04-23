@@ -37,15 +37,163 @@ const ICONS = {
     secure: "/secure_black.png",
 };
 
+// type Props = {
+//     onClose?: () => void;
+//     onConnected?: () => void | Promise<void>;
+//     /** if you want auto-redirect after connect */
+//     redirectUrl?: string;
+//     /** optional override */
+//     pollIntervalMs?: number; // default 1500
+//     /** optional override */
+//     maxWaitMs?: number; // default 2 min
+// };
+
+const getIstTodayISO = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = ist.getFullYear();
+    const m = ist.getMonth() + 1;
+    const d = ist.getDate();
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+};
+
+const getIstMonthStartISO = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = ist.getFullYear();
+    const m = ist.getMonth() + 1;
+    return `${y}-${String(m).padStart(2, "0")}-01`;
+};
+
+const decodeJwtUserId = (jwt: string): string | null => {
+    try {
+        const payloadPart = jwt.split(".")[1];
+        if (!payloadPart) return null;
+
+        const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+        const json = decodeURIComponent(
+            atob(base64)
+                .split("")
+                .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+                .join("")
+        );
+
+        const payload = JSON.parse(json);
+        return payload?.user_id != null ? String(payload.user_id) : null;
+    } catch {
+        return null;
+    }
+};
+
+const monthToNumber = (monthName: string): number => {
+    const months: Record<string, number> = {
+        january: 1,
+        february: 2,
+        march: 3,
+        april: 4,
+        may: 5,
+        june: 6,
+        july: 7,
+        august: 8,
+        september: 9,
+        october: 10,
+        november: 11,
+        december: 12,
+    };
+    return months[monthName.toLowerCase()] || 1;
+};
+
+const getCurrentMonthYearIST = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+
+    return {
+        month: ist.toLocaleString("en-US", {
+            month: "long",
+            timeZone: "Asia/Kolkata",
+        }),
+        year: ist.getFullYear(),
+    };
+};
+
+async function postJson(path: string, body: any) {
+    return apiJson(path, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+    });
+}
+
+async function ensureSpReportOncePerDay(country: "UK" | "US" | "CA") {
+    const token = getAuthToken();
+    if (!token) throw new Error("Missing auth token");
+
+    const userId = decodeJwtUserId(token) || "unknown";
+    const end_date = getIstTodayISO();
+    const start_date = getIstMonthStartISO();
+
+    const storageKey = `sp_report_seed_daily_${userId}_${country}_${end_date}`;
+    if (localStorage.getItem(storageKey) === "1") return;
+
+    await postJson(`/api/ads/manager/sp_advertised_product_report`, {
+        start_date,
+        end_date,
+        time_unit: "SUMMARY",
+        countries: ["UK"],
+        return_excel: false,
+    });
+
+    localStorage.setItem(storageKey, "1");
+}
+
+async function seedAdsReportsOnConnect(country: "UK" | "US" | "CA") {
+    const start_date = getIstMonthStartISO();
+    const end_date = getIstTodayISO();
+
+    await ensureSpReportOncePerDay(country);
+
+    await postJson(`/api/ads/manager/sb_keyword_report`, {
+        start_date,
+        end_date,
+        time_unit: "SUMMARY",
+        countries: ["UK"],
+        return_excel: false,
+    });
+
+    if (country === "UK" || country === "US") {
+        await postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
+            start_date,
+            end_date,
+            time_unit: "SUMMARY",
+            countries: [country],
+            max_wait_seconds: 900,
+            poll_every_seconds: 10,
+        });
+    }
+
+    const { month, year } = getCurrentMonthYearIST();
+    const include =
+        country === "UK" || country === "US"
+            ? ["SP", "SD"]
+            : ["SP"];
+
+    await postJson(`/api/ads/monthly_sp_sd_to_db`, {
+        month: monthToNumber(month),
+        year,
+        country,
+        include,
+    });
+}
+
 type Props = {
     onClose?: () => void;
     onConnected?: () => void | Promise<void>;
-    /** if you want auto-redirect after connect */
     redirectUrl?: string;
-    /** optional override */
-    pollIntervalMs?: number; // default 1500
-    /** optional override */
-    maxWaitMs?: number; // default 2 min
+    pollIntervalMs?: number;
+    maxWaitMs?: number;
+    country: "UK" | "US" | "CA";
 };
 
 export default function AmazonAdsConnect({
@@ -54,6 +202,7 @@ export default function AmazonAdsConnect({
     redirectUrl,
     pollIntervalMs = 1500,
     maxWaitMs = 2 * 60 * 1000,
+    country,
 }: Props) {
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
@@ -77,7 +226,12 @@ export default function AmazonAdsConnect({
         popupRef.current = null;
     };
 
-    //   const finalizeConnection = async () => {
+    const finalizedRef = useRef(false);
+
+    // const finalizeConnection = async () => {
+    //     if (finalizedRef.current) return;
+    //     finalizedRef.current = true;
+
     //     setMessage("Connected to Amazon Ads ✅");
     //     setError("");
 
@@ -85,20 +239,12 @@ export default function AmazonAdsConnect({
     //     closePopup();
 
     //     try {
-    //       await onConnected?.();
-    //     } catch {
-    //       // ignore hook errors; connection is still done
-    //     }
+    //         await onConnected?.();
+    //     } catch { }
 
-    //     if (redirectUrl) {
-    //       window.location.assign(redirectUrl);
-    //       return;
-    //     }
-
-    //     onClose?.();
-    //   };
-
-    const finalizedRef = useRef(false);
+    //     // ✅ This is what you wanted: page refresh immediately after connect
+    //     window.location.reload();
+    // };
 
     const finalizeConnection = async () => {
         if (finalizedRef.current) return;
@@ -111,13 +257,19 @@ export default function AmazonAdsConnect({
         closePopup();
 
         try {
-            await onConnected?.();
-        } catch { }
+            setIsConnecting(true);
 
-        // ✅ This is what you wanted: page refresh immediately after connect
+            await seedAdsReportsOnConnect(country);
+            await onConnected?.();
+        } catch (e: any) {
+            setError(e?.message || "Amazon Ads connected, but ads sync failed.");
+            setIsConnecting(false);
+            finalizedRef.current = false;
+            return;
+        }
+
         window.location.reload();
     };
-
 
     const checkStatusOnce = async () => {
         // backend: { status: "connected" } or { status: "not_connected" } etc.

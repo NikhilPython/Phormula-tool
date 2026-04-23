@@ -690,6 +690,33 @@ export default function ReferralFeesDashboard(): JSX.Element {
       answer: 0,
       difference: 0,
     },
+    {
+      sku: "SKU-003",
+      product_name: "Demo Product C",
+      quantity: 0,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
+    },
+    {
+      sku: "SKU-004",
+      product_name: "Demo Product D",
+      quantity: 0,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
+    },
+    {
+      sku: "SKU-005",
+      product_name: "Demo Product E",
+      quantity: 0,
+      net_sales_total_value: 0,
+      selling_fees: 0,
+      answer: 0,
+      difference: 0,
+    },
   ];
 
 
@@ -1679,7 +1706,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         <div className="flex flex-col leading-tight w-full md:w-auto">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
-              pageTitle="Expense Reconciliation -"
+              pageTitle="Expense Reconciliation - Amazon"
               variant="page"
               align="left"
               textSize="2xl"

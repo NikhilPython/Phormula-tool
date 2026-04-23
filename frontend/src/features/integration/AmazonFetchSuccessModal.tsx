@@ -3,16 +3,24 @@
 import React from "react";
 import { Modal } from "@/components/ui/modal";
 
+// type Props = {
+//   isOpen: boolean;
+//   onClose: () => void;
+//   onConnectAds: () => void;
+// };
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onConnectAds: () => void;
+  onConnectAds: (country: "UK" | "US" | "CA") => void;
+  country: "UK" | "US" | "CA";
 };
 
 export default function AmazonFetchSuccessModal({
   isOpen,
   onClose,
   onConnectAds,
+  country,
 }: Props) {
   return (
     <Modal
@@ -33,7 +41,7 @@ export default function AmazonFetchSuccessModal({
 
         <div className="mt-6 flex gap-3">
           <button
-            onClick={onConnectAds}
+            onClick={() => onConnectAds(country)}
             className="rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90"
           >
             Connect Now

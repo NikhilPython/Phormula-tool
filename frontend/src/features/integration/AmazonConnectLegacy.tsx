@@ -579,11 +579,11 @@ export default function AmazonConnectLegacy({
             </div>
           )}
 
-          {message && (
+          {/* {message && (
             <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-green-700">
               {message}
             </div>
-          )}
+          )} */}
 
           <div className="mb-5 rounded-md border border-[#5EA68E] border-l-[5px] bg-[#D9D9D94D] px-3 py-3 sm:py-4">
             <div className="flex items-center gap-2">
