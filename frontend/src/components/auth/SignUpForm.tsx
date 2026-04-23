@@ -303,7 +303,67 @@ export default function SignUpForm() {
         throw new Error(data?.message || "No token returned from server");
       }
 
-      router.replace("/choose-country?onboard=1");
+      localStorage.setItem("token", data.token);
+
+      const me = await fetch(`${API_BASE}/get_user_data`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${data.token}` },
+      })
+        .then((r) => r.json())
+        .catch(() => null);
+
+      if (!me) {
+        throw new Error("Unable to fetch user data.");
+      }
+
+      const countryFromBackend =
+        typeof me?.country === "string" && me.country.trim().length > 0
+          ? me.country.split(",")[0].trim().toLowerCase()
+          : "global";
+
+      const hasMarketplace =
+        typeof me?.marketplace_id === "string" &&
+        me.marketplace_id.trim().length > 0;
+
+      if (!hasMarketplace) {
+        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
+        return;
+      }
+
+      const userId = me?.id || me?.user_id;
+
+      if (!userId) {
+        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/check-user-country-table`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          country: countryFromBackend,
+        }),
+      });
+
+      const tableData = await res.json();
+
+      const tableExists = res.ok && tableData?.success && tableData?.exists === true;
+
+      if (!tableExists) {
+        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
+        return;
+      }
+
+      const now = new Date();
+      const currentMonth = now.toLocaleString("en-US", { month: "long" });
+      const currentYear = String(now.getFullYear());
+
+      router.replace(
+        `/live-dashboard/${countryFromBackend}/${currentMonth}/${currentYear}`
+      );
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -454,8 +514,8 @@ export default function SignUpForm() {
                                 >
                                   <span
                                     className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${rule.ok
-                                        ? "border-green-500 text-green-600"
-                                        : "border-red-500 text-red-600"
+                                      ? "border-green-500 text-green-600"
+                                      : "border-red-500 text-red-600"
                                       }`}
                                     aria-hidden="true"
                                   >

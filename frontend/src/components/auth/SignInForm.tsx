@@ -408,21 +408,33 @@ export default function SignInForm() {
         .then((r) => r.json())
         .catch(() => null);
 
-      if (me) dispatch(setUser({ ...me, is_member: false }));
+      if (!me) {
+        dispatch(setAuthError("Unable to fetch user data."));
+        return;
+      }
+
+      // ✅ same as manual login
+      if (me?.status !== true) {
+        handleSuspendedAccount();
+        return;
+      }
+
+      dispatch(setUser({ ...me, is_member: false }));
 
       const hasMarketplace =
         typeof me?.marketplace_id === "string" &&
         me.marketplace_id.trim().length > 0;
 
-      if (!hasMarketplace) {
-        router.replace("/choose-country?onboard=1");
-        return;
-      }
-
       const countryFromBackend =
         typeof me?.country === "string" && me.country.trim().length > 0
           ? me.country.split(",")[0].trim().toLowerCase()
           : "global";
+
+      // ✅ instead of redirecting to onboarding
+      if (!hasMarketplace) {
+        routeToProfile(countryFromBackend);
+        return;
+      }
 
       const userId = me?.id || me?.user_id;
 
@@ -442,6 +454,7 @@ export default function SignInForm() {
       }
 
       routeToDashboard(countryFromBackend);
+
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
