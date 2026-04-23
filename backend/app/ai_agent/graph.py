@@ -57,69 +57,67 @@ advisor_llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0.
 
 ALIAS_MAP = {
 
-    # SALES
-    "sales": "net_sales",
-    "revenue": "net_sales",
-    "gross sales": "gross_sales",
-    "net sales": "net_sales",
+    "quantity": "total_quantity",
+    "return quantity": "return_quantity",
+    "return units": "return_quantity",
+    "total quantity": "total_quantity",
+    "net units" : "total_quantity",
+    "units" : "total_quantity",
 
-    # PROFIT
+    "product sales": "product_sales",
+    "product sales tax": "product_sales_tax",
+    "postage credits": "postage_credits",
+    "gift wrap credits": "gift_wrap_credits",
+    "gift wrap tax": "giftwrap_credits_tax",
+    "shipping credits": "shipping_credits",
+    "shipping credits tax": "shipping_credits_tax",
+
+    "promotional rebates": "promotional_rebates",
+    "promotional rebates tax": "promotional_rebates_tax",
+
+    "refund sales": "refund_sales",
+    "sales tax refund": "sales_tax_refund",
+    "sales credit refund": "sales_credit_refund",
+    "refund rebate": "refund_rebate",
+
+    "marketplace tax": "marketplace_facilitator_tax",
+    "digital tax": "digital_transaction_tax",
+
+    "selling fees": "selling_fees",
+    "refund selling fees": "refund_selling_fees",
+    "fba fees": "fba_fees",
+    "amazon fee": "amazon_fee",
+
+    "platform fee": "platform_fee",
+    "platform fee new": "platformfeenew",
+    "inventory storage fee": "platform_fee_inventory_storage",
+    "inventory storage fees": "platform_fee_inventory_storage",
+
     "profit": "profit",
-    "earnings": "profit",
+    "cm1 profit": "profit",
     "cm2 profit": "cm2_profit",
 
-    # REBATES
-    "rebates": "promotional_rebates",
-    "promotional rebates": "promotional_rebates",
-    "promo rebates": "promotional_rebates",
+    "reimbursement for lost inventory": "lost_total",
 
-    # COST
-    "cogs": "cost_of_unit_sold",
-    "cost": "cost_of_unit_sold",
-
-    # FEES
-    "platform fee": "platform_fee",
-    "storage fee": "platform_fee_inventory_storage",
-    "inventory storage fee": "platform_fee_inventory_storage",
-    "amazon fee": "amazon_fee",
-    "marketplace fee": "amazon_fee",
-    "fba fees": "fba_fees",
-    "selling fees": "selling_fees",
-
-    # ADS
     "ads": "advertising_total",
-    "ad spend": "advertising_total",
-    "advertising": "advertising_total",
+    "advertisement":"advertising_total",
+    "visible ads": "visible_ads",
+    "voucher ads": "dealsvouchar_ads",
 
-    # TAX
-    "tax": "net_taxes",
-    "taxes": "net_taxes",
-    "credits": "net_credits",
+    "reimbursement fee": "rembursement_fee",
 
-    # MIX
-    "sales mix": "sales_mix",
-    "profit mix": "profit_mix",
+    "miscellaneous transaction": "misc_transaction",
+    "other transactions": "other",
 
-    # RATIOS
-    "margin": "profit_percentage",
-    "acos": "acos",
+    "shipment charges": "shipment_charges",
+
+    "unit profit": "unit_wise_profitability",
+    "cm1 profit per unit": "unit_wise_profitability",
+    "profit per unit" : "unit_wise_profitability",
     "asp": "asp",
 
-    # REIMBURSEMENT
-    "reimbursement": "rembursement_fee",
-
-    # LOSSES
-    "lost": "lost_total",
-
-    # RETURNS
-    "returns": "return_quantity",
-    "return quantity": "return_quantity",
-    "returned units": "return_quantity",
-
-    # UNIT PROFIT
-    "profit per unit": "unit_wise_profitability",
-    "unit profit": "unit_wise_profitability",
-    "per unit profit": "unit_wise_profitability",
+    "sales mix": "sales_mix",
+    "profit mix": "profit_mix",
 }
 
 STOPWORDS = {
