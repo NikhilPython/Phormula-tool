@@ -299,7 +299,6 @@ export default function SignInForm() {
           return;
         }
 
-        // ✅ block login when status is false
         if (me?.status !== true) {
           handleSuspendedAccount();
           return;
@@ -307,26 +306,21 @@ export default function SignInForm() {
 
         dispatch(setUser({ ...me, is_member: false }));
 
-        dispatch(setUser({ ...me, is_member: false }));
+        const marketplaceIds = Array.isArray(me?.marketplace_ids)
+          ? me.marketplace_ids
+          : [];
 
-        const hasMarketplace =
-          typeof me?.marketplace_id === "string" &&
-          me.marketplace_id.trim().length > 0;
+        const hasMarketplace = marketplaceIds.length > 0;
+
+        const countryFromBackend =
+          Array.isArray(me?.countries) && me.countries.length > 0
+            ? String(me.countries[0]).trim().toLowerCase()
+            : "global";
 
         if (!hasMarketplace) {
-          const countryFromBackend =
-            typeof me?.country === "string" && me.country.trim().length > 0
-              ? me.country.split(",")[0].trim().toLowerCase()
-              : "global";
-
           routeToProfile(countryFromBackend);
           return;
         }
-
-        const countryFromBackend =
-          typeof me?.country === "string" && me.country.trim().length > 0
-            ? me.country.split(",")[0].trim().toLowerCase()
-            : "global";
 
         const userId = me?.id || me?.user_id;
 
@@ -410,9 +404,15 @@ export default function SignInForm() {
 
       if (me) dispatch(setUser({ ...me, is_member: false }));
 
-      const hasMarketplace =
-        typeof me?.marketplace_id === "string" &&
-        me.marketplace_id.trim().length > 0;
+      const marketplaceIds = Array.isArray(me?.marketplace_ids)
+        ? me.marketplace_ids
+        : [];
+
+      const hasMarketplace = marketplaceIds.length > 0;
+
+      console.log("get_user_data response:", me);
+      console.log("marketplace_ids:", marketplaceIds);
+      console.log("hasMarketplace:", hasMarketplace);
 
       if (!hasMarketplace) {
         router.replace("/choose-country?onboard=1");
@@ -420,8 +420,8 @@ export default function SignInForm() {
       }
 
       const countryFromBackend =
-        typeof me?.country === "string" && me.country.trim().length > 0
-          ? me.country.split(",")[0].trim().toLowerCase()
+        Array.isArray(me?.countries) && me.countries.length > 0
+          ? String(me.countries[0]).trim().toLowerCase()
           : "global";
 
       const userId = me?.id || me?.user_id;
@@ -450,7 +450,7 @@ export default function SignInForm() {
       dispatch(setAuthError(msg));
     }
   };
-
+  
   const handleSuspendedAccount = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("email");

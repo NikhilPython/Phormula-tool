@@ -487,6 +487,7 @@ type Props = {
     maxWaitMs?: number;
 };
 
+
 export default function AmazonAdsConnect({
     onClose,
     onConnected,
@@ -506,6 +507,7 @@ export default function AmazonAdsConnect({
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
+    const [isOpen, setIsOpen] = useState(true);
 
     const popupRef = useRef<Window | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -557,6 +559,11 @@ export default function AmazonAdsConnect({
             percentage: 0,
             detail: "",
         });
+    };
+
+    const handleCloseModal = () => {
+        setIsOpen(false);
+        onClose?.();
     };
 
     const dashboardSteps = [
@@ -808,12 +815,14 @@ export default function AmazonAdsConnect({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    if (!isOpen) return null;
+
     return (
         <div
             className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-6"
             role="dialog"
             aria-modal="true"
-            onClick={!isConnecting ? onClose : undefined}
+            onClick={handleCloseModal}
         >
             {isConnecting && stepProgress.active ? (
                 <AdsSyncLoaderModal
