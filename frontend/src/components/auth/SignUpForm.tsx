@@ -299,71 +299,19 @@ export default function SignUpForm() {
         name,
       });
 
-      if (!data?.token) {
-        throw new Error(data?.message || "No token returned from server");
+      if (!data?.success && !data?.message && !data?.token) {
+        throw new Error(data?.message || "Google sign-up failed.");
       }
 
-      localStorage.setItem("token", data.token);
+      // IMPORTANT: do not keep user logged in after signup
+      localStorage.removeItem("token");
+      localStorage.removeItem("email");
+      localStorage.removeItem("password");
 
-      const me = await fetch(`${API_BASE}/get_user_data`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${data.token}` },
-      })
-        .then((r) => r.json())
-        .catch(() => null);
+      await auth.signOut();
 
-      if (!me) {
-        throw new Error("Unable to fetch user data.");
-      }
-
-      const countryFromBackend =
-        typeof me?.country === "string" && me.country.trim().length > 0
-          ? me.country.split(",")[0].trim().toLowerCase()
-          : "global";
-
-      const hasMarketplace =
-        typeof me?.marketplace_id === "string" &&
-        me.marketplace_id.trim().length > 0;
-
-      if (!hasMarketplace) {
-        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
-        return;
-      }
-
-      const userId = me?.id || me?.user_id;
-
-      if (!userId) {
-        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/check-user-country-table`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          country: countryFromBackend,
-        }),
-      });
-
-      const tableData = await res.json();
-
-      const tableExists = res.ok && tableData?.success && tableData?.exists === true;
-
-      if (!tableExists) {
-        router.replace(`/live-dashboard/${countryFromBackend}/NA/NA`);
-        return;
-      }
-
-      const now = new Date();
-      const currentMonth = now.toLocaleString("en-US", { month: "long" });
-      const currentYear = String(now.getFullYear());
-
-      router.replace(
-        `/live-dashboard/${countryFromBackend}/${currentMonth}/${currentYear}`
-      );
+      // same UX as manual registration
+      setShowSuccessModal(true);
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
