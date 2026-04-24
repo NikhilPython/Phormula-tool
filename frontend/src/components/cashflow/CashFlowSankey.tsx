@@ -138,7 +138,7 @@ const CashFlowSankey: React.FC<Props> = ({
     return label;
   };
   const marketplaceFees =
-    (data.amazon_fee || 0) + (data.otherwplatform || 0);
+    (data.amazon_fee || 0);
 
   const prevMarketplaceFees =
     (previous_summary?.amazon_fee || 0) +
