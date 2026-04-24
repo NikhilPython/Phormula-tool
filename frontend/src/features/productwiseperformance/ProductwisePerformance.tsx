@@ -1181,6 +1181,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     });
   }, [orderedCards]);
 
+  const isMultiCountry = visibleCountryCards.length > 1;
+
   return (
     <div className="w-full">
       {!canShowResults && !embedded && (
@@ -1265,6 +1267,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                       selectedYear={selectedYear}
                       homeCurrency={homeCurrency}
                       activeCountry={(countryName || "global").toLowerCase()}
+                      isMultiCountry={isMultiCountry}
                     />
                   ))}
                 </div>

@@ -14,6 +14,7 @@ interface CountryCardProps {
   selectedYear: number | "";
   homeCurrency: "USD" | "GBP" | "INR" | "CAD";
   activeCountry: string;
+  isMultiCountry?: boolean;
 }
 
 const CountryCard: React.FC<CountryCardProps> = ({
@@ -22,6 +23,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
   selectedYear,
   homeCurrency,
   activeCountry,
+  isMultiCountry,
 }) => {
   const formatAmount = (value: number) => {
     if (value == null) return "-";
@@ -160,7 +162,10 @@ const CountryCard: React.FC<CountryCardProps> = ({
 
       <div className="flex flex-col gap-4">
         {/* ✅ Stats grid with pastel tiles */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div
+          className={`grid grid-cols-2 gap-3 ${isMultiCountry ? "md:grid-cols-3" : "md:grid-cols-6"
+            }`}
+        >
           <StatTile label="Net Sales" tileKey="netSales" value={formatAmount(stats.totalSales)} />
           <StatTile label="Units" tileKey="units" value={(stats.totalUnits ?? 0).toLocaleString()} />
           <StatTile label="CM1 Profit" tileKey="cm1Profit" value={formatAmount(stats.totalProfit)} />
