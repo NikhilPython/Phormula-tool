@@ -317,19 +317,7 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         advertising_total = visible_ads_total + dealsvouchar_ads_total
 
-        platform_fee_desc_sum = abs(
-            safe_series(
-                df[
-                    df["desc_norm"].str.startswith(
-                        ("FBA Return Fee", "FBA Long-Term Storage Fee", "FBA storage fee", "Subscription"),
-                        na=False
-                    )
-                ],
-                "total"
-            ).sum()
-        )
-        platform_fee_col_sum = safe_series(df, "platform_fees").sum()
-        platform_fee = platform_fee_desc_sum + platform_fee_col_sum
+        
 
 
         # ---------- refund / quantity ----------
@@ -390,8 +378,10 @@ def process_skuwise_us_data(user_id, country, month, year):
         }
         EXCLUDE_TYPES = {"Transfer", "Refund"}
 
-        leftout_mask = (~df["desc_norm"].isin(EXCLUDE_DESCRIPTIONS)) & (~df["type"].isin(EXCLUDE_TYPES))
-        misc_transaction_total = safe_series(df.loc[leftout_mask], "total").sum()
+        leftout_mask = (
+            (~df["desc_norm"].isin(EXCLUDE_DESCRIPTIONS)) 
+            & (~df["type"].isin(EXCLUDE_TYPES))
+        )
 
         misc_transaction_df = (
             df.loc[leftout_mask & df["sku"].notna() & (df["sku"] != "") & (df["sku"] != "0")]
@@ -401,6 +391,31 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
         if not misc_transaction_df.empty:
             misc_transaction_df["misc_transaction"] = pd.to_numeric(misc_transaction_df["misc_transaction"], errors="coerce").fillna(0.0)
+
+        platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
+
+        platform_fee_inventory_storage_total = abs(sum_total_where_desc_contains(df, [
+            "FBA Return Fee",
+            "FBA Long-Term Storage Fee",
+            "FBA storage fee",
+            "FBADisposal",
+            "FBAStorageBilling",
+            "FBALongTermStorageBilling",
+            "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling",
+            "COMPENSATED_CLAWBACK",
+        ]))
+
+        misc_transaction_total = abs(
+            safe_series(df.loc[leftout_mask], "total").sum()
+        )
+
+        platform_fee = (
+            platformfeenew_total
+            + platform_fee_inventory_storage_total
+            - abs(lost_total_df["lost_total"].sum() if not lost_total_df.empty else 0)
+            + misc_transaction_total
+        )
 
 
         # ---------- sku aggregate ----------
@@ -421,7 +436,6 @@ def process_skuwise_us_data(user_id, country, month, year):
             "gift_wrap_credits": "sum",
             "cost_of_unit_sold": "sum",
             "total": "sum",
-            "other_transaction_fees": "sum",
             "product_name": "first",
         }
         group_cols = {k: v for k, v in group_cols.items() if k in df.columns}
@@ -459,6 +473,10 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["visible_ads"] = 0
         sku_grouped["dealsvouchar_ads"] = 0
         sku_grouped["advertising_total"] = 0
+        sku_grouped["platformfeenew"] = 0
+        sku_grouped["platform_fee_inventory_storage"] = 0
+        sku_grouped["platform_fee"] = 0
+        sku_grouped["acos"] = 0
 
         sku_grouped["Net Taxes"] = (
             pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
@@ -466,7 +484,10 @@ def process_skuwise_us_data(user_id, country, month, year):
             + pd.to_numeric(sku_grouped.get("shipping_credits_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("other_transaction_fees", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(
+                sku_grouped.get("other_transaction_fees", pd.Series(0, index=sku_grouped.index)),
+                errors="coerce"
+            ).fillna(0)
         )
         sku_grouped["Net Taxes"] = sku_grouped["Net Taxes"].apply(lambda x: 0 if abs(x) < 1e-10 else x)
 
@@ -511,7 +532,14 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
 
         sku_grouped["tex_and_credits"] = (
-            pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0)
+            pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("postage_credits", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("gift_wrap_credits", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
+        )
+        sku_grouped["other_transaction_fees"] = (
+            pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
             - pd.to_numeric(sku_grouped["Net Credits"], errors="coerce").fillna(0)
         )
 
@@ -536,22 +564,9 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["profit%"] = sku_grouped["profit%"].replace([np.inf, -np.inf], 0).fillna(0)
 
         # ---------- breakup columns sku-wise ----------
-        platformfeenew_df = sku_sum_total_where_desc_contains(df, ["Subscription"], "platformfeenew")
-        platform_fee_inventory_storage_df = sku_sum_total_where_desc_contains(df, [
-            "FBA Return Fee",
-            "FBA Long-Term Storage Fee",
-            "FBA storage fee",
-            "FBADisposal",
-            "FBAStorageBilling",
-            "FBALongTermStorageBilling",
-            "INCORRECT_FEES_NON_ITEMIZED",
-            "StorageReservationBilling",
-        ], "platform_fee_inventory_storage")
         shipment_charges_df = sku_sum_total_where_desc_contains(df, shipment_keywords, "shipment_charges")
 
         for subdf in [
-            platformfeenew_df,
-            platform_fee_inventory_storage_df,
             shipment_charges_df,
         ]:
             sku_grouped = sku_grouped.merge(subdf, on="sku", how="left")
@@ -838,13 +853,13 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
         cm2_profit = total_profit - (
-            abs(sku_grouped["advertising_total"].sum())
-            + abs(sku_grouped["platform_fee"].sum())
+            abs(advertising_total)
+            + abs(platform_fee)
             + abs(sku_grouped["shipment_charges"].sum())
             + abs(shipment_fees)
         )
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
-        acos = (abs(sku_grouped["advertising_total"].sum()) / total_sales) * 100 if total_sales != 0 else 0
+        acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
         rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
         sku_grouped["cm2_profit_percentage"] = np.where(
             sku_grouped["Net Sales"] != 0,
@@ -867,16 +882,18 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["product_name"] = "TOTAL"
 
         sum_row["profit%"] = (sum_row["profit"] / sum_row["Net Sales"]) * 100 if sum_row["Net Sales"] != 0 else 0
-        sum_row["platform_fee"] = float(sku_grouped["platform_fee"].sum())
         sum_row["shipment_charges"] = float(sku_grouped["shipment_charges"].sum())
         sum_row["shipment_fees"] = abs(shipment_fees)
         sum_row["rembursement_fee"] = abs(rembursement_fee)
         sum_row["visible_ads"] = visible_ads_total
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
         sum_row["advertising_total"] = advertising_total
-        sum_row["platformfeenew"] = float(sku_grouped["platformfeenew"].sum())
-        sum_row["platform_fee_inventory_storage"] = float(sku_grouped["platform_fee_inventory_storage"].sum())
-        sum_row["misc_transaction"] = float(sku_grouped["misc_transaction"].sum())
+        sum_row["platformfeenew"] = platformfeenew_total
+        sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
+        sum_row["platform_fee"] = platform_fee
+        sum_row["misc_transaction"] = abs(
+            pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0).sum()
+        )
         sum_row["reimbursement_vs_sales"] = abs(reimbursement_vs_sales)
         sum_row["cm2_profit"] = abs(cm2_profit)
         sum_row["cm2_margins"] = abs(cm2_margins)
