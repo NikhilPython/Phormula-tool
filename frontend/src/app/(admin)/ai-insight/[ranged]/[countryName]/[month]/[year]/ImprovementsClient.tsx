@@ -161,6 +161,64 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
+type GrowthChartsProps = {
+  unitsChartRef: React.RefObject<HTMLDivElement | null>;
+  chartRef: React.RefObject<HTMLDivElement | null>;
+  profitChartRef: React.RefObject<HTMLDivElement | null>;
+  aspChartRef: React.RefObject<HTMLDivElement | null>;
+};
+
+const GrowthCharts = React.memo(function GrowthCharts({
+  unitsChartRef,
+  chartRef,
+  profitChartRef,
+  aspChartRef,
+}: GrowthChartsProps) {
+  return (
+    <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div>
+          <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
+          <div ref={unitsChartRef} className="h-[320px] w-full" />
+        </div>
+
+        <div>
+          <PageBreadcrumb pageTitle="Net Sales" variant="page" align="left" textSize="2xl" />
+          <div ref={chartRef} className="h-[320px] w-full" />
+        </div>
+
+        <div className="mt-3">
+          <PageBreadcrumb pageTitle="CM1 Profit" variant="page" align="left" textSize="2xl" />
+          <div ref={profitChartRef} className="h-[320px] w-full" />
+        </div>
+
+        <div className="mt-3">
+          <PageBreadcrumb pageTitle="Average Selling Price" variant="page" align="left" textSize="2xl" />
+          <div ref={aspChartRef} className="h-[320px] w-full" />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap justify-center gap-4 text-[10px] font-semibold text-[#414042] 2xl:text-xs">
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-[10px] w-[10px] bg-[#ED9F50]" />
+          Top 80%
+        </span>
+
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-[10px] w-[10px] bg-[#3A8EA4]" />
+          Other SKUs
+        </span>
+
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-[10px] w-[10px] bg-[#7B9A6D]" />
+          New/Reviving
+        </span>
+      </div>
+    </div>
+  );
+});
+
+
 const MonthsforBI: React.FC = () => {
   const params = useParams();
   const countryName = params?.countryName as string | undefined;
@@ -200,7 +258,7 @@ const MonthsforBI: React.FC = () => {
       "CM1 Profit Impact": { category: "High Growth", value: 0 },
       "Profit Per Unit": { category: "High Growth", value: 0 },
     },
-     {
+    {
       product_name: "Demo Product B",
       sku: "DEMO-B",
 
@@ -420,10 +478,10 @@ const MonthsforBI: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Insights + modal
-  const [loadingInsight, setLoadingInsight] = useState<boolean>(false);
-  const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsight>>({});
-  const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  // const [loadingInsight, setLoadingInsight] = useState<boolean>(false);
+  // const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsight>>({});
+  // const [selectedSku, setSelectedSku] = useState<string | null>(null);
+  // const [modalOpen, setModalOpen] = useState<boolean>(false);
 
   // Feedback (Summary)
   const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
@@ -1942,10 +2000,10 @@ const MonthsforBI: React.FC = () => {
       setMonth2Label(saved.month2Label || '');
     }
 
-    const cachedInsights = loadInsightsFromStorage();
-    if (cachedInsights && Object.keys(cachedInsights).length) {
-      setSkuInsights(cachedInsights);
-    }
+    // const cachedInsights = loadInsightsFromStorage();
+    // if (cachedInsights && Object.keys(cachedInsights).length) {
+    //   setSkuInsights(cachedInsights);
+    // }
   }, [isPreviewMode]);
 
   // ✅ NEW: fetch available periods from backend
@@ -2024,9 +2082,9 @@ const MonthsforBI: React.FC = () => {
     // do NOT clear categorizedGrowth here
     // do NOT clear month2Label here unless you really want blank header during loading
 
-    setSkuInsights({});
-    setModalOpen(false);
-    saveInsightsToStorage({});
+    // setSkuInsights({});
+    // setModalOpen(false);
+    // saveInsightsToStorage({});
 
     if (!month1 || !year1 || !month2 || !year2) {
       setError('Please select both months and years.');
@@ -2090,68 +2148,116 @@ const MonthsforBI: React.FC = () => {
   // =====================
   // AI insights generate
   // =====================
-  const analyzeSkus = async (
-    e?: React.MouseEvent<HTMLButtonElement> | React.FormEvent
-  ) => {
-    e?.preventDefault?.();
-    e?.stopPropagation?.();
+  // const analyzeSkus = async (
+  //   e?: React.MouseEvent<HTMLButtonElement> | React.FormEvent
+  // ) => {
+  //   e?.preventDefault?.();
+  //   e?.stopPropagation?.();
 
-    setLoadingInsight(true);
-    try {
-      const allSkus: SkuItem[] = [
-        ...categorizedGrowth.top_80_skus,
-        ...categorizedGrowth.new_or_reviving_skus,
-        ...categorizedGrowth.other_skus,
-      ];
+  //   setLoadingInsight(true);
+  //   try {
+  //     const allSkus: SkuItem[] = [
+  //       ...categorizedGrowth.top_80_skus,
+  //       ...categorizedGrowth.new_or_reviving_skus,
+  //       ...categorizedGrowth.other_skus,
+  //     ];
 
-      const res = await api.post<{ insights: Record<string, SkuInsight> }>(
-        "/analyze_skus",
-        {
-          month1,
-          year1,
-          month2,
-          year2,
-          country: countryName,
-          skus: allSkus,
-        }
-      );
+  //     const res = await api.post<{ insights: Record<string, SkuInsight> }>(
+  //       "/analyze_skus",
+  //       {
+  //         month1,
+  //         year1,
+  //         month2,
+  //         year2,
+  //         country: countryName,
+  //         skus: allSkus,
+  //       }
+  //     );
 
-      const insights = res.data?.insights || {};
-      setSkuInsights(insights);
-      saveInsightsToStorage(insights);
-    } catch (err: any) {
-      console.error("analyze_skus error:", err?.response?.data || err.message);
-    } finally {
-      setLoadingInsight(false);
-    }
-  };
+  //     const insights = res.data?.insights || {};
+  //     setSkuInsights(insights);
+  //     saveInsightsToStorage(insights);
+  //   } catch (err: any) {
+  //     console.error("analyze_skus error:", err?.response?.data || err.message);
+  //   } finally {
+  //     setLoadingInsight(false);
+  //   }
+  // };
+
+  // const analyzeSkus = async (
+  //   e?: React.MouseEvent<HTMLButtonElement> | React.FormEvent
+  // ) => {
+  //   e?.preventDefault?.();
+  //   e?.stopPropagation?.();
+
+  //   if (loadingInsight) return;
+
+  //   setLoadingInsight(true);
+
+  //   try {
+  //     const allSkus: SkuItem[] = [
+  //       ...(categorizedGrowth.top_80_skus || []),
+  //       ...(categorizedGrowth.new_or_reviving_skus || []),
+  //       ...(categorizedGrowth.other_skus || []),
+  //     ];
+
+  //     const res = await api.post<{ insights: Record<string, SkuInsight> }>(
+  //       "/analyze_skus",
+  //       {
+  //         month1,
+  //         year1,
+  //         month2,
+  //         year2,
+  //         country: countryName,
+  //         skus: allSkus,
+  //       }
+  //     );
+
+  //     const insights = res.data?.insights || {};
+  //     setSkuInsights(insights);
+  //     saveInsightsToStorage(insights);
+  //   } catch (err: any) {
+  //     console.error("analyze_skus error:", err?.response?.data || err.message);
+  //   } finally {
+  //     setLoadingInsight(false);
+  //   }
+  // };
+
+  // useEffect(() => {
+  //   requestAnimationFrame(() => {
+  //     unitsChartInstanceRef.current?.resize();
+  //     chartInstanceRef.current?.resize();
+  //     profitChartInstanceRef.current?.resize();
+  //     aspChartInstanceRef.current?.resize();
+  //   });
+  // }, [loadingInsight, skuInsights]);
 
   // =====================
   // Insight lookups
   // =====================
-  const getInsightByProductName = (productName: string): [string, SkuInsight] | null => {
-    if (!productName) return null;
-    const needle = productName.toLowerCase().trim();
+  // const getInsightByProductName = (productName: string): [string, SkuInsight] | null => {
+  //   if (!productName) return null;
+  //   const needle = productName.toLowerCase().trim();
 
-    // Prefer exact match
-    let entry = Object.entries(skuInsights).find(
-      ([, d]) => d.product_name?.toLowerCase().trim() === needle
-    );
-    // For GLOBAL, allow partial fallback
-    if (!entry && isGlobalData()) {
-      entry = Object.entries(skuInsights).find(([, d]) => {
-        const n = d.product_name?.toLowerCase().trim();
-        return n && (n.includes(needle) || needle.includes(n));
-      });
-    }
-    return entry ? entry as [string, SkuInsight] : null; // [key, value]
-  };
+  //   // Prefer exact match
+  //   let entry = Object.entries(skuInsights).find(
+  //     ([, d]) => d.product_name?.toLowerCase().trim() === needle
+  //   );
+  //   // For GLOBAL, allow partial fallback
+  //   if (!entry && isGlobalData()) {
+  //     entry = Object.entries(skuInsights).find(([, d]) => {
+  //       const n = d.product_name?.toLowerCase().trim();
+  //       return n && (n.includes(needle) || needle.includes(n));
+  //     });
+  //   }
+  //   return entry ? entry as [string, SkuInsight] : null; // [key, value]
+  // };
 
-  const getInsightForItem = (item: SkuItem): [string, SkuInsight] | null => {
-    if (isGlobalData()) return getInsightByProductName(item.product_name);
-    if (item.sku && skuInsights[item.sku]) return [item.sku, skuInsights[item.sku]];
-    return getInsightByProductName(item.product_name);
-  };
+  // const getInsightForItem = (item: SkuItem): [string, SkuInsight] | null => {
+  //   if (isGlobalData()) return getInsightByProductName(item.product_name);
+  //   if (item.sku && skuInsights[item.sku]) return [item.sku, skuInsights[item.sku]];
+  //   return getInsightByProductName(item.product_name);
+  // };
 
 
   const fmtNum = (v: any) => Math.round(Number(v || 0)).toLocaleString();
@@ -3538,7 +3644,7 @@ const MonthsforBI: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
+          {/* <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
               <div>
                 <PageBreadcrumb
@@ -3597,165 +3703,16 @@ const MonthsforBI: React.FC = () => {
                 New/Reviving
               </span>
             </div>
-          </div>
+          </div> */}
 
-          {/* {(["all_skus", "top_80_skus", "new_or_reviving_skus", "other_skus"] as TabKey[]).some(
-            (k) => (categorizedGrowth[k] || []).length > 0
-          ) && (
-              <div className="mt-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm sm:p-5">
-                <div className="flex min-w-0 flex-col gap-4">
-                  <div className="flex min-w-0 items-center justify-between gap-2 xl:hidden">
-                    <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" />
+          <GrowthCharts
+            unitsChartRef={unitsChartRef}
+            chartRef={chartRef}
+            profitChartRef={profitChartRef}
+            aspChartRef={aspChartRef}
+          />
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        onClick={analyzeSkus}
-                        disabled={
-                          isPreviewMode ||
-                          !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
-                            (k) =>
-                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length >
-                              0
-                          )
-                        }
-                        className="inline-flex h-9 min-w-[120px] items-center justify-center gap-1 whitespace-nowrap rounded-sm bg-custom-effect px-4 text-xs text-[#F8EDCE] transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none 2xl:text-sm"
-                        style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
-                      >
-                        <BsStars
-                          className="shrink-0"
-                          style={{ fontSize: "12px", color: "#F8EDCE" }}
-                        />
-                        {loadingInsight ? "Generating..." : "AI Insights"}
-                      </button>
-
-                      <DownloadIconButton
-                        disabled={isPreviewMode}
-                        onClick={() => {
-                          const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
-                            2
-                          )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                          const allRows = getAllSkusForExport();
-                          exportToExcel(allRows, file);
-                        }}
-                        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="w-full min-w-0 overflow-hidden xl:hidden">
-                    <div className="no-scrollbar w-full max-w-full overflow-x-auto overflow-y-hidden">
-                      <div className="inline-flex min-w-max">
-                        <SegmentedToggle<TabKey>
-                          value={activeTab}
-                          options={tabOptions}
-                          onChange={handleTabChange}
-                          className="bg-white"
-                          textSizeClass="text-xs 2xl:text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="hidden min-w-0 xl:flex xl:items-center xl:justify-between xl:gap-6">
-                    <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" />
-
-                    <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
-                      <div className="min-w-0 max-w-full overflow-hidden">
-                        <div className="no-scrollbar max-w-full overflow-x-auto overflow-y-hidden">
-                          <div className="inline-flex min-w-max">
-                            <SegmentedToggle<TabKey>
-                              value={activeTab}
-                              options={tabOptions}
-                              onChange={handleTabChange}
-                              className="bg-white"
-                              textSizeClass="text-xs 2xl:text-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={analyzeSkus}
-                        disabled={
-                          isPreviewMode ||
-                          !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
-                            (k) =>
-                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length >
-                              0
-                          )
-                        }
-                        className="inline-flex h-9 min-w-[120px] shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-sm bg-custom-effect px-4 text-xs text-[#F8EDCE] transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none 2xl:text-sm"
-                        style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
-                      >
-                        <BsStars
-                          className="shrink-0"
-                          style={{ fontSize: "12px", color: "#F8EDCE" }}
-                        />
-                        {loadingInsight ? "Generating..." : "AI Insights"}
-                      </button>
-
-                      <DownloadIconButton
-                        disabled={isPreviewMode}
-                        onClick={() => {
-                          const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
-                            2
-                          )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                          const allRows = getAllSkusForExport();
-                          exportToExcel(allRows, file);
-                        }}
-                        className="shrink-0 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-6">
-                  <DataTable<TableRow>
-                    columns={columns}
-                    data={buildTableRows}
-                    stickyHeader
-                    zebra
-                    paginate
-                    pageSize={10}
-                    maxHeight="60vh"
-                    loading={false}
-                    headerMaxWidth={140}
-                    rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
-                  />
-                </div>
-
-                <div className="mt-2 flex justify-center">
-                  <div className="mt-1 grid grid-cols-2 justify-items-start gap-x-6 gap-y-2 text-xs text-[#414042] sm:grid-cols-4 lg:flex lg:flex-wrap lg:items-center lg:gap-10 2xl:text-sm">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="inline-flex items-center gap-2 font-bold text-[#5EA68E]">
-                        <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth
-                      </span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-2">
-                      <span className="inline-flex items-center gap-2 font-bold text-[#FF5C5C]">
-                        <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
-                      </span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-2 whitespace-nowrap font-bold">
-                      <span className="inline-flex items-center gap-1 text-[#414042]">
-                        <FaArrowUp className="text-[10px] 2xl:text-xs" /> + /
-                        <FaArrowDown className="text-[10px] 2xl:text-xs" /> -
-                      </span>
-                      Low growth
-                    </span>
-
-                    <span className="inline-flex items-center gap-2 font-bold">
-                      <span className="text-sm leading-none 2xl:text-base">-</span>
-                      Past data for SKU is not available
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )} */}
-
-          <SkuAnalysisSection
+          {/* <SkuAnalysisSection
             categorizedGrowth={categorizedGrowth}
             month1={month1}
             year1={year1}
@@ -3775,11 +3732,26 @@ const MonthsforBI: React.FC = () => {
             setFbText={setFbText}
             setFbSuccess={setFbSuccess}
             isPreviewMode={isPreviewMode}
+          /> */}
+
+          <SkuAnalysisSection
+            categorizedGrowth={categorizedGrowth}
+            month1={month1}
+            year1={year1}
+            month2={month2}
+            year2={year2}
+            month2Label={month2Label}
+            countryName={countryName}
+            isGlobalData={isGlobalData}
+            exportToExcel={exportToExcel}
+            getAllSkusForExport={getAllSkusForExport}
+            getAbbr={getAbbr}
+            isPreviewMode={isPreviewMode}
           />
         </PreviewLockedSection>
       </div>
 
-      {(() => {
+      {/* {(() => {
         if (!modalOpen || !selectedSku) return null;
 
         const insightData =
@@ -3942,7 +3914,7 @@ const MonthsforBI: React.FC = () => {
             )}
           </AnimatePresence>
         );
-      })()}
+      })()} */}
     </>
   );
 };

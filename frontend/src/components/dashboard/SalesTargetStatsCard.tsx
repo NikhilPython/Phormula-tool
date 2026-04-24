@@ -73,6 +73,15 @@ export default function SalesTargetStatsCard({
   })}'${String(year).slice(-2)}`;
 
 
+  // console.log("SalesTargetStatsCard props:", {
+  //   regions,
+  //   value,
+  //   formatHomeK,
+  //   todayHome,
+  //   mtdHome,
+  //   targetHome,
+  //   lastMonthTotalHome,})
+
   // ✅ define availableRegions properly (fixes availableRegions + implicit any)
   const availableRegions = useMemo<RegionKey[]>(() => {
     const list: RegionKey[] = ["Global"];
@@ -137,14 +146,14 @@ export default function SalesTargetStatsCard({
         <button
           type="button"
           onClick={() => {
-  const country = value.toLowerCase(); // uk, us, ca, global
-  const month = monthName.toLowerCase(); // february
-  const fullYear = String(year); // 2026
+            const country = value.toLowerCase(); // uk, us, ca, global
+            const month = monthName.toLowerCase(); // february
+            const fullYear = String(year); // 2026
 
-  router.push(
-    `/objectives-targets/${country}/${month}/${fullYear}?tab=targets_and_objectives`
-  );
-}}
+            router.push(
+              `/objectives-targets/${country}/${month}/${fullYear}?tab=targets_and_objectives`
+            );
+          }}
           className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
           aria-label="Edit targets and objectives"
           title="Edit targets and objectives"
