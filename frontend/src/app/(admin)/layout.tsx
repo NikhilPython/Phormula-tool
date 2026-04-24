@@ -88,7 +88,7 @@ import Backdrop from "@/layout/Backdrop";
 import React from "react";
 import { useParams } from "next/navigation";
 import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
-import PreviewModeNotice from "@/components/amazon/PreviewModeNotice";
+// import PreviewModeNotice from "@/components/amazon/PreviewModeNotice";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 export default function AdminLayout({

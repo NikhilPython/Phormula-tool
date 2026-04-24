@@ -5,7 +5,7 @@ import { FaLink } from "react-icons/fa";
 import { TiTick } from "react-icons/ti";
 import Button from "@/components/ui/button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { usePlatform } from "@/components/context/PlatformContext";
+// import { usePlatform } from "@/components/context/PlatformContext";
 
 const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -13,7 +13,15 @@ const API_BASE =
 const getAuthToken = () =>
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-async function apiJson(path: string, options: RequestInit = {}) {
+type ApiErrorResponse = {
+    error?: string;
+    message?: string;
+};
+
+async function apiJson<T = unknown>(
+    path: string,
+    options: RequestInit = {}
+): Promise<T> {
     const token = getAuthToken();
     const res = await fetch(`${API_BASE}${path}`, {
         ...options,
@@ -24,15 +32,14 @@ async function apiJson(path: string, options: RequestInit = {}) {
         },
     });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        throw new Error(
-            (data as any)?.error || (data as any)?.message || `HTTP ${res.status}`
-        );
-    }
-    return data as any;
-}
+    const data = (await res.json().catch(() => ({}))) as ApiErrorResponse;
 
+    if (!res.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+    }
+
+    return data as T;
+}
 const ICONS = {
     amazonAdsLogo: "/amazon_ads.png",
     secure: "/secure_black.png",
@@ -117,8 +124,11 @@ const getCurrentMonthYearIST = () => {
     };
 };
 
-async function postJson(path: string, body: any) {
-    return apiJson(path, {
+async function postJson<TBody extends Record<string, unknown>, TResponse = unknown>(
+    path: string,
+    body: TBody
+): Promise<TResponse> {
+    return apiJson<TResponse>(path, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -479,30 +489,33 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
     );
 });
 
+type AdsCountry = "UK" | "US" | "CA";
+
 type Props = {
     onClose?: () => void;
     onConnected?: () => void | Promise<void>;
+    country?: AdsCountry;
     redirectUrl?: string;
     pollIntervalMs?: number;
     maxWaitMs?: number;
 };
 
-
 export default function AmazonAdsConnect({
     onClose,
     onConnected,
-    redirectUrl,
+    // country,
+    // redirectUrl,
     pollIntervalMs = 1500,
     maxWaitMs = 2 * 60 * 1000,
 }: Props) {
-    const { platform } = usePlatform();
+    // usePlatform();
 
     // const resolvedCountry: "UK" | "US" | "CA" =
     //     platform === "amazon-us" ? "US" :
     //         platform === "amazon-ca" ? "CA" :
     //             "UK";
 
-    const resolvedCountry: "UK" = "UK";
+    const resolvedCountry = "UK" as const;
 
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
@@ -671,8 +684,8 @@ export default function AmazonAdsConnect({
             }));
 
             await onConnected?.();
-        } catch (e: any) {
-            setError(e?.message || "Amazon Ads connected, but ads sync failed.");
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Amazon Ads connected, but ads sync failed.");
             setIsConnecting(false);
             finalizedRef.current = false;
             resetStepState();
@@ -684,7 +697,7 @@ export default function AmazonAdsConnect({
 
     const checkStatusOnce = async () => {
         // backend: { status: "connected" } or { status: "not_connected" } etc.
-        const s = await apiJson(`/api/ads/status`, { method: "GET" });
+        const s = await apiJson<{ status?: string }>(`/api/ads/status`, { method: "GET" });
         if (String(s?.status).toLowerCase() === "connected") {
             await finalizeConnection();
             return true;
@@ -755,7 +768,7 @@ export default function AmazonAdsConnect({
 
             if (!popup) {
                 // fallback: navigate in same tab
-                const cu = await apiJson(`/api/ads/connect_url`, { method: "GET" });
+                const cu = await apiJson<{ url?: string }>(`/api/ads/connect_url`, { method: "GET" });
                 const url = cu?.url;
                 if (!url) throw new Error("No url returned from /api/ads/connect_url");
                 window.location.assign(url);
@@ -765,7 +778,7 @@ export default function AmazonAdsConnect({
             popupRef.current = popup;
 
             // 3) get connect url and navigate popup
-            const cu = await apiJson(`/api/ads/connect_url`, { method: "GET" });
+            const cu = await apiJson<{ url?: string }>(`/api/ads/connect_url`, { method: "GET" });
             const connectUrl = cu?.url;
             if (!connectUrl) throw new Error("No url returned from /api/ads/connect_url");
 
@@ -774,8 +787,8 @@ export default function AmazonAdsConnect({
 
             // 4) poll status
             startPolling();
-        } catch (e: any) {
-            setError(e?.message || "Error connecting to Amazon Ads.");
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Error connecting to Amazon Ads.");
             stopPolling();
             closePopup();
         }
@@ -786,7 +799,11 @@ export default function AmazonAdsConnect({
 
     useEffect(() => {
         const onMsg = (e: MessageEvent) => {
-            const d: any = e?.data;
+            const d = e.data as {
+                type?: string;
+                ok?: boolean;
+                error?: string;
+            };
             if (!d || typeof d !== "object") return;
             if (d.type !== "amazon_ads_connected") return;
 
