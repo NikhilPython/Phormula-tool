@@ -403,7 +403,11 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         reimbursement_lost_inventory_units: reimbursementUnits,
         lost_total: toNumber(source?.lost_total),
 
-        shipment_charges: toNumber(source?.shipment_charges ?? source?.shipping_charges),
+        shipment_charges: toNumber(
+            source?.shipment_charges ??
+            source?.shipping_charges ??
+            source?.shipment_fees
+        ),
         reimbursement_vs_sales: toNumber(source?.reimbursement_vs_sales ?? source?.reimbursement_vs_net_sales),
 
         cm2_profit: toNumber(source?.cm2_profit),
@@ -3504,9 +3508,9 @@ export default function DashboardPage() {
 
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 45,
-        2: 25,
-        3: 10,
+        1: 60,
+        2: 60,
+        3: 60,
     };
 
     useEffect(() => {

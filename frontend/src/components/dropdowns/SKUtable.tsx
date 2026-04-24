@@ -79,6 +79,7 @@ export type TableRow = {
 
   cost_of_unit_sold?: number;
   shipment_charges?: number;
+  shipment_fees?: number;
 
   amazon_fee?: number;
   selling_fees?: number;
@@ -268,7 +269,8 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Costs / Fees
       cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
-      shipment_charges: toNumber(row.shipment_charges),
+      shipment_charges: toNumber(row.shipment_charges ?? row.shipment_fees),
+      shipment_fees: toNumber(row.shipment_fees ?? row.shipment_charges),
       selling_fees: toNumber(row.selling_fees),
       fba_fees: toNumber(row.fba_fees),
       amazon_fee: toNumber(row.amazon_fee),
@@ -333,7 +335,7 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
       toNumber(lastRow.reimbursement_lost_inventory_amount) || 0,
     reimbursement_lost_inventory_units: reimbursementUnits,
     lost_total: toNumber(lastRow.lost_total),
-    shipment_charges: toNumber(lastRow.shipment_charges),
+    shipment_charges: toNumber(lastRow.shipment_charges ?? lastRow.shipment_fees),
     reimbursement_vs_sales: toNumber(lastRow.reimbursement_vs_sales),
     cm2_profit: toNumber(lastRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
@@ -788,7 +790,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "selling_fees",        // Selling Fees (-)
         "fba_fees",            // FBA Fees (-)
         "amazon_fee",          // Platform Fees (-)
-
+        "shipment_charges",
+        "shipment_fees",
         "promotional_rebates", // Promotions (-)
         "platformfeenew",
         "platform_fee_inventory_storage",
@@ -883,7 +886,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
         { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
-        ...(countryName === "us" || countryName === "global"
+        ...((countryName || "").toLowerCase() === "us" ||
+          (countryName || "").toLowerCase() === "global"
           ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
           : []),
 
@@ -1590,11 +1594,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   ],
 
                   fixedRows: [
-                    ...(countryName === "us" || countryName === "global"
+                    ...((countryName || "").toLowerCase() === "us" ||
+                      (countryName || "").toLowerCase() === "global"
                       ? [
                         {
                           id: "ship",
-                          label: <>Shipment Charges <strong>(-)</strong></>,
+                          label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
                           endValue: formatValue(totals.shipment_charges, "shipment_charges"),
                         },
                       ]

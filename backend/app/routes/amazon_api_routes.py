@@ -902,6 +902,7 @@ def finances_mtd_transactions():
 
     platform_fee_total = 0.0
     advertising_fee_total = 0.0
+    shipment_fees = 0.0
 
     # totals stored in SKU-wise table
     platformfeenew_total = 0.0
@@ -932,6 +933,18 @@ def finances_mtd_transactions():
             pattern = "|".join([re.escape(k) for k in keywords])
             mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
             return float(pd.to_numeric(df_all.loc[mask, "total"], errors="coerce").fillna(0.0).sum())
+        
+        # ---------------- SHIPMENT FEES ----------------
+        shipment_keywords = [
+            "FBA international shipping charge",
+            "FBA Inbound Placement Service Fee",
+            "FBA international shipping customs charge",
+            "FBAInboundConvenience",
+        ]
+
+        shipment_fees = abs(
+            sum_total_where_desc_contains(shipment_keywords)
+)
 
         platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
 
@@ -997,6 +1010,7 @@ def finances_mtd_transactions():
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(platform_fee_total, 2),
         "advertising_fees": round(advertising_fee_total, 2),
+        "shipment_fees": round(float(shipment_fees or 0.0), 2),
         "net_sales": round(net_sales, 2),
         "gross_sales": round(gross_sales_total, 2),
         "asp": round(asp, 2),
@@ -1037,6 +1051,7 @@ def finances_mtd_transactions():
             df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+        df_sku["shipment_fees"] = 0.0
 
         # merge lost_total
         if lost_total_df is not None and not lost_total_df.empty:
@@ -1308,6 +1323,7 @@ def finances_mtd_transactions():
 
         # store totals
         total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
+        total_row["shipment_fees"] = round(float(shipment_fees or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
 

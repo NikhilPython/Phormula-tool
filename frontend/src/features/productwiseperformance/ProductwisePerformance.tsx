@@ -1136,6 +1136,16 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     return [...globals, ...others];
   }, [cards]);
 
+  const visibleCountryCards = useMemo(() => {
+    const active = normalizeCountryKey((countryName || "global").toLowerCase());
+
+    if (active === "global") return orderedCards;
+
+    return orderedCards.filter(
+      (card) => normalizeCountryKey(card.country) === active
+    );
+  }, [orderedCards, countryName]);
+
   const exportCurrencySymbol = useMemo(
     () => currencySymbolFromCode(homeCurrency),
     [homeCurrency]
@@ -1150,7 +1160,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   }, [platformCountryName]);
 
   const exportCountryCards = useMemo(() => {
-    return orderedCards.map((card) => {
+    return visibleCountryCards.map((card) => {
       const norm = normalizeCountryKey(card.country);
       return {
         countryKey: card.country,
@@ -1170,6 +1180,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       };
     });
   }, [orderedCards]);
+
+  const isMultiCountry = visibleCountryCards.length > 1;
 
   return (
     <div className="w-full">
@@ -1247,7 +1259,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
               <div className="mt-4">
                 <div className="grid gap-4 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
-                  {orderedCards.map((card) => (
+                  {visibleCountryCards.map((card) => (
                     <CountryCard
                       key={card.country.toLowerCase()}
                       country={card.country}
@@ -1255,6 +1267,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                       selectedYear={selectedYear}
                       homeCurrency={homeCurrency}
                       activeCountry={(countryName || "global").toLowerCase()}
+                      isMultiCountry={isMultiCountry}
                     />
                   ))}
                 </div>
