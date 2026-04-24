@@ -3504,9 +3504,9 @@ export default function DashboardPage() {
 
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 45,
-        2: 25,
-        3: 10,
+        1: 60,
+        2: 60,
+        3: 60,
     };
 
     useEffect(() => {
