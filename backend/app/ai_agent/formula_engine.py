@@ -1356,23 +1356,108 @@ def parse_single(text: str):
 # MAIN ENTRY
 # -------------------------------
 
+# def parse_period(query: str) -> Dict:
+#     text = normalize_text(query)
+
+#     # -------- RANGE DETECTION (FIXED) --------
+#     rng = parse_range(text)
+#     if rng:
+#         return rng
+
+#     # -------- MULTI MONTH (LIST, NOT RANGE) --------
+#     month_matches = re.findall(
+#         r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+#         text
+#     )
+
+#     year = extract_year(text)
+
+#     # only treat as multi-month if NO range words
+#     if len(month_matches) >= 2 and not re.search(r"\b(to|from|-)\b", text):
+#         months = []
+#         for m in month_matches:
+#             months.append({
+#                 "month": MONTH_MAP.get(m[:3]),
+#                 "year": year or datetime.today().year
+#             })
+
+#         return {
+#             "type": "multi_month",
+#             "months": months
+#         }
+
+#     # 1️⃣ comparison first (highest priority)
+#     cmp = parse_comparison(text)
+#     if cmp:
+#         return cmp
+
+#     # 2️⃣ relative periods
+#     rel = parse_relative_period(text)
+#     if rel:
+#         return rel
+
+#     # 3️⃣ last n (month / quarter / year) 🔥 FIX
+#     last_n = parse_last_n(text)
+
+#     if last_n:
+#         unit = last_n["unit"]
+#         n = last_n["n"]
+
+#         # -------- NORMALIZE TO MONTHS --------
+#         if unit == "month":
+#             months = n
+#         elif unit == "quarter":
+#             months = n * 3
+#         elif unit == "year":
+#             months = n * 12
+#         else:
+#             months = n  # safety fallback
+
+#         return {
+#             "type": "last_n",
+#             "n": months,
+#             "unit": unit,  # optional (future use)
+#         }
+
+#     # 4️⃣ range (secondary safety)
+#     rng = parse_range(text)
+#     if rng:
+#         return rng
+
+#     # 5️⃣ single
+#     single = parse_single(text)
+#     if single:
+#         return single
+
+#     # 6️⃣ fallback
+#     return {
+#         "type": "latest_month"
+#     }
+
 def parse_period(query: str) -> Dict:
     text = normalize_text(query)
 
-    # -------- RANGE DETECTION (FIXED) --------
+    # -------- RANGE DETECTION --------
     rng = parse_range(text)
     if rng:
         return rng
 
-    # -------- MULTI MONTH (LIST, NOT RANGE) --------
-    month_matches = re.findall(
-        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
-        text
-    )
+    # -------- MONTH DETECTION (FIXED) --------
+    month_pattern = r"(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)"
+    month_matches = re.findall(month_pattern, text)
 
     year = extract_year(text)
 
-    # only treat as multi-month if NO range words
+    # -------- SINGLE MONTH (CRITICAL FIX) --------
+    if len(month_matches) == 1:
+        m = month_matches[0][:3]  # normalize to short form
+        return {
+            "type": "single",
+            "month": MONTH_MAP.get(m),
+            "year": year or datetime.today().year
+        }
+
+    # -------- MULTI MONTH (LIST, NOT RANGE) --------
     if len(month_matches) >= 2 and not re.search(r"\b(to|from|-)\b", text):
         months = []
         for m in month_matches:
@@ -1396,7 +1481,7 @@ def parse_period(query: str) -> Dict:
     if rel:
         return rel
 
-    # 3️⃣ last n (month / quarter / year) 🔥 FIX
+    # 3️⃣ last n (month / quarter / year)
     last_n = parse_last_n(text)
 
     if last_n:
@@ -1416,7 +1501,7 @@ def parse_period(query: str) -> Dict:
         return {
             "type": "last_n",
             "n": months,
-            "unit": unit,  # optional (future use)
+            "unit": unit,
         }
 
     # 4️⃣ range (secondary safety)
@@ -1424,7 +1509,7 @@ def parse_period(query: str) -> Dict:
     if rng:
         return rng
 
-    # 5️⃣ single
+    # 5️⃣ single (fallback parser)
     single = parse_single(text)
     if single:
         return single
@@ -1433,6 +1518,7 @@ def parse_period(query: str) -> Dict:
     return {
         "type": "latest_month"
     }
+
 
 def parse_relative_period(text: str):
     today = datetime.today()

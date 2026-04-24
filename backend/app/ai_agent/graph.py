@@ -11,8 +11,8 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from types import SimpleNamespace 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
-
-from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS
+from sqlalchemy import text
+from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine
 from app.ai_agent.email_service import send_agent_email, build_email_html
 from app.ai_agent.formula_engine import (
     OVERALL_MONTH_METRICS,
@@ -247,10 +247,57 @@ def _match_product(rows: List[Dict[str, Any]], product_query: Optional[str]) -> 
     return None
 
 
-def _latest_month_result(engine: Any, user_id: int, country: str, metric_name: str) -> Dict[str, Any]:
-    latest = latest_available_month(engine, user_id, country)
-    return get_metric_for_month(engine, user_id, country, metric_name, latest.month, latest.year)
+def _latest_month_result(
+    engine: Any,
+    user_id: int,
+    country: str,
+    metric_name: str
+) -> Dict[str, Any]:
 
+    # -------- INVENTORY FLOW --------
+    if metric_name in INVENTORY_METRICS:
+        # get latest snapshot date from inventory DB
+        inv_engine = get_amazon_engine()
+
+        query = text("""
+            SELECT MAX("snapshot-date") AS latest_date
+            FROM inventory_aged
+            WHERE user_id = :user_id
+        """)
+
+        with inv_engine.connect() as conn:
+            row = conn.execute(query, {"user_id": user_id}).mappings().first()
+
+        if not row or not row["latest_date"]:
+            return {
+                "metric": metric_name,
+                "total": None,
+                "per_sku": [],
+                "period_label": "latest",
+                "metric_kind": "inventory",
+                "note": "No inventory data available",
+            }
+
+        latest_date = row["latest_date"]
+
+        return get_inventory_snapshot(
+            user_id=user_id,
+            metric_name=metric_name,
+            month=latest_date.month,
+            year=latest_date.year,
+        )
+
+    # -------- FINANCE FLOW --------
+    latest = latest_available_month(engine, user_id, country)
+
+    return get_metric_for_month(
+        engine,
+        user_id,
+        country,
+        metric_name,
+        latest.month,
+        latest.year,
+    )
 
 def _prepare_period_payload(parsed: Dict[str, Any], analysis_type: str) -> Dict[str, Any]:
     ptype = parsed.get("type", "latest_month")
@@ -574,6 +621,12 @@ def _build_tool_plan(state: AgentState) -> List[str]:
 
         # single product deep dive
         if state.get("product_query") and state.get("reasoning_mode") == "analysis":
+
+            # -------- 🔥 INVENTORY ROUTE FIX --------
+            if metric_name in INVENTORY_METRICS:
+                logger.info("[ROUTE_FIX] inventory metric → standard_analysis")
+                return ["standard_analysis"]
+
             return ["sku_intelligence"]
 
         # ranking
@@ -1530,7 +1583,38 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         )
 
         state["current_metrics"] = result
-        state["analysis_result"] = {"type": "absolute"}
+
+        # -------- 🔥 INVENTORY DIAGNOSIS FIX --------
+        if (
+            state.get("analysis_type") == "diagnosis"
+            and metric_name in INVENTORY_METRICS
+        ):
+            logger.info("[INVENTORY_DIAGNOSIS] Running inventory checks")
+
+            rows = result.get("per_sku", [])
+
+            low_stock = [r for r in rows if float(r.get("__metric__", 0.0)) < 10]
+            zero_stock = [r for r in rows if float(r.get("__metric__", 0.0)) == 0]
+
+            insights = []
+
+            if zero_stock:
+                insights.append(f"{len(zero_stock)} products are out of stock")
+
+            if low_stock:
+                insights.append(f"{len(low_stock)} products are running low")
+
+            if not insights:
+                insights.append("Inventory looks healthy")
+
+            state["analysis_result"] = {
+                "type": "inventory_diagnosis",
+                "insights": insights,
+                "rows": rows,
+            }
+
+        else:
+            state["analysis_result"] = {"type": "absolute"}
 
         return state
     except Exception as e:
@@ -2323,25 +2407,37 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         logger.info(f"[PERIOD_PAYLOAD] {state['period_payload']}")
 
-        # -------- PRODUCT RESOLUTION --------
-        if not state.get("product_query") and not state.get("product_queries"):
-            resolved_products = _resolve_product_queries_from_data(
-                state["engine"], state["user_id"], state["country"], q_lower
-            )
+        # -------- 🔥 INVENTORY DIAGNOSIS FIX --------
+        if (
+            state.get("metric_name") in INVENTORY_METRICS
+            and state.get("analysis_type") in {"diagnosis", "analysis"}
+        ):
+            logger.info("[PRODUCT_SKIP] inventory analysis → clearing product context")
 
-            logger.info(f"[PRODUCT_RESOLUTION] Found: {resolved_products}")
+            state["product_query"] = None
+            state["product_queries"] = None
+            state["dimension"] = None
 
-            if len(resolved_products) == 1:
-                state["product_query"] = resolved_products[0]
-                state["dimension"] = "sku"
-                state["subject_scope"] = "product"
-                logger.info(f"[PRODUCT_SELECTED] {resolved_products[0]}")
+        else:
+            # -------- PRODUCT RESOLUTION --------
+            if not state.get("product_query") and not state.get("product_queries"):
+                resolved_products = _resolve_product_queries_from_data(
+                    state["engine"], state["user_id"], state["country"], q_lower
+                )
 
-            elif len(resolved_products) > 1:
-                state["product_queries"] = resolved_products
-                state["dimension"] = "sku"
-                state["subject_scope"] = "products"
-                logger.info(f"[MULTI_PRODUCT_SELECTED] {resolved_products}")
+                logger.info(f"[PRODUCT_RESOLUTION] Found: {resolved_products}")
+
+                if len(resolved_products) == 1:
+                    state["product_query"] = resolved_products[0]
+                    state["dimension"] = "sku"
+                    state["subject_scope"] = "product"
+                    logger.info(f"[PRODUCT_SELECTED] {resolved_products[0]}")
+
+                elif len(resolved_products) > 1:
+                    state["product_queries"] = resolved_products
+                    state["dimension"] = "sku"
+                    state["subject_scope"] = "products"
+                    logger.info(f"[MULTI_PRODUCT_SELECTED] {resolved_products}")
 
         # -------- METRIC COMPATIBILITY CHECK --------
         metric_name = state.get("metric_name")
