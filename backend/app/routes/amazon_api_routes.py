@@ -1051,6 +1051,7 @@ def finances_mtd_transactions():
             df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+        df_sku["shipment_fees"] = 0.0
 
         # merge lost_total
         if lost_total_df is not None and not lost_total_df.empty:
@@ -1322,6 +1323,7 @@ def finances_mtd_transactions():
 
         # store totals
         total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
+        total_row["shipment_fees"] = round(float(shipment_fees or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
 
