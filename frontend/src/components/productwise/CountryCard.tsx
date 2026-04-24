@@ -102,7 +102,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
       case "avgMonthlyUnits":
         return "border-[#C49466] border-t-4 border-t-[#C49466] ";
       case "cm1ProfitPct":
-        return "border-[#B8C78C] border-t-4 border-t-[#B8C78C] "; 
+        return "border-[#B8C78C] border-t-4 border-t-[#B8C78C] ";
       default:
         return "bg-gray-200/40 border-gray-300";
     }
@@ -160,7 +160,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
 
       <div className="flex flex-col gap-4">
         {/* ✅ Stats grid with pastel tiles */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <StatTile label="Net Sales" tileKey="netSales" value={formatAmount(stats.totalSales)} />
           <StatTile label="Units" tileKey="units" value={(stats.totalUnits ?? 0).toLocaleString()} />
           <StatTile label="CM1 Profit" tileKey="cm1Profit" value={formatAmount(stats.totalProfit)} />
