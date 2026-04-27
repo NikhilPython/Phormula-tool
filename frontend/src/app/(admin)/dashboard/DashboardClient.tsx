@@ -2184,8 +2184,15 @@ export default function DashboardPage() {
 
     const userMonthlyTargetHome = useMemo(() => {
         if (!userMonthlyTargetGBP) return 0;
+
+        // ✅ If US → already USD, no conversion
+        if (platform === "amazon-us") {
+            return userMonthlyTargetGBP;
+        }
+
+        // UK / others → convert from GBP
         return convertToDisplayCurrency(userMonthlyTargetGBP, "GBP");
-    }, [userMonthlyTargetGBP, convertToDisplayCurrency]);
+    }, [userMonthlyTargetGBP, convertToDisplayCurrency, platform]);
 
 
     const prevFullMonthNetSalesDisp = useMemo(() => {
@@ -4037,12 +4044,12 @@ export default function DashboardPage() {
     // ---------- NET SALES (DISPLAY CURRENCY) ----------
 
     const amazonCurrNetDisp = useMemo(
-        () => convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP"),
-        [uk.netSalesGBP, convertToDisplayCurrency]
+        () => convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency),
+        [uk.netSalesGBP, amazonDataCurrency, convertToDisplayCurrency]
     );
 
     const amazonPrevNetDisp = useMemo(
-        () => convertToDisplayCurrency(prev.netSales ?? 0, "GBP"),
+        () => convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency),
         [prev.netSales, convertToDisplayCurrency]
     );
 
@@ -4068,9 +4075,13 @@ export default function DashboardPage() {
 
     const regions = useMemo(() => {
         const userMonthlyTargetGBP = toNumberSafe(userData?.target_sales ?? 0);
-        const userMonthlyTargetHome =
-            userMonthlyTargetGBP > 0
-                ? convertToDisplayCurrency(userMonthlyTargetGBP, "GBP")
+        const userMonthlyTargetRaw = toNumberSafe(userData?.target_sales ?? 0);
+
+        const userMonthlyTargetForRegion =
+            userMonthlyTargetRaw > 0
+                ? platform === "amazon-us"
+                    ? userMonthlyTargetRaw
+                    : convertToDisplayCurrency(userMonthlyTargetRaw, "GBP")
                 : 0;
 
         const globalPrevFullMonthSales =
@@ -4079,7 +4090,7 @@ export default function DashboardPage() {
                 : globalPrevNetDisp;
 
         const globalTarget =
-            userMonthlyTargetHome > 0 ? userMonthlyTargetHome : globalPrevFullMonthSales;
+            userMonthlyTargetForRegion > 0 ? userMonthlyTargetForRegion : globalPrevFullMonthSales;
 
         const global: RegionMetrics = {
             mtdUSD: globalCurrNetDisp,
@@ -4095,7 +4106,7 @@ export default function DashboardPage() {
                 : amazonPrevNetDisp;
 
         const ukTarget =
-            userMonthlyTargetHome > 0 ? userMonthlyTargetHome : ukPrevFullMonthSales;
+            userMonthlyTargetForRegion > 0 ? userMonthlyTargetForRegion : ukPrevFullMonthSales;
 
         const ukRegion: RegionMetrics = {
             mtdUSD: amazonCurrNetDisp,
@@ -4598,6 +4609,70 @@ export default function DashboardPage() {
         );
     }, [monthlySkuwiseRows]);
 
+    // 👇 ADD THIS HERE
+    const amazonPl = () => {
+        const sourceCurrency = amazonDataCurrency;
+
+        const sales = convertToDisplayCurrency(
+            toNumberSafe(derived?.net_sales ?? 0),
+            sourceCurrency
+        );
+
+        const cogs = convertToDisplayCurrency(
+            toNumberSafe(totals?.cogs ?? grandTotalRowRaw?.cogs ?? 0),
+            sourceCurrency
+        );
+
+        const fees = convertToDisplayCurrency(
+            Math.abs(
+                toNumberSafe(grandTotalRowRaw?.fba_fees ?? totals?.fba_fees ?? 0) +
+                toNumberSafe(grandTotalRowRaw?.selling_fees ?? totals?.selling_fees ?? 0)
+            ),
+            sourceCurrency
+        );
+
+        const taxCredits = convertToDisplayCurrency(
+            toNumberSafe(totals?.tax_and_credits ?? grandTotalRowRaw?.tax_and_credits ?? 0),
+            sourceCurrency
+        );
+
+        const cm1 = convertToDisplayCurrency(
+            toNumberSafe(derived?.profit ?? totals?.profit ?? grandTotalRowRaw?.profit ?? 0),
+            sourceCurrency
+        );
+
+        const adv = convertToDisplayCurrency(
+            toNumberSafe(derived?.advertising_fees ?? 0),
+            sourceCurrency
+        );
+
+        const others = convertToDisplayCurrency(
+            toNumberSafe(
+                derived?.platform_fee ??
+                grandTotalRowRaw?.platform_fee ??
+                grandTotalRowRaw?.platform_fee_inventory_storage ??
+                0
+            ),
+            sourceCurrency
+        );
+
+        const cm2 = convertToDisplayCurrency(
+            toNumberSafe(derived?.cm2_profit ?? grandTotalRowRaw?.cm2_profit ?? 0),
+            sourceCurrency
+        );
+
+        return [
+            { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
+            { label: "COGS", raw: cogs, display: formatDisplayAmount(cogs) },
+            { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(fees) },
+            { label: "Tax & Credits", raw: taxCredits, display: formatDisplayAmount(taxCredits) },
+            { label: "CM1 Profit", raw: cm1, display: formatDisplayAmount(cm1) },
+            { label: "Advertisements", raw: adv, display: formatDisplayAmount(adv) },
+            { label: "Others", raw: others, display: formatDisplayAmount(others) },
+            { label: "CM2 Profit", raw: cm2, display: formatDisplayAmount(cm2) },
+        ];
+    };
+
     /* ===================== P&L ITEMS (DISPLAY CURRENCY OUTPUT) ===================== */
     const plItems = useMemo(() => {
         const ukPl = () => {
@@ -4652,7 +4727,11 @@ export default function DashboardPage() {
             ];
         }
 
-        if (graphRegionToUse === "UK") return ukPl();
+        // if (graphRegionToUse === "UK") return ukPl();
+
+        if (["UK", "US", "CA"].includes(graphRegionToUse)) {
+            return amazonPl();
+        }
 
         const zero = formatDisplayAmount(0);
         return [
@@ -4665,20 +4744,15 @@ export default function DashboardPage() {
         ];
     }, [
         graphRegionToUse,
-        onlyAmazon,
-        onlyShopify,
-        combinedUSD,
+        derived?.net_sales,
+        derived?.advertising_fees,
+        derived?.platform_fee,
+        derived?.profit,
+        derived?.cm2_profit,
+        totals?.cogs,
         totals?.tax_and_credits,
-        uk.netSalesGBP,
-        uk.amazonFeesGBP,
-        uk.cogsGBP,
-        uk.advertisingGBP,
-        uk.platformFeeGBP,
-        uk.profitGBP,
-        shopifyDeriv?.netSales,
-        marketplaceFeesFromTable,
-        convertToDisplayCurrency,
-        formatDisplayAmount,
+        grandTotalRowRaw,
+        amazonDataCurrency
     ]);
 
     const chartItems = useMemo(() => plItems || [], [plItems]);
@@ -5274,12 +5348,53 @@ export default function DashboardPage() {
         amazonDataCurrency,
     ]);
 
-    const targetData = regions[targetRegion] || regions.Global;
+    // const targetData = regions[targetRegion] || regions.Global;
 
-    const stats_mtdHome = identityConvert(targetData.mtdUSD ?? 0);
-    const stats_lastMtdHome = identityConvert(targetData.lastMonthToDateUSD ?? 0);
-    const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
-    const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
+    // const stats_mtdHome = identityConvert(targetData.mtdUSD ?? 0);
+    // const stats_lastMtdHome = identityConvert(targetData.lastMonthToDateUSD ?? 0);
+    // const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
+    // const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
+
+    const selectedTargetRegionKey: RegionKey = isCountryMode ? forcedRegion : targetRegion;
+
+    const selectedTargetRegion =
+        regions[selectedTargetRegionKey] ||
+        regions[forcedRegion] ||
+        regions.Global;
+
+    const targetData: RegionMetrics = {
+        mtdUSD:
+            selectedTargetRegion?.mtdUSD ||
+            amazonCurrNetDisp ||
+            0,
+
+        lastMonthToDateUSD:
+            selectedTargetRegion?.lastMonthToDateUSD ||
+            amazonPrevNetDisp ||
+            0,
+
+        lastMonthTotalUSD:
+            selectedTargetRegion?.lastMonthTotalUSD ||
+            prevFullMonthNetSalesDisp ||
+            amazonPrevNetDisp ||
+            0,
+
+        targetUSD:
+            selectedTargetRegion?.targetUSD ||
+            userMonthlyTargetHome ||
+            0,
+
+        decTargetUSD:
+            selectedTargetRegion?.decTargetUSD ||
+            selectedTargetRegion?.targetUSD ||
+            userMonthlyTargetHome ||
+            0,
+    };
+
+    const stats_mtdHome = targetData.mtdUSD;
+    const stats_lastMtdHome = targetData.lastMonthToDateUSD;
+    const stats_lastMonthTotalHome = targetData.lastMonthTotalUSD;
+    const stats_targetHome = targetData.targetUSD;
 
     const grandTotalRow = data?.skuwise_items?.find(
         (item: any) =>
@@ -5613,12 +5728,27 @@ export default function DashboardPage() {
         };
     }, [rangeActive, liveBiPayload]);
 
-    const targets_todayHome = stats_todayHome;
-    const targets_mtdHome = targetKpisFromBi ? targetKpisFromBi.mtdHome : stats_mtdHome;
-    const targets_lastMonthTotalHome = targetKpisFromBi ? targetKpisFromBi.lastMonthTotalHome : stats_lastMonthTotalHome;
-    const targets_lastMonthToDateHome = targetKpisFromBi ? targetKpisFromBi.lastMonthToDateHome : stats_lastMtdHome;
+    // const targets_todayHome = stats_todayHome;
+    // const targets_mtdHome = targetKpisFromBi ? targetKpisFromBi.mtdHome : stats_mtdHome;
+    // const targets_lastMonthTotalHome = targetKpisFromBi ? targetKpisFromBi.lastMonthTotalHome : stats_lastMonthTotalHome;
+    // const targets_lastMonthToDateHome = targetKpisFromBi ? targetKpisFromBi.lastMonthToDateHome : stats_lastMtdHome;
 
-    const targets_reimbursement = targetKpisFromBi ? targetKpisFromBi.reimbursement : reimbursementHome;
+    // const targets_reimbursement = targetKpisFromBi ? targetKpisFromBi.reimbursement : reimbursementHome;
+
+    const targets_todayHome = stats_todayHome;
+
+    const targets_mtdHome =
+        targetKpisFromBi?.mtdHome || stats_mtdHome;
+
+    const targets_lastMonthTotalHome =
+        targetKpisFromBi?.lastMonthTotalHome || stats_lastMonthTotalHome;
+
+    const targets_lastMonthToDateHome =
+        targetKpisFromBi?.lastMonthToDateHome || stats_lastMtdHome;
+
+    const targets_reimbursement =
+        targetKpisFromBi?.reimbursement || reimbursementHome;
+
 
     const rangeCompletedPct = useMemo(() => {
         if (!selectedStartDay || !selectedEndDay) return 0;

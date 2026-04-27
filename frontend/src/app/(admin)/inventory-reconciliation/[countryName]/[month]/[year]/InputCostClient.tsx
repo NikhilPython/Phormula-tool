@@ -242,7 +242,7 @@ const DUMMY_ROWS: AnyRow[] = [
     expired_sum_last: 0,
     inventory_coverage_ratio: 0,
   },
-   {
+  {
     id: "dummy-3",
     product_name: "Sample Product C",
     msku: "SKU-003",
@@ -262,7 +262,7 @@ const DUMMY_ROWS: AnyRow[] = [
     expired_sum_last: 0,
     inventory_coverage_ratio: 0,
   },
-   {
+  {
     id: "dummy-4",
     product_name: "Sample Product D",
     msku: "SKU-004",
@@ -282,7 +282,7 @@ const DUMMY_ROWS: AnyRow[] = [
     expired_sum_last: 0,
     inventory_coverage_ratio: 0,
   },
-   {
+  {
     id: "dummy-5",
     product_name: "Sample Product E",
     msku: "SKU-005",
@@ -666,9 +666,24 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [meta, setMeta] = useState<{ mode?: string; start_date?: string; end_date?: string; count?: number } | null>(
     null
   );
-  const marketplaceId =
-    (typeof window !== "undefined" && localStorage.getItem("marketplace_id")) ||
-    "A1F83G8C2ARO7P"; // fallback
+
+  // const marketplaceId =
+  //   (typeof window !== "undefined" && localStorage.getItem("marketplace_id")) ||
+  //   "A1F83G8C2ARO7P";
+
+  const COUNTRY_MARKETPLACE_INDEX: Record<string, number> = {
+    uk: 0,
+    gb: 0,
+    us: 1,
+    usa: 1,
+  };
+
+  const marketplaceId = useMemo(() => {
+    const ids = (userData as any)?.marketplace_ids || [];
+    const idx = COUNTRY_MARKETPLACE_INDEX[countryName];
+
+    return typeof idx === "number" ? ids[idx] : ids[0];
+  }, [userData, countryName]);
 
   const [breakupPie, setBreakupPie] = useState<PieDatum[]>([]);
   const [ageingPie, setAgeingPie] = useState<PieDatum[]>([]);
@@ -709,6 +724,49 @@ export default function InventoryReconciliationPage({ params }: Params) {
     };
     // ✅ refetch when user changes filters
   }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
+
+  useEffect(() => {
+    if (pageLoading) return;
+    if (!marketplaceId) return;
+
+    if (!hasValidPeriod) {
+      setBreakupPie([]);
+      setAgeingPie([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setPieLoading(true);
+      try {
+        await Promise.all([fetchInventoryBreakup(), fetchInventoryAgeing()]);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setBreakupPie([]);
+          setAgeingPie([]);
+        }
+      } finally {
+        if (!cancelled) setPieLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    marketplaceId,
+    pageLoading,
+    hasValidPeriod,
+  ]);
+
 
   const suppressModalErrors = true;
 
@@ -871,8 +929,44 @@ export default function InventoryReconciliationPage({ params }: Params) {
     return lostCompRows;
   }, [hasValidPeriod, lostCompRows]);
 
+  const lostCompDisplayRows = useMemo(() => {
+    const rows = effectiveLostCompRows || [];
+
+    const totalRow = rows.find((r) => r?.__isTotal);
+    const dataRows = rows.filter((r) => !r?.__isTotal);
+
+    const sorted = [...dataRows].sort(
+      (a, b) => Math.abs(toNum(b?.total_lost_units)) - Math.abs(toNum(a?.total_lost_units))
+    );
+
+    const top9 = sorted.slice(0, 9);
+    const others = sorted.slice(9);
+
+    const out: AnyRow[] = [...top9];
+
+    if (others.length > 0) {
+      out.push({
+        product_name: "Others",
+        msku: "-",
+        __isOthers: true,
+        lost_units: others.reduce((a, r) => a + toNum(r?.lost_units), 0),
+        damaged_units: others.reduce((a, r) => a + toNum(r?.damaged_units), 0),
+        total_lost_units: others.reduce((a, r) => a + toNum(r?.total_lost_units), 0),
+        compensation_units: others.reduce((a, r) => a + toNum(r?.compensation_units), 0),
+        compensation_value: others.reduce((a, r) => a + toNum(r?.compensation_value), 0),
+        settlement_loss_event_amount: others.reduce((a, r) => a + toNum(r?.settlement_loss_event_amount), 0),
+        net_units: others.reduce((a, r) => a + toNum(r?.net_units), 0),
+        net_value: others.reduce((a, r) => a + toNum(r?.net_value), 0),
+      });
+    }
+
+    if (totalRow) out.push(totalRow);
+
+    return out;
+  }, [effectiveLostCompRows]);
+
   const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
-    return (effectiveLostCompRows || []).map((row, idx) => ({
+    return (lostCompDisplayRows || []).map((row, idx) => ({
       __isTotal: row?.__isTotal,
       __sno: row?.__isTotal ? "" : idx + 1,
       product_name: formatCell(row?.product_name),
@@ -891,7 +985,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
       net_units: formatCell(row?.net_units),
       net_value: formatCell(row?.net_value),
     }));
-  }, [effectiveLostCompRows]);
+  }, [lostCompDisplayRows]);
 
   const lostCompTableColumns = useMemo<
     DataTableColumnDef<Record<string, React.ReactNode>>[]
@@ -1108,6 +1202,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const INVENTORY_AGEING_API = `${API_BASE}/api/inventory_ageing`;
 
   async function fetchInventoryBreakup() {
+    if (!marketplaceId) return;
+
     const mode =
       range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
 
@@ -1148,6 +1244,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
   }
 
   async function fetchInventoryAgeing() {
+    if (!marketplaceId) return;
+
     const url = `${INVENTORY_AGEING_API}?${buildQuery({
       marketplace_id: marketplaceId,
     })}`;
@@ -2176,7 +2274,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 pageTitle={
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-[#414042] font-bold">
-                      Inventory Reconciliation -
+                      Inventory Reconciliation - Amazon
                     </span>
                     <span className="text-[#60a68e] font-bold">
                       {countryName?.toUpperCase()}

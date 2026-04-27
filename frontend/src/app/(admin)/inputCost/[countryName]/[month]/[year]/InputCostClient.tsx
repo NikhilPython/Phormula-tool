@@ -1377,7 +1377,7 @@ export default function InputCostPage({ params }: Params) {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-2 justify-start">
-            <PageBreadcrumb
+            {/* <PageBreadcrumb
               pageTitle="Input Cost –"
               variant="page"
               align="left"
@@ -1387,7 +1387,22 @@ export default function InputCostPage({ params }: Params) {
               Amazon {countryName?.toLowerCase() === "global"
                 ? "Global"
                 : countryName?.toUpperCase()}
-            </span>
+            </span> */}
+            <PageBreadcrumb
+                            variant="page"
+                            align="left"
+                            textSize="2xl"
+                            pageTitle={
+                              <div className="flex flex-wrap items-baseline gap-2">
+                                <span className="text-[#414042] font-bold">
+                                 Input Cost – Amazon
+                                </span>
+                                <span className="text-green-500 font-bold">
+                                  {countryName?.toUpperCase()}
+                                </span>
+                              </div>
+                            }
+                          />
           </div>
 
           <div className="mt-3">

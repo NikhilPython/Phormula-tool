@@ -3481,13 +3481,28 @@ const MonthsforBI: React.FC = () => {
       <div className="w-full font-[Lato,sans-serif]">
         <div className="sticky top-0 z-40 flex w-full flex-col gap-1 border-b border-gray-200 bg-[#F7F7F7] sm:flex-row sm:gap-4 md:items-center md:justify-between">
           <div className="mb-3">
-            <h2 className="text-[18px] font-bold text-[#414042] 2xl:text-2xl">
+            {/* <h2 className="text-[18px] font-bold text-[#414042] 2xl:text-2xl">
               Business Insights - AI Analyst&nbsp;-
               <span className="pl-1 text-[#5EA68E]">
                 Amazon {effectiveCountry && formatCountryLabel(effectiveCountry)}
                 <span className="px-2 text-[#5EA68E]"></span>
               </span>
-            </h2>
+            </h2> */}
+            <PageBreadcrumb
+                            variant="page"
+                            align="left"
+                            textSize="2xl"
+                            pageTitle={
+                              <div className="flex flex-wrap items-baseline gap-2">
+                                <span className="text-[#414042] font-bold">
+                                   Business Insights - AI Analyst&nbsp;- Amazon
+                                </span>
+                                <span className="text-green-500 font-bold">
+                                  {countryName?.toUpperCase()}
+                                </span>
+                              </div>
+                            }
+                          />
             <p>
               <i className="text-xs 2xl:text-sm">
                 Select the year and month for both periods to compare growth metrics.

@@ -1095,11 +1095,26 @@ const Pnlforecast: React.FC = () => {
         <div className="flex items-center justify-between w-full gap-3">
           <div className="flex flex-col leading-tight">
             <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle="P&L Forecast"
+              {/* <PageBreadcrumb
+                pageTitle="P&L Forecast - Amazon"
                 variant="page"
                 align="left"
                 textSize="2xl"
+              /> */}
+               <PageBreadcrumb
+                variant="page"
+                align="left"
+                textSize="2xl"
+                pageTitle={
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[#414042] font-bold">
+                      P&L Forecast - Amazon
+                    </span>
+                    <span className="text-green-500 font-bold">
+                      {countryName?.toUpperCase()}
+                    </span>
+                  </div>
+                }
               />
             </div>
             <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
