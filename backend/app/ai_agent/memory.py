@@ -16,10 +16,11 @@ def save_chat_turn(
 ) -> None:
     row = ChatHistory(
         user_id=user_id,
-        message=(message or "")[:1000],
-        response=(response or "")[:4000],
+        message=(message or "")[:1000],   # keep this (safe)
+        response=response or "",          # ✅ no slicing needed now
         meta=json.dumps(meta or {}, default=str),
     )
+
     db.session.add(row)
     db.session.commit()
 

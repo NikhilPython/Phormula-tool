@@ -2080,6 +2080,7 @@ def _render_response(state: AgentState) -> AgentState:
     
     if state.get("intent") == "chat":
         if chat_llm:
+            logger.info("[LLM_FALLBACK_TRIGGERED]")
             try:
                 state["final_response"] = chat_llm.invoke(state.get("user_query", "")).content
                 return state
@@ -2537,7 +2538,39 @@ def _render_response(state: AgentState) -> AgentState:
     if total is not None:
         state["final_response"] = f"In {period_label}, your {metric_name} was {_format_value(float(total), metric_name, state.get('country'))}."
         return state
-    state["final_response"] = "I could not build a reliable answer for that request."
+
+
+    # -------- 🔥 LLM FALLBACK (ADD THIS BLOCK) --------
+    if chat_llm:
+        try:
+            prompt = f"""
+    You are an Amazon business analyst AI.
+
+    User question:
+    {state.get("user_query")}
+
+    Available context (may be incomplete):
+    {json.dumps({
+        "current_metrics": state.get("current_metrics"),
+        "analysis_result": state.get("analysis_result")
+    }, default=str)}
+
+    Instructions:
+    - Try to answer helpfully even if data is missing
+    - Do NOT hallucinate exact numbers
+    - Give reasoning, possible causes, or guidance
+    """
+
+            response = chat_llm.invoke(prompt)
+            state["final_response"] = response.content
+            return state
+
+        except Exception:
+            logger.exception("[LLM_FALLBACK_FAILED]")
+
+
+    # -------- SAFE FINAL FALLBACK --------
+    state["final_response"] = "I couldn’t fully analyze this. Try asking with a metric like sales, profit, or units."
     return state
 
 

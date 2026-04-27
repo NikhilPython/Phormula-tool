@@ -339,12 +339,11 @@ class ChatHistory(db.Model):
     user_id = db.Column(db.Integer, nullable=False)
 
     message = db.Column(db.String(1000), nullable=False)
-    response = db.Column(db.String(2000), nullable=False)
+    response = db.Column(db.Text, nullable=False)   # ✅ FIXED
 
     like_response = db.Column(db.String(2000))
     dislike_response = db.Column(db.String(2000))
 
-    # 🔥 ADD THIS
     meta = db.Column(db.Text, nullable=True)
 
     timestamp = Column(DateTime, default=datetime.utcnow)
