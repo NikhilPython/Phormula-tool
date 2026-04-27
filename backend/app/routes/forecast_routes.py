@@ -131,16 +131,16 @@ def ingest_disk_xlsx_to_db(*, path: str, user_id, country, filename, kind, month
     return file_bytes
 
 def load_forecast_df(*, user_id, country, filename, disk_fallback_path=None):
-    """Return (df, bytes) from DB if present; else try disk fallback if provided."""
     stored = load_file_from_db(user_id=user_id, country=country, filename=filename)
+
     if stored:
         b = stored.data
-        return pd.read_excel(BytesIO(b)), b
+        return pd.read_excel(BytesIO(b), header=6), b   # ✅ FIX HERE
 
     if disk_fallback_path and os.path.exists(disk_fallback_path):
         with open(disk_fallback_path, "rb") as f:
             b = f.read()
-        return pd.read_excel(BytesIO(b)), b
+        return pd.read_excel(BytesIO(b), header=6), b   # ✅ FIX HERE
 
     return None, None
 
@@ -340,6 +340,7 @@ def forecast_monthrange():
         if not country:
             return jsonify({'error': 'Missing required parameter: country'}), 400
 
+        country = str(country).strip().lower()
         current_month = datetime.now().strftime("%b").lower()
 
         output_file = (
@@ -348,7 +349,11 @@ def forecast_monthrange():
             else f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
         )
 
-        stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+        stored = load_file_from_db(
+            user_id=user_id,
+            country=country,
+            filename=output_file
+        )
 
         if not stored:
             return jsonify({
@@ -356,13 +361,20 @@ def forecast_monthrange():
                 'expected_filename': output_file
             }), 404
 
-        # 🔹 IMPORTANT: header row is row 7
-        df = pd.read_excel(BytesIO(stored.data), header=6)
+        # Global forecast file is generated with headers at row 0.
+        # UK/US forecast files have report title rows, so headers are at row 7/index 6.
+        if country == "global":
+            df = pd.read_excel(BytesIO(stored.data), engine="openpyxl")
+        else:
+            df = pd.read_excel(BytesIO(stored.data), header=6, engine="openpyxl")
 
-        # normalize columns
-        df.columns = [str(c).replace(" Sold", "").strip() for c in df.columns]
+        # Normalize columns like "Jan'26 Sold" -> "Jan'26"
+        df.columns = [
+            str(c).replace(" Sold", "").strip()
+            for c in df.columns
+        ]
 
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}")
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
 
         month_columns = [
             col for col in df.columns
@@ -372,22 +384,26 @@ def forecast_monthrange():
         if not month_columns:
             return jsonify({
                 'error': 'No month columns found',
+                'expected_format': "Jan'26, Feb'26, etc.",
                 'columns': [str(c) for c in df.columns]
             }), 400
 
         def parse_month(col):
-            col = str(col).replace(" Sold", "")
-            return pd.to_datetime(col.replace("'", ""), format="%b%y")
+            return pd.to_datetime(
+                str(col).replace("'", ""),
+                format="%b%y"
+            )
 
         month_columns_sorted = sorted(month_columns, key=parse_month)
 
-        first_month = month_columns_sorted[0].replace(" Sold", "")
-        last_month = month_columns_sorted[-1].replace(" Sold", "")
+        first_month = month_columns_sorted[0]
+        last_month = month_columns_sorted[-1]
 
         return jsonify({
             "first_month": first_month,
             "last_month": last_month,
-            "month_range": f"{first_month}-{last_month}"
+            "month_range": f"{first_month}-{last_month}",
+            "month_columns": month_columns_sorted
         }), 200
 
     except jwt.ExpiredSignatureError:
@@ -397,7 +413,7 @@ def forecast_monthrange():
         return jsonify({'error': 'Invalid token'}), 401
 
     except Exception as e:
-        print("Unexpected error:")
+        print("Unexpected error in /api/forecast_monthrange:")
         print(traceback.format_exc())
 
         return jsonify({
@@ -405,6 +421,7 @@ def forecast_monthrange():
             'message': str(e)
         }), 500
     
+       
 
 def generate_forecast_core(user_id, country, mv, year, send_email_flag=True):
     country = str(country).strip().lower()
@@ -504,110 +521,304 @@ def forecast_global():
 
         token = auth_header.split(' ')[1]
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+
         mv = request.args.get('month')
         year = request.args.get('year')
+
         if not all([mv, year]):
             return jsonify({'error': 'Missing required parameters: month or year'}), 400
 
+        mv = str(mv).strip().lower()
+        year = str(year).strip()
+
         current_month = datetime.now().strftime("%b").lower()
 
-        # filenames used by your utils
         uk_name = f'inventory_forecast_{user_id}_uk_{current_month}+2.xlsx'
         us_name = f'inventory_forecast_{user_id}_us_{current_month}+2.xlsx'
         global_name = f'inventory_forecast_{user_id}_global_{current_month}+2.xlsx'
 
-        # optional disk fallback (legacy util still writes to disk sometimes)
         search_dirs = default_temp_dirs()
 
         uk_disk = None
         us_disk = None
+
         for d in search_dirs:
             p1 = os.path.join(d, uk_name)
             p2 = os.path.join(d, us_name)
-            if not uk_disk and os.path.exists(p1): uk_disk = p1
-            if not us_disk and os.path.exists(p2): us_disk = p2
 
+            if not uk_disk and os.path.exists(p1):
+                uk_disk = p1
+
+            if not us_disk and os.path.exists(p2):
+                us_disk = p2
 
         df_uk, uk_bytes = load_forecast_df(
-            user_id=user_id, country='uk', filename=uk_name, disk_fallback_path=uk_disk
+            user_id=user_id,
+            country='uk',
+            filename=uk_name,
+            disk_fallback_path=uk_disk
         )
+
         df_us, us_bytes = load_forecast_df(
-            user_id=user_id, country='us', filename=us_name, disk_fallback_path=us_disk
+            user_id=user_id,
+            country='us',
+            filename=us_name,
+            disk_fallback_path=us_disk
         )
 
         present = []
-        if df_uk is not None: present.append('uk')
-        if df_us is not None: present.append('us')
+
+        if df_uk is not None:
+            present.append('uk')
+
+        if df_us is not None:
+            present.append('us')
 
         if not present:
-            return jsonify({'error': 'No forecast files found for global processing'}), 404
+            return jsonify({
+                'error': 'No forecast files found for global processing',
+                'expected_files': {
+                    'uk': uk_name,
+                    'us': us_name
+                }
+            }), 404
 
-        # If only one exists, just return it (and ensure it’s saved in DB if it came from disk)
         if len(present) == 1:
             only = present[0]
+
             if only == 'uk':
-                if uk_bytes and not load_file_from_db(user_id=user_id, country='uk', filename=uk_name):
-                    save_file_to_db(user_id=user_id, country='uk', filename=uk_name,
-                                    file_bytes=uk_bytes, kind="inventory_forecast",
-                                    month=mv.lower(), year=str(year), content_type=XLSX_MIME)
-                stored = load_file_from_db(user_id=user_id, country='uk', filename=uk_name)
+                if uk_bytes and not load_file_from_db(
+                    user_id=user_id,
+                    country='uk',
+                    filename=uk_name
+                ):
+                    save_file_to_db(
+                        user_id=user_id,
+                        country='uk',
+                        filename=uk_name,
+                        file_bytes=uk_bytes,
+                        kind="inventory_forecast",
+                        month=mv,
+                        year=year,
+                        content_type=XLSX_MIME
+                    )
+
+                stored = load_file_from_db(
+                    user_id=user_id,
+                    country='uk',
+                    filename=uk_name
+                )
+
                 return send_db_file(stored, download_name=uk_name)
 
             if only == 'us':
-                if us_bytes and not load_file_from_db(user_id=user_id, country='us', filename=us_name):
-                    save_file_to_db(user_id=user_id, country='us', filename=us_name,
-                                    file_bytes=us_bytes, kind="inventory_forecast",
-                                    month=mv.lower(), year=str(year), content_type=XLSX_MIME)
-                stored = load_file_from_db(user_id=user_id, country='us', filename=us_name)
+                if us_bytes and not load_file_from_db(
+                    user_id=user_id,
+                    country='us',
+                    filename=us_name
+                ):
+                    save_file_to_db(
+                        user_id=user_id,
+                        country='us',
+                        filename=us_name,
+                        file_bytes=us_bytes,
+                        kind="inventory_forecast",
+                        month=mv,
+                        year=year,
+                        content_type=XLSX_MIME
+                    )
+
+                stored = load_file_from_db(
+                    user_id=user_id,
+                    country='us',
+                    filename=us_name
+                )
+
                 return send_db_file(stored, download_name=us_name)
 
-        # Both exist -> merge
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
-        # Use union of month cols (in case one file has extra)
-        month_cols_uk = [c for c in df_uk.columns if month_pattern.match(str(c))]
-        month_cols_us = [c for c in df_us.columns if month_pattern.match(str(c))]
-        forecast_cols = sorted(set(month_cols_uk) | set(month_cols_us))
+        def normalize_forecast_df(df):
+            df = df.copy()
 
-        merged = pd.merge(df_uk, df_us, on=['Product Name', 'sku'], how='outer', suffixes=('_uk', '_us'))
+            df.columns = [
+                str(c).replace(" Sold", "").strip()
+                for c in df.columns
+            ]
+
+            rename_map = {}
+
+            for col in df.columns:
+                clean = str(col).strip().lower()
+
+                if clean in ['product name', 'product_name', 'productname']:
+                    rename_map[col] = 'Product Name'
+
+                if clean == 'sku':
+                    rename_map[col] = 'sku'
+
+            df.rename(columns=rename_map, inplace=True)
+
+            if 'sku' in df.columns:
+                df['sku'] = df['sku'].astype(str).str.strip()
+
+            if 'Product Name' in df.columns:
+                df['Product Name'] = df['Product Name'].fillna('').astype(str).str.strip()
+
+            return df
+
+        df_uk = normalize_forecast_df(df_uk)
+        df_us = normalize_forecast_df(df_us)
+
+        required_cols = ['Product Name', 'sku']
+
+        missing = {
+            'uk_missing': [c for c in required_cols if c not in df_uk.columns],
+            'us_missing': [c for c in required_cols if c not in df_us.columns],
+        }
+
+        if missing['uk_missing'] or missing['us_missing']:
+            return jsonify({
+                'error': 'Required merge columns missing',
+                'missing': missing,
+                'uk_columns': list(df_uk.columns),
+                'us_columns': list(df_us.columns)
+            }), 400
+
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
+
+        month_cols_uk = [
+            c for c in df_uk.columns
+            if month_pattern.match(str(c))
+        ]
+
+        month_cols_us = [
+            c for c in df_us.columns
+            if month_pattern.match(str(c))
+        ]
+
+        def month_sort_key(col):
+            try:
+                return pd.to_datetime(str(col).replace("'", ""), format="%b%y")
+            except Exception:
+                return pd.Timestamp.max
+
+        forecast_cols = sorted(
+            set(month_cols_uk) | set(month_cols_us),
+            key=month_sort_key
+        )
+
+        if not forecast_cols:
+            return jsonify({
+                'error': 'No forecast month columns found',
+                'uk_columns': list(df_uk.columns),
+                'us_columns': list(df_us.columns)
+            }), 400
+
+        keep_uk = ['Product Name', 'sku'] + month_cols_uk
+        keep_us = ['Product Name', 'sku'] + month_cols_us
+
+        df_uk = df_uk[keep_uk].copy()
+        df_us = df_us[keep_us].copy()
+
+        for col in month_cols_uk:
+            df_uk[col] = pd.to_numeric(df_uk[col], errors='coerce').fillna(0)
+
+        for col in month_cols_us:
+            df_us[col] = pd.to_numeric(df_us[col], errors='coerce').fillna(0)
+
+        merged = pd.merge(
+            df_uk,
+            df_us,
+            on=['Product Name', 'sku'],
+            how='outer',
+            suffixes=('_uk', '_us')
+        )
 
         for col in forecast_cols:
-            col_uk = f"{col}_uk" if f"{col}_uk" in merged.columns else col
-            col_us = f"{col}_us" if f"{col}_us" in merged.columns else col
-            merged[col] = merged.get(col_uk, 0).fillna(0) + merged.get(col_us, 0).fillna(0)
+            col_uk = f"{col}_uk"
+            col_us = f"{col}_us"
 
-        keep_cols = ['Product Name', 'sku'] + forecast_cols
-        global_df = merged[keep_cols].copy()
+            if col_uk in merged.columns and col_us in merged.columns:
+                merged[col] = (
+                    pd.to_numeric(merged[col_uk], errors='coerce').fillna(0)
+                    + pd.to_numeric(merged[col_us], errors='coerce').fillna(0)
+                )
+            elif col_uk in merged.columns:
+                merged[col] = pd.to_numeric(merged[col_uk], errors='coerce').fillna(0)
+            elif col_us in merged.columns:
+                merged[col] = pd.to_numeric(merged[col_us], errors='coerce').fillna(0)
+            elif col in merged.columns:
+                merged[col] = pd.to_numeric(merged[col], errors='coerce').fillna(0)
+            else:
+                merged[col] = 0
 
-        # Write to bytes + save to DB
+        global_df = merged[['Product Name', 'sku'] + forecast_cols].copy()
+
+        global_df = (
+            global_df
+            .groupby(['Product Name', 'sku'], as_index=False)[forecast_cols]
+            .sum()
+        )
+
+        total_row = {
+            'Product Name': 'Total',
+            'sku': 'Total'
+        }
+
+        for col in forecast_cols:
+            total_row[col] = global_df[col].sum()
+
+        global_df = pd.concat(
+            [global_df, pd.DataFrame([total_row])],
+            ignore_index=True
+        )
+
         buf = BytesIO()
         global_df.to_excel(buf, index=False, engine='openpyxl')
         buf.seek(0)
-        file_bytes = buf.getvalue()
 
         save_file_to_db(
             user_id=user_id,
             country='global',
             filename=global_name,
-            file_bytes=file_bytes,
+            file_bytes=buf.getvalue(),
             kind="inventory_forecast",
-            month=mv.lower(),
-            year=str(year),
-            content_type=XLSX_MIME,
+            month=mv,
+            year=year,
+            content_type=XLSX_MIME
         )
 
-        stored = load_file_from_db(user_id=user_id, country='global', filename=global_name)
-        return send_db_file(stored, download_name=global_name)
+        stored = load_file_from_db(
+            user_id=user_id,
+            country='global',
+            filename=global_name
+        )
+
+        if not stored:
+            return jsonify({
+                'error': 'Global forecast generated but not found in DB'
+            }), 500
+
+        return send_db_file(
+            stored,
+            download_name=global_name
+        )
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
+
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
+
     except Exception as e:
         import traceback
         print("Unexpected error during global forecast generation:")
         print(traceback.format_exc())
-        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+    
 
 
 @forecast_bp.route('/api/manual_forecast', methods=['POST'])
