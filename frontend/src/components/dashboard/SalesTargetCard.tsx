@@ -79,6 +79,25 @@ export default function SalesTargetCard({
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
+console.log("SalesTargetCard render", {
+  data,
+  homeCurrency,
+  convertToHomeCurrency,
+  formatHomeK,
+  todaySales,
+  targetHome,
+  mtdHome,
+  lastMonthTotalHome,
+  lastMonthToDateHome,
+  decTargetHome,
+  currentReimbursement,
+  previousReimbursement,
+  reimbursementDeltaPct,
+  biEnabled,
+  biAlignedTotals,
+  periodCompletedPct,
+  periodCompletedLabel,});
+
   // const [extraBottom, setExtraBottom] = useState(20);
 
   // useEffect(() => {

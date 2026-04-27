@@ -747,12 +747,17 @@ def finances_mtd_transactions():
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
     # ---------------- Params ----------------
-    transaction_status = request.args.get("transaction_status", "RELEASED")
+    # ---------------- Params ----------------
     marketplace_id = request.args.get("marketplace_id")
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
+
+    if ui_country in ("us", "usa", "united_states"):
+        transaction_status = request.args.get("transaction_status")  # default all for US
+    else:
+        transaction_status = request.args.get("transaction_status", "RELEASED")
 
     # ---------------- Region + marketplace ----------------
     _apply_region_and_marketplace_from_request()
@@ -800,7 +805,7 @@ def finances_mtd_transactions():
         "postedBefore": posted_before,
         "marketplaceId": marketplace_id or amazon_client.marketplace_id,
     }
-    if transaction_status:
+    if transaction_status and transaction_status.lower() not in ("all", ""):
         params["transactionStatus"] = transaction_status
 
     all_rows = []
@@ -821,8 +826,9 @@ def finances_mtd_transactions():
             tstatus = (tx or {}).get("transactionStatus")
             ttype = (tx or {}).get("transactionType")
 
-            if tstatus != "RELEASED":
-                continue
+            if transaction_status and transaction_status.lower() not in ("all", ""):
+                if tstatus != transaction_status:
+                    continue
             if transaction_type_filter and ttype != transaction_type_filter:
                 continue
 

@@ -450,6 +450,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       throw new Error(err.error || `HTTP ${res.status}`);
     }
     const json = (await res.json()) as APIResponse;
+    console.log("API response for", json);
     return json;
   };
 

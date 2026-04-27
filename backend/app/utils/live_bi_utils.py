@@ -162,7 +162,16 @@ def build_movement_context(rolling_series: list) -> dict:
             if values[i-1] != 0:
                 deltas.append(abs((values[i] - values[i-1]) / values[i-1]))
 
-        rank = sorted(deltas).index(abs(delta_pct / 100)) + 1 if deltas else None
+        if deltas:
+            target = abs(delta_pct / 100)
+            sorted_deltas = sorted(deltas)
+
+            rank = min(
+                range(len(sorted_deltas)),
+                key=lambda i: abs(sorted_deltas[i] - target)
+            ) + 1
+        else:
+            rank = None
 
         context[metric] = {
             "direction": "up" if delta_pct > 0 else "down",
@@ -1013,14 +1022,18 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
             other
         FROM {table_live}
         WHERE user_id = :user_id
-          AND purchase_date >= :start_date
-          AND purchase_date < :end_date_plus_one
+            AND purchase_date >= :start_date
+            AND purchase_date < :end_date_plus_one
+            AND marketplace = :marketplace
     """)
+
+    marketplace_name = "Amazon.com" if country == "us" else "Amazon.co.uk"
 
     params = {
         "user_id": user_id,
         "start_date": datetime.combine(curr_start, datetime.min.time()),
         "end_date_plus_one": datetime.combine(curr_end + timedelta(days=1), datetime.min.time()),
+        "marketplace": marketplace_name,
     }
 
     with engine_live.connect() as conn:

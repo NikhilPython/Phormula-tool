@@ -46,6 +46,8 @@ type Props = {
   biAlignedTotals?: BiAlignedTotalsCard | null;
 };
 
+
+
 export default function SalesTargetStatsCard({
   regions,
   value,
@@ -72,15 +74,15 @@ export default function SalesTargetStatsCard({
     month: "short",
   })}'${String(year).slice(-2)}`;
 
+  // 🔥 ADD THIS
+  const activeRegion: RegionKey =
+    regions[value]?.mtdUSD ||
+      regions[value]?.targetUSD ||
+      regions[value]?.lastMonthToDateUSD
+      ? value
+      : "Global";
 
-  // console.log("SalesTargetStatsCard props:", {
-  //   regions,
-  //   value,
-  //   formatHomeK,
-  //   todayHome,
-  //   mtdHome,
-  //   targetHome,
-  //   lastMonthTotalHome,})
+  const active = regions[activeRegion];
 
   // ✅ define availableRegions properly (fixes availableRegions + implicit any)
   const availableRegions = useMemo<RegionKey[]>(() => {
@@ -97,19 +99,36 @@ export default function SalesTargetStatsCard({
     return list;
   }, [regions]);
 
-  const currMtd = biEnabled && biAlignedTotals
-    ? biAlignedTotals.total_current_net_sales
-    : mtdHome;
+  // const currMtd = biEnabled && biAlignedTotals
+  //   ? biAlignedTotals.total_current_net_sales
+  //   : mtdHome;
 
-  // last month MTD-to-date (same day range)
-  const prevMtd = biEnabled && biAlignedTotals
-    ? biAlignedTotals.total_previous_net_sales
-    : (regions[value]?.lastMonthToDateUSD ?? 0);
+  // // last month MTD-to-date (same day range)
+  // const prevMtd = biEnabled && biAlignedTotals
+  //   ? biAlignedTotals.total_previous_net_sales
+  //   : (regions[value]?.lastMonthToDateUSD ?? 0);
 
-  // full last month total
-  const prevFullMonth = biEnabled && biAlignedTotals
-    ? biAlignedTotals.total_previous_net_sales_full_month
-    : lastMonthTotalHome;
+  // // full last month total
+  // const prevFullMonth = biEnabled && biAlignedTotals
+  //   ? biAlignedTotals.total_previous_net_sales_full_month
+  //   : lastMonthTotalHome;
+
+  const currMtd =
+    biEnabled && biAlignedTotals
+      ? biAlignedTotals.total_current_net_sales
+      : mtdHome || active?.mtdUSD || 0;
+
+  const prevMtd =
+    biEnabled && biAlignedTotals
+      ? biAlignedTotals.total_previous_net_sales
+      : active?.lastMonthToDateUSD || 0;
+
+  const prevFullMonth =
+    biEnabled && biAlignedTotals
+      ? biAlignedTotals.total_previous_net_sales_full_month
+      : lastMonthTotalHome || active?.lastMonthTotalUSD || 0;
+
+  const targetToUse = targetHome || active?.targetUSD || 0;
 
   // Get today's date and total days in current month (IST aligned to your existing helpers)
   const today = new Date();
@@ -125,7 +144,7 @@ export default function SalesTargetStatsCard({
   // X = (Current Date / Total Days in Month) * Target
   const expectedSalesTillDate =
     totalDaysInMonth > 0
-      ? (currentDay / totalDaysInMonth) * targetHome
+      ? (currentDay / totalDaysInMonth) * targetToUse
       : 0;
 
   // Sales Trend (unchanged – vs last month MTD)
@@ -134,8 +153,8 @@ export default function SalesTargetStatsCard({
 
   // ✅ New Target Trend formula
   const targetTrendPctToUse =
-    targetHome > 0
-      ? ((currMtd - expectedSalesTillDate) / targetHome) * 100
+    targetToUse > 0
+      ? ((currMtd - expectedSalesTillDate) / targetToUse) * 100
       : 0;
 
 
@@ -185,7 +204,7 @@ export default function SalesTargetStatsCard({
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },
-            { title: "Target", value: formatHomeK(targetHome), helper: "\u00A0" },
+            { title: "Target", value: formatHomeK(targetToUse), helper: "\u00A0" },
             { title: prevLabel, value: formatHomeK(prevMtd), helper: "\u00A0" },
             {
               title: "Sales Trend",
