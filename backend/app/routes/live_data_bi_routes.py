@@ -1285,10 +1285,16 @@ def live_mtd_vs_previous():
         #             except Exception as e:
         #                 print("[WARN] Error sending live BI email:", e)
 
-        return jsonify(round_numeric_values(response_payload, ndigits=2)), 200
+        try:
+            response_payload = round_numeric_values(response_payload, ndigits=2)
+        except Exception as e:
+            print("[WARN] round_numeric_values failed:", e)
+
+        return jsonify(response_payload), 200
 
     except Exception as e:
-        print("Unexpected error in /live_mtd_bi:", e)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
 
