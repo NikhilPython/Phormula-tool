@@ -176,35 +176,45 @@ export default function PurchaseOrderPage({
     [countryName]
   );
 
-  const displayedColumns = useMemo(
-    () =>
-      isGlobalRoute
-        ? [
-          'S. No.',
-          'Product Name',
-          'Dispatches UK',
-          'Dispatches Canada',
-          'Dispatches Amazon US',
-          'Total Dispatches',
-          'Current Inventory - Local Warehouse',
-          'In Transit Units',
-          'PO to be raised',
-          'Cost per Unit (in INR)',
-          'PO Cost (in INR)',
-        ]
-        : [
-          'S. No.',
-          'Product Name',
-          'Dispatch',
-          'Total Dispatches',
-          'Current Inventory - Local Warehouse',
-          'In Transit Units',
-          'PO to be raised',
-          'Cost per Unit (in INR)',
-          'PO Cost (in INR)',
-        ],
-    [isGlobalRoute]
+  const hasColumnValue = useCallback(
+    (columnName: string) => {
+      return skuData.some((row) => toNumber(row[columnName]) > 0);
+    },
+    [skuData]
   );
+
+  const displayedColumns = useMemo(() => {
+    if (isGlobalRoute) {
+      const dispatchColumns = [
+        hasColumnValue('Dispatches UK') ? 'Dispatches UK' : null,
+        hasColumnValue('Dispatches Canada') ? 'Dispatches Canada' : null,
+        hasColumnValue('Dispatches Amazon US') ? 'Dispatches Amazon US' : null,
+      ].filter(Boolean) as string[];
+
+      return [
+        'S. No.',
+        'Product Name',
+        ...dispatchColumns,
+        'Total Dispatches',
+        'Current Inventory - Local Warehouse',
+        'In Transit Units',
+        'PO to be raised',
+        'Cost per Unit (in INR)',
+        'PO Cost (in INR)',
+      ];
+    }
+
+    return [
+      'S. No.',
+      'Product Name',
+      'Dispatch',
+      'Current Inventory - Local Warehouse',
+      'In Transit Units',
+      'PO to be raised',
+      'Cost per Unit (in INR)',
+      'PO Cost (in INR)',
+    ];
+  }, [isGlobalRoute, hasColumnValue]);
 
   const signRowMap = useMemo<Record<string, string>>(
     () => ({
@@ -588,7 +598,7 @@ export default function PurchaseOrderPage({
   const normalCountryDispatchKey = useMemo(() => {
     const country = countryName.toLowerCase();
 
-    if (country === 'us') return 'Dispatches US';
+    if (country === 'us') return 'Dispatches Amazon US';
     if (country === 'uk') return 'Dispatches UK';
     if (country === 'canada') return 'Dispatches Canada';
 
@@ -613,9 +623,15 @@ export default function PurchaseOrderPage({
         (row) => String(row['Product Name'] ?? '').trim().toLowerCase() !== 'total'
       )
       .sort((a, b) => {
-        const valA = toNumber(a['Total Dispatches'])
-        const valB = toNumber(b['Total Dispatches'])
-        return valB - valA
+        const valA = isGlobalRoute
+          ? toNumber(a['Total Dispatches'])
+          : toNumber(a[normalCountryDispatchKey]);
+
+        const valB = isGlobalRoute
+          ? toNumber(b['Total Dispatches'])
+          : toNumber(b[normalCountryDispatchKey]);
+
+        return valB - valA;
       })
 
     let rowsForDisplay: Row[] = []
@@ -679,11 +695,21 @@ export default function PurchaseOrderPage({
     return [signRow, ...formattedRows]
   }, [skuData, displayedColumns, signRowMap])
 
+  const getDispatchHeaderLabel = (col: string) => {
+    if (col === 'Dispatches Amazon US') return 'Dispatch US';
+
+    if (col.startsWith('Dispatches ')) {
+      return col.replace('Dispatches ', 'Dispatch ');
+    }
+
+    return col;
+  };
+
   const tableColumns = useMemo<ColumnDef<Row>[]>(
     () =>
       displayedColumns.map((col) => ({
         key: col,
-        header: col,
+        header: getDispatchHeaderLabel(col),
         width: col === 'S. No.' ? '60px' : col === 'Product Name' ? '180px' : '140px',
         cellClassName:
           col === 'Product Name'
@@ -698,12 +724,8 @@ export default function PurchaseOrderPage({
           const text = String(value ?? '');
 
           if (row.__isSignRow) {
-            if (text === '(+)') {
-              return <span className="text-green-600 font-medium">{text}</span>;
-            }
-            if (text === '(-)') {
-              return <span className="text-red-500 font-medium">{text}</span>;
-            }
+            if (text === '(+)') return <span className="text-green-600 font-medium">{text}</span>;
+            if (text === '(-)') return <span className="text-red-500 font-medium">{text}</span>;
             return '';
           }
 
