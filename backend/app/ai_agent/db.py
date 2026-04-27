@@ -556,7 +556,10 @@ def get_inventory_snapshot(
     engine = get_amazon_engine()
 
     query = text(f"""
-        SELECT "product-name" AS product_name, "{metric_name}" AS value
+        SELECT 
+            sku,                                      -- ✅ FIXED
+            "product-name" AS product_name, 
+            "{metric_name}" AS value
         FROM inventory_aged
         WHERE user_id = :user_id
         AND "snapshot-date" = (
@@ -578,7 +581,6 @@ def get_inventory_snapshot(
             },
         ).mappings().all()
 
-    # -------- 🔥 HANDLE NO DATA CASE --------
     if not rows:
         return {
             "metric": metric_name,
@@ -591,6 +593,7 @@ def get_inventory_snapshot(
 
     per_sku = [
         {
+            "sku": r["sku"],                        # ✅ FIXED
             "product_name": r["product_name"],
             "__metric__": float(r["value"] or 0),
         }

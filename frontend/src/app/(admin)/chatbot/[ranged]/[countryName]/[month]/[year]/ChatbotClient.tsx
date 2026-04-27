@@ -618,7 +618,7 @@ return (
             <Delete className="cursor-pointer mr-2 mt-1" onClick={clearChat} />
            
           </div>
-         <p className='2xl:text-xs text-[10px] flex justify-center items-center text-center text-gray-400'>Responses are AI-generated and may contain inaccuracies.Please verify critical information before use.</p>
+         <p className='2xl:text-xs text-[10px] flex justify-center items-center text-center text-gray-400'>Responses are AI-generated and may contain inaccuracies. Please verify critical information before use.</p>
         </div>
       </div>
     </div>

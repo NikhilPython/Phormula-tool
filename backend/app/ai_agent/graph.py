@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from app.utils.live_bi_utils import generate_sku_inventory_flags
 from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine
 from app.ai_agent.email_service import send_agent_email, build_email_html
 from app.ai_agent.formula_engine import (
@@ -554,21 +555,37 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
 
 def _build_tool_plan(state: AgentState) -> List[str]:
 
-    # -------- 🔥 EXTREME PRIORITY (ADD THIS FIRST) --------
+    # -------- 🔥 EXTREME PRIORITY --------
     if state.get("answer_shape") == "extreme":
         logger.info("[ROUTE_FIX] extreme → extreme tool")
         return ["extreme"]
-    
 
-    # -------- 🔥 EMAIL PRIORITY (ADD HERE) --------
+    # -------- 🔥 EMAIL PRIORITY --------
     if state.get("intent") == "email":
-        logger.info("[ROUTE] email → standard_analysis + email")
+        logger.info("[ROUTE] email → standard_analysis")
         return ["standard_analysis"]
 
-    
     metric_name = state.get("metric_name")
 
-    # -------- 🔥 GLOBAL PRIORITY FIX: GROWTH FIRST --------
+    if metric_name in INVENTORY_METRICS:
+        state["analysis_type"] = "diagnosis"
+        return ["standard_analysis"]
+
+    # -------- 🔥 FIX: INVENTORY STATUS QUERIES --------
+    user_query = (state.get("user_query") or "").lower()
+
+    # -------- 🔥 SMART INVENTORY ROUTING (NO KEYWORDS) --------
+    
+
+    # -------- 🔥 FIX 1: INVENTORY DIAGNOSIS (GLOBAL PRIORITY) --------
+    if (
+        metric_name in INVENTORY_METRICS
+        and state.get("analysis_type") in {"diagnosis", "analysis"}
+    ):
+        logger.info("[ROUTE_FIX] inventory diagnosis → standard_analysis")
+        return ["standard_analysis"]
+
+    # -------- 🔥 GROWTH PRIORITY --------
     if state.get("analysis_type") == "growth":
         logger.info("[ROUTE_FIX] growth → standard_analysis")
         return ["standard_analysis"]
@@ -585,16 +602,7 @@ def _build_tool_plan(state: AgentState) -> List[str]:
                 f"time_breakdown={metric_def.supports_time_breakdown}"
             )
 
-            # -------- BREAKDOWN --------
-            if state.get("analysis_type") == "breakdown":
-                return ["standard_analysis"]
-
-            # -------- TREND --------
-            if state.get("analysis_type") == "trend":
-                return ["standard_analysis"]
-
-            # -------- COMPARISON --------
-            if state.get("analysis_type") == "comparison":
+            if state.get("analysis_type") in {"breakdown", "trend", "comparison"}:
                 return ["standard_analysis"]
 
         except Exception:
@@ -621,12 +629,6 @@ def _build_tool_plan(state: AgentState) -> List[str]:
 
         # single product deep dive
         if state.get("product_query") and state.get("reasoning_mode") == "analysis":
-
-            # -------- 🔥 INVENTORY ROUTE FIX --------
-            if metric_name in INVENTORY_METRICS:
-                logger.info("[ROUTE_FIX] inventory metric → standard_analysis")
-                return ["standard_analysis"]
-
             return ["sku_intelligence"]
 
         # ranking
@@ -643,7 +645,11 @@ def _build_tool_plan(state: AgentState) -> List[str]:
     if state.get("analysis_type") == "sku_intelligence":
         return ["sku_intelligence"]
 
-    if state.get("answer_shape") == "summary" or state.get("analysis_type") == "summary":
+    # -------- 🔥 FIX 3: SAFE SUMMARY --------
+    if (
+        state.get("analysis_type") == "summary"
+        and state.get("metric_name") not in INVENTORY_METRICS
+    ):
         return ["summary"]
 
     if state.get("analysis_type") == "sku_trend":
@@ -652,6 +658,7 @@ def _build_tool_plan(state: AgentState) -> List[str]:
     if state.get("answer_shape") == "multi_month":
         return ["multi_month"]
 
+    # -------- DEFAULT --------
     return ["standard_analysis"]
 
 
@@ -716,24 +723,154 @@ def _compute_ranking(state: AgentState) -> AgentState:
     metric_name = state.get("metric_name") or "profit"
     payload = state["period_payload"]
     direction = state.get("ranking_direction") or "top"
-    ptype = payload.get("type")
-    if ptype == "latest_month":
-        latest = latest_available_month(engine, state["user_id"], state["country"])
-        result = get_metric_for_month(engine, state["user_id"], state["country"], metric_name, latest.month, latest.year)
-    elif ptype == "single":
-        result = get_metric_for_month(engine, state["user_id"], state["country"], metric_name, payload["month"], payload["year"])
-    elif ptype == "range":
-        result = get_metric_for_period(engine, state["user_id"], state["country"], metric_name, payload["start_month"], payload["start_year"], payload["end_month"], payload["end_year"], skip_missing=True)
-    elif ptype == "last_n_months":
-        months = _last_n_window(engine, state["user_id"], state["country"], payload["n"])
-        result = get_metric_for_period(engine, state["user_id"], state["country"], metric_name, months[0].month, months[0].year, months[-1].month, months[-1].year, skip_missing=True) if months else _latest_month_result(engine, state["user_id"], state["country"], metric_name)
-    else:
-        result = _latest_month_result(engine, state["user_id"], state["country"], metric_name)
-    ranked = rank_skus(result, direction=direction, limit=state.get("top_n") or 5)
-    state["current_metrics"] = result
-    state["analysis_result"] = {"type": "ranking", "metric": metric_name, "period_label": result.get("period_label"), "per_sku": ranked, "total": result.get("total", 0.0), "ranking_direction": direction}
-    return state
 
+    # -------- 🔥 INVENTORY FIX (NEW BLOCK) --------
+    if metric_name in INVENTORY_METRICS:
+        logger.info("[RANKING_FIX] Using inventory snapshot")
+
+        inv_engine = get_amazon_engine()
+
+        query = text("""
+            SELECT MAX("snapshot-date") AS latest_date
+            FROM inventory_aged
+            WHERE user_id = :user_id
+        """)
+
+        with inv_engine.connect() as conn:
+            row = conn.execute(
+                query,
+                {"user_id": state["user_id"]}
+            ).mappings().first()
+
+        if not row or not row["latest_date"]:
+            result = {
+                "metric": metric_name,
+                "total": 0,
+                "per_sku": [],
+                "period_label": "latest",
+            }
+        else:
+            latest_date = row["latest_date"]
+
+            result = get_inventory_snapshot(
+                user_id=state["user_id"],
+                metric_name=metric_name,
+                month=latest_date.month,
+                year=latest_date.year,
+            )
+
+        ranked = rank_skus(
+            result,
+            direction=direction,
+            limit=state.get("top_n") or 5
+        )
+
+        state["current_metrics"] = result
+        state["analysis_result"] = {
+            "type": "ranking",
+            "metric": metric_name,
+            "period_label": result.get("period_label"),
+            "per_sku": ranked,
+            "total": result.get("total", 0.0),
+            "ranking_direction": direction,
+        }
+
+        return state
+
+    # -------- EXISTING FINANCE LOGIC (UNCHANGED) --------
+    ptype = payload.get("type")
+
+    if ptype == "latest_month":
+        latest = latest_available_month(
+            engine,
+            state["user_id"],
+            state["country"]
+        )
+        result = get_metric_for_month(
+            engine,
+            state["user_id"],
+            state["country"],
+            metric_name,
+            latest.month,
+            latest.year
+        )
+
+    elif ptype == "single":
+        result = get_metric_for_month(
+            engine,
+            state["user_id"],
+            state["country"],
+            metric_name,
+            payload["month"],
+            payload["year"]
+        )
+
+    elif ptype == "range":
+        result = get_metric_for_period(
+            engine,
+            state["user_id"],
+            state["country"],
+            metric_name,
+            payload["start_month"],
+            payload["start_year"],
+            payload["end_month"],
+            payload["end_year"],
+            skip_missing=True
+        )
+
+    elif ptype == "last_n_months":
+        months = _last_n_window(
+            engine,
+            state["user_id"],
+            state["country"],
+            payload["n"]
+        )
+
+        if months:
+            result = get_metric_for_period(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name,
+                months[0].month,
+                months[0].year,
+                months[-1].month,
+                months[-1].year,
+                skip_missing=True
+            )
+        else:
+            result = _latest_month_result(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name
+            )
+
+    else:
+        result = _latest_month_result(
+            engine,
+            state["user_id"],
+            state["country"],
+            metric_name
+        )
+
+    ranked = rank_skus(
+        result,
+        direction=direction,
+        limit=state.get("top_n") or 5
+    )
+
+    state["current_metrics"] = result
+    state["analysis_result"] = {
+        "type": "ranking",
+        "metric": metric_name,
+        "period_label": result.get("period_label"),
+        "per_sku": ranked,
+        "total": result.get("total", 0.0),
+        "ranking_direction": direction,
+    }
+
+    return state
 
 def _compute_extreme(state: AgentState) -> AgentState:
     engine = state["engine"]
@@ -1593,24 +1730,121 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
             rows = result.get("per_sku", [])
 
-            low_stock = [r for r in rows if float(r.get("__metric__", 0.0)) < 10]
-            zero_stock = [r for r in rows if float(r.get("__metric__", 0.0)) == 0]
+            top_n = state.get("top_n")
+            product_query = state.get("product_query")
+
+            # -------- 🔥 STEP 1: PRODUCT FILTER --------
+            if product_query:
+                pq = str(product_query).strip().lower()
+
+                rows = [
+                    r for r in rows
+                    if pq == str(r.get("product_name") or "").strip().lower()
+                    or pq == str(r.get("sku") or "").strip().lower()
+                ]
+
+            # -------- 🔥 STEP 2: TOP N USING NET SALES --------
+            elif top_n:
+                try:
+                    logger.info("[TOP_N] Using net sales ranking")
+
+                    latest = latest_available_month(
+                        state["engine"],
+                        state["user_id"],
+                        state["country"]
+                    )
+
+                    sales_result = get_metric_for_month(
+                        state["engine"],
+                        state["user_id"],
+                        state["country"],
+                        "net_sales",   # 🔥 IMPORTANT
+                        latest.month,
+                        latest.year
+                    )
+
+                    sales_rows = sales_result.get("per_sku", [])
+
+                    # sort by net sales
+                    sales_rows = sorted(
+                        sales_rows,
+                        key=lambda r: float(r.get("__metric__", 0)),
+                        reverse=True
+                    )
+
+                    top_skus = set(
+                        r.get("sku") for r in sales_rows[:top_n]
+                    )
+
+                    # filter inventory rows using top SKUs
+                    rows = [
+                        r for r in rows
+                        if r.get("sku") in top_skus
+                    ]
+
+                except Exception:
+                    logger.exception("[TOP_N_FALLBACK] fallback to simple slicing")
+                    rows = rows[:top_n]
+
+            # -------- 🔥 STEP 3: ELSE → KEEP ALL --------
+
+            # -------- 🔥 FIRST: GET FLAGS --------
+            flags = generate_sku_inventory_flags(
+                user_id=state["user_id"],
+                country=state["country"],
+            )
+
+            # -------- 🔥 BUILD INSIGHTS FROM FLAGS --------
+            high_alert = 0
+            warning = 0
+            overaged = 0
+
+            for r in rows:
+                sku = r.get("sku")
+                flag = flags.get(sku, {})
+                alert = flag.get("inventory_alert")
+
+                if alert == "High alert":
+                    high_alert += 1
+                elif alert == "Please send shipment":
+                    warning += 1
+                elif alert == "Long-term aged inventory":
+                    overaged += 1
 
             insights = []
 
-            if zero_stock:
-                insights.append(f"{len(zero_stock)} products are out of stock")
+            if high_alert:
+                insights.append(f"{high_alert} products are at critical stock-out risk")
 
-            if low_stock:
-                insights.append(f"{len(low_stock)} products are running low")
+            if warning:
+                insights.append(f"{warning} products need replenishment soon")
+
+            if overaged:
+                insights.append(f"{overaged} products have ageing inventory")
 
             if not insights:
                 insights.append("Inventory looks healthy")
+
+            # -------- 🔥 ADD FLAGS --------
+            flags = generate_sku_inventory_flags(
+                user_id=state["user_id"],
+                country=state["country"],
+            )
+
+            # -------- 🔥 BUILD SKU MAP (IMPORTANT) --------
+            sku_map = {}
+            for r in rows:
+                name = r.get("product_name")
+                sku = r.get("sku") or name  # fallback if sku missing
+                if name:
+                    sku_map[name] = sku
 
             state["analysis_result"] = {
                 "type": "inventory_diagnosis",
                 "insights": insights,
                 "rows": rows,
+                "flags": flags,      # ✅ NEW
+                "sku_map": sku_map,  # ✅ NEW (CRITICAL)
             }
 
         else:
@@ -1917,6 +2151,103 @@ def _render_response(state: AgentState) -> AgentState:
     period_label = current.get("period_label") or "selected period"
     comp = state.get("comparison") or {}
     analysis = state.get("analysis_result") or {}
+
+    
+    # -------- 🔥 INVENTORY DIAGNOSIS RENDER (UPGRADED) --------
+    if analysis.get("type") == "inventory_diagnosis":
+        insights = analysis.get("insights", [])
+        rows = analysis.get("rows", [])
+
+        product_query = state.get("product_query")
+        top_n = state.get("top_n")
+
+        # If planner missed "top 3", recover it from user query.
+        if not top_n:
+            m = re.search(r"\btop\s+(\d+)\b", (state.get("user_query") or "").lower())
+            if m:
+                top_n = int(m.group(1))
+
+        # 1) Specific product wins
+        if product_query:
+            pq = str(product_query).strip().lower()
+            rows = [
+                r for r in rows
+                if pq in str(r.get("product_name") or "").strip().lower()
+                or pq == str(r.get("sku") or "").strip().lower()
+            ]
+
+        # 2) Else top N if requested
+        elif top_n:
+            rows = rows[:int(top_n)]
+
+        # 3) Else keep all rows
+
+        flags = analysis.get("flags", {})
+        sku_map = analysis.get("sku_map", {})
+
+        lines = ["Inventory health check:\n"]
+
+        # summary insights
+        for i in insights:
+            lines.append(f"- {i}")
+
+        # detailed per SKU
+        for r in rows:
+            name = r.get("product_name")
+            value = float(r.get("__metric__", 0))
+
+            sku = sku_map.get(name)
+            flag = flags.get(sku, {})
+
+            logger.info(f"[DEBUG] name={name}, sku={sku}, flag={flag}")
+
+            coverage = flag.get("inventory_coverage_ratio")
+            recommendation = flag.get("inventory_recommendation")
+
+            
+            # -------- 🔥 CORRECT SEVERITY (USE FLAGS) --------
+            alert = flag.get("inventory_alert")
+            alert_type = flag.get("inventory_alert_type")
+
+            if alert_type == "supply":
+                if alert == "High alert":
+                    emoji = "🚨"  # critical
+                else:
+                    emoji = "⚠"  # warning
+
+            elif alert_type == "overaged":
+                emoji = "📦"
+
+            elif alert_type == "cost":
+                emoji = "💸"
+
+            else:
+                continue  # skip only truly healthy SKUs
+
+            lines.append(f"\n{emoji} {name}")
+
+            if alert_type == "supply":
+                if alert == "High alert":
+                    lines.append("- Critical stock-out risk")
+                else:
+                    lines.append("- Low coverage (supply risk)")
+
+            elif alert_type == "overaged":
+                lines.append("- Long-term aged inventory")
+
+            elif alert_type == "cost":
+                lines.append("- High storage cost")
+
+            if coverage is not None:
+                lines.append(f"- Coverage: {round(coverage,1)} months")
+
+            if recommendation:
+                lines.append(f"→ {recommendation}")
+
+        state["final_response"] = "\n".join(lines)
+        return state
+
+
     if analysis.get("type") == "decision":
         if advisor_llm:
             try:
@@ -2412,10 +2743,9 @@ def _invoke_agent(state: AgentState) -> AgentState:
             state.get("metric_name") in INVENTORY_METRICS
             and state.get("analysis_type") in {"diagnosis", "analysis"}
         ):
-            logger.info("[PRODUCT_SKIP] inventory analysis → clearing product context")
+            logger.info("[PRODUCT_SKIP] inventory analysis → keeping product/top_n context")
 
-            state["product_query"] = None
-            state["product_queries"] = None
+            # Keep product_query and top_n because inventory status may be scoped.
             state["dimension"] = None
 
         else:
