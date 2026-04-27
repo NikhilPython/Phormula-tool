@@ -195,7 +195,7 @@ export default function PurchaseOrderPage({
         : [
           'S. No.',
           'Product Name',
-          'Dispatches UK',
+          'Dispatch',
           'Total Dispatches',
           'Current Inventory - Local Warehouse',
           'In Transit Units',
@@ -208,6 +208,7 @@ export default function PurchaseOrderPage({
 
   const signRowMap = useMemo<Record<string, string>>(
     () => ({
+      Dispatch: '(+)',
       'Dispatches UK': '(+)',
       'Dispatches Canada': '(+)',
       'Dispatches Amazon US': '(+)',
@@ -583,6 +584,17 @@ export default function PurchaseOrderPage({
   //   return [signRow, ...formattedRows];
   // }, [skuData, displayedColumns, signRowMap]);
 
+
+  const normalCountryDispatchKey = useMemo(() => {
+    const country = countryName.toLowerCase();
+
+    if (country === 'us') return 'Dispatches US';
+    if (country === 'uk') return 'Dispatches UK';
+    if (country === 'canada') return 'Dispatches Canada';
+
+    return `Dispatches ${countryName.toUpperCase()}`;
+  }, [countryName]);
+
   const tableData = useMemo(() => {
     if (!skuData.length) return []
 
@@ -626,7 +638,14 @@ export default function PurchaseOrderPage({
       const output: Row = {}
 
       displayedColumns.forEach((col) => {
-        let value = col === 'S. No.' ? row[col] ?? index + 1 : row[col]
+        // let value = col === 'S. No.' ? row[col] ?? index + 1 : row[col]
+        let value =
+          col === 'S. No.'
+            ? row[col] ?? index + 1
+            : col === 'Dispatch'
+              ? row.Dispatch ?? row[normalCountryDispatchKey] ?? 0
+              : row[col]
+
 
         const isTotalRow =
           String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
