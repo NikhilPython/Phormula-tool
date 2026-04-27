@@ -790,7 +790,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
             start_date,
             end_date,
             time_unit: "SUMMARY",
-            countries: [country],
+            countries: ["UK"],
             return_excel: false,
         };
 
@@ -1203,6 +1203,22 @@ export default function DashboardPage() {
             .format(date)
             .replace("am", "AM")
             .replace("pm", "PM");
+    };
+
+    const formatUSTime12hr = (
+        timestamp: string | number | Date | null | undefined
+    ) => {
+        if (!timestamp) return "";
+
+        const date = new Date(timestamp);
+
+        return new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York", // or LA if needed
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            timeZoneName: "short",
+        }).format(date);
     };
 
     const { platform } = usePlatform();
@@ -7438,7 +7454,10 @@ ${pageLoading
                         </button>
                         {dbUpdatedAt && (
                             <span className="text-sm text-gray-500">
-                                Last Updated at {formatUKTime12hr(dbUpdatedAt)}
+                                Last Updated at{" "}
+                                {activeDateRegion === "US"
+                                    ? formatUSTime12hr(dbUpdatedAt)
+                                    : formatUKTime12hr(dbUpdatedAt)}
                             </span>
                         )}
                     </div>
