@@ -1919,8 +1919,7 @@ def target_summary():
                 }).fetchone()
 
                 if row and row[0] is not None:
-                    rate = float(row[0])
-                    return rate
+                    return float(row[0])
 
                 return 1.0
         except Exception as e:
@@ -1972,16 +1971,11 @@ def target_summary():
         return None
 
     def get_countries_for_summary(user_id: int, month_name: str, year: int, country: str):
-        """
-        For non-global: return only that country.
-        For global: return countries that actually have upload_history or tables, typically uk/us.
-        """
         if country != 'global':
             return [country]
 
         countries = set()
 
-        # 1) From upload_history for same month/year, collect actual country rows except global
         q = text("""
             SELECT DISTINCT LOWER(country) AS country
             FROM upload_history
@@ -2000,13 +1994,11 @@ def target_summary():
             if row[0]:
                 countries.add(str(row[0]).strip().lower())
 
-        # 2) Fallback: infer from tables if upload_history missing
         for c in ['uk', 'us']:
             table_name = find_existing_monthly_table(user_id, c, month_name, year)
             if table_name:
                 countries.add(c)
 
-        # 3) Last fallback: if a real global table exists, use global
         if not countries:
             global_table = find_existing_monthly_table(user_id, 'global', month_name, year)
             if global_table:
@@ -2071,7 +2063,6 @@ def target_summary():
                 if cashflow_df.empty:
                     continue
 
-                # Alternate mappings
                 if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
                     cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
 
@@ -2125,12 +2116,12 @@ def target_summary():
         return combined_totals, all_cashflow_data
 
     try:
-        safe_country = country.lower().replace(" ", "_").replace("-", "_")
-        target_table_name = f"target_{user_id}_{safe_country}_data"
+        target_table_name = "target_data"
 
         create_table_sql = text(f"""
             CREATE TABLE IF NOT EXISTS {target_table_name} (
                 id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
                 month VARCHAR(20) NOT NULL,
                 year INTEGER NOT NULL,
                 country VARCHAR(50) NOT NULL,
@@ -2140,7 +2131,7 @@ def target_summary():
                 shortfall_total NUMERIC(12,2) NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (month, year, country)
+                UNIQUE (user_id, month, year, country)
             )
         """)
         db_session.execute(create_table_sql)
@@ -2179,10 +2170,10 @@ def target_summary():
 
             upsert_sql = text(f"""
                 INSERT INTO {target_table_name}
-                    (month, year, country, target_sales, cashflow_total, net_sales_total, shortfall_total, updated_at)
+                    (user_id, month, year, country, target_sales, cashflow_total, net_sales_total, shortfall_total, updated_at)
                 VALUES
-                    (:month, :year, :country, :target_sales, :cashflow_total, :net_sales_total, :shortfall_total, CURRENT_TIMESTAMP)
-                ON CONFLICT (month, year, country)
+                    (:user_id, :month, :year, :country, :target_sales, :cashflow_total, :net_sales_total, :shortfall_total, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, month, year, country)
                 DO UPDATE SET
                     target_sales = EXCLUDED.target_sales,
                     cashflow_total = EXCLUDED.cashflow_total,
@@ -2190,7 +2181,9 @@ def target_summary():
                     shortfall_total = EXCLUDED.shortfall_total,
                     updated_at = CURRENT_TIMESTAMP
             """)
+
             db_session.execute(upsert_sql, {
+                'user_id': user_id,
                 'month': month_name,
                 'year': year,
                 'country': country,
@@ -2204,12 +2197,15 @@ def target_summary():
             saved_row_sql = text(f"""
                 SELECT id, created_at, updated_at
                 FROM {target_table_name}
-                WHERE LOWER(month) = LOWER(:month)
+                WHERE user_id = :user_id
+                  AND LOWER(month) = LOWER(:month)
                   AND year = :year
                   AND LOWER(country) = LOWER(:country)
                 LIMIT 1
             """)
+
             saved_row = db_session.execute(saved_row_sql, {
+                'user_id': user_id,
                 'month': month_name,
                 'year': year,
                 'country': country
@@ -2238,12 +2234,15 @@ def target_summary():
             SELECT id, month, year, country, target_sales, cashflow_total,
                    net_sales_total, shortfall_total, created_at, updated_at
             FROM {target_table_name}
-            WHERE LOWER(month) = LOWER(:month)
+            WHERE user_id = :user_id
+              AND LOWER(month) = LOWER(:month)
               AND year = :year
               AND LOWER(country) = LOWER(:country)
             LIMIT 1
         """)
+
         row = db_session.execute(get_sql, {
+            'user_id': user_id,
             'month': month_name,
             'year': year,
             'country': country
@@ -2272,6 +2271,7 @@ def target_summary():
                 'message': 'No saved target summary found, returning computed totals only',
                 'data': {
                     'id': None,
+                    'user_id': user_id,
                     'month': month_name,
                     'year': year,
                     'country': country,
@@ -2294,6 +2294,7 @@ def target_summary():
             'message': 'Target summary fetched successfully',
             'data': {
                 'id': row[0],
+                'user_id': user_id,
                 'month': row[1],
                 'year': row[2],
                 'country': row[3],
@@ -2316,4 +2317,4 @@ def target_summary():
     finally:
         db_session.close()
 
-
+        
