@@ -79,24 +79,7 @@ export default function SalesTargetCard({
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
-console.log("SalesTargetCard render", {
-  data,
-  homeCurrency,
-  convertToHomeCurrency,
-  formatHomeK,
-  todaySales,
-  targetHome,
-  mtdHome,
-  lastMonthTotalHome,
-  lastMonthToDateHome,
-  decTargetHome,
-  currentReimbursement,
-  previousReimbursement,
-  reimbursementDeltaPct,
-  biEnabled,
-  biAlignedTotals,
-  periodCompletedPct,
-  periodCompletedLabel,});
+
 
   // const [extraBottom, setExtraBottom] = useState(20);
 
@@ -179,15 +162,23 @@ console.log("SalesTargetCard render", {
     ? biAlignedTotals!.total_current_net_sales
     : mtdHomeResolved;
 
-  // full last month total
-  const lastMonthTotalHomeFinal = useBi
+  const rawLastMonthTotalHomeFinal = useBi
     ? biAlignedTotals!.total_previous_net_sales_full_month
     : lastMonthTotalHomeResolved;
 
-  // last month MTD-to-date for the same day-range
-  const lastMonthToDateHomeFinal = useBi
+  const rawLastMonthToDateHomeFinal = useBi
     ? biAlignedTotals!.total_previous_net_sales
     : lastMonthToDateHomeResolved;
+
+  const lastMonthTotalHomeFinal = Number(rawLastMonthTotalHomeFinal) || 0;
+  const lastMonthToDateHomeFinal = Number(rawLastMonthToDateHomeFinal) || 0;
+
+  // const lastMonthToDateHomeFinal = Number(rawLastMonthToDateHomeFinal) || 0;
+
+  // last month MTD-to-date for the same day-range
+  // const lastMonthToDateHomeFinal = useBi
+  //   ? biAlignedTotals!.total_previous_net_sales
+  //   : lastMonthToDateHomeResolved;
 
   // ---- Gauge ratios (all in HOME currency) ----
 
@@ -412,11 +403,16 @@ console.log("SalesTargetCard render", {
     //   : 0;
     mtdHomeFinal > 0 ? (reimbNow / mtdHomeFinal) * 100 : 0;
 
+  // const reimbPrevSalesPct =
+  //   // lastMonthTotalHomeResolved > 0
+  //   //   ? (reimbPrev / lastMonthTotalHomeResolved) * 100
+  //   // : 0;
+  //   lastMonthTotalHomeFinal > 0 ? (reimbPrev / lastMonthTotalHomeFinal) * 100 : 0;
+
   const reimbPrevSalesPct =
-    // lastMonthTotalHomeResolved > 0
-    //   ? (reimbPrev / lastMonthTotalHomeResolved) * 100
-    // : 0;
-    lastMonthTotalHomeFinal > 0 ? (reimbPrev / lastMonthTotalHomeFinal) * 100 : 0;
+    Math.abs(lastMonthToDateHomeFinal) > 0
+      ? (reimbPrev / Math.abs(lastMonthToDateHomeFinal)) * 100
+      : 0;
 
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
@@ -449,7 +445,7 @@ console.log("SalesTargetCard render", {
 
   return (
     <>
-     
+
       <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
         {/* Legend */}
         <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
