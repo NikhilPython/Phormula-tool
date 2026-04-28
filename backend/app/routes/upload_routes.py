@@ -1676,13 +1676,53 @@ def upload_history2():
     country_param = (request.args.get('country', '') or '').lower()
 
     # ✅ only use homeCurrency for GLOBAL
-    if country_param == "global":
-        currency_param = (request.args.get('homeCurrency') or 'USD').lower()
+    is_global = country_param == "global"
+
+    if is_global:
+        country_list = ["uk", "us"]
     else:
-        currency_param = None
+        country_list = [country_param]
 
-    country = resolve_country(country_param, currency_param)
+    def base_upload_query(y=None, m=None, months=None):
+        q = UploadHistory.query.filter(
+            UploadHistory.user_id == user_id,
+            UploadHistory.country.in_(country_list)
+        )
 
+        if y is not None:
+            q = q.filter(UploadHistory.year == y)
+
+        if m is not None:
+            q = q.filter(UploadHistory.month == m.lower())
+
+        if months is not None:
+            q = q.filter(UploadHistory.month.in_(months))
+
+        return q
+
+    def _get_gbp_to_usd_rate(month, year):
+        admin_engine = create_engine(db_url1)
+
+        with admin_engine.connect() as admin_conn:
+            rate = admin_conn.execute(
+                text("""
+                    SELECT conversion_rate
+                    FROM currency_conversion
+                    WHERE LOWER(user_currency) = 'gbp'
+                    AND LOWER(selected_currency) = 'usd'
+                    AND LOWER(month) = :month
+                    AND year = :year
+                    ORDER BY id DESC
+                    LIMIT 1
+                """),
+                {
+                    "month": str(month).lower().strip(),
+                    "year": int(year),
+                }
+            ).scalar()
+
+        return float(rate or 1)
+    
     # Try to infer range_type if not provided
     if not range_type:
         if month and year:
@@ -1702,31 +1742,43 @@ def upload_history2():
         return jsonify({'error': 'Year must be a valid number.'}), 400
 
     def summarize_uploads(uploads):
-        total_sales = sum(upload.total_sales or 0 for upload in uploads)
-        total_product_sales = sum(upload.total_product_sales or 0 for upload in uploads)
-        total_profit = sum(upload.total_profit or 0 for upload in uploads)
-        total_expense = sum(upload.total_expense or 0 for upload in uploads)
-        advertising_total = sum(upload.advertising_total or 0 for upload in uploads)
-        cm2_profit = sum(upload.cm2_profit or 0 for upload in uploads)
-        total_amazon_fee = sum(upload.total_amazon_fee or 0 for upload in uploads)
-        total_cous = sum(upload.total_cous or 0 for upload in uploads)
-        otherwplatform = sum(upload.platform_fee or 0 for upload in uploads)
-        taxncredit = sum(upload.taxncredit or 0 for upload in uploads)
-        unit_sold = sum(upload.unit_sold or 0 for upload in uploads)
-
-        return {
-            'total_sales': total_sales,
-            'total_product_sales': total_product_sales,
-            'total_profit': total_profit,
-            'total_expense': total_expense,
-            'advertising_total': advertising_total,
-            'cm2_profit': cm2_profit,
-            'total_amazon_fee': total_amazon_fee,
-            'total_cous': total_cous,
-            'otherwplatform': otherwplatform,
-            'taxncredit': taxncredit,
-            'unit_sold': unit_sold,
+        summary = {
+            "total_sales": 0,
+            "total_product_sales": 0,
+            "total_profit": 0,
+            "total_expense": 0,
+            "advertising_total": 0,
+            "cm2_profit": 0,
+            "total_amazon_fee": 0,
+            "total_cous": 0,
+            "otherwplatform": 0,
+            "taxncredit": 0,
+            "unit_sold": 0,
         }
+
+        for upload in uploads:
+            upload_country = (upload.country or "").lower()
+            upload_month = (upload.month or "").lower()
+            upload_year = upload.year
+
+            multiplier = 1
+
+            if is_global and upload_country == "uk":
+                multiplier = _get_gbp_to_usd_rate(upload_month, upload_year)
+
+            summary["total_sales"] += (upload.total_sales or 0) * multiplier
+            summary["total_product_sales"] += (upload.total_product_sales or 0) * multiplier
+            summary["total_profit"] += (upload.total_profit or 0) * multiplier
+            summary["total_expense"] += (upload.total_expense or 0) * multiplier
+            summary["advertising_total"] += (upload.advertising_total or 0) * multiplier
+            summary["cm2_profit"] += (upload.cm2_profit or 0) * multiplier
+            summary["total_amazon_fee"] += (upload.total_amazon_fee or 0) * multiplier
+            summary["total_cous"] += (upload.total_cous or 0) * multiplier
+            summary["otherwplatform"] += (upload.platform_fee or 0) * multiplier
+            summary["taxncredit"] += (upload.taxncredit or 0) * multiplier
+            summary["unit_sold"] += upload.unit_sold or 0
+
+        return summary
 
     # ---------------- comparison helpers ----------------
 
@@ -1772,33 +1824,19 @@ def upload_history2():
     def fetch_monthly_summary(m: str, y: int):
         if not m or y is None:
             return None
-        ups = UploadHistory.query.filter_by(
-            user_id=user_id,
-            year=y,
-            month=m.lower(),
-            country=country
-        ).all()
+        ups = base_upload_query(y=y, m=m).all()
         return summarize_uploads(ups) if ups else None
 
     def fetch_quarterly_summary(q: str, y: int):
         if not q or y is None or q not in quarter_months:
             return None
-        ups = UploadHistory.query.filter(
-            UploadHistory.user_id == user_id,
-            UploadHistory.year == y,
-            UploadHistory.month.in_(quarter_months[q]),
-            UploadHistory.country == country
-        ).all()
+        ups = base_upload_query(y=y, months=quarter_months[q]).all()
         return summarize_uploads(ups) if ups else None
 
     def fetch_yearly_summary(y: int):
         if y is None:
             return None
-        ups = UploadHistory.query.filter_by(
-            user_id=user_id,
-            year=y,
-            country=country
-        ).all()
+        ups = base_upload_query(y=y).all()
         return summarize_uploads(ups) if ups else None
 
     # ---------------- main logic ----------------
@@ -1806,15 +1844,9 @@ def upload_history2():
     if range_type == 'monthly' and month and year:
         month_l = month.lower()
 
-        uploads = UploadHistory.query.filter_by(
-            user_id=user_id,
-            year=year_num,
-            month=month_l,
-            country=country
-        ).all()
+        uploads = base_upload_query(y=year_num, m=month_l).all()
 
         current_summary = summarize_uploads(uploads)
-
         # last month (prev month)
         prev_m, prev_y = get_previous_month(month_l, year_num)
         last_month_summary = fetch_monthly_summary(prev_m, prev_y) if prev_m else None
@@ -1841,12 +1873,7 @@ def upload_history2():
         if quarter not in quarter_months:
             return jsonify({'error': 'Quarter must be one of: Q1, Q2, Q3, Q4'}), 400
 
-        uploads = UploadHistory.query.filter(
-            UploadHistory.user_id == user_id,
-            UploadHistory.year == year_num,
-            UploadHistory.month.in_(quarter_months[quarter]),
-            UploadHistory.country == country
-        ).all()
+        uploads = base_upload_query(y=year_num, months=quarter_months[quarter]).all()
 
         current_summary = summarize_uploads(uploads)
 
@@ -1868,11 +1895,7 @@ def upload_history2():
         })
 
     elif range_type == 'yearly' and year:
-        uploads = UploadHistory.query.filter_by(
-            user_id=user_id,
-            year=year_num,
-            country=country
-        ).all()
+        uploads = base_upload_query(y=year_num).all()
 
         current_summary = summarize_uploads(uploads)
 
