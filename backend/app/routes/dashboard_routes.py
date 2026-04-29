@@ -1298,37 +1298,31 @@ def getForecastFile():
         return jsonify({'error': str(e)}), 500
     
        
-    
 def resolve_country(country, currency):
-    country = (country or "").lower()
-    currency = (currency or "").lower()
+    country = (country or "").strip().lower()
+    currency = (currency or "").strip().lower()
 
-    # 1. If country = global
     if country == "global":
-        if currency == "usd":
-            return "global"
-        elif currency == "inr":
+        if currency == "inr":
             return "global_inr"
-        elif currency == "gbp":
+        if currency == "gbp":
             return "global_gbp"
-        elif currency == "cad":
+        if currency == "cad":
             return "global_cad"
-        else:
-            return "global"  # default fallback
+        return "global"
 
-    # 2. If country = uk
     if country == "uk":
         if currency == "usd":
             return "uk_usd"
-        else:
-            return "uk"  # default for all other currencies
+        return "uk"
 
-    # 3. Default (no special logic)
     return country
 
-from calendar import month_name as cal_month_name
 
-MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+]
 
 QUARTER_MONTHS = {
     "quarter1": ["january", "february", "march"],
@@ -1336,28 +1330,6 @@ QUARTER_MONTHS = {
     "quarter3": ["july", "august", "september"],
     "quarter4": ["october", "november", "december"]
 }
-
-def prev_month_year(month_str: str, year: int):
-    # month_str: "November"
-    idx = MONTHS.index(month_str)  # 0-based
-    if idx == 0:
-        return "December", year - 1
-    return MONTHS[idx - 1], year
-
-def quarter_for_month(month_str: str):
-    m = month_str.lower()
-    for q, months in QUARTER_MONTHS.items():
-        if m in months:
-            return q
-    return None
-
-def prev_quarter(q: str):
-    # q like "quarter4"
-    order = ["quarter1","quarter2","quarter3","quarter4"]
-    i = order.index(q)
-    if i == 0:
-        return "quarter4", -1  # means year-1
-    return order[i-1], 0
 
 
 def table_exists(db_session, table_name: str, schema: str = "public") -> bool:
@@ -1374,6 +1346,36 @@ def table_exists(db_session, table_name: str, schema: str = "public") -> bool:
         "table_name": table_name
     }).scalar())
 
+def get_gbp_to_usd_rate(month_value, year_value):
+    try:
+        with conv_engine.connect() as admin_conn:
+            rate = admin_conn.execute(
+                text("""
+                    SELECT conversion_rate
+                    FROM currency_conversion
+                    WHERE LOWER(user_currency) = 'gbp'
+                      AND LOWER(country) = 'us'
+                      AND LOWER(selected_currency) = 'usd'
+                      AND LOWER(month) = :month
+                      AND year = :year
+                    ORDER BY id DESC
+                    LIMIT 1
+                """),
+                {
+                    "month": str(month_value).lower().strip(),
+                    "year": int(year_value),
+                }
+            ).scalar()
+
+        print("GBP_TO_USD_RATE:", month_value, year_value, rate)
+        return float(rate or 1)
+
+    except Exception as e:
+        print(f"GBP to USD conversion rate error: {e}")
+        return 1
+    
+
+
 @dashboard_bp.route('/cashflow', methods=['GET'])
 def cashflow():
     auth_header = request.headers.get('Authorization')
@@ -1381,6 +1383,7 @@ def cashflow():
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
@@ -1391,37 +1394,39 @@ def cashflow():
     month = request.args.get('month')
     year = request.args.get('year')
     country_param = request.args.get('country', '')
-    currency_param = (request.args.get('currency') or '').lower()
+
+    currency_param = (
+        request.args.get('currency')
+        or request.args.get('homeCurrency')
+        or ''
+    ).lower().strip()
+
+    if (country_param or '').lower().strip() == 'global' and not currency_param:
+        currency_param = 'usd'
+
     country = resolve_country(country_param, currency_param)
-    period_type = (request.args.get('period_type') or 'monthly').lower()
+    period_type = (request.args.get('period_type') or 'monthly').lower().strip()
 
     if not year:
         return jsonify({'error': 'Year must be provided'}), 400
 
-    months_master = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ]
-
-    quarter_months = {
-        "quarter1": ["january", "february", "march"],
-        "quarter2": ["april", "may", "june"],
-        "quarter3": ["july", "august", "september"],
-        "quarter4": ["october", "november", "december"]
-    }
+    try:
+        year = int(year)
+    except ValueError:
+        return jsonify({'error': 'Invalid year format. Provide year like 2026'}), 400
 
     def quarter_for_month(month_str: str):
         m = (month_str or '').lower()
-        for q, months in quarter_months.items():
+        for q, months in QUARTER_MONTHS.items():
             if m in months:
                 return q
         return None
 
     def prev_month_year(month_str: str, y: int):
-        idx = months_master.index(month_str)
+        idx = MONTHS.index(month_str)
         if idx == 0:
             return "December", y - 1
-        return months_master[idx - 1], y
+        return MONTHS[idx - 1], y
 
     def prev_quarter(q: str):
         order = ["quarter1", "quarter2", "quarter3", "quarter4"]
@@ -1429,11 +1434,6 @@ def cashflow():
         if i == 0:
             return "quarter4", -1
         return order[i - 1], 0
-
-    try:
-        year = int(year)
-    except ValueError:
-        return jsonify({'error': 'Invalid year format. Provide year like 2025'}), 400
 
     if period_type == 'monthly' and not month:
         return jsonify({'error': 'Month must be provided for monthly period type'}), 400
@@ -1444,123 +1444,16 @@ def cashflow():
     month_name = None
     if month:
         try:
-            month_name = datetime.strptime(month.strip(), "%B").strftime("%B")
+            month_name = datetime.strptime(month.strip().capitalize(), "%B").strftime("%B")
         except ValueError:
-            try:
-                month_name = datetime.strptime(month.strip().capitalize(), "%B").strftime("%B")
-            except ValueError:
-                return jsonify({
-                    'error': 'Invalid month format. Use full month names like "January" or "january"'
-                }), 400
+            return jsonify({
+                'error': 'Invalid month format. Use full month names like January or january'
+            }), 400
 
     db_session = SessionLocal()
 
-    def find_total_row(df: pd.DataFrame):
-        if 'product_name' not in df.columns:
-            return None
-
-        product_series = df['product_name'].astype(str).str.strip()
-        for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
-            total_row = df[product_series == variation]
-            if not total_row.empty:
-                return total_row.tail(1)
-
-        contains_total = df[product_series.str.contains('total', case=False, na=False)]
-        if not contains_total.empty:
-            return contains_total.tail(1)
-
-        return None
-
-    def get_months_to_process(period_type_value: str, month_name_value: str = None):
-        if period_type_value == 'monthly':
-            return [month_name_value]
-
-        if period_type_value == 'quarterly':
-            q = quarter_for_month(month_name_value)
-            if not q:
-                return []
-            return [m.capitalize() for m in quarter_months[q]]
-
-        if period_type_value in quarter_months:
-            return [m.capitalize() for m in quarter_months[period_type_value]]
-
-        if period_type_value == 'yearly':
-            return months_master.copy()
-
-        return []
-
-    def build_table_name(user_id_value: int, record_country: str, period_type_value: str,
-                         year_value: int, month_name_value: str = None):
-        record_country = (record_country or '').lower().strip()
-
-        if period_type_value == 'monthly':
-            suffix = f"{month_name_value.lower()}{year_value}"
-            if record_country.startswith("global"):
-                return f"skuwisemonthly_{user_id_value}_{record_country}_{suffix}_table"
-            return f"skuwisemonthly_{user_id_value}_{record_country}_{suffix}"
-
-        if period_type_value == 'quarterly':
-            q = quarter_for_month(month_name_value)
-            if not q:
-                return None
-            return f"{q}_{user_id_value}_{record_country}_{year_value}_table"
-
-        if period_type_value in quarter_months:
-            return f"{period_type_value}_{user_id_value}_{record_country}_{year_value}_table"
-
-        if period_type_value == 'yearly':
-            return f"skuwiseyearly_{user_id_value}_{record_country}_{year_value}_table"
-
-        return None
-
-    def get_countries_with_data(user_id_value: int, year_value: int, country_value: str, months_to_process: list):
-        countries_with_data = set()
-
-        for process_month in months_to_process:
-            if country_value:
-                upload_query = text("""
-                    SELECT DISTINCT country
-                    FROM upload_history
-                    WHERE user_id = :user_id
-                      AND LOWER(month) = LOWER(:month)
-                      AND year = :year
-                      AND LOWER(country) = LOWER(:country)
-                """)
-                params = {
-                    'user_id': user_id_value,
-                    'month': process_month,
-                    'year': year_value,
-                    'country': country_value
-                }
-            else:
-                upload_query = text("""
-                    SELECT DISTINCT country
-                    FROM upload_history
-                    WHERE user_id = :user_id
-                      AND LOWER(month) = LOWER(:month)
-                      AND year = :year
-                """)
-                params = {
-                    'user_id': user_id_value,
-                    'month': process_month,
-                    'year': year_value
-                }
-
-            rows = db_session.execute(upload_query, params).fetchall()
-            for row in rows:
-                if row[0]:
-                    countries_with_data.add(str(row[0]).strip().lower())
-
-        return countries_with_data
-
-    def load_table_dataframe(table_name: str) -> pd.DataFrame:
-        with engine.connect() as conn:
-            return pd.read_sql(text(f'SELECT * FROM "{table_name}"'), conn)
-
-    def compute_cashflow_summary(user_id_value: int, year_value: int, country_value: str,
-                                 period_type_value: str, month_name_value: str = None):
-        all_cashflow_data = []
-        combined_totals = {
+    def empty_totals():
+        return {
             'net_sales': 0,
             'gross_sales': 0,
             'advertising_total': 0,
@@ -1577,6 +1470,227 @@ def cashflow():
             'promotional_rebates': 0
         }
 
+    def find_total_row(df: pd.DataFrame):
+        if 'product_name' in df.columns:
+            product_series = df['product_name'].astype(str).str.strip()
+            exact_total = df[product_series.str.lower().isin(['total', 'totals'])]
+            if not exact_total.empty:
+                return exact_total.tail(1)
+
+            contains_total = df[product_series.str.contains('total', case=False, na=False)]
+            if not contains_total.empty:
+                return contains_total.tail(1)
+
+        if 'sku' in df.columns:
+            sku_series = df['sku'].astype(str).str.strip()
+            exact_total = df[sku_series.str.lower().isin(['total', 'totals'])]
+            if not exact_total.empty:
+                return exact_total.tail(1)
+
+        return None
+
+    def get_months_to_process(period_type_value: str, month_name_value: str = None):
+        if period_type_value == 'monthly':
+            return [month_name_value]
+
+        if period_type_value == 'quarterly':
+            q = quarter_for_month(month_name_value)
+            if not q:
+                return []
+            return [m.capitalize() for m in QUARTER_MONTHS[q]]
+
+        if period_type_value in QUARTER_MONTHS:
+            return [m.capitalize() for m in QUARTER_MONTHS[period_type_value]]
+
+        if period_type_value == 'yearly':
+            return MONTHS.copy()
+
+        return []
+
+    def find_monthly_table(user_id_value, record_country, year_value, month_name_value):
+        record_country = (record_country or '').lower().strip()
+        month_clean = month_name_value.lower()
+
+        candidates = [
+            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}{year_value}_table",
+            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}_table",
+            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}{year_value}",
+            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}",
+        ]
+
+        for table_name in candidates:
+            if table_exists(db_session, table_name):
+                return table_name
+
+        return None
+
+    def get_countries_with_data(user_id_value, year_value, country_value, months_to_process):
+        country_value = (country_value or '').lower().strip()
+
+        if country_value == 'global':
+            countries = set()
+
+            for process_month in months_to_process:
+                q = text("""
+                    SELECT DISTINCT LOWER(country)
+                    FROM upload_history
+                    WHERE user_id = :user_id
+                      AND LOWER(month) = LOWER(:month)
+                      AND year = :year
+                      AND LOWER(country) IN ('uk', 'us')
+                """)
+                rows = db_session.execute(q, {
+                    'user_id': user_id_value,
+                    'month': process_month,
+                    'year': year_value
+                }).fetchall()
+
+                for row in rows:
+                    if row[0]:
+                        countries.add(str(row[0]).strip().lower())
+
+                for c in ['uk', 'us']:
+                    if find_monthly_table(user_id_value, c, year_value, process_month):
+                        countries.add(c)
+
+            return countries
+
+        return {country_value}
+
+    def load_table_dataframe(table_name: str):
+        with engine.connect() as conn:
+            return pd.read_sql(text(f'SELECT * FROM "{table_name}"'), conn)
+
+    def get_upload_values(user_id_value, process_month, year_value, record_country):
+        upload_values_query = text("""
+            SELECT otherwplatform, taxncredit
+            FROM upload_history
+            WHERE user_id = :user_id
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(country) = LOWER(:country)
+            LIMIT 1
+        """)
+
+        row = db_session.execute(upload_values_query, {
+            'user_id': user_id_value,
+            'month': process_month,
+            'year': year_value,
+            'country': record_country
+        }).fetchone()
+
+        otherwplatform = float(row[0] or 0) if row else 0
+        taxncredit = float(row[1] or 0) if row else 0
+
+        return otherwplatform, taxncredit
+
+    def extract_totals(cashflow_df: pd.DataFrame):
+        if cashflow_df.empty:
+            return None, []
+
+        if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
+            cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
+
+        if 'cm2_profit' not in cashflow_df.columns and 'profit' in cashflow_df.columns:
+            cashflow_df['cm2_profit'] = cashflow_df['profit']
+
+        numeric_cols = [
+            'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
+            'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
+            'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
+        ]
+
+        for col in numeric_cols:
+            if col in cashflow_df.columns:
+                cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
+
+        total_row = find_total_row(cashflow_df)
+        source_df = total_row if total_row is not None and not total_row.empty else cashflow_df
+
+        def get_total(col):
+            if col not in source_df.columns:
+                return 0
+            if total_row is not None and not total_row.empty:
+                return float(source_df[col].iloc[0])
+            return float(source_df[col].sum())
+
+        totals = {
+            'net_sales': get_total('net_sales'),
+            'gross_sales': get_total('gross_sales'),
+            'promotional_rebates': get_total('promotional_rebates'),
+            'quantity_total': get_total('total_quantity'),
+            'advertising_total': get_total('advertising_total'),
+            'selling_fees': get_total('selling_fees'),
+            'fba_fees': get_total('fba_fees'),
+            'amazon_fee': get_total('amazon_fee'),
+            'cm2_profit': get_total('cm2_profit'),
+            'cost_of_unit_sold': get_total('cost_of_unit_sold'),
+            'rembursement_fee': get_total('rembursement_fee'),
+            'taxncredit': 0,
+            'otherwplatform': 0,
+            'cashflow': 0,
+        }
+
+        totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+
+        if 'date' in cashflow_df.columns:
+            cashflow_df = cashflow_df.drop(columns=['date'])
+
+        numeric_columns = cashflow_df.select_dtypes(include=['number']).columns
+        for col in numeric_columns:
+            cashflow_df[col] = cashflow_df[col].astype(float).round(2)
+
+        data_records = []
+        for record in cashflow_df.to_dict(orient='records'):
+            clean_record = {}
+            for key, value in record.items():
+                if pd.isna(value) or value is None:
+                    clean_record[key] = 0
+                elif isinstance(value, str):
+                    clean_record[key] = value
+                else:
+                    try:
+                        clean_record[key] = float(value)
+                    except Exception:
+                        clean_record[key] = str(value)
+            data_records.append(clean_record)
+
+        return totals, data_records
+
+    def convert_uk_to_usd_if_needed(totals, record_country, process_month, year_value, country_value):
+        if country_value == "global" and currency_param == "usd" and record_country == "uk":
+            rate = get_gbp_to_usd_rate(process_month, year_value)
+
+            money_keys = [
+                'net_sales',
+                'gross_sales',
+                'promotional_rebates',
+                'advertising_total',
+                'selling_fees',
+                'fba_fees',
+                'amazon_fee',
+                'cm2_profit',
+                'cost_of_unit_sold',
+                'rembursement_fee',
+                'taxncredit',
+                'otherwplatform'
+            ]
+
+            for key in money_keys:
+                totals[key] *= rate
+
+            totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+
+        return totals
+
+    def add_totals(target, source):
+        for key in target:
+            target[key] += source.get(key, 0)
+
+    def compute_cashflow_summary(user_id_value, year_value, country_value, period_type_value, month_name_value=None):
+        combined_totals = empty_totals()
+        all_cashflow_data = []
+
         months_to_process = get_months_to_process(period_type_value, month_name_value)
         if not months_to_process:
             return combined_totals, [], {}
@@ -1589,167 +1703,81 @@ def cashflow():
         )
 
         for record_country in countries_with_data:
-            total_otherwplatform = 0
-            total_taxncredit_from_upload = 0
+            country_totals = empty_totals()
+            country_monthly_details = []
+            country_data_records = []
 
             for process_month in months_to_process:
-                upload_values_query = text("""
-                    SELECT otherwplatform, taxncredit
-                    FROM upload_history
-                    WHERE user_id = :user_id
-                      AND LOWER(month) = LOWER(:month)
-                      AND year = :year
-                      AND LOWER(country) = LOWER(:country)
-                    LIMIT 1
-                """)
-                upload_values_params = {
-                    'user_id': user_id_value,
-                    'month': process_month,
-                    'year': year_value,
-                    'country': record_country
-                }
-                upload_values_result = db_session.execute(
-                    upload_values_query, upload_values_params
-                ).fetchone()
+                table_name = find_monthly_table(
+                    user_id_value=user_id_value,
+                    record_country=record_country,
+                    year_value=year_value,
+                    month_name_value=process_month
+                )
 
-                if upload_values_result:
-                    if upload_values_result[0] is not None:
-                        total_otherwplatform += float(upload_values_result[0])
-                    if upload_values_result[1] is not None:
-                        total_taxncredit_from_upload += float(upload_values_result[1])
-
-            table_name = build_table_name(
-                user_id_value=user_id_value,
-                record_country=record_country,
-                period_type_value=period_type_value,
-                year_value=year_value,
-                month_name_value=month_name_value
-            )
-
-            if not table_name or not table_exists(db_session, table_name):
-                continue
-
-            try:
-                cashflow_df = load_table_dataframe(table_name)
-                if cashflow_df.empty:
+                if not table_name:
+                    print(f"Cashflow monthly table not found: country={record_country}, month={process_month}, year={year_value}")
                     continue
 
-                numeric_cols = [
-                    'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
-                    'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
-                    'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
-                ]
-
-                for col in numeric_cols:
-                    if col in cashflow_df.columns:
-                        cashflow_df[col] = pd.to_numeric(
-                            cashflow_df[col], errors='coerce'
-                        ).fillna(0)
-
-                total_row = find_total_row(cashflow_df)
-
-                if total_row is not None and not total_row.empty:
-                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row.columns else 0
-                    gross_sales_total = float(total_row['gross_sales'].iloc[0]) if 'gross_sales' in total_row.columns else 0
-                    promotional_rebates_total = float(total_row['promotional_rebates'].iloc[0]) if 'promotional_rebates' in total_row.columns else 0
-                    quantity_total = float(total_row['total_quantity'].iloc[0]) if 'total_quantity' in total_row.columns else 0
-                    advertising_total = float(total_row['advertising_total'].iloc[0]) if 'advertising_total' in total_row.columns else 0
-                    selling_fees_total = float(total_row['selling_fees'].iloc[0]) if 'selling_fees' in total_row.columns else 0
-                    fba_fees_total = float(total_row['fba_fees'].iloc[0]) if 'fba_fees' in total_row.columns else 0
-                    amazon_fee_total = float(total_row['amazon_fee'].iloc[0]) if 'amazon_fee' in total_row.columns else 0
-                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row.columns else 0
-                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row.columns else 0
-                    rembursement_fee_total = float(total_row['rembursement_fee'].iloc[0]) if 'rembursement_fee' in total_row.columns else 0
-                else:
-                    net_sales_total = float(cashflow_df['net_sales'].sum()) if 'net_sales' in cashflow_df.columns else 0
-                    gross_sales_total = float(cashflow_df['gross_sales'].sum()) if 'gross_sales' in cashflow_df.columns else 0
-                    promotional_rebates_total = float(cashflow_df['promotional_rebates'].sum()) if 'promotional_rebates' in cashflow_df.columns else 0
-                    quantity_total = float(cashflow_df['total_quantity'].sum()) if 'total_quantity' in cashflow_df.columns else 0
-                    advertising_total = float(cashflow_df['advertising_total'].sum()) if 'advertising_total' in cashflow_df.columns else 0
-                    selling_fees_total = float(cashflow_df['selling_fees'].sum()) if 'selling_fees' in cashflow_df.columns else 0
-                    fba_fees_total = float(cashflow_df['fba_fees'].sum()) if 'fba_fees' in cashflow_df.columns else 0
-                    amazon_fee_total = float(cashflow_df['amazon_fee'].sum()) if 'amazon_fee' in cashflow_df.columns else 0
-                    cm2_profit_total = float(cashflow_df['cm2_profit'].sum()) if 'cm2_profit' in cashflow_df.columns else 0
-                    cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
-                    rembursement_fee_total = float(cashflow_df['rembursement_fee'].sum()) if 'rembursement_fee' in cashflow_df.columns else 0
-
-                taxncredit_total = total_taxncredit_from_upload
-                cashflow_total = cost_of_unit_sold_total + cm2_profit_total
-
-                combined_totals['net_sales'] += net_sales_total
-                combined_totals['gross_sales'] += gross_sales_total
-                combined_totals['promotional_rebates'] += promotional_rebates_total
-                combined_totals['quantity_total'] += quantity_total
-                combined_totals['advertising_total'] += advertising_total
-                combined_totals['selling_fees'] += selling_fees_total
-                combined_totals['fba_fees'] += fba_fees_total
-                combined_totals['amazon_fee'] += amazon_fee_total
-                combined_totals['cm2_profit'] += cm2_profit_total
-                combined_totals['cost_of_unit_sold'] += cost_of_unit_sold_total
-                combined_totals['taxncredit'] += taxncredit_total
-                combined_totals['otherwplatform'] += total_otherwplatform
-                combined_totals['cashflow'] += cashflow_total
-                combined_totals['rembursement_fee'] += rembursement_fee_total
-
-                if 'date' in cashflow_df.columns:
-                    cashflow_df = cashflow_df.drop(columns=['date'])
-
-                numeric_columns = cashflow_df.select_dtypes(include=['number']).columns
-                for col in numeric_columns:
-                    cashflow_df[col] = cashflow_df[col].astype(float).round(2)
-
                 try:
-                    data_records = cashflow_df.to_dict(orient='records')
-                    cleaned_records = []
-                    for record in data_records:
-                        clean_record = {}
-                        for key, value in record.items():
-                            try:
-                                if pd.isna(value) or value is None:
-                                    clean_record[key] = 0
-                                elif isinstance(value, str):
-                                    clean_record[key] = value
-                                else:
-                                    clean_record[key] = float(value)
-                            except (ValueError, TypeError):
-                                clean_record[key] = str(value) if value is not None else ""
-                        cleaned_records.append(clean_record)
-                    data_records = cleaned_records
-                except Exception:
-                    data_records = []
+                    cashflow_df = load_table_dataframe(table_name)
+                    totals, data_records = extract_totals(cashflow_df)
 
+                    if totals is None:
+                        continue
+
+                    otherwplatform, taxncredit = get_upload_values(
+                        user_id_value=user_id_value,
+                        process_month=process_month,
+                        year_value=year_value,
+                        record_country=record_country
+                    )
+
+                    totals['otherwplatform'] = otherwplatform
+                    totals['taxncredit'] = taxncredit
+                    totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+
+                    totals = convert_uk_to_usd_if_needed(
+                        totals=totals,
+                        record_country=record_country,
+                        process_month=process_month,
+                        year_value=year_value,
+                        country_value=country_value
+                    )
+
+                    add_totals(combined_totals, totals)
+                    add_totals(country_totals, totals)
+
+                    country_monthly_details.append({
+                        'month': process_month,
+                        'table': table_name,
+                        **{k: round(v, 2) for k, v in totals.items()}
+                    })
+
+                    if period_type_value == 'monthly':
+                        country_data_records = data_records
+
+                except Exception as e:
+                    print(f"Cashflow error reading {record_country} {process_month}: {e}")
+                    continue
+
+            if any(float(v or 0) != 0 for v in country_totals.values()):
                 all_cashflow_data.append({
                     'country': record_country,
-                    'table': table_name,
                     'period_type': period_type_value,
                     'month': month_name_value if period_type_value == 'monthly' else None,
-                    'net_sales': round(net_sales_total, 2),
-                    'gross_sales': round(gross_sales_total, 2),
-                    'promotional_rebates': round(promotional_rebates_total, 2),
-                    'quantity_total': round(quantity_total, 2),
-                    'advertising_total': round(advertising_total, 2),
-                    'selling_fees': round(selling_fees_total, 2),
-                    'fba_fees': round(fba_fees_total, 2),
-                    'amazon_fee': round(amazon_fee_total, 2),
-                    'cm2_profit': round(cm2_profit_total, 2),
-                    'cost_of_unit_sold': round(cost_of_unit_sold_total, 2),
-                    'taxncredit': round(taxncredit_total, 2),
-                    'otherwplatform': round(total_otherwplatform, 2),
-                    'cashflow': round(cashflow_total, 2),
-                    'rembursement_fee': round(rembursement_fee_total, 2),
-                    'data': data_records
+                    **{k: round(v, 2) for k, v in country_totals.items()},
+                    'monthly_details': country_monthly_details,
+                    'data': country_data_records
                 })
 
-            except Exception:
-                continue
-
-        for k in combined_totals:
-            combined_totals[k] = round(combined_totals[k], 2)
+        for key in combined_totals:
+            combined_totals[key] = round(combined_totals[key], 2)
 
         meta = {}
         if period_type_value == 'monthly':
             meta['month'] = month_name_value
-        elif period_type_value == 'quarterly' or period_type_value in quarter_months:
+        elif period_type_value == 'quarterly' or period_type_value in QUARTER_MONTHS:
             meta['quarter_months'] = months_to_process
         elif period_type_value == 'yearly':
             meta['year_months'] = months_to_process
@@ -1766,25 +1794,17 @@ def cashflow():
         )
 
         if not all_cashflow_data:
-            all_data_query = text("""
-                SELECT DISTINCT country, month, year
-                FROM upload_history
-                WHERE user_id = :user_id
-                ORDER BY year DESC, month DESC
-            """)
-            all_data = db_session.execute(all_data_query, {'user_id': user_id}).fetchall()
-            available_data = [{'country': r[0], 'month': r[1], 'year': r[2]} for r in all_data]
-
             return jsonify({
                 'error': 'No data found for the specified parameters',
                 'searched_for': {
                     'user_id': user_id,
                     'year': year,
                     'country': country,
+                    'original_country': country_param,
+                    'currency': currency_param,
                     'period_type': period_type,
                     'month': month_name
-                },
-                'available_data': available_data[:10]
+                }
             }), 404
 
         prev_year = year
@@ -1802,7 +1822,7 @@ def cashflow():
                 prev_year = year + y_delta
                 prev_month_name = None
 
-        elif period_type in quarter_months:
+        elif period_type in QUARTER_MONTHS:
             prev_q, y_delta = prev_quarter(period_type)
             prev_period_type = prev_q
             prev_year = year + y_delta
@@ -1822,17 +1842,20 @@ def cashflow():
                 month_name_value=prev_month_name
             )
             previous_summary = prev_totals
-        except Exception:
+        except Exception as e:
+            print(f"Previous cashflow summary error: {e}")
             previous_summary = None
 
         response_data = {
             'period_type': period_type,
             'year': year,
+            'country': country,
             'summary': combined_totals,
             'previous_summary': previous_summary,
             'detailed_data': all_cashflow_data,
             'total_records': len(all_cashflow_data),
         }
+
         response_data.update(meta)
 
         return jsonify(response_data), 200
@@ -1842,7 +1865,7 @@ def cashflow():
 
     finally:
         db_session.close()
-
+        
 
 
 @dashboard_bp.route('/target-summary', methods=['GET', 'POST'])
@@ -2317,4 +2340,3 @@ def target_summary():
     finally:
         db_session.close()
 
-        

@@ -431,9 +431,20 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       throw new Error("Authorization token not found. Please login.");
     }
     const searchParams = new URLSearchParams();
+
     if (requestMonth) searchParams.set("month", requestMonth);
     if (requestYear) searchParams.set("year", String(requestYear));
-    if (countryName) searchParams.set("country", countryName.toLowerCase());
+
+    if (countryName) {
+      const country = countryName.toLowerCase();
+      searchParams.set("country", country);
+
+      // ✅ Tell backend to convert UK GBP -> USD before global total
+      if (country === "global") {
+        searchParams.set("homeCurrency", "usd");
+      }
+    }
+
     searchParams.set("period_type", requestPeriodType);
 
     const res = await fetch(
