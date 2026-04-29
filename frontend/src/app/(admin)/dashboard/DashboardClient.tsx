@@ -3974,18 +3974,22 @@ export default function DashboardPage() {
                     return;
                 }
 
-                shouldPostCacheRef.current = true;
-                isManualRefreshRef.current = true;
-                await runDashboardLoadWithSteps();
+                // No cache found: do not auto-refresh.
+                // Wait until user clicks Refresh button.
+                shouldPostCacheRef.current = false;
+                isManualRefreshRef.current = false;
+                resetStepState();
+                setDashboardBusy(false);
 
             } catch (err) {
                 console.error("Dashboard bootstrap failed:", err);
 
                 if (cancelled) return;
-
-                shouldPostCacheRef.current = true;
-                isManualRefreshRef.current = true;
-                await runDashboardLoadWithSteps();
+                // Cache fetch failed: do not auto-refresh.
+                shouldPostCacheRef.current = false;
+                isManualRefreshRef.current = false;
+                resetStepState();
+                setDashboardBusy(false);
             }
         };
 
