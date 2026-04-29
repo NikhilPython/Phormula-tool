@@ -2393,327 +2393,221 @@ export default function DashboardPage() {
     //         const n = Number(v || 0);
     //         if (!n) return 0;
 
-    //         // Global tab => convert source currency to user's home/display currency
     //         if (platform === "global") {
     //             return convertToDisplayCurrency(n, biSourceCurrency);
     //         }
 
-    //         // Country tabs => keep native/source currency
     //         return n;
+    //     };
+
+    //     const buildFinalRows = (
+    //         rows: Array<{
+    //             name: string;
+    //             value: number;
+    //             prevValue: number;
+    //             deltaPct?: number | null;
+    //         }>
+    //     ): Cm1PieSlice[] => {
+    //         const cleaned = rows
+    //             .map((r: {
+    //                 name: string;
+    //                 value: number;
+    //                 prevValue: number;
+    //                 deltaPct?: number | null;
+    //             }) => ({
+    //                 name: String(r.name || "Unknown").trim() || "Unknown",
+    //                 value: Number(r.value || 0),
+    //                 prevValue: Number(r.prevValue || 0),
+    //                 deltaPct:
+    //                     r.deltaPct == null
+    //                         ? Number(r.prevValue || 0) !== 0
+    //                             ? ((Number(r.value || 0) - Number(r.prevValue || 0)) /
+    //                                 Math.abs(Number(r.prevValue || 0))) * 100
+    //                             : null
+    //                         : r.deltaPct,
+    //             }))
+    //             .filter((r: {
+    //                 value: number;
+    //                 prevValue: number;
+    //             }) => r.value !== 0 || r.prevValue !== 0);
+
+    //         if (!cleaned.length) return [];
+
+    //         const merged = new Map<
+    //             string,
+    //             { name: string; value: number; prevValue: number; deltaPct: number | null }
+    //         >();
+
+    //         for (const row of cleaned) {
+    //             const key = row.name;
+    //             const existing = merged.get(key);
+
+    //             if (existing) {
+    //                 existing.value += row.value;
+    //                 existing.prevValue += row.prevValue;
+
+    //                 existing.deltaPct =
+    //                     existing.prevValue !== 0
+    //                         ? ((existing.value - existing.prevValue) /
+    //                             Math.abs(existing.prevValue)) * 100
+    //                         : null;
+    //             } else {
+    //                 merged.set(key, { ...row });
+    //             }
+    //         }
+
+    //         const mergedRows = Array.from(merged.values()).sort(
+    //             (a: { value: number }, b: { value: number }) => b.value - a.value
+    //         );
+
+    //         const total = mergedRows.reduce(
+    //             (sum: number, r: { value: number }) => sum + r.value,
+    //             0
+    //         ) || 1;
+
+    //         return mergedRows.map((r: {
+    //             name: string;
+    //             value: number;
+    //             prevValue: number;
+    //             deltaPct: number | null;
+    //         }) => ({
+    //             name: r.name,
+    //             value: r.value,
+    //             prevValue: r.prevValue,
+    //             pct: (r.value / total) * 100,
+    //             deltaPct: r.deltaPct,
+    //         }));
     //     };
 
     //     const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
 
-    //     if (apiSlices?.length) {
-    //         const merged = new Map<
-    //             string,
-    //             { name: string; value: number; prevValue: number; deltaPct: number }
-    //         >();
-
-    //         for (const s of apiSlices) {
-    //             const name = (s.name || "Others").trim();
-
-    //             const value = toPieCurrency(Number(s.profit_curr || 0));
-    //             const prevValue = toPieCurrency(Number(s.profit_prev || 0));
-
-    //             const existing = merged.get(name);
-    //             if (existing) {
-    //                 existing.value += value;
-    //                 existing.prevValue += prevValue;
-    //                 existing.deltaPct = Number(s.delta_pct ?? existing.deltaPct ?? 0);
-    //             } else {
-    //                 merged.set(name, {
-    //                     name,
-    //                     value,
-    //                     prevValue,
-    //                     deltaPct: Number(s.delta_pct ?? 0),
-    //                 });
-    //             }
-    //         }
-
-    //         const total =
-    //             Array.from(merged.values()).reduce((sum, r) => sum + r.value, 0) || 1;
-
-    //         return Array.from(merged.values())
-    //             .map((r) => ({
-    //                 ...r,
-    //                 pct: (r.value / total) * 100,
+    //     if (Array.isArray(apiSlices) && apiSlices.length) {
+    //         return buildFinalRows(
+    //             apiSlices.map((s: any) => ({
+    //                 name: String(s?.name || "Others").trim(),
+    //                 value: toPieCurrency(Number(s?.profit_curr || 0)),
+    //                 prevValue: toPieCurrency(Number(s?.profit_prev || 0)),
+    //                 deltaPct: s?.delta_pct == null ? null : Number(s.delta_pct),
     //             }))
-    //             .sort((a, b) => b.value - a.value);
+    //         );
     //     }
 
     //     const cg = liveBiPayload?.categorized_growth;
-    //     const top80 = cg?.top_80_skus ?? [];
-    //     const other = cg?.other_skus ?? [];
-    //     const combined = [...top80, ...other];
+    //     const top80 = Array.isArray(cg?.top_80_skus) ? cg.top_80_skus : [];
+    //     const other = Array.isArray(cg?.other_skus) ? cg.other_skus : [];
+    //     const combinedGrowth = [...top80, ...other];
 
-    //     if (!combined.length) return [];
+    //     if (combinedGrowth.length) {
+    //         const sorted = combinedGrowth
+    //             .map((r: any) => ({
+    //                 name: String(r?.product_name ?? r?.name ?? "Unknown"),
+    //                 value: toPieCurrency(Number(r?.profit_curr ?? 0)),
+    //                 prevValue: toPieCurrency(Number(r?.profit_prev ?? 0)),
+    //                 deltaPct:
+    //                     Number(r?.profit_prev ?? 0) !== 0
+    //                         ? ((Number(r?.profit_curr ?? 0) - Number(r?.profit_prev ?? 0)) /
+    //                             Math.abs(Number(r?.profit_prev ?? 0))) * 100
+    //                         : null,
+    //             }))
+    //             .filter((x: {
+    //                 value: number;
+    //                 prevValue: number;
+    //             }) => x.value !== 0 || x.prevValue !== 0)
+    //             .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
-    //     const sorted = combined
-    //         .map((r: any) => {
-    //             const curr = toPieCurrency(Number(r?.profit_curr ?? 0));
-    //             const prev = toPieCurrency(Number(r?.profit_prev ?? 0));
+    //         const top = sorted.slice(0, 5);
+    //         const rest = sorted.slice(5);
 
-    //             return {
-    //                 name: String(r?.product_name ?? "Unknown"),
-    //                 profit_curr: curr,
-    //                 profit_prev: prev,
-    //             };
-    //         })
-    //         .filter((x) => x.profit_curr !== 0 || x.profit_prev !== 0)
-    //         .sort((a, b) => b.profit_curr - a.profit_curr);
+    //         const rows = [...top];
 
-    //     const total = sorted.reduce((s, x) => s + x.profit_curr, 0) || 1;
+    //         if (rest.length) {
+    //             const restCurr = rest.reduce(
+    //                 (s: number, x: { value: number }) => s + x.value,
+    //                 0
+    //             );
 
-    //     const top = sorted.slice(0, 5);
-    //     const rest = sorted.slice(5);
+    //             const restPrev = rest.reduce(
+    //                 (s: number, x: { prevValue: number }) => s + x.prevValue,
+    //                 0
+    //             );
 
-    //     const named: Cm1PieSlice[] = top.map((x) => ({
-    //         name: x.name,
-    //         value: x.profit_curr,
-    //         prevValue: x.profit_prev,
-    //         pct: (x.profit_curr / total) * 100,
-    //         deltaPct: x.profit_prev
-    //             ? ((x.profit_curr - x.profit_prev) / Math.abs(x.profit_prev)) * 100
-    //             : 0,
-    //     }));
+    //             rows.push({
+    //                 name: "Others",
+    //                 value: restCurr,
+    //                 prevValue: restPrev,
+    //                 deltaPct:
+    //                     restPrev !== 0
+    //                         ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
+    //                         : null,
+    //             });
+    //         }
 
-    //     if (rest.length) {
-    //         const restCurr = rest.reduce((s, x) => s + x.profit_curr, 0);
-    //         const restPrev = rest.reduce((s, x) => s + x.profit_prev, 0);
-
-    //         named.push({
-    //             name: "Others",
-    //             value: restCurr,
-    //             prevValue: restPrev,
-    //             pct: (restCurr / total) * 100,
-    //             deltaPct: restPrev
-    //                 ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
-    //                 : 0,
-    //         });
+    //         return buildFinalRows(rows);
     //     }
 
-    //     return named.sort((a, b) => b.value - a.value);
-    // }, [liveBiPayload?.cm1_profit_pie, liveBiPayload?.categorized_growth, platform, biSourceCurrency, convertToDisplayCurrency]);
+    //     const skuwiseItems = Array.isArray((data as any)?.skuwise_items)
+    //         ? (data as any).skuwise_items
+    //         : [];
 
-    const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
-        const toPieCurrency = (v: number) => {
-            const n = Number(v || 0);
-            if (!n) return 0;
+    //     if (skuwiseItems.length) {
+    //         const bodyRows = skuwiseItems.filter((r: any) =>
+    //             r?.sku &&
+    //             r.sku !== "GRAND_TOTAL" &&
+    //             String(r?.product_name || "").trim() !== ""
+    //         );
 
-            if (platform === "global") {
-                return convertToDisplayCurrency(n, biSourceCurrency);
-            }
+    //         if (!bodyRows.length) return [];
 
-            return n;
-        };
+    //         const mapped = bodyRows
+    //             .map((r: any) => ({
+    //                 name: String(r?.product_name || r?.sku || "Unknown"),
+    //                 value: toPieCurrency(Number(r?.profit ?? r?.cm1_profit ?? 0)),
+    //                 prevValue: toPieCurrency(
+    //                     Number(r?.profit_prev ?? r?.previous_profit ?? r?.prev_profit ?? 0)
+    //                 ),
+    //                 deltaPct: null,
+    //             }))
+    //             .filter((r: { value: number; prevValue: number }) =>
+    //                 r.value !== 0 || r.prevValue !== 0
+    //             )
+    //             .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
-        const buildFinalRows = (
-            rows: Array<{
-                name: string;
-                value: number;
-                prevValue: number;
-                deltaPct?: number | null;
-            }>
-        ): Cm1PieSlice[] => {
-            const cleaned = rows
-                .map((r: {
-                    name: string;
-                    value: number;
-                    prevValue: number;
-                    deltaPct?: number | null;
-                }) => ({
-                    name: String(r.name || "Unknown").trim() || "Unknown",
-                    value: Number(r.value || 0),
-                    prevValue: Number(r.prevValue || 0),
-                    deltaPct:
-                        r.deltaPct == null
-                            ? Number(r.prevValue || 0) !== 0
-                                ? ((Number(r.value || 0) - Number(r.prevValue || 0)) /
-                                    Math.abs(Number(r.prevValue || 0))) * 100
-                                : null
-                            : r.deltaPct,
-                }))
-                .filter((r: {
-                    value: number;
-                    prevValue: number;
-                }) => r.value !== 0 || r.prevValue !== 0);
+    //         if (!mapped.length) return [];
 
-            if (!cleaned.length) return [];
+    //         const top = mapped.slice(0, 5);
+    //         const rest = mapped.slice(5);
 
-            const merged = new Map<
-                string,
-                { name: string; value: number; prevValue: number; deltaPct: number | null }
-            >();
+    //         const rows = [...top];
 
-            for (const row of cleaned) {
-                const key = row.name;
-                const existing = merged.get(key);
+    //         if (rest.length) {
+    //             rows.push({
+    //                 name: "Others",
+    //                 value: rest.reduce(
+    //                     (s: number, x: { value: number }) => s + x.value,
+    //                     0
+    //                 ),
+    //                 prevValue: rest.reduce(
+    //                     (s: number, x: { prevValue: number }) => s + x.prevValue,
+    //                     0
+    //                 ),
+    //                 deltaPct: null,
+    //             });
+    //         }
 
-                if (existing) {
-                    existing.value += row.value;
-                    existing.prevValue += row.prevValue;
+    //         return buildFinalRows(rows);
+    //     }
 
-                    existing.deltaPct =
-                        existing.prevValue !== 0
-                            ? ((existing.value - existing.prevValue) /
-                                Math.abs(existing.prevValue)) * 100
-                            : null;
-                } else {
-                    merged.set(key, { ...row });
-                }
-            }
+    //     return [];
+    // }, [
+    //     liveBiPayload?.cm1_profit_pie,
+    //     liveBiPayload?.categorized_growth,
+    //     data,
+    //     platform,
+    //     biSourceCurrency,
+    //     convertToDisplayCurrency,
+    // ]);
 
-            const mergedRows = Array.from(merged.values()).sort(
-                (a: { value: number }, b: { value: number }) => b.value - a.value
-            );
 
-            const total = mergedRows.reduce(
-                (sum: number, r: { value: number }) => sum + r.value,
-                0
-            ) || 1;
-
-            return mergedRows.map((r: {
-                name: string;
-                value: number;
-                prevValue: number;
-                deltaPct: number | null;
-            }) => ({
-                name: r.name,
-                value: r.value,
-                prevValue: r.prevValue,
-                pct: (r.value / total) * 100,
-                deltaPct: r.deltaPct,
-            }));
-        };
-
-        const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
-
-        if (Array.isArray(apiSlices) && apiSlices.length) {
-            return buildFinalRows(
-                apiSlices.map((s: any) => ({
-                    name: String(s?.name || "Others").trim(),
-                    value: toPieCurrency(Number(s?.profit_curr || 0)),
-                    prevValue: toPieCurrency(Number(s?.profit_prev || 0)),
-                    deltaPct: s?.delta_pct == null ? null : Number(s.delta_pct),
-                }))
-            );
-        }
-
-        const cg = liveBiPayload?.categorized_growth;
-        const top80 = Array.isArray(cg?.top_80_skus) ? cg.top_80_skus : [];
-        const other = Array.isArray(cg?.other_skus) ? cg.other_skus : [];
-        const combinedGrowth = [...top80, ...other];
-
-        if (combinedGrowth.length) {
-            const sorted = combinedGrowth
-                .map((r: any) => ({
-                    name: String(r?.product_name ?? r?.name ?? "Unknown"),
-                    value: toPieCurrency(Number(r?.profit_curr ?? 0)),
-                    prevValue: toPieCurrency(Number(r?.profit_prev ?? 0)),
-                    deltaPct:
-                        Number(r?.profit_prev ?? 0) !== 0
-                            ? ((Number(r?.profit_curr ?? 0) - Number(r?.profit_prev ?? 0)) /
-                                Math.abs(Number(r?.profit_prev ?? 0))) * 100
-                            : null,
-                }))
-                .filter((x: {
-                    value: number;
-                    prevValue: number;
-                }) => x.value !== 0 || x.prevValue !== 0)
-                .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
-
-            const top = sorted.slice(0, 5);
-            const rest = sorted.slice(5);
-
-            const rows = [...top];
-
-            if (rest.length) {
-                const restCurr = rest.reduce(
-                    (s: number, x: { value: number }) => s + x.value,
-                    0
-                );
-
-                const restPrev = rest.reduce(
-                    (s: number, x: { prevValue: number }) => s + x.prevValue,
-                    0
-                );
-
-                rows.push({
-                    name: "Others",
-                    value: restCurr,
-                    prevValue: restPrev,
-                    deltaPct:
-                        restPrev !== 0
-                            ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
-                            : null,
-                });
-            }
-
-            return buildFinalRows(rows);
-        }
-
-        const skuwiseItems = Array.isArray((data as any)?.skuwise_items)
-            ? (data as any).skuwise_items
-            : [];
-
-        if (skuwiseItems.length) {
-            const bodyRows = skuwiseItems.filter((r: any) =>
-                r?.sku &&
-                r.sku !== "GRAND_TOTAL" &&
-                String(r?.product_name || "").trim() !== ""
-            );
-
-            if (!bodyRows.length) return [];
-
-            const mapped = bodyRows
-                .map((r: any) => ({
-                    name: String(r?.product_name || r?.sku || "Unknown"),
-                    value: toPieCurrency(Number(r?.profit ?? r?.cm1_profit ?? 0)),
-                    prevValue: toPieCurrency(
-                        Number(r?.profit_prev ?? r?.previous_profit ?? r?.prev_profit ?? 0)
-                    ),
-                    deltaPct: null,
-                }))
-                .filter((r: { value: number; prevValue: number }) =>
-                    r.value !== 0 || r.prevValue !== 0
-                )
-                .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
-
-            if (!mapped.length) return [];
-
-            const top = mapped.slice(0, 5);
-            const rest = mapped.slice(5);
-
-            const rows = [...top];
-
-            if (rest.length) {
-                rows.push({
-                    name: "Others",
-                    value: rest.reduce(
-                        (s: number, x: { value: number }) => s + x.value,
-                        0
-                    ),
-                    prevValue: rest.reduce(
-                        (s: number, x: { prevValue: number }) => s + x.prevValue,
-                        0
-                    ),
-                    deltaPct: null,
-                });
-            }
-
-            return buildFinalRows(rows);
-        }
-
-        return [];
-    }, [
-        liveBiPayload?.cm1_profit_pie,
-        liveBiPayload?.categorized_growth,
-        data,
-        platform,
-        biSourceCurrency,
-        convertToDisplayCurrency,
-    ]);
 
     /* ===================== INTEGRATION FLAGS ===================== */
     const shopifyDeriv = useMemo(() => {
@@ -3678,6 +3572,52 @@ export default function DashboardPage() {
         const ukPrevTotals = ukData?.previous_period?.totals || {};
         const usPrevTotals = usData?.previous_period?.totals || {};
 
+        const prevGraphDebugRows = labels.map((label) => {
+            const getRaw = (row: any) => {
+                switch (label) {
+                    case "Net Sales":
+                        return row?.net_sales;
+                    case "COGS":
+                        return row?.cogs;
+                    case "Marketplace Fees":
+                        return row?.amazon_fees;
+                    case "Tax & Credits":
+                        return row?.tax_and_credits;
+                    case "Advertisements":
+                        return row?.advertising_fees;
+                    case "Others":
+                        return row?.platform_fee;
+                    case "CM1 Profit":
+                        return row?.profit;
+                    case "CM2 Profit":
+                        return row?.cm2_profit;
+                    default:
+                        return 0;
+                }
+            };
+
+            const ukRaw = toNumberSafe(getRaw(ukPrevTotals));
+            const usRaw = toNumberSafe(getRaw(usPrevTotals));
+            const ukUsd = ukRaw * gbpToUsd;
+            const usUsd = usRaw;
+
+            return {
+                label,
+                ukRawGBP: ukRaw,
+                ukConvertedUSD: ukUsd,
+                usRawUSD: usRaw,
+                mergedUSD: ukUsd + usUsd,
+            };
+        });
+
+        console.table(prevGraphDebugRows);
+        console.log("[PREVIOUS GRAPH UK/US/MERGED SOURCE]", {
+            gbpToUsd,
+            ukPrevTotals,
+            usPrevTotals,
+            rows: prevGraphDebugRows,
+        });
+
         const prevUnits = mergeNumberField(ukPrevTotals, usPrevTotals, "quantity");
         const prevNetSales = mergeMoneyField(ukPrevTotals, usPrevTotals, "net_sales");
         const prevGrossSales = mergeMoneyField(ukPrevTotals, usPrevTotals, "gross_sales");
@@ -3688,6 +3628,28 @@ export default function DashboardPage() {
 
         const prevCm2Profit = mergeMoneyField(ukPrevTotals, usPrevTotals, "cm2_profit");
         const prevProfit = mergeMoneyField(ukPrevTotals, usPrevTotals, "profit");
+
+
+        const prevCogs = mergeMoneyField(ukPrevTotals, usPrevTotals, "cogs");
+
+        const prevMarketplaceFees =
+            mergeMoneyField(ukPrevTotals, usPrevTotals, "amazon_fees") ||
+            (
+                mergeMoneyField(ukPrevTotals, usPrevTotals, "fba_fees") +
+                mergeMoneyField(ukPrevTotals, usPrevTotals, "selling_fees")
+            );
+
+        const prevTaxAndCredits = mergeMoneyField(
+            ukPrevTotals,
+            usPrevTotals,
+            "tax_and_credits"
+        );
+
+        const prevPlatformFee = mergeMoneyField(
+            ukPrevTotals,
+            usPrevTotals,
+            "platform_fee"
+        );
 
         const ukPrevFullMonthNetSalesGBP = toNumberSafe(
             ukPayload?.biAlignedTotals?.total_previous_net_sales_full_month
@@ -3703,12 +3665,38 @@ export default function DashboardPage() {
         const prevFullMonthNetSales =
             ukPrevFullMonthNetSalesUSD + usPrevFullMonthNetSalesUSD;
 
-        console.log("[GLOBAL FIXED LAST MONTH FULL SALES]", {
-            gbpToUsd,
-            ukPrevFullMonthNetSalesUSD,
-            usPrevFullMonthNetSalesUSD,
-            prevFullMonthNetSales,
-            prevMtdNetSales: prevNetSales,
+        console.log("[GLOBAL PREVIOUS MONTH MERGE DEBUG]", {
+            fx: { gbpToUsd },
+
+            ukPrevious: {
+                net_sales_gbp: ukPrevTotals?.net_sales,
+                net_sales_usd: toNumberSafe(ukPrevTotals?.net_sales) * gbpToUsd,
+                cogs_gbp: ukPrevTotals?.cogs,
+                cogs_usd: toNumberSafe(ukPrevTotals?.cogs) * gbpToUsd,
+                tax_and_credits_gbp: ukPrevTotals?.tax_and_credits,
+                tax_and_credits_usd: toNumberSafe(ukPrevTotals?.tax_and_credits) * gbpToUsd,
+                profit_gbp: ukPrevTotals?.profit,
+                profit_usd: toNumberSafe(ukPrevTotals?.profit) * gbpToUsd,
+                cm2_profit_gbp: ukPrevTotals?.cm2_profit,
+                cm2_profit_usd: toNumberSafe(ukPrevTotals?.cm2_profit) * gbpToUsd,
+            },
+
+            usPrevious: {
+                net_sales_usd: usPrevTotals?.net_sales,
+                cogs_usd: usPrevTotals?.cogs,
+                tax_and_credits_usd: usPrevTotals?.tax_and_credits,
+                profit_usd: usPrevTotals?.profit,
+                cm2_profit_usd: usPrevTotals?.cm2_profit,
+            },
+
+            mergedPrevious: {
+                net_sales: prevNetSales,
+                gross_sales: prevGrossSales,
+                advertising: prevAdvertising,
+                cm2_profit: prevCm2Profit,
+                profit: prevProfit,
+                full_month_net_sales: prevFullMonthNetSales,
+            },
         });
 
         const currentTacos =
@@ -3805,10 +3793,17 @@ export default function DashboardPage() {
                     ...ukData?.previous_period,
                     totals: {
                         ...ukPrevTotals,
+
                         quantity: prevUnits,
                         net_sales: prevNetSales,
                         gross_sales: prevGrossSales,
                         asp: globalMergedPrevAsp,
+
+                        cogs: prevCogs,
+                        amazon_fees: prevMarketplaceFees,
+                        tax_and_credits: prevTaxAndCredits,
+                        platform_fee: prevPlatformFee,
+
                         advertising_fees: prevAdvertising,
                         cm2_profit: prevCm2Profit,
                         profit: prevProfit,
@@ -4989,25 +4984,6 @@ export default function DashboardPage() {
                     const row = convertProductwiseRowToUsd(raw, country);
                     const key = String(row.sku || row.product_name || "").trim();
 
-                    console.log("[P&L ROW INPUT]", {
-                        country,
-                        fx: country === "uk" ? gbpToUsd : 1,
-                        sku: raw.sku,
-                        product_name: raw.product_name,
-
-                        raw_net_taxes: raw.net_taxes,
-                        raw_tax: raw.tax,
-                        raw_credits: raw.credits,
-                        raw_tax_and_credits: raw.tax_and_credits,
-                        raw_other_transactions: raw.other_transactions,
-
-                        usd_net_taxes: row.net_taxes,
-                        usd_tax: row.tax,
-                        usd_credits: row.credits,
-                        usd_tax_and_credits: row.tax_and_credits,
-                        usd_other_transactions: row.other_transactions,
-                    });
-
                     if (!key) return;
 
                     const existing = map.get(key);
@@ -5061,36 +5037,6 @@ export default function DashboardPage() {
                     merged.other_transactions =
                         toNumberSafe(existing.other_transactions) + toNumberSafe(row.other_transactions);
 
-
-                    console.log("[P&L GLOBAL MERGE]", {
-                        sku: key,
-                        gbpToUsd,
-
-                        existing: {
-                            net_taxes: existing.net_taxes,
-                            tax: existing.tax,
-                            credits: existing.credits,
-                            tax_and_credits: existing.tax_and_credits,
-                            other_transactions: existing.other_transactions,
-                        },
-
-                        incoming: {
-                            net_taxes: row.net_taxes,
-                            tax: row.tax,
-                            credits: row.credits,
-                            tax_and_credits: row.tax_and_credits,
-                            other_transactions: row.other_transactions,
-                        },
-
-                        merged: {
-                            net_taxes: merged.net_taxes,
-                            tax: merged.tax,
-                            credits: merged.credits,
-                            tax_and_credits: merged.tax_and_credits,
-                            other_transactions: merged.other_transactions,
-                        },
-                    });
-
                     merged.acos =
                         toNumberSafe(merged.net_sales) > 0
                             ? (Math.abs(toNumberSafe(merged.ads_spend)) /
@@ -5136,20 +5082,6 @@ export default function DashboardPage() {
             (s, r) => s + toNumberSafe(r.tax_and_credits),
             0
         );
-
-        console.log("[GLOBAL P&L TAX CREDIT TOTAL DEBUG]", {
-            gbpToUsd,
-            totalTax,
-            totalCredits,
-            wrongIfRecomputed_tax_plus_credits: totalTax + totalCredits,
-            correctSummed_tax_and_credits: totalTaxAndCredits,
-            rows: rows.map((r) => ({
-                sku: r.sku,
-                tax: r.tax,
-                credits: r.credits,
-                tax_and_credits: r.tax_and_credits,
-            })),
-        });
 
         const totalAspValues = rows
             .map((r) => toNumberSafe(r.asp))
@@ -5233,6 +5165,79 @@ export default function DashboardPage() {
     const monthlySkuwiseRowsDisplay = useMemo<MonthlySkuwiseRow[]>(() => {
         return (monthlySkuwiseRows || []).map(convertProductwiseRowToDisplay);
     }, [monthlySkuwiseRows, convertProductwiseRowToDisplay]);
+
+
+    const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+        const buildFinalRows = (
+            rows: Array<{
+                name: string;
+                value: number;
+                prevValue: number;
+            }>
+        ): Cm1PieSlice[] => {
+            const cleaned = rows
+                .map((r) => ({
+                    name: String(r.name || "Unknown").trim() || "Unknown",
+                    value: toNumberSafe(r.value),
+                    prevValue: toNumberSafe(r.prevValue),
+                }))
+                .filter((r) => r.value !== 0 || r.prevValue !== 0);
+
+            if (!cleaned.length) return [];
+
+            const total = cleaned.reduce((s, r) => s + Math.max(r.value, 0), 0) || 1;
+
+            return cleaned
+                .sort((a, b) => b.value - a.value)
+                .map((r) => ({
+                    name: r.name,
+                    value: r.value,
+                    prevValue: r.prevValue,
+                    pct: (Math.max(r.value, 0) / total) * 100,
+                    deltaPct:
+                        r.prevValue !== 0
+                            ? ((r.value - r.prevValue) / Math.abs(r.prevValue)) * 100
+                            : null,
+                }));
+        };
+
+        const tableRows =
+            platform === "global"
+                ? monthlySkuwiseRowsDisplay
+                : monthlySkuwiseRowsDisplay;
+
+        const productRows = (tableRows || []).filter((r: any) => {
+            const sku = String(r?.sku || "").toUpperCase();
+            const name = String(r?.product_name || "").trim().toLowerCase();
+
+            return (
+                sku &&
+                sku !== "GRAND_TOTAL" &&
+                name !== "grand total" &&
+                name !== "total" &&
+                !r?.isTotal &&
+                !r?.isOthers
+            );
+        });
+
+        if (productRows.length) {
+            const mapped = productRows.map((r: any) => ({
+                name: String(r?.product_name || r?.sku || "Unknown"),
+                value: toNumberSafe(r?.profit ?? r?.cm1_profit ?? 0),
+                prevValue: toNumberSafe(
+                    r?.profit_prev ??
+                    r?.previous_profit ??
+                    r?.prev_profit ??
+                    r?.previous_cm1_profit ??
+                    0
+                ),
+            }));
+
+            return buildFinalRows(mapped);
+        }
+
+        return [];
+    }, [platform, monthlySkuwiseRowsDisplay]);
 
     const grandTotalRowDisplay = useMemo(() => {
         return monthlySkuwiseRowsDisplay.find(
@@ -5708,7 +5713,18 @@ export default function DashboardPage() {
             }
         };
 
-        return labels.map(getPrev);
+        // return labels.map(getPrev);
+
+        const mappedPrevValues = labels.map(getPrev);
+
+        console.log("[DASHBOARD BAR GRAPH FINAL PREVIOUS VALUES]", {
+            labels,
+            mappedPrevValues,
+            previousTotalsUsed: data?.previous_period?.totals,
+        });
+
+        return mappedPrevValues;
+
     }, [
         labels,
         data?.previous_period?.totals,
@@ -6355,20 +6371,69 @@ export default function DashboardPage() {
     const idxOthers = useMemo(() => labels.findIndex((l) => l === "Others"), [labels]);
     const idxCm2 = useMemo(() => labels.findIndex((l) => l === "CM2 Profit"), [labels]);
 
+    const idxNetSales = useMemo(() => labels.findIndex((l) => l === "Net Sales"), [labels]);
+    const idxCogs = useMemo(() => labels.findIndex((l) => l === "COGS"), [labels]);
+
+    const idxTax = useMemo(() => labels.findIndex((l) => l === "Tax"), [labels]);
+    const idxCredits = useMemo(() => labels.findIndex((l) => l === "Credits"), [labels]);
+    const idxTaxAndCredits = useMemo(
+        () => labels.findIndex((l) => l === "Tax & Credits" || l === "Taxes & Credits"),
+        [labels]
+    );
+    const idxCm1Profit = useMemo(() => labels.findIndex((l) => l === "CM1 Profit"), [labels]);
+
     const valuesPatched = useMemo(() => {
         const copy = [...values];
 
-        // Ads
+        const totalRow =
+            monthlySkuwiseRowsDisplay.find((r) => r.isTotal) ??
+            monthlySkuwiseRowsDisplay.find((r) => r.sku === "GRAND_TOTAL");
+
+        if (idxNetSales !== -1) {
+            copy[idxNetSales] = toNumberSafe(totalRow?.net_sales ?? 0);
+        }
+
+        if (idxCogs !== -1) {
+            copy[idxCogs] = Math.abs(toNumberSafe(totalRow?.cogs ?? 0));
+        }
+
+        if (idxTax !== -1) {
+            copy[idxTax] = Math.abs(toNumberSafe(totalRow?.tax ?? 0));
+        }
+
+        if (idxCredits !== -1) {
+            copy[idxCredits] = Math.abs(toNumberSafe(totalRow?.credits ?? 0));
+        }
+
+        if (idxTaxAndCredits !== -1) {
+            copy[idxTaxAndCredits] = Math.abs(toNumberSafe(totalRow?.tax_and_credits ?? 0));
+        }
+
+        if (idxCm1Profit !== -1) {
+            copy[idxCm1Profit] = toNumberSafe(totalRow?.profit ?? 0);
+        }
+
         if (idxAds !== -1) copy[idxAds] = Number(adsSpendTotal ?? 0);
-
-        // Others (platform fee) — choose ABS so it renders as a positive bar like your UI
         if (idxOthers !== -1) copy[idxOthers] = Math.abs(Number(platformFee ?? 0));
-
-        // CM2
         if (idxCm2 !== -1) copy[idxCm2] = Number(cm2Profit ?? 0);
 
         return copy;
-    }, [values, idxAds, idxOthers, idxCm2, adsSpendTotal, platformFee, cm2Profit]);
+    }, [
+        values,
+        monthlySkuwiseRowsDisplay,
+        idxNetSales,
+        idxCogs,
+        idxTax,
+        idxCredits,
+        idxTaxAndCredits,
+        idxCm1Profit,
+        idxAds,
+        idxOthers,
+        idxCm2,
+        adsSpendTotal,
+        platformFee,
+        cm2Profit,
+    ]);
 
     const targetKpisFromBi = useMemo(() => {
         if (!rangeActive || !liveBiPayload) return null;

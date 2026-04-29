@@ -552,7 +552,11 @@ export default function Cm1ProfitBreakdownPie({
                                   maximumFractionDigits: 2,
                                 })}{" "}
                                 ({pct.toFixed(2)}%){" "}
-                                <span className={deltaClass}>({deltaText})</span>
+                                {delta != null && (
+                                  <span className={deltaClass}>
+                                    ({deltaSymbol} {Math.abs(delta).toFixed(2)}%)
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>

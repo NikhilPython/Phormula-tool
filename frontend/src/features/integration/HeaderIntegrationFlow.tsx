@@ -312,6 +312,7 @@ export default function HeaderIntegrationFlow() {
       {/* ✅ NEW */}
       {showAmazonAds && (
         <AmazonAdsConnectLegacy
+          country={selectedCountry.toUpperCase() as "UK" | "US" | "CA"}
           onClose={() => setShowAmazonAds(false)}
           onConnected={() => setShowAmazonAds(false)}
         />

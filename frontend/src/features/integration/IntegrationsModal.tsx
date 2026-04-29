@@ -4,7 +4,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSelector } from "react-redux";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import AmazonAdsConnectLegacy from "./AmazonAdsConnectLegacy";
 
 type Provider = "amazon" | "shopify" | "amazon_ads";
@@ -23,6 +23,9 @@ const options: { key: Provider; title: string; icon: string }[] = [
 
 const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
   const router = useRouter();
+  const { countryName } = useParams<{ countryName: string }>();
+  const selectedCountry = (countryName || "uk").toUpperCase() as "UK" | "US" | "CA";
+
   const reduxToken = useSelector((state: any) => state.auth?.token);
 
   const [mounted, setMounted] = useState(false);
@@ -208,10 +211,9 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
                   className={`flex flex-col items-center justify-center 
                     w-36 h-36 sm:w-40 sm:h-40
                     rounded-2xl border border-[#5EA68E] bg-white transition-all
-                    ${
-                      isDisabled
-                        ? "cursor-not-allowed opacity-50"
-                        : "hover:bg-emerald-50 hover:scale-105"
+                    ${isDisabled
+                      ? "cursor-not-allowed opacity-50"
+                      : "hover:bg-emerald-50 hover:scale-105"
                     }`}
                 >
                   <img
@@ -247,12 +249,13 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
 
       {showAmazonAds && (
         <AmazonAdsConnectLegacy
+          country={selectedCountry}
           onClose={() => {
             setShowAmazonAds(false);
           }}
           onConnected={async () => {
-            setAmazonConnected(true); // immediate UI update
-            await fetchAmazonStatus(); // confirm from backend
+            setAmazonConnected(true);
+            await fetchAmazonStatus();
             setShowAmazonAds(false);
             onClose();
             onConnected?.();

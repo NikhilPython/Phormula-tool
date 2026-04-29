@@ -18,6 +18,18 @@ type ApiErrorResponse = {
     message?: string;
 };
 
+type AdsCountry = "UK" | "US" | "CA";
+
+const mapCountry = (country?: string): AdsCountry => {
+    const upper = (country || "").toUpperCase();
+
+    if (upper === "US") return "US";
+    if (upper === "CA") return "CA";
+    if (upper === "UK") return "UK";
+
+    return "UK";
+};
+
 async function apiJson<T = unknown>(
     path: string,
     options: RequestInit = {}
@@ -207,7 +219,7 @@ async function ensureSpReportOncePerDay(country: "UK" | "US" | "CA") {
 // }
 
 async function seedAdsReportsOnConnect(
-    country: "UK",
+    country: AdsCountry,
     hooks?: {
         onStep?: (
             step: number,
@@ -489,7 +501,6 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
     );
 });
 
-type AdsCountry = "UK" | "US" | "CA";
 
 type Props = {
     onClose?: () => void;
@@ -503,8 +514,7 @@ type Props = {
 export default function AmazonAdsConnect({
     onClose,
     onConnected,
-    // country,
-    // redirectUrl,
+    country,
     pollIntervalMs = 1500,
     maxWaitMs = 2 * 60 * 1000,
 }: Props) {
@@ -515,7 +525,7 @@ export default function AmazonAdsConnect({
     //         platform === "amazon-ca" ? "CA" :
     //             "UK";
 
-    const resolvedCountry = "UK" as const;
+  const resolvedCountry = mapCountry(country);
 
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
