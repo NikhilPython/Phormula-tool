@@ -310,21 +310,6 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
 
   const isZeroState = previewMode || derivedAllValuesZero;
 
-  console.log("DashboardBargraphCard props:", {
-    countryName,
-    formattedMonthYear,
-    currencySymbol,
-    labels: normalizedLabels,
-    values: normalizedValues,
-    prevValues: normalizedPrevValues,
-    colors: normalizedColors,
-    loading,
-    expanded,
-    allValuesZeroFromParent: allValuesZero,
-    derivedAllValuesZero,
-    previewMode,
-  });
-
   return (
     <div className="relative w-full rounded-xl">
       <div className={isZeroState && !loading ? "opacity-30" : "opacity-100"}>

@@ -161,10 +161,13 @@ export default function SalesTargetCard({
   const mtdHomeFinal = useBi
     ? biAlignedTotals!.total_current_net_sales
     : mtdHomeResolved;
-
-  const rawLastMonthTotalHomeFinal = useBi
-    ? biAlignedTotals!.total_previous_net_sales_full_month
-    : lastMonthTotalHomeResolved;
+    
+  const rawLastMonthTotalHomeFinal =
+    typeof lastMonthTotalHome === "number" && Number.isFinite(lastMonthTotalHome)
+      ? lastMonthTotalHome
+      : useBi
+        ? biAlignedTotals!.total_previous_net_sales_full_month
+        : lastMonthTotalHomeResolved;
 
   const rawLastMonthToDateHomeFinal = useBi
     ? biAlignedTotals!.total_previous_net_sales

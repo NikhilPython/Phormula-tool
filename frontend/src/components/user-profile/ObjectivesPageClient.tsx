@@ -672,6 +672,8 @@ export default function ObjectivesPageClient({
   const [isFetchingBusinessJourney, setIsFetchingBusinessJourney] = useState(false);
   const [businessJourneyError, setBusinessJourneyError] = useState<string | null>(null);
 
+  const [targetSummaries, setTargetSummaries] = useState<Record<string, any>>({});
+
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "balanced",
     profit_priority: "protect_growth",
@@ -1000,7 +1002,12 @@ export default function ObjectivesPageClient({
 
   const startStrategicEdit = () => {
     setObjectiveDraft(objective);
-    setObjectiveTargetDraft(String(Number((data as any)?.target_sales ?? 0)));
+
+    const currentTarget = Number(
+      targetSummaries[resolvedTargetCountry]?.target_sales ?? 0
+    );
+
+    setObjectiveTargetDraft(String(currentTarget));
     setObjectiveEditingPid(pagePlatform);
     setIsStrategicEditMode(true);
   };
@@ -1079,7 +1086,9 @@ export default function ObjectivesPageClient({
   ]);
 
   const strategicDisplayTargetValue = useMemo(() => {
-    const rawTarget = Number((data as any)?.target_sales ?? 0);
+    const rawTarget = Number(
+      targetSummaries[resolvedTargetCountry]?.target_sales ?? 0
+    );
 
     if (!isGlobalPage) {
       return rawTarget;
@@ -1087,7 +1096,12 @@ export default function ObjectivesPageClient({
 
     const fx = strategicConversionRate ?? 1;
     return rawTarget * fx;
-  }, [isGlobalPage, strategicConversionRate, data]);
+  }, [
+    isGlobalPage,
+    strategicConversionRate,
+    targetSummaries,
+    resolvedTargetCountry,
+  ]);
 
   const getObjectiveMonth = () => {
     const now = new Date();
@@ -1105,7 +1119,39 @@ export default function ObjectivesPageClient({
     };
   };
 
+  const fetchTargetSummaries = async () => {
+    if (!token || isPreviewMode) return;
 
+    const { month, year } = getCurrentMonthYear();
+
+    const results = await Promise.all(
+      integratedCountries.map(async (c) => {
+        const params = new URLSearchParams({
+          month,
+          year: String(year),
+          country: c,
+        });
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary?${params.toString()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const json = await res.json().catch(() => null);
+        return [c, json?.data] as const;
+      })
+    );
+
+    setTargetSummaries(Object.fromEntries(results));
+  };
+
+  useEffect(() => {
+    fetchTargetSummaries();
+  }, [token, isPreviewMode, integratedCountries]);
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -1125,8 +1171,8 @@ export default function ObjectivesPageClient({
     };
 
     try {
-      await updateProfile({ target_sales: next } as any).unwrap();
-      dispatch(setUser({ target_sales: next } as any));
+      // await updateProfile({ target_sales: next } as any).unwrap();
+      // dispatch(setUser({ target_sales: next } as any));
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
         method: "POST",
@@ -1148,6 +1194,10 @@ export default function ObjectivesPageClient({
       setIsTargetEditMode(false);
       setEditingPid(null);
       setDraftTarget("");
+      setTargetSummaries((prev) => ({
+        ...prev,
+        [resolvedTargetCountry]: result.data,
+      }));
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to update target.");
@@ -1342,8 +1392,8 @@ export default function ObjectivesPageClient({
         );
       }
 
-      await updateProfile({ target_sales: nextTarget } as any).unwrap();
-      dispatch(setUser({ target_sales: nextTarget } as any));
+      // await updateProfile({ target_sales: nextTarget } as any).unwrap();
+      // dispatch(setUser({ target_sales: nextTarget } as any));
 
       const finalObjective = {
         ...objective,
@@ -1400,8 +1450,6 @@ export default function ObjectivesPageClient({
   const monthlyTargetData: TargetRow[] = useMemo(() => {
     if (isPreviewMode) return dummyMonthlyTargetData;
 
-    const currentTarget = Number((data as any)?.target_sales ?? 0);
-
     const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
       const meta = PLATFORM_TARGET_META[pid] ?? {
         marketplace: String(pid),
@@ -1410,6 +1458,11 @@ export default function ObjectivesPageClient({
 
       const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
       const rowCountry = platformToCountry(pid);
+
+      const currentTarget = Number(
+        targetSummaries[rowCountry]?.target_sales ?? 0
+      );
+
       const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, rowCountry);
       const homeTarget = currentTarget * nativeToHome;
 
@@ -1441,7 +1494,13 @@ export default function ObjectivesPageClient({
     }
 
     return rows;
-  }, [isPreviewMode, connectedPlatformsForTargets, data, homeCurrencyCode, rateMap]);
+  }, [
+    isPreviewMode,
+    connectedPlatformsForTargets,
+    homeCurrencyCode,
+    rateMap,
+    targetSummaries,
+  ]);
 
   const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
     () => [
@@ -1456,7 +1515,8 @@ export default function ObjectivesPageClient({
 
           const pid = row.__pid as PlatformId;
           const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
-          const currentTarget = Number((data as any)?.target_sales ?? 0);
+          const rowCountry = platformToCountry(pid);
+          const currentTarget = Number(targetSummaries[rowCountry]?.target_sales ?? 0);
 
           if (editingPid === pid) {
             return (
@@ -1506,7 +1566,7 @@ export default function ObjectivesPageClient({
         width: "200px",
       },
     ],
-    [homeCurrencyCode, editingPid, draftTarget, isTargetEditMode, data]
+    [homeCurrencyCode, editingPid, draftTarget, isTargetEditMode, targetSummaries]
   );
 
   const handleRemoveUploadedFile = (id: string) => {
