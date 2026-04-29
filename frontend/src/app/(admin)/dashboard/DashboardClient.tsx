@@ -400,14 +400,35 @@ const SIGNED_KEYS = new Set<string>([
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
-    const platformFees = toNumber(source?.platformfeenew ?? source?.platform_fee_new ?? source?.platform_fee);
-    const inventoryStorageFees = toNumber(
-        source?.platform_fee_inventory_storage
+    const netSales = toNumber(source?.Net_Sales ?? source?.net_sales);
+
+    const advertisingTotal = toNumber(
+        source?.advertising_total ??
+        source?.ads_total ??
+        source?.ads_spend_total ??
+        source?.advertising_fees
     );
 
-    const netReimbursement = toNumber(source?.rembursement_fee ?? source?.reimbursement_fee ?? source?.net_reimbursement);
+    const tacos = netSales
+        ? (Math.abs(advertisingTotal) / Math.abs(netSales)) * 100
+        : 0;
+
+    const platformFees = toNumber(
+        source?.platformfeenew ?? source?.platform_fee_new ?? source?.platform_fee
+    );
+
+    const inventoryStorageFees = toNumber(source?.platform_fee_inventory_storage);
+
+    const netReimbursement = toNumber(
+        source?.rembursement_fee ??
+        source?.reimbursement_fee ??
+        source?.net_reimbursement
+    );
+
     const reimbursementUnits = toNumber(
-        source?.reimbursement_lost_inventory_units ?? source?.reimbursement_units ?? source?.lost_inventory_units
+        source?.reimbursement_lost_inventory_units ??
+        source?.reimbursement_units ??
+        source?.lost_inventory_units
     );
 
     const cm2MarginsValue = toNumber(
@@ -420,14 +441,14 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     );
 
     return {
-        advertising_total: toNumber(source?.advertising_total ?? source?.ads_total ?? source?.ads_spend_total),
+        advertising_total: advertisingTotal,
         visible_ads: toNumber(source?.visible_ads ?? source?.ads_visibility),
         dealsvouchar_ads: toNumber(source?.dealsvouchar_ads ?? source?.deals_vouchers_ads),
 
         other_transactions: toNumber(source?.other_transactions ?? source?.platform_fee ?? source?.other_fees_total),
         platform_fee: platformFees,
         inventory_storage_fees: inventoryStorageFees,
-        platform_fee_inventory_storage: toNumber(source?.platform_fee_inventory_storage),
+        platform_fee_inventory_storage: inventoryStorageFees,
         misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
 
         reimbursement_lost_inventory_amount: toNumber(
@@ -439,19 +460,28 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         shipment_charges: toNumber(
             source?.shipment_charges ??
             source?.shipping_charges ??
-            source?.shipment_fees
+            source?.shipment_fees ??
+            source?.shipment_charge ??
+            source?.shipping_charge ??
+            source?.shipping_fees ??
+            source?.shipmentCharges ??
+            source?.shippingCharges
         ),
-        reimbursement_vs_sales: toNumber(source?.reimbursement_vs_sales ?? source?.reimbursement_vs_net_sales),
+        reimbursement_vs_sales: toNumber(
+            source?.reimbursement_vs_sales ?? source?.reimbursement_vs_net_sales
+        ),
 
         cm2_profit: toNumber(source?.cm2_profit),
         cm2_margins: cm2MarginsValue,
-        acos: toNumber(source?.acos ?? source?.tacos),
+        acos: tacos,
 
-        rembursment_vs_cm2_margins: toNumber(source?.rembursment_vs_cm2_margins ?? source?.reimbursement_vs_cm2_margins),
+        rembursment_vs_cm2_margins: toNumber(
+            source?.rembursment_vs_cm2_margins ?? source?.reimbursement_vs_cm2_margins
+        ),
         net_reimbursement: netReimbursement,
 
         profit: toNumber(source?.Profit ?? source?.profit ?? source?.cm1_profit),
-        net_sales: toNumber(source?.Net_Sales ?? source?.net_sales),
+        net_sales: netSales,
     };
 }
 
@@ -495,23 +525,42 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
 }
 
 function computePlSummaryTotals(data: any, skuwiseRows: any[]): PlSummaryTotals {
-    // Priority:
-    // 1) If API returns a dedicated summary object, use it (common candidates).
-    // 2) Else if API totals include the needed keys, use totals.
-    // 3) Else fallback to GRAND_TOTAL skuwise row.
     const candidates = [
         data?.summary,
         data?.pl_summary,
         data?.mtd_summary,
-        data?.totals, // sometimes contains extra finance breakdown fields
+        data?.totals,
         data?.derived_totals,
     ].filter(Boolean);
 
+    let merged: PlSummaryTotals | null = null;
+
     for (const c of candidates) {
         const t = computePlSummaryTotalsFromSource(c);
-        // If it looks meaningful (net_sales or cm2_profit), accept it.
-        if (t.net_sales !== 0 || t.cm2_profit !== 0 || t.advertising_total !== 0) return t;
+
+        if (!merged) {
+            merged = t;
+            continue;
+        }
+
+        Object.keys(t).forEach((key) => {
+            const k = key as keyof PlSummaryTotals;
+            if (toNumber((merged as any)[k]) === 0 && toNumber((t as any)[k]) !== 0) {
+                (merged as any)[k] = (t as any)[k];
+            }
+        });
     }
+
+    if (
+        merged &&
+        (merged.net_sales !== 0 ||
+            merged.cm2_profit !== 0 ||
+            merged.advertising_total !== 0 ||
+            merged.shipment_charges !== 0)
+    ) {
+        return merged;
+    }
+
     return computePlSummaryTotalsFromSkuwise(skuwiseRows || []);
 }
 
@@ -3551,6 +3600,31 @@ export default function DashboardPage() {
         const ukDerived = ukData?.derived_totals || {};
         const usDerived = usData?.derived_totals || {};
 
+        const firstNonZero = (...values: any[]) => {
+            for (const v of values) {
+                const n = toNumberSafe(v);
+                if (n !== 0) return n;
+            }
+            return 0;
+        };
+
+        const getShipmentCharges = (payload: any, country: "uk" | "us") => {
+            const data = payload?.data || {};
+
+            const raw = firstNonZero(
+                payload?.shipmentCharges,
+                data?.summary?.shipment_charges,
+                data?.summary?.shipping_charges,
+                data?.summary?.shipment_fees,
+                data?.pl_summary?.shipment_charges,
+                data?.mtd_summary?.shipment_charges,
+                data?.totals?.shipment_charges,
+                data?.derived_totals?.shipment_charges
+            );
+
+            return country === "uk" ? raw * gbpToUsd : raw;
+        };
+
         const ukCurrentAspUsd = toNumberSafe(ukDerived?.asp) * gbpToUsd;
         const usCurrentAspUsd = toNumberSafe(usDerived?.asp);
 
@@ -3577,6 +3651,9 @@ export default function DashboardPage() {
         const currentAdvertising =
             getPayloadAdsTotal(ukPayload) * gbpToUsd +
             getPayloadAdsTotal(usPayload);
+
+        const currentShipmentCharges =
+            getShipmentCharges(ukPayload, "uk") + getShipmentCharges(usPayload, "us");
 
         const getPayloadCm2Profit = (payload: any) => {
             if (payload?.cm2Profit != null) return toNumberSafe(payload.cm2Profit);
@@ -3634,6 +3711,12 @@ export default function DashboardPage() {
             prevMtdNetSales: prevNetSales,
         });
 
+        const currentTacos =
+            currentNetSales > 0 ? (currentAdvertising / currentNetSales) * 100 : 0;
+
+        const prevTacos =
+            prevNetSales > 0 ? (prevAdvertising / prevNetSales) * 100 : 0;
+
         const mergedBiAlignedTotals = {
             ...ukPayload?.biAlignedTotals,
 
@@ -3643,6 +3726,9 @@ export default function DashboardPage() {
 
             total_current_advertising: currentAdvertising,
             total_previous_advertising: prevAdvertising,
+
+            total_current_tacos: currentTacos,
+            total_previous_tacos: prevTacos,
 
             total_current_profit_cm2: currentCm2Profit,
             total_previous_profit_cm2: prevCm2Profit,
@@ -3687,6 +3773,14 @@ export default function DashboardPage() {
 
             data: {
                 ...ukData,
+
+                summary: {
+                    ...(ukData?.summary || {}),
+                    shipment_charges: currentShipmentCharges,
+                    shipping_charges: currentShipmentCharges,
+                    shipment_fees: currentShipmentCharges,
+                },
+
                 skuwise_items: mergedSkuwiseItems,
                 derived_totals: {
                     ...ukDerived,
@@ -3694,8 +3788,13 @@ export default function DashboardPage() {
                     gross_sales: currentGrossSales,
                     asp: globalMergedCurrentAsp,
                     advertising_fees: currentAdvertising,
+                    tacos: currentTacos,
+                    acos: currentTacos,
                     cm2_profit: currentCm2Profit,
                     profit: currentProfit,
+                    shipment_charges: currentShipmentCharges,
+                    shipping_charges: currentShipmentCharges,
+                    shipment_fees: currentShipmentCharges,
                 },
                 totals: {
                     ...ukTotals,
@@ -5038,7 +5137,19 @@ export default function DashboardPage() {
             0
         );
 
-        
+        console.log("[GLOBAL P&L TAX CREDIT TOTAL DEBUG]", {
+            gbpToUsd,
+            totalTax,
+            totalCredits,
+            wrongIfRecomputed_tax_plus_credits: totalTax + totalCredits,
+            correctSummed_tax_and_credits: totalTaxAndCredits,
+            rows: rows.map((r) => ({
+                sku: r.sku,
+                tax: r.tax,
+                credits: r.credits,
+                tax_and_credits: r.tax_and_credits,
+            })),
+        });
 
         const totalAspValues = rows
             .map((r) => toNumberSafe(r.asp))
@@ -5382,11 +5493,8 @@ export default function DashboardPage() {
 
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
-        if (platform === "global") {
-            return computePlSummaryTotals(null, monthlySkuwiseRowsDisplay);
-        }
         return computePlSummaryTotals(data, monthlySkuwiseRowsDisplay);
-    }, [platform, data, monthlySkuwiseRowsDisplay]);
+    }, [data, monthlySkuwiseRowsDisplay]);
 
     const SKUWISE_LEFT_COLS = [
         { key: "sno", label: "S.No", align: "center" as const },
@@ -6040,6 +6148,8 @@ export default function DashboardPage() {
             grandTotalProfit: toNumber(grandTotalRowDisplay?.profit),
             grandTotalPlatformFee: toNumber(grandTotalRowDisplay?.platform_fee),
 
+            shipmentCharges: toNumber(plSummaryTotals?.shipment_charges ?? 0),
+
             biDailySeries,
             biPeriods,
             liveBiPayload,
@@ -6058,7 +6168,7 @@ export default function DashboardPage() {
         grandTotalRowDisplay?.profit,
         grandTotalRowDisplay?.platform_fee,
         cm2Profit,
-        // cm2ProfitPct,
+        plSummaryTotals?.shipment_charges,
         biDailySeries,
         biPeriods,
         liveBiPayload,
@@ -6148,10 +6258,27 @@ export default function DashboardPage() {
         invRows,
     ]);
 
+    const tacosFromDisplayedCardsForSummary = useMemo(() => {
+        const netSalesFromCard =
+            platform === "global"
+                ? globalMergedCurrentNet
+                : curr.netSales;
 
-    const reimbursementForSummary = useMemo(() => {
-        return toNumber(reimbursementHome?.current);
-    }, [reimbursementHome?.current]);
+        const adsFromCard =
+            platform === "global"
+                ? globalMergedCostOfAds
+                : adsSpendTotal;
+
+        return netSalesFromCard > 0
+            ? (Math.abs(adsFromCard) / Math.abs(netSalesFromCard)) * 100
+            : 0;
+    }, [
+        platform,
+        globalMergedCurrentNet,
+        globalMergedCostOfAds,
+        curr.netSales,
+        adsSpendTotal,
+    ]);
 
     const cm2MarginPctForSummary = useMemo(() => {
         const cm2 = cm2Profit;
@@ -6160,15 +6287,7 @@ export default function DashboardPage() {
     }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
 
 
-    const reimbursementVsCm2PctForSummary = useMemo(() => {
-        const cm2 = cm2Profit;
-        return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
-    }, [reimbursementForSummary, plSummaryTotals.cm2_profit]);
 
-    const reimbursementVsSalesPctForSummary = useMemo(() => {
-        const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
-        return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
-    }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
 
@@ -6226,110 +6345,6 @@ export default function DashboardPage() {
         return null;
     }, []);
 
-    const handleDownloadPlProductwiseMtd = useCallback(() => {
-        try {
-            const rows = (monthlySkuwiseRowsDisplay || []).filter((r) => {
-                const sku = String(r.sku || "").toUpperCase();
-                const pn = String((r as any).product_name || "").toLowerCase();
-                const isOthers = (r as any).isOthers === true;
-                return !isOthers && !(sku === "OTHERS" && pn === "others");
-            });
-
-            if (!rows.length) return;
-
-            const periodLabel = formattedMonthYear;
-            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
-            const companyName =
-                (userData as any)?.companyName ||
-                (userData as any)?.company_name ||
-                (userData as any)?.company ||
-                "";
-
-            const dataRows = monthlySkuwiseRows.map((r) => ({
-                "S.No": r.isTotal ? "" : r.sno ?? "",
-                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
-                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                "Ad Type": r.isOthers || r.isTotal ? "-" : (r.ad_type || "-"),
-                "Net Units Sold": Number(r.quantity || 0),
-                "ASP": Number(r.asp || 0),
-                "Net Sales": Number(r.net_sales || 0),
-                "COGS": Number(r.cogs || 0),
-                "Selling Fees": Number(r.selling_fees || 0),
-                "FBA Fees": Number(r.fba_fees || 0),
-                "Ads Spend": Number(r.ads_spend || 0),
-
-                // add this
-                "ACOS %": Number(r.acos || 0),
-
-                "Tax": Number(r.tax || 0),
-                "Credits": Number(r.credits || 0),
-                "Tax & Credits": Number(r.tax_and_credits || 0),
-                "CM1 Profit": Number(r.profit || 0),
-                "CM1 Profit %": Number(r.cm1_profit_per || 0),
-                "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-                "CM2 Profit": Number(r.cm2_profit || 0),
-                "CM2 Profit %": Number(r.cm2_profit_per || 0),
-                "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-            }));
-
-            const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
-                ...(countryName === "us" || countryName === "global"
-                    ? [
-                        {
-                            label: "Shipment Charges (-)",
-                            value: Number((plSummaryTotals as any)?.shipment_charges ?? 0),
-                            bold: true,
-                        },
-                    ]
-                    : []),
-
-                { label: "Cost of Advertisement", value: "", bold: true },
-                { label: "Visibility - Ads (-)", value: "", indent: 1 },
-                { label: "Visibility - Deals, Vouchers and Reviews (-)", value: "", indent: 1 },
-                { label: "Other Transactions", value: "", bold: true },
-                { label: "Other Platform Fees (-)", value: "", indent: 1 },
-                { label: "Inventory Storage Fees (-)", value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
-                { label: "Misc. Transactions (+)", value: "", indent: 1 },
-                { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
-                { label: "CM2 Profit/Loss", value: Number((plSummaryTotals as any)?.cm2_profit ?? 0), bold: true },
-                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true },
-                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosPctForSummary ?? 0), bold: true },
-                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
-                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true },
-                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
-            ];
-
-            exportPnLProductwiseBreakdownMtdExcel({
-                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
-                titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
-                countryName,
-                titleCountry,
-                platformLabel: "Phormula",
-                periodLabel,
-                companyName,
-                brandName: String(brandName || ""),
-                homeCurrencyCode: profileHomeCurrency,
-                dataRows,
-                summaryRows,
-            });
-        } catch (err) {
-            console.error("Error exporting P&L Productwise Breakdown MTD", err);
-        }
-    }, [
-        monthlySkuwiseRows,
-        formattedMonthYear,
-        countryName,
-        plSummaryTotals,
-        costOfAdsForSummary,
-        cm2MarginPctForSummary,
-        tacosPctForSummary,
-        reimbursementForSummary,
-        reimbursementVsCm2PctForSummary,
-        reimbursementVsSalesPctForSummary,
-        userData,
-        brandName,
-        profileHomeCurrency,
-    ]);
 
     const skuwiseItems = useMemo(() => {
         const items = (data as any)?.skuwise_items;
@@ -6451,6 +6466,139 @@ export default function DashboardPage() {
         readCountryCache,
         gbpToUsd,
     ]);
+
+    const reimbursementForSummary = useMemo(() => {
+        return toNumber(targets_reimbursement?.current);
+    }, [targets_reimbursement?.current]);
+
+
+
+    const reimbursementVsCm2PctForSummary = useMemo(() => {
+        const cm2 = toNumber(cm2Profit);
+        return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
+    }, [reimbursementForSummary, cm2Profit]);
+
+    const reimbursementVsSalesPctForSummary = useMemo(() => {
+        const netSales =
+            platform === "global"
+                ? toNumber(globalMergedCurrentNet)
+                : toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
+
+        return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
+    }, [
+        platform,
+        globalMergedCurrentNet,
+        reimbursementForSummary,
+        plSummaryTotals.net_sales,
+        stats_mtdHome,
+    ]);
+
+
+    const handleDownloadPlProductwiseMtd = useCallback(() => {
+        try {
+            const rows = (monthlySkuwiseRowsDisplay || []).filter((r) => {
+                const sku = String(r.sku || "").toUpperCase();
+                const pn = String((r as any).product_name || "").toLowerCase();
+                const isOthers = (r as any).isOthers === true;
+                return !isOthers && !(sku === "OTHERS" && pn === "others");
+            });
+
+            if (!rows.length) return;
+
+            const periodLabel = formattedMonthYear;
+            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
+            const companyName =
+                (userData as any)?.companyName ||
+                (userData as any)?.company_name ||
+                (userData as any)?.company ||
+                "";
+
+            const dataRows = monthlySkuwiseRows.map((r) => ({
+                "S.No": r.isTotal ? "" : r.sno ?? "",
+                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                "Ad Type": r.isOthers || r.isTotal ? "-" : (r.ad_type || "-"),
+                "Net Units Sold": Number(r.quantity || 0),
+                "ASP": Number(r.asp || 0),
+                "Net Sales": Number(r.net_sales || 0),
+                "COGS": Number(r.cogs || 0),
+                "Selling Fees": Number(r.selling_fees || 0),
+                "FBA Fees": Number(r.fba_fees || 0),
+                "Ads Spend": Number(r.ads_spend || 0),
+
+                // add this
+                "ACOS %": Number(r.acos || 0),
+
+                "Tax": Number(r.tax || 0),
+                "Credits": Number(r.credits || 0),
+                "Tax & Credits": Number(r.tax_and_credits || 0),
+                "CM1 Profit": Number(r.profit || 0),
+                "CM1 Profit %": Number(r.cm1_profit_per || 0),
+                "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+                "CM2 Profit": Number(r.cm2_profit || 0),
+                "CM2 Profit %": Number(r.cm2_profit_per || 0),
+                "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
+            }));
+
+            const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
+                ...(countryName === "us" || countryName === "global"
+                    ? [
+                        {
+                            label: "Shipment Charges (-)",
+                            value: Number((plSummaryTotals as any)?.shipment_charges ?? 0),
+                            bold: true,
+                        },
+                    ]
+                    : []),
+
+                { label: "Cost of Advertisement", value: "", bold: true },
+                { label: "Visibility - Ads (-)", value: "", indent: 1 },
+                { label: "Visibility - Deals, Vouchers and Reviews (-)", value: "", indent: 1 },
+                { label: "Other Transactions", value: "", bold: true },
+                { label: "Other Platform Fees (-)", value: "", indent: 1 },
+                { label: "Inventory Storage Fees (-)", value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
+                { label: "Misc. Transactions (+)", value: "", indent: 1 },
+                { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
+                { label: "CM2 Profit/Loss", value: Number((plSummaryTotals as any)?.cm2_profit ?? 0), bold: true },
+                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
+                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
+            ];
+
+            exportPnLProductwiseBreakdownMtdExcel({
+                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
+                titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
+                countryName,
+                titleCountry,
+                platformLabel: "Phormula",
+                periodLabel,
+                companyName,
+                brandName: String(brandName || ""),
+                homeCurrencyCode: profileHomeCurrency,
+                dataRows,
+                summaryRows,
+            });
+        } catch (err) {
+            console.error("Error exporting P&L Productwise Breakdown MTD", err);
+        }
+    }, [
+        monthlySkuwiseRows,
+        formattedMonthYear,
+        countryName,
+        plSummaryTotals,
+        costOfAdsForSummary,
+        cm2MarginPctForSummary,
+        tacosFromDisplayedCardsForSummary,
+        reimbursementForSummary,
+        reimbursementVsCm2PctForSummary,
+        reimbursementVsSalesPctForSummary,
+        userData,
+        brandName,
+        profileHomeCurrency,
+    ]);
+
 
 
     const rangeCompletedPct = useMemo(() => {
@@ -9152,7 +9300,7 @@ ${pageLoading
                                                     {
                                                         id: "tacos",
                                                         label: "TACoS (Total Advertising Cost of Sale)",
-                                                        endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
+                                                        endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`,
                                                     },
 
                                                     {
