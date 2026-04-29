@@ -298,9 +298,17 @@ def getDispatchfile():
         def build_global_dispatch_file(frames: list[pd.DataFrame]) -> BytesIO:
             combined_df = pd.concat(frames, ignore_index=True)
 
-            group_keys = ['Product Name']
+            # ✅ ADD HERE
             if 'sku' in combined_df.columns:
-                group_keys.append('sku')
+                sku_df = (
+                    combined_df.groupby('Product Name')['sku']
+                    .apply(lambda x: ', '.join(sorted(set(str(v).strip() for v in x if str(v).strip()))))
+                    .reset_index()
+                )
+            else:
+                sku_df = None
+
+            group_keys = ['Product Name']
 
             sum_cols = [
                 'Inventory at Month End',
@@ -337,6 +345,10 @@ def getDispatchfile():
                 final_df = pd.merge(grouped, ratio_df, on=group_keys, how='left')
             else:
                 final_df = grouped.copy()
+
+            # ✅ ADD HERE
+            if sku_df is not None:
+                final_df = pd.merge(final_df, sku_df, on='Product Name', how='left')
 
             ordered_cols = [
                 'Product Name',
@@ -1060,8 +1072,8 @@ def global_PO_generated():
     final_df['PO Cost (in INR)'] = grouped_df.get('PO Cost (in INR)', 0)
 
     total_row = {
-        'Sno.': 'Total',
-        'Product Name': '',
+        'Sno.': '',
+        'Product Name': 'Total',
         'Dispatches UK': final_df['Dispatches UK'].sum(),
         'Dispatches Canada': final_df['Dispatches Canada'].sum(),
         'Dispatches Amazon US': final_df['Dispatches Amazon US'].sum(),
