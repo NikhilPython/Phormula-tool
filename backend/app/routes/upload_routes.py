@@ -1515,15 +1515,8 @@ def upload_history():
         # - if homeCurrency is provided => only return global_<currency>
         # - else => only return base global
         if country_param == "global":
-            if home_currency == "usd":
-                if upload_country != "global":
-                    continue
-            elif home_currency:
-                if upload_country != f"global_{home_currency}":
-                    continue
-            else:
-                if upload_country != "global":
-                    continue
+            if upload_country not in ["uk", "us"]:
+                continue
 
         # ✅ Optional: if FE passes specific country, filter by it
         elif country_param:
@@ -1585,7 +1578,8 @@ def upload_history():
         metric = "net_sales"
 
     # Use requested country if provided, else infer from first upload, else default "uk"
-    trend_country = (country_param or (response[0]["country"] if response else "uk")).strip().lower()
+    trend_country = country_param if country_param else (response[0]["country"] if response else "uk")
+    trend_country = trend_country.strip().lower()
 
     # ✅ If FE doesn't send year, infer from filtered history (latest year available)
     if year is None:
