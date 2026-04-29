@@ -436,11 +436,16 @@ export default function InventoryFlowPage() {
 
       const data = (await res.json()) as UploadHistoryRes;
 
-      const filtered = countryName
-        ? data.uploads.filter(
+      const filtered =
+  countryName === 'global'
+    ? data.uploads.filter((upload) =>
+        ['uk', 'us'].includes((upload.country ?? '').toString().toLowerCase())
+      )
+    : countryName
+      ? data.uploads.filter(
           (upload) => (upload.country ?? '').toString().toLowerCase() === countryName
         )
-        : data.uploads;
+      : data.uploads;
 
       setUploads(data.uploads);
       setFilteredUploads(filtered);
@@ -579,7 +584,7 @@ export default function InventoryFlowPage() {
           return;
         }
 
-        const headerRowIndex = 6;
+        const headerRowIndex = countryName === 'global' ? 0 : 6;
         const rawHeaders = (rows[headerRowIndex] || []).map((header) =>
           String(header ?? '').trim().replace(/\s+Sold$/i, '')
         );

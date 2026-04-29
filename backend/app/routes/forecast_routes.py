@@ -135,12 +135,20 @@ def load_forecast_df(*, user_id, country, filename, disk_fallback_path=None):
 
     if stored:
         b = stored.data
-        return pd.read_excel(BytesIO(b), header=6), b   # ✅ FIX HERE
+
+        if country == "global":
+            return pd.read_excel(BytesIO(b)), b   # ✅ FIX
+        else:
+            return pd.read_excel(BytesIO(b), header=6), b
 
     if disk_fallback_path and os.path.exists(disk_fallback_path):
         with open(disk_fallback_path, "rb") as f:
             b = f.read()
-        return pd.read_excel(BytesIO(b), header=6), b   # ✅ FIX HERE
+
+        if country == "global":
+            return pd.read_excel(BytesIO(b)), b   # ✅ FIX
+        else:
+            return pd.read_excel(BytesIO(b), header=6), b
 
     return None, None
 
@@ -753,11 +761,19 @@ def forecast_global():
 
         global_df = merged[['Product Name', 'sku'] + forecast_cols].copy()
 
+        sku_df = (
+            global_df.groupby('Product Name')['sku']
+            .apply(lambda x: ', '.join(sorted(set(str(v).strip() for v in x if str(v).strip() and str(v).strip().lower() != 'nan'))))
+            .reset_index()
+        )
+
         global_df = (
             global_df
-            .groupby(['Product Name', 'sku'], as_index=False)[forecast_cols]
+            .groupby('Product Name', as_index=False)[forecast_cols]
             .sum()
         )
+
+        global_df = pd.merge(global_df, sku_df, on='Product Name', how='left')
 
         total_row = {
             'Product Name': 'Total',
