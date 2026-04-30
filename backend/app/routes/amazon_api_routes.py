@@ -1011,6 +1011,27 @@ def finances_mtd_transactions():
     cm2_profit_dashboard = profit_total - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit_dashboard / net_sales * 100) if net_sales else 0.0
     current_net_reimbursement = compute_net_reimbursement_from_df(df_all) if not df_all.empty else 0.0
+    # ================= NEW CALCULATIONS =================
+
+    total_ads = float(advertising_fee_total or 0.0)
+
+    total_cm2_profit = float(cm2_profit_dashboard or 0.0)
+
+    total_cm2_margins = (
+        total_cm2_profit / float(net_sales) * 100.0
+    ) if float(net_sales or 0.0) else 0.0
+
+    tacos = (
+        total_ads / float(net_sales) * 100.0
+    ) if float(net_sales or 0.0) else 0.0
+
+    reimbursement_vs_cm2_margins = (
+        float(current_net_reimbursement or 0.0) / total_cm2_profit * 100.0
+    ) if total_cm2_profit else 0.0
+
+    reimbursement_vs_sales = (
+        float(current_net_reimbursement or 0.0) / float(net_sales) * 100.0
+    ) if float(net_sales or 0.0) else 0.0
 
     derived_totals = {
         "amazon_fees": round(amazon_fees, 2),
@@ -1024,6 +1045,13 @@ def finances_mtd_transactions():
         "cm2_profit": round(cm2_profit_dashboard, 2),
         "profit_percentage": round(profit_percentage, 2),
         "current_net_reimbursement": round(float(current_net_reimbursement or 0.0), 2),
+        # new columns
+        "total_ads": round(total_ads, 2),
+        "total_cm2_profit": round(total_cm2_profit, 2),
+        "total_cm2_margins": round(total_cm2_margins, 2),
+        "tacos_total_advertising_cost_of_sale": round(tacos, 2),
+        "reimbursement_vs_cm2_margins": round(reimbursement_vs_cm2_margins, 2),
+        "reimbursement_vs_sales": round(reimbursement_vs_sales, 2),
     }
 
     previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
@@ -1361,6 +1389,52 @@ def finances_mtd_transactions():
         total_row["credits"] = float(df_sku["credits"].sum()) if "credits" in df_sku.columns else 0.0
         total_row["tax"] = float(df_sku["tax"].sum()) if "tax" in df_sku.columns else 0.0
         total_row["tax_and_credits"] = round(float(total_row["credits"]) - abs(float(total_row["tax"])), 2)
+        # ================= DASHBOARD SUMMARY VALUES =================
+
+        cost_ads_total = (
+            abs(float(total_row.get("brand_spend", 0.0) or 0.0))
+            + abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
+        )
+
+        product_ads_total = (
+            abs(float(total_row.get("product_spend", 0.0) or 0.0))
+            + abs(float(total_row.get("display_spend", 0.0) or 0.0))
+        )
+
+        other_transactions_total = (
+            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
+        )
+
+        total_cm2_profit = (
+            float(total_row.get("profit", 0.0) or 0.0)
+            - product_ads_total
+            - other_transactions_total
+            - cost_ads_total
+        )
+
+        total_cm2_margins = (
+            total_cm2_profit / float(total_row.get("net_sales", 0.0) or 0.0) * 100.0
+        ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
+
+        tacos = (
+            (product_ads_total + cost_ads_total) / float(total_row.get("net_sales", 0.0) or 0.0) * 100.0
+        ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
+
+        reimbursement_vs_cm2_margins = (
+            float(current_net_reimbursement or 0.0) / total_cm2_profit * 100.0
+        ) if total_cm2_profit else 0.0
+
+        reimbursement_vs_sales = (
+            float(current_net_reimbursement or 0.0) / float(total_row.get("net_sales", 0.0) or 0.0) * 100.0
+        ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
+
+        total_row["total_ads"] = round(cost_ads_total, 2)
+        total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
+        total_row["total_cm2_margins"] = round(total_cm2_margins, 2)
+        total_row["tacos_total_advertising_cost_of_sale"] = round(tacos, 2)
+        total_row["reimbursement_vs_cm2_margins"] = round(reimbursement_vs_cm2_margins, 2)
+        total_row["reimbursement_vs_sales"] = round(reimbursement_vs_sales, 2)
 
         total_row["user_id"] = int(user_id)
         total_row["country"] = ui_country
@@ -1381,6 +1455,13 @@ def finances_mtd_transactions():
             "cm2_profit",
             "profit_percentage",
             "current_net_reimbursement",
+            # new columns
+            "total_ads",
+            "total_cm2_profit",
+            "total_cm2_margins",
+            "tacos_total_advertising_cost_of_sale",
+            "reimbursement_vs_cm2_margins",
+            "reimbursement_vs_sales",
         ]
 
         for col in DERIVED_TOTAL_COLUMNS:
@@ -1388,7 +1469,15 @@ def finances_mtd_transactions():
                 df_sku[col] = 0.0
 
         for col, val in derived_totals.items():
-            total_row[col] = val
+            if col not in [
+                "total_ads",
+                "total_cm2_profit",
+                "total_cm2_margins",
+                "tacos_total_advertising_cost_of_sale",
+                "reimbursement_vs_cm2_margins",
+                "reimbursement_vs_sales",
+            ]:
+                total_row[col] = val
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
