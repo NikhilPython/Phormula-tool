@@ -2511,10 +2511,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       : null;
 
   const mapSkuTotalToSummary = (row: any): Summary => ({
-    unit_sold: toNum(row?.quantity ?? row?.total_quantity),
+    unit_sold: toNum(row?.total_quantity),
     total_sales: toNum(row?.net_sales),
     gross_sales: toNum(row?.gross_sales),
-    total_product_sales: toNum(row?.net_sales),
+    total_product_sales: toNum(row?.gross_sales),
     total_expense:
       toNum(row?.amazon_fee) +
       toNum(row?.cost_of_unit_sold) +
@@ -3774,19 +3774,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       .reduce((sum, r) => sum + toNum((r as any)[key]), 0);
 
   const buildSummaryFromSkuRows = (rows: TableRow[]): Summary => {
-    const totalRow = getTotalRow(rows);
+    const totalRow = getSkuTotalRow(rows);
 
     const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
-    const grossSales =
-      toNum((totalRow as any)?.gross_sales) ||
-      toNum((totalRow as any)?.product_sales) ||
-      sumSkuRows(rows, "gross_sales") ||
-      sumSkuRows(rows, "product_sales");
+  const grossSales =
+  toNum((totalRow as any)?.gross_sales) ||
+  sumSkuRows(rows, "gross_sales");
 
     const units =
-      toNum(totalRow?.quantity) ||
-      toNum(totalRow?.units_sold) ||
-      sumSkuRows(rows, "quantity");
+      toNum(totalRow?.total_quantity) ||
+      toNum(totalRow?.net_units_sold) ||
+      sumSkuRows(rows, "total_quantity");
 
     const cm2 =
       toNum((totalRow as any)?.cm2_profit) ||

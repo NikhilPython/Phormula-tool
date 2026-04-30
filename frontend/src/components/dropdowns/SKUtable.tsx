@@ -715,10 +715,51 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       if (INT_KEYS.has(key)) return n;
 
-      const formatted = Math.abs(n).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      // 🎯 Keys you want rounded (Net Sales section)
+      const ROUND_KEYS = new Set([
+        // Net Sales
+        "product_sales",
+        "refund_sales",
+        "tex_and_credits",
+        "net_sales",
+
+        // Promotions & COGS
+        "promotional_rebates",
+        "cost_of_unit_sold",
+
+        // Marketplace Fees
+        "selling_fees",
+        "fba_fees",
+        "amazon_fee",
+
+        // Other Transactions
+        "net_taxes",
+        "net_credits",
+        "other_transactions",
+
+        // ✅ CM1 Profit section
+        "profit",
+
+        "advertising_total",
+        "visible_ads",
+        "dealsvouchar_ads",
+        "inventory_storage_fees",
+        "misc_transaction",
+        "shipment_charges",
+        "net_reimbursement",
+        "cm2_profit",
+      ]);
+
+      let formatted;
+
+      if (ROUND_KEYS.has(key)) {
+        formatted = Math.round(Math.abs(n)).toLocaleString();
+      } else {
+        formatted = Math.abs(n).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
 
       const signedFormatted = n < 0 ? `-${formatted}` : formatted;
 
@@ -774,7 +815,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "net_sales",           // Net Sales (+)
         "net_credits",         // Net Credits (+)
         "misc_transaction",
-        "other_transactions",
+        // "other_transactions",
       ]),
     []
   );
