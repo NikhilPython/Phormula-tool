@@ -1368,6 +1368,28 @@ def finances_mtd_transactions():
         total_row["year"] = int(now_utc.year)
         total_row["generated_at_utc"] = now_utc.isoformat()
 
+        # ✅ Put all derived_totals values into SKU-wise table Grand Total row
+        DERIVED_TOTAL_COLUMNS = [
+            "amazon_fees",
+            "platform_fee",
+            "advertising_fees",
+            "shipment_fees",
+            "net_sales",
+            "gross_sales",
+            "asp",
+            "profit",
+            "cm2_profit",
+            "profit_percentage",
+            "current_net_reimbursement",
+        ]
+
+        for col in DERIVED_TOTAL_COLUMNS:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+
+        for col, val in derived_totals.items():
+            total_row[col] = val
+
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
         # replace NaN/Inf before jsonify/to_dict

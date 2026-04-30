@@ -59,7 +59,7 @@ def table_exists(conn, table_name: str) -> bool:
     return bool(conn.execute(q, {"table": table_name}).scalar())
 
 
-def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> pd.DataFrame:
+def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None, marketplace_name: str = None) -> pd.DataFrame:
     country = str(country).strip().lower()
 
     if as_of is None:
@@ -86,6 +86,7 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> 
             SELECT sku, quantity
             FROM liveorders
             WHERE user_id = :user_id
+              AND marketplace = :marketplace_name
               AND purchase_date >= :start
               AND purchase_date < :end
         """)
@@ -96,6 +97,7 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> 
                 conn,
                 params={
                     "user_id": user_id,
+                    "marketplace_name": marketplace_name,
                     "start": datetime.combine(curr_start, datetime.min.time()),
                     "end": datetime.combine(curr_end + timedelta(days=1), datetime.min.time()),
                 },
@@ -117,14 +119,16 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> 
                     q_prev = text(f"""
                         SELECT sku, quantity
                         FROM public.{table}
-                        WHERE NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
-                          AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
+                        WHERE marketplace = :marketplace_name
+                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
+                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
                     """)
 
                     df_prev = pd.read_sql(
                         q_prev,
                         conn,
                         params={
+                            "marketplace_name": marketplace_name,
                             "start": datetime.combine(prev_start, datetime.min.time()),
                             "end": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
                         },
@@ -146,14 +150,16 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> 
                     q_prev = text(f"""
                         SELECT sku, quantity
                         FROM public.{table}
-                        WHERE NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
-                          AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
+                        WHERE marketplace = :marketplace_name
+                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
+                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
                     """)
 
                     df_prev = pd.read_sql(
                         q_prev,
                         conn,
                         params={
+                            "marketplace_name": marketplace_name,
                             "start": datetime.combine(prev_start, datetime.min.time()),
                             "end": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
                         },

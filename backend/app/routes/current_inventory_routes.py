@@ -11,11 +11,12 @@ from app.models.user_models import User, CountryProfile
 from app import db
 from io import BytesIO
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from calendar import monthrange
 from sqlalchemy.exc import ProgrammingError
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.uk_coverage_ratio_utils import fetch_last_30_days_units
 
 SECRET_KEY = Config.SECRET_KEY
 
@@ -119,6 +120,8 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         select_cols.append("country")
     if "user_id" in cols:
         select_cols.append("user_id")
+    if "currency" in cols:
+        select_cols.append("currency")
 
     where_clauses = []
     params = {}
@@ -130,9 +133,16 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
     if "marketplace_id" in cols:
         where_clauses.append("marketplace_id = :mkt_id")
         params["mkt_id"] = marketplace_id
-    elif "country" in cols:
+
+    if "country" in cols:
         where_clauses.append("LOWER(country) = :country")
         params["country"] = country_key
+
+    expected_currency = CURRENCY_BY_COUNTRY.get(country_key)
+
+    if "currency" in cols and expected_currency:
+        where_clauses.append("UPPER(currency) = :currency")
+        params["currency"] = expected_currency
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -173,6 +183,58 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         )
         return pd.DataFrame()
 
+CURRENCY_BY_COUNTRY = {
+    "us": "USD",
+    "uk": "GBP",
+}
+
+def return_saved_current_inventory_table(user_id, country_key, month_name, year, error_msg=None):
+    table_name = f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}_table"
+
+    if not table_exists(primary_engine, table_name):
+        return jsonify({
+            "error": error_msg or "Current inventory generation failed",
+            "fallback_found": False,
+            "table_name": table_name,
+        }), 500
+
+    try:
+        saved_df = pd.read_sql_table(table_name, primary_engine)
+
+        output = BytesIO()
+        saved_df.to_excel(output, index=False, engine="openpyxl")
+        output.seek(0)
+
+        excel_b64 = base64.b64encode(output.read()).decode("utf-8")
+
+        return jsonify({
+            "message": "Current inventory loaded from saved table",
+            "data": excel_b64,
+            "filename": f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}.xlsx",
+            "inventory_alerts": {},
+            "warnings": [
+                "Live current inventory generation failed. Showing saved database table instead."
+            ],
+            "meta": {
+                "user_id": user_id,
+                "country": country_key,
+                "month": month_name,
+                "year": year,
+                "table_name": table_name,
+                "source": "saved_table",
+                "original_error": str(error_msg) if error_msg else None,
+            }
+        }), 200
+
+    except Exception as e:
+        logger.exception("Failed loading fallback table %s", table_name)
+        return jsonify({
+            "error": "Current inventory generation failed and saved table could not be loaded",
+            "details": str(e),
+            "original_error": str(error_msg) if error_msg else None,
+            "table_name": table_name,
+        }), 500
+    
 
 @current_inventory_bp.route("/current_inventory", methods=["POST", "OPTIONS"])
 def current_inventory():
@@ -334,6 +396,33 @@ def current_inventory():
             on="sku",
             how="left"
         )
+        # Fetch last 30 days sales
+        sales_30_as_of = date(
+            year,
+            month_number,
+            monthrange(year, month_number)[1]
+        ) + timedelta(days=1)
+
+        sales_30_df = fetch_last_30_days_units(
+            user_id,
+            country_key,
+            as_of=sales_30_as_of,
+            marketplace_name=marketplace_name
+        )
+
+        if not sales_30_df.empty:
+            sales_30_df["sku"] = sales_30_df["sku"].apply(norm_sku)
+            final_df = final_df.merge(
+                sales_30_df.rename(columns={"last_30_days_units": "Sales Last 30 Days"}),
+                on="sku",
+                how="left"
+            )
+            final_df["Sales Last 30 Days"] = safe_numeric(
+                final_df["Sales Last 30 Days"],
+                0
+            )
+        else:
+            final_df["Sales Last 30 Days"] = 0
 
         if not aged_df.empty:
             final_df = final_df.merge(aged_df, on="sku", how="left")
@@ -445,12 +534,7 @@ def current_inventory():
             "Sno.",
             "SKU",
             "Product Name",
-            "total_quantity",
             "inbound_quantity",
-            "available_quantity",
-            "reserved_quantity",
-            "fulfillable_quantity",
-            "synced_at",
             "available",
             "inv-age-0-to-90-days",
             "inv-age-91-to-180-days",
@@ -459,6 +543,8 @@ def current_inventory():
             "inv-age-365-plus-days",
             "sales-rank",
             "estimated-storage-cost-next-month",
+            "Coverage Ratio (In Months)",
+            "Inventory Alerts",
             "Inventory at the beginning of the month",
             current_month_col,
             "Inventory Inwarded",
@@ -477,6 +563,9 @@ def current_inventory():
         }
         total_row["Product Name"] = "Total"
         final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
+        # ---------------- NEW COLUMNS ---------------- #
+
+        
 
         try:
             inventory_alerts = generate_inventory_alerts_for_all_skus(
@@ -488,7 +577,38 @@ def current_inventory():
             inventory_alerts = {}
             warnings.append("Inventory alerts could not be generated.")
 
+        # Coverage Ratio (In Months)
+        final_df["Coverage Ratio (In Months)"] = (
+            final_df["Inventory at the end of the month"]
+            / final_df["Sales Last 30 Days"].replace(0, pd.NA)
+        ).fillna(0).round(2)
+
+        # Inventory Alerts
+        final_df["Inventory Alerts"] = final_df["SKU"].map(
+            lambda sku: inventory_alerts.get(str(sku).strip().upper(), {}).get("alert", "")
+        )
+
         filename = f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}.xlsx"
+        # Save current inventory report into database table
+        current_inventory_table_name = (
+            f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}_table"
+        )
+
+        try:
+            final_df.to_sql(
+                current_inventory_table_name,
+                primary_engine,
+                if_exists="replace",
+                index=False
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed saving current inventory table %s",
+                current_inventory_table_name
+            )
+            warnings.append(
+                f"Current inventory database table could not be saved: {e}"
+            )
 
         output = BytesIO()
         final_df.to_excel(output, index=False, engine="openpyxl")
@@ -502,17 +622,27 @@ def current_inventory():
             "inventory_alerts": inventory_alerts,
             "warnings": warnings,
             "meta": {
-                "user_id": user_id,
-                "country": country_key,
-                "marketplace_id": marketplace_id,
-                "marketplace_name": marketplace_name,
-                "month": month_name,
-                "year": year,
-                "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
-                "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
-                "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
-            }
+            "user_id": user_id,
+            "country": country_key,
+            "marketplace_id": marketplace_id,
+            "marketplace_name": marketplace_name,
+            "month": month_name,
+            "year": year,
+            "table_name": current_inventory_table_name,
+            "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
+            "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
+            "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
+        }
         }), 200
+    except Exception as e:
+        logger.exception("Current inventory generation failed; trying saved table fallback")
+        return return_saved_current_inventory_table(
+            user_id=user_id,
+            country_key=country_key,
+            month_name=month_name,
+            year=year,
+            error_msg=e,
+        )
 
     finally:
         db_session.close()
