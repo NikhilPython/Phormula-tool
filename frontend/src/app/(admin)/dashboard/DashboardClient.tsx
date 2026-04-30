@@ -754,7 +754,7 @@ const ensureSpReportSeedOncePerDay = async (
             start_date,
             end_date,
             time_unit: "SUMMARY",
-            countries: ["UK"],
+            countries: [country],
             return_excel: false,
         };
 
@@ -872,7 +872,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
             start_date,
             end_date,
             time_unit: "SUMMARY",
-            countries: ["UK"],
+            countries: [country],
             return_excel: false,
         };
 
@@ -1391,6 +1391,11 @@ export default function DashboardPage() {
 
     const [adsSeeded, setAdsSeeded] = useState(false);
     const [adsSeedError, setAdsSeedError] = useState<string | null>(null);
+
+    // background-only state, not connected to Loader
+    const [adsBackgroundLoading, setAdsBackgroundLoading] = useState(false);
+    const [adsBackgroundError, setAdsBackgroundError] = useState<string | null>(null);
+
     const [adsLoading, setAdsLoading] = useState(false);
     const [invLoading, setInvLoading] = useState(false);
     const [invError, setInvError] = useState("");
@@ -1417,6 +1422,18 @@ export default function DashboardPage() {
             next.add(id);
             return next;
         });
+    }, []);
+
+
+    // Move this here, before runAdsBackgroundSync
+    const isManualRefreshRef = useRef(false);
+    const shouldPostCacheRef = useRef(false);
+    const [cacheSaveTick, setCacheSaveTick] = useState(0);
+
+    const triggerCachePost = useCallback(() => {
+        shouldPostCacheRef.current = true;
+        isManualRefreshRef.current = true;
+        setCacheSaveTick((x) => x + 1);
     }, []);
 
     const [pendingHash, setPendingHash] = useState<string>("");
@@ -1556,8 +1573,7 @@ export default function DashboardPage() {
     const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
     const activeDateRegion = graphRegionToUse;
 
-
-    const fetchMonthlySp = useCallback(async () => {
+    const fetchMonthlySp = useCallback(async (silent = false) => {
         if (isMonthYearNA) {
             setMonthlySpLoading(false);
             setMonthlySpError(null);
@@ -1566,7 +1582,7 @@ export default function DashboardPage() {
             return;
         }
         try {
-            setMonthlySpLoading(true);
+            if (!silent) setMonthlySpLoading(true);
             setMonthlySpError(null);
 
             const token =
@@ -1628,10 +1644,99 @@ export default function DashboardPage() {
             setMonthlySpRows([]);
             setMonthlySpTotalSpend(null);
         } finally {
-            setMonthlySpLoading(false);
+            if (!silent) setMonthlySpLoading(false);
         }
     }, [platform, isMonthYearNA, activeDateRegion]);
 
+    const runAdsBackgroundSync = useCallback(async () => {
+        if (adsBackgroundLoading) return;
+        if (isMonthYearNA) return;
+        if (platform === "shopify") return;
+
+        const jwtToken =
+            typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+        if (!jwtToken) {
+            setAdsBackgroundError("No token found. Please sign in.");
+            return;
+        }
+
+        const country =
+            platform === "amazon-us"
+                ? "US"
+                : platform === "amazon-ca"
+                    ? "CA"
+                    : "UK";
+
+        setAdsBackgroundLoading(true);
+        setAdsBackgroundError(null);
+
+        try {
+            // Slow calls run in background. Do not await this from dashboard loader.
+            await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+
+            if (country === "UK" || country === "US") {
+                await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+            }
+
+            await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+
+            const { monthName, year } = getRegionYearMonth(activeDateRegion);
+            const month = monthToNumber(monthName.toLowerCase());
+            const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+
+            const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${jwtToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ month, year, country, include }),
+            });
+
+            const json = await res.json().catch(() => ({}));
+            const errMsg = String(json?.error || json?.message || json?.detail || "");
+
+            const isNoRows404 =
+                res.status === 404 && errMsg.toLowerCase().includes("no rows found");
+
+            const isDuplicateOrInProgress =
+                res.status === 425 ||
+                errMsg.toLowerCase().includes("duplicate") ||
+                errMsg.toLowerCase().includes("already exists") ||
+                errMsg.toLowerCase().includes("request is a duplicate") ||
+                errMsg.toLowerCase().includes("in progress");
+
+            if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
+                throw new Error(errMsg || "monthly_sp_sd_to_db failed");
+            }
+
+            setAdsSeeded(true);
+            setAdsSeedError(null);
+
+            // Refresh ads UI silently after background sync completes.
+            await fetchMonthlySp(true);
+
+            // Trigger second POST /save with updated ads data.
+            triggerCachePost();
+        } catch (e: any) {
+            console.error("Background ads sync failed:", e);
+            setAdsSeeded(false);
+            setAdsSeedError(e?.message || "Ads background sync failed");
+            setAdsBackgroundError(e?.message || "Ads background sync failed");
+        } finally {
+            setAdsBackgroundLoading(false);
+        }
+    }, [
+        isMonthYearNA,
+        platform,
+        baseURL,
+        activeDateRegion,
+        fetchMonthlySp,
+        adsBackgroundLoading,
+        triggerCachePost,
+    ]);
 
     const showInventoryToast = ({
         sku,
@@ -1926,8 +2031,7 @@ export default function DashboardPage() {
         biLoading ||
         invLoading ||
         monthlySpLoading ||
-        fxLoading ||
-        adsLoading;
+        fxLoading;
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -3087,58 +3191,10 @@ export default function DashboardPage() {
                         : "UK";
 
             if (platform !== "shopify" && jwtToken) {
-                setAdsLoading(true);
-                setAdsSeeded(false);
+                setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
 
-                setStep(1, "MTD Fetching", 10);
-                // await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
-
-                // if (country === "UK" || country === "US") {
-                //     setStep(1, "MTD Fetching", 18);
-                //     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-                // }
-
-                setStep(1, "MTD Fetching", 26);
-                // await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
-
-                setAdsSeeded(true);
-                setAdsSeedError(null);
-                setAdsLoading(false);
-
-                setStep(1, "MTD Fetching", 38, "Fetching Monthly Ads data...");
-                const { monthName, year } = getRegionYearMonth(activeDateRegion);
-                const month = monthToNumber(monthName.toLowerCase());
-                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
-
-                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${jwtToken}`,
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ month, year, country, include }),
-                });
-
-                const json = await res.json().catch(() => ({}));
-                const errMsg = String(json?.error || json?.message || json?.detail || "");
-
-                const isNoRows404 =
-                    res.status === 404 && errMsg.toLowerCase().includes("no rows found");
-
-                const isDuplicateOrInProgress =
-                    res.status === 425 ||
-                    errMsg.toLowerCase().includes("duplicate") ||
-                    errMsg.toLowerCase().includes("already exists") ||
-                    errMsg.toLowerCase().includes("request is a duplicate") ||
-                    errMsg.toLowerCase().includes("in progress");
-
-                if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
-                    throw new Error(errMsg || "monthly_sp_sd_to_db failed");
-                }
-
-                setStep(1, "MTD Fetching", 48, "Fetching Monthly Ads summary...");
-                await fetchMonthlySp();
+                // Fire-and-forget. Do not await.
+                void runAdsBackgroundSync();
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
@@ -3199,7 +3255,7 @@ export default function DashboardPage() {
             setError(e?.message || "Failed to load dashboard");
             setDashboardBusy(false);
         } finally {
-            setAdsLoading(false);
+            // setAdsLoading(false);
         }
     }, [
         isMonthYearNA,
@@ -3217,6 +3273,7 @@ export default function DashboardPage() {
         fetchShopify,
         fetchShopifyPrev,
         fetchInventory,
+        runAdsBackgroundSync,
     ]);
 
     const liveDashboardCountry = useMemo(() => {
@@ -3877,28 +3934,22 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
 
-    const isManualRefreshRef = useRef(false);
-
-    const shouldPostCacheRef = useRef(false);
-
     const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
         resetStepState();
-        isManualRefreshRef.current = true;
-        shouldPostCacheRef.current = true;
 
         try {
-            await runDashboardLoadWithSteps(); // fetch everything and update state
-            // persistence effect will automatically:
-            // 1. write localStorage
-            // 2. POST to backend
+            await runDashboardLoadWithSteps();
+
+            // First POST /save after main dashboard data has finished loading.
+            triggerCachePost();
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
         }
-    }, [runDashboardLoadWithSteps]);
+    }, [runDashboardLoadWithSteps, triggerCachePost]);
 
 
     useEffect(() => {
@@ -6279,6 +6330,9 @@ export default function DashboardPage() {
         data,
         liveBiPayload,
         invRows,
+        monthlySpRows,
+        monthlySpTotalSpend,
+        cacheSaveTick,
     ]);
 
     const tacosFromDisplayedCardsForSummary = useMemo(() => {
