@@ -243,15 +243,13 @@ def resolve_country(country, currency):
 
 @product_bp.route('/quarterlyskutable', methods=['GET'])
 def quarterlyskutable():
-    # Extract query parameters from the URL
     quarter = request.args.get('quarter')
     country_param = request.args.get('country', '')
     currency_param = (request.args.get('homeCurrency') or '').lower()
 
     country = resolve_country(country_param, currency_param)
-    year = request.args.get('year')
+    year = (request.args.get('year') or '').strip()
 
-    # Validate the query parameters
     if not quarter or not country or not year:
         return jsonify({'error': 'Quarter, country, and year are required'}), 400
 
@@ -267,48 +265,81 @@ def quarterlyskutable():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
+    def normalize_quarter(q):
+        q = str(q).strip().lower()
+
+        if q in ("q1", "quarter1", "1"):
+            return "quarter1"
+        if q in ("q2", "quarter2", "2"):
+            return "quarter2"
+        if q in ("q3", "quarter3", "3"):
+            return "quarter3"
+        if q in ("q4", "quarter4", "4"):
+            return "quarter4"
+
+        return None
+
     try:
-        table_name = f"{quarter}_{user_id}_{country}_{year}_table"
         engine = create_engine(db_url)
         metadata = MetaData(schema='public')
 
+        current_quarter = normalize_quarter(quarter)
+
+        if not current_quarter:
+            return jsonify({'error': 'Invalid quarter value'}), 400
+
+        table_name = f"{current_quarter}_{user_id}_{country}_{year}_table".lower()
+
         try:
             user_specific_table = Table(table_name, metadata, autoload_with=engine)
-            with engine.connect() as conn:
-                query = select(*user_specific_table.columns)
-                results = conn.execute(query).mappings().all()
 
-            # 🔒 Normalize all rows so UI gets true numbers, not strings
+            with engine.connect() as conn:
+                results = conn.execute(
+                    select(*user_specific_table.columns)
+                ).mappings().all()
+
             current_data = [_normalize_sku_row(dict(row)) for row in results]
 
-            prev_quarter, prev_year = get_previous_quarter(quarter, year)
-            previous_table_name = None
-            previous_data = []
-
-            if prev_quarter and prev_year:
-                previous_table_name = f"{prev_quarter}_{user_id}_{country}_{prev_year}_table".lower()
-                try:
-                    previous_table = Table(previous_table_name, metadata, autoload_with=engine)
-                    with engine.connect() as conn:
-                        prev_results = conn.execute(select(*previous_table.columns)).mappings().all()
-
-                    previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
-                except Exception:
-                    previous_data = []
-
-            return jsonify({
-                "current_table_name": table_name,
-                "current_data": current_data,
-                "previous_table_name": previous_table_name,
-                "previous_data": previous_data
-            }), 200
-
         except Exception:
-            return jsonify({'error': f"Table '{table_name}' not found for user {user_id}"}), 404
+            return jsonify({
+                'error': f"Table '{table_name}' not found for user {user_id}"
+            }), 404
 
-    except Exception:
-        return jsonify({'error': 'An unexpected error occurred'}), 500
+        previous_table_name = None
+        previous_data = []
 
+        prev_quarter, prev_year = get_previous_quarter(current_quarter, year)
+
+        if prev_quarter and prev_year:
+            previous_table_name = f"{prev_quarter}_{user_id}_{country}_{prev_year}_table".lower()
+
+            try:
+                previous_table = Table(previous_table_name, metadata, autoload_with=engine)
+
+                with engine.connect() as conn:
+                    prev_results = conn.execute(
+                        select(*previous_table.columns)
+                    ).mappings().all()
+
+                previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+
+            except Exception:
+                previous_data = []
+
+        return jsonify({
+            "current_table_name": table_name,
+            "current_data": current_data,
+            "previous_table_name": previous_table_name,
+            "previous_data": previous_data
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'error': 'An unexpected error occurred',
+            'message': str(e)
+        }), 500
+    
+    
 
 @product_bp.route('/currency-rates', methods=['GET'])
 def get_currency_rates():
