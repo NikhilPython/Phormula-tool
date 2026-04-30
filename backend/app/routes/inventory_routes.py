@@ -17,7 +17,6 @@ from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 from config import Config
 from contextlib import contextmanager
 from sqlalchemy import create_engine, text
-from app.routes.current_inventory_routes import return_saved_current_inventory_table
 
 # ---------------------------------------------------------------------------
 # basic config
@@ -523,16 +522,11 @@ def _fetch_inventory_age_by_sku(mp: str) -> dict[str, int]:
         try:
             report_id = _request_inventory_age_report(mp)
         except RuntimeError as e:
-            logger.error("Inventory aged failed, loading fallback table")
-
-            # 👇 fallback to your saved table
-            return return_saved_current_inventory_table(
-                user_id=user_id,
-                country_key=MARKETPLACE_TO_COUNTRY.get(mp, "uk"),
-                month_name=datetime.now().strftime("%B"),
-                year=datetime.now().year,
-                error_msg=e
-            )
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "action": "Reauthorize Amazon permissions OR disable aged inventory sync"
+            }), 403
 
         doc_id = _wait_for_report(report_id)
         if not doc_id:
