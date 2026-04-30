@@ -2084,6 +2084,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     Q4: "quarter4",
   };
 
+
+
+
   const buildParentSkuUrl = () => {
     if (range === "monthly") {
       const skuwiseFileName =
@@ -2500,6 +2503,81 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setUploadsData(null);
   };
 
+  const getSkuTotalRow = (rows: any[] = []) =>
+    Array.isArray(rows)
+      ? rows.find(
+        (r) => String(r?.sku || r?.product_name).trim().toLowerCase() === "total"
+      ) ?? rows[rows.length - 1] ?? null
+      : null;
+
+  const mapSkuTotalToSummary = (row: any): Summary => ({
+    unit_sold: toNum(row?.quantity ?? row?.total_quantity),
+    total_sales: toNum(row?.net_sales),
+    gross_sales: toNum(row?.gross_sales),
+    total_product_sales: toNum(row?.net_sales),
+    total_expense:
+      toNum(row?.amazon_fee) +
+      toNum(row?.cost_of_unit_sold) +
+      Math.abs(toNum(row?.advertising_total)),
+    cm2_profit: toNum(row?.cm2_profit || row?.profit),
+    total_cous: toNum(row?.cost_of_unit_sold),
+    otherwplatform:
+      toNum(row?.platform_fee) +
+      toNum(row?.platform_fee_inventory_storage) +
+      toNum(row?.platformfeenew),
+    advertising_total: Math.abs(toNum(row?.advertising_total || row?.visible_ads)),
+    total_amazon_fee: toNum(row?.amazon_fee),
+  });
+
+  const mapSkuTotalToUploadRow = (
+    row: any,
+    rangeType: RangeType,
+    monthVal: string,
+    quarterVal: string,
+    yearVal: string,
+    country: string
+  ): UploadRow => ({
+    country,
+    month: rangeType === "monthly" ? monthVal : rangeType === "quarterly" ? quarterVal : "ALL",
+    year: yearVal,
+    total_sales: toNum(row?.net_sales),
+    total_amazon_fee: toNum(row?.amazon_fee),
+    total_cous: toNum(row?.cost_of_unit_sold),
+    advertising_total: Math.abs(toNum(row?.advertising_total || row?.visible_ads)),
+    otherwplatform:
+      toNum(row?.platform_fee) +
+      toNum(row?.platform_fee_inventory_storage) +
+      toNum(row?.platformfeenew),
+    taxncredit: toNum(row?.tex_and_credits),
+    cm2_profit: toNum(row?.cm2_profit || row?.profit),
+    total_profit: toNum(row?.profit),
+  });
+
+  const buildUploadHistoryFromSkuApi = (
+    data: any,
+    rangeType: RangeType,
+    monthVal: string,
+    quarterVal: string,
+    yearVal: string,
+    country: string
+  ): UploadHistoryResponse => {
+    const currentTotal = getSkuTotalRow(data?.current_data);
+    const previousTotal = getSkuTotalRow(data?.previous_data);
+
+    return {
+      summary: mapSkuTotalToSummary(currentTotal),
+      summaryComparisons: {
+        ...(rangeType === "monthly" ? { lastMonth: mapSkuTotalToSummary(previousTotal) } : {}),
+        ...(rangeType === "quarterly" ? { lastQuarter: mapSkuTotalToSummary(previousTotal) } : {}),
+        ...(rangeType === "yearly" ? { lastYear: mapSkuTotalToSummary(previousTotal) } : {}),
+      },
+      current_data: data?.current_data ?? [],
+      previous_data: data?.previous_data ?? [],
+      current_table_name: data?.current_table_name,
+      previous_table_name: data?.previous_table_name,
+    };
+  };
+
   const fetchUploadHistory = async (
     rangeType: RangeType,
     monthVal: string,
@@ -2521,7 +2599,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? localStorage.getItem("jwtToken")
           : null;
 
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history2`);
+      const url = new URL(buildParentSkuUrl());
       url.searchParams.set("range", rangeType);
       url.searchParams.set("month", monthVal);
       url.searchParams.set("quarter", quarterVal);
@@ -2544,8 +2622,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return;
       }
 
-      const data: UploadHistoryResponse = await res.json();
+      const raw = await res.json();
+
+      const data = buildUploadHistoryFromSkuApi(
+        raw,
+        rangeType,
+        monthVal,
+        quarterVal,
+        yearVal,
+        country
+      );
+
       setUploadsData(data);
+      setSkuRows(raw?.current_data ?? []);
 
       if (data?.summary) {
         if (rangeType === "monthly" && yearVal && monthVal) {
@@ -2685,13 +2774,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName, isDemoMode]);
 
 
-
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
     if (isDemoMode) {
       setPerformanceTrend(DEMO_PERFORMANCE_TREND);
       setPerformanceTrendMetric("net_sales");
       return;
     }
+
     if (!countryName || !rangeType || !selectedYear) return;
 
     const timeline =
@@ -2709,6 +2798,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
       const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
+
       url.searchParams.set("country", countryName);
       url.searchParams.set("period", rangeType);
       url.searchParams.set("timeline", String(timeline));
@@ -3284,141 +3374,464 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, isDemoMode]);
 
 
-  useEffect(() => {
-    if (isDemoMode) {
-      setSkuRows(DEMO_SKU_ROWS);
-      return;
-    }
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+  // useEffect(() => {
+  //   if (isDemoMode) {
+  //     setSkuRows(DEMO_SKU_ROWS);
+  //     return;
+  //   }
+  //   const ready =
+  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+  //     (range === "yearly" && !!selectedYear);
 
-    if (!ready || !initialCountryName) {
-      setSkuRows([]);
-      return;
-    }
+  //   if (!ready || !initialCountryName) {
+  //     setSkuRows([]);
+  //     return;
+  //   }
 
-    const ac = new AbortController();
+  //   const ac = new AbortController();
 
-    const normalizeRowsForParent = (data: any[]): TableRow[] => {
-      return data.map((row) => {
-        const productName =
-          row?.product_name && String(row.product_name).trim() !== ""
-            ? String(row.product_name)
-            : row?.sku && String(row.sku).trim() !== ""
-              ? String(row.sku)
-              : "-";
+  //   const normalizeRowsForParent = (data: any[]): TableRow[] => {
+  //     return data.map((row) => {
+  //       const productName =
+  //         row?.product_name && String(row.product_name).trim() !== ""
+  //           ? String(row.product_name)
+  //           : row?.sku && String(row.sku).trim() !== ""
+  //             ? String(row.sku)
+  //             : "-";
 
-        const isTotalRow = productName.trim().toLowerCase() === "total";
+  //       const isTotalRow = productName.trim().toLowerCase() === "total";
 
-        const toNumber = (v: any) => {
-          if (v === undefined || v === null || v === "") return 0;
-          if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-          const n = Number(String(v).replace(/,/g, "").trim());
-          return Number.isFinite(n) ? n : 0;
-        };
+  //       const toNumber = (v: any) => {
+  //         if (v === undefined || v === null || v === "") return 0;
+  //         if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  //         const n = Number(String(v).replace(/,/g, "").trim());
+  //         return Number.isFinite(n) ? n : 0;
+  //       };
 
-        return {
-          ...row,
-          product_name: isTotalRow ? "Total" : productName,
-          sku: row.sku ?? "-",
+  //       return {
+  //         ...row,
+  //         product_name: isTotalRow ? "Total" : productName,
+  //         sku: row.sku ?? "-",
 
-          quantity: toNumber(row.quantity),
-          return_quantity: toNumber(row.return_quantity),
-          total_quantity: toNumber(row.total_quantity),
+  //         quantity: toNumber(row.quantity),
+  //         return_quantity: toNumber(row.return_quantity),
+  //         total_quantity: toNumber(row.total_quantity),
 
-          units_sold: toNumber(row.quantity),
-          return_units: toNumber(row.return_quantity),
-          net_units_sold: toNumber(row.total_quantity),
+  //         units_sold: toNumber(row.quantity),
+  //         return_units: toNumber(row.return_quantity),
+  //         net_units_sold: toNumber(row.total_quantity),
 
-          asp: toNumber(row.asp ?? row.ASP),
-          product_sales: toNumber(row.gross_sales ?? row.product_sales),
-          refund_sales: toNumber(row.refund_sales),
-          net_sales: toNumber(row.net_sales),
-          lost_total: toNumber(row.lost_total),
+  //         asp: toNumber(row.asp ?? row.ASP),
+  //         product_sales: toNumber(row.gross_sales ?? row.product_sales),
+  //         refund_sales: toNumber(row.refund_sales),
+  //         net_sales: toNumber(row.net_sales),
+  //         lost_total: toNumber(row.lost_total),
 
-          cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
-          shipment_charges: toNumber(row.shipment_charges),
-          selling_fees: toNumber(row.selling_fees),
-          fba_fees: toNumber(row.fba_fees),
-          amazon_fee: toNumber(row.amazon_fee),
+  //         cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
+  //         shipment_charges: toNumber(row.shipment_charges),
+  //         selling_fees: toNumber(row.selling_fees),
+  //         fba_fees: toNumber(row.fba_fees),
+  //         amazon_fee: toNumber(row.amazon_fee),
 
-          tex_and_credits: toNumber(row.tex_and_credits),
-          net_taxes: toNumber(row.net_taxes),
-          net_credits: toNumber(row.net_credits),
+  //         tex_and_credits: toNumber(row.tex_and_credits),
+  //         net_taxes: toNumber(row.net_taxes),
+  //         net_credits: toNumber(row.net_credits),
 
-          promotional_rebates: toNumber(row.promotional_rebates),
-          promotional_rebates_percentage: toNumber(row.promotional_rebates_percentage),
+  //         promotional_rebates: toNumber(row.promotional_rebates),
+  //         promotional_rebates_percentage: toNumber(row.promotional_rebates_percentage),
 
-          misc_transaction: toNumber(row.misc_transaction),
-          other_transaction_fees: toNumber(row.other_transaction_fees),
-          other_transactions: toNumber(row.other_transaction_fees),
+  //         misc_transaction: toNumber(row.misc_transaction),
+  //         other_transaction_fees: toNumber(row.other_transaction_fees),
+  //         other_transactions: toNumber(row.other_transaction_fees),
 
-          profit: toNumber(row.profit),
-          profit_percentage: toNumber(row.profit_percentage),
-          unit_wise_profitability: toNumber(row.unit_wise_profitability),
+  //         profit: toNumber(row.profit),
+  //         profit_percentage: toNumber(row.profit_percentage),
+  //         unit_wise_profitability: toNumber(row.unit_wise_profitability),
 
-          profit_mix: toNumber(row.profit_mix),
-          sales_mix: toNumber(row.sales_mix),
-        } as TableRow;
-      });
-    };
+  //         profit_mix: toNumber(row.profit_mix),
+  //         sales_mix: toNumber(row.sales_mix),
+  //       } as TableRow;
+  //     });
+  //   };
 
-    const fetchSkuRows = async () => {
-      try {
-        if (!token) {
-          setSkuRows([]);
-          return;
-        }
+  //   const getTotalRow = (rows: TableRow[]) => {
+  //     return rows.find(
+  //       (r) => String(r.product_name || "").trim().toLowerCase() === "total"
+  //     );
+  //   };
 
-        const url = buildParentSkuUrl();
+  //   const sumSkuRows = (rows: TableRow[], key: string) => {
+  //     return rows
+  //       .filter((r) => String(r.product_name || "").trim().toLowerCase() !== "total")
+  //       .reduce((sum, r) => sum + toNum((r as any)[key]), 0);
+  //   };
 
-        const res = await fetch(url, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-          signal: ac.signal,
-        });
+  //   const buildSummaryFromSkuRows = (rows: TableRow[]): Summary => {
+  //     const totalRow = getTotalRow(rows);
 
-        if (!res.ok) {
-          setSkuRows([]);
-          return;
-        }
+  //     const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
+  //     const grossSales =
+  //       toNum((totalRow as any)?.gross_sales) ||
+  //       toNum((totalRow as any)?.product_sales) ||
+  //       sumSkuRows(rows, "gross_sales") ||
+  //       sumSkuRows(rows, "product_sales");
 
-        const data = await res.json();
+  //     const units =
+  //       toNum(totalRow?.quantity) ||
+  //       toNum(totalRow?.units_sold) ||
+  //       sumSkuRows(rows, "quantity");
 
-        if (!Array.isArray(data) || data.length === 0) {
-          setSkuRows([]);
-          return;
-        }
+  //     const ads = toNum((totalRow as any)?.advertising_total);
 
-        const normalized = normalizeRowsForParent(data);
-        setSkuRows(normalized);
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        setSkuRows([]);
-      }
-    };
+  //     const cm2 =
+  //       toNum((totalRow as any)?.cm2_profit) ||
+  //       toNum((totalRow as any)?.profit) ||
+  //       sumSkuRows(rows, "profit");
 
-    fetchSkuRows();
+  //     return {
+  //       unit_sold: units,
+  //       total_sales: netSales,
+  //       gross_sales: grossSales,
+  //       total_product_sales: grossSales,
+  //       total_expense: 0,
+  //       cm2_profit: cm2,
+  //       total_cous:
+  //         toNum((totalRow as any)?.cost_of_unit_sold) ||
+  //         sumSkuRows(rows, "cost_of_unit_sold"),
+  //       advertising_total: ads,
+  //       total_amazon_fee:
+  //         toNum((totalRow as any)?.amazon_fee) ||
+  //         sumSkuRows(rows, "amazon_fee"),
+  //       otherwplatform:
+  //         toNum((totalRow as any)?.platform_fee) ||
+  //         toNum((totalRow as any)?.other_transaction_fees),
+  //     };
+  //   };
 
-    return () => ac.abort();
-  }, [
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    initialCountryName,
-    globalHomeCurrency,
-    userid,
-    token,
-    isDemoMode,
-  ]);
+  //   const buildUploadRowFromSkuRows = (rows: TableRow[]): UploadRow[] => {
+  //     const summary = buildSummaryFromSkuRows(rows);
+
+  //     return [
+  //       {
+  //         country: initialCountryName,
+  //         month: selectedMonth || "",
+  //         year: selectedYear,
+  //         total_sales: summary.total_sales,
+  //         total_amazon_fee: summary.total_amazon_fee ?? 0,
+  //         total_cous: summary.total_cous ?? 0,
+  //         advertising_total: summary.advertising_total ?? 0,
+  //         otherwplatform: summary.otherwplatform ?? 0,
+  //         cm2_profit: summary.cm2_profit,
+  //         total_profit: summary.cm2_profit,
+  //       },
+  //     ];
+  //   };
+
+
+  //   useEffect(() => {
+  //     if (isDemoMode) {
+  //       setSkuRows(DEMO_SKU_ROWS);
+  //       setUploadsData(DEMO_UPLOAD_HISTORY);
+  //       setBargraphUploads(DEMO_UPLOADS);
+  //       setGraphPageUploads(DEMO_UPLOADS);
+  //       return;
+  //     }
+
+  //     const ready =
+  //       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+  //       (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+  //       (range === "yearly" && !!selectedYear);
+
+  //     if (!ready || !initialCountryName || !token) {
+  //       setSkuRows([]);
+  //       setUploadsData(null);
+  //       setBargraphUploads([]);
+  //       setGraphPageUploads([]);
+  //       return;
+  //     }
+
+  //     const ac = new AbortController();
+
+  //     const fetchParentSkuData = async () => {
+  //       try {
+  //         setLoading(true);
+  //         setBargraphLoading(true);
+  //         setGraphPageLoading(true);
+
+  //         const res = await fetch(buildParentSkuUrl(), {
+  //           method: "GET",
+  //           headers: { Authorization: `Bearer ${token}` },
+  //           cache: "no-store",
+  //           signal: ac.signal,
+  //         });
+
+  //         if (!res.ok) {
+  //           setSkuRows([]);
+  //           setUploadsData(null);
+  //           setBargraphUploads([]);
+  //           setGraphPageUploads([]);
+  //           return;
+  //         }
+
+  //         const data = await res.json();
+
+  //         if (!Array.isArray(data) || data.length === 0) {
+  //           setSkuRows([]);
+  //           setUploadsData(null);
+  //           setBargraphUploads([]);
+  //           setGraphPageUploads([]);
+  //           return;
+  //         }
+
+  //         const normalized = normalizeRowsForParent(data);
+  //         const summary = buildSummaryFromSkuRows(normalized);
+  //         const uploadRows = buildUploadRowFromSkuRows(normalized);
+
+  //         setSkuRows(normalized);
+
+  //         setUploadsData({
+  //           summary,
+  //           summaryComparisons: undefined,
+  //         });
+
+  //         setBargraphUploads(uploadRows);
+  //         setGraphPageUploads(uploadRows);
+
+  //         setBargraphUserMeta({
+  //           company_name: userData?.company_name,
+  //           brand_name: userData?.brand_name,
+  //         });
+
+  //         setGraphPageUserMeta({
+  //           company_name: userData?.company_name,
+  //           brand_name: userData?.brand_name,
+  //         });
+
+  //         if (range === "monthly" && selectedYear && selectedMonth) {
+  //           markFetched(selectedYear, selectedMonth);
+  //         } else if (selectedYear) {
+  //           markFetched(selectedYear);
+  //         }
+  //       } catch (e: any) {
+  //         if (e?.name === "AbortError") return;
+
+  //         setSkuRows([]);
+  //         setUploadsData(null);
+  //         setBargraphUploads([]);
+  //         setGraphPageUploads([]);
+  //       } finally {
+  //         setLoading(false);
+  //         setBargraphLoading(false);
+  //         setGraphPageLoading(false);
+  //       }
+  //     };
+
+  //     fetchParentSkuData();
+
+  //     return () => ac.abort();
+  //   }, [
+  //     range,
+  //     selectedMonth,
+  //     selectedQuarter,
+  //     selectedYear,
+  //     initialCountryName,
+  //     globalHomeCurrency,
+  //     userid,
+  //     token,
+  //     isDemoMode,
+  //     userData?.company_name,
+  //     userData?.brand_name,
+  //   ]);
+
+  //   const fetchSkuRows = async () => {
+  //     try {
+  //       if (!token) {
+  //         setSkuRows([]);
+  //         return;
+  //       }
+
+  //       const url = buildParentSkuUrl();
+
+  //       const res = await fetch(url, {
+  //         method: "GET",
+  //         headers: { Authorization: `Bearer ${token}` },
+  //         cache: "no-store",
+  //         signal: ac.signal,
+  //       });
+
+  //       if (!res.ok) {
+  //         setSkuRows([]);
+  //         return;
+  //       }
+
+  //       const data = await res.json();
+
+  //       if (!Array.isArray(data) || data.length === 0) {
+  //         setSkuRows([]);
+  //         return;
+  //       }
+
+  //       const normalized = normalizeRowsForParent(data);
+  //       setSkuRows(normalized);
+  //     } catch (e: any) {
+  //       if (e?.name === "AbortError") return;
+  //       setSkuRows([]);
+  //     }
+  //   };
+
+  //   fetchSkuRows();
+
+  //   return () => ac.abort();
+  // }, [
+  //   range,
+  //   selectedMonth,
+  //   selectedQuarter,
+  //   selectedYear,
+  //   initialCountryName,
+  //   globalHomeCurrency,
+  //   userid,
+  //   token,
+  //   isDemoMode,
+  // ]);
 
   // if (month === "NA" || year === "NA") {
   //   return <IntegrationDashboard />;
   // }
+
+
+  const normalizeRowsForParent = (data: any[]): TableRow[] => {
+    return data.map((row) => {
+      const productName =
+        row?.product_name && String(row.product_name).trim() !== ""
+          ? String(row.product_name)
+          : row?.sku && String(row.sku).trim() !== ""
+            ? String(row.sku)
+            : "-";
+
+      const isTotalRow = productName.trim().toLowerCase() === "total";
+
+      return {
+        ...row,
+        product_name: isTotalRow ? "Total" : productName,
+        sku: row.sku ?? "-",
+
+        quantity: toNum(row.quantity),
+        return_quantity: toNum(row.return_quantity),
+        total_quantity: toNum(row.total_quantity),
+
+        units_sold: toNum(row.quantity),
+        return_units: toNum(row.return_quantity),
+        net_units_sold: toNum(row.total_quantity),
+
+        asp: toNum(row.asp ?? row.ASP),
+        product_sales: toNum(row.gross_sales ?? row.product_sales),
+        gross_sales: toNum(row.gross_sales ?? row.product_sales),
+        refund_sales: toNum(row.refund_sales),
+        net_sales: toNum(row.net_sales),
+
+        cost_of_unit_sold: toNum(row.cost_of_unit_sold),
+        selling_fees: toNum(row.selling_fees),
+        fba_fees: toNum(row.fba_fees),
+        amazon_fee: toNum(row.amazon_fee),
+
+        advertising_total: toNum(row.advertising_total),
+        visible_ads: toNum(row.visible_ads),
+        dealsvouchar_ads: toNum(row.dealsvouchar_ads),
+
+        platform_fee: toNum(row.platform_fee),
+        platformfeenew: toNum(row.platformfeenew),
+        platform_fee_inventory_storage: toNum(row.platform_fee_inventory_storage),
+
+        tex_and_credits: toNum(row.tex_and_credits),
+        net_taxes: toNum(row.net_taxes),
+        net_credits: toNum(row.net_credits),
+
+        promotional_rebates: toNum(row.promotional_rebates),
+        promotional_rebates_percentage: toNum(row.promotional_rebates_percentage),
+
+        misc_transaction: toNum(row.misc_transaction),
+        other_transaction_fees: toNum(row.other_transaction_fees),
+        other_transactions: toNum(row.other_transaction_fees),
+
+        profit: toNum(row.profit),
+        profit_percentage: toNum(row.profit_percentage),
+        unit_wise_profitability: toNum(row.unit_wise_profitability),
+
+        cm2_profit: toNum(row.cm2_profit),
+        cm2_margins: toNum(row.cm2_margins),
+        acos: toNum(row.acos),
+
+        profit_mix: toNum(row.profit_mix),
+        sales_mix: toNum(row.sales_mix),
+      } as TableRow;
+    });
+  };
+
+  const sumSkuRows = (rows: TableRow[], key: string) =>
+    rows
+      .filter((r) => String(r.product_name || "").trim().toLowerCase() !== "total")
+      .reduce((sum, r) => sum + toNum((r as any)[key]), 0);
+
+  const buildSummaryFromSkuRows = (rows: TableRow[]): Summary => {
+    const totalRow = getTotalRow(rows);
+
+    const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
+    const grossSales =
+      toNum((totalRow as any)?.gross_sales) ||
+      toNum((totalRow as any)?.product_sales) ||
+      sumSkuRows(rows, "gross_sales") ||
+      sumSkuRows(rows, "product_sales");
+
+    const units =
+      toNum(totalRow?.quantity) ||
+      toNum(totalRow?.units_sold) ||
+      sumSkuRows(rows, "quantity");
+
+    const cm2 =
+      toNum((totalRow as any)?.cm2_profit) ||
+      toNum((totalRow as any)?.profit) ||
+      sumSkuRows(rows, "profit");
+
+    return {
+      unit_sold: units,
+      total_sales: netSales,
+      gross_sales: grossSales,
+      total_product_sales: grossSales,
+      total_expense: 0,
+      cm2_profit: cm2,
+      total_cous:
+        toNum((totalRow as any)?.cost_of_unit_sold) ||
+        sumSkuRows(rows, "cost_of_unit_sold"),
+      advertising_total: toNum((totalRow as any)?.advertising_total),
+      total_amazon_fee:
+        toNum((totalRow as any)?.amazon_fee) ||
+        sumSkuRows(rows, "amazon_fee"),
+      otherwplatform:
+        toNum((totalRow as any)?.platform_fee) ||
+        toNum((totalRow as any)?.other_transaction_fees),
+    };
+  };
+
+  const buildUploadRowFromSkuRows = (rows: TableRow[]): UploadRow[] => {
+    const summary = buildSummaryFromSkuRows(rows);
+
+    return [
+      {
+        country: initialCountryName,
+        month: selectedMonth || "",
+        year: selectedYear,
+        total_sales: summary.total_sales,
+        total_amazon_fee: summary.total_amazon_fee ?? 0,
+        total_cous: summary.total_cous ?? 0,
+        advertising_total: summary.advertising_total ?? 0,
+        otherwplatform: summary.otherwplatform ?? 0,
+        cm2_profit: summary.cm2_profit,
+        total_profit: summary.cm2_profit,
+      },
+    ];
+  };
+
 
   const marketplaceFeesFromTable = useMemo(() => {
     if (!skuRows?.length) return 0;

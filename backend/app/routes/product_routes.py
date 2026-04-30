@@ -32,6 +32,45 @@ admin_engine = create_engine(db_url1)
 
 product_bp = Blueprint('product_bp', __name__)
 
+MONTHS = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december"
+]
+
+def get_previous_month(month, year):
+    month = str(month).strip().lower()
+    year = int(year)
+
+    if month not in MONTHS:
+        return None, None
+
+    idx = MONTHS.index(month)
+
+    if idx == 0:
+        return "december", str(year - 1)
+
+    return MONTHS[idx - 1], str(year)
+
+
+def get_previous_quarter(quarter, year):
+    q = str(quarter).strip().lower()
+    year = int(year)
+
+    if q in ("q1", "quarter1", "1"):
+        return "quarter4", str(year - 1)
+    if q in ("q2", "quarter2", "2"):
+        return "quarter1", str(year)
+    if q in ("q3", "quarter3", "3"):
+        return "quarter2", str(year)
+    if q in ("q4", "quarter4", "4"):
+        return "quarter3", str(year)
+
+    return None, None
+
+
+def get_previous_year(year):
+    return str(int(year) - 1)
+
 @product_bp.route('/getConversionRate', methods=['GET'])
 def get_conversion_rate():
     try:
@@ -148,8 +187,28 @@ def YearlySKU():
             results = conn.execute(select(*user_specific_table.columns)).mappings().all()
 
         # 🔒 Normalize all rows so the UI gets true numbers, not strings
-        data = [_normalize_sku_row(dict(row)) for row in results]
-        return jsonify(data), 200
+        current_data = [_normalize_sku_row(dict(row)) for row in results]
+
+        previous_year = get_previous_year(year)
+        previous_table_name = f"skuwiseyearly_{user_id}_{country}_{previous_year}_table"
+        previous_data = []
+
+        try:
+            previous_table = Table(previous_table_name, metadata, autoload_with=engine)
+
+            with engine.connect() as conn:
+                prev_results = conn.execute(select(*previous_table.columns)).mappings().all()
+
+            previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+        except Exception:
+            previous_data = []
+
+        return jsonify({
+            "current_table_name": table_name,
+            "current_data": current_data,
+            "previous_table_name": previous_table_name,
+            "previous_data": previous_data
+        }), 200
 
     except SQLAlchemyError as e:
         return jsonify({'error': 'Error accessing the database'}), 500
@@ -220,8 +279,29 @@ def quarterlyskutable():
                 results = conn.execute(query).mappings().all()
 
             # 🔒 Normalize all rows so UI gets true numbers, not strings
-            data = [_normalize_sku_row(dict(row)) for row in results]
-            return jsonify(data), 200
+            current_data = [_normalize_sku_row(dict(row)) for row in results]
+
+            prev_quarter, prev_year = get_previous_quarter(quarter, year)
+            previous_table_name = None
+            previous_data = []
+
+            if prev_quarter and prev_year:
+                previous_table_name = f"{prev_quarter}_{user_id}_{country}_{prev_year}_table".lower()
+                try:
+                    previous_table = Table(previous_table_name, metadata, autoload_with=engine)
+                    with engine.connect() as conn:
+                        prev_results = conn.execute(select(*previous_table.columns)).mappings().all()
+
+                    previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+                except Exception:
+                    previous_data = []
+
+            return jsonify({
+                "current_table_name": table_name,
+                "current_data": current_data,
+                "previous_table_name": previous_table_name,
+                "previous_data": previous_data
+            }), 200
 
         except Exception:
             return jsonify({'error': f"Table '{table_name}' not found for user {user_id}"}), 404
@@ -783,7 +863,6 @@ def resolve_country(country, currency):
     # 3. Default (no special logic)
     return country
 
-
 @product_bp.route('/skutableprofit/<string:skuwise_file_name>', methods=['GET'])
 def skutableprofit(skuwise_file_name):
     auth_header = request.headers.get('Authorization')
@@ -800,48 +879,74 @@ def skutableprofit(skuwise_file_name):
 
     try:
         engine = create_engine(db_url)
+
         country_param = request.args.get('country', '')
         currency_param = (request.args.get('homeCurrency') or '').lower()
 
         country = resolve_country(country_param, currency_param)
-        month = request.args.get('month', '')
-        year = request.args.get('year', '')
+        month = (request.args.get('month') or '').strip().lower()
+        year = (request.args.get('year') or '').strip()
 
-        # Determine table name based on country
-        if country.startswith("global"):
-            table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}_table"
-        elif country and all([month, year]):
-            table_name = f"skuwise_{user_id}{country}{month}{year}"
+        # Current table name
+        if country and month and year:
+            table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
         else:
             table_name = skuwise_file_name
 
         metadata = MetaData(schema='public')
 
-        def _fetch_as_dicts(tbl_name: str):
+        def _fetch_as_dicts(tbl_name):
             user_specific_table = Table(tbl_name, metadata, autoload_with=engine)
             with engine.connect() as conn:
-                query = select(*user_specific_table.columns)
-                results = conn.execute(query).mappings().all()
-            # 🔒 normalize **every** row so UI receives numbers, not strings
+                results = conn.execute(
+                    select(*user_specific_table.columns)
+                ).mappings().all()
+
             return [_normalize_sku_row(dict(row)) for row in results]
 
         try:
-            data = _fetch_as_dicts(table_name)
-            return jsonify(data), 200
+            current_data = _fetch_as_dicts(table_name)
         except Exception:
-            # Fallback to provided table name, if different
             if table_name != skuwise_file_name:
                 try:
-                    data = _fetch_as_dicts(skuwise_file_name)
-                    return jsonify(data), 200
+                    table_name = skuwise_file_name
+                    current_data = _fetch_as_dicts(table_name)
                 except Exception:
-                    return jsonify({'error': f"Table '{table_name}' or '{skuwise_file_name}' not found for user {user_id}"}), 404
+                    return jsonify({
+                        'error': f"Table '{table_name}' or '{skuwise_file_name}' not found for user {user_id}"
+                    }), 404
             else:
-                return jsonify({'error': f"Table '{table_name}' not found for user {user_id}"}), 404
+                return jsonify({
+                    'error': f"Table '{table_name}' not found for user {user_id}"
+                }), 404
 
-    except Exception:
-        return jsonify({'error': 'An unexpected error occurred'}), 500
+        previous_table_name = None
+        previous_data = []
 
+        if country and month and year:
+            prev_month, prev_year = get_previous_month(month, year)
+
+            if prev_month and prev_year:
+                previous_table_name = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}".lower()
+
+                try:
+                    previous_data = _fetch_as_dicts(previous_table_name)
+                except Exception:
+                    previous_data = []
+
+        return jsonify({
+            "current_table_name": table_name,
+            "current_data": current_data,
+            "previous_table_name": previous_table_name,
+            "previous_data": previous_data
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'error': 'An unexpected error occurred',
+            'message': str(e)
+        }), 500
+    
 
 
 

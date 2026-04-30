@@ -7504,8 +7504,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (loading || biLoading)
             ),
             // Net Sales
-            formatter: roundedMoneyFormatter,
-            previousFormatter: roundedMoneyFormatter,
+            formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
         },
@@ -7599,8 +7599,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (loading || (useBiForAmazonCards ? biLoading : false))
             ),
             // Net Sales
-            formatter: roundedMoneyFormatter,
-            previousFormatter: roundedMoneyFormatter,
+            formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
         },
@@ -7730,8 +7730,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (loading || (useBiCm2 ? biLoading : false))
             ),
             // Net Sales
-            formatter: roundedMoneyFormatter,
-            previousFormatter: roundedMoneyFormatter,
+            formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
         },
@@ -7748,8 +7748,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
             loading: !shouldShowDummyUi && loading,
             // Net Sales
-            formatter: roundedMoneyFormatter,
-            previousFormatter: roundedMoneyFormatter,
+            formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
             bottomLabel: "Last Month",
             className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },
@@ -8361,8 +8361,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         current={c.netSales}
                         previous={c.prevNetSales}
                         deltaPct={safeDeltaPct(c.netSales, c.prevNetSales)}
-                        formatter={roundedMoneyFormatter}
-                        previousFormatter={roundedMoneyFormatter}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8386,8 +8386,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         previous={c.prevAds}
                         deltaPct={safeDeltaPct(c.ads, c.prevAds)}
                         inverseDelta
-                        formatter={roundedMoneyFormatter}
-                        previousFormatter={roundedMoneyFormatter}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
                         bottomLabel={prevLabel}
                         className="border-[#C58A5A] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8410,8 +8410,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={safeDeltaPct(c.cm2Profit, c.prevCm2Profit)}
-                        formatter={roundedMoneyFormatter}
-                        previousFormatter={roundedMoneyFormatter}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
                         bottomLabel={prevLabel}
                         className="border-[#A8BE7A] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8804,8 +8804,8 @@ ${pageLoading
                                                                 : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0))
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
-                                                    formatter={roundedMoneyFormatter}
-                                                    previousFormatter={roundedMoneyFormatter}
+                                                    formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                                 />
@@ -8832,8 +8832,8 @@ ${pageLoading
                                                             : (useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct)
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
-                                                    formatter={roundedMoneyFormatter}
-                                                    previousFormatter={roundedMoneyFormatter}
+                                                    formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                 />
@@ -8914,8 +8914,8 @@ ${pageLoading
                                                     }
                                                     inverseDelta
                                                     loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
-                                                    formatter={roundedMoneyFormatter}
-                                                    previousFormatter={roundedMoneyFormatter}
+                                                    formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#C49466] border-t-4 border-t-[#C49466]"
                                                 />
@@ -8989,8 +8989,8 @@ ${pageLoading
                                                     previous={mtdCm2ProfitPreviousDisplay}
                                                     deltaPct={mtdCm2ProfitDelta}
                                                     loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
-                                                    formatter={roundedMoneyFormatter}
-                                                    previousFormatter={roundedMoneyFormatter}
+                                                    formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
                                                 />

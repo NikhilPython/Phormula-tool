@@ -108,6 +108,7 @@ export default function SignInForm() {
       });
 
       const data = await res.json();
+      console.log("check-user-country-table response:", data);
 
       if (!res.ok || !data?.success) {
         throw new Error(data?.message || "Failed to check user country table");
@@ -120,15 +121,26 @@ export default function SignInForm() {
     }
   };
 
+  // const getCurrentMonthYear = () => {
+  //   const now = new Date();
+  //   const month = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
+  //   const year = String(now.getFullYear());
+
+  //   return { month, year };
+  // };
+
   const routeToDashboard = (country: string) => {
-    const now = new Date();
-    const currentMonth = now.toLocaleString("en-US", { month: "long" });
-    const currentYear = String(now.getFullYear());
-    router.replace(`/live-dashboard/${country}/${currentMonth}/${currentYear}`);
+    const normalizedCountry = (country || "global").toLowerCase();
+    const { month, year } = getCurrentMonthYear();
+
+    router.replace(`/live-dashboard/${normalizedCountry}/${month}/${year}`);
   };
 
   const routeToProfile = (country: string) => {
-    router.replace(`/live-dashboard/${country}/NA/NA`);
+    const normalizedCountry = (country || "global").toLowerCase();
+    const { month, year } = getCurrentMonthYear();
+
+    router.replace(`/live-dashboard/${normalizedCountry}/${month}/${year}`);
   };
 
   const validateForm = (values: SignInFormValues = form) => {
@@ -294,6 +306,10 @@ export default function SignInForm() {
           .then((r) => r.json())
           .catch(() => null);
 
+        console.log("NORMAL LOGIN get_user_data response:", me);
+        console.log("NORMAL LOGIN marketplace_ids:", me?.marketplace_ids);
+        console.log("NORMAL LOGIN countries:", me?.countries);
+
         if (!me) {
           dispatch(setAuthError("Unable to fetch user data."));
           return;
@@ -402,6 +418,10 @@ export default function SignInForm() {
         .then((r) => r.json())
         .catch(() => null);
 
+      console.log("get_user_data response:", me);
+      console.log("marketplace_ids:", me?.marketplace_ids);
+      console.log("countries:", me?.countries);
+
       if (me) dispatch(setUser({ ...me, is_member: false }));
 
       const marketplaceIds = Array.isArray(me?.marketplace_ids)
@@ -450,7 +470,7 @@ export default function SignInForm() {
       dispatch(setAuthError(msg));
     }
   };
-  
+
   const handleSuspendedAccount = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("email");
