@@ -1274,15 +1274,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
           return;
         }
 
-        const data = (await res.json()) as unknown;
+        const raw = (await res.json()) as any;
 
-        if (!Array.isArray(data) || data.length === 0) {
+        const rows =
+          Array.isArray(raw)
+            ? raw
+            : Array.isArray(raw.current_data)
+              ? raw.current_data
+              : Array.isArray(raw.data)
+                ? raw.data
+                : [];
+
+        if (rows.length === 0) {
           setNoDataFound(true);
           setTableData([]);
           return;
         }
 
-        const normalized = normalizeRows(data);
+        const normalized = normalizeRows(rows);
+
         setTableData(normalized);
         setTotals(computeTotalsFromLastRow(normalized));
         setNoDataFound(false);
