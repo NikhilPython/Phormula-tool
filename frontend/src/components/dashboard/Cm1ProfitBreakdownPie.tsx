@@ -12,6 +12,7 @@ import {
   TooltipItem,
 } from "chart.js";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -28,8 +29,9 @@ type Cm1PieSlice = {
 type Props = {
   title?: string;
   data: Cm1PieSlice[];
-  currency: CurrencyCode; // <-- matches your DashboardPage call
-  height?: number; // <-- matches your DashboardPage call
+  cm2Data?: Cm1PieSlice[];
+  currency: CurrencyCode;
+  height?: number;
   noDataFound?: boolean;
   onExportBase64Ready?: (base64: string | null) => void;
 };
@@ -54,12 +56,19 @@ const currencySymbolFromCode = (c: CurrencyCode) => {
 export default function Cm1ProfitBreakdownPie({
   title = "CM1 Profit Breakdown",
   data,
+  cm2Data = [],
   currency,
   height = 280,
   noDataFound = false,
   onExportBase64Ready,
 }: Props) {
   const currencySymbol = currencySymbolFromCode(currency);
+
+  const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
+
+  const activeData = profitPieType === "cm1" ? data : cm2Data;
+  const activeTitle =
+    profitPieType === "cm1" ? "CM1 Profit Breakdown" : "CM2 Profit Breakdown";
 
   const [isLaptop, setIsLaptop] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -142,7 +151,7 @@ export default function Cm1ProfitBreakdownPie({
   // }, [data]);
 
   const displayData = useMemo<Cm1PieSlice[]>(() => {
-    const arr = (data || []).filter((d) => Number(d.value || 0) !== 0);
+    const arr = (activeData || []).filter((d) => Number(d.value || 0) !== 0);
     if (!arr.length) return [];
 
     const isOthers = (name?: string) => (name || "").trim().toLowerCase() === "others";
@@ -231,7 +240,7 @@ export default function Cm1ProfitBreakdownPie({
         deltaPct: othersDeltaPct,
       },
     ]);
-  }, [data]);
+  }, [activeData]);
 
 
 
@@ -356,7 +365,7 @@ export default function Cm1ProfitBreakdownPie({
 
   return (
     <div className="relative w-full h-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
-      <div className="mb-1">
+      {/* <div className="mb-1">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
             pageTitle={title}
@@ -365,6 +374,29 @@ export default function Cm1ProfitBreakdownPie({
             textSize="2xl"
           />
         </div>
+      </div> */}
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="w-fit">
+          <PageBreadcrumb
+            pageTitle={activeTitle}
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
+        </div>
+
+        {cm2Data?.length > 0 && (
+          <SegmentedToggle<"cm1" | "cm2">
+            value={profitPieType}
+            options={[
+              { value: "cm1", label: "CM1" },
+              { value: "cm2", label: "CM2" },
+            ]}
+            onChange={setProfitPieType}
+            compact
+            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+          />
+        )}
       </div>
 
       {!chartData ? (
@@ -552,11 +584,7 @@ export default function Cm1ProfitBreakdownPie({
                                   maximumFractionDigits: 2,
                                 })}{" "}
                                 ({pct.toFixed(2)}%){" "}
-                                {delta != null && (
-                                  <span className={deltaClass}>
-                                    ({deltaSymbol} {Math.abs(delta).toFixed(2)}%)
-                                  </span>
-                                )}
+                                <span className={deltaClass}>({deltaText})</span>
                               </div>
                             </div>
                           </div>

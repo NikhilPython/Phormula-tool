@@ -1227,8 +1227,9 @@ export default function DashboardPage() {
     const isMonthYearNA =
         String(urlMonthParam ?? "").toUpperCase() === "NA" &&
         String(urlYearParam ?? "").toUpperCase() === "NA";
-    const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
 
+    const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
+    const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
     const shouldShowDummyUi = isMonthYearNA;
 
     useEffect(() => {
@@ -7769,12 +7770,33 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyMonthlySkuwiseRowsForTable
         : monthlySkuwiseRowsForTable;
 
+    const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+        const rows = (finalMonthlySkuwiseRowsForTable || [])
+            .filter((r: any) => !r.isTotal && !r.isOthers)
+            .map((r: any) => ({
+                name: r.product_name || r.sku || "Unknown",
+                value: Number(r.cm2_profit || 0),
+                prevValue: 0,
+                pct: 0,
+                deltaPct: null,
+            }))
+            .filter((r) => r.value !== 0);
+
+        const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
+
+        return rows.map((r) => ({
+            ...r,
+            pct: (Math.abs(r.value) / total) * 100,
+        }));
+    }, [finalMonthlySkuwiseRowsForTable]);
 
     const isUsingDummyData = shouldShowDummyUi;
 
     const finalCm1ProfitPieData = isUsingDummyData
         ? dummyCm1ProfitPieData
         : cm1ProfitPieData;
+
+
 
     const finalInventoryRows = isUsingDummyData
         ? dummyInventoryRows
@@ -7915,6 +7937,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
         profileHomeCurrency,
         currentInventoryExportRows,
     ]);
+
+
 
 
     const mtdCm2ProfitCurrent = shouldShowDummyUi
@@ -9516,9 +9540,16 @@ ${pageLoading
                                                 : "min-w-0 h-full flex flex-col transition-opacity duration-300"
                                         }
                                     >
-                                        <Cm1ProfitBreakdownPie
+                                        {/* <Cm1ProfitBreakdownPie
                                             title="CM1 Profit Breakdown"
                                             data={finalCm1ProfitPieData}
+                                            currency={displayCurrency}
+                                            noDataFound={shouldShowDummyUi}
+                                            height={320}
+                                        /> */}
+                                        <Cm1ProfitBreakdownPie
+                                            data={finalCm1ProfitPieData}
+                                            cm2Data={cm2ProfitPieData}
                                             currency={displayCurrency}
                                             noDataFound={shouldShowDummyUi}
                                             height={320}
