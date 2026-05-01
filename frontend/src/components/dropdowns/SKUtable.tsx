@@ -748,6 +748,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "shipment_charges",
         "net_reimbursement",
         "cm2_profit",
+        "lost_total"
       ]);
 
       let formatted;

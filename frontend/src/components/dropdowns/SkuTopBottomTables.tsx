@@ -28,6 +28,16 @@ type Props = {
 };
 
 const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymbol }) => {
+  const formatRoundedValue = (value: string) => {
+    const numberValue = Number(String(value).replace(/[^0-9.-]/g, ""));
+
+    if (Number.isNaN(numberValue)) {
+      return "-";
+    }
+
+    return Math.round(numberValue).toLocaleString();
+  };
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
       <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
@@ -71,7 +81,7 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
                       </span>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                      {item.profit}
+                      {formatRoundedValue(item.profit)}
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       {item.profitMix}%
@@ -90,7 +100,7 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
                     <strong>Total</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{topData.totals.profit}</strong>
+                    <strong>{formatRoundedValue(topData.totals.profit)}</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                     <strong>{topData.totals.profitMix}%</strong>
@@ -166,7 +176,7 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
                     <strong>Total</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{bottomData.totals.profit}</strong>
+                     <strong>{formatRoundedValue(bottomData.totals.profit)}</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                     <strong>{bottomData.totals.profitMix}%</strong>

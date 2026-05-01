@@ -57,6 +57,27 @@ const CashFlowSankey: React.FC<Props> = ({
     typeof window !== "undefined" ? window.innerWidth : 1920
   );
 
+  const ROUND_CURRENCY_LABELS = [
+    "Gross Sales",
+    "Net Sales",
+    "Marketplace Fees",
+    "Cash Generated",
+    "Net Reimbursement",
+  ];
+
+  const formatCurrencyByLabel = (label: string, val?: number) => {
+    if (val === undefined || val === null) return "-";
+
+    const shouldRound = ROUND_CURRENCY_LABELS.includes(label);
+
+    const absVal = Math.abs(val).toLocaleString(undefined, {
+      minimumFractionDigits: shouldRound ? 0 : 2,
+      maximumFractionDigits: shouldRound ? 0 : 2,
+    });
+
+    return val < 0 ? `-${currency}${absVal}` : `${currency}${absVal}`;
+  };
+
   const formatCurrencyWithSign = (val?: number) => {
     if (val === undefined || val === null) return "-";
 
@@ -422,7 +443,7 @@ const CashFlowSankey: React.FC<Props> = ({
               </>
             ) : (
               <>
-                {c.isCurrency ? formatCurrencyWithSign(c.value) : formatNumber(c.value)}
+                {c.isCurrency ? formatCurrencyByLabel(c.label, c.value) : formatNumber(c.value)}
                 {perUnitCards.includes(c.label) && (
                   <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                     ({formatCurrencyWithSign(Number(getPerUnitValue(c.value, data.quantity_total)))} / Unit)
@@ -439,13 +460,12 @@ const CashFlowSankey: React.FC<Props> = ({
               ? formatInteger(c.prev)
               : c.isDiscount
                 ? formatCurrencyWithSign(-(Math.abs(c.prev || 0)))
-                : `${c.isCurrency ? formatCurrencyWithSign(c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
+                : `${c.isCurrency ? formatCurrencyByLabel(c.label, c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
                   ? ` (${formatCurrencyWithSign(
                     Number(getPerUnitValue(c.prev, previous_summary?.quantity_total))
                   )} / Unit)`
                   : ""
                 }`;
-
           const comparisons = [
             {
               label: `${formatPrevLabel(previousLabel || "Previous")}`,
