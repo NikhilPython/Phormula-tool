@@ -61,8 +61,6 @@ const fullMonthNames = [
   "December",
 ];
 
-
-
 const monthSlugOrder = fullMonthNames.map((m) => m.toLowerCase());
 const two = (n: number | string) => String(n).padStart(2, "0");
 
@@ -318,14 +316,18 @@ async function fetchMonthlyTransactionsExcel(params: {
   }
 
   const qs = new URLSearchParams({
-    year: String(params.year),
-    month: String(params.month),
-    marketplace_id: params.marketplace_id,
-    run_upload_pipeline: String(params.run_upload_pipeline),
-    country: params.country,
-    format: "excel",
-    store_in_db: String(params.store_in_db),
-  });
+  year: String(params.year),
+  month: String(params.month),
+  marketplace_id: params.marketplace_id,
+  run_upload_pipeline: String(params.run_upload_pipeline),
+  country: params.country,
+  format: "excel",
+  store_in_db: String(params.store_in_db),
+
+  // important: fetch RELEASED + DEFERRED, not only RELEASED
+  transaction_status:
+    params.country.toLowerCase() === "us" ? "all" : "RELEASED",
+});
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
   const res = await fetch(url, {
@@ -342,6 +344,49 @@ async function fetchMonthlyTransactionsExcel(params: {
 
   await res.arrayBuffer();
   return { ok: true, url };
+}
+
+async function fetchLiveMtdBi(params: {
+  country: string;
+  month: string;
+  year: number;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    countryName: params.country,
+    ranged: "MTD",
+    month: params.month.toLowerCase(),
+    year: String(params.year),
+    generate_ai_insights: "false",
+  });
+
+  const url = `${API_BASE}/live_mtd_bi?${qs.toString()}`;
+
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (attempts < maxAttempts) {
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    // ⏳ Processing state
+    if (res.status === 202) {
+      await new Promise((r) => setTimeout(r, 3000));
+      attempts++;
+      continue;
+    }
+
+    if (!res.ok) {
+      const msg = await readErrorMessage(res);
+      throw new Error(`Live BI failed: ${msg}`);
+    }
+
+    return await res.json();
+  }
+
+  throw new Error("Live BI processing timeout");
 }
 
 /** ---------------- Forecast fetch (backend expects month name, not 03) ---------------- */
@@ -896,47 +941,47 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   let countryUsed = (country || "").toLowerCase().trim();
 
-if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
-if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
-if (countryUsed === "ca") countryUsed = "canada";
+  if (countryUsed === "united kingdom" || countryUsed === "gb") countryUsed = "uk";
+  if (countryUsed === "united states" || countryUsed === "usa") countryUsed = "us";
+  if (countryUsed === "ca") countryUsed = "canada";
 
-const storedCountry =
-  typeof window !== "undefined"
-    ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase().trim()
-    : "";
+  const storedCountry =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("amazonSelectedCountry") || "").toLowerCase().trim()
+      : "";
 
-const storedRegion =
-  typeof window !== "undefined"
-    ? localStorage.getItem("amazonMarketplaceRegion") || ""
-    : "";
+  const storedRegion =
+    typeof window !== "undefined"
+      ? localStorage.getItem("amazonMarketplaceRegion") || ""
+      : "";
 
-const storedMarketplaceId =
-  typeof window !== "undefined"
-    ? localStorage.getItem("amazonMarketplaceId") || ""
-    : "";
+  const storedMarketplaceId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("amazonMarketplaceId") || ""
+      : "";
 
-// first resolve marketplace
-let marketplaceIdUsed =
-  marketplaceId ||
-  storedMarketplaceId ||
-  COUNTRY_TO_MARKETPLACE[countryUsed] ||
-  "";
+  // first resolve marketplace
+  let marketplaceIdUsed =
+    marketplaceId ||
+    storedMarketplaceId ||
+    COUNTRY_TO_MARKETPLACE[countryUsed] ||
+    "";
 
-// then resolve country
-if (!countryUsed) {
-  countryUsed =
-    storedCountry ||
-    MARKETPLACE_TO_COUNTRY[marketplaceIdUsed] ||
-    "us";
-}
+  // then resolve country
+  if (!countryUsed) {
+    countryUsed =
+      storedCountry ||
+      MARKETPLACE_TO_COUNTRY[marketplaceIdUsed] ||
+      "us";
+  }
 
-// re-resolve marketplace if country was filled from fallback
-if (!marketplaceIdUsed) {
-  marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed] || "";
-}
+  // re-resolve marketplace if country was filled from fallback
+  if (!marketplaceIdUsed) {
+    marketplaceIdUsed = COUNTRY_TO_MARKETPLACE[countryUsed] || "";
+  }
 
-let regionUsed =
-  region || storedRegion || COUNTRY_TO_REGION[countryUsed];
+  let regionUsed =
+    region || storedRegion || COUNTRY_TO_REGION[countryUsed];
 
   if (FORCE.enabled) {
     countryUsed = FORCE.country;
@@ -1147,9 +1192,18 @@ let regionUsed =
       });
       markStepComplete(5);
 
-      // Step 6: Live Data
-      setStep(6, "Live Data", 100, "Finalizing data sync...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Step 6: Live Data (LIVE MTD BI)
+      setStep(6, "Live Data", 0, "Fetching live MTD BI data...");
+
+      const monthName = fullMonthNames[mNum - 1]; // convert 3 → March
+
+      await fetchLiveMtdBi({
+        country: countryUsed,
+        month: monthName,
+        year: y,
+      });
+
+      setStep(6, "Live Data", 100, "Live BI data ready");
       markStepComplete(6);
 
       // Step 7: Inventory Forecast + Purchase Order
