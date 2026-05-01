@@ -517,7 +517,7 @@ def finances_monthly_transactions():
     except ValueError:
         return jsonify({"success": False, "error": "Invalid year or month"}), 400
 
-    transaction_status = request.args.get("transaction_status", "RELEASED")
+    transaction_status = request.args.get("transaction_status")
     marketplace_id = request.args.get("marketplace_id")
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()

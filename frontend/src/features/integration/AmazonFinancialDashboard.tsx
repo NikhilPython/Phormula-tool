@@ -318,14 +318,18 @@ async function fetchMonthlyTransactionsExcel(params: {
   }
 
   const qs = new URLSearchParams({
-    year: String(params.year),
-    month: String(params.month),
-    marketplace_id: params.marketplace_id,
-    run_upload_pipeline: String(params.run_upload_pipeline),
-    country: params.country,
-    format: "excel",
-    store_in_db: String(params.store_in_db),
-  });
+  year: String(params.year),
+  month: String(params.month),
+  marketplace_id: params.marketplace_id,
+  run_upload_pipeline: String(params.run_upload_pipeline),
+  country: params.country,
+  format: "excel",
+  store_in_db: String(params.store_in_db),
+
+  // important: fetch RELEASED + DEFERRED, not only RELEASED
+  transaction_status:
+    params.country.toLowerCase() === "us" ? "all" : "RELEASED",
+});
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
   const res = await fetch(url, {

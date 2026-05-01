@@ -22,7 +22,7 @@ def sync_monthly_transactions_for_user(
     month: int,
     country: str,
     marketplace_id: str | None = None,
-    transaction_status: str = "RELEASED",
+    transaction_status: str | None = None,
     transaction_type_filter: str | None = None,
     store_in_db: bool = True,
     run_upload: bool = True,
@@ -58,7 +58,7 @@ def sync_monthly_transactions_for_user(
         "postedBefore": posted_before,
         "marketplaceId": amazon_client.marketplace_id,
     }
-    if transaction_status:
+    if transaction_status and str(transaction_status).lower() not in ("all", ""):
         params["transactionStatus"] = transaction_status
 
     all_rows: List[Dict[str, Any]] = []
@@ -83,8 +83,9 @@ def sync_monthly_transactions_for_user(
             tstatus = (tx or {}).get("transactionStatus")
             ttype = (tx or {}).get("transactionType")
 
-            if tstatus != "RELEASED":
-                continue
+            if transaction_status and str(transaction_status).lower() not in ("all", ""):
+                if tstatus != transaction_status:
+                    continue
             if transaction_type_filter and ttype != transaction_type_filter:
                 continue
 
