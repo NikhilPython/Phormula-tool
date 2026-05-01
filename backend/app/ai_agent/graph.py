@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from app.utils.live_bi_utils import generate_sku_inventory_flags
 from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine
-from app.ai_agent.email_service import send_agent_email, build_email_html
+from app.ai_agent.email_service import send_agent_email, build_email_html, build_excel_attachment
 from app.ai_agent.formula_engine import (
     OVERALL_MONTH_METRICS,
     build_time_series_analysis,
@@ -560,8 +560,12 @@ def _build_tool_plan(state: AgentState) -> List[str]:
         logger.info("[ROUTE_FIX] extreme → extreme tool")
         return ["extreme"]
 
-    # -------- 🔥 EMAIL PRIORITY --------
+    # -------- 🔥 EMAIL PRIORITY (FIXED) --------
     if state.get("intent") == "email":
+        if state.get("analysis_type") == "summary":
+            logger.info("[ROUTE_FIX] email summary → summary tool")
+            return ["summary"]
+
         logger.info("[ROUTE] email → standard_analysis")
         return ["standard_analysis"]
 
@@ -693,28 +697,176 @@ def _run_event_planner(state: AgentState) -> AgentState:
     return state
 
 
+def _generate_business_insights(state: AgentState) -> str:
+    try:
+        metrics = state.get("analysis_result", {}).get("metrics", {})
+        top_products = state.get("analysis_result", {}).get("top_products", [])
+        period = state.get("current_metrics", {}).get("period_label")
+
+        # -------- CURRENCY HANDLING --------
+        country = (state.get("country") or "").lower()
+
+        if country == "uk":
+            currency_symbol = "£"
+            currency_code = "GBP"
+        else:
+            currency_symbol = "$"
+            currency_code = "USD"
+
+        # -------- FORMAT METRICS (VERY IMPORTANT) --------
+        def format_currency(val):
+            try:
+                return f"{currency_symbol}{float(val):,.2f}"
+            except Exception:
+                return val
+
+        formatted_metrics = {}
+        for k, v in metrics.items():
+            if isinstance(v, (int, float)):
+                formatted_metrics[k] = format_currency(v)
+            else:
+                formatted_metrics[k] = v
+
+        # -------- FORMAT TOP PRODUCTS --------
+        formatted_products = []
+        for p in top_products[:5]:
+            try:
+                formatted_products.append({
+                    "name": p.get("product_name") or p.get("sku") or "Unknown",
+                    "sales": format_currency(p.get("__metric__", 0))
+                })
+            except Exception:
+                continue
+
+        # -------- PROMPT --------
+        prompt = f"""
+You are a senior ecommerce business analyst.
+
+IMPORTANT:
+- Currency is {currency_code} ({currency_symbol})
+- ALWAYS use {currency_symbol} for all monetary values
+- DO NOT use $ unless currency is USD
+
+Metric definitions:
+- advertising_total = ad spend (cost)
+- platform_fee = Amazon fees (cost)
+- rembursement_fee = reimbursements from Amazon (POSITIVE, not a cost)
+
+Generate a business report for {period}.
+
+Metrics:
+{formatted_metrics}
+
+Top Products:
+{formatted_products}
+
+Output format:
+1. Executive summary (2–3 lines)
+2. Key drivers
+3. Risks
+
+
+Keep it concise, business-focused, and actionable.
+"""
+
+        response = chat_llm.invoke(prompt)
+        return response.content if response else ""
+
+    except Exception:
+        logger.exception("[BUSINESS_INSIGHTS_ERROR]")
+        return ""
+
+
 def _compute_summary(state: AgentState) -> AgentState:
     engine = state["engine"]
-    latest = latest_available_month(engine, state["user_id"], state["country"])
+
+    # -------- USE REQUESTED PERIOD --------
+    period = state.get("period_parsed") or {}
+
+    if period.get("type") == "single":
+        month = period.get("month")
+        year = period.get("year")
+        label = f"{month:02d}/{year}"
+    else:
+        latest = latest_available_month(engine, state["user_id"], state["country"])
+        month = latest.month
+        year = latest.year
+        label = latest.label
+
+    # -------- BUSINESS METRICS --------
+    BUSINESS_REPORT_METRICS = [
+        "net_sales",
+        "profit",
+        "cm2_profit",
+        "total_quantity",
+        "asp",
+        "acos",
+        "advertising_total",
+        "platform_fee",
+        "rembursement_fee",
+    ]
+
     metrics: Dict[str, float] = {}
-    for metric in OVERALL_MONTH_METRICS:
+
+    for metric in BUSINESS_REPORT_METRICS:
         try:
-            metrics[metric] = float(get_metric_for_month(engine, state["user_id"], state["country"], metric, latest.month, latest.year).get("total", 0.0))
+            metrics[metric] = float(
+                get_metric_for_month(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    metric,
+                    month,
+                    year
+                ).get("total", 0.0)
+            )
         except Exception:
             logger.debug("Skipping summary metric %s", metric, exc_info=True)
+
+    # -------- GROWTH DRIVER --------
     growth_driver = None
     try:
-        growth_driver = get_growth_driver_insights(engine, state["user_id"], state["country"], "net_sales", latest.month, latest.year)
+        growth_driver = get_growth_driver_insights(
+            engine,
+            state["user_id"],
+            state["country"],
+            "net_sales",
+            month,
+            year
+        )
     except Exception:
         logger.debug("Summary growth drivers unavailable", exc_info=True)
+
+    # -------- TOP PRODUCTS --------
     top_products = []
     try:
-        latest_sales = get_metric_for_month(engine, state["user_id"], state["country"], "net_sales", latest.month, latest.year)
+        latest_sales = get_metric_for_month(
+            engine,
+            state["user_id"],
+            state["country"],
+            "net_sales",
+            month,
+            year
+        )
         top_products = latest_sales.get("per_sku", [])[:5]
     except Exception:
         logger.debug("Summary top products unavailable", exc_info=True)
-    state["current_metrics"] = {"metric": "summary", "period_label": latest.label, "metrics": metrics, "total": metrics.get("profit")}
-    state["analysis_result"] = {"type": "summary", "metrics": metrics, "growth_driver": growth_driver, "top_products": top_products}
+
+    # -------- FINAL STATE --------
+    state["current_metrics"] = {
+        "metric": "summary",
+        "period_label": label,
+        "metrics": metrics,
+        "total": metrics.get("profit"),
+    }
+
+    state["analysis_result"] = {
+        "type": "summary",
+        "metrics": metrics,
+        "growth_driver": growth_driver,
+        "top_products": top_products,
+    }
+
     return state
 
 
@@ -2022,22 +2174,27 @@ def _send_email_if_requested(state: AgentState) -> AgentState:
 
     logger.info(f"[EMAIL] Subject: {subject}")
 
-    # -------- BODY BUILD --------
-    final_text = state.get("final_response", "")
+    # -------- BODY BUILD (STRUCTURED HTML) --------
+    try:
+        html = build_email_html(state)
+        logger.info("[EMAIL] HTML report built successfully")
+    except Exception:
+        logger.exception("[EMAIL] Failed to build HTML report")
+        html = "<p>Failed to build report.</p>"
 
-    if not final_text:
-        logger.warning("[EMAIL] final_response is EMPTY → email will be blank")
+    # -------- ATTACHMENTS --------
+    attachments = []
 
-    logger.info(f"[EMAIL] Body preview (first 200 chars): {final_text[:200]}")
+    if state.get("include_csv"):
+        logger.info("[EMAIL] CSV requested → building attachment")
+        try:
+            csv_file = build_excel_attachment(state)
+            attachments.append(csv_file)
+            logger.info("[EMAIL] CSV attachment created")
+        except Exception:
+            logger.exception("[EMAIL] Failed to build CSV attachment")
 
-    html = f"""
-    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Phormula AI Report</h2>
-        <div style="white-space: pre-line; font-size: 14px;">
-            {final_text}
-        </div>
-    </div>
-    """
+    logger.info(f"[EMAIL] Attachments: {[a['filename'] for a in attachments]}")
 
     # -------- SEND EMAIL --------
     try:
@@ -2047,10 +2204,10 @@ def _send_email_if_requested(state: AgentState) -> AgentState:
             user_id=state["user_id"],
             subject=subject,
             html_body=html,
+            attachments=attachments,
         )
 
         logger.info(f"[EMAIL] SUCCESS: {result}")
-
         state["email_result"] = result
 
     except Exception as e:
@@ -2064,9 +2221,9 @@ def _send_email_if_requested(state: AgentState) -> AgentState:
     # -------- EXIT LOG --------
     logger.info(f"[EMAIL] Final email_result: {state.get('email_result')}")
 
-    # -------- 🔥 FINAL RESPONSE AFTER EMAIL --------
+    # -------- FINAL RESPONSE --------
     if state.get("email_result", {}).get("status") == "sent":
-        state["final_response"] = f"📩 Email sent to {state['email_result'].get('recipient')}."
+        state["final_response"] = f"📩 Email sent to {state['email_result'].get('recipient')}"
     else:
         state["final_response"] = "❌ Failed to send email. Please try again."
 
@@ -2505,22 +2662,44 @@ def _render_response(state: AgentState) -> AgentState:
     
     if analysis.get("type") == "summary":
         metrics = analysis.get("metrics", {})
+
+        # -------- BASE METRICS --------
         lines = [
-            f"Summary for {period_label}",
+            f"Business Report for {period_label}",
             "",
             f"Revenue: {_format_value(metrics.get('net_sales', 0), 'net_sales', state.get('country'))}",
             f"Profit: {_format_value(metrics.get('profit', 0), 'profit', state.get('country'))}",
-            f"Orders: {metrics.get('total_quantity', 0):,.0f}",
+            f"Units: {metrics.get('total_quantity', 0):,.0f}",
             f"ASP: {_format_value(metrics.get('asp', 0), 'asp', state.get('country'))}",
             f"ACOS: {metrics.get('acos', 0):.2f}%",
+            f"Ad Spend: {_format_value(metrics.get('advertising_total', 0), 'advertising_total', state.get('country'))}",
+            f"Platform Fees: {_format_value(metrics.get('platform_fee', 0), 'platform_fee', state.get('country'))}",
+            f"CM2 Profit: {_format_value(metrics.get('cm2_profit', 0), 'cm2_profit', state.get('country'))}",
+            f"Reimbursements (Amazon): {_format_value(metrics.get('rembursement_fee', 0), 'rembursement_fee', state.get('country'))}",
         ]
+
+        # -------- TOP PRODUCTS --------
         top_products = analysis.get("top_products", [])[:5]
         if top_products:
-            lines.append("")
-            lines.append("Top products:")
+            lines.append("\nTop products:")
             for row in top_products:
                 name = row.get("product_name") or row.get("sku") or "Unknown"
-                lines.append(f"- {name}: {_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}")
+                lines.append(
+                    f"- {name}: {_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}"
+                )
+
+        # -------- 🔥 AI INSIGHTS (YOUR NEW LAYER) --------
+        try:
+            insights = _generate_business_insights(state)
+
+            state["insights"] = insights
+
+            if insights:
+                lines.append("\n--- Insights ---\n")
+                lines.append(insights)
+        except Exception:
+            logger.exception("[BUSINESS_INSIGHTS_ERROR]")
+
         state["final_response"] = "\n".join(lines)
         return state
     
@@ -2577,15 +2756,25 @@ def _render_response(state: AgentState) -> AgentState:
 def _restore_memory_email(state: AgentState, plan: RequestPlan, history: List[Dict[str, Any]]) -> Optional[AgentState]:
     last_meta = load_last_analysis_from_history(history)
 
+    # -------- SMART RESTORE CONDITION (FINAL FIX) --------
+    query = (state.get("user_query") or "").lower()
+
+    has_new_info = any([
+        plan.metric_name,
+        plan.product_query,
+        state.get("period_parsed") and state.get("period_parsed").get("type") != "latest_month",
+        "report" in query,
+    ])
+
     if not (
-        state.get("email_requested")
-        and last_meta
+        last_meta
         and plan.intent == "email"
-        and not plan.metric_name
-        and not plan.product_query
-        and plan.analysis_type in {"absolute", "summary"}
+        and not has_new_info
     ):
         return None
+
+    # -------- 🔥 DEBUG LOG (STEP 2) --------
+    logger.info("[MEMORY_RESTORE] Condition passed → restoring previous result")
 
     # -------- RESTORE STATE --------
     state["intent"] = "email"
@@ -2610,10 +2799,15 @@ def _restore_memory_email(state: AgentState, plan: RequestPlan, history: List[Di
 
     state["engine"] = get_engine()
 
-    # -------- 🔥 FIX 1: BUILD RESPONSE FIRST --------
+    logger.info(
+        f"[MEMORY_RESTORE] Restored metric={state['metric_name']}, "
+        f"type={state['analysis_type']}, period={state['period_parsed']}"
+    )
+
+    # -------- RENDER RESPONSE --------
     state = _render_response(state)
 
-    # -------- 🔥 FIX 2: THEN SEND EMAIL --------
+    # -------- SEND EMAIL --------
     state = _send_email_if_requested(state)
 
     return state
@@ -2628,6 +2822,11 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         # -------- 🔥 SMART INTENT + METRIC NORMALIZATION --------
         q_lower = query.lower()
+
+        # -------- CSV / DOWNLOAD DETECTION --------
+        if any(word in q_lower for word in ["csv", "download", "excel", "sheet"]):
+            logger.info("[EXPORT] CSV/Download requested")
+            state["include_csv"] = True
 
         # SMART BREAKDOWN DETECTION
         has_breakdown = "breakdown" in q_lower
@@ -2669,8 +2868,14 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         # -------- MEMORY RESTORE --------
         restored = _restore_memory_email(state, plan, history)
+
         if restored is not None:
             logger.info("[MEMORY] Restored previous analysis from history")
+
+            # 🔥 FORCE email intent
+            restored["email_requested"] = True
+
+            # 🔥 SKIP EVERYTHING → DIRECT EMAIL
             return restored
 
         # -------- STATE SETUP --------
