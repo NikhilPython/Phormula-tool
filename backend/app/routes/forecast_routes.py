@@ -152,6 +152,66 @@ def load_forecast_df(*, user_id, country, filename, disk_fallback_path=None):
 
     return None, None
 
+def clean_inventory_forecast_excel_bytes(file_bytes, mv, year, country):
+    from openpyxl import load_workbook
+    from io import BytesIO
+    import re
+    import pandas as pd
+
+    month_lookup = {
+        "january": 1, "jan": 1,
+        "february": 2, "feb": 2,
+        "march": 3, "mar": 3,
+        "april": 4, "apr": 4,
+        "may": 5,
+        "june": 6, "jun": 6,
+        "july": 7, "jul": 7,
+        "august": 8, "aug": 8,
+        "september": 9, "sep": 9,
+        "october": 10, "oct": 10,
+        "november": 11, "nov": 11,
+        "december": 12, "dec": 12,
+    }
+
+    selected_month_num = month_lookup.get(str(mv).strip().lower())
+    selected_year = int(year)
+
+    if not selected_month_num:
+        raise ValueError(f"Invalid forecast month: {mv}")
+
+    wb = load_workbook(BytesIO(file_bytes))
+    ws = wb.active
+
+    header_row = 1 if str(country).lower() == "global" else 7
+
+    cols_to_delete = []
+
+    for cell in ws[header_row]:
+        col_name = str(cell.value).strip() if cell.value is not None else ""
+
+        # keep Feb'26 Sold / Mar'26 Sold / Apr'26 Sold
+        if col_name.endswith(" Sold"):
+            continue
+
+        # only delete forecast month cols like Mar'26 / Apr'26
+        if not re.match(r"^[A-Za-z]{3}'\d{2}$", col_name):
+            continue
+
+        dt = pd.to_datetime(col_name.replace("'", ""), format="%b%y")
+
+        if dt.year < selected_year or (
+            dt.year == selected_year and dt.month < selected_month_num
+        ):
+            cols_to_delete.append(cell.column)
+
+    for col_idx in sorted(cols_to_delete, reverse=True):
+        ws.delete_cols(col_idx)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
 
 def save_file_to_db(*, user_id, country, filename, file_bytes, kind, month=None, year=None, content_type=None):
     if content_type is None:
@@ -269,7 +329,9 @@ def forecast_allmonths():
         year_short = str(year)[-2:] if year else datetime.now().strftime("%y")
         for col in df.columns:
             col_str = str(col)
-            if re.match(r"^[A-Za-z]{3}'\d{2}$", col_str):
+            if re.match(r"^[A-Za-z]{3}'\d{2}\s+Sold$", col_str):
+                month_columns.append(col_str)
+            elif re.match(r"^[A-Za-z]{3}'\d{2}$", col_str):
                 month_columns.append(col_str)
             elif col_str in full_month_names:
                 abbrev = month_abbrev[col_str]
@@ -279,11 +341,37 @@ def forecast_allmonths():
 
         def month_key(col):
             try:
-                return pd.to_datetime(col.replace("'", ""), format="%b%y")
+                return pd.to_datetime(col.replace(" Sold", "").replace("'", ""), format="%b%y")
             except:
                 return pd.Timestamp.max
 
         month_columns = sorted(set(month_columns), key=month_key)
+
+        # requested forecast start month, example: May 2026
+        selected_month_num = MONTHS_MAP.get(str(mv).strip().lower())
+        selected_year = int(year)
+
+        def col_month_year(col):
+            clean = str(col).replace(" Sold", "").replace("'", "")
+            dt = pd.to_datetime(clean, format="%b%y")
+            return dt.year, dt.month
+
+        sold_columns = []
+        forecast_columns = []
+
+        for col in month_columns:
+            col_str = str(col)
+
+            if col_str.endswith(" Sold"):
+                sold_columns.append(col_str)
+            else:
+                y, m = col_month_year(col_str)
+
+                # only keep forecast month from selected month onwards
+                if (y > selected_year) or (y == selected_year and m >= selected_month_num):
+                    forecast_columns.append(col_str)
+
+        month_columns = sold_columns + forecast_columns
 
         if country.lower() == 'global':
             df_filtered = df[df['sku'] != 'Total'].copy()
@@ -300,7 +388,10 @@ def forecast_allmonths():
             df_aggregated.iloc[-1, 0] = '-'
             columns = list(df_aggregated.columns)
         else:
-            selected_columns = ["Product Name", "sku"] + month_columns
+            selected_columns = ["sku", "Product Name"] + month_columns
+
+            if "Projected Sales Total" in df.columns:
+                selected_columns.append("Projected Sales Total")
             df_aggregated = df[selected_columns].copy()
             columns = selected_columns
 
@@ -377,12 +468,9 @@ def forecast_monthrange():
             df = pd.read_excel(BytesIO(stored.data), header=6, engine="openpyxl")
 
         # Normalize columns like "Jan'26 Sold" -> "Jan'26"
-        df.columns = [
-            str(c).replace(" Sold", "").strip()
-            for c in df.columns
-        ]
+        df.columns = [str(c).strip() for c in df.columns]
 
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}(\s+Sold)?$")
 
         month_columns = [
             col for col in df.columns
@@ -398,7 +486,7 @@ def forecast_monthrange():
 
         def parse_month(col):
             return pd.to_datetime(
-                str(col).replace("'", ""),
+                str(col).replace(" Sold", "").replace("'", ""),
                 format="%b%y"
             )
 
@@ -504,7 +592,22 @@ def get_forecast():
         if not stored_inv:
             return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
 
-        return send_db_file(stored_inv, download_name=stored_inv.filename)
+        cleaned_bytes = clean_inventory_forecast_excel_bytes(
+            stored_inv.data,
+            mv,
+            year,
+            country
+        )
+
+        stored_inv.data = cleaned_bytes
+        db.session.commit()
+
+        return send_file(
+            BytesIO(cleaned_bytes),
+            mimetype=XLSX_MIME,
+            as_attachment=True,
+            download_name=stored_inv.filename
+        )
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -647,10 +750,7 @@ def forecast_global():
         def normalize_forecast_df(df):
             df = df.copy()
 
-            df.columns = [
-                str(c).replace(" Sold", "").strip()
-                for c in df.columns
-            ]
+            df.columns = [str(c).strip() for c in df.columns]
 
             rename_map = {}
 
@@ -691,7 +791,7 @@ def forecast_global():
                 'us_columns': list(df_us.columns)
             }), 400
 
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}(\s+Sold)?$")
 
         month_cols_uk = [
             c for c in df_uk.columns
@@ -705,7 +805,7 @@ def forecast_global():
 
         def month_sort_key(col):
             try:
-                return pd.to_datetime(str(col).replace("'", ""), format="%b%y")
+                return pd.to_datetime(str(col).replace(" Sold", "").replace("'", ""), format="%b%y")
             except Exception:
                 return pd.Timestamp.max
 
