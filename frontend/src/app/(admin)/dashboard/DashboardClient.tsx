@@ -1715,7 +1715,7 @@ export default function DashboardPage() {
             await fetchMonthlySp(true);
 
             // Trigger second POST /save with updated ads data.
-            triggerCachePost();
+            // triggerCachePost();
         } catch (e: any) {
             console.error("Background ads sync failed:", e);
             setAdsSeeded(false);
@@ -3154,6 +3154,7 @@ export default function DashboardPage() {
     }, []);
 
     const hasSavedRef = useRef(false);
+    const didBootstrapRef = useRef<string | null>(null);
 
     const saveDashboardCacheToBackend = useCallback(
         async (payload: DashboardCachePayload): Promise<number | null> => {
@@ -3816,37 +3817,14 @@ export default function DashboardPage() {
     useEffect(() => {
         if (!fxReady) return;
 
+        // prevent loop for same cache key
+        if (didBootstrapRef.current === liveCacheKey) return;
+        didBootstrapRef.current = liveCacheKey;
+
         let cancelled = false;
 
         const bootstrapDashboard = async () => {
             try {
-                if (platform === "global") {
-                    const [ukPayload, usPayload] = await Promise.all([
-                        fetchDashboardCacheByCountry("uk"),
-                        fetchDashboardCacheByCountry("us"),
-                    ]);
-
-                    if (cancelled) return;
-
-                    if (ukPayload || usPayload) {
-                        shouldPostCacheRef.current = false;
-                        isManualRefreshRef.current = false;
-
-                        setGlobalCountryPayloads({
-                            uk: ukPayload,
-                            us: usPayload,
-                        });
-
-                        applyDashboardCachePayload(
-                            ukPayload && usPayload
-                                ? mergeDashboardPayloads(ukPayload, usPayload)
-                                : ukPayload || usPayload
-                        );
-
-                        return;
-                    }
-                }
-
                 const cacheResult = await getDashboardCacheFromBackend();
 
                 if (cancelled) return;
@@ -3857,7 +3835,6 @@ export default function DashboardPage() {
 
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    // keep localStorage synced from DB too
                     localStorage.setItem(
                         liveCacheKey,
                         JSON.stringify({
@@ -3866,20 +3843,9 @@ export default function DashboardPage() {
                         })
                     );
 
-                    const backendUpdatedAt = cacheResult.updatedAt
-                        ? new Date(cacheResult.updatedAt).getTime()
-                        : null;
-
-                    setDbUpdatedAt(
-                        backendUpdatedAt != null && !Number.isNaN(backendUpdatedAt)
-                            ? backendUpdatedAt
-                            : null
-                    );
-
                     return;
                 }
 
-                // fallback: try browser cache before refetching
                 const restoredFromLocal = restoreLiveCacheFromLocalStorage();
                 if (restoredFromLocal) {
                     shouldPostCacheRef.current = false;
@@ -3887,20 +3853,13 @@ export default function DashboardPage() {
                     return;
                 }
 
-                // No cache found: do not auto-refresh.
-                // Wait until user clicks Refresh button.
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
-                resetStepState();
-                setDashboardBusy(false);
-
-            } catch (err) {
-                console.error("Dashboard bootstrap failed:", err);
+                await runDashboardLoadWithSteps();
 
                 if (cancelled) return;
-                // Cache fetch failed: do not auto-refresh.
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
+
+                triggerCachePost();
+            } catch (err) {
+                console.error("Dashboard bootstrap failed:", err);
                 resetStepState();
                 setDashboardBusy(false);
             }
@@ -3911,10 +3870,7 @@ export default function DashboardPage() {
         return () => {
             cancelled = true;
         };
-    }, [fxReady, liveCacheKey, restoreLiveCacheFromLocalStorage, getDashboardCacheFromBackend, applyDashboardCachePayload, runDashboardLoadWithSteps]);
-
-
-
+    }, [fxReady, liveCacheKey]);
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
     const derived = data?.derived_totals || null;
