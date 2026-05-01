@@ -178,6 +178,7 @@ type FetchedPeriods = Record<string, string[]>;
 //   }
 // };
 
+
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
 
@@ -2963,14 +2964,29 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-  useEffect(() => {
-    const amazonFetch = searchParams.get("amazonFetch");
-    const promptAmazonAds = searchParams.get("promptAmazonAds");
+  // useEffect(() => {
+  //   const amazonFetch = searchParams.get("amazonFetch");
+  //   const promptAmazonAds = searchParams.get("promptAmazonAds");
 
-    if (amazonFetch === "success" && promptAmazonAds === "1") {
-      setShowAmazonFetchSuccess(true);
-    }
-  }, [searchParams]);
+  //   if (amazonFetch === "success" && promptAmazonAds === "1") {
+  //     setShowAmazonFetchSuccess(true);
+  //   }
+  // }, [searchParams]);
+
+  useEffect(() => {
+  if (!userData) return; // wait until data is loaded
+
+  const amazonFetch = searchParams.get("amazonFetch");
+  const promptAmazonAds = searchParams.get("promptAmazonAds");
+
+  if (
+    amazonFetch === "success" &&
+    promptAmazonAds === "1" &&
+    !userData.amazon_ads_exists
+  ) {
+    setShowAmazonFetchSuccess(true);
+  }
+}, [searchParams, userData]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -3374,332 +3390,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, isDemoMode]);
 
 
-  // useEffect(() => {
-  //   if (isDemoMode) {
-  //     setSkuRows(DEMO_SKU_ROWS);
-  //     return;
-  //   }
-  //   const ready =
-  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-  //     (range === "yearly" && !!selectedYear);
-
-  //   if (!ready || !initialCountryName) {
-  //     setSkuRows([]);
-  //     return;
-  //   }
-
-  //   const ac = new AbortController();
-
-  //   const normalizeRowsForParent = (data: any[]): TableRow[] => {
-  //     return data.map((row) => {
-  //       const productName =
-  //         row?.product_name && String(row.product_name).trim() !== ""
-  //           ? String(row.product_name)
-  //           : row?.sku && String(row.sku).trim() !== ""
-  //             ? String(row.sku)
-  //             : "-";
-
-  //       const isTotalRow = productName.trim().toLowerCase() === "total";
-
-  //       const toNumber = (v: any) => {
-  //         if (v === undefined || v === null || v === "") return 0;
-  //         if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  //         const n = Number(String(v).replace(/,/g, "").trim());
-  //         return Number.isFinite(n) ? n : 0;
-  //       };
-
-  //       return {
-  //         ...row,
-  //         product_name: isTotalRow ? "Total" : productName,
-  //         sku: row.sku ?? "-",
-
-  //         quantity: toNumber(row.quantity),
-  //         return_quantity: toNumber(row.return_quantity),
-  //         total_quantity: toNumber(row.total_quantity),
-
-  //         units_sold: toNumber(row.quantity),
-  //         return_units: toNumber(row.return_quantity),
-  //         net_units_sold: toNumber(row.total_quantity),
-
-  //         asp: toNumber(row.asp ?? row.ASP),
-  //         product_sales: toNumber(row.gross_sales ?? row.product_sales),
-  //         refund_sales: toNumber(row.refund_sales),
-  //         net_sales: toNumber(row.net_sales),
-  //         lost_total: toNumber(row.lost_total),
-
-  //         cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
-  //         shipment_charges: toNumber(row.shipment_charges),
-  //         selling_fees: toNumber(row.selling_fees),
-  //         fba_fees: toNumber(row.fba_fees),
-  //         amazon_fee: toNumber(row.amazon_fee),
-
-  //         tex_and_credits: toNumber(row.tex_and_credits),
-  //         net_taxes: toNumber(row.net_taxes),
-  //         net_credits: toNumber(row.net_credits),
-
-  //         promotional_rebates: toNumber(row.promotional_rebates),
-  //         promotional_rebates_percentage: toNumber(row.promotional_rebates_percentage),
-
-  //         misc_transaction: toNumber(row.misc_transaction),
-  //         other_transaction_fees: toNumber(row.other_transaction_fees),
-  //         other_transactions: toNumber(row.other_transaction_fees),
-
-  //         profit: toNumber(row.profit),
-  //         profit_percentage: toNumber(row.profit_percentage),
-  //         unit_wise_profitability: toNumber(row.unit_wise_profitability),
-
-  //         profit_mix: toNumber(row.profit_mix),
-  //         sales_mix: toNumber(row.sales_mix),
-  //       } as TableRow;
-  //     });
-  //   };
-
-  //   const getTotalRow = (rows: TableRow[]) => {
-  //     return rows.find(
-  //       (r) => String(r.product_name || "").trim().toLowerCase() === "total"
-  //     );
-  //   };
-
-  //   const sumSkuRows = (rows: TableRow[], key: string) => {
-  //     return rows
-  //       .filter((r) => String(r.product_name || "").trim().toLowerCase() !== "total")
-  //       .reduce((sum, r) => sum + toNum((r as any)[key]), 0);
-  //   };
-
-  //   const buildSummaryFromSkuRows = (rows: TableRow[]): Summary => {
-  //     const totalRow = getTotalRow(rows);
-
-  //     const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
-  //     const grossSales =
-  //       toNum((totalRow as any)?.gross_sales) ||
-  //       toNum((totalRow as any)?.product_sales) ||
-  //       sumSkuRows(rows, "gross_sales") ||
-  //       sumSkuRows(rows, "product_sales");
-
-  //     const units =
-  //       toNum(totalRow?.quantity) ||
-  //       toNum(totalRow?.units_sold) ||
-  //       sumSkuRows(rows, "quantity");
-
-  //     const ads = toNum((totalRow as any)?.advertising_total);
-
-  //     const cm2 =
-  //       toNum((totalRow as any)?.cm2_profit) ||
-  //       toNum((totalRow as any)?.profit) ||
-  //       sumSkuRows(rows, "profit");
-
-  //     return {
-  //       unit_sold: units,
-  //       total_sales: netSales,
-  //       gross_sales: grossSales,
-  //       total_product_sales: grossSales,
-  //       total_expense: 0,
-  //       cm2_profit: cm2,
-  //       total_cous:
-  //         toNum((totalRow as any)?.cost_of_unit_sold) ||
-  //         sumSkuRows(rows, "cost_of_unit_sold"),
-  //       advertising_total: ads,
-  //       total_amazon_fee:
-  //         toNum((totalRow as any)?.amazon_fee) ||
-  //         sumSkuRows(rows, "amazon_fee"),
-  //       otherwplatform:
-  //         toNum((totalRow as any)?.platform_fee) ||
-  //         toNum((totalRow as any)?.other_transaction_fees),
-  //     };
-  //   };
-
-  //   const buildUploadRowFromSkuRows = (rows: TableRow[]): UploadRow[] => {
-  //     const summary = buildSummaryFromSkuRows(rows);
-
-  //     return [
-  //       {
-  //         country: initialCountryName,
-  //         month: selectedMonth || "",
-  //         year: selectedYear,
-  //         total_sales: summary.total_sales,
-  //         total_amazon_fee: summary.total_amazon_fee ?? 0,
-  //         total_cous: summary.total_cous ?? 0,
-  //         advertising_total: summary.advertising_total ?? 0,
-  //         otherwplatform: summary.otherwplatform ?? 0,
-  //         cm2_profit: summary.cm2_profit,
-  //         total_profit: summary.cm2_profit,
-  //       },
-  //     ];
-  //   };
-
-
-  //   useEffect(() => {
-  //     if (isDemoMode) {
-  //       setSkuRows(DEMO_SKU_ROWS);
-  //       setUploadsData(DEMO_UPLOAD_HISTORY);
-  //       setBargraphUploads(DEMO_UPLOADS);
-  //       setGraphPageUploads(DEMO_UPLOADS);
-  //       return;
-  //     }
-
-  //     const ready =
-  //       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-  //       (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-  //       (range === "yearly" && !!selectedYear);
-
-  //     if (!ready || !initialCountryName || !token) {
-  //       setSkuRows([]);
-  //       setUploadsData(null);
-  //       setBargraphUploads([]);
-  //       setGraphPageUploads([]);
-  //       return;
-  //     }
-
-  //     const ac = new AbortController();
-
-  //     const fetchParentSkuData = async () => {
-  //       try {
-  //         setLoading(true);
-  //         setBargraphLoading(true);
-  //         setGraphPageLoading(true);
-
-  //         const res = await fetch(buildParentSkuUrl(), {
-  //           method: "GET",
-  //           headers: { Authorization: `Bearer ${token}` },
-  //           cache: "no-store",
-  //           signal: ac.signal,
-  //         });
-
-  //         if (!res.ok) {
-  //           setSkuRows([]);
-  //           setUploadsData(null);
-  //           setBargraphUploads([]);
-  //           setGraphPageUploads([]);
-  //           return;
-  //         }
-
-  //         const data = await res.json();
-
-  //         if (!Array.isArray(data) || data.length === 0) {
-  //           setSkuRows([]);
-  //           setUploadsData(null);
-  //           setBargraphUploads([]);
-  //           setGraphPageUploads([]);
-  //           return;
-  //         }
-
-  //         const normalized = normalizeRowsForParent(data);
-  //         const summary = buildSummaryFromSkuRows(normalized);
-  //         const uploadRows = buildUploadRowFromSkuRows(normalized);
-
-  //         setSkuRows(normalized);
-
-  //         setUploadsData({
-  //           summary,
-  //           summaryComparisons: undefined,
-  //         });
-
-  //         setBargraphUploads(uploadRows);
-  //         setGraphPageUploads(uploadRows);
-
-  //         setBargraphUserMeta({
-  //           company_name: userData?.company_name,
-  //           brand_name: userData?.brand_name,
-  //         });
-
-  //         setGraphPageUserMeta({
-  //           company_name: userData?.company_name,
-  //           brand_name: userData?.brand_name,
-  //         });
-
-  //         if (range === "monthly" && selectedYear && selectedMonth) {
-  //           markFetched(selectedYear, selectedMonth);
-  //         } else if (selectedYear) {
-  //           markFetched(selectedYear);
-  //         }
-  //       } catch (e: any) {
-  //         if (e?.name === "AbortError") return;
-
-  //         setSkuRows([]);
-  //         setUploadsData(null);
-  //         setBargraphUploads([]);
-  //         setGraphPageUploads([]);
-  //       } finally {
-  //         setLoading(false);
-  //         setBargraphLoading(false);
-  //         setGraphPageLoading(false);
-  //       }
-  //     };
-
-  //     fetchParentSkuData();
-
-  //     return () => ac.abort();
-  //   }, [
-  //     range,
-  //     selectedMonth,
-  //     selectedQuarter,
-  //     selectedYear,
-  //     initialCountryName,
-  //     globalHomeCurrency,
-  //     userid,
-  //     token,
-  //     isDemoMode,
-  //     userData?.company_name,
-  //     userData?.brand_name,
-  //   ]);
-
-  //   const fetchSkuRows = async () => {
-  //     try {
-  //       if (!token) {
-  //         setSkuRows([]);
-  //         return;
-  //       }
-
-  //       const url = buildParentSkuUrl();
-
-  //       const res = await fetch(url, {
-  //         method: "GET",
-  //         headers: { Authorization: `Bearer ${token}` },
-  //         cache: "no-store",
-  //         signal: ac.signal,
-  //       });
-
-  //       if (!res.ok) {
-  //         setSkuRows([]);
-  //         return;
-  //       }
-
-  //       const data = await res.json();
-
-  //       if (!Array.isArray(data) || data.length === 0) {
-  //         setSkuRows([]);
-  //         return;
-  //       }
-
-  //       const normalized = normalizeRowsForParent(data);
-  //       setSkuRows(normalized);
-  //     } catch (e: any) {
-  //       if (e?.name === "AbortError") return;
-  //       setSkuRows([]);
-  //     }
-  //   };
-
-  //   fetchSkuRows();
-
-  //   return () => ac.abort();
-  // }, [
-  //   range,
-  //   selectedMonth,
-  //   selectedQuarter,
-  //   selectedYear,
-  //   initialCountryName,
-  //   globalHomeCurrency,
-  //   userid,
-  //   token,
-  //   isDemoMode,
-  // ]);
-
-  // if (month === "NA" || year === "NA") {
-  //   return <IntegrationDashboard />;
-  // }
-
-
   const normalizeRowsForParent = (data: any[]): TableRow[] => {
     return data.map((row) => {
       const productName =
@@ -3777,9 +3467,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const totalRow = getSkuTotalRow(rows);
 
     const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
-  const grossSales =
-  toNum((totalRow as any)?.gross_sales) ||
-  sumSkuRows(rows, "gross_sales");
+    const grossSales =
+      toNum((totalRow as any)?.gross_sales) ||
+      sumSkuRows(rows, "gross_sales");
 
     const units =
       toNum(totalRow?.total_quantity) ||
@@ -4079,7 +3769,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           : undefined;
 
                   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-                  const delta = hasPrev ? roas - prevVal! : null;
+                  const delta =
+                    hasPrev && prevVal !== 0
+                      ? ((roas - prevVal!) / Math.abs(prevVal!)) * 100
+                      : null;
 
                   const deltaClassName =
                     typeof delta === "number"
@@ -4092,10 +3785,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   const arrow =
                     typeof delta === "number"
-                      ? delta > 0
-                        ? "▼"
-                        : delta < 0
-                          ? "▲"
+                      ? roas > prevVal!
+                        ? "▲" // increased → bad
+                        : roas < prevVal!
+                          ? "▼" // decreased → good
                           : ""
                       : "";
 
@@ -4180,8 +3873,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   const ly = comparisons?.lastYear?.[metric];
 
                   const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                    if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                    const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
+                    if (typeof prevVal !== "number") {
+                      return { label, value: undefined, diffPct: null };
+                    }
+
+                    const diffPct =
+                      prevVal === 0 ? null : ((current - prevVal) / Math.abs(prevVal)) * 100;
+
                     return { label, value: prevVal, diffPct };
                   };
 
@@ -4218,11 +3916,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     const hasValue = typeof item.value === "number" && !isNaN(item.value);
                     const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
 
-                    const deltaClassName = hasDiff
-                      ? item.diffPct! >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                      : "text-gray-400";
+                    // ✅ define metric behavior INLINE
+                    const isCostMetric =
+                      metric === "advertising_total" ||
+                      metric === "total_amazon_fee";
+
+
+
+                    // ✅ FIXED COLOR LOGIC
+                    let deltaClassName = "text-gray-400";
+
+                    if (hasDiff) {
+                      if (isCostMetric) {
+                        // higher cost = BAD
+                        deltaClassName =
+                          item.diffPct! < 0 ? "text-emerald-600" : "text-red-600";
+                      } else {
+                        // higher = GOOD
+                        deltaClassName =
+                          item.diffPct! >= 0 ? "text-emerald-600" : "text-red-600";
+                      }
+                    }
 
                     const deltaText = hasDiff
                       ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
@@ -4375,7 +4089,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
 
                   const diffPct =
-                    hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+                    hasPrev && prevVal !== 0
+                      ? ((cm2Percent - prevVal) / Math.abs(prevVal)) * 100
+                      : null;
 
                   const deltaClassName =
                     typeof diffPct === "number"

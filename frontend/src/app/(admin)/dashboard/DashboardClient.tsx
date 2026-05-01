@@ -238,6 +238,12 @@ const formatValue = (label: string, value: number) => {
     })}`;
 };
 
+const formatRoundedCurrency = (val: any) => {
+    const n = toNumberSafe(val);
+    if (!n) return "£0";
+    return `£${Math.round(n).toLocaleString()}`;
+};
+
 /* ===================== BI TYPES (for shared cards + graph) ===================== */
 type ChartMetric = "net_sales" | "quantity";
 
@@ -390,6 +396,12 @@ const toNumber = (v: any) => {
     return Number.isFinite(n) ? n : 0;
 };
 
+const formatSummaryRounded = (value: any) => {
+    const n = toNumber(value);
+    if (!Number.isFinite(n)) return "-";
+    return Math.round(Math.abs(n)).toLocaleString();
+};
+
 const INT_KEYS = new Set<string>(["reimbursement_lost_inventory_units"]);
 
 const SIGNED_KEYS = new Set<string>([
@@ -485,83 +497,55 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     };
 }
 
-function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
-    // Fallback: use GRAND_TOTAL row from skuwise_items (or sum rows).
-    const grand = rows?.find?.((r: any) => r?.isTotal) || rows?.[rows?.length - 1] || {};
-    const netSales = toNumber(grand?.net_sales);
-    const adsSpend = toNumber(grand?.ads_spend);
-    const cm2Profit = toNumber(grand?.cm2_profit);
+function getGrandTotalRow(rows: any[] = []) {
+    return (
+        rows.find((r) => r?.sku === "GRAND_TOTAL") ||
+        rows.find((r) => String(r?.product_name || "").toLowerCase() === "grand total") ||
+        rows.find((r) => r?.isTotal) ||
+        rows[rows.length - 1] ||
+        {}
+    );
+}
 
-    const acos = netSales ? (Math.abs(adsSpend) / Math.abs(netSales)) * 100 : 0;
-    const cm2Margins = netSales ? (cm2Profit / netSales) * 100 : 0;
+function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
+    const grand = getGrandTotalRow(rows);
 
     return {
-        advertising_total: Math.abs(adsSpend),
-        visible_ads: 0,
-        dealsvouchar_ads: 0,
+        advertising_total: toNumber(grand?.total_ads),
+        visible_ads: toNumber(grand?.product_spend),
+        dealsvouchar_ads: toNumber(grand?.dealsvouchar_ads),
 
-        other_transactions: 0,
-        platform_fee: 0,
-        inventory_storage_fees: 0,
-        platform_fee_inventory_storage: 0,
-        misc_transaction: 0,
-        reimbursement_lost_inventory_amount: 0,
+        other_transactions: toNumber(grand?.other),
+        platform_fee: toNumber(grand?.platformfeenew ?? grand?.platform_fee),
+        inventory_storage_fees: toNumber(grand?.platform_fee_inventory_storage),
+        platform_fee_inventory_storage: toNumber(grand?.platform_fee_inventory_storage),
+        misc_transaction: toNumber(grand?.other),
+
+        reimbursement_lost_inventory_amount: toNumber(grand?.lost_total),
         reimbursement_lost_inventory_units: 0,
-        lost_total: 0,
+        lost_total: toNumber(grand?.lost_total),
 
-        shipment_charges: 0,
-        reimbursement_vs_sales: 0,
+        shipment_charges: toNumber(grand?.shipment_fees),
+        reimbursement_vs_sales: toNumber(grand?.reimbursement_vs_sales),
 
-        cm2_profit: cm2Profit,
-        cm2_margins: cm2Margins,
-        acos,
+        cm2_profit: toNumber(grand?.total_cm2_profit ?? grand?.cm2_profit),
+        cm2_margins: toNumber(grand?.total_cm2_margins ?? grand?.cm2_profit_per),
+        acos: toNumber(grand?.tacos_total_advertising_cost_of_sale),
 
-        rembursment_vs_cm2_margins: 0,
-        net_reimbursement: 0,
+        rembursment_vs_cm2_margins: toNumber(grand?.reimbursement_vs_cm2_margins),
+        net_reimbursement: toNumber(grand?.current_net_reimbursement),
 
         profit: toNumber(grand?.profit),
-        net_sales: netSales,
+        net_sales: toNumber(grand?.net_sales),
     };
 }
 
 function computePlSummaryTotals(data: any, skuwiseRows: any[]): PlSummaryTotals {
-    const candidates = [
-        data?.summary,
-        data?.pl_summary,
-        data?.mtd_summary,
-        data?.totals,
-        data?.derived_totals,
-    ].filter(Boolean);
+    const apiRows = Array.isArray(data?.skuwise_items)
+        ? data.skuwise_items
+        : skuwiseRows || [];
 
-    let merged: PlSummaryTotals | null = null;
-
-    for (const c of candidates) {
-        const t = computePlSummaryTotalsFromSource(c);
-
-        if (!merged) {
-            merged = t;
-            continue;
-        }
-
-        Object.keys(t).forEach((key) => {
-            const k = key as keyof PlSummaryTotals;
-            if (toNumber((merged as any)[k]) === 0 && toNumber((t as any)[k]) !== 0) {
-                (merged as any)[k] = (t as any)[k];
-            }
-        });
-    }
-
-    if (
-        merged &&
-        (merged.net_sales !== 0 ||
-            merged.cm2_profit !== 0 ||
-            merged.advertising_total !== 0 ||
-            merged.shipment_charges !== 0)
-    ) {
-        return merged;
-    }
-
-    return computePlSummaryTotalsFromSkuwise(skuwiseRows || []);
+    return computePlSummaryTotalsFromSkuwise(apiRows);
 }
 
 const formatSummaryValue = (value: unknown, key: string) => {
@@ -688,6 +672,18 @@ const getPrevRegionYearMonth = (region: RegionKey) => {
         monthName,
         year: now.getFullYear(),
     };
+};
+
+const roundForAmazonCard = (label: string, value: number) => {
+    const n = Number(value || 0);
+
+    // keep decimals for percentage cards and ASP
+    if (label.includes("%") || label === "ASP") return n;
+
+    // round only these cards
+    if (ROUND_LABELS.includes(label)) return Math.round(n);
+
+    return n;
 };
 
 const getDayOfMonthByRegion = (region: RegionKey) => {
@@ -1738,168 +1734,6 @@ export default function DashboardPage() {
         triggerCachePost,
     ]);
 
-    const showInventoryToast = ({
-        sku,
-        productName,
-        onDismiss,
-        currentParams,
-    }: {
-        sku: string;
-        productName: string;
-        onDismiss: () => void;
-        currentParams: {
-            countryName: string;
-            month: string;
-            year: string;
-        };
-    }) => {
-        toast.custom(
-            (toastId) => (
-                <div
-                    style={{
-                        background: "#FFFFFF", // deep black
-                        color: "#ffffff",
-                        padding: "16px 18px",
-                        borderRadius: "12px",
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        // boxShadow: "0 10px 25px rgba(0,0,0,0.4)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "10px",
-                        minWidth: "300px",
-                        border: "1px solid #414042",
-                    }}
-                >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div
-                            style={{
-                                width: "4px",
-                                height: "20px",
-                                background: "#ef4444", // red accent
-                                borderRadius: "2px",
-                            }}
-                        />
-                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#414042" }}>
-                            {productName}
-                        </div>
-                    </div>
-
-                    <div
-                        style={{
-                            fontSize: "12px",
-                            background: "rgba(239, 68, 68, 0.08)", // soft red tint
-                            color: "#414042",
-                            padding: "8px 10px",
-                            borderRadius: "6px",
-                            lineHeight: 1.5,
-                            border: "1px solid rgba(239, 68, 68, 0.25)",
-                        }}
-                    >
-                        Top-selling item is running low. Restock recommended.
-                    </div>
-
-                    <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
-                        <button
-                            onClick={() => {
-                                const targetUrl = `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`;
-
-                                // make sure the dashboard is on the live tab
-                                setActiveTab("live");
-                                setPendingHash("#current-inventory");
-
-                                // navigate
-                                router.push(targetUrl);
-
-                                // after tab/page updates, force scroll
-                                setTimeout(() => {
-                                    const el = document.getElementById("current-inventory");
-                                    if (el) {
-                                        el.scrollIntoView({
-                                            behavior: "smooth",
-                                            block: "start",
-                                        });
-                                    } else {
-                                        window.location.hash = "current-inventory";
-                                    }
-                                }, 250);
-
-                                toast.dismiss(toastId);
-                            }}
-                            style={{
-                                background: "#FFFFFF",
-                                color: "#414042",
-                                padding: "6px 10px",
-                                borderRadius: "6px",
-                                fontSize: "12px",
-                                border: "1px solid #414042",
-                                cursor: "pointer",
-                            }}
-                        >
-                            View
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                onDismiss();
-                                toast.dismiss(toastId);
-                            }}
-                            style={{
-                                background: "#FFFFFF",
-                                color: "#414042",
-                                padding: "6px 10px",
-                                borderRadius: "6px",
-                                fontSize: "12px",
-                                border: "1px solid #414042",
-                                cursor: "pointer",
-                            }}
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                </div>
-            ),
-            {
-                id: sku,
-                duration: Infinity,
-            }
-        );
-    };
-
-    // useEffect(() => {
-    //     const top5HighAlerts = top5Skus
-    //         .map((sku) => ({
-    //             sku,
-    //             productName: skuToProductName[sku] || sku,
-    //             alert: inventoryAlerts?.[sku]?.alert || "",
-    //             alertType: inventoryAlerts?.[sku]?.alert_type || "error",
-    //         }))
-    //         .filter(
-    //             (item) =>
-    //                 item.alert.trim().toLowerCase() === "high alert" &&
-    //                 !dismissedAlerts.includes(item.sku)
-    //         );
-
-    //     top5HighAlerts.forEach(({ sku, productName }) => {
-    //         if (shownInventoryToastIdsRef.current.has(sku)) return;
-
-    //         shownInventoryToastIdsRef.current.add(sku);
-
-    //         showInventoryToast({
-    //             sku,
-    //             productName,
-    //             onDismiss: () => handleDismiss(sku),
-    //             currentParams: {
-    //                 countryName: countryName,
-    //                 month: urlMonthParam || "",
-    //                 year: urlYearParam || "",
-    //             },
-    //         });
-    //     });
-    // }, [top5Skus, skuToProductName, inventoryAlerts, dismissedAlerts]);
-
-
-
     useEffect(() => {
         if (activeTab !== "live") return;
         if (!pendingHash) return;
@@ -2738,31 +2572,58 @@ export default function DashboardPage() {
 
 
     const formatDisplayAmount = useCallback(
-        (value: number | null | undefined) => {
+        (value: number | null | undefined, label?: string) => {
             const n = toNumberSafe(value ?? 0);
+
+            const shouldRound =
+                label &&
+                ["Gross Sales", "Net Sales", "Cost of Ads", "CM2 Profit"].includes(label);
+
+            const options = shouldRound
+                ? {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                }
+                : {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                };
 
             switch (displayCurrency) {
                 case "USD":
-                    return fmtUSD(n);
+                    return new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        ...options,
+                    }).format(n);
+
                 case "GBP":
-                    return fmtGBP(n);
+                    return new Intl.NumberFormat("en-GB", {
+                        style: "currency",
+                        currency: "GBP",
+                        ...options,
+                    }).format(n);
+
                 case "CAD":
                     return new Intl.NumberFormat("en-CA", {
                         style: "currency",
                         currency: "CAD",
+                        ...options,
                     }).format(n);
+
                 case "INR":
                     return new Intl.NumberFormat("en-IN", {
                         style: "currency",
                         currency: "INR",
+                        ...options,
                     }).format(n);
+
                 default:
-                    return fmtNum(n);
+                    return n.toString();
             }
         },
         [displayCurrency]
     );
-
     const formatAdsNumber = (value: number) =>
         Number.isFinite(value)
             ? value.toLocaleString("en-GB", {
@@ -7503,9 +7364,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ? (loading || shopifyLoading || biLoading)
                     : (loading || biLoading)
             ),
-            // Net Sales
-            formatter: formatDisplayAmount,
-            previousFormatter: formatDisplayAmount,
+            formatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
+            previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
             bottomLabel: prevLabel,
             className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
         },
@@ -7541,6 +7401,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (loading || biLoading)
             ),
             formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
         },
@@ -7598,12 +7459,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
                     : (loading || (useBiForAmazonCards ? biLoading : false))
             ),
-            // Net Sales
-            formatter: formatDisplayAmount,
-            previousFormatter: formatDisplayAmount,
+            formatter: (val: number) => formatDisplayAmount(val, "Cost of Ads"),
+            previousFormatter: (val: number) => formatDisplayAmount(val, "Cost of Ads"),
             bottomLabel: prevLabel,
             className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
         },
+
         {
             label: "TACoS",
             current: shouldShowDummyUi
@@ -7671,9 +7532,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     : (loading || (useBiForAmazonCards ? biLoading : false))
             ),
             formatter: fmtPct2,
+            previousFormatter: fmtPct2,
             bottomLabel: prevLabel,
             className: "bg-white border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
         },
+
         {
             label: "CM2 Profit",
             current: shouldShowDummyUi
@@ -7729,43 +7592,36 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
                     : (loading || (useBiCm2 ? biLoading : false))
             ),
-            // Net Sales
-            formatter: formatDisplayAmount,
-            previousFormatter: formatDisplayAmount,
+            formatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
+            previousFormatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
             bottomLabel: prevLabel,
             className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
         },
+
         {
             label: "Target",
-            current: shouldShowDummyUi
-                ? 0
-                : (stats_targetHome ?? 0),
-            previous: shouldShowDummyUi
-                ? 0
-                : (targets_lastMonthTotalHome ?? 0),
+            current: shouldShowDummyUi ? 0 : (stats_targetHome ?? 0),
+            previous: shouldShowDummyUi ? 0 : (targets_lastMonthTotalHome ?? 0),
             deltaPct: shouldShowDummyUi
                 ? safeDeltaPct(0, 0)
                 : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
             loading: !shouldShowDummyUi && loading,
-            // Net Sales
             formatter: formatDisplayAmount,
             previousFormatter: formatDisplayAmount,
             bottomLabel: "Last Month",
             className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },
+
         {
             label: "Target Trend",
-            current: shouldShowDummyUi
-                ? 0
-                : (stats_targetTrendPct ?? 0),
-            previous: shouldShowDummyUi
-                ? 0
-                : (stats_targetTrendPrevPct ?? 0),
+            current: shouldShowDummyUi ? 0 : (stats_targetTrendPct ?? 0),
+            previous: shouldShowDummyUi ? 0 : (stats_targetTrendPrevPct ?? 0),
             deltaPct: shouldShowDummyUi
                 ? deltaPctAbs(0, 0)
                 : deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
             loading: !shouldShowDummyUi && loading,
             formatter: fmtPct,
+            previousFormatter: fmtPct,
             bottomLabel: "Last Month",
             className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
         },
@@ -8328,10 +8184,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
         return (
             <div className="">
-                {/* <h3 className="mb-3 text-lg font-semibold text-charcoal-500">
-                    {title}
-                </h3> */}
-
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     <AmazonStatCard
                         label="Units"
@@ -8349,8 +8201,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         current={c.grossSales}
                         previous={c.prevGrossSales}
                         deltaPct={safeDeltaPct(c.grossSales, c.prevGrossSales)}
-                        formatter={roundedMoneyFormatter}
-                        previousFormatter={roundedMoneyFormatter}
+                        formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         bottomLabel={prevLabel}
                         className="border-[#ED9F50] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8361,8 +8213,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         current={c.netSales}
                         previous={c.prevNetSales}
                         deltaPct={safeDeltaPct(c.netSales, c.prevNetSales)}
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
+                        formatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8386,8 +8238,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         previous={c.prevAds}
                         deltaPct={safeDeltaPct(c.ads, c.prevAds)}
                         inverseDelta
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
+                        formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         bottomLabel={prevLabel}
                         className="border-[#C58A5A] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8410,8 +8262,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={safeDeltaPct(c.cm2Profit, c.prevCm2Profit)}
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
+                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
                         bottomLabel={prevLabel}
                         className="border-[#A8BE7A] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8423,6 +8275,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         previous={c.prevCm2Pct}
                         deltaPct={safeDeltaPct(c.cm2Pct, c.prevCm2Pct)}
                         formatter={fmtPct2}
+                        previousFormatter={fmtPct2}
                         bottomLabel={prevLabel}
                         className="border-[#6D8F61] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -8431,7 +8284,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
             </div>
         );
     };
-
 
     return (
         <div className="relative w-full">
@@ -8804,8 +8656,8 @@ ${pageLoading
                                                                 : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0))
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
-                                                    formatter={formatDisplayAmount}
-                                                    previousFormatter={formatDisplayAmount}
+                                                    formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                    previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                                 />
@@ -8832,8 +8684,8 @@ ${pageLoading
                                                             : (useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct)
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
-                                                    formatter={formatDisplayAmount}
-                                                    previousFormatter={formatDisplayAmount}
+                                                    formatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                    previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                 />
@@ -8861,6 +8713,7 @@ ${pageLoading
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                                 />
@@ -8907,15 +8760,12 @@ ${pageLoading
                                                                         )
                                                                     )
                                                                     : null)
-                                                                : safeDeltaPct(
-                                                                    adsSpendTotal,
-                                                                    amazonPrevAdsDisp
-                                                                )
+                                                                : safeDeltaPct(adsSpendTotal, amazonPrevAdsDisp)
                                                     }
                                                     inverseDelta
                                                     loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
-                                                    formatter={formatDisplayAmount}
-                                                    previousFormatter={formatDisplayAmount}
+                                                    formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                                                    previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#C49466] border-t-4 border-t-[#C49466]"
                                                 />
@@ -8989,8 +8839,8 @@ ${pageLoading
                                                     previous={mtdCm2ProfitPreviousDisplay}
                                                     deltaPct={mtdCm2ProfitDelta}
                                                     loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
-                                                    formatter={formatDisplayAmount}
-                                                    previousFormatter={formatDisplayAmount}
+                                                    formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                    previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
                                                 />
@@ -9418,11 +9268,11 @@ ${pageLoading
                                                 if (colKey === "quantity") return row.quantity;
 
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
-                                                if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
+                                                if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
 
                                                 if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);
-                                                    return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
                                                 }
                                                 // CM1 %
                                                 if (colKey === "cm1_profit_per") {
@@ -9456,25 +9306,28 @@ ${pageLoading
                                                     return formatAdType((row as any).ad_type);
                                                 }
                                                 if (colKey === "ads_spend")
-                                                    return formatAdsNumber(Math.abs(row.ads_spend));
+                                                    return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
                                                 if (colKey === "acos") {
                                                     const v = Number(row.acos ?? 0);
                                                     return `${formatAdsNumber(v)}%`;
                                                 }
                                                 if (colKey === "cogs")
-                                                    return formatAdsNumber(Math.abs(row.cogs));
+                                                    return Math.round(Math.abs(Number(row.cogs || 0))).toLocaleString();
+
                                                 if (colKey === "fba_fees")
-                                                    return formatAdsNumber(Math.abs(row.fba_fees));
+                                                    return Math.round(Math.abs(Number(row.fba_fees || 0))).toLocaleString();
+
                                                 if (colKey === "selling_fees")
-                                                    return formatAdsNumber(Math.abs(row.selling_fees));
+                                                    return Math.round(Math.abs(Number(row.selling_fees || 0))).toLocaleString();
+
                                                 if (colKey === "marketplace_total")
-                                                    return formatAdsNumber(
-                                                        Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
-                                                    );
+                                                    return Math.round(
+                                                        Math.abs(Number(row.fba_fees || 0)) + Math.abs(Number(row.selling_fees || 0))
+                                                    ).toLocaleString();
                                                 if (colKey === "cm2_profit")
-                                                    return formatAdsNumber(row.cm2_profit);
+                                                    return Math.round(Number(row.cm2_profit || 0)).toLocaleString();
                                                 if (colKey === "profit")
-                                                    return formatAdsNumber(row.profit);
+                                                    return Math.round(Number(row.profit || 0)).toLocaleString();
                                                 return (row as any)[colKey] ?? "";
                                             }}
                                             summary={{
@@ -9484,7 +9337,7 @@ ${pageLoading
                                                     {
                                                         id: "ads",
                                                         label: "Cost of Advertisement",
-                                                        endValue: formatSummaryValue(costOfAds, "advertising_total"),
+                                                        endValue: formatSummaryRounded(costOfAds),
                                                         defaultCollapsed: true,
                                                         children: [
                                                             {
@@ -9495,7 +9348,7 @@ ${pageLoading
                                                             {
                                                                 id: "ads_3",
                                                                 label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(dealVouchers, "advertising_total"),
+                                                                midValue: formatSummaryRounded(dealVouchers),
                                                             },
                                                         ],
                                                     },
@@ -9503,7 +9356,7 @@ ${pageLoading
                                                     {
                                                         id: "other",
                                                         label: "Other Transactions",
-                                                        endValue: formatSummaryValue(platformFee, "platform_fee"),
+                                                        endValue: formatSummaryRounded(platformFee),
                                                         defaultCollapsed: true,
                                                         children: [
                                                             {
@@ -9514,7 +9367,7 @@ ${pageLoading
                                                             {
                                                                 id: "other_2",
                                                                 label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(inventoryStorageFees, "inventory_storage_fees"),
+                                                                midValue: formatSummaryRounded(inventoryStorageFees),
                                                             },
                                                             {
                                                                 id: "other_misc",
@@ -9556,7 +9409,7 @@ ${pageLoading
                                                     {
                                                         id: "cm2_profit",
                                                         label: "CM2 Profit/Loss",
-                                                        endValue: Number(cm2Profit.toFixed(2)),
+                                                        endValue: Math.round(cm2Profit),
                                                     },
                                                     {
                                                         id: "cm2_margins",
