@@ -161,7 +161,7 @@ export default function SalesTargetCard({
   const mtdHomeFinal = useBi
     ? biAlignedTotals!.total_current_net_sales
     : mtdHomeResolved;
-    
+
   const rawLastMonthTotalHomeFinal =
     typeof lastMonthTotalHome === "number" && Number.isFinite(lastMonthTotalHome)
       ? lastMonthTotalHome
@@ -186,11 +186,22 @@ export default function SalesTargetCard({
   // ---- Gauge ratios (all in HOME currency) ----
 
   // const mtdVal = Math.max(0, Number(mtdHomeResolved) || 0);
-  const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
+  // const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
   // const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
 
   const mtdVal = Math.max(0, Number(mtdHomeFinal) || 0);
   const prevVal = Math.max(0, Number(lastMonthTotalHomeFinal) || 0);
+
+  // ✅ fallback target logic (FIX)
+  const targetHomeFinal =
+    Number(targetHomeResolved) > 0
+      ? Number(targetHomeResolved)
+      : Number(lastMonthTotalHomeFinal) || 0;
+
+  const targetVal = Math.max(0, targetHomeFinal);
+
+  // % calculation now uses fallback target
+  const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
 
   const gaugeMax = Math.max(mtdVal, targetVal, prevVal, 1);
 
@@ -206,7 +217,7 @@ export default function SalesTargetCard({
   const toDeg_DecTarget = 180 * decDraw;
   const toDeg_Orange = 180 * orangeDraw;
 
-  const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
+  // const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
 
   const { todayDay } = getISTDayInfo();
   const todayHomeComputed =
@@ -340,7 +351,7 @@ export default function SalesTargetCard({
 
   const tipLines = [
     `MTD Sale: ${formatHomeK(mtdHomeFinal)} (${pctDisplay.toFixed(2)}%)`,
-    `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
+    `${thisMonthLabel} Target: ${formatHomeK(targetHomeFinal)}`,
     `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeFinal)}`,
     `Last month by today: ${formatHomeK(lastMonthToDateHomeFinal)}`,
   ];
