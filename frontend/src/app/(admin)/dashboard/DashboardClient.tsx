@@ -610,7 +610,7 @@ async function withLocalStorageLock<T>(
 const REGION_TIMEZONE: Record<RegionKey, string> = {
     Global: "Asia/Kolkata", // or keep a default of your choice
     UK: "Europe/London",
-    US: "America/New_York",
+    US: "America/Los_Angeles",
     CA: "America/Toronto",
 };
 
@@ -1292,7 +1292,7 @@ export default function DashboardPage() {
         const date = new Date(timestamp);
 
         return new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/New_York", // or LA if needed
+            timeZone: "America/Los_Angeles", // or LA if needed
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
