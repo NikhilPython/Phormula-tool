@@ -205,7 +205,7 @@ export default function SalesTargetStatsCard({
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },
             { title: "Target", value: formatHomeK(targetToUse), helper: "\u00A0" },
-            { title: prevLabel, value: formatHomeK(prevMtd), helper: "\u00A0" },
+            { title: `${prevLabel} MTD`, value: formatHomeK(prevMtd), helper: "\u00A0" },
             {
               title: "Sales Trend",
               value: `${salesTrendPctToUse >= 0 ? "+" : ""}${salesTrendPctToUse.toFixed(2)}%`,
