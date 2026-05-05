@@ -396,27 +396,31 @@ def current_inventory():
             on="sku",
             how="left"
         )
+
         # Fetch last 30 days sales
-        sales_30_as_of = date(
-            year,
-            month_number,
-            monthrange(year, month_number)[1]
-        ) + timedelta(days=1)
+        # Example for May report:
+        # as_of = May 6
+        # window = April 6 to May 5
+        sales_30_as_of = date(year, month_number, 6)
 
         sales_30_df = fetch_last_30_days_units(
-            user_id,
-            country_key,
+            user_id=user_id,
+            country=country_key,
             as_of=sales_30_as_of,
             marketplace_name=marketplace_name
         )
 
         if not sales_30_df.empty:
             sales_30_df["sku"] = sales_30_df["sku"].apply(norm_sku)
+
             final_df = final_df.merge(
-                sales_30_df.rename(columns={"last_30_days_units": "Sales Last 30 Days"}),
+                sales_30_df.rename(
+                    columns={"last_30_days_units": "Sales Last 30 Days"}
+                ),
                 on="sku",
                 how="left"
             )
+
             final_df["Sales Last 30 Days"] = safe_numeric(
                 final_df["Sales Last 30 Days"],
                 0
@@ -565,25 +569,18 @@ def current_inventory():
         final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
         # ---------------- NEW COLUMNS ---------------- #
 
-        
 
-        try:
-            inventory_alerts = generate_inventory_alerts_for_all_skus(
-                user_id=user_id,
-                country=country_key,
-            )
-        except Exception:
-            logger.exception("Failed to generate inventory alerts in current_inventory")
-            inventory_alerts = {}
-            warnings.append("Inventory alerts could not be generated.")
-
-        # Coverage Ratio (In Months)
         final_df["Coverage Ratio (In Months)"] = (
             final_df["Inventory at the end of the month"]
             / final_df["Sales Last 30 Days"].replace(0, pd.NA)
         ).fillna(0).round(2)
 
-        # Inventory Alerts
+        inventory_alerts = generate_inventory_alerts_for_all_skus(
+            user_id=user_id,
+            country=country_key,
+            coverage_df=final_df
+        )
+
         final_df["Inventory Alerts"] = final_df["SKU"].map(
             lambda sku: inventory_alerts.get(str(sku).strip().upper(), {}).get("alert", "")
         )
@@ -614,25 +611,35 @@ def current_inventory():
         final_df.to_excel(output, index=False, engine="openpyxl")
         output.seek(0)
         excel_b64 = base64.b64encode(output.read()).decode("utf-8")
+        skuwise_df = final_df[
+            final_df["Product Name"].astype(str).str.lower() != "total"
+        ].copy()
+
+        # Replace NaN/NA safely
+        skuwise_df = skuwise_df.where(pd.notnull(skuwise_df), None)
+
+        # Convert all numpy types to native Python
+        skuwise_items = skuwise_df.to_dict(orient="records")
 
         return jsonify({
             "message": "Current inventory report generated successfully",
             "data": excel_b64,
             "filename": filename,
             "inventory_alerts": inventory_alerts,
+            "skuwise_items": skuwise_items,
             "warnings": warnings,
             "meta": {
-            "user_id": user_id,
-            "country": country_key,
-            "marketplace_id": marketplace_id,
-            "marketplace_name": marketplace_name,
-            "month": month_name,
-            "year": year,
-            "table_name": current_inventory_table_name,
-            "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
-            "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
-            "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
-        }
+                "user_id": user_id,
+                "country": country_key,
+                "marketplace_id": marketplace_id,
+                "marketplace_name": marketplace_name,
+                "month": month_name,
+                "year": year,
+                "table_name": current_inventory_table_name,
+                "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
+                "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
+                "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
+            }
         }), 200
     except Exception as e:
         logger.exception("Current inventory generation failed; trying saved table fallback")

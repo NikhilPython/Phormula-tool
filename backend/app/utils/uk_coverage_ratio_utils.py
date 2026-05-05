@@ -59,28 +59,32 @@ def table_exists(conn, table_name: str) -> bool:
     return bool(conn.execute(q, {"table": table_name}).scalar())
 
 
-def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None, marketplace_name: str = None) -> pd.DataFrame:
+def fetch_last_30_days_units(
+    user_id: int,
+    country: str,
+    as_of: date = None,
+    marketplace_name: str = None
+) -> pd.DataFrame:
     country = str(country).strip().lower()
 
     if as_of is None:
         as_of = date.today()
 
-    yesterday = as_of - timedelta(days=1)
-    start_30d = yesterday - timedelta(days=29)
+    # Example: as_of = 2026-05-06
+    # Window = 2026-04-06 to 2026-05-05
+    end_date = as_of - timedelta(days=1)
+    start_date = end_date - timedelta(days=29)
 
-    curr_month_start = date(yesterday.year, yesterday.month, 1)
+    curr_month_start = date(end_date.year, end_date.month, 1)
 
-    curr_start = max(start_30d, curr_month_start)
-    curr_end = yesterday
+    curr_start = max(start_date, curr_month_start)
+    curr_end = end_date
 
-    prev_start = start_30d
+    prev_start = start_date
     prev_end = curr_month_start - timedelta(days=1)
 
     frames = []
 
-    # -------------------------
-    # CURRENT MONTH → liveorders
-    # -------------------------
     if curr_start <= curr_end:
         q_live = text("""
             SELECT sku, quantity
@@ -89,6 +93,7 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None, mar
               AND marketplace = :marketplace_name
               AND purchase_date >= :start
               AND purchase_date < :end
+              AND sku IS NOT NULL
         """)
 
         with engine_live.connect() as conn:
@@ -103,42 +108,15 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None, mar
                 },
             )
 
-        df_live = _clean_inventory_sku(df_live)
-        frames.append(df_live)
+        if not df_live.empty:
+            df_live = _clean_inventory_sku(df_live)
+            frames.append(df_live)
 
-    # -------------------------
-    # PREVIOUS PERIOD → historic source
-    # -------------------------
     if prev_start <= prev_end:
         with engine_hist.connect() as conn:
             if country == "global":
-                # ✅ use consolidated global table
                 table = f"user_{user_id}_total_country_global_data"
-
-                if table_exists(conn, table):
-                    q_prev = text(f"""
-                        SELECT sku, quantity
-                        FROM public.{table}
-                        WHERE marketplace = :marketplace_name
-                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
-                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
-                    """)
-
-                    df_prev = pd.read_sql(
-                        q_prev,
-                        conn,
-                        params={
-                            "marketplace_name": marketplace_name,
-                            "start": datetime.combine(prev_start, datetime.min.time()),
-                            "end": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
-                        },
-                    )
-
-                    df_prev = _clean_inventory_sku(df_prev)
-                    frames.append(df_prev)
-
             else:
-                # ✅ normal country monthly historic table
                 table = construct_prev_table_name(
                     user_id=user_id,
                     country=country,
@@ -146,25 +124,27 @@ def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None, mar
                     year=prev_start.year,
                 )
 
-                if table_exists(conn, table):
-                    q_prev = text(f"""
-                        SELECT sku, quantity
-                        FROM public.{table}
-                        WHERE marketplace = :marketplace_name
-                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
-                        AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
-                    """)
+            if table_exists(conn, table):
+                q_prev = text(f"""
+                    SELECT sku, quantity
+                    FROM public.{table}
+                    WHERE marketplace = :marketplace_name
+                      AND NULLIF(NULLIF(date_time, '0'), '')::timestamp >= :start
+                      AND NULLIF(NULLIF(date_time, '0'), '')::timestamp < :end
+                      AND sku IS NOT NULL
+                """)
 
-                    df_prev = pd.read_sql(
-                        q_prev,
-                        conn,
-                        params={
-                            "marketplace_name": marketplace_name,
-                            "start": datetime.combine(prev_start, datetime.min.time()),
-                            "end": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
-                        },
-                    )
+                df_prev = pd.read_sql(
+                    q_prev,
+                    conn,
+                    params={
+                        "marketplace_name": marketplace_name,
+                        "start": datetime.combine(prev_start, datetime.min.time()),
+                        "end": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
+                    },
+                )
 
+                if not df_prev.empty:
                     df_prev = _clean_inventory_sku(df_prev)
                     frames.append(df_prev)
 
