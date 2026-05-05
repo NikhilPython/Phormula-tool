@@ -656,12 +656,13 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               <PageBreadcrumb
                 pageTitle={
                   <>
-                    Forecasted Data -{" "}
-                    {monthRange && (
+                    Forecasted Data 
+                    {/* {monthRange && (
                       <span className="text-green-500">
-                        {countryName.toUpperCase()} ({monthRange})
+                       {countryName.toUpperCase()} 
+                        ({monthRange})
                       </span>
-                    )}
+                    )} */}
                   </>
                 }
                 variant="page"

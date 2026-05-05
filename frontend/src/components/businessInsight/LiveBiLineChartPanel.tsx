@@ -12,7 +12,7 @@ const ReactECharts = dynamic(() => import("echarts-for-react"), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-[260px] w-full">
-      <Loader transparent/>
+      <Loader transparent />
     </div>
   ),
 });
@@ -426,9 +426,31 @@ export default function LiveBiLineChartPanel({
 }: Props) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
 
-  const prevLegend = useMemo(() => monthTickLabel(periods?.previous), [periods]);
-  const currLegend = useMemo(() => monthTickLabel(periods?.current_mtd), [periods]);
+  // const prevLegend = useMemo(() => monthTickLabel(periods?.previous), [periods]);
+  // const currLegend = useMemo(() => monthTickLabel(periods?.current_mtd), [periods]);
 
+  const stripDayRange = (label: string) =>
+    label.replace(/\s+\d+\s*[–-]\s*\d+$/g, "");
+
+  const rangeSuffix = useMemo(() => {
+    if (selectedStartDay == null || selectedEndDay == null) return "";
+
+    const s = Math.min(selectedStartDay, selectedEndDay);
+    const e = Math.max(selectedStartDay, selectedEndDay);
+
+    return ` ${s}–${e}`;
+  }, [selectedStartDay, selectedEndDay]);
+
+  const prevLegend = useMemo(
+    () => `${stripDayRange(periods?.previous?.label || monthTickLabel(periods?.previous))}${rangeSuffix}`,
+    [periods, rangeSuffix]
+  );
+
+  const currLegend = useMemo(
+    () => `${stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))}${rangeSuffix}`,
+    [periods, rangeSuffix]
+  );
+  
   return (
     <div className="w-full">
       <div className="flex flex-row md:items-start justify-between gap-3">

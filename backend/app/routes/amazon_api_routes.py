@@ -50,16 +50,21 @@ dotenv_path = find_dotenv(filename=".env", usecwd=True)
 load_dotenv(dotenv_path, override=True)
 load_dotenv()
 db_url  = os.getenv('DATABASE_URL')
-db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  # fallback
+db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  
+db_url2 = os.getenv('DATABASE_AMAZON_URL') or db_url  
 
 PHORMULA_ENGINE = create_engine(db_url, pool_pre_ping=True)
 ADMIN_ENGINE = create_engine(db_url1, pool_pre_ping=True)
+AMAZON_ENGINE = create_engine(db_url2, pool_pre_ping=True)
 
 if not db_url:
     raise RuntimeError("DATABASE_URL is not set")
 if not db_url1:
     # optional: log a warning if using fallback
     print("[WARN] DATABASE_ADMIN_URL not set; falling back to DATABASE_URL")
+if not db_url2:
+    # optional: log a warning if using fallback
+    print("[WARN] DATABASE_AMAZON_URL not set; falling back to DATABASE_URL")
 
 amazon_api_bp = Blueprint("amazon_api", __name__)
 
@@ -755,7 +760,7 @@ def finances_mtd_transactions():
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
 
     if ui_country in ("us", "usa", "united_states"):
-        transaction_status = request.args.get("transaction_status")  # default all for US
+        transaction_status = "RELEASED"
     else:
         transaction_status = request.args.get("transaction_status", "RELEASED")
 
@@ -866,18 +871,31 @@ def finances_mtd_transactions():
             - float(r.get("promotional_rebates_tax", 0.0))
         )
 
+    marketplace_name = "Amazon.com" if ui_country in ("us", "usa", "united_states") else "Amazon.co.uk"
     # ---------------- Store raw liveorders ----------------
     db_result = None
     if store_in_db:
         try:
+            with AMAZON_ENGINE.begin() as conn:
+                conn.execute(text("""
+                    DELETE FROM public.liveorders
+                    WHERE user_id = :user_id
+                    AND marketplace = :marketplace
+                """), {
+                    "user_id": user_id,
+                    "marketplace": marketplace_name
+                })
+
             db_result = upsert_liveorders_from_rows(
                 all_rows,
                 user_id=user_id,
                 country=ui_country,
                 now_utc=now_utc,
             )
+
         except Exception as e:
             db.session.rollback()
+            print("MTD DB STORE ERROR:", str(e))
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
 
     # ---------------- totals ----------------

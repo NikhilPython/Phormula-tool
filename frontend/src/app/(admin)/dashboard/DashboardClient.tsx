@@ -610,7 +610,7 @@ async function withLocalStorageLock<T>(
 const REGION_TIMEZONE: Record<RegionKey, string> = {
     Global: "Asia/Kolkata", // or keep a default of your choice
     UK: "Europe/London",
-    US: "America/New_York",
+    US: "America/Los_Angeles",
     CA: "America/Toronto",
 };
 
@@ -929,12 +929,14 @@ const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
 function RangePicker({
     selectedStartDay,
     selectedEndDay,
+    label,
     onSubmit,
     onClear,
     onCloseReset,
 }: {
     selectedStartDay: number | null;
     selectedEndDay: number | null;
+    label: string;
     onSubmit: (s: number | null, e: number | null) => void;
     onClear: () => void;
     onCloseReset: () => void;
@@ -1115,7 +1117,7 @@ function RangePicker({
                 }}
             >
                 <FaCalendarAlt className="text-sm 2xl:text-md" />
-                {formatRangeLabel(pendingStartDate, pendingEndDate)}
+                {label}
             </button>
 
             {showCalendar && (
@@ -1292,7 +1294,7 @@ export default function DashboardPage() {
         const date = new Date(timestamp);
 
         return new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/New_York", // or LA if needed
+            timeZone: "America/Los_Angeles", // or LA if needed
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
@@ -3225,7 +3227,14 @@ export default function DashboardPage() {
         await saveDashboardCacheToBackend(payload);
     };
 
+    const formatAppliedRangeLabel = (start: number | null, end: number | null) => {
+        if (start == null || end == null) return "Select Date Range";
 
+        const { monthName } = getRegionYearMonth(activeDateRegion);
+        const shortMonth = monthName.slice(0, 3);
+
+        return `${shortMonth} ${start}-${end}`;
+    };
 
     type DashboardCachePayload = ReturnType<typeof buildDashboardCachePayload>;
 
@@ -3312,7 +3321,7 @@ export default function DashboardPage() {
                     platform === "amazon-ca" ? "ca" :
                         "global";
 
-        return `live-dashboard-cache:${country}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
+        return `live-dashboard-cache:${country}:${activeDateRegion}`;
     }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
 
 
@@ -8386,10 +8395,14 @@ ${pageLoading
                                                     <RangePicker
                                                         selectedStartDay={selectedStartDay}
                                                         selectedEndDay={selectedEndDay}
+                                                        label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
                                                         onSubmit={(s, e) => {
                                                             setSelectedStartDay(s);
                                                             setSelectedEndDay(e);
-                                                            fetchLiveBiPayload({ startDay: s, endDay: e, generateInsights: false });
+
+                                                            setBiLoading(false);
+                                                            setBiStatus("ready");
+                                                            setBiError(null);
                                                         }}
                                                         onClear={() => {
                                                             setSelectedStartDay(null);
@@ -8541,9 +8554,14 @@ ${pageLoading
                                                     <RangePicker
                                                         selectedStartDay={selectedStartDay}
                                                         selectedEndDay={selectedEndDay}
+                                                        label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
                                                         onSubmit={(s, e) => {
                                                             setSelectedStartDay(s);
                                                             setSelectedEndDay(e);
+
+                                                            setBiLoading(false);
+                                                            setBiStatus("ready");
+                                                            setBiError(null);
                                                         }}
                                                         onClear={() => {
                                                             setSelectedStartDay(null);

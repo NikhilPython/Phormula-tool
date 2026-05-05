@@ -1296,21 +1296,45 @@ export default function ObjectivesPageClient({
         throw new Error(objectiveJson?.error || "Failed to save business summary");
       }
 
+      // const finalObjective = {
+      //   ...objective,
+      //   ...objectiveDraft,
+      //   country: resolvedTargetCountry,
+      //   business_context: nextBusinessContext,
+      //   website: website || "",
+      //   uploaded_files: pptFile
+      //     ? [
+      //       {
+      //         ...pptFile,
+      //         uploadStatus: "ready" as const,
+      //       },
+      //     ]
+      //     : [],
+      // };
+
       const finalObjective = {
         ...objective,
-        ...objectiveDraft,
-        country: resolvedTargetCountry,
-        business_context: nextBusinessContext,
-        website: website || "",
-        uploaded_files: pptFile
-          ? [
-            {
-              ...pptFile,
-              uploadStatus: "ready" as const,
-            },
-          ]
-          : [],
+        growth_intent: objectiveDraft.growth_intent,
+        profit_priority: objectiveDraft.profit_priority,
+        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+        country: objectiveDraft.country,
       };
+
+      setObjective(finalObjective);
+      setObjectiveDraft(finalObjective);
+
+      // ✅ add this
+      // setTargetSummaries((prev) => ({
+      //   ...prev,
+      //   [countryToSave]: targetSummaryJson?.data ?? {
+      //     ...(prev[countryToSave] || {}),
+      //     target_sales: nextTarget,
+      //   },
+      // }));
+
+      setIsStrategicEditMode(false);
+      setObjectiveTargetDraft("");
+      setObjectiveEditingPid(null);
 
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
@@ -1405,6 +1429,16 @@ export default function ObjectivesPageClient({
 
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
+
+      setTargetSummaries((prev) => ({
+        ...prev,
+        [countryToSave]: targetSummaryJson?.data ?? {
+          ...(prev[countryToSave] || {}),
+          target_sales: nextTarget,
+        },
+      }));
+
+
       setIsStrategicEditMode(false);
       setObjectiveTargetDraft("");
       setObjectiveEditingPid(null);
