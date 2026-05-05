@@ -407,14 +407,24 @@ def process_skuwise_us_data(user_id, country, month, year):
         ]))
 
         misc_transaction_total = abs(
-            safe_series(df.loc[leftout_mask], "total").sum()
+            pd.to_numeric(
+                misc_transaction_df.get("misc_transaction", pd.Series(dtype=float)),
+                errors="coerce"
+            ).fillna(0).sum()
+        )
+
+        lost_total_amount = abs(
+            pd.to_numeric(
+                lost_total_df.get("lost_total", pd.Series(dtype=float)),
+                errors="coerce"
+            ).fillna(0).sum()
         )
 
         platform_fee = (
             platformfeenew_total
             + platform_fee_inventory_storage_total
-            - abs(lost_total_df["lost_total"].sum() if not lost_total_df.empty else 0)
-            + misc_transaction_total
+            - misc_transaction_total
+            - lost_total_amount
         )
 
 
@@ -892,10 +902,9 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
+        sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["lost_total"] = -lost_total_amount
         sum_row["platform_fee"] = platform_fee
-        sum_row["misc_transaction"] = abs(
-            pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0).sum()
-        )
         sum_row["reimbursement_vs_sales"] = abs(reimbursement_vs_sales)
         sum_row["cm2_profit"] = abs(cm2_profit)
         sum_row["cm2_margins"] = abs(cm2_margins)
@@ -1388,16 +1397,24 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         ]))
 
         misc_transaction_total = abs(
-            pd.to_numeric(misc_transaction_df.get("misc_transaction", pd.Series(dtype=float)), errors="coerce")
-            .fillna(0)
-            .sum()
+            pd.to_numeric(
+                misc_transaction_df.get("misc_transaction", pd.Series(dtype=float)),
+                errors="coerce"
+            ).fillna(0).sum()
+        )
+
+        lost_total_amount = abs(
+            pd.to_numeric(
+                lost_total_df.get("lost_total", pd.Series(dtype=float)),
+                errors="coerce"
+            ).fillna(0).sum()
         )
 
         platform_fee = (
             platformfeenew_total
             + platform_fee_inventory_storage_total
-            - abs(lost_total_df["lost_total"].sum() if not lost_total_df.empty else 0)
-            + misc_transaction_total
+            - misc_transaction_total
+            - lost_total_amount
         )
 
         group_cols = {
@@ -1641,10 +1658,9 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
+        sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["lost_total"] = -lost_total_amount
         sum_row["platform_fee"] = platform_fee
-        sum_row["misc_transaction"] = abs(
-            pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0).sum()
-        )
         sum_row["reimbursement_vs_sales"] = abs(reimbursement_vs_sales)
         sum_row["cm2_profit"] = abs(cm2_profit)
         sum_row["cm2_margins"] = abs(cm2_margins)
@@ -2006,11 +2022,18 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             ).fillna(0).sum()
         )
 
+        lost_total_amount = abs(
+            pd.to_numeric(
+                lost_total_df.get("lost_total", pd.Series(dtype=float)),
+                errors="coerce"
+            ).fillna(0).sum()
+        )
+
         platform_fee = (
             platformfeenew_total
             + platform_fee_inventory_storage_total
-            - abs(lost_total_df["lost_total"].sum() if not lost_total_df.empty else 0)
-            + misc_transaction_total
+            - misc_transaction_total
+            - lost_total_amount
         )
 
         group_cols = {
@@ -2251,10 +2274,9 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
+        sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["lost_total"] = -lost_total_amount
         sum_row["platform_fee"] = platform_fee
-        sum_row["misc_transaction"] = abs(
-            pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0).sum()
-        )
         sum_row["reimbursement_vs_sales"] = abs(reimbursement_vs_sales)
         sum_row["cm2_profit"] = abs(cm2_profit)
         sum_row["cm2_margins"] = abs(cm2_margins)

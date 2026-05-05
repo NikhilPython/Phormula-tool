@@ -1525,9 +1525,9 @@ def cashflow():
 
         candidates = [
             f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}{year_value}_table",
-            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}_table",
+            # f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}",
             f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}{year_value}",
-            f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}",
+            # f"skuwisemonthly_{user_id_value}_{record_country}_{month_clean}_{year_value}",
         ]
 
         for table_name in candidates:

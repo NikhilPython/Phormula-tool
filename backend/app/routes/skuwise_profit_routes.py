@@ -33,18 +33,19 @@ engine = create_engine(
     db_url,
     pool_pre_ping=True,
     pool_recycle=1800,
-    pool_size=10,
-    max_overflow=20
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30
 )
 
 admin_engine = create_engine(
     db_url1,
     pool_pre_ping=True,
     pool_recycle=1800,
-    pool_size=5,
-    max_overflow=10
+    pool_size=2,
+    max_overflow=3,
+    pool_timeout=30
 )
-
 
 def encode_file_to_base64(file_path):
     with open(file_path, 'rb') as file:
@@ -149,7 +150,7 @@ def productwise_performance():
         result_data = {}
 
         with engine.connect() as conn, admin_engine.connect() as conn1:
-            inspector = inspect(engine)
+            inspector = inspect(conn)
             all_tables = inspector.get_table_names()
 
             # Iterate over requested countries
@@ -199,7 +200,7 @@ def productwise_performance():
                             required_cols = {
                                 'product_name',
                                 'net_sales',
-                                'quantity',
+                                'total_quantity',
                                 'profit',
                                 'asp',
                                 'sales_mix',
@@ -322,7 +323,7 @@ def product_search():
         table_name = f"sku_{user_id}_data_table"
 
         with engine.connect() as conn:
-            inspector = inspect(engine)
+            inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
                 return jsonify({'error': 'No data found for this user.'}), 404
@@ -364,7 +365,7 @@ def product_names():
         table_name = f"sku_{user_id}_data_table"
 
         with engine.connect() as conn:
-            inspector = inspect(engine)
+            inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
                 return jsonify({'error': 'No data table found for this user.'}), 404
@@ -573,7 +574,6 @@ def productwise_growth_ai():
         # ==============================
         # RESOLVE SKU
         # ==============================
-        engine = create_engine(db_url)
 
         if country == "global":
             key = product_name
@@ -661,10 +661,9 @@ def productwise_growth_ai():
         history_24m = []
 
         try:
-
-            engine = create_engine(db_url)
-            inspector = inspect(engine)
-            all_tables = inspector.get_table_names()
+            with engine.connect() as conn:
+                inspector = inspect(conn)
+                all_tables = inspector.get_table_names()
 
             latest_tables = get_latest_two_tables(all_tables, user_id, country)
 
