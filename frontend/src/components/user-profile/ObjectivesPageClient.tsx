@@ -806,13 +806,21 @@ export default function ObjectivesPageClient({
     countryName,
     month,
     year,
+    businessContextOverride,
   }: {
     countryName: string;
     month: string;
     year: number;
+    businessContextOverride?: string;
   }) => {
     if (!token) return;
-    if (!objective.business_context?.trim() && !objectiveDraft.business_context?.trim()) return;
+
+    const hasBusinessSummary =
+      !!businessContextOverride?.trim() ||
+      !!objective.business_context?.trim() ||
+      !!objectiveDraft.business_context?.trim();
+
+    if (!hasBusinessSummary) return;
 
     try {
       setIsFetchingBusinessJourney(true);
@@ -837,7 +845,11 @@ export default function ObjectivesPageClient({
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(json?.error || json?.details || "Failed to generate business journey");
+        throw new Error(
+          json?.error ||
+          json?.details ||
+          "Failed to generate business journey"
+        );
       }
 
       setBusinessJourney(json?.business_journey ?? null);
@@ -1234,7 +1246,6 @@ export default function ObjectivesPageClient({
         setIsGeneratingSummary(true);
 
         const formData = new FormData();
-
         formData.append("country", resolvedTargetCountry);
         formData.append("month", getObjectiveMonth());
 
@@ -1273,7 +1284,7 @@ export default function ObjectivesPageClient({
       const objectivePayload = {
         country: resolvedTargetCountry,
         month: getObjectiveMonth(),
-        business_context: nextBusinessContext || "",
+        business_context: nextBusinessContext,
         website_url: website || null,
         ppt_file_name: pptFile?.name || null,
       };
@@ -1296,57 +1307,45 @@ export default function ObjectivesPageClient({
         throw new Error(objectiveJson?.error || "Failed to save business summary");
       }
 
-      // const finalObjective = {
-      //   ...objective,
-      //   ...objectiveDraft,
-      //   country: resolvedTargetCountry,
-      //   business_context: nextBusinessContext,
-      //   website: website || "",
-      //   uploaded_files: pptFile
-      //     ? [
-      //       {
-      //         ...pptFile,
-      //         uploadStatus: "ready" as const,
-      //       },
-      //     ]
-      //     : [],
-      // };
-
-      const finalObjective = {
+      const finalObjective: UserObjectiveForm = {
         ...objective,
-        growth_intent: objectiveDraft.growth_intent,
-        profit_priority: objectiveDraft.profit_priority,
-        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
-        country: objectiveDraft.country,
+        ...objectiveDraft,
+        country: resolvedTargetCountry,
+        business_context: nextBusinessContext,
+        website: website || "",
+        uploaded_files: pptFile
+          ? [
+            {
+              ...pptFile,
+              uploadStatus: "ready" as const,
+            },
+          ]
+          : [],
       };
 
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
 
-      // ✅ add this
-      // setTargetSummaries((prev) => ({
-      //   ...prev,
-      //   [countryToSave]: targetSummaryJson?.data ?? {
-      //     ...(prev[countryToSave] || {}),
-      //     target_sales: nextTarget,
-      //   },
-      // }));
+      setIsBusinessSummaryEditMode(false);
+      setHasObjectiveForCurrentCountry(true);
+      setBusinessJourney(null);
+      setBusinessJourneyError(null);
 
       setIsStrategicEditMode(false);
       setObjectiveTargetDraft("");
       setObjectiveEditingPid(null);
 
-      setObjective(finalObjective);
-      setObjectiveDraft(finalObjective);
-      setHasObjectiveForCurrentCountry(true);
-      setBusinessJourneyError(null);
-      setIsBusinessSummaryEditMode(false);
+      // Stop only the Business Summary loader.
+      setIsGeneratingSummary(false);
 
+      // Start Journey immediately using the freshly generated summary.
       const now = new Date();
-      await fetchBusinessJourney({
+
+      void fetchBusinessJourney({
         countryName: resolvedTargetCountry,
         month: now.toLocaleString("en-US", { month: "long" }).toLowerCase(),
         year: now.getFullYear(),
+        businessContextOverride: nextBusinessContext,
       });
     } catch (err: any) {
       console.error(err);

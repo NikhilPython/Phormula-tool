@@ -1918,15 +1918,6 @@ export default function DashboardPage() {
             const inrUsd = getRate("inr", "usd");
             const cadUsd = getRate("cad", "usd");
 
-            console.log("[FX RATE DEBUG]", {
-                month,
-                year,
-                rows,
-                filteredRows: cur,
-                gbpUsdFromDB: gbpUsd,
-                fallbackEnv: GBP_TO_USD_ENV,
-            });
-
             if (gbpUsd != null) setGbpToUsd(gbpUsd);
             if (inrUsd != null) setInrToUsd(inrUsd);
             if (cadUsd != null) setCadToUsd(cadUsd);
@@ -2265,6 +2256,13 @@ export default function DashboardPage() {
                 month: invMonthYear.month,
                 year: invMonthYear.year,
                 XLSX,
+            });
+            console.log("[inventory debug]", {
+                inventoryCountry,
+                month: invMonthYear.month,
+                year: invMonthYear.year,
+                rowsCount: rows.length,
+                firstRow: rows[0],
             });
             setInvRows(rows);
             setInventoryAlerts(alerts);
@@ -5601,12 +5599,6 @@ export default function DashboardPage() {
 
         const mappedPrevValues = labels.map(getPrev);
 
-        console.log("[DASHBOARD BAR GRAPH FINAL PREVIOUS VALUES]", {
-            labels,
-            mappedPrevValues,
-            previousTotalsUsed: data?.previous_period?.totals,
-        });
-
         return mappedPrevValues;
 
     }, [
@@ -7793,13 +7785,19 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
 
 
-    const finalInventoryRows = isUsingDummyData
-        ? dummyInventoryRows
-        : invRows;
+    const hasRealInventoryRows = Array.isArray(invRows) && invRows.length > 0;
 
-    const finalInventoryAlerts = isUsingDummyData
-        ? dummyInventoryAlerts
-        : inventoryAlerts;
+    const finalInventoryRows = hasRealInventoryRows
+        ? invRows
+        : isUsingDummyData
+            ? dummyInventoryRows
+            : [];
+
+    const finalInventoryAlerts = hasRealInventoryRows
+        ? inventoryAlerts
+        : isUsingDummyData
+            ? dummyInventoryAlerts
+            : {};
 
     const finalTargetData = shouldShowDummyUi ? dummyTargetData : targetData;
 
@@ -9567,22 +9565,20 @@ ${pageLoading
                 )}
 
                 {/* {amazonIntegrated && graphRegionToUse !== "Global" && ( */}
-                {activeTab === "inventory" &&
-                    (isUsingDummyData || amazonIntegrated) && (
-                        <div id="current-inventory" className="scroll-mt-[80px]">
-                            <CurrentInventorySection
-                                region={isUsingDummyData ? "UK" : graphRegionToUse}
-                                invLoading={!shouldShowDummyUi && invLoading}
-                                invError={shouldShowDummyUi ? "" : invError}
-                                invRows={finalInventoryRows}
-                                inventoryAlerts={finalInventoryAlerts}
-                                userData={userData}
-                                convertToDisplayCurrency={convertToDisplayCurrency}
-                                displayCurrency={displayCurrency}
-                            />
-
-                        </div>
-                    )}
+                {activeTab === "inventory" && (
+                    <div id="current-inventory" className="scroll-mt-[80px]">
+                        <CurrentInventorySection
+                            region={hasRealInventoryRows ? graphRegionToUse : "UK"}
+                            invLoading={!hasRealInventoryRows && !shouldShowDummyUi && invLoading}
+                            invError={hasRealInventoryRows ? "" : shouldShowDummyUi ? "" : invError}
+                            invRows={finalInventoryRows}
+                            inventoryAlerts={finalInventoryAlerts}
+                            userData={userData}
+                            convertToDisplayCurrency={convertToDisplayCurrency}
+                            displayCurrency={displayCurrency}
+                        />
+                    </div>
+                )}
             </PreviewLockedSection>
         </div >
 

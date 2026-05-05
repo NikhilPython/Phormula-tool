@@ -4,6 +4,8 @@ from sqlalchemy.orm import sessionmaker
 import jwt
 import os
 import base64
+import math
+import numpy as np
 import pandas as pd
 from config import Config
 import logging
@@ -49,6 +51,44 @@ def norm_sku(x) -> str:
 def safe_numeric(series_or_value, default=0):
     return pd.to_numeric(series_or_value, errors="coerce").fillna(default)
 
+def clean_json_value(value):
+    if value is None:
+        return None
+
+    # pandas missing values: pd.NA, NaT, np.nan
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+
+    # numpy scalar types
+    if isinstance(value, np.integer):
+        return int(value)
+
+    if isinstance(value, np.floating):
+        if np.isnan(value) or np.isinf(value):
+            return None
+        return float(value)
+
+    # normal Python float
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+
+    # datetime/date values
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    # nested values
+    if isinstance(value, dict):
+        return {k: clean_json_value(v) for k, v in value.items()}
+
+    if isinstance(value, list):
+        return [clean_json_value(v) for v in value]
+
+    return value
 
 def table_exists(engine, table_name: str) -> bool:
     try:
@@ -615,13 +655,18 @@ def current_inventory():
             final_df["Product Name"].astype(str).str.lower() != "total"
         ].copy()
 
-        # Replace NaN/NA safely
-        skuwise_df = skuwise_df.where(pd.notnull(skuwise_df), None)
+        # Replace infinities first, then pandas/numpy missing values
+        skuwise_df = skuwise_df.replace([np.inf, -np.inf], np.nan)
+        skuwise_df = skuwise_df.astype(object).where(pd.notnull(skuwise_df), None)
 
-        # Convert all numpy types to native Python
-        skuwise_items = skuwise_df.to_dict(orient="records")
+        # Convert pandas/numpy/NaN values into valid JSON-safe Python values
+        skuwise_items = clean_json_value(skuwise_df.to_dict(orient="records"))
 
-        return jsonify({
+        # Also clean alerts/meta in case any numpy values are inside
+        inventory_alerts = clean_json_value(inventory_alerts)
+        warnings = clean_json_value(warnings)
+
+        response_payload = {
             "message": "Current inventory report generated successfully",
             "data": excel_b64,
             "filename": filename,
@@ -629,18 +674,20 @@ def current_inventory():
             "skuwise_items": skuwise_items,
             "warnings": warnings,
             "meta": {
-                "user_id": user_id,
+                "user_id": int(user_id),
                 "country": country_key,
                 "marketplace_id": marketplace_id,
                 "marketplace_name": marketplace_name,
                 "month": month_name,
-                "year": year,
+                "year": int(year),
                 "table_name": current_inventory_table_name,
                 "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
                 "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
                 "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
             }
-        }), 200
+        }
+
+        return jsonify(clean_json_value(response_payload)), 200
     except Exception as e:
         logger.exception("Current inventory generation failed; trying saved table fallback")
         return return_saved_current_inventory_table(

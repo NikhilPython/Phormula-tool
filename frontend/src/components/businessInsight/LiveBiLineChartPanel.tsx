@@ -424,7 +424,24 @@ export default function LiveBiLineChartPanel({
   selectedEndDay,
   currencySymbol,
 }: Props) {
-  const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
+  // const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
+
+  const CHART_METRIC_KEY = "performance-trend-chart-metric";
+
+  const [chartMetric, setChartMetric] = useState<ChartMetric>(() => {
+    if (typeof window === "undefined") return "net_sales";
+
+    const saved = localStorage.getItem(CHART_METRIC_KEY);
+
+    return saved === "quantity" || saved === "net_sales"
+      ? saved
+      : "net_sales";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(CHART_METRIC_KEY, chartMetric);
+  }, [chartMetric]);
 
   // const prevLegend = useMemo(() => monthTickLabel(periods?.previous), [periods]);
   // const currLegend = useMemo(() => monthTickLabel(periods?.current_mtd), [periods]);
@@ -450,7 +467,7 @@ export default function LiveBiLineChartPanel({
     () => `${stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))}${rangeSuffix}`,
     [periods, rangeSuffix]
   );
-  
+
   return (
     <div className="w-full">
       <div className="flex flex-row md:items-start justify-between gap-3">

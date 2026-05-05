@@ -345,20 +345,27 @@ export default function CurrentInventorySection({
     return key || "";
   }, []);
 
-  // Sales for past 30 days: backend may call it "Others" or something else
   const findSales30Key = useCallback((row: InventoryRow) => {
     const keys = Object.keys(row);
 
-    const exactOthers = keys.find((k) => k.trim().toLowerCase() === "others");
-    if (exactOthers) return exactOthers;
+    const exact = keys.find(
+      (k) => k.trim().toLowerCase() === "sales last 30 days"
+    );
+    if (exact) return exact;
 
-    const past30 = keys.find((k) => k.toLowerCase().includes("past 30"));
+    const last30 = keys.find((k) =>
+      k.toLowerCase().includes("last 30 days")
+    );
+    if (last30) return last30;
+
+    const past30 = keys.find((k) =>
+      k.toLowerCase().includes("past 30")
+    );
     if (past30) return past30;
 
-    const days30 = keys.find((k) => k.toLowerCase().includes("30 days"));
-    if (days30) return days30;
-
-    const same = keys.find((k) => k.trim().toLowerCase() === "sales for past 30 days");
+    const same = keys.find(
+      (k) => k.trim().toLowerCase() === "sales for past 30 days"
+    );
     if (same) return same;
 
     return "";
@@ -572,7 +579,7 @@ export default function CurrentInventorySection({
         productName: (row as any)["Product Name"] || "",
         skuAsin: (row as any)["SKU"] || (row as any)["ASIN"] || "",
         mtdSales: formatInt(mtdSales),
-        sales30: formatInt(mtdSales + sales30),
+        sales30: formatInt(sales30),
         salesRank: salesRank ? formatInt(salesRank) : "—",
         currentInventory: formatInt(currentInventory),
         inventory180Plus: formatInt(inventory180Plus),
@@ -608,8 +615,7 @@ export default function CurrentInventorySection({
         }
       );
 
-      const denom = agg.mtdSales + agg.sales30;
-      const coverage = denom > 0 ? agg.currentInventory / denom : 0;
+      const coverage = agg.sales30 > 0 ? agg.currentInventory / agg.sales30 : 0;
 
       uiRows.push({
         rowType: "others",
@@ -617,7 +623,7 @@ export default function CurrentInventorySection({
         productName: "Others",
         skuAsin: "",
         mtdSales: formatInt(agg.mtdSales),
-        sales30: formatInt(agg.mtdSales + agg.sales30),
+        sales30: formatInt(agg.sales30),
         salesRank: "—",
         currentInventory: formatInt(agg.currentInventory),
         inventory180Plus: formatInt(agg.inventory180Plus),
@@ -631,64 +637,63 @@ export default function CurrentInventorySection({
     }
 
     // 7) Backend grand total row (if present in the original invRows)
-    const inventoryTotalRow = invRows.find((r) => isInventoryTotalRow(r)) || null;
-    if (inventoryTotalRow) {
-      const mtdKey = findMtdKey(inventoryTotalRow);
-      const sales30Key = findSales30Key(inventoryTotalRow);
+    // 7) Total row calculated from all real inventory rows.
+    // Backend skuwise_items excludes Product Name === "Total", so calculate it here.
+    const totalAgg = calcRows.reduce(
+      (acc, r) => {
+        acc.currentInventory += r.currentInventory;
+        acc.mtdSales += r.mtdSales;
+        acc.sales30 += r.sales30;
+        acc.estStorage += r.estStorage;
+        acc.inventory180Plus += r.inventory180Plus;
+        return acc;
+      },
+      {
+        currentInventory: 0,
+        mtdSales: 0,
+        sales30: 0,
+        estStorage: 0,
+        inventory180Plus: 0,
+      }
+    );
 
-      const currentInventory = toNumberSafe(
-        (inventoryTotalRow as any)["Inventory at the end of the month"]
-      );
-      const mtdSales = toNumberSafe(mtdKey ? (inventoryTotalRow as any)[mtdKey] : 0);
-      const sales30 = toNumberSafe(
-        sales30Key ? (inventoryTotalRow as any)[sales30Key] : 0
-      );
+    const totalCoverage =
+      totalAgg.sales30 > 0
+        ? totalAgg.currentInventory / totalAgg.sales30
+        : 0;
 
-      const age181to270 = getNumberByPossibleKeys(inventoryTotalRow, [
-        "inv-age-181-to-270-days",
-        "Inventory Age 181 to 270 Days",
-      ]);
-      const age271to365 = getNumberByPossibleKeys(inventoryTotalRow, [
-        "inv-age-271-to-365-days",
-        "Inventory Age 271 to 365 Days",
-      ]);
-      const age365plus = getNumberByPossibleKeys(inventoryTotalRow, [
-        "inv-age-365-plus-days",
-        "Inventory Age 365 Plus Days",
-        "Inventory Age 365+ Days",
-      ]);
-      const inventory180Plus = age181to270 + age271to365 + age365plus;
-
-      const denom = mtdSales + sales30;
-      const coverage = denom > 0 ? currentInventory / denom : 0;
-
-      const estStorage = getNumberByPossibleKeys(inventoryTotalRow, [
-        "estimated-storage-cost-next-month",
-        "Estimated Storage Cost Next Month",
-      ]);
-
-      uiRows.push({
-        rowType: "total",
-        sno: "",
-        productName: <span className="font-semibold">Total</span>,
-        skuAsin: "",
-        currentInventory: <span className="font-semibold">{formatInt(currentInventory)}</span>,
-        inventory180Plus: <span className="font-semibold">{formatInt(inventory180Plus)}</span>,
-        salesRank: "",
-        // estStorage: <span className="font-semibold">{formatInt(estStorage)}</span>,
-        estStorage: (
-          <span className="font-semibold">
-            {formatMoneyNumberOnly(
-              convertToDisplayCurrency(estStorage, storageSourceCurrency)
-            )}
-          </span>
-        ),
-        mtdSales: <span className="font-semibold">{formatInt(mtdSales)}</span>,
-        sales30: <span className="font-semibold">{formatInt(mtdSales + sales30)}</span>,
-        coverageMonths: <span className="font-semibold">{formatRatio(coverage)}</span>,
-        alert: "",
-      });
-    }
+    uiRows.push({
+      rowType: "total",
+      sno: "",
+      productName: <span className="font-semibold">Total</span>,
+      skuAsin: "",
+      mtdSales: <span className="font-semibold">{formatInt(totalAgg.mtdSales)}</span>,
+      sales30: <span className="font-semibold">{formatInt(totalAgg.sales30)}</span>,
+      salesRank: "",
+      currentInventory: (
+        <span className="font-semibold">
+          {formatInt(totalAgg.currentInventory)}
+        </span>
+      ),
+      inventory180Plus: (
+        <span className="font-semibold">
+          {formatInt(totalAgg.inventory180Plus)}
+        </span>
+      ),
+      estStorage: (
+        <span className="font-semibold">
+          {formatMoneyNumberOnly(
+            convertToDisplayCurrency(totalAgg.estStorage, storageSourceCurrency)
+          )}
+        </span>
+      ),
+      coverageMonths: (
+        <span className="font-semibold">
+          {formatRatio(totalCoverage)}
+        </span>
+      ),
+      alert: "",
+    });
 
     return uiRows;
     // }, [invRows, findMtdKey, findSales30Key, inventoryAlerts]);
@@ -731,7 +736,7 @@ export default function CurrentInventorySection({
 
       const mtdSales = toNumberSafe(mtdKey ? (row as any)[mtdKey] : 0);
       const sales30Only = toNumberSafe(sales30Key ? (row as any)[sales30Key] : 0);
-      const salesLast30Days = mtdSales + sales30Only;
+      const salesLast30Days = sales30Only;
 
       const age181to270 = getNumberByPossibleKeys(row, ["inv-age-181-to-270-days"]);
       const age271to365 = getNumberByPossibleKeys(row, ["inv-age-271-to-365-days"]);
@@ -742,8 +747,7 @@ export default function CurrentInventorySection({
       const salesRank = toNumberSafe((row as any)["sales-rank"]);
       const estStorage = toNumberSafe((row as any)["estimated-storage-cost-next-month"]);
 
-      const denom = mtdSales + sales30Only;
-      const coverage = denom > 0 ? currentInventory / denom : 0;
+      const coverage = sales30Only > 0 ? currentInventory / sales30Only : 0;
 
       return {
         "S.No.": isTotal ? "" : index + 1,
@@ -772,11 +776,40 @@ export default function CurrentInventorySection({
 
     const finalRows = sortedNormalRows.map((r, i) => buildRow(r, i));
 
-    if (totalRow) {
-      finalRows.push(buildRow(totalRow, finalRows.length, true));
-    }
+    type ExportInventoryRow = ReturnType<typeof buildRow>;
 
+    const totalExportRow: ExportInventoryRow = finalRows.reduce<ExportInventoryRow>(
+      (acc, row) => {
+        acc["MTD Sales"] += toNumberSafe(row["MTD Sales"]);
+        acc["Sales Last 30 Days"] += toNumberSafe(row["Sales Last 30 Days"]);
+        acc["Current Inventory"] += toNumberSafe(row["Current Inventory"]);
+        acc["Inventory 180+ Days"] += toNumberSafe(row["Inventory 180+ Days"]);
+        acc["Estimated Storage Cost"] += toNumberSafe(row["Estimated Storage Cost"]);
+        return acc;
+      },
+      {
+        "S.No.": "",
+        "Product Name": "Total",
+        "SKU": "",
+        "MTD Sales": 0,
+        "Sales Last 30 Days": 0,
+        "Sales Rank": "",
+        "Current Inventory": 0,
+        "Inventory 180+ Days": 0,
+        "Estimated Storage Cost": 0,
+        "Inventory Coverage Ratio": 0,
+        "Inventory Alerts": "",
+      }
+    );
+
+    totalExportRow["Inventory Coverage Ratio"] =
+      totalExportRow["Sales Last 30 Days"] > 0
+        ? totalExportRow["Current Inventory"] / totalExportRow["Sales Last 30 Days"]
+        : 0;
+
+    finalRows.push(totalExportRow);
     return finalRows;
+
   }, [invRows, inventoryAlerts, findMtdKey, findSales30Key]);
   const downloadInventoryExcel = useCallback(() => {
     if (!exportDataRows.length) return;
@@ -804,7 +837,7 @@ export default function CurrentInventorySection({
       titleLine: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
       countryName: displayRegion.toLowerCase(),
       titleCountry: displayRegion,
-      platformLabel: "Amazon",
+      platformLabel: "Phormula",
       periodLabel,
       companyName: companyNameForExcel,
       brandName: brandNameForExcel,

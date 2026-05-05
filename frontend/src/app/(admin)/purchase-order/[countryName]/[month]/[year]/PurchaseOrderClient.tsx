@@ -533,7 +533,7 @@ export default function PurchaseOrderPage({
         : `PO_Report_${countryName}_${month}_${year}.xlsx`,
       titleLine: `Amazon ${titleCountry} - PO Report - ${month} ${year}`,
       titleCountry,
-      platformLabel: 'Amazon',
+      platformLabel: 'Phormula',
       periodLabel: `${month} ${year}`,
       companyName,
       brandName,
