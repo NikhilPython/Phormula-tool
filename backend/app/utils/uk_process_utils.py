@@ -1284,10 +1284,11 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         # ---------------- NEW: set TOTAL-only columns ----------------
-        sum_row["visible_ads"] = float(visible_ads_total)
-        sum_row["dealsvouchar_ads"] = float(dealsvouchar_ads_total)
-        sum_row["platformfeenew"] = float(platformfeenew_total)
-        sum_row["platform_fee_inventory_storage"] = float(platform_fee_inventory_storage_total)
+        sum_row["visible_ads"] = abs(float(visible_ads_total))
+        sum_row["dealsvouchar_ads"] = abs(float(dealsvouchar_ads_total))
+        sum_row["platformfeenew"] = abs(float(platformfeenew_total))
+        sum_row["platform_fee_inventory_storage"] = abs(float(platform_fee_inventory_storage_total))
+        sum_row["platform_fee"] = abs(float(platform_fee_total))
         # -------------------------------------------------------------
 
         sum_row["user_id"] = user_id
@@ -2259,6 +2260,20 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 """))
 
                 sku_grouped.columns = sku_grouped.columns.str.lower()
+                abs_cols = [
+                    "visible_ads",
+                    "dealsvouchar_ads",
+                    "platformfeenew",
+                    "platform_fee_inventory_storage",
+                    "platform_fee",
+                ]
+
+                for col in abs_cols:
+                    if col in sku_grouped.columns:
+                        sku_grouped[col] = pd.to_numeric(
+                            sku_grouped[col],
+                            errors="coerce"
+                        ).fillna(0).abs()
                 sku_grouped.to_sql(
                     quarter_table,
                     conn_inner,
@@ -2486,6 +2501,20 @@ def process_yearly_skuwise_data(user_id, country, year):
             conn.execute(text(create_table_query))
 
             sku_grouped.columns = [col.lower() for col in sku_grouped.columns]
+            abs_cols = [
+                "visible_ads",
+                "dealsvouchar_ads",
+                "platformfeenew",
+                "platform_fee_inventory_storage",
+                "platform_fee",
+            ]
+
+            for col in abs_cols:
+                if col in sku_grouped.columns:
+                    sku_grouped[col] = pd.to_numeric(
+                        sku_grouped[col],
+                        errors="coerce"
+                    ).fillna(0).abs()
 
             sku_grouped.to_sql(
                 quarter_table,
