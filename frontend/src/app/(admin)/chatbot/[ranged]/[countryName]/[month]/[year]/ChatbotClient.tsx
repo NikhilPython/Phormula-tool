@@ -89,7 +89,7 @@ function parseAIResponse(rawText: string): ParsedAI {
   const result: ParsedAI = { title: '', details: [], weeks: [] }
   if (!rawText) return result
 
-const text = rawText || ''
+  const text = rawText || ''
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -166,46 +166,46 @@ export default function ChatbotPage() {
   }>()
 
   const {
-  messages,
-  loading: isLoading,
-  sendMessage,
-  clearChat,
-  loadFromStorage,
-  reactToMessage,
-  sendFeedback,
-} = useChatbotStore();
+    messages,
+    loading: isLoading,
+    sendMessage,
+    clearChat,
+    loadFromStorage,
+    reactToMessage,
+    sendFeedback,
+  } = useChatbotStore();
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  
+
   const [inputValue, setInputValue] = useState('')
   const [userData, setUserData] = useState<any>(null)
   const [likeInProgress, setLikeInProgress] = useState<number | null>(null)
   const [dislikeInProgress, setDislikeInProgress] = useState<number | null>(null)
   const [actionMessage, setActionMessage] =
-  useState<{ id: string; text: string } | null>(null)
+    useState<{ id: string; text: string } | null>(null)
 
   useEffect(() => {
-  loadFromStorage();
-}, []);
-  
+    loadFromStorage();
+  }, []);
+
 
   useEffect(() => {
-  const fetchUserData = async () => {
-    const token = localStorage.getItem('jwtToken')
-    if (!token) return
-    try {
-      const res = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/get_user_data`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      setUserData(data)   // yahan data set ho jayega
-    } catch (e) {
-      console.error('Error fetching user data', e)
+    const fetchUserData = async () => {
+      const token = localStorage.getItem('jwtToken')
+      if (!token) return
+      try {
+        const res = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/get_user_data`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        setUserData(data)   // yahan data set ho jayega
+      } catch (e) {
+        console.error('Error fetching user data', e)
+      }
     }
-  }
 
-  fetchUserData()
-}, [])
+    fetchUserData()
+  }, [])
 
   // Load user data from localStorage
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function ChatbotPage() {
     if (storedUserData) {
       try {
         setUserData(JSON.parse(storedUserData))
-      } catch {}
+      } catch { }
     }
   }, [])
 
@@ -229,8 +229,8 @@ export default function ChatbotPage() {
   }
 
   useLayoutEffect(() => {
-  scrollToBottom()
-}, [messages])
+    scrollToBottom()
+  }, [messages])
 
   const flash = (id: string, text: string) => {
     setActionMessage({ id, text })
@@ -262,9 +262,9 @@ export default function ChatbotPage() {
 
   // Create message objects
 
- 
 
-  
+
+
 
   // NOTE: Dislike should stay simple (no extra textbox/modal). We just send feedback.
 
@@ -274,106 +274,106 @@ export default function ChatbotPage() {
     messages.filter((msg) => msg && typeof msg === 'object' && msg.text && msg.sender)
   const validMessages = getValidMessages()
 
-function convertPlainTextToMarkdown(text: string): string {
-  const lines = text.split('\n');
-  let out: string[] = [];
+  function convertPlainTextToMarkdown(text: string): string {
+    const lines = text.split('\n');
+    let out: string[] = [];
 
-  let productIndex = 0;
-  let collectingProductPoints = false;
-  let productPoints: string[] = [];
+    let productIndex = 0;
+    let collectingProductPoints = false;
+    let productPoints: string[] = [];
 
-  let inConsolidatedActions = false;
-  let consolidatedPoints: string[] = [];
+    let inConsolidatedActions = false;
+    let consolidatedPoints: string[] = [];
 
-  const flushProductPoints = () => {
-    if (productPoints.length > 0) {
-      productPoints.forEach(p => out.push(`1. ${p}`)); // ordered list
-      productPoints = [];
+    const flushProductPoints = () => {
+      if (productPoints.length > 0) {
+        productPoints.forEach(p => out.push(`1. ${p}`)); // ordered list
+        productPoints = [];
+      }
+    };
+
+    for (let raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+
+      // ================= SUMMARY =================
+      if (/^SUMMARY$/i.test(line)) {
+        flushProductPoints();
+        out.push('## **SUMMARY**');
+        collectingProductPoints = false;
+        inConsolidatedActions = false;
+        continue;
+      }
+
+      // ================= ACTIONS =================
+      if (/^ACTIONS$/i.test(line)) {
+        flushProductPoints();
+        out.push('\n## **ACTIONS**');
+        collectingProductPoints = false;
+        inConsolidatedActions = false;
+        continue;
+      }
+
+      // ========== CONSOLIDATED ACTIONS ==========
+      if (/^CONSOLIDATED ACTIONS$/i.test(line)) {
+        flushProductPoints();
+        out.push('\n## **CONSOLIDATED ACTIONS**');
+        collectingProductPoints = false;
+        inConsolidatedActions = true;
+        continue;
+      }
+
+      // ================= PRODUCT NAME =================
+      const productMatch = line.match(/^Product name\s*-\s*(.+)$/i);
+      if (productMatch) {
+        flushProductPoints();
+        productIndex++;
+        out.push(`\n### ${productIndex}. **Product name – ${productMatch[1].trim()}**`);
+        collectingProductPoints = true;
+        inConsolidatedActions = false;
+        continue;
+      }
+
+      // ================= ACTION LINE =================
+      if (/^(Review|Check)\b/i.test(line)) {
+        flushProductPoints();
+        out.push(`\n**Action: ${line}**\n`);
+        collectingProductPoints = false;
+        inConsolidatedActions = false;
+        continue;
+      }
+
+      // ================= PRODUCT POINTS =================
+      if (collectingProductPoints) {
+        const sentences = line
+          .split(/(?<=[.])\s+/)
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        productPoints.push(...sentences);
+        continue;
+      }
+
+      // ========== CONSOLIDATED ACTION POINTS ==========
+      if (inConsolidatedActions) {
+        consolidatedPoints.push(line);
+        continue;
+      }
+
+      // ================= SUMMARY BULLETS =================
+      out.push(`- ${line}`);
     }
-  };
 
-  for (let raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
+    // Flush remaining product points
+    flushProductPoints();
 
-    // ================= SUMMARY =================
-    if (/^SUMMARY$/i.test(line)) {
-      flushProductPoints();
-      out.push('## **SUMMARY**');
-      collectingProductPoints = false;
-      inConsolidatedActions = false;
-      continue;
+    // Flush consolidated actions as ordered list
+    if (consolidatedPoints.length > 0) {
+      consolidatedPoints.forEach(p => out.push(`1. ${p}`));
     }
 
-    // ================= ACTIONS =================
-    if (/^ACTIONS$/i.test(line)) {
-      flushProductPoints();
-      out.push('\n## **ACTIONS**');
-      collectingProductPoints = false;
-      inConsolidatedActions = false;
-      continue;
-    }
-
-    // ========== CONSOLIDATED ACTIONS ==========
-    if (/^CONSOLIDATED ACTIONS$/i.test(line)) {
-      flushProductPoints();
-      out.push('\n## **CONSOLIDATED ACTIONS**');
-      collectingProductPoints = false;
-      inConsolidatedActions = true;
-      continue;
-    }
-
-    // ================= PRODUCT NAME =================
-    const productMatch = line.match(/^Product name\s*-\s*(.+)$/i);
-    if (productMatch) {
-      flushProductPoints();
-      productIndex++;
-      out.push(`\n### ${productIndex}. **Product name – ${productMatch[1].trim()}**`);
-      collectingProductPoints = true;
-      inConsolidatedActions = false;
-      continue;
-    }
-
-    // ================= ACTION LINE =================
-    if (/^(Review|Check)\b/i.test(line)) {
-      flushProductPoints();
-      out.push(`\n**Action: ${line}**\n`);
-      collectingProductPoints = false;
-      inConsolidatedActions = false;
-      continue;
-    }
-
-    // ================= PRODUCT POINTS =================
-    if (collectingProductPoints) {
-      const sentences = line
-        .split(/(?<=[.])\s+/)
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      productPoints.push(...sentences);
-      continue;
-    }
-
-    // ========== CONSOLIDATED ACTION POINTS ==========
-    if (inConsolidatedActions) {
-      consolidatedPoints.push(line);
-      continue;
-    }
-
-    // ================= SUMMARY BULLETS =================
-    out.push(`- ${line}`);
+    return out.join('\n');
   }
-
-  // Flush remaining product points
-  flushProductPoints();
-
-  // Flush consolidated actions as ordered list
-  if (consolidatedPoints.length > 0) {
-    consolidatedPoints.forEach(p => out.push(`1. ${p}`));
-  }
-
-  return out.join('\n');
-}
 
 
 
@@ -383,185 +383,386 @@ function convertPlainTextToMarkdown(text: string): string {
     return <div className="p-4">Loading...</div>
   }
 
+  function humanizeMetric(metric: string) {
+    if (!metric) return ""
+
+    const replacements: Record<string, string> = {
+
+      // -------- COMMON --------
+      acos: "ACOS",
+      asp: "ASP",
+      roi: "ROI",
+      cpc: "CPC",
+      ctr: "CTR",
+      cvr: "CVR",
+      roas: "ROAS",
+
+      // -------- PROFITS --------
+      cm2_profit: "CM2 Profit",
+      cm2_profit_percentage: "CM2 Profit %",
+      cm2_margins: "CM2 Margins",
+      profit_percentage: "Profit %",
+      unit_wise_profitability: "Unit-wise Profitability",
+
+      // -------- TYPO FIXES --------
+      rembursement_fee: "Reimbursement Fee",
+      rembursment_vs_cm2_margins: "Reimbursement vs CM2 Margins",
+      dealsvouchar_ads: "Deals Voucher Ads",
+      tex_and_credits: "Tax and Credits",
+      platformfeenew: "Platform Fee",
+
+      // -------- ADS --------
+      visible_ads: "Visible Ads",
+      advertising_total: "Advertising Total",
+
+      // -------- SALES --------
+      net_sales: "Net Sales",
+      gross_sales: "Gross Sales",
+      refund_sales: "Refund Sales",
+      product_sales: "Product Sales",
+
+      // -------- FEES --------
+      platform_fee_inventory_storage: "Platform Fee Inventory Storage",
+      other_transaction_fees: "Other Transaction Fees",
+
+      // -------- INVENTORY --------
+      units_shipped_t30: "Units Shipped (30 Days)",
+      units_shipped_t60: "Units Shipped (60 Days)",
+      units_shipped_t90: "Units Shipped (90 Days)",
+      days_of_supply: "Days of Supply",
+
+      // -------- MISC --------
+      sales_mix: "Sales Mix",
+      profit_mix: "Profit Mix",
+    }
+
+    const lower = metric.toLowerCase()
+
+    if (replacements[lower]) {
+      return replacements[lower]
+    }
+
+    return lower
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
+  function renderJsonResponse(data: any) {
+
+    // -------- GROWTH --------
+    if (data.type === "growth_summary" || data.type === "trend") {
+      return (
+        <div className="space-y-2">
+          <h3 className="font-semibold">{data.metric}</h3>
+
+          {data.current && (
+            <div>
+              <b>Current:</b> {data.current.formatted}
+            </div>
+          )}
+
+          {data.change && (
+            <div>
+              <b>Change:</b> {data.change.formatted}
+            </div>
+          )}
+
+          {data.mom && (
+            <div>
+              <b>Month-on-Month:</b>
+              <ul className="list-disc pl-4">
+                {data.mom.map((m: any, i: number) => (
+                  <li key={i}>
+                    {m.period}: {m.formatted}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.top_growth?.length > 0 && (
+            <div>
+              <b>Top Growing:</b>
+              <ul className="list-disc pl-4">
+                {data.top_growth.map((p: any, i: number) => (
+                  <li key={i}>
+                    {p.product}: {p.formatted}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.top_decline?.length > 0 && (
+            <div>
+              <b>Top Declining:</b>
+              <ul className="list-disc pl-4">
+                {data.top_decline.map((p: any, i: number) => (
+                  <li key={i}>
+                    {p.product}: {p.formatted}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // -------- RANKING --------
+    if (data.type === "ranking") {
+      return (
+        <div>
+          <h3 className="font-semibold">{data.metric}</h3>
+          <ol className="list-decimal pl-4">
+            {data.items.map((item: any) => (
+              <li key={item.rank}>
+                {item.product} — {item.formatted}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )
+    }
+
+    // -------- SUMMARY --------
+    if (data.type === "summary") {
+      return (
+        <div className="space-y-2">
+          <h3 className="font-semibold">Summary</h3>
+
+          {Object.entries(data.metrics || {}).map(([k, v]: any) => (
+            <div key={k}>
+              <b>{humanizeMetric(k)}:</b>{" "}
+              {typeof v === "number"
+                ? v.toLocaleString(undefined, {
+                  maximumFractionDigits: 2,
+                })
+                : v}
+            </div>
+          ))}
+
+          {data.top_products?.length > 0 && (
+            <div>
+              <b>Top Products:</b>
+              <ul className="list-disc pl-4">
+                {data.top_products.map((p: any, i: number) => (
+                  <li key={i}>{p.product_name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // -------- SINGLE VALUE --------
+    if (data.type === "single_value") {
+      return (
+        <div>
+          <b>{data.metric}:</b> {data.formatted}
+        </div>
+      )
+    }
+
+    // -------- FALLBACK --------
+    return <div>{JSON.stringify(data)}</div>
+  }
+
+
   return (
-<div className="flex flex-col bg-white font-[Lato] chatbot-container h-screen overflow-hidden">
+    <div className="flex flex-col bg-white font-[Lato] chatbot-container h-screen overflow-hidden">
       <div className="text-white bg-gradient-to-r from-[#5ea68e] to-[#37455f] rounded-t-xl message-header py-[2vw] px-[2vw] md:py-[2vw] md:px-[3.5vw] lg:py-[1vw] lg:px-[1.25vw]">
         <h1 className="2xl:text-2xl text-[18px] font-bold">
           Hi <i>{userData?.name || 'User'}!</i>
         </h1>
         <p style={{ fontFamily: "Lato, sans-serif" }} className="2xl:text-sm text-xs  mt-1 ">
-        I&apos;m your Analytics Assistant, here to help you understand your business data, generate insights, and make informed decisions. What would you like to explore today?
+          I&apos;m your Analytics Assistant, here to help you understand your business data, generate insights, and make informed decisions. What would you like to explore today?
         </p>
       </div>
 
-     <div className="flex-1 min-h-0 border border-black/25 rounded-b-xl chat-container flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 border border-black/25 rounded-b-xl chat-container flex flex-col overflow-hidden">
         {/* Chat messages container */}
-       <div
-  ref={scrollRef}
-  className="w-full mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain 2xl:p-3 p-1"
->
+        <div
+          ref={scrollRef}
+          className="w-full mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain 2xl:p-3 p-1"
+        >
           {/* Bottom-anchoring wrapper: keeps content at the bottom until it overflows */}
           <div className="min-h-full flex flex-col justify-end space-y-3">
             {validMessages.length > 0 ? (
               <>
                 {Array.from(
-  new Map(validMessages.map((m) => [m.id, m])).values()
-).map((msg, idx, arr) => (
-  <React.Fragment key={msg.id}>
-    {(idx === 0 || dayKey(msg.timestamp) !== dayKey(arr[idx - 1]?.timestamp)) && (
-      <div className="chat-date-separator"><span>{formatDayLabel(msg.timestamp)}</span></div>
-    )}
-    <div
-    key={msg.id}
-    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-  >
-                    <div className="flex flex-col mx-4">
-                      <div
-                        className={`px-4 2xl:py-2 py-1 rounded-2xl text-xs sm:text-sm md:text-[0.75] lg:text-[0.875rem] break-words max-w-full sm:max-w-[50vw] md:max-w-[50vw] lg:max-w-full ${msg.sender === 'user' ? 'bg-[#5EA68E] text-[#F8EDCE] mb-2' : 'bg-[#D9D9D9] text-gray-800 mb-1'}`}
-                      >
-                        {msg.sender !== 'user' && msg.text ? (
-                          (() => {
-                            const parsed = parseAIResponse(msg.text)
-                            const isStructured =
-                              parsed.weeks.length > 0 ||
-                              /Title:/i.test(msg.text) ||
-                              /Week\s+\d+/i.test(msg.text)
+                  new Map(validMessages.map((m) => [m.id, m])).values()
+                ).map((msg, idx, arr) => (
+                  <React.Fragment key={msg.id}>
+                    {(idx === 0 || dayKey(msg.timestamp) !== dayKey(arr[idx - 1]?.timestamp)) && (
+                      <div className="chat-date-separator"><span>{formatDayLabel(msg.timestamp)}</span></div>
+                    )}
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className="flex flex-col mx-4">
+                        <div
+                          className={`px-4 2xl:py-2 py-1 rounded-2xl text-xs sm:text-sm md:text-[0.75] lg:text-[0.875rem] break-words max-w-full sm:max-w-[50vw] md:max-w-[50vw] lg:max-w-full ${msg.sender === 'user' ? 'bg-[#5EA68E] text-[#F8EDCE] mb-2' : 'bg-[#D9D9D9] text-gray-800 mb-1'}`}
+                        >
+                          {msg.sender !== 'user' && msg.text ? (
+                            (() => {
+                              let parsedJson: any = null
 
-                            if (isStructured && (parsed.title || parsed.details.length > 0)) {
-                              return (
-                                <div className="space-y-1">
-                                  {parsed.title && (
-                                    <h3 className="font-semibold text-gray-800">{parsed.title}</h3>
-                                  )}
-                                  {parsed.period && (
-                                    <p className="text-sm text-gray-500">{parsed.period}</p>
-                                  )}
-                                  {parsed.weeks.length > 0 && (
-                                    <div className="mt-2 space-y-2">
-                                      {parsed.weeks.map((w, idx) => (
-                                        <div key={idx} className="mt-2">
-                                          <h4 className="font-semibold text-sm text-gray-800">
-                                            {w.week}
-                                          </h4>
-                                          <ul className="list-disc pl-5 text-xs sm:text-sm text-gray-700 space-y-1">
-                                            {w.actions.map((action, i) => (
-                                              <li key={i}>{action}</li>
+                              try {
+                                parsedJson = JSON.parse(msg.text)
+                              } catch {
+                                parsedJson = null
+                              }
+
+                              // -------- JSON MODE --------
+                              if (parsedJson && parsedJson.type) {
+                                return renderJsonResponse(parsedJson)
+                              }
+
+                              // -------- OLD TEXT MODE --------
+                              const parsed = parseAIResponse(msg.text)
+                              const isStructured =
+                                parsed.weeks.length > 0 ||
+                                /Title:/i.test(msg.text) ||
+                                /Week\s+\d+/i.test(msg.text)
+
+                              if (isStructured && (parsed.title || parsed.details.length > 0)) {
+                                return (
+                                  <div className="space-y-1">
+                                    {parsed.title && (
+                                      <h3 className="font-semibold text-gray-800">{parsed.title}</h3>
+                                    )}
+                                    {parsed.period && (
+                                      <p className="text-sm text-gray-500">{parsed.period}</p>
+                                    )}
+                                    {parsed.weeks.length > 0 && (
+                                      <div className="mt-2 space-y-2">
+                                        {parsed.weeks.map((w, idx) => (
+                                          <div key={idx} className="mt-2">
+                                            <h4 className="font-semibold text-sm text-gray-800">
+                                              {w.week}
+                                            </h4>
+                                            <ul className="list-disc pl-5 text-xs sm:text-sm text-gray-700 space-y-1">
+                                              {w.actions.map((action, i) => (
+                                                <li key={i}>{action}</li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    <ul className="space-y-2">
+                                      {parsed.details.map((d, i) => (
+                                        <li
+                                          key={i}
+                                          className="flex items-start gap-2 leading-relaxed"
+                                        >
+                                          <Dot className="mt-1 shrink-0" size={18} />
+                                          <div className="text-xs sm:text-sm">
+                                            <span className="font-bold text-gray-900">
+                                              {d.label}:
+                                            </span>{' '}
+                                            {d.value.split('\n').map((line, idx) => (
+                                              <span key={idx}>
+                                                {idx > 0 && <br />}
+                                                <span className="text-gray-700">{line}</span>
+                                              </span>
                                             ))}
-                                          </ul>
-                                        </div>
+                                          </div>
+                                        </li>
                                       ))}
+                                    </ul>
+                                  </div>
+                                )
+                              } else {
+                                // Default: render as Markdown
+
+
+                                return (
+                                  <div className="markdown-body">
+                                    <div className="markdown-body">
+                                      <ReactMarkdown>
+                                        {convertPlainTextToMarkdown(msg.text)}
+                                      </ReactMarkdown>
                                     </div>
-                                  )}
+                                  </div>
+                                );
 
-                                  <ul className="space-y-2">
-                                    {parsed.details.map((d, i) => (
-                                      <li
-                                        key={i}
-                                        className="flex items-start gap-2 leading-relaxed"
-                                      >
-                                        <Dot className="mt-1 shrink-0" size={18} />
-                                        <div className="text-xs sm:text-sm">
-                                          <span className="font-bold text-gray-900">
-                                            {d.label}:
-                                          </span>{' '}
-                                          {d.value.split('\n').map((line, idx) => (
-                                            <span key={idx}>
-                                              {idx > 0 && <br />}
-                                              <span className="text-gray-700">{line}</span>
-                                            </span>
-                                          ))}
-                                        </div>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )
-                            } else {
-                              // Default: render as Markdown
-
-
-return (
-  <div className="markdown-body">
-   <div className="markdown-body">
-  <ReactMarkdown>
-    {convertPlainTextToMarkdown(msg.text)}
-  </ReactMarkdown>
-</div>
-  </div>
-);
-
-                            }
-                          })()
-                        ) : (
-                          msg.text
-                        )}
-                      <div className={`chat-msg-meta ${msg.sender === 'user' ? 'chat-msg-meta-user' : 'chat-msg-meta-bot'}`}>{formatTime(msg.timestamp)}</div>
-                      </div>
-
-                      {msg.sender !== 'user' && (
-                        <div className="chat-msg-actions ml-2 mb-2">
-                          <button
-                            type="button"
-                            className={`chat-action-btn ${msg.liked === 'like' ? 'is-active' : ''}`}
-                            onClick={() => {
-                              const next = msg.liked === 'like' ? undefined : 'like'
-                              reactToMessage(msg.id, next)
-                              if (next) {
-                                sendFeedback(msg.id, 'like')
-                                flash(msg.id, 'Liked!')
                               }
-                            }}
-                            aria-label="Like"
-                            title="Like"
-                          >
-                            <ThumbsUp size={16} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`chat-action-btn ${msg.liked === 'dislike' ? 'is-active' : ''}`}
-                            onClick={() => {
-                              const next = msg.liked === 'dislike' ? undefined : 'dislike'
-                              reactToMessage(msg.id, next)
-                              if (next) {
-                                sendFeedback(msg.id, 'dislike')
-                                flash(msg.id, 'Disliked!')
-                              }
-                            }}
-                            aria-label="Dislike"
-                            title="Dislike"
-                          >
-                            <ThumbsDown size={16} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chat-action-btn"
-                            onClick={() => handleCopy(msg)}
-                            aria-label="Copy"
-                            title="Copy"
-                          >
-                            <Copy size={16} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chat-action-btn"
-                            onClick={() => handleShare(msg)}
-                            aria-label="Share"
-                            title="Share"
-                          >
-                            <Share2 size={16} />
-                          </button>
-
-                          {actionMessage?.id === msg.id && (
-                            <span className="chat-action-toast">{actionMessage.text}</span>
+                            })()
+                          ) : (
+                            msg.text
                           )}
+                          <div className={`chat-msg-meta ${msg.sender === 'user' ? 'chat-msg-meta-user' : 'chat-msg-meta-bot'}`}>{formatTime(msg.timestamp)}</div>
                         </div>
-                      )}
+
+                        {msg.sender !== 'user' && (
+                          <div className="chat-msg-actions ml-2 mb-2">
+                            <button
+                              type="button"
+                              className={`chat-action-btn ${msg.liked === 'like' ? 'is-active' : ''}`}
+                              onClick={() => {
+                                const next = msg.liked === 'like' ? undefined : 'like'
+                                reactToMessage(msg.id, next)
+                                if (next) {
+                                  sendFeedback(msg.id, 'like')
+                                  flash(msg.id, 'Liked!')
+                                }
+                              }}
+                              aria-label="Like"
+                              title="Like"
+                            >
+                              <ThumbsUp size={16} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className={`chat-action-btn ${msg.liked === 'dislike' ? 'is-active' : ''}`}
+                              onClick={() => {
+                                const next = msg.liked === 'dislike' ? undefined : 'dislike'
+                                reactToMessage(msg.id, next)
+                                if (next) {
+                                  sendFeedback(msg.id, 'dislike')
+                                  flash(msg.id, 'Disliked!')
+                                }
+                              }}
+                              aria-label="Dislike"
+                              title="Dislike"
+                            >
+                              <ThumbsDown size={16} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="chat-action-btn"
+                              onClick={() => handleCopy(msg)}
+                              aria-label="Copy"
+                              title="Copy"
+                            >
+                              <Copy size={16} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="chat-action-btn"
+                              onClick={() => handleShare(msg)}
+                              aria-label="Share"
+                              title="Share"
+                            >
+                              <Share2 size={16} />
+                            </button>
+
+                            {actionMessage?.id === msg.id && (
+                              <span className="chat-action-toast">{actionMessage.text}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-  </React.Fragment>
+                  </React.Fragment>
                 ))}
 
                 {isLoading && (
@@ -588,37 +789,37 @@ return (
 
         {/* Input area */}
 
-       <div className="sticky bottom-0 bg-white border-t border-gray-200 p-2 sm:p-2 2xl:p-4 flex flex-col gap-2">
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-2 sm:p-2 2xl:p-4 flex flex-col gap-2">
           <div className="flex items-center gap-4">
-<div className="flex-1 min-h-[44px] flex items-center bg-[#D9D9D9] rounded-full px-3 2xl:py-3 py-2">
+            <div className="flex-1 min-h-[44px] flex items-center bg-[#D9D9D9] rounded-full px-3 2xl:py-3 py-2">
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    sendMessage(inputValue)
-    setInputValue('')
-  }
-}}
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    sendMessage(inputValue)
+                    setInputValue('')
+                  }
+                }}
                 disabled={isLoading}
                 autoFocus
                 className="flex-1 bg-transparent text-black caret-black outline-none text-xs sm:text-sm md:text-[0.75rem] lg:text-[0.875rem] h-full cursor-text"
               />
               <RightArrow
-                 onClick={() => {
-    sendMessage(inputValue)
-    setInputValue('')
-  }}
+                onClick={() => {
+                  sendMessage(inputValue)
+                  setInputValue('')
+                }}
                 disabled={isLoading || !inputValue.trim()}
                 className="cursor-pointer"
               />
             </div>
             <Delete className="cursor-pointer mr-2 mt-1" onClick={clearChat} />
-           
+
           </div>
-         <p className='2xl:text-xs text-[10px] flex justify-center items-center text-center text-gray-400'>Responses are AI-generated and may contain inaccuracies. Please verify critical information before use.</p>
+          <p className='2xl:text-xs text-[10px] flex justify-center items-center text-center text-gray-400'>Responses are AI-generated and may contain inaccuracies. Please verify critical information before use.</p>
         </div>
       </div>
     </div>

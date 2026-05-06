@@ -2229,529 +2229,853 @@ def _send_email_if_requested(state: AgentState) -> AgentState:
 
     return state
 
+# def humanize_metric(metric: str) -> str:
+#     if not metric:
+#         return ""
+#     metric = str(metric).lower()
+
+#     replacements = {
+#         "acos": "ACOS",
+#         "asp": "ASP",
+#         "roi": "ROI",
+#         "cpc": "CPC",
+#     }
+
+#     if metric in replacements:
+#         return replacements[metric]
+
+#     return metric.replace("_", " ").title()
+
+def humanize_metric(metric: str) -> str:
+    if not metric:
+        return ""
+
+    metric = str(metric).lower().strip()
+
+    replacements = {
+
+        # -------- COMMON --------
+        "acos": "ACOS",
+        "asp": "ASP",
+        "roi": "ROI",
+        "cpc": "CPC",
+        "ctr": "CTR",
+        "cvr": "CVR",
+        "roas": "ROAS",
+
+        # -------- PROFITS --------
+        "cm2_profit": "CM2 Profit",
+        "cm2_profit_percentage": "CM2 Profit %",
+        "cm2_margins": "CM2 Margins",
+        "profit_percentage": "Profit %",
+        "unit_wise_profitability": "Unit-wise Profitability",
+
+        # -------- TYPO FIXES --------
+        "rembursement_fee": "Reimbursement Fee",
+        "rembursment_vs_cm2_margins": "Reimbursement vs CM2 Margins",
+        "dealsvouchar_ads": "Deals Voucher Ads",
+        "tex_and_credits": "Tax and Credits",
+        "platformfeenew": "Platform Fee",
+
+        # -------- ADS --------
+        "visible_ads": "Visible Ads",
+        "advertising_total": "Advertising Total",
+
+        # -------- SALES --------
+        "net_sales": "Net Sales",
+        "gross_sales": "Gross Sales",
+        "refund_sales": "Refund Sales",
+        "product_sales": "Product Sales",
+
+        # -------- FEES --------
+        "platform_fee_inventory_storage": "Platform Fee Inventory Storage",
+        "other_transaction_fees": "Other Transaction Fees",
+
+        # -------- INVENTORY --------
+        "units_shipped_t30": "Units Shipped (30 Days)",
+        "units_shipped_t60": "Units Shipped (60 Days)",
+        "units_shipped_t90": "Units Shipped (90 Days)",
+        "days_of_supply": "Days of Supply",
+
+        # -------- MISC --------
+        "sales_mix": "Sales Mix",
+        "profit_mix": "Profit Mix",
+    }
+
+    if metric in replacements:
+        return replacements[metric]
+
+    # fallback auto formatter
+    return (
+        metric
+        .replace("_", " ")
+        .title()
+    )
+
 
 def _render_response(state: AgentState) -> AgentState:
-    if state.get("intent") == "clarify":
-        state["final_response"] = state.get("clarification_question") or "Could you clarify what you'd like me to analyze?"
-        return state
-    
-    if state.get("intent") == "chat":
-        if chat_llm:
-            logger.info("[LLM_FALLBACK_TRIGGERED]")
-            try:
-                state["final_response"] = chat_llm.invoke(state.get("user_query", "")).content
-                return state
-            except Exception:
-                logger.exception("Chat render failed")
-        state["final_response"] = "Hi! Tell me which metric or report you want me to analyze."
-        return state
-    
-    if state.get("intent") == "explain":
-        if explain_llm:
-            try:
-                state["final_response"] = explain_llm.invoke(state.get("user_query", "")).content
-                return state
-            except Exception:
-                logger.exception("Explain render failed")
-        state["final_response"] = "Ask me about a metric like profit, sales, ACOS, or ASP and I’ll explain it."
-        return state
-    
-    if state.get("event_plan_result"):
-        summary = state["event_plan_result"].get("summary") or []
-        actions = state["event_plan_result"].get("actions") or []
-        raw_items = state["event_plan_result"].get("items") or []
-        lines = ["Event plan generated."]
-        if summary:
-            lines.append("Summary:")
-            lines.extend(f"- {x}" for x in summary[:8])
-        if actions:
-            lines.append("Actions:")
-            lines.extend(f"- {x}" for x in actions[:8])
-        if not summary and not actions and raw_items:
-            lines.append("Planner details:")
-            for item in raw_items[:3]:
-                try:
-                    lines.append(f"- {json.dumps(item, default=str)[:400]}")
-                except Exception:
-                    lines.append(f"- {str(item)[:400]}")
-        state["final_response"] = "📩 I've sent the event plan email." if state.get("email_requested") else "\n".join(lines)
-        return state
-    
-    if state.get("sku_intelligence_result"):
-        res = state["sku_intelligence_result"]
-        lines = [f"SKU intelligence for {res.get('product_match') or 'selected product'}:"]
-        current = res.get("current", {})
-        lines.append(f"- Current sales: {_format_value(float(current.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
-        lines.append(f"- Current profit: {_format_value(float(current.get('profit', 0.0)), 'profit', state.get('country'))}")
-        lines.append(f"- Current units: {float(current.get('total_quantity', 0.0)):,.0f}")
-        lines.append(f"- Current ASP: {_format_value(float(current.get('asp', 0.0)), 'asp', state.get('country'))}")
-        lines.append(f"- Current sales mix: {float(current.get('sales_mix', 0.0)):.2%}")
-        lines.append(f"- Current profit mix: {float(current.get('profit_mix', 0.0)):.2%}")
-        previous = res.get("previous") or {}
-        if previous:
-            lines.append(f"- Previous sales: {_format_value(float(previous.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
-            lines.append(f"- Previous profit: {_format_value(float(previous.get('profit', 0.0)), 'profit', state.get('country'))}")
-        for point in (res.get("summary_points") or [])[:5]:
-            lines.append(f"- {point}")
-        if state.get("advice"):
-            lines.append("")
-            lines.extend(f"- {a}" for a in state["advice"])
-        state["final_response"] = "📩 I've sent the SKU intelligence email." if state.get("email_requested") else "\n".join(lines)
-        return state
-    
-    # -------- 🔥 EMAIL RESPONSE HANDLING (FIXED) --------
-    # Do NOT override final_response here
-    # Let _send_email_if_requested handle confirmation after sending
-    pass
-    
+
     current = state.get("current_metrics") or {}
     metric_name = current.get("metric") or state.get("metric_name") or "metric"
     period_label = current.get("period_label") or "selected period"
-    comp = state.get("comparison") or {}
     analysis = state.get("analysis_result") or {}
+    comp = state.get("comparison") or {}
 
-    
-    # -------- 🔥 INVENTORY DIAGNOSIS RENDER (UPGRADED) --------
-    if analysis.get("type") == "inventory_diagnosis":
-        insights = analysis.get("insights", [])
-        rows = analysis.get("rows", [])
+    metric_clean = humanize_metric(metric_name)
 
-        product_query = state.get("product_query")
-        top_n = state.get("top_n")
+    response = None
 
-        # If planner missed "top 3", recover it from user query.
-        if not top_n:
-            m = re.search(r"\btop\s+(\d+)\b", (state.get("user_query") or "").lower())
-            if m:
-                top_n = int(m.group(1))
+    # -------- CHAT / EXPLAIN --------
+    if state.get("intent") in {"chat", "explain"}:
+        response = {
+            "type": "text",
+            "message": "General conversation response"
+        }
 
-        # 1) Specific product wins
-        if product_query:
-            pq = str(product_query).strip().lower()
-            rows = [
-                r for r in rows
-                if pq in str(r.get("product_name") or "").strip().lower()
-                or pq == str(r.get("sku") or "").strip().lower()
-            ]
+    # -------- GROWTH / TREND --------
+    elif analysis.get("type") in {"growth", "trend"}:
 
-        # 2) Else top N if requested
-        elif top_n:
-            rows = rows[:int(top_n)]
+        raw_mom = analysis.get("mom", [])
 
-        # 3) Else keep all rows
+        mom_data = []
 
-        flags = analysis.get("flags", {})
-        sku_map = analysis.get("sku_map", {})
+        for m in raw_mom:
+            pct = float(m.get("pct_change", 0))
 
-        lines = ["Inventory health check:\n"]
+            sign = "+" if pct > 0 else "-" if pct < 0 else ""
 
-        # summary insights
-        for i in insights:
-            lines.append(f"- {i}")
-
-        # detailed per SKU
-        for r in rows:
-            name = r.get("product_name")
-            value = float(r.get("__metric__", 0))
-
-            sku = sku_map.get(name)
-            flag = flags.get(sku, {})
-
-            logger.info(f"[DEBUG] name={name}, sku={sku}, flag={flag}")
-
-            coverage = flag.get("inventory_coverage_ratio")
-            recommendation = flag.get("inventory_recommendation")
-
-            
-            # -------- 🔥 CORRECT SEVERITY (USE FLAGS) --------
-            alert = flag.get("inventory_alert")
-            alert_type = flag.get("inventory_alert_type")
-
-            if alert_type == "supply":
-                if alert == "High alert":
-                    emoji = "🚨"  # critical
-                else:
-                    emoji = "⚠"  # warning
-
-            elif alert_type == "overaged":
-                emoji = "📦"
-
-            elif alert_type == "cost":
-                emoji = "💸"
-
-            else:
-                continue  # skip only truly healthy SKUs
-
-            lines.append(f"\n{emoji} {name}")
-
-            if alert_type == "supply":
-                if alert == "High alert":
-                    lines.append("- Critical stock-out risk")
-                else:
-                    lines.append("- Low coverage (supply risk)")
-
-            elif alert_type == "overaged":
-                lines.append("- Long-term aged inventory")
-
-            elif alert_type == "cost":
-                lines.append("- High storage cost")
-
-            if coverage is not None:
-                lines.append(f"- Coverage: {round(coverage,1)} months")
-
-            if recommendation:
-                lines.append(f"→ {recommendation}")
-
-        state["final_response"] = "\n".join(lines)
-        return state
-
-
-    if analysis.get("type") == "decision":
-        if advisor_llm:
-            try:
-                prompt = REASONING_PROMPT + "\n\n" + json.dumps({
-                    "question": analysis.get("question"),
-                    "reasoning_mode": analysis.get("reasoning_mode"),
-                    "task_type": analysis.get("task_type"),
-                    "metric_name": analysis.get("metric_name"),
-                    "metric_names": analysis.get("metric_names"),
-                    "product_query": analysis.get("product_query"),
-                    "product_match": analysis.get("product_match"),
-                    "current_pack": analysis.get("current_pack"),
-                    "history": analysis.get("history"),
-                    "growth_driver": analysis.get("growth_driver"),
-                }, default=str)
-                state["final_response"] = advisor_llm.invoke(prompt).content
-                return state
-            except Exception:
-                logger.exception("Decision render failed")
-        state["final_response"] = "I could not build a reliable recommendation."
-        return state
-    if comp:
-        pct = comp.get("pct_change")
-        curr = float(comp.get("left", {}).get("total", 0.0))
-        prev = float(comp.get("right", {}).get("total", 0.0))
-        if pct is None:
-            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}."
-        else:
-            direction = "higher" if pct > 0 else "lower"
-            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}, which is {abs(pct):.2f}% {direction}."
-        if analysis.get("growth_driver"):
-            gp = analysis["growth_driver"]
-            primary = gp.get("primary_driver")
-            if primary:
-                msg += f" Primary driver: {primary}."
-        if state.get("advice"):
-            msg += "\n" + "\n".join(f"- {a}" for a in state["advice"])
-        state["final_response"] = msg
-        return state
-    
-    if analysis.get("type") in {"trend", "growth"}:
-        series = analysis.get("series_display") or analysis.get("series", [])
-        mom = analysis.get("mom_display") or analysis.get("mom", [])
-        if not series:
-            state["final_response"] = "No trend data found."
-            return state
-        
-        
-        
-        # -------- 🔥 SMART GROWTH RENDER --------
-        if state.get("analysis_type") == "growth" and mom:
-            logger.info("[RENDER] Rendering intelligent growth")
-
-            latest = series[-1]["__metric__"]
-            previous = series[-2]["__metric__"] if len(series) > 1 else 0
-
-            change = latest - previous
-            pct = (change / previous * 100) if previous else 0
-
-            direction = "increased" if change >= 0 else "decreased"
-
-            lines = []
-            lines.append(f"Your {metric_name} is {_format_value(latest, metric_name, state.get('country'))}.")
-            lines.append(
-                f"It has {direction} by {_format_value(abs(change), metric_name, state.get('country'))} ({pct:.2f}%)."
+            period = (
+                m.get("period_label")
+                or f"{m.get('month', '')} {m.get('year', '')}".strip()
             )
 
-            # -------- 🔥 FIX 3: ROLLING MOM --------
-            if mom:
-                lines.append("\nMonth-on-month change:")
-                for m in mom:
-                    pct_m = m.get("pct_change", 0)
-                    arrow = "↑" if pct_m > 0 else "↓" if pct_m < 0 else "→"
-                    lines.append(f"- {m['period_label']}: {arrow} {abs(pct_m):.2f}%")
+            mom_data.append({
+                "period": period,
+                "pct_change": pct,
+                "formatted": f"{sign}{abs(pct):.2f}%"
+            })
 
-            
-            # -------- 🔥 PRODUCT DRIVER ANALYSIS --------
-            if not state.get("product_query"):  # ✅ ONLY for overall queries
-                try:
-                    latest_month = series[-1]
-                    prev_month = series[-2] if len(series) > 1 else None
+        # -------- TOP GROWTH / DECLINE --------
+        top_growth = []
+        top_decline = []
 
-                    if prev_month:
-                        latest_data = get_metric_for_month(
-                            state["engine"],
-                            state["user_id"],
-                            state["country"],
-                            metric_name,
-                            latest_month["month"],
-                            latest_month["year"]
-                        )
+        try:
+            series = analysis.get("series", [])
 
-                        prev_data = get_metric_for_month(
-                            state["engine"],
-                            state["user_id"],
-                            state["country"],
-                            metric_name,
-                            prev_month["month"],
-                            prev_month["year"]
-                        )
+            if len(series) >= 2:
 
-                        latest_map = {
-                            r.get("product_name"): float(r.get("__metric__", 0))
-                            for r in latest_data.get("per_sku", [])
-                        }
-                        prev_map = {
-                            r.get("product_name"): float(r.get("__metric__", 0))
-                            for r in prev_data.get("per_sku", [])
-                        }
+                latest_month = series[-1]
+                prev_month = series[-2]
 
-                        growth_rows = []
-                        all_products = set(latest_map) | set(prev_map)
-
-                        for p in all_products:
-                            curr = latest_map.get(p, 0.0)
-                            prev = prev_map.get(p, 0.0)
-                            delta = curr - prev
-
-                            if abs(delta) > 0:
-                                growth_rows.append({
-                                    "product_name": p,
-                                    "change": delta
-                                })
-
-                        growth_rows = sorted(growth_rows, key=lambda x: x["change"], reverse=True)
-
-                        top_growth = growth_rows[:3]
-                        top_decline = sorted(growth_rows, key=lambda x: x["change"])[:3]
-
-                        if top_growth:
-                            lines.append("\nTop growing products:")
-                            for g in top_growth:
-                                lines.append(
-                                    f"- {g['product_name']} (+{_format_value(g['change'], metric_name, state.get('country'))})"
-                                )
-
-                        if top_decline:
-                            lines.append("\nTop declining products:")
-                            for g in top_decline:
-                                lines.append(
-                                    f"- {g['product_name']} ({_format_value(g['change'], metric_name, state.get('country'))})"
-                                )
-
-                except Exception:
-                    logger.exception("[GROWTH_DRIVER_ERROR]")
-
-            state["final_response"] = "\n".join(lines)
-            return state
-        
-        
-        latest = series[-1]
-        prev = series[-2] if len(series) > 1 else None
-        lines = [f"{metric_name} trend ({period_label})", f"Latest: {_format_value(latest['__metric__'], metric_name, state.get('country'))}"]
-        if prev:
-            delta = latest["__metric__"] - prev["__metric__"]
-            pct = (delta / prev["__metric__"] * 100) if prev["__metric__"] else 0
-            direction = "↑" if pct > 0 else "↓" if pct < 0 else "→"
-            lines.append(f"Change vs previous month: {direction} {abs(pct):.2f}%")
-        lines.append("")
-        lines.append("Breakdown:")
-        for row in series:
-            label = row.get("period_label", "Unknown")
-            val = float(row.get("__metric__", 0.0))
-            lines.append(f"- {label}: {_format_value(val, metric_name, state.get('country'))}")
-        state["final_response"] = "\n".join(lines)
-        return state
-    
-    
-    # -------- 🔥 HANDLE SKU BREAKDOWN + RANKING --------
-    if analysis.get("type") in {"ranking", "breakdown"} and analysis.get("per_sku"):
-        logger.info("[RENDER] Rendering SKU breakdown")
-
-        rows = analysis.get("per_sku", [])
-        direction = analysis.get("ranking_direction", "top")
-
-        # Sort descending safely
-        rows = sorted(rows, key=lambda x: x.get("__metric__", 0), reverse=True)
-
-        header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
-        lines = [header, ""]
-
-        for idx, row in enumerate(rows, 1):
-            name = row.get("product_name") or row.get("sku") or "Unknown"
-            value = float(row.get("__metric__", 0.0))
-            lines.append(f"{idx}. {name} — {_format_value(value, metric_name, state.get('country'))}")
-
-        total = analysis.get("total")
-        if total is not None:
-            lines.append("")
-            lines.append(f"Total: {_format_value(float(total), metric_name, state.get('country'))}")
-
-        state["final_response"] = "\n".join(lines)
-        return state
-    
-    
-    if analysis.get("type") == "extreme":
-        label = analysis.get("period_label", "Unknown")
-        value = float(analysis.get("value", 0.0))
-        descriptor = "highest" if analysis.get("extreme_type", "max") == "max" else "lowest"
-
-        product = analysis.get("product")
-
-        if product:
-            state["final_response"] = (
-                f"{product} had the {descriptor} {metric_name} in {label} "
-                f"at {_format_value(value, metric_name, state.get('country'))}."
-            )
-        else:
-            state["final_response"] = (
-                f"The {descriptor} {metric_name} was in {label} "
-                f"at {_format_value(value, metric_name, state.get('country'))}."
-            )
-
-        return state
-    
-    if analysis.get("type") == "multi_month":
-        lines = ["Requested month breakdown:"]
-        for metric_block in analysis.get("results", []):
-            metric = metric_block.get("metric")
-            lines.append(f"\n{metric}:")
-            for row in metric_block.get("months", []):
-                label = row.get("period_label", "Unknown")
-                value = float(row.get("total", 0.0))
-                if row.get("product_breakdown"):
-                    lines.append(f"- {label}:")
-                    for product, product_value in row["product_breakdown"].items():
-                        lines.append(f"    {product}: {_format_value(product_value, metric, state.get('country'))}")
-                else:
-                    lines.append(f"- {label}: {_format_value(value, metric, state.get('country'))}")
-        state["final_response"] = "\n".join(lines)
-        return state
-    
-    if analysis.get("type") == "multi_dimensional":
-        rows = analysis.get("data", [])
-        metrics = analysis.get("metrics", [])
-        products = analysis.get("products") or []
-        lines = ["Comparison summary:"]
-        if len(metrics) == 1 and products:
-            metric = metrics[0]
-            totals: Dict[str, float] = {}
-            for row in rows:
-                totals[row["product"]] = totals.get(row["product"], 0.0) + float(row["value"])
-            for product, total in sorted(totals.items(), key=lambda x: x[1], reverse=True):
-                lines.append(f"- {product}: {_format_value(total, metric, state.get('country'))}")
-            lines.append("")
-            lines.append("Breakdown:")
-            for row in rows[:50]:
-                lines.append(f"- {row['month']} | {row['product']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
-        else:
-            for row in rows[:50]:
-                lines.append(f"- {row['month']} | {row['product']} | {row['metric']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
-        state["final_response"] = "\n".join(lines)
-        return state
-    
-    if analysis.get("type") == "summary":
-        metrics = analysis.get("metrics", {})
-
-        # -------- BASE METRICS --------
-        lines = [
-            f"Business Report for {period_label}",
-            "",
-            f"Revenue: {_format_value(metrics.get('net_sales', 0), 'net_sales', state.get('country'))}",
-            f"Profit: {_format_value(metrics.get('profit', 0), 'profit', state.get('country'))}",
-            f"Units: {metrics.get('total_quantity', 0):,.0f}",
-            f"ASP: {_format_value(metrics.get('asp', 0), 'asp', state.get('country'))}",
-            f"ACOS: {metrics.get('acos', 0):.2f}%",
-            f"Ad Spend: {_format_value(metrics.get('advertising_total', 0), 'advertising_total', state.get('country'))}",
-            f"Platform Fees: {_format_value(metrics.get('platform_fee', 0), 'platform_fee', state.get('country'))}",
-            f"CM2 Profit: {_format_value(metrics.get('cm2_profit', 0), 'cm2_profit', state.get('country'))}",
-            f"Reimbursements (Amazon): {_format_value(metrics.get('rembursement_fee', 0), 'rembursement_fee', state.get('country'))}",
-        ]
-
-        # -------- TOP PRODUCTS --------
-        top_products = analysis.get("top_products", [])[:5]
-        if top_products:
-            lines.append("\nTop products:")
-            for row in top_products:
-                name = row.get("product_name") or row.get("sku") or "Unknown"
-                lines.append(
-                    f"- {name}: {_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}"
+                latest_data = get_metric_for_month(
+                    state["engine"],
+                    state["user_id"],
+                    state["country"],
+                    metric_name,
+                    latest_month["month"],
+                    latest_month["year"]
                 )
 
-        # -------- 🔥 AI INSIGHTS (YOUR NEW LAYER) --------
-        try:
-            insights = _generate_business_insights(state)
+                prev_data = get_metric_for_month(
+                    state["engine"],
+                    state["user_id"],
+                    state["country"],
+                    metric_name,
+                    prev_month["month"],
+                    prev_month["year"]
+                )
 
-            state["insights"] = insights
+                latest_map = {
+                    r.get("product_name"): float(r.get("__metric__", 0))
+                    for r in latest_data.get("per_sku", [])
+                }
 
-            if insights:
-                lines.append("\n--- Insights ---\n")
-                lines.append(insights)
-        except Exception:
-            logger.exception("[BUSINESS_INSIGHTS_ERROR]")
+                prev_map = {
+                    r.get("product_name"): float(r.get("__metric__", 0))
+                    for r in prev_data.get("per_sku", [])
+                }
 
-        state["final_response"] = "\n".join(lines)
-        return state
-    
-    if analysis.get("type") == "sku_trend":
-        results = analysis.get("results", [])
-        if not results:
-            state["final_response"] = f"No consistently declining SKUs found for {metric_name}."
-            return state
-        lines = [f"Products with consistently declining {metric_name} trend:"]
-        for item in results[:10]:
-            lines.append(f"- {item.get('product')}")
-        state["final_response"] = "\n".join(lines)
-        return state
-    total = current.get("total")
-    if total is not None:
-        state["final_response"] = f"In {period_label}, your {metric_name} was {_format_value(float(total), metric_name, state.get('country'))}."
-        return state
+                growth_rows = []
 
+                for p in set(latest_map) | set(prev_map):
 
-    # -------- 🔥 LLM FALLBACK (ADD THIS BLOCK) --------
-    if chat_llm:
-        try:
-            prompt = f"""
-    You are an Amazon business analyst AI.
+                    delta = latest_map.get(p, 0.0) - prev_map.get(p, 0.0)
 
-    User question:
-    {state.get("user_query")}
+                    growth_rows.append({
+                        "product": p,
+                        "change": delta
+                    })
 
-    Available context (may be incomplete):
-    {json.dumps({
-        "current_metrics": state.get("current_metrics"),
-        "analysis_result": state.get("analysis_result")
-    }, default=str)}
+                # TOP GROWERS
+                sorted_growth = sorted(
+                    growth_rows,
+                    key=lambda x: x["change"],
+                    reverse=True
+                )
 
-    Instructions:
-    - Try to answer helpfully even if data is missing
-    - Do NOT hallucinate exact numbers
-    - Give reasoning, possible causes, or guidance
-    """
+                for g in sorted_growth[:3]:
 
-            response = chat_llm.invoke(prompt)
-            state["final_response"] = response.content
-            return state
+                    val = float(g["change"])
 
-        except Exception:
-            logger.exception("[LLM_FALLBACK_FAILED]")
+                    top_growth.append({
+                        "product": g["product"],
+                        "change": val,
+                        "formatted": f"+{_format_value(abs(val), metric_name, state.get('country'))}"
+                    })
 
+                # TOP DECLINERS
+                sorted_decline = sorted(
+                    growth_rows,
+                    key=lambda x: x["change"]
+                )
 
-    # -------- SAFE FINAL FALLBACK --------
-    state["final_response"] = "I couldn’t fully analyze this. Try asking with a metric like sales, profit, or units."
+                for g in sorted_decline[:3]:
+
+                    val = float(g["change"])
+
+                    top_decline.append({
+                        "product": g["product"],
+                        "change": val,
+                        "formatted": f"-{_format_value(abs(val), metric_name, state.get('country'))}"
+                    })
+
+        except Exception as e:
+            logger.exception("[TOP_GROWTH_DRIVER_ERROR]")
+
+        response = {
+            "type": "trend",
+            "metric": metric_clean,
+            "period": period_label,
+            "series": analysis.get("series", []),
+            "mom": mom_data,
+            "top_growth": top_growth,
+            "top_decline": top_decline
+        }
+
+    # -------- RANKING --------
+    elif analysis.get("type") == "ranking":
+        rows = analysis.get("per_sku", [])
+
+        response = {
+            "type": "ranking",
+            "metric": metric_clean,
+            "direction": analysis.get("ranking_direction"),
+            "items": [
+                {
+                    "rank": i + 1,
+                    "product": r.get("product_name"),
+                    "value": r.get("__metric__"),
+                    "formatted": _format_value(
+                        float(r.get("__metric__", 0)),
+                        metric_name,
+                        state.get("country")
+                    )
+                }
+                for i, r in enumerate(rows)
+            ]
+        }
+
+    # -------- SUMMARY --------
+    elif analysis.get("type") == "summary":
+        response = {
+            "type": "summary",
+            "period": period_label,
+            "metrics": analysis.get("metrics", {}),
+            "top_products": analysis.get("top_products", []),
+            "insights": state.get("insights")
+        }
+
+    # -------- SKU INTELLIGENCE --------
+    elif state.get("sku_intelligence_result"):
+        res = state["sku_intelligence_result"]
+
+        response = {
+            "type": "sku_intelligence",
+            "product": res.get("product_match"),
+            "current": res.get("current"),
+            "previous": res.get("previous"),
+            "summary": res.get("summary_points"),
+            "trend": res.get("trend")
+        }
+
+    # -------- COMPARISON --------
+    elif comp:
+        response = {
+            "type": "comparison",
+            "metric": metric_clean,
+            "current": comp.get("left"),
+            "previous": comp.get("right"),
+            "change_pct": comp.get("pct_change")
+        }
+
+    # -------- BREAKDOWN --------
+    elif analysis.get("type") == "breakdown":
+        response = {
+            "type": "breakdown",
+            "metric": metric_clean,
+            "items": analysis.get("per_sku", [])
+        }
+
+    # -------- EXTREME --------
+    elif analysis.get("type") == "extreme":
+        response = {
+            "type": "extreme",
+            "metric": metric_clean,
+            "value": analysis.get("value"),
+            "period": analysis.get("period_label"),
+            "product": analysis.get("product")
+        }
+
+    # -------- SINGLE VALUE --------
+    elif current.get("total") is not None:
+        total = current.get("total")
+
+        response = {
+            "type": "single_value",
+            "metric": metric_clean,
+            "period": period_label,
+            "value": total,
+            "formatted": _format_value(
+                float(total),
+                metric_name,
+                state.get("country")
+            )
+        }
+
+    # -------- FALLBACK --------
+    else:
+        response = {
+            "type": "error",
+            "message": "Unable to process request"
+        }
+
+    # 🔥 FINAL STEP — ALWAYS CONVERT TO JSON STRING
+    state["final_response"] = json.dumps(response)
+
     return state
 
+
+# def _render_response(state: AgentState) -> AgentState:
+#     if state.get("intent") == "clarify":
+#         state["final_response"] = state.get("clarification_question") or "Could you clarify what you'd like me to analyze?"
+#         return state
+    
+#     if state.get("intent") == "chat":
+#         if chat_llm:
+#             logger.info("[LLM_FALLBACK_TRIGGERED]")
+#             try:
+#                 state["final_response"] = chat_llm.invoke(state.get("user_query", "")).content
+#                 return state
+#             except Exception:
+#                 logger.exception("Chat render failed")
+#         state["final_response"] = "Hi! Tell me which metric or report you want me to analyze."
+#         return state
+    
+#     if state.get("intent") == "explain":
+#         if explain_llm:
+#             try:
+#                 state["final_response"] = explain_llm.invoke(state.get("user_query", "")).content
+#                 return state
+#             except Exception:
+#                 logger.exception("Explain render failed")
+#         state["final_response"] = "Ask me about a metric like profit, sales, ACOS, or ASP and I’ll explain it."
+#         return state
+    
+#     if state.get("event_plan_result"):
+#         summary = state["event_plan_result"].get("summary") or []
+#         actions = state["event_plan_result"].get("actions") or []
+#         raw_items = state["event_plan_result"].get("items") or []
+#         lines = ["Event plan generated."]
+#         if summary:
+#             lines.append("Summary:")
+#             lines.extend(f"- {x}" for x in summary[:8])
+#         if actions:
+#             lines.append("Actions:")
+#             lines.extend(f"- {x}" for x in actions[:8])
+#         if not summary and not actions and raw_items:
+#             lines.append("Planner details:")
+#             for item in raw_items[:3]:
+#                 try:
+#                     lines.append(f"- {json.dumps(item, default=str)[:400]}")
+#                 except Exception:
+#                     lines.append(f"- {str(item)[:400]}")
+#         state["final_response"] = "📩 I've sent the event plan email." if state.get("email_requested") else "\n".join(lines)
+#         return state
+    
+#     if state.get("sku_intelligence_result"):
+#         res = state["sku_intelligence_result"]
+#         lines = [f"SKU intelligence for {res.get('product_match') or 'selected product'}:"]
+#         current = res.get("current", {})
+#         lines.append(f"- Current sales: {_format_value(float(current.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
+#         lines.append(f"- Current profit: {_format_value(float(current.get('profit', 0.0)), 'profit', state.get('country'))}")
+#         lines.append(f"- Current units: {float(current.get('total_quantity', 0.0)):,.0f}")
+#         lines.append(f"- Current ASP: {_format_value(float(current.get('asp', 0.0)), 'asp', state.get('country'))}")
+#         lines.append(f"- Current sales mix: {float(current.get('sales_mix', 0.0)):.2%}")
+#         lines.append(f"- Current profit mix: {float(current.get('profit_mix', 0.0)):.2%}")
+#         previous = res.get("previous") or {}
+#         if previous:
+#             lines.append(f"- Previous sales: {_format_value(float(previous.get('net_sales', 0.0)), 'net_sales', state.get('country'))}")
+#             lines.append(f"- Previous profit: {_format_value(float(previous.get('profit', 0.0)), 'profit', state.get('country'))}")
+#         for point in (res.get("summary_points") or [])[:5]:
+#             lines.append(f"- {point}")
+#         if state.get("advice"):
+#             lines.append("")
+#             lines.extend(f"- {a}" for a in state["advice"])
+#         state["final_response"] = "📩 I've sent the SKU intelligence email." if state.get("email_requested") else "\n".join(lines)
+#         return state
+    
+#     # -------- 🔥 EMAIL RESPONSE HANDLING (FIXED) --------
+#     # Do NOT override final_response here
+#     # Let _send_email_if_requested handle confirmation after sending
+#     pass
+    
+#     current = state.get("current_metrics") or {}
+#     metric_name = current.get("metric") or state.get("metric_name") or "metric"
+#     period_label = current.get("period_label") or "selected period"
+#     comp = state.get("comparison") or {}
+#     analysis = state.get("analysis_result") or {}
+
+    
+#     # -------- 🔥 INVENTORY DIAGNOSIS RENDER (UPGRADED) --------
+#     if analysis.get("type") == "inventory_diagnosis":
+#         insights = analysis.get("insights", [])
+#         rows = analysis.get("rows", [])
+
+#         product_query = state.get("product_query")
+#         top_n = state.get("top_n")
+
+#         # If planner missed "top 3", recover it from user query.
+#         if not top_n:
+#             m = re.search(r"\btop\s+(\d+)\b", (state.get("user_query") or "").lower())
+#             if m:
+#                 top_n = int(m.group(1))
+
+#         # 1) Specific product wins
+#         if product_query:
+#             pq = str(product_query).strip().lower()
+#             rows = [
+#                 r for r in rows
+#                 if pq in str(r.get("product_name") or "").strip().lower()
+#                 or pq == str(r.get("sku") or "").strip().lower()
+#             ]
+
+#         # 2) Else top N if requested
+#         elif top_n:
+#             rows = rows[:int(top_n)]
+
+#         # 3) Else keep all rows
+
+#         flags = analysis.get("flags", {})
+#         sku_map = analysis.get("sku_map", {})
+
+#         lines = ["Inventory health check:\n"]
+
+#         # summary insights
+#         for i in insights:
+#             lines.append(f"- {i}")
+
+#         # detailed per SKU
+#         for r in rows:
+#             name = r.get("product_name")
+#             value = float(r.get("__metric__", 0))
+
+#             sku = sku_map.get(name)
+#             flag = flags.get(sku, {})
+
+#             logger.info(f"[DEBUG] name={name}, sku={sku}, flag={flag}")
+
+#             coverage = flag.get("inventory_coverage_ratio")
+#             recommendation = flag.get("inventory_recommendation")
+
+            
+#             # -------- 🔥 CORRECT SEVERITY (USE FLAGS) --------
+#             alert = flag.get("inventory_alert")
+#             alert_type = flag.get("inventory_alert_type")
+
+#             if alert_type == "supply":
+#                 if alert == "High alert":
+#                     emoji = "🚨"  # critical
+#                 else:
+#                     emoji = "⚠"  # warning
+
+#             elif alert_type == "overaged":
+#                 emoji = "📦"
+
+#             elif alert_type == "cost":
+#                 emoji = "💸"
+
+#             else:
+#                 continue  # skip only truly healthy SKUs
+
+#             lines.append(f"\n{emoji} {name}")
+
+#             if alert_type == "supply":
+#                 if alert == "High alert":
+#                     lines.append("- Critical stock-out risk")
+#                 else:
+#                     lines.append("- Low coverage (supply risk)")
+
+#             elif alert_type == "overaged":
+#                 lines.append("- Long-term aged inventory")
+
+#             elif alert_type == "cost":
+#                 lines.append("- High storage cost")
+
+#             if coverage is not None:
+#                 lines.append(f"- Coverage: {round(coverage,1)} months")
+
+#             if recommendation:
+#                 lines.append(f"→ {recommendation}")
+
+#         state["final_response"] = "\n".join(lines)
+#         return state
+
+
+#     if analysis.get("type") == "decision":
+#         if advisor_llm:
+#             try:
+#                 prompt = REASONING_PROMPT + "\n\n" + json.dumps({
+#                     "question": analysis.get("question"),
+#                     "reasoning_mode": analysis.get("reasoning_mode"),
+#                     "task_type": analysis.get("task_type"),
+#                     "metric_name": analysis.get("metric_name"),
+#                     "metric_names": analysis.get("metric_names"),
+#                     "product_query": analysis.get("product_query"),
+#                     "product_match": analysis.get("product_match"),
+#                     "current_pack": analysis.get("current_pack"),
+#                     "history": analysis.get("history"),
+#                     "growth_driver": analysis.get("growth_driver"),
+#                 }, default=str)
+#                 state["final_response"] = advisor_llm.invoke(prompt).content
+#                 return state
+#             except Exception:
+#                 logger.exception("Decision render failed")
+#         state["final_response"] = "I could not build a reliable recommendation."
+#         return state
+#     if comp:
+#         pct = comp.get("pct_change")
+#         curr = float(comp.get("left", {}).get("total", 0.0))
+#         prev = float(comp.get("right", {}).get("total", 0.0))
+#         if pct is None:
+#             msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}."
+#         else:
+#             direction = "higher" if pct > 0 else "lower"
+#             msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}, which is {abs(pct):.2f}% {direction}."
+#         if analysis.get("growth_driver"):
+#             gp = analysis["growth_driver"]
+#             primary = gp.get("primary_driver")
+#             if primary:
+#                 msg += f" Primary driver: {primary}."
+#         if state.get("advice"):
+#             msg += "\n" + "\n".join(f"- {a}" for a in state["advice"])
+#         state["final_response"] = msg
+#         return state
+    
+#     if analysis.get("type") in {"trend", "growth"}:
+#         series = analysis.get("series_display") or analysis.get("series", [])
+#         mom = analysis.get("mom_display") or analysis.get("mom", [])
+#         if not series:
+#             state["final_response"] = "No trend data found."
+#             return state
+        
+        
+        
+#         # -------- 🔥 SMART GROWTH RENDER --------
+#         if state.get("analysis_type") == "growth" and mom:
+#             logger.info("[RENDER] Rendering intelligent growth")
+
+#             latest = series[-1]["__metric__"]
+#             previous = series[-2]["__metric__"] if len(series) > 1 else 0
+
+#             change = latest - previous
+#             pct = (change / previous * 100) if previous else 0
+
+#             direction = "increased" if change >= 0 else "decreased"
+
+#             lines = []
+#             lines.append(f"Your {metric_name} is {_format_value(latest, metric_name, state.get('country'))}.")
+#             lines.append(
+#                 f"It has {direction} by {_format_value(abs(change), metric_name, state.get('country'))} ({pct:.2f}%)."
+#             )
+
+#             # -------- 🔥 FIX 3: ROLLING MOM --------
+#             if mom:
+#                 lines.append("\nMonth-on-month change:")
+#                 for m in mom:
+#                     pct_m = m.get("pct_change", 0)
+#                     arrow = "↑" if pct_m > 0 else "↓" if pct_m < 0 else "→"
+#                     lines.append(f"- {m['period_label']}: {arrow} {abs(pct_m):.2f}%")
+
+            
+#             # -------- 🔥 PRODUCT DRIVER ANALYSIS --------
+#             if not state.get("product_query"):  # ✅ ONLY for overall queries
+#                 try:
+#                     latest_month = series[-1]
+#                     prev_month = series[-2] if len(series) > 1 else None
+
+#                     if prev_month:
+#                         latest_data = get_metric_for_month(
+#                             state["engine"],
+#                             state["user_id"],
+#                             state["country"],
+#                             metric_name,
+#                             latest_month["month"],
+#                             latest_month["year"]
+#                         )
+
+#                         prev_data = get_metric_for_month(
+#                             state["engine"],
+#                             state["user_id"],
+#                             state["country"],
+#                             metric_name,
+#                             prev_month["month"],
+#                             prev_month["year"]
+#                         )
+
+#                         latest_map = {
+#                             r.get("product_name"): float(r.get("__metric__", 0))
+#                             for r in latest_data.get("per_sku", [])
+#                         }
+#                         prev_map = {
+#                             r.get("product_name"): float(r.get("__metric__", 0))
+#                             for r in prev_data.get("per_sku", [])
+#                         }
+
+#                         growth_rows = []
+#                         all_products = set(latest_map) | set(prev_map)
+
+#                         for p in all_products:
+#                             curr = latest_map.get(p, 0.0)
+#                             prev = prev_map.get(p, 0.0)
+#                             delta = curr - prev
+
+#                             if abs(delta) > 0:
+#                                 growth_rows.append({
+#                                     "product_name": p,
+#                                     "change": delta
+#                                 })
+
+#                         growth_rows = sorted(growth_rows, key=lambda x: x["change"], reverse=True)
+
+#                         top_growth = growth_rows[:3]
+#                         top_decline = sorted(growth_rows, key=lambda x: x["change"])[:3]
+
+#                         if top_growth:
+#                             lines.append("\nTop growing products:")
+#                             for g in top_growth:
+#                                 lines.append(
+#                                     f"- {g['product_name']} (+{_format_value(g['change'], metric_name, state.get('country'))})"
+#                                 )
+
+#                         if top_decline:
+#                             lines.append("\nTop declining products:")
+#                             for g in top_decline:
+#                                 lines.append(
+#                                     f"- {g['product_name']} ({_format_value(g['change'], metric_name, state.get('country'))})"
+#                                 )
+
+#                 except Exception:
+#                     logger.exception("[GROWTH_DRIVER_ERROR]")
+
+#             state["final_response"] = "\n".join(lines)
+#             return state
+        
+        
+#         latest = series[-1]
+#         prev = series[-2] if len(series) > 1 else None
+#         lines = [f"{metric_name} trend ({period_label})", f"Latest: {_format_value(latest['__metric__'], metric_name, state.get('country'))}"]
+#         if prev:
+#             delta = latest["__metric__"] - prev["__metric__"]
+#             pct = (delta / prev["__metric__"] * 100) if prev["__metric__"] else 0
+#             direction = "↑" if pct > 0 else "↓" if pct < 0 else "→"
+#             lines.append(f"Change vs previous month: {direction} {abs(pct):.2f}%")
+#         lines.append("")
+#         lines.append("Breakdown:")
+#         for row in series:
+#             label = row.get("period_label", "Unknown")
+#             val = float(row.get("__metric__", 0.0))
+#             lines.append(f"- {label}: {_format_value(val, metric_name, state.get('country'))}")
+#         state["final_response"] = "\n".join(lines)
+#         return state
+    
+    
+#     # -------- 🔥 HANDLE SKU BREAKDOWN + RANKING --------
+#     if analysis.get("type") in {"ranking", "breakdown"} and analysis.get("per_sku"):
+#         logger.info("[RENDER] Rendering SKU breakdown")
+
+#         rows = analysis.get("per_sku", [])
+#         direction = analysis.get("ranking_direction", "top")
+
+#         # Sort descending safely
+#         rows = sorted(rows, key=lambda x: x.get("__metric__", 0), reverse=True)
+
+#         header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
+#         lines = [header, ""]
+
+#         for idx, row in enumerate(rows, 1):
+#             name = row.get("product_name") or row.get("sku") or "Unknown"
+#             value = float(row.get("__metric__", 0.0))
+#             lines.append(f"{idx}. {name} — {_format_value(value, metric_name, state.get('country'))}")
+
+#         total = analysis.get("total")
+#         if total is not None:
+#             lines.append("")
+#             lines.append(f"Total: {_format_value(float(total), metric_name, state.get('country'))}")
+
+#         state["final_response"] = "\n".join(lines)
+#         return state
+    
+    
+#     if analysis.get("type") == "extreme":
+#         label = analysis.get("period_label", "Unknown")
+#         value = float(analysis.get("value", 0.0))
+#         descriptor = "highest" if analysis.get("extreme_type", "max") == "max" else "lowest"
+
+#         product = analysis.get("product")
+
+#         if product:
+#             state["final_response"] = (
+#                 f"{product} had the {descriptor} {metric_name} in {label} "
+#                 f"at {_format_value(value, metric_name, state.get('country'))}."
+#             )
+#         else:
+#             state["final_response"] = (
+#                 f"The {descriptor} {metric_name} was in {label} "
+#                 f"at {_format_value(value, metric_name, state.get('country'))}."
+#             )
+
+#         return state
+    
+#     if analysis.get("type") == "multi_month":
+#         lines = ["Requested month breakdown:"]
+#         for metric_block in analysis.get("results", []):
+#             metric = metric_block.get("metric")
+#             lines.append(f"\n{metric}:")
+#             for row in metric_block.get("months", []):
+#                 label = row.get("period_label", "Unknown")
+#                 value = float(row.get("total", 0.0))
+#                 if row.get("product_breakdown"):
+#                     lines.append(f"- {label}:")
+#                     for product, product_value in row["product_breakdown"].items():
+#                         lines.append(f"    {product}: {_format_value(product_value, metric, state.get('country'))}")
+#                 else:
+#                     lines.append(f"- {label}: {_format_value(value, metric, state.get('country'))}")
+#         state["final_response"] = "\n".join(lines)
+#         return state
+    
+#     if analysis.get("type") == "multi_dimensional":
+#         rows = analysis.get("data", [])
+#         metrics = analysis.get("metrics", [])
+#         products = analysis.get("products") or []
+#         lines = ["Comparison summary:"]
+#         if len(metrics) == 1 and products:
+#             metric = metrics[0]
+#             totals: Dict[str, float] = {}
+#             for row in rows:
+#                 totals[row["product"]] = totals.get(row["product"], 0.0) + float(row["value"])
+#             for product, total in sorted(totals.items(), key=lambda x: x[1], reverse=True):
+#                 lines.append(f"- {product}: {_format_value(total, metric, state.get('country'))}")
+#             lines.append("")
+#             lines.append("Breakdown:")
+#             for row in rows[:50]:
+#                 lines.append(f"- {row['month']} | {row['product']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
+#         else:
+#             for row in rows[:50]:
+#                 lines.append(f"- {row['month']} | {row['product']} | {row['metric']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
+#         state["final_response"] = "\n".join(lines)
+#         return state
+    
+#     if analysis.get("type") == "summary":
+#         metrics = analysis.get("metrics", {})
+
+#         # -------- BASE METRICS --------
+#         lines = [
+#             f"Business Report for {period_label}",
+#             "",
+#             f"Revenue: {_format_value(metrics.get('net_sales', 0), 'net_sales', state.get('country'))}",
+#             f"Profit: {_format_value(metrics.get('profit', 0), 'profit', state.get('country'))}",
+#             f"Units: {metrics.get('total_quantity', 0):,.0f}",
+#             f"ASP: {_format_value(metrics.get('asp', 0), 'asp', state.get('country'))}",
+#             f"ACOS: {metrics.get('acos', 0):.2f}%",
+#             f"Ad Spend: {_format_value(metrics.get('advertising_total', 0), 'advertising_total', state.get('country'))}",
+#             f"Platform Fees: {_format_value(metrics.get('platform_fee', 0), 'platform_fee', state.get('country'))}",
+#             f"CM2 Profit: {_format_value(metrics.get('cm2_profit', 0), 'cm2_profit', state.get('country'))}",
+#             f"Reimbursements (Amazon): {_format_value(metrics.get('rembursement_fee', 0), 'rembursement_fee', state.get('country'))}",
+#         ]
+
+#         # -------- TOP PRODUCTS --------
+#         top_products = analysis.get("top_products", [])[:5]
+#         if top_products:
+#             lines.append("\nTop products:")
+#             for row in top_products:
+#                 name = row.get("product_name") or row.get("sku") or "Unknown"
+#                 lines.append(
+#                     f"- {name}: {_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}"
+#                 )
+
+#         # -------- 🔥 AI INSIGHTS (YOUR NEW LAYER) --------
+#         try:
+#             insights = _generate_business_insights(state)
+
+#             state["insights"] = insights
+
+#             if insights:
+#                 lines.append("\n--- Insights ---\n")
+#                 lines.append(insights)
+#         except Exception:
+#             logger.exception("[BUSINESS_INSIGHTS_ERROR]")
+
+#         state["final_response"] = "\n".join(lines)
+#         return state
+    
+#     if analysis.get("type") == "sku_trend":
+#         results = analysis.get("results", [])
+#         if not results:
+#             state["final_response"] = f"No consistently declining SKUs found for {metric_name}."
+#             return state
+#         lines = [f"Products with consistently declining {metric_name} trend:"]
+#         for item in results[:10]:
+#             lines.append(f"- {item.get('product')}")
+#         state["final_response"] = "\n".join(lines)
+#         return state
+#     total = current.get("total")
+#     if total is not None:
+#         state["final_response"] = f"In {period_label}, your {metric_name} was {_format_value(float(total), metric_name, state.get('country'))}."
+#         return state
+
+
+#     # -------- 🔥 LLM FALLBACK (ADD THIS BLOCK) --------
+#     if chat_llm:
+#         try:
+#             prompt = f"""
+#     You are an Amazon business analyst AI.
+
+#     User question:
+#     {state.get("user_query")}
+
+#     Available context (may be incomplete):
+#     {json.dumps({
+#         "current_metrics": state.get("current_metrics"),
+#         "analysis_result": state.get("analysis_result")
+#     }, default=str)}
+
+#     Instructions:
+#     - Try to answer helpfully even if data is missing
+#     - Do NOT hallucinate exact numbers
+#     - Give reasoning, possible causes, or guidance
+#     """
+
+#             response = chat_llm.invoke(prompt)
+#             state["final_response"] = response.content
+#             return state
+
+#         except Exception:
+#             logger.exception("[LLM_FALLBACK_FAILED]")
+
+
+#     # -------- SAFE FINAL FALLBACK --------
+#     state["final_response"] = "I couldn’t fully analyze this. Try asking with a metric like sales, profit, or units."
+#     return state
 
 def _restore_memory_email(state: AgentState, plan: RequestPlan, history: List[Dict[str, Any]]) -> Optional[AgentState]:
     last_meta = load_last_analysis_from_history(history)
