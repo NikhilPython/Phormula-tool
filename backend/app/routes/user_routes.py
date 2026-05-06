@@ -32,6 +32,31 @@ db_url = os.getenv('DATABASE_URL')
 db_url1= os.getenv('DATABASE_ADMIN_URL')
 db_url2= os.getenv('DATABASE_AMAZON_URL')
 
+# Shared SQLAlchemy engines - create once, reuse everywhere
+user_engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+admin_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+amazon_engine = create_engine(
+    db_url2,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
 
 user_bp = Blueprint('user', __name__)
 
@@ -417,9 +442,8 @@ def get_user_data():
     sku_sheet_exists = False
 
     try:
-        user_engine = create_engine(db_url)
         inspector = inspect(user_engine)
-        sku_sheet_exists = sku_table_name in inspector.get_table_names()
+        sku_sheet_exists = inspector.has_table(sku_table_name)
     except Exception:
         sku_sheet_exists = False
 
@@ -862,9 +886,8 @@ def feepreviewupload():
             if column in df.columns:
                 df[column] = df[column].apply(clean_numeric)
          # Create user-specific database session
-        user_engine = create_engine(db_url)
         user_session = create_user_session(db_url)
-        admin_engine = create_engine(db_url1)
+
         AdminSession = sessionmaker(bind=admin_engine)
         admin_session = AdminSession()
 
@@ -982,79 +1005,63 @@ def feepreviewupload():
         user_session.commit()
 
 
-        conn = user_engine.connect()
         query = user_specific_table.select()
-        results = conn.execute(query).mappings().all()
 
-        for result in results:
-            country_value = result['country']
-            product_group_value = result['product_group']
-            price_value = result['price']
-           
+        with user_engine.begin() as conn:
+            results = conn.execute(query).mappings().all()
 
+            for result in results:
+                country_value = result['country']
+                product_group_value = result['product_group']
+                price_value = result['price']
 
-            
-            product_group_cleaned = (product_group_value or "").strip()
+                product_group_cleaned = (product_group_value or "").strip()
 
+                COUNTRY_MAP = {
+                    "uk": "United Kingdom",
+                    "us": "United States",
+                    "uae": "United Arab Emirates",
+                    "in": "India"
+                }
 
-            
-            
+                normalized_country = COUNTRY_MAP.get(country.lower(), country)
 
-            COUNTRY_MAP = {
-                "uk": "United Kingdom",
-                "us": "United States",
-                "uae": "United Arab Emirates",
-                "in": "India"
-                # add more if needed
-            }
-
-            # Convert frontend country to DB country
-            normalized_country = COUNTRY_MAP.get(country.lower(), country)
-
-
-            queery = admin_session.query(Category).filter_by(
-                country=normalized_country,
-                category=product_group_cleaned
-            )
-            
-            Category_obj = queery.first()
-
-            if not Category_obj:
-                # Extract first word before special characters like & / - etc.
-                first_word = product_group_cleaned.split('&')[0].split('/')[0].split('-')[0].strip().upper()
-    
-            
                 queery = admin_session.query(Category).filter_by(
-                    country=normalized_country.strip(),
-                    category=first_word
+                    country=normalized_country,
+                    category=product_group_cleaned
                 )
 
-            # Add conditional filtering based on price_from and price_to
-            if price_value is not None:
-                queery = queery.filter(
-                    and_(
-                        or_(Category.price_from == 0, Category.price_from <= price_value),
-                        or_(Category.price_to == 0, Category.price_to >= price_value)
+                Category_obj = queery.first()
+
+                if not Category_obj:
+                    first_word = product_group_cleaned.split('&')[0].split('/')[0].split('-')[0].strip().upper()
+
+                    queery = admin_session.query(Category).filter_by(
+                        country=normalized_country.strip(),
+                        category=first_word
                     )
-                )
-                
 
-            Category_obj = queery.first()
+                if price_value is not None:
+                    queery = queery.filter(
+                        and_(
+                            or_(Category.price_from == 0, Category.price_from <= price_value),
+                            or_(Category.price_to == 0, Category.price_to >= price_value)
+                        )
+                    )
 
-            if Category_obj:
+                Category_obj = queery.first()
 
-                update_stmt = (
-                    user_specific_table.update()
-                    .where(user_specific_table.c.id == result['id'])
-                    .values(referral_fee=Category_obj.referral_fee)
-                )
+                if Category_obj:
+                    update_stmt = (
+                        user_specific_table.update()
+                        .where(user_specific_table.c.id == result['id'])
+                        .values(referral_fee=Category_obj.referral_fee)
+                    )
 
-                conn.execute(update_stmt)
+                    conn.execute(update_stmt)
+                else:
+                    print(f"No matching Category found for country {country_value} and Category {product_group_value}")
 
-            else:
-                print(f"No matching Category found for country {country_value} and Category {product_group_value}")  # Debugging statement
-
-        conn.commit()  # Ensure all updates are committed
 
          # Verify update
         with user_engine.connect() as conn:
@@ -1085,16 +1092,19 @@ def feepreviewupload():
             asin_mapping = {row['asin']: (row['product_barcode'], row['price']) for row in rows}
 
         # Update user_{country}_table with fetched data
-        with user_engine.connect() as conn:
+        with user_engine.begin() as conn:
             for asin, (barcode, price) in asin_mapping.items():
                 update_stmt = text(f"""
                     UPDATE {table_name}
                     SET product_barcode = :barcode, sku_cost_price = :price
                     WHERE asin = :asin AND user_id = :user_id
                 """)
-                conn.execute(update_stmt, {"barcode": barcode, "price": price, "asin": asin, "user_id": user_id})
-
-            conn.commit()
+                conn.execute(update_stmt, {
+                    "barcode": barcode,
+                    "price": price,
+                    "asin": asin,
+                    "user_id": user_id
+                })
 
         new_profile = CountryProfile(
             user_id=user_id,
@@ -1107,7 +1117,14 @@ def feepreviewupload():
         db.session.add(new_profile)
         db.session.commit()
 
-        return jsonify({'message': 'New profile created successfully','profile_id': new_profile.id,'country':new_profile.country}), 201  # Created status code
+        user_session.close()
+        admin_session.close()
+
+        return jsonify({
+            'message': 'New profile created successfully',
+            'profile_id': new_profile.id,
+            'country': new_profile.country
+        }), 201
 
     return jsonify({'message': 'File successfully uploaded and data added to the database.'})
     
@@ -1149,8 +1166,7 @@ def check_user_country_table_exists():
 
         table_name = f"user_{user_id}_{country}_merge_data_of_all_months"
 
-        engine = create_engine(db_url)
-        inspector = inspect(engine)
+        inspector = inspect(user_engine)
 
         table_exists = inspector.has_table(table_name)
 
