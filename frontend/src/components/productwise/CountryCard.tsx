@@ -113,15 +113,15 @@ const CountryCard: React.FC<CountryCardProps> = ({
   const getBestPerfBg = () => {
     switch (colorKey) {
       case "global":
-        return "bg-[#F5F4F4]"; // soft orange
+        return "bg-[#FFFFFF]"; // soft orange
       case "uk":
-        return "bg-[#F5F4F4]"; // soft purple
+        return "bg-[#FFFFFF]"; // soft purple
       case "us":
-        return "bg-[#F5F4F4]"; // soft green
+        return "bg-[#FFFFFF]"; // soft green
       case "ca":
-        return "bg-[#F5F4F4]"; // soft blue
+        return "bg-[#FFFFFF]"; // soft blue
       default:
-        return "bg-[#F5F4F4]";
+        return "bg-[#FFFFFF]";
     }
   };
 
@@ -195,7 +195,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
           <div
             className="rounded-2xl p-2 sm:p-3"
             style={{
-              backgroundColor: "#F5F4F4",
+              backgroundColor: "#FFFFFF",
               border: "1px solid #41404233",
               borderTopWidth: 4,
               borderTopColor: getCountryColor(colorKey),

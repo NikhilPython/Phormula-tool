@@ -275,7 +275,9 @@ export default function Cm1ProfitBreakdownPie({
 
   const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
     const labels = (displayData || []).map((d) => d.name);
-    const values = (displayData || []).map((d) => Math.abs(Number(d.value || 0)));
+    const values = (displayData || []).map((d) =>
+      Math.round(Math.abs(Number(d.value || 0)))
+    );
 
     if (!labels.length || values.every((v) => v === 0)) return null;
 
@@ -287,16 +289,15 @@ export default function Cm1ProfitBreakdownPie({
         {
           data: values,
           backgroundColor: bg,
-          hoverBackgroundColor: bg, // ✅ lock hover color (no change)
+          hoverBackgroundColor: bg,
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
-          hoverOffset: 4, // ✅ keep pop-out
+          hoverOffset: 4,
           offset: 0,
         },
       ],
     };
-
   }, [displayData]);
 
   useEffect(() => {
@@ -327,7 +328,7 @@ export default function Cm1ProfitBreakdownPie({
             label: (ctx: TooltipItem<"pie">) => {
               const i = ctx.dataIndex;
               const slice = displayData?.[i];
-              const val = Number(ctx.raw || 0);
+              const val = Math.round(Number(ctx.raw || 0));
               const delta = slice?.deltaPct;
 
               const deltaSymbol =
@@ -336,9 +337,9 @@ export default function Cm1ProfitBreakdownPie({
               const deltaText =
                 delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
 
-              return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toFixed(
-                2
-              )} (${(slice?.pct ?? 0).toFixed(2)}%) (${deltaText})`;
+              return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toLocaleString()} (${Math.round(
+                slice?.pct ?? 0
+              )}%) (${deltaText})`;
             },
           },
         },
@@ -525,8 +526,8 @@ export default function Cm1ProfitBreakdownPie({
                       const chart = chartRef.current;
                       const isVisible = chart ? chart.getDataVisibility(i) : true;
 
-                      const value = Math.abs(Number(slice.value || 0));
-                      const pct = Number(slice.pct || 0);
+                      const value = Math.round(Math.abs(Number(slice.value || 0)));
+                      const pct = Math.round(Number(slice.pct || 0));
                       const delta = slice.deltaPct;
 
                       const deltaSymbol =
@@ -579,11 +580,7 @@ export default function Cm1ProfitBreakdownPie({
                                 style={{ color: "#414042" }}
                               >
                                 {currencySymbol}
-                                {value.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}{" "}
-                                ({pct.toFixed(2)}%){" "}
+                                {value.toLocaleString()} ({pct}%){" "}
                                 <span className={deltaClass}>({deltaText})</span>
                               </div>
                             </div>

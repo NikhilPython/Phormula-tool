@@ -2974,19 +2974,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   // }, [searchParams]);
 
   useEffect(() => {
-  if (!userData) return; // wait until data is loaded
+    if (!userData) return; // wait until data is loaded
 
-  const amazonFetch = searchParams.get("amazonFetch");
-  const promptAmazonAds = searchParams.get("promptAmazonAds");
+    const amazonFetch = searchParams.get("amazonFetch");
+    const promptAmazonAds = searchParams.get("promptAmazonAds");
 
-  if (
-    amazonFetch === "success" &&
-    promptAmazonAds === "1" &&
-    !userData.amazon_ads_exists
-  ) {
-    setShowAmazonFetchSuccess(true);
-  }
-}, [searchParams, userData]);
+    if (
+      amazonFetch === "success" &&
+      promptAmazonAds === "1" &&
+      !userData.amazon_ads_exists
+    ) {
+      setShowAmazonFetchSuccess(true);
+    }
+  }, [searchParams, userData]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -3855,6 +3855,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 const roundMoney = (val: number) => Math.round(val || 0);
 
+                const formatWholeMoney = (val: number) =>
+                  formatMoney(roundMoney(val), { decimals: 0 });
+
                 const isSummaryZero =
                   summary.unit_sold === 0 &&
                   summary.total_sales === 0 &&
@@ -4136,6 +4139,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
                     comparisons: (() => {
                       const items = getGrossSalesComparisons();
+
                       return items.map((item) => {
                         const hasValue = typeof item.value === "number" && !isNaN(item.value);
                         const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
@@ -4152,7 +4156,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                         return {
                           label: item.label,
-                          valueText: hasValue ? formatMoney(item.value!) : "-",
+                          valueText: hasValue ? formatWholeMoney(item.value!) : "-",
                           deltaText,
                           deltaClassName,
                         };
@@ -4169,7 +4173,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-                    comparisons: buildComparisonsRows("total_sales", formatMoney),
+                    comparisons: buildComparisonsRows("total_sales", formatWholeMoney),
                   },
                   {
                     key: "expenses",
@@ -4181,7 +4185,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                    comparisons: buildComparisonsRows("total_amazon_fee", formatMoney),
+                    comparisons: buildComparisonsRows("total_amazon_fee", formatWholeMoney),
                   },
                   {
                     key: "ads",
@@ -4193,7 +4197,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                    comparisons: buildComparisonsRows("advertising_total", formatMoney),
+                    comparisons: buildComparisonsRows("advertising_total", formatWholeMoney),
                   },
                   {
                     key: "tacos",
@@ -4213,7 +4217,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                    comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+                    comparisons: buildComparisonsRows("cm2_profit", formatWholeMoney),
                   },
                   {
                     key: "cm2Pct",

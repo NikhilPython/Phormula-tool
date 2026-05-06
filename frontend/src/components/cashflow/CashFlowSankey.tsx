@@ -60,9 +60,11 @@ const CashFlowSankey: React.FC<Props> = ({
   const ROUND_CURRENCY_LABELS = [
     "Gross Sales",
     "Net Sales",
+    "Promotional Discount",
     "Marketplace Fees",
     "Cash Generated",
     "Net Reimbursement",
+    "Others"
   ];
 
   const formatCurrencyByLabel = (label: string, val?: number) => {
@@ -87,6 +89,16 @@ const CashFlowSankey: React.FC<Props> = ({
     });
 
     return val < 0 ? `-${currency}${absVal}` : `${currency}${absVal}`;
+  };
+
+  const formatCurrencyRoundedWithSign = (val?: number) => {
+    if (val === undefined || val === null || Number.isNaN(Number(val))) return "-";
+
+    const absVal = Math.round(Math.abs(Number(val))).toLocaleString(undefined, {
+      maximumFractionDigits: 0,
+    });
+
+    return Number(val) < 0 ? `-${currency}${absVal}` : `${currency}${absVal}`;
   };
 
   const isPreviewSankey =
@@ -446,7 +458,7 @@ const CashFlowSankey: React.FC<Props> = ({
                 {c.isCurrency ? formatCurrencyByLabel(c.label, c.value) : formatNumber(c.value)}
                 {perUnitCards.includes(c.label) && (
                   <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-                    ({formatCurrencyWithSign(Number(getPerUnitValue(c.value, data.quantity_total)))} / Unit)
+                    ({formatCurrencyRoundedWithSign(Number(getPerUnitValue(c.value, data.quantity_total)))} / Unit)
                   </span>
                 )}
               </>
@@ -461,7 +473,7 @@ const CashFlowSankey: React.FC<Props> = ({
               : c.isDiscount
                 ? formatCurrencyWithSign(-(Math.abs(c.prev || 0)))
                 : `${c.isCurrency ? formatCurrencyByLabel(c.label, c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
-                  ? ` (${formatCurrencyWithSign(
+                  ? ` (${formatCurrencyRoundedWithSign(
                     Number(getPerUnitValue(c.prev, previous_summary?.quantity_total))
                   )} / Unit)`
                   : ""

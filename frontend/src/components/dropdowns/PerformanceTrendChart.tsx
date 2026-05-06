@@ -481,7 +481,9 @@ const LiveLineChart: React.FC<{
               typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
 
             const fmtNumber = (n: number) =>
-              n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              Math.round(n).toLocaleString(undefined, {
+                maximumFractionDigits: 0,
+              });
 
             const displayValue =
               value == null

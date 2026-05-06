@@ -145,9 +145,8 @@ const capitalize = (str: string) =>
   str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
 
 const formatCurrencyValue = (value: number, currencySymbol: string) => {
-  const absValue = Math.abs(Number(value || 0)).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  const absValue = Math.round(Math.abs(Number(value || 0))).toLocaleString(undefined, {
+    maximumFractionDigits: 0,
   });
 
   return Number(value) < 0

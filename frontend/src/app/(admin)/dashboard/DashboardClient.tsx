@@ -1554,6 +1554,13 @@ export default function DashboardPage() {
 
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
+    const [prevTargetSummaries, setPrevTargetSummaries] = useState<{
+        uk?: any;
+        us?: any;
+        ca?: any;
+        global?: any;
+    }>({});
+
     const forcedRegion: RegionKey = useMemo(() => {
         switch (platform) {
             case "amazon-uk":
@@ -2045,9 +2052,58 @@ export default function DashboardPage() {
         setTargetSummaries(next);
     }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
+    const fetchPrevTargetSummary = useCallback(async () => {
+        if (isMonthYearNA) {
+            setPrevTargetSummaries({});
+            return;
+        }
+
+        const token =
+            typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+        if (!token) return;
+
+        const { monthName, year } = getPrevRegionYearMonth(activeDateRegion);
+
+        const countries =
+            platform === "global"
+                ? ["uk", "us"]
+                : [targetSummaryCountry];
+
+        const results = await Promise.all(
+            countries.map(async (country) => {
+                const params = new URLSearchParams({
+                    month: monthName,
+                    year: String(year),
+                    country,
+                });
+
+                const res = await fetch(`${baseURL}/target-summary?${params.toString()}`, {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                const json = await res.json().catch(() => null);
+
+                return [country, json?.data ?? null] as const;
+            })
+        );
+
+        const next = Object.fromEntries(results);
+        setPrevTargetSummaries(next);
+    }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
+
     useEffect(() => {
         fetchTargetSummary();
     }, [fetchTargetSummary]);
+
+    useEffect(() => {
+        fetchTargetSummary();
+        fetchPrevTargetSummary();
+    }, [fetchTargetSummary, fetchPrevTargetSummary]);
 
     // const didAdsManagerSeedRef = useRef(false);
 
@@ -7263,6 +7319,55 @@ Keep enough stock for validation but avoid over-committing too early.`,
         return `$${rounded.toLocaleString()}`;
     };
 
+    const stickyTargetHome =
+        stats_targetHome && stats_targetHome > 0
+            ? stats_targetHome
+            : targets_lastMonthTotalHome && targets_lastMonthTotalHome > 0
+                ? targets_lastMonthTotalHome
+                : stats_lastMonthTotalHome && stats_lastMonthTotalHome > 0
+                    ? stats_lastMonthTotalHome
+                    : 0;
+
+    const stickyTargetProratedToDate =
+        daysInMonthByRegion > 0
+            ? (todayByRegion / daysInMonthByRegion) * stickyTargetHome
+            : 0;
+
+    const stickyTargetTrendPct =
+        stickyTargetHome > 0
+            ? ((stats_mtdHome - stickyTargetProratedToDate) / stickyTargetHome) * 100
+            : 0;
+
+    const stickyTargetTrendPrevPct =
+        stickyTargetHome > 0
+            ? ((stats_lastMtdHome - stickyTargetProratedToDate) / stickyTargetHome) * 100
+            : 0;
+
+
+    const prevMonthTargetHome = useMemo(() => {
+        if (platform === "global") {
+            const ukPrevTarget = toNumberSafe(prevTargetSummaries.uk?.target_sales ?? 0);
+            const usPrevTarget = toNumberSafe(prevTargetSummaries.us?.target_sales ?? 0);
+
+            return ukPrevTarget * gbpToUsd + usPrevTarget;
+        }
+
+        return toNumberSafe(
+            prevTargetSummaries[
+                targetSummaryCountry as keyof typeof prevTargetSummaries
+            ]?.target_sales ?? 0
+        );
+    }, [platform, prevTargetSummaries, targetSummaryCountry, gbpToUsd]);
+
+    const stickyPreviousTargetHome =
+        prevMonthTargetHome && prevMonthTargetHome > 0
+            ? prevMonthTargetHome
+            : targets_lastMonthTotalHome && targets_lastMonthTotalHome > 0
+                ? targets_lastMonthTotalHome
+                : stats_lastMonthTotalHome && stats_lastMonthTotalHome > 0
+                    ? stats_lastMonthTotalHome
+                    : 0;
+
     const stickyKpiItems = [
         {
             label: "Units",
@@ -7555,16 +7660,42 @@ Keep enough stock for validation but avoid over-committing too early.`,
             className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
         },
 
+        // {
+        //     label: "Target",
+        //     current: shouldShowDummyUi ? 0 : (stats_targetHome ?? 0),
+        //     previous: shouldShowDummyUi ? 0 : (targets_lastMonthTotalHome ?? 0),
+        //     deltaPct: shouldShowDummyUi
+        //         ? safeDeltaPct(0, 0)
+        //         : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
+        //     loading: !shouldShowDummyUi && loading,
+        //     formatter: formatDisplayAmount,
+        //     previousFormatter: formatDisplayAmount,
+        //     bottomLabel: "Last Month",
+        //     className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+        // },
         {
             label: "Target",
-            current: shouldShowDummyUi ? 0 : (stats_targetHome ?? 0),
-            previous: shouldShowDummyUi ? 0 : (targets_lastMonthTotalHome ?? 0),
+
+            current: shouldShowDummyUi
+                ? 0
+                : stickyTargetHome,
+
+            previous: shouldShowDummyUi
+                ? 0
+                : stickyPreviousTargetHome,
+
             deltaPct: shouldShowDummyUi
                 ? safeDeltaPct(0, 0)
-                : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
+                : safeDeltaPct(stickyTargetHome, stickyPreviousTargetHome),
+
             loading: !shouldShowDummyUi && loading,
-            formatter: formatDisplayAmount,
-            previousFormatter: formatDisplayAmount,
+
+            formatter: (val: number) =>
+                formatDisplayAmount(Math.round(val), "Net Sales"),
+
+            previousFormatter: (val: number) =>
+                formatDisplayAmount(Math.round(val), "Net Sales"),
+
             bottomLabel: "Last Month",
             className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },

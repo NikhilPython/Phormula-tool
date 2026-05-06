@@ -583,9 +583,8 @@ const GraphPage: React.FC<GraphPageProps> = ({
                             ? fullLabel(metricKey)
                             : (tooltipItem.dataset.label as string) || "";
                           const value = tooltipItem.raw as number;
-                          return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
+                          return `${displayLabel}: ${currencySymbol} ${Math.round(value).toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
                           })}`;
                         },
                       },

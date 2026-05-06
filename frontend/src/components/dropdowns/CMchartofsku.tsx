@@ -408,9 +408,9 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
 
 
-              return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toLocaleString(
+              return `${slice?.name ?? ctx.label}: ${currencySymbol}${Math.round(val).toLocaleString(
                 undefined,
-                { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                { maximumFractionDigits: 0 }
               )} (${pct.toFixed(2)}%) (${deltaText})`;
             },
           },
@@ -551,9 +551,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                             {/* line 2 */}
                             <div className="leading-[1.2]">
                               {currencySymbol}
-                              {value.toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
+                              {Math.round(value).toLocaleString(undefined, {
+                                maximumFractionDigits: 0,
                               })}
                             </div>
 
@@ -597,9 +596,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                               style={{ color: "#414042" }}
                             >
                               {currencySymbol}
-                              {value.toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
+                              {Math.round(value).toLocaleString(undefined, {
+                                maximumFractionDigits: 0,
                               })}{" "}
                               ({pct.toFixed(2)}%){" "}
                               <span

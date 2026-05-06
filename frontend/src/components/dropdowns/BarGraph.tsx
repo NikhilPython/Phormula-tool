@@ -398,14 +398,13 @@ const Bargraph: React.FC<BargraphProps> = ({
                 const percentage = salesValue !== 0 ? (value / salesValue) * 100 : 0;
                 const metricLabel = fullLabels[i] ?? "";
 
-                const formattedValue = Math.abs(value).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
+                const formattedValue = Math.round(Math.abs(value)).toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
                 });
 
                 const signedValue = `${value < 0 ? "-" : ""}${currencySymbol}${formattedValue}`;
 
-                return `${metricLabel}: ${signedValue} (${percentage.toFixed(1)}%)`;
+                return `${metricLabel}: ${signedValue} (${percentage.toFixed(2)}%)`;
               },
             },
           },

@@ -820,6 +820,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     return idxA - idxB;
   };
 
+  const activeCountryKey = useMemo(() => {
+    return normalizeCountryKey((countryName || "global").toLowerCase());
+  }, [countryName]);
+
+  const isGlobalPage = activeCountryKey === "global";
+
   const chartDataList = useMemo(() => {
     const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
@@ -887,18 +893,19 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     ];
 
     return metrics.map(({ metric, suffix }) => {
-      const visibleCountries: CountryKey[] = [];
+      let availableCountries: CountryKey[] = [];
 
       if (isPreviewMode) {
-        visibleCountries.push(
-          ...connectedCountries.filter((c) => selectedCountries[c] ?? true)
-        );
+        availableCountries = connectedCountries;
       } else {
-        visibleCountries.push(
-          ...nonEmptyCountriesFromApi.filter((c) => selectedCountries[c] ?? true)
-        );
+        availableCountries = nonEmptyCountriesFromApi;
       }
 
+      const visibleCountries: CountryKey[] = isGlobalPage
+        ? availableCountries.filter((c) => selectedCountries[c] ?? true)
+        : availableCountries.filter(
+          (c) => normalizeCountryKey(c) === activeCountryKey
+        );
       const datasets = visibleCountries.map((country) =>
         makeDataset(country, metric, suffix)
       );
@@ -911,6 +918,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     selectedCountries,
     isPreviewMode,
     connectedCountries,
+    activeCountryKey,
+    isGlobalPage,
   ]);
 
   const formatAxisMonth = (monthName: string) => {
@@ -1137,14 +1146,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   }, [cards]);
 
   const visibleCountryCards = useMemo(() => {
-    const active = normalizeCountryKey((countryName || "global").toLowerCase());
-
-    if (active === "global") return orderedCards;
+    if (isGlobalPage) return orderedCards;
 
     return orderedCards.filter(
-      (card) => normalizeCountryKey(card.country) === active
+      (card) => normalizeCountryKey(card.country) === activeCountryKey
     );
-  }, [orderedCards, countryName]);
+  }, [orderedCards, activeCountryKey, isGlobalPage]);
 
   const exportCurrencySymbol = useMemo(
     () => currencySymbolFromCode(homeCurrency),
@@ -1179,7 +1186,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         bestProfitValue: card.stats.maxSalesMonth?.profit ?? 0,
       };
     });
-  }, [orderedCards]);
+  }, [visibleCountryCards]);
 
   const isMultiCountry = visibleCountryCards.length > 1;
 
@@ -1218,7 +1225,9 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             title={getTitle()}
             chartDataList={canShowResults ? chartDataList : [null, null, null]}
             chartOptions={chartOptions}
-            nonEmptyCountriesFromApi={canShowResults ? nonEmptyCountriesFromApi : []}
+            nonEmptyCountriesFromApi={
+              canShowResults && isGlobalPage ? nonEmptyCountriesFromApi : []
+            }
             selectedCountries={selectedCountries}
             onToggleCountry={handleCountryChange}
             authToken={authToken}
