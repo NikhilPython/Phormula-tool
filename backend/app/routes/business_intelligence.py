@@ -26,8 +26,14 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 db_url = os.getenv('DATABASE_URL')
 oa_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize database engine
-engine = create_engine(db_url)
+user_engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=3,
+    max_overflow=2,
+    pool_timeout=30,
+)
 
 business_intelligence_bp = Blueprint('business_intelligence_bp', __name__)
 
@@ -76,7 +82,7 @@ def get_tables_in_last_6_months(user_id: int, country_lower: str, end_year: int,
     last6 = last_n_months_set(end_year, end_month, 6)
 
     tables = []
-    with engine.connect() as conn:
+    with user_engine.connect() as conn:
         res = conn.execute(q, {"pattern": pattern})
         for row in res:
             tname = row[0]
@@ -151,7 +157,7 @@ def print_comparison_range():
 
         def query_table_columns(table_name):
             query = text(f"SELECT {cols_str} FROM {table_name} LIMIT 100000")
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 result = conn.execute(query)
                 keys = result.keys()
                 rows = []
@@ -170,7 +176,7 @@ def print_comparison_range():
                 WHERE LOWER(TRIM(product_name)) = 'total'
                 LIMIT 1
             """)
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 r = conn.execute(q).first()
                 if not r:
                     return 0.0
@@ -186,7 +192,7 @@ def print_comparison_range():
                 WHERE LOWER(TRIM(product_name)) = 'total'
                 LIMIT 1
             """)
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 r = conn.execute(q).first()
                 if not r:
                     return 0.0
@@ -210,7 +216,7 @@ def print_comparison_range():
                 WHERE LOWER(TRIM(product_name)) = 'total'
                 LIMIT 1
             """)
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 r = conn.execute(q).first()
                 if not r:
                     return 0.0
@@ -235,8 +241,6 @@ def print_comparison_range():
         
         expense_total_month1 = query_expense_total(table1)
         expense_total_month2 = query_expense_total(table2)
-        if data2:
-            print("Sample Month2 row:", {k: data2[0].get(k) for k in ['sku', 'product_name', 'sales_mix', 'total_quantity', 'net_sales'] if k in data2[0]})
 
         # ✅ query only keys safely (uses scan_key)
         def query_only_keys(table_name):
@@ -248,7 +252,7 @@ def print_comparison_range():
             q = text(f"SELECT {cols} FROM {table_name} LIMIT 200000")
             keys_set = set()
 
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 result = conn.execute(q)
                 rkeys = result.keys()
                 for r in result:
@@ -450,7 +454,7 @@ def print_comparison_range():
         """)
 
         last6_tables = []
-        with engine.connect() as conn:
+        with user_engine.connect() as conn:
             res = conn.execute(q_tables, {"pattern": pattern})
             for row in res:
                 tname = row[0]
@@ -508,7 +512,7 @@ def print_comparison_range():
                 WHERE table_schema='public' AND table_name=:t
                 LIMIT 1
             """)
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 pre_exists = bool(conn.execute(q_exists, {"t": pre_table}).first())
 
         if pre_exists:
@@ -643,7 +647,7 @@ def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month
           AND table_name LIKE :pattern
     """)
 
-    with engine.connect() as conn:
+    with user_engine.connect() as conn:
         tables = [r[0] for r in conn.execute(q_tables, {"pattern": pattern})]
 
     for t in tables:
@@ -658,7 +662,7 @@ def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month
                 WHERE {where_col} = :k
                 LIMIT 1
             """)
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 r = conn.execute(q, {"k": sku_key}).first()
 
             if r:
@@ -810,7 +814,7 @@ def analyze_skus():
                 "time_horizon": "1_month"
             }
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future_to_sku = {executor.submit(generate_insight, item, app, objective_v2): item
                 for item in enriched_skus
                     }
@@ -914,7 +918,7 @@ def get_available_periods_for_bi():
               AND table_name LIKE :pattern
         """)
 
-        with engine.connect() as conn:
+        with user_engine.connect() as conn:
             result = conn.execute(query, {'pattern': pattern})
             table_names = [row[0] for row in result]
 

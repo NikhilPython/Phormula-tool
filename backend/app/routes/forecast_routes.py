@@ -29,9 +29,25 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
-db_url1= os.getenv('DATABASE_ADMIN_URL')
-forecast_bp = Blueprint('forecast_bp', __name__)
+db_url1 = os.getenv('DATABASE_ADMIN_URL')
 
+user_engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+admin_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+forecast_bp = Blueprint('forecast_bp', __name__)
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -1037,7 +1053,7 @@ def manual_forecast():
             needed_tokens.append(f"{month_name[cur.month]}{cur.year}")  # e.g., "September2025"
             cur = cur + relativedelta(months=1)
 
-        engine = create_engine(db_url)
+        engine = user_engine
         meta = MetaData()
         meta.reflect(bind=engine)
         all_tables = {t.lower(): t for t in meta.tables.keys()}
@@ -1279,7 +1295,7 @@ def Pnlforecast():
         df['avg_sales_price'] = 0.0
         df['product_name'] = df['product_name'].fillna('').astype(str)
 
-        engine = create_engine(db_url)
+        engine = user_engine
         inspector = inspect(engine)
 
         month_table = f"skuwisemonthly_{user_id}_{country}_{month}{year}"
@@ -1749,8 +1765,7 @@ def Pnlforecasts():
 
         def get_usd_conversion_rate(month, year):
             try:
-                engine_conv = create_engine(db_url1)
-                with engine_conv.connect() as conn:
+                with admin_engine.connect() as conn:
                     query = text("""
                         SELECT conversion_rate
                         FROM currency_conversion
@@ -2143,7 +2158,7 @@ def Pnlforecast_previous_months():
         year = int(year)
         month_name = month
 
-        engine = create_engine(db_url)
+        engine = user_engine
         SessionLocal = sessionmaker(bind=engine)
         db_session = SessionLocal()
         inspector = inspect(engine)

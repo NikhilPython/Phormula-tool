@@ -29,13 +29,13 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 skuwise_bp = Blueprint('skuwise_bp', __name__)
 
 # Create engines once only
-engine = create_engine(
+user_engine = create_engine(
     db_url,
     pool_pre_ping=True,
     pool_recycle=1800,
-    pool_size=5,
-    max_overflow=5,
-    pool_timeout=30
+    pool_size=3,
+    max_overflow=2,
+    pool_timeout=30,
 )
 
 admin_engine = create_engine(
@@ -43,8 +43,8 @@ admin_engine = create_engine(
     pool_pre_ping=True,
     pool_recycle=1800,
     pool_size=2,
-    max_overflow=3,
-    pool_timeout=30
+    max_overflow=1,
+    pool_timeout=30,
 )
 
 def encode_file_to_base64(file_path):
@@ -149,7 +149,7 @@ def productwise_performance():
 
         result_data = {}
 
-        with engine.connect() as conn, admin_engine.connect() as conn1:
+        with user_engine.connect() as conn, admin_engine.connect() as conn1:
             inspector = inspect(conn)
             all_tables = inspector.get_table_names()
 
@@ -322,7 +322,7 @@ def product_search():
     try:
         table_name = f"sku_{user_id}_data_table"
 
-        with engine.connect() as conn:
+        with user_engine.connect() as conn:
             inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
@@ -364,7 +364,7 @@ def product_names():
     try:
         table_name = f"sku_{user_id}_data_table"
 
-        with engine.connect() as conn:
+        with user_engine.connect() as conn:
             inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
@@ -596,7 +596,7 @@ def productwise_growth_ai():
                     LIMIT 1
                 """)
 
-                with engine.connect() as conn:
+                with user_engine.connect() as conn:
                     result = conn.execute(
                         resolve_query,
                         {"product_name": product_name}
@@ -661,7 +661,7 @@ def productwise_growth_ai():
         history_24m = []
 
         try:
-            with engine.connect() as conn:
+            with user_engine.connect() as conn:
                 inspector = inspect(conn)
                 all_tables = inspector.get_table_names()
 
