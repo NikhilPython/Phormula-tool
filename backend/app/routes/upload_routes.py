@@ -35,7 +35,24 @@ from sqlalchemy import text
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
-db_url1= os.getenv('DATABASE_ADMIN_URL')
+db_url1 = os.getenv('DATABASE_ADMIN_URL')
+
+user_engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+admin_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
 upload_bp = Blueprint('upload_bp', __name__)
 
 def encode_file_to_base64(file_path):
@@ -165,8 +182,8 @@ def upload():
 
 
     # Create SQLAlchemy engine with PostgreSQL
-    engine = create_engine(db_url)
-    engine1 = create_engine(db_url1)
+    engine = user_engine
+    engine1 = admin_engine
     meta = MetaData()
 
     with engine.connect() as connection:
@@ -1165,8 +1182,7 @@ def multiCountry():
         return jsonify({'error': 'Invalid file type. Only CSV or XLSX files are allowed.'}), 400
 
     # ---------- DB ----------
-    db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
-    engine = create_engine(db_url)
+    engine = user_engine
     inspector = inspect(engine)
     metadata = MetaData()
     table_name = f"sku_{user_id}_data_table"
@@ -1402,7 +1418,6 @@ def multiCountry():
             msg = 'File processed, but no valid rows found to insert.'
 
         session.close()
-        engine.dispose()
         return jsonify({'message': msg}), 200
 
     except Exception as e:
@@ -1410,10 +1425,6 @@ def multiCountry():
             if session is not None:
                 session.rollback()
                 session.close()
-        except Exception:
-            pass
-        try:
-            engine.dispose()
         except Exception:
             pass
         print(f"Error processing file: {str(e)}")
@@ -1437,14 +1448,12 @@ def check_file_upload_status():
         return jsonify({'error': 'Invalid token'}), 401
 
     # ---------- DB ----------
-    db_url = os.getenv('DATABASE_URL')
-    engine = create_engine(db_url)
+    engine = user_engine
     inspector = inspect(engine)
     table_name = f"sku_{user_id}_data_table"
 
     try:
         if not inspector.has_table(table_name):
-            engine.dispose()
             return jsonify({'file_uploaded': False}), 200
 
         with engine.connect() as conn:
@@ -1457,15 +1466,10 @@ def check_file_upload_status():
                 {"user_id": user_id}
             ).scalar() or 0
 
-        engine.dispose()
         return jsonify({'file_uploaded': result > 0}), 200
 
     except Exception as e:
         print(f"Error checking file upload status: {str(e)}")
-        try:
-            engine.dispose()
-        except Exception:
-            pass
         return jsonify({'error': 'Server error'}), 500
 
 
@@ -1695,8 +1699,6 @@ def upload_history2():
         return q
 
     def _get_gbp_to_usd_rate(month, year):
-        admin_engine = create_engine(db_url1)
-
         with admin_engine.connect() as admin_conn:
             rate = admin_conn.execute(
                 text("""

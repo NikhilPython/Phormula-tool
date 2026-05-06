@@ -3070,8 +3070,6 @@ def generate_sku_inventory_flags(
 
         coverage_ratio = coverage_map.get(sku)
 
-        if coverage_ratio is None:
-            print(f"[MISSING COVERAGE] SKU: {sku}")
 
         # ✅ SUPPORT BOTH SCHEMAS
         aged_1 = _num(r.get("inv-age-181-to-270-days"))

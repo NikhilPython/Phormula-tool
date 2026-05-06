@@ -568,6 +568,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             - abs(sku_grouped["Net Taxes"])
             - abs(sku_grouped["amazon_fee"])
             - abs(sku_grouped["cost_of_unit_sold"])
+            - abs(sku_grouped["promotional_rebates"])
         )
 
         sku_grouped["profit%"] = (sku_grouped["profit"] / sku_grouped["Net Sales"]) * 100
@@ -1565,6 +1566,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             - sku_grouped["net_taxes"].abs()
             - sku_grouped["amazon_fee"].abs()
             - sku_grouped["cost_of_unit_sold"].abs()
+            - (sku_grouped["promotional_rebates"]).abs()
         )
 
         sku_grouped["profit_percentage"] = np.where(
@@ -2184,6 +2186,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             - sku_grouped["net_taxes"].abs()
             - sku_grouped["amazon_fee"].abs()
             - sku_grouped["cost_of_unit_sold"].abs()
+            - sku_grouped["promotional_rebates"].abs()
         )
 
         sku_grouped["profit_percentage"] = np.where(

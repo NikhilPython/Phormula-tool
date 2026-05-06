@@ -26,8 +26,23 @@ logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
-db_url1= os.getenv('DATABASE_ADMIN_URL')
-admin_engine = create_engine(db_url1)
+db_url1 = os.getenv('DATABASE_ADMIN_URL')
+
+user_engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
+
+admin_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800,
+)
 
 
 product_bp = Blueprint('product_bp', __name__)
@@ -174,7 +189,7 @@ def YearlySKU():
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
-        engine = create_engine(db_url)
+        engine = user_engine
         metadata = MetaData(schema='public')  # align with other routes
         table_name = f"skuwiseyearly_{user_id}_{country}_{year}_table"
 
@@ -280,7 +295,7 @@ def quarterlyskutable():
         return None
 
     try:
-        engine = create_engine(db_url)
+        engine = user_engine
         metadata = MetaData(schema='public')
 
         current_quarter = normalize_quarter(quarter)
@@ -356,8 +371,6 @@ def get_currency_rates():
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
-        admin_engine = create_engine(db_url1)
-
         with admin_engine.connect() as conn:
             query = text("""
                 SELECT DISTINCT ON (user_currency, country)
@@ -458,7 +471,7 @@ def get_asp_data():
         return jsonify({'error': 'Invalid month', 'allowed': MONTHS}), 400
 
     try:
-        engine = create_engine(db_url)
+        engine = user_engine
         inspector = inspect(engine)
         all_tables = set(inspector.get_table_names())
 
@@ -595,7 +608,6 @@ def skup():
     # 2️⃣ UPDATE DATABASE TABLE
     # =========================
     try:
-        user_engine = create_engine(db_url)
         table_name = f"sku_{user_id}_data_table"
 
         inspector = inspect(user_engine)
@@ -654,7 +666,6 @@ def update_prices():
         return jsonify({'error': 'No rows provided to update'}), 400
 
     # DB setup
-    user_engine = create_engine(db_url)
     Session = sessionmaker(bind=user_engine)
     user_session = Session()
 
@@ -764,7 +775,6 @@ def skuprice():
 
     try:
         # Connect to PostgreSQL
-        user_engine = create_engine(db_url)
         inspector = inspect(user_engine)
 
         # Check if the table exists
@@ -845,7 +855,6 @@ def get_consolidated_table_name(country_name):
 
     try:
         # Create engine
-        user_engine = create_engine(db_url)
         inspector = inspect(user_engine)
 
         # Check if the table exists
@@ -909,7 +918,7 @@ def skutableprofit(skuwise_file_name):
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
-        engine = create_engine(db_url)
+        engine = user_engine
 
         country_param = request.args.get('country', '')
         currency_param = (request.args.get('homeCurrency') or '').lower()
@@ -1040,7 +1049,7 @@ def get_table_data(file_name):
         return None
 
     try:
-        engine = create_engine(db_url)
+        engine = user_engine
         conn = engine.connect()
         inspector = inspect(engine)
         tables = inspector.get_table_names()
@@ -1416,7 +1425,6 @@ def upload_warehouse_data():
     warehouse_table_name = f"warehouse_{user_id}_{safe_country}_data"
     sku_table_name = f"sku_{user_id}_data_table"
 
-    user_engine = create_engine(db_url)
 
     # ---------- GET ----------
     if request.method == 'GET':
