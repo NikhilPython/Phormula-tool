@@ -1288,7 +1288,7 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["dealsvouchar_ads"] = abs(float(dealsvouchar_ads_total))
         sum_row["platformfeenew"] = abs(float(platformfeenew_total))
         sum_row["platform_fee_inventory_storage"] = abs(float(platform_fee_inventory_storage_total))
-        sum_row["platform_fee"] = abs(float(platform_fee_total))
+        sum_row["platform_fee"] = abs(float(sum_row.get("platform_fee", 0)))
         # -------------------------------------------------------------
 
         sum_row["user_id"] = user_id
