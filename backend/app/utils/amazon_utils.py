@@ -1011,15 +1011,18 @@ def run_upload_pipeline_from_df(
             SELECT conversion_rate
             FROM currency_conversion 
             WHERE lower(user_currency) = :currency 
+            AND lower(selected_currency) = :selected_currency
             AND lower(country) = :country 
             AND lower(month) = :month 
             AND year = :year
+            ORDER BY id DESC
             LIMIT 1
         """)
 
         result = conn.execute(currency_query, {
             "currency": currency_value,
-            "country": country.lower(),
+            "selected_currency": "usd",   # 👈 IMPORTANT
+            "country": "us",              # 👈 IMPORTANT
             "month": month.lower(),
             "year": year
         }).fetchone()
@@ -1091,6 +1094,7 @@ def run_upload_pipeline_from_df(
             SELECT conversion_rate
             FROM currency_conversion 
             WHERE lower(user_currency) = :currency1
+            AND lower(selected_currency) = 'usd'
             AND lower(country) = 'us'
             AND lower(month) = :month 
             AND year = :year
@@ -2124,39 +2128,34 @@ def fetch_sku_price_map(user_id: int, country: str) -> Dict[str, float]:
 # ---------------------------------------------------------
 def fetch_conversion_rate(country: str, year: int, month_name: str,
                           user_currency: str, selected_currency: str) -> float:
-    """
-    Uses full key:
-      country + year + month + user_currency + selected_currency
-    Example row:
-      user_currency=INR | country=uk | selected_currency=GBP | month=december | year=2025 | rate=0.00834
-    """
     sql = text("""
         SELECT conversion_rate
         FROM public.currency_conversion
-        WHERE country = :country
+        WHERE lower(country) = lower(:country)
           AND year = :year
-          AND month = :month
-          AND user_currency = :user_currency
-          AND selected_currency = :selected_currency
+          AND lower(month) = lower(:month)
+          AND lower(user_currency) = lower(:user_currency)
+          AND lower(selected_currency) = lower(:selected_currency)
         ORDER BY id DESC
         LIMIT 1
     """)
 
+    params = {
+        "country": (country or "").strip(),
+        "year": int(year),
+        "month": (month_name or "").strip(),
+        "user_currency": (user_currency or "").strip(),
+        "selected_currency": (selected_currency or "").strip(),
+    }
+
     with ADMIN_ENGINE.connect() as conn:
-        row = conn.execute(sql, {
-            "country": (country or "").strip().lower(),
-            "year": int(year),
-            "month": (month_name or "").strip().lower(),
-            "user_currency": (user_currency or "").strip().lower(),
-            "selected_currency": (selected_currency or "").strip().lower(),
-        }).fetchone()
+        row = conn.execute(sql, params).fetchone()
 
-
-    try:
-        return float(row[0]) if row and row[0] is not None else 1.0
-    except Exception:
+    if not row or row[0] is None:
+        print("MISSING CONVERSION RATE:", params)
         return 1.0
 
+    return float(row[0])
 
 
 # ---------------------------------------------------------

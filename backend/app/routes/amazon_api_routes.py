@@ -758,6 +758,178 @@ def finances_mtd_transactions():
     response_format = (request.args.get("format") or "json").lower()
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
+    if ui_country == "global":
+        now_utc = datetime.now(timezone.utc)
+        month_name = _month_name_lower(now_utc.month)
+
+        uk_table = f"skuwisemonthly_{user_id}_uk_{month_name}_{now_utc.year}"
+        us_table = f"skuwisemonthly_{user_id}_us_{month_name}_{now_utc.year}"
+        global_table = f"skuwisemonthly_{user_id}_global_{month_name}_{now_utc.year}"
+
+        uk_df = pd.read_sql_query(
+            f'SELECT * FROM public."{uk_table}"',
+            PHORMULA_ENGINE
+        )
+        us_df = pd.read_sql_query(
+            f'SELECT * FROM public."{us_table}"',
+            PHORMULA_ENGINE
+        )
+
+        # remove old grand total before combining
+        uk_df = uk_df[uk_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+        us_df = us_df[us_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+
+        # current month UK -> USD rate
+        uk_to_usd_rate = fetch_conversion_rate(
+            country="us",
+            year=now_utc.year,
+            month_name=month_name,
+            user_currency="gbp",
+            selected_currency="usd",
+        )
+
+        # columns that are money values, not IDs/percentages/counts
+        money_cols = [
+            "product_sales", "product_sales_tax", "postage_credits",
+            "gift_wrap_credits", "shipping_credits_tax", "giftwrap_credits_tax",
+            "promotional_rebates", "promotional_rebates_tax",
+            "marketplace_facilitator_tax", "selling_fees", "fba_fees",
+            "other", "gross_sales", "cogs", "profit", "net_sales",
+            "ads_spend", "product_spend", "display_spend", "brand_spend",
+            "platform_fee", "platform_fee_inventory_storage",
+            "platformfeenew", "dealsvouchar_ads", "shipment_fees",
+            "cm2_profit", "total_ads", "total_cm2_profit",
+            "current_net_reimbursement", "amazon_fees", "advertising_fees",
+            "tax", "credits", "tax_and_credits", "lost_total",
+            "ads_sale_amount"
+        ]
+
+        for col in money_cols:
+            if col in uk_df.columns:
+                uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce").fillna(0) * float(uk_to_usd_rate)
+
+        combined_df = pd.concat([us_df, uk_df], ignore_index=True)
+
+        sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
+
+        # do not sum metadata IDs as business metrics
+        for remove_col in ["user_id", "year"]:
+            if remove_col in sum_cols:
+                sum_cols.remove(remove_col)
+
+        combined_df = pd.concat([us_df, uk_df], ignore_index=True)
+
+        sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
+
+        for remove_col in ["user_id", "year"]:
+            if remove_col in sum_cols:
+                sum_cols.remove(remove_col)
+
+        # ✅ group by product_name only
+        combined_df["product_name"] = (
+            combined_df["product_name"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()   # 🔥 important → avoid duplicates like "Classic" vs "classic"
+        )
+
+        combined_df["product_name_group"] = combined_df.apply(
+            lambda r: r["product_name"] if r["product_name"] else str(r["sku"]),
+            axis=1
+        )
+
+        global_df = combined_df.groupby("product_name_group", as_index=False)[sum_cols].sum()
+        global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
+        global_df["sku"] = ""
+
+        # recalculated percentage/unit fields
+        global_df["asp"] = global_df.apply(
+            lambda r: float(r["net_sales"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        global_df["cm1_profit_per_unit"] = global_df.apply(
+            lambda r: float(r["profit"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        global_df["cm1_profit_per"] = global_df.apply(
+            lambda r: float(r["profit"]) / float(r["net_sales"]) * 100
+            if float(r.get("net_sales", 0) or 0) else 0,
+            axis=1
+        )
+
+        global_df["cm2_profit_per_unit"] = global_df.apply(
+            lambda r: float(r["cm2_profit"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        global_df["cm2_profit_per"] = global_df.apply(
+            lambda r: float(r["cm2_profit"]) / float(r["net_sales"]) * 100
+            if float(r.get("net_sales", 0) or 0) else 0,
+            axis=1
+        )
+
+        global_df["country"] = "global"
+        global_df["month"] = month_name
+        global_df["year"] = now_utc.year
+        global_df["user_id"] = user_id
+        global_df["generated_at_utc"] = now_utc.isoformat()
+
+        # Grand Total
+        total_row = {"sku": "GRAND_TOTAL", "product_name": "Grand Total"}
+        for col in sum_cols:
+            total_row[col] = float(global_df[col].sum()) if col in global_df.columns else 0
+
+        total_qty = float(total_row.get("quantity", 0) or 0)
+        total_net_sales = float(total_row.get("net_sales", 0) or 0)
+        total_profit = float(total_row.get("profit", 0) or 0)
+        total_cm2 = float(total_row.get("cm2_profit", 0) or 0)
+
+        total_row["asp"] = total_net_sales / total_qty if total_qty else 0
+        total_row["cm1_profit_per_unit"] = total_profit / total_qty if total_qty else 0
+        total_row["cm1_profit_per"] = total_profit / total_net_sales * 100 if total_net_sales else 0
+        total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
+        total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
+        total_row["country"] = "global"
+        total_row["month"] = month_name
+        total_row["year"] = now_utc.year
+        total_row["user_id"] = user_id
+        total_row["generated_at_utc"] = now_utc.isoformat()
+
+        global_df = pd.concat([global_df, pd.DataFrame([total_row])], ignore_index=True)
+
+        global_df.to_sql(
+            global_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        return jsonify({
+            "success": True,
+            "country": "global",
+            "conversion": {
+                "from": "GBP",
+                "to": "USD",
+                "rate": uk_to_usd_rate,
+                "month": month_name,
+                "year": now_utc.year,
+            },
+            "skuwise_table": {
+                "name": global_table,
+                "saved": True,
+                "rows": len(global_df),
+            },
+            "skuwise_items": global_df.to_dict(orient="records"),
+        }), 200
 
     if ui_country in ("us", "usa", "united_states"):
         transaction_status = "RELEASED"
