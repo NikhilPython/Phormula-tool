@@ -1558,34 +1558,64 @@ export async function exportPnLForecastExcel(params: {
     sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
   };
 
-  const headers = [
-    "Product Name",
-    "SKU",
-    "Sales M1",
-    "CM1 M1",
-    "Sales M2",
-    "CM1 M2",
-    "Sales M3",
-    "CM1 M3",
-    "Sales Total",
-    "CM1 Total",
-  ];
+ const headers = [
+  "S. No.",
+  "Product Name",
+  "SKU",
 
-  const tableRows = [
-    ...(productRows || []),
-    ...(summaryRows || []),
-  ].map((r) => [
+  "Units M1",
+  "Sales M1",
+  "CM1 M1",
+  "CM1 % M1",
+
+  "Units M2",
+  "Sales M2",
+  "CM1 M2",
+  "CM1 % M2",
+
+  "Units M3",
+  "Sales M3",
+  "CM1 M3",
+  "CM1 % M3",
+
+  "Units Total",
+  "Sales Total",
+  "CM1 Total",
+  "CM1 % Total",
+];
+
+const tableRows = [
+  ...(productRows || []),
+  ...(summaryRows || []),
+].map((r, index) => {
+  const isSummaryRow = !r.sku && r.product_name !== "Total";
+
+  return [
+    isSummaryRow || r.product_name === "Total" ? "" : index + 1,
     r.product_name ?? "",
     r.sku ?? "",
+
+    r.forecast_1st ?? "",
     r.Total_Sales_1st ?? "",
     r.profit_1st ?? "",
+    r.profit_percentage_1st ?? "",
+
+    r.forecast_2nd ?? "",
     r.Total_Sales_2nd ?? "",
     r.profit_2nd ?? "",
+    r.profit_percentage_2nd ?? "",
+
+    r.forecast_3rd ?? "",
     r.Total_Sales_3rd ?? "",
     r.profit_3rd ?? "",
+    r.profit_percentage_3rd ?? "",
+
+    r.forecast_sum ?? "",
     r.Total_Sales_sum ?? "",
     r.profit_sum ?? "",
-  ]);
+    r.profit_percentage_sum ?? "",
+  ];
+});
 
   /* =========================
      Sheet 1: P&L Forecast Table
@@ -1615,42 +1645,69 @@ export async function exportPnLForecastExcel(params: {
 
     const isTotalRow = String(row[0]).trim().toLowerCase() === "total";
 
-    excelRow.eachCell((cell, colNumber) => {
-      const isNumberValue = typeof cell.value === "number";
-      const numeric =
-        typeof cell.value === "string" && cell.value !== "" && !isNaN(Number(cell.value));
+  excelRow.eachCell((cell, colNumber) => {
+  const isNumberValue = typeof cell.value === "number";
+  const numeric =
+    typeof cell.value === "string" &&
+    cell.value !== "" &&
+    !isNaN(Number(cell.value));
 
-      if (isNumberValue || numeric) {
-        cell.value = Number(cell.value);
-        cell.numFmt = "#,##0.00";
-      }
+  if (isNumberValue || numeric) {
+    cell.value = Number(cell.value);
 
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: colNumber === 1 ? "left" : "center",
-      };
-      cell.fill = isTotalRow ? lightGrayFill : whiteFill;
-      cell.font = {
-        bold: isTotalRow,
-        size: 11,
-        color: { argb: "FF000000" },
-      };
-      cell.border = thinGrayBorder;
-    });
+    const isPercentColumn = [7, 11, 15, 19].includes(colNumber);
+    const isUnitOrSerialColumn = [1, 4, 8, 12, 16].includes(colNumber);
+
+    if (isPercentColumn) {
+      cell.numFmt = "0.00%";
+      cell.value = Number(cell.value) / 100;
+    } else if (isUnitOrSerialColumn) {
+      cell.numFmt = "0";
+    } else {
+      cell.numFmt = "#,##0.00";
+    }
+  }
+
+  cell.alignment = {
+    vertical: "middle",
+    horizontal: colNumber === 2 ? "left" : "center",
+  };
+
+  cell.fill = isTotalRow ? lightGrayFill : whiteFill;
+  cell.font = {
+    bold: isTotalRow,
+    size: 11,
+    color: { argb: "FF000000" },
+  };
+  cell.border = thinGrayBorder;
+});
   });
 
-  ws1.columns = [
-    { width: 28 },
-    { width: 18 },
-    { width: 14 },
-    { width: 14 },
-    { width: 14 },
-    { width: 14 },
-    { width: 14 },
-    { width: 14 },
-    { width: 16 },
-    { width: 16 },
-  ];
+ws1.columns = [
+  { width: 8 },
+  { width: 28 },
+  { width: 18 },
+
+  { width: 12 },
+  { width: 14 },
+  { width: 14 },
+  { width: 12 },
+
+  { width: 12 },
+  { width: 14 },
+  { width: 14 },
+  { width: 12 },
+
+  { width: 12 },
+  { width: 14 },
+  { width: 14 },
+  { width: 12 },
+
+  { width: 12 },
+  { width: 16 },
+  { width: 16 },
+  { width: 12 },
+];
 
   /* =========================
      Sheet 2: P&L Chart
