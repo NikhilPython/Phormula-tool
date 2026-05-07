@@ -26,6 +26,7 @@ from io import BytesIO
 from sqlalchemy.exc import IntegrityError
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
+from flask import current_app
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
@@ -1412,17 +1413,108 @@ def Pnlforecast():
         )
 
         df_pivot.columns = [f'{col[0]}_{col[1]}' for col in df_pivot.columns]
-        df_pivot.reset_index(inplace=True)
-        df_pivot = df_pivot.merge(product_names, on='sku', how='left')
 
-        df_pivot['forecast_sum'] = df_pivot.filter(regex='^forecast_').sum(axis=1, skipna=True)
-        df_pivot['profit_percentage_sum'] = df_pivot.filter(regex='^profit_percentage_').mean(axis=1, skipna=True)
-        df_pivot['profit_sum'] = df_pivot.filter(regex='^profit_[^p]').sum(axis=1, skipna=True)
-        df_pivot['Total_Sales_sum'] = df_pivot.filter(regex='^Total_Sales_').sum(axis=1, skipna=True)
+        df_pivot.reset_index(inplace=True)
+
+        df_pivot = df_pivot.merge(
+            product_names,
+            on='sku',
+            how='left'
+        )
+
+        print("\n=== PIVOT COLUMNS ===")
+        print(df_pivot.columns.tolist())
+
+        # =========================================================
+        # SAFE COLUMN LISTS (PREVENT REGEX DOUBLE COUNTING)
+        # =========================================================
+
+        forecast_cols = [
+            col for col in [
+                'forecast_1st',
+                'forecast_2nd',
+                'forecast_3rd'
+            ]
+            if col in df_pivot.columns
+        ]
+
+        profit_pct_cols = [
+            col for col in [
+                'profit_percentage_1st',
+                'profit_percentage_2nd',
+                'profit_percentage_3rd'
+            ]
+            if col in df_pivot.columns
+        ]
+
+        profit_cols = [
+            col for col in [
+                'profit_1st',
+                'profit_2nd',
+                'profit_3rd'
+            ]
+            if col in df_pivot.columns
+        ]
+
+        sales_cols = [
+            col for col in [
+                'Total_Sales_1st',
+                'Total_Sales_2nd',
+                'Total_Sales_3rd'
+            ]
+            if col in df_pivot.columns
+        ]
+
+        # =========================================================
+        # SAFE AGGREGATIONS
+        # =========================================================
+
+        df_pivot['forecast_sum'] = (
+            df_pivot[forecast_cols]
+            .sum(axis=1, skipna=True)
+        )
+
+        df_pivot['profit_percentage_sum'] = (
+            df_pivot[profit_pct_cols]
+            .mean(axis=1, skipna=True)
+        )
+
+        df_pivot['profit_sum'] = (
+            df_pivot[profit_cols]
+            .sum(axis=1, skipna=True)
+        )
+
+        df_pivot['Total_Sales_sum'] = (
+            df_pivot[sales_cols]
+            .sum(axis=1, skipna=True)
+        )
+
+        # =========================================================
+        # DEBUG CHECK
+        # =========================================================
+
+        print("\n=== SUM VALIDATION ===")
+
+        debug_cols = [
+            'sku',
+            'forecast_1st',
+            'forecast_2nd',
+            'forecast_3rd',
+            'forecast_sum'
+        ]
+
+        existing_debug_cols = [
+            c for c in debug_cols
+            if c in df_pivot.columns
+        ]
+
+        print(df_pivot[existing_debug_cols].head(20))
 
         total_values = df_pivot.select_dtypes(include=['number']).sum()
 
-        profit_percentage_columns = [col for col in df_pivot.columns if col.startswith('profit_percentage_')]
+        profit_percentage_columns = [col for col in ['profit_percentage_1st','profit_percentage_2nd','profit_percentage_3rd']
+        if col in df_pivot.columns
+    ]
         for col in profit_percentage_columns:
             period = col.split('_')[-1]
             sales_col = f'Total_Sales_{period}'
@@ -1737,7 +1829,7 @@ def Pnlforecast():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     
-from flask import current_app
+
 
 @forecast_bp.route('/api/Pnlforecast/global', methods=['GET', 'POST'])
 def Pnlforecasts():
@@ -2210,77 +2302,70 @@ def Pnlforecast_previous_months():
             profit_total = 0
             cost_of_unit_sold_total = 0
 
-           
-
             for row in rows:
                 row_dict = {}
                 for col in columns:
                     value = getattr(row, col)
                     row_dict[col] = float(value) if isinstance(value, (int, float, Decimal)) else value
 
-                # Skip TOTAL row for calculations but include it in data
-                if str(row_dict.get('sku', '')).strip().upper() == 'TOTAL':
-                    data.append(row_dict)
+                data.append(row_dict)
+
+                # Skip TOTAL row for product-wise calculations
+                # TOTAL row will be used separately for non-productwise values
+                if (
+                    str(row_dict.get('sku', '')).strip().upper() == 'TOTAL'
+                    or str(row_dict.get('product_name', '')).strip().upper() == 'TOTAL'
+                ):
                     continue
 
-                # Based on your database screenshots, here are the correct column mappings:
-                
                 # Net Sales - exact match from your DB
                 net_sales_total += get_best_key(row_dict, ['net_sales', 'netsales'])
 
-                # Advertising Total - from your screenshots, the column appears to be 'advertising_total'
-                # But it might be empty/zero, so let's also check for variations
-                advertising_total += get_best_key(row_dict, [
-                    'advertising_total', 
-                    'advertisingtotal', 
+                # IMPORTANT:
+                # Do NOT calculate advertising_total from product rows.
+                # It does not have product-wise breakdown and should be picked from TOTAL row only.
+
+                # Amazon Fee - exact match from your DB
+                amazon_fee_total += get_best_key(row_dict, ['amazon_fee', 'amazonfee'])
+
+                # IMPORTANT:
+                # Do NOT calculate cm2_profit_total from product rows.
+                # CM2 Profit does not have valid product-wise breakdown and should be picked from TOTAL row only.
+
+                # CM1 Profit (profit column) - exact match from your DB
+                profit_total += get_best_key(row_dict, ['profit', 'cm1_profit', 'cm1profit'])
+
+                # Cost of Unit Sold - exact match from your DB
+                cost_of_unit_sold_total += get_best_key(row_dict, ['cost_of_unit_sold', 'costofunitsold', 'cogs'])
+
+            # Find TOTAL row and extract values that should not be summed product-wise
+            total_row = next(
+                (
+                    row for row in data
+                    if str(row.get('sku', '')).strip().upper() == 'TOTAL'
+                    or str(row.get('product_name', '')).strip().upper() == 'TOTAL'
+                ),
+                None
+            )
+
+            if total_row:
+                # Advertising Total should come from TOTAL row only
+                advertising_total = get_best_key(total_row, [
+                    'advertising_total',
+                    'advertisingtotal',
                     'advertising_costs',
                     'advertising',
                     'ad_spend',
                     'ppc_spend'
                 ])
 
-                # Amazon Fee - exact match from your DB
-                amazon_fee_total += get_best_key(row_dict, ['amazon_fee', 'amazonfee'])
-
-                # CM2 Profit - from your screenshots, this column appears to be 'cm2_profit'
-                # But it might be empty/zero, so let's also check for variations
-                cm2_profit_total += get_best_key(row_dict, [
-                    'cm2_profit', 
+                # CM2 Profit should come from TOTAL row only
+                cm2_profit_total = get_best_key(total_row, [
+                    'cm2_profit',
                     'cm2profit',
                     'cm2_profit_loss',
                     'contribution_margin_2'
                 ])
-
-                # CM1 Profit (profit column) - exact match from your DB  
-                profit_total += get_best_key(row_dict, ['profit', 'cm1_profit', 'cm1profit'])
-
-                # Cost of Unit Sold - exact match from your DB
-                cost_of_unit_sold_total += get_best_key(row_dict, ['cost_of_unit_sold', 'costofunitsold', 'cogs'])
-
-                data.append(row_dict)
-
-            # Check if we have a TOTAL row and extract values from it if individual rows are empty
-            total_row = next((row for row in data if str(row.get('sku', '')).strip().upper() == 'TOTAL'), None)
-            
-            if total_row and (advertising_total == 0 or cm2_profit_total == 0):
-                
-                
-                if advertising_total == 0:
-                    advertising_total = get_best_key(total_row, [
-                        'advertising_total', 
-                        'advertisingtotal', 
-                        'advertising_costs',
-                        'advertising'
-                    ])
-                   
-                
-                if cm2_profit_total == 0:
-                    cm2_profit_total = get_best_key(total_row, [
-                        'cm2_profit', 
-                        'cm2profit',
-                        'cm2_profit_loss'
-                    ])
-            
 
             totals = {
                 'net_sales_total': round(net_sales_total, 2),
