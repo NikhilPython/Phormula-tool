@@ -33,8 +33,8 @@ user_engine = create_engine(
     db_url,
     pool_pre_ping=True,
     pool_recycle=1800,
-    pool_size=3,
-    max_overflow=2,
+    pool_size=1,
+    max_overflow=1,
     pool_timeout=30,
 )
 
@@ -42,8 +42,8 @@ admin_engine = create_engine(
     db_url1,
     pool_pre_ping=True,
     pool_recycle=1800,
-    pool_size=2,
-    max_overflow=1,
+    pool_size=1,
+    max_overflow=0,
     pool_timeout=30,
 )
 
@@ -149,7 +149,7 @@ def productwise_performance():
 
         result_data = {}
 
-        with user_engine.connect() as conn, admin_engine.connect() as conn1:
+        with user_engine.connect() as conn:
             inspector = inspect(conn)
             all_tables = inspector.get_table_names()
 
@@ -235,13 +235,14 @@ def productwise_performance():
                                 target_currency = home_currency.lower()
 
                                 if source_currency and target_currency:
-                                    conversion_rate = get_conversion_rate(
-                                        conn1,
-                                        source_currency,
-                                        target_currency,
-                                        month,
-                                        year
-                                    )
+                                    with admin_engine.connect() as conn1:
+                                        conversion_rate = get_conversion_rate(
+                                            conn1,
+                                            source_currency,
+                                            target_currency,
+                                            month,
+                                            year
+                                        )
                                 else:
                                     conversion_rate = 1.0
 
