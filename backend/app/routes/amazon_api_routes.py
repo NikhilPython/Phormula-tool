@@ -857,6 +857,47 @@ def finances_mtd_transactions():
         for col in money_cols:
             if col in uk_df.columns:
                 uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce").fillna(0) * float(uk_to_usd_rate)
+        
+        # keep separate US and UK items
+        us_df["country"] = "us"
+        uk_df["country"] = "uk"
+
+        us_df["month"] = month_name
+        uk_df["month"] = month_name
+
+        us_df["year"] = now_utc.year
+        uk_df["year"] = now_utc.year
+
+        us_df["user_id"] = user_id
+        uk_df["user_id"] = user_id
+
+        us_df["generated_at_utc"] = now_utc.isoformat()
+        uk_df["generated_at_utc"] = now_utc.isoformat()
+
+        # save US table as USD
+        us_df.to_sql(
+            us_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        # save UK table after GBP -> USD conversion
+        uk_df.to_sql(
+            uk_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        skuwise_items_us = us_df.to_dict(orient="records")
+        skuwise_items_uk = uk_df.to_dict(orient="records")
 
         combined_df = pd.concat([us_df, uk_df], ignore_index=True)
 
@@ -1194,11 +1235,36 @@ def finances_mtd_transactions():
                 "year": now_utc.year,
             },
             "previous_period": previous_period,
+
+            "skuwise_tables": {
+                "us": {
+                    "name": us_table,
+                    "saved": True,
+                    "rows": len(us_df),
+                },
+                "uk": {
+                    "name": uk_table,
+                    "saved": True,
+                    "rows": len(uk_df),
+                    "currency": "USD",
+                    "converted_from": "GBP",
+                    "conversion_rate": uk_to_usd_rate,
+                },
+                "global": {
+                    "name": global_table,
+                    "saved": True,
+                    "rows": len(global_df),
+                },
+            },
+
             "skuwise_table": {
                 "name": global_table,
                 "saved": True,
                 "rows": len(global_df),
             },
+
+            "skuwise_items_us": skuwise_items_us,
+            "skuwise_items_uk": skuwise_items_uk,
             "skuwise_items": global_df.to_dict(orient="records"),
         }), 200
 
