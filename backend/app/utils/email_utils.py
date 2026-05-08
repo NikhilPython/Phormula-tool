@@ -200,14 +200,21 @@ def metric_box(label, value, is_negative=False, bg="#ffffff"):
     color = "#d32f2f" if is_negative else "#2e7d32"
     sign = "-" if is_negative else "+"
     return f"""
-    <td style="padding:10px; background:{bg}; border-radius:6px; text-align:center;">
-    
-    
-      <div style="font-size:11px; color:#666;">{label}</div>
-      <div style="font-size:16px; font-weight:bold; color:{color};">
-        {sign}{abs(value):.2f}%
-      </div>
-    </td>
+    <tr>
+      <td style="padding:0 0 10px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%; background:{bg}; border-radius:8px; border:1px solid #e5e7eb;">
+          <tr>
+            <td style="padding:10px; text-align:left;">
+              <div style="font-size:11px; color:#666; margin-bottom:4px;">{html.escape(str(label))}</div>
+              <div style="font-size:18px; font-weight:bold; color:{color};">
+                {sign}{abs(value):.2f}%
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
     """
 
 def _metric_is_negative(description: str, keyword_pattern: str, extracted_value: float | None) -> bool:
@@ -253,15 +260,13 @@ def render_sku_card(sku, idx=0):
         {sku['product']}
       </div>
 
-      <table width="100%" cellspacing="8">
-       <tr>
+     <table width="100%" cellpadding="0" cellspacing="0" border="0">
   {metric_box("ASP Change", sku["metrics"]["ASP"], asp_neg, inner_bg)}
-{metric_box("Units", sku["metrics"]["Units"], units_neg, inner_bg)}
-{metric_box("Sales", sku["metrics"]["Sales"], sku["negatives"].get("Sales", False), inner_bg)}
-{metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg, inner_bg)}
-{metric_box("Profit", sku["metrics"]["Profit"], profit_neg, inner_bg)}
-</tr>
-      </table>
+  {metric_box("Units", sku["metrics"]["Units"], units_neg, inner_bg)}
+  {metric_box("Sales", sku["metrics"]["Sales"], negatives.get("Sales", False), inner_bg)}
+  {metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg, inner_bg)}
+  {metric_box("Profit", sku["metrics"]["Profit"], profit_neg, inner_bg)}
+</table>
 
       <p style="font-size:13px; color:#555; line-height:1.6; margin-top:12px;">
         {sku["description"]}
@@ -506,9 +511,9 @@ def send_live_bi_email(
     prev_label,
     curr_label,
     deep_link_token=None,
-    overall_actions=None,     # dict or bullets, depending on your pipeline
-    sku_actions=None,         # dict: { sku -> rendered_text } (text/html)
-    sku_to_product=None,      # optional: dict {sku -> product_name}
+    overall_actions=None,
+    sku_actions=None,
+    sku_to_product=None,
     portfolio_recommendation=None,
 ):
     import traceback
@@ -527,16 +532,25 @@ def send_live_bi_email(
     summary_text = (overall_summary or {}).get("summary_text", "") or ""
 
     summary_html = f"""
-    <p style="font-size:14px; color:#555; line-height:1.8; margin:0;">
-        {html.escape(str(summary_text))}
-    </p>
-    """
+<p style="
+    font-size:14px;
+    color:#555;
+    line-height:1.8;
+    margin:0;
+    text-align:justify;
+    text-justify:inter-word;
+">
+    {html.escape(str(summary_text))}
+</p>
+"""
+
     portfolio_html = ""
     if portfolio_recommendation:
         if isinstance(portfolio_recommendation, (list, tuple)):
             portfolio_body = "".join(
                 f'<div style="margin-bottom:6px;">• {html.escape(str(item))}</div>'
-                for item in portfolio_recommendation if str(item).strip()
+                for item in portfolio_recommendation
+                if str(item).strip()
             )
         elif isinstance(portfolio_recommendation, dict):
             portfolio_body = "".join(
@@ -555,10 +569,10 @@ def send_live_bi_email(
             border-radius:10px;
             padding:14px 16px;
         ">
-          <div style="font-size:13px; font-weight:700; color:#37455F; margin-bottom:6px;">
+          <div style="font-size:16px; font-weight:700; color:#37455F; margin-bottom:6px;">
             Portfolio recommendation
           </div>
-          <div style="font-size:13px; color:#555; line-height:1.7;">
+          <div style="font-size:14px; color:#555; line-height:1.7;">
             {portfolio_body}
           </div>
         </div>
@@ -577,7 +591,9 @@ def send_live_bi_email(
     def _strip_html_tags(text: str) -> str:
         if not text:
             return ""
-        text = re.sub(r"<br\s*/?>", "\n", str(text), flags=re.I)
+
+        text = str(text)
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
         text = re.sub(r"</p\s*>", "\n", text, flags=re.I)
         text = re.sub(r"</div\s*>", "\n", text, flags=re.I)
         text = re.sub(r"<[^>]+>", " ", text)
@@ -587,11 +603,24 @@ def send_live_bi_email(
         text = re.sub(r"\n{2,}", "\n", text)
         return text.strip()
 
+    def _clean_section_text(value: str) -> str:
+        if not value:
+            return ""
+
+        value = re.sub(r"\s+", " ", str(value)).strip()
+
+        # Remove accidental bullets at the beginning/end
+        value = value.strip("•").strip()
+        value = re.sub(r"^\s*[-•]\s*", "", value).strip()
+        value = re.sub(r"\s*[-•]\s*$", "", value).strip()
+
+        return value
+
     def _fallback_section_html() -> str:
         fallback_text = portfolio_recommendation or "No SKU-wise actions available for this run."
         return f"""
         <div style="
-            font-size:13px;
+            font-size:14px;
             color:#555;
             line-height:1.7;
             background:#FFF8E7;
@@ -620,32 +649,54 @@ def send_live_bi_email(
         text = re.sub(r"\s+", " ", raw).strip()
 
         # -------- Product name --------
-        # example: "Classic ASP: £5.06 (+42.65%) Units: ..."
         product_name = ""
-        m = re.match(r"^(.*?)(?=\s+ASP:)", text, flags=re.I)
+        m = re.match(
+            r"^(.*?)(?=\s+ASP:|\s+Units:|\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+CM1 Profit / Unit:)",
+            text,
+            flags=re.I,
+        )
         if m:
             product_name = m.group(1).strip(" :-")
 
         # -------- Metrics --------
-        metrics = []
+        # IMPORTANT:
+        # Each metric now stops before Product Journey, Recommendation, Advertising, or Inventory.
+        # This prevents CM1 Profit / Unit from swallowing "Recommendation: Monitor performance".
         metric_patterns = [
-            ("ASP", r"ASP:\s*(.*?)(?=\s+Units:|\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
-            ("Units", r"Units:\s*(.*?)(?=\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
-            ("Net sales", r"Net sales:\s*(.*?)(?=\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
-            ("CM1 profit", r"CM1 profit:\s*(.*?)(?=\s+CM1 profit per unit:|\s+Product Journey:|$)"),
-            ("CM1 profit per unit", r"CM1 profit per unit:\s*(.*?)(?=\s+Product Journey:|$)"),
+            (
+                "ASP",
+                r"ASP:\s*(.*?)(?=\s+Units:|\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+CM1 Profit / Unit:|\s+Product Journey:|\s+Performance Journey:|\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            ),
+            (
+                "Units",
+                r"Units:\s*(.*?)(?=\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+CM1 Profit / Unit:|\s+Product Journey:|\s+Performance Journey:|\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            ),
+            (
+                "Net sales",
+                r"Net sales:\s*(.*?)(?=\s+CM1 profit:|\s+CM1 profit per unit:|\s+CM1 Profit / Unit:|\s+Product Journey:|\s+Performance Journey:|\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            ),
+            (
+                "CM1 profit",
+                r"CM1 profit:\s*(.*?)(?=\s+CM1 profit per unit:|\s+CM1 Profit / Unit:|\s+Product Journey:|\s+Performance Journey:|\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            ),
+            (
+                "CM1 profit per unit",
+                r"(?:CM1 profit per unit|CM1 Profit / Unit):\s*(.*?)(?=\s+Product Journey:|\s+Performance Journey:|\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            ),
         ]
 
+        metrics = []
         for label, patt in metric_patterns:
             mm = re.search(patt, text, flags=re.I)
             if mm:
-                val = re.sub(r"\s+", " ", mm.group(1).strip())
-                metrics.append((label, val))
+                val = _clean_section_text(mm.group(1))
+                if val:
+                    metrics.append((label, val))
 
-        # -------- Product Journey --------
+        # -------- Product / Performance Journey --------
         journey_text = ""
         jm = re.search(
-            r"Product Journey:\s*(.*?)(?=\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            r"(?:Product Journey|Performance Journey):\s*(.*?)(?=\s+Recommendation:|\s+Advertising:|\s+Inventory(?:\s+action)?:|$)",
             text,
             flags=re.I,
         )
@@ -654,13 +705,14 @@ def send_live_bi_email(
 
         journey_points = []
         if journey_text:
-            parts = re.split(r"\s+-\s+", journey_text)
+            # Supports " - point", "• point", and long plain text.
+            parts = re.split(r"\s+(?:-+|•)\s+", journey_text)
             for p in parts:
-                p = p.strip(" -")
+                p = _clean_section_text(p)
                 if p:
                     journey_points.append(p)
 
-                # -------- Recommendation --------
+        # -------- Recommendation --------
         recommendation = ""
         rm = re.search(
             r"Recommendation:\s*(.*?)(?=\s+Advertising:|\s+Inventory(?:\s+action)?:|$)",
@@ -668,7 +720,7 @@ def send_live_bi_email(
             flags=re.I,
         )
         if rm:
-            recommendation = rm.group(1).strip()
+            recommendation = _clean_section_text(rm.group(1))
 
         # -------- Advertising --------
         advertising = ""
@@ -678,13 +730,17 @@ def send_live_bi_email(
             flags=re.I,
         )
         if am:
-            advertising = am.group(1).strip()
+            advertising = _clean_section_text(am.group(1))
 
-        # -------- Inventory / Inventory action --------
+        # -------- Inventory --------
         inventory = ""
-        im = re.search(r"Inventory(?:\s+action)?:\s*(.*)$", text, flags=re.I)
+        im = re.search(
+            r"Inventory(?:\s+action)?:\s*(.*)$",
+            text,
+            flags=re.I,
+        )
         if im:
-            inventory = im.group(1).strip()
+            inventory = _clean_section_text(im.group(1))
 
         return {
             "product_name": product_name,
@@ -694,24 +750,50 @@ def send_live_bi_email(
             "advertising": advertising,
             "inventory": inventory,
         }
+    
+    def _format_currency_sign(value: str) -> str:
+      if not value:
+          return ""
+
+      value = str(value).strip()
+
+      # Convert £-1,001.33 -> -£1,001.33
+      value = re.sub(r"^£\s*-\s*", "-£", value)
+
+      # Convert $-1,001.33 -> -$1,001.33
+      value = re.sub(r"^\$\s*-\s*", "-$", value)
+
+      # Convert €-1,001.33 -> -€1,001.33
+      value = re.sub(r"^€\s*-\s*", "-€", value)
+
+      return value
 
     def _metric_chip(label: str, value_text: str) -> str:
-        txt = (value_text or "").strip()
+        txt = _clean_section_text(value_text)
 
+        # Split value and delta.
+        # Example: "£7.63 (-4.05%)" -> main_value="£7.63", delta_value="(-4.05%)"
         m = re.match(r"^(.*?)(\s*\([^)]+\))?$", txt)
         main_value = (m.group(1) or "").strip() if m else txt
         delta_value = (m.group(2) or "").strip() if m else ""
+        main_value = _format_currency_sign(main_value)
 
-        is_negative = bool(re.search(r"\(\s*-\s*\d", delta_value))
-        delta_color = "#E53935" if is_negative else "#56A38D"
+        is_negative = bool(re.search(r"-\s*\d", delta_value))
+        is_positive = bool(re.search(r"\+\s*\d|\(\s*\d", delta_value))
 
-        # short labels so everything stays on one line
+        if is_negative:
+            delta_color = "#E53935"  # red
+        elif is_positive:
+            delta_color = "#56A38D"  # green
+        else:
+            delta_color = "#667085"  # neutral gray
+
         label_display_map = {
             "Units": "Units",
             "Net sales": "Net Sales",
             "ASP": "ASP",
             "CM1 profit": "CM1 Profit",
-            "CM1 profit per unit": "CM1 Profit Per Unit",
+            "CM1 profit per unit": "CM1 Profit per Unit",
         }
         display_label = label_display_map.get(label, label)
 
@@ -725,58 +807,98 @@ def send_live_bi_email(
         border_color = border_map.get(label, "#D0D5DD")
 
         return f"""
-        <td valign="top" width="20%" style="width:20%; padding:0 8px 0 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                 style="
-                    width:100%;
-                    border-collapse:separate;
-                    background:#F3F4F6;
-                    border:1px solid {border_color};
-                    border-top:3px solid {border_color};
-                    border-radius:10px;
-                    height:88px;
-                 ">
-            <tr>
-              <td style="padding:10px 12px 8px 12px; vertical-align:top; text-align:left; height:88px;">
-                <div style="
-                    font-size:12px;
-                    line-height:1.15;
-                    color:#414042;
-                    font-weight:500;
-                    white-space:nowrap;
-                    overflow:hidden;
-                    text-overflow:ellipsis;
-                    margin-bottom:8px;
-                ">
-                  {html.escape(display_label)}
-                </div>
+<div class="metric-cell" style="
+    display:block;
+    width:100%;
+    margin:0 0 12px 0;
+    padding:0;
+    box-sizing:border-box;
+    vertical-align:top;
+">
+  <div class="metric-card" style="
+    width:100%;
+    min-height:108px;
+    background:#FFFFFF;
+    border:1px solid {border_color};
+    border-top: 4px solid {border_color};
+    border-radius:10px;
+    box-sizing:border-box;
+    padding:12px 16px 10px 16px;
+    text-align:left;
+">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+      width:100%;
+      height:74px;
+      border-collapse:collapse;
+  ">
+    <tr>
+      <td style="
+          vertical-align:top;
+          height:20px;
+          padding:0;
+      ">
+        <p class="metric-label" style="
+            display:block;
+            width:100%;
+            max-width:100%;
+            font-size:14px;
+            line-height:1.2;
+            color:#18324A;
+            font-weight:500;
+            white-space:normal;
+            overflow:visible;
+            text-overflow:clip;
+            margin:0;
+            text-align:left;
+        ">
+          {html.escape(display_label)}
+        </p>
+      </td>
+    </tr>
 
-                <div style="
-                    font-size:17px;
-                    line-height:1.2;
-                    font-weight:700;
-                    color:#414042;
-                    white-space:nowrap;
-                    overflow:hidden;
-                    text-overflow:ellipsis;
-                    margin-bottom:8px;
-                ">
-                  {html.escape(main_value)}
-                </div>
+    <tr>
+      <td style="
+          vertical-align:bottom;
+          padding:0;
+      ">
+        <p class="metric-value" style="
+            display:block;
+            width:100%;
+            max-width:100%;
+            font-size:20px;
+            line-height:1.15;
+            font-weight:700;
+            color:#2F3A4A;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            margin:0 0 4px 0;
+            text-align:left;
+        ">
+          {html.escape(main_value)}
+        </p>
 
-                <div style="
-                    font-size:11px;
-                    line-height:1.15;
-                    font-weight:700;
-                    color:{delta_color};
-                    white-space:nowrap;
-                ">
-                  {html.escape(delta_value)}
-                </div>
-              </td>
-            </tr>
-          </table>
-        </td>
+        <p class="metric-delta" style="
+            display:block;
+            width:100%;
+            max-width:100%;
+            font-size:14px;
+            line-height:1.15;
+            font-weight:700;
+            color:{delta_color} !important;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            margin:0;
+            text-align:left;
+        ">
+          {html.escape(delta_value)}
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>
+          </div>
         """
 
     def render_simple_action_card(sku: str, action_text: str) -> str:
@@ -787,58 +909,72 @@ def send_live_bi_email(
 
         metric_cells = [_metric_chip(label, value) for label, value in parsed["metrics"]]
 
-        metrics_html = ""
-        if metric_cells:
-            metrics_html = f"""
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="width:100%; table-layout:fixed; margin:0 0 18px 0;">
-              <tr>
-                {''.join(metric_cells)}
-              </tr>
-            </table>
-            """
+        metrics_html = f"""
+        <div class="metrics-table" style="
+            width:100%;
+            margin:0 0 22px 0;
+            display:block;
+            box-sizing:border-box;
+        ">
+          <div class="metrics-row" style="
+    width:100%;
+    display:block;
+    box-sizing:border-box;
+">
+            {''.join(metric_cells)}
+          </div>
+        </div>
+        """
 
         journey_html = ""
         if parsed["journey_points"]:
             bullet_rows = "".join(
                 f"""
-                <tr>
-                  <td style="font-size:12px; color:#475467; line-height:1.75; padding:0 0 8px 0;">
-                    <span style="color:#3B82F6; font-weight:700;">•</span>
-                    {html.escape(point)}
-                  </td>
-                </tr>
+                <p style="
+                    font-size:14px;
+                    color:#475467;
+                    line-height:1.75;
+                    padding:0 0 8px 0;
+                    margin:0;
+                ">
+                  <span style="color:#3B82F6; font-weight:700;">•</span>
+                  {html.escape(point)}
+                </p>
                 """
                 for point in parsed["journey_points"]
             )
 
             journey_html = f"""
-            <div style="font-size:13px; font-weight:700; color:#37455F; margin:14px 0 8px 0;">
+            <div style="font-size:16px; font-weight:700; color:#37455F; margin:14px 0 8px 0;">
               Performance Journey
             </div>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <div style="width:100%;">
               {bullet_rows}
-            </table>
+            </div>
             """
 
         def _point_block(title: str, body: str) -> str:
             if not body:
                 return ""
 
-            clean_body = re.sub(r"\s+", " ", body).strip()
+            clean_body = _clean_section_text(body)
+            if not clean_body:
+                return ""
 
             return f"""
             <div style="margin-top:12px;">
-              <div style="font-size:13px; font-weight:700; color:#37455F; margin-bottom:6px;">
+              <div style="font-size:16px; font-weight:700; color:#37455F; margin-bottom:6px;">
                 {html.escape(title)}
               </div>
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td valign="top" style="font-size:12px; color:#475467; line-height:1.7; padding:0 0 4px 0;">
-                    • {html.escape(clean_body)}
-                  </td>
-                </tr>
-              </table>
+              <p style="
+                  font-size:14px;
+                  color:#475467;
+                  line-height:1.7;
+                  padding:0 0 4px 0;
+                  margin:0;
+              ">
+                • {html.escape(clean_body)}
+              </p>
             </div>
             """
 
@@ -857,33 +993,39 @@ def send_live_bi_email(
             and not parsed["inventory"]
         ):
             fallback_html = f"""
-            <div style="margin-top:10px; font-size:13px; line-height:1.6; color:#475467;">
+            <div style="margin-top:10px; font-size:14px; line-height:1.6; color:#475467;">
               {html.escape(_strip_html_tags(action_text))}
             </div>
             """
 
         return f"""
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="border-collapse:separate; width:100%; margin:0 0 18px 0; background:#FFFFFF; border:1px solid #E4E7EC; border-radius:14px;">
-          <tr>
-            <td style="padding:16px 16px 14px 16px;">
+        <div style="
+            width:100%;
+            margin:0 0 18px 0;
+            background:#FFFFFF;
+            border:1px solid #E4E7EC;
+            border-radius:14px;
+            box-sizing:border-box;
+        ">
+          <div class="sku-card-td" style="padding:16px 16px 14px 16px; box-sizing:border-box;">
 
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="font-size:16px; font-weight:800; color:#1D2939; padding-bottom:10px;">
-                    {product}
-                  </td>
-                </tr>
-              </table>
+            <div class="sku-product-title" style="
+                font-size:18px;
+                font-weight:700;
+                color:#37455f;
+                padding-bottom:10px;
+                text-align:center;
+            ">
+              {product}
+            </div>
 
-              {metrics_html}
-              {journey_html}
-              {bottom_cards_html}
-              {fallback_html}
+            {metrics_html}
+            {journey_html}
+            {bottom_cards_html}
+            {fallback_html}
 
-            </td>
-          </tr>
-        </table>
+          </div>
+        </div>
         """
 
     # ---------------------------
@@ -892,7 +1034,6 @@ def send_live_bi_email(
     sku_section_html = ""
 
     try:
-        # Primary path: sku_actions is dict {sku -> rendered_text}
         if sku_actions and isinstance(sku_actions, dict):
             cards = []
             for sku_key, action_text in sku_actions.items():
@@ -900,12 +1041,8 @@ def send_live_bi_email(
                     continue
                 cards.append(render_simple_action_card(sku_key, action_text))
 
-            if cards:
-                sku_section_html = "".join(cards)
-            else:
-                sku_section_html = _fallback_section_html()
+            sku_section_html = "".join(cards) if cards else _fallback_section_html()
 
-        # Fallback path: overall_actions exists (old pipeline)
         elif overall_actions:
             parsed_cards = parse_actions_to_cards(overall_actions)
             if parsed_cards:
@@ -965,11 +1102,39 @@ def send_live_bi_email(
     # ---------------------------
     deep_link_html = ""
     if deep_link_token:
-        dashboard_url = f"https://phormula.io/live-bi?token={deep_link_token}&country={country}"
+        month_map = {
+            "jan": "january",
+            "feb": "february",
+            "mar": "march",
+            "apr": "april",
+            "may": "may",
+            "jun": "june",
+            "jul": "july",
+            "aug": "august",
+            "sep": "september",
+            "oct": "october",
+            "nov": "november",
+            "dec": "december",
+        }
+
+        country_slug = str(country).lower().strip()
+
+        curr_label_str = str(curr_label).lower().strip()
+        month_key = curr_label_str[:3]
+        current_month = month_map.get(month_key, month_key)
+
+        year_match = re.search(r"'?(\d{2,4})", curr_label_str)
+        current_year = ""
+        if year_match:
+            year_value = year_match.group(1)
+            current_year = f"20{year_value}" if len(year_value) == 2 else year_value
+
+        dashboard_url = f"http://localhost:3000/live-dashboard/{country_slug}/{current_month}/{current_year}#ai-insights"
+
         deep_link_html = f"""
         <p style="text-align:center; margin-top:24px;">
           <a href="{dashboard_url}"
-             style="display:inline-block; background:#37455F; color:#f8edcf;
+            style="display:inline-block; background:#37455F; color:#f8edcf;
                     padding:10px 24px; text-decoration:none; border-radius:8px;
                     font-size:14px;">
             Open Live BI Dashboard
@@ -984,120 +1149,430 @@ def send_live_bi_email(
     <html>
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
+
+      <style>
+        body {{
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          -webkit-text-size-adjust: 100%;
+          -ms-text-size-adjust: 100%;
+        }}
+
+        table {{
+          border-collapse: collapse;
+        }}
+
+        img {{
+          max-width: 100%;
+          height: auto;
+        }}
+
+        .email-wrapper {{
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 auto !important;
+        }}
+
+        .main-content {{
+          padding: 26px 18px 24px 18px !important;
+          border-left: 1px solid #E4E7EC !important;
+          border-right: 1px solid #E4E7EC !important;
+        }}
+
+        .brand-title {{
+          font-size: 44px !important;
+          line-height: 1.05 !important;
+          word-break: break-word !important;
+        }}
+
+        .report-title {{
+          font-size: 18px !important;
+          line-height: 1.35 !important;
+        }}
+
+        .period-pill {{
+  display: block !important;
+  width: 100% !important;
+  max-width: 450px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}}
+
+.period-pill-table {{
+  width: 100% !important;
+}}
+
+.period-country-cell {{
+  width: 28% !important;
+}}
+
+.period-date-cell {{
+  width: 72% !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+}}
+
+        /* Mobile/default: stacked metric cards */
+.metrics-table {{
+  width: 100% !important;
+  display: block !important;
+}}
+
+.metrics-row {{
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+}}
+
+.metric-cell {{
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 12px 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}}
+
+.metric-card {{
+  width: 100% !important;
+  height: auto !important;
+  min-height: auto !important;
+  box-sizing: border-box !important;
+}}
+
+        .metric-card-td,
+        .metric-label,
+        .metric-value,
+        .metric-delta {{
+          text-align: center !important;
+        }}
+
+        .metric-label,
+        .metric-value,
+        .metric-delta {{
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+        }}
+
+        .recommendations-content li,
+        .recommendations-content .recommendation-point,
+        .recommendations-content .sub-point {{
+          font-size: 14px !important;
+          line-height: 1.7 !important;
+          color: #18324A !important;
+        }}
+
+        .recommendations-content p:not(.metric-label):not(.metric-value):not(.metric-delta) {{
+          font-size: 14px !important;
+          line-height: 1.7 !important;
+          color: #18324A !important;
+        }}
+
+        .recommendations-content ul,
+        .recommendations-content ol {{
+          margin-top: 8px !important;
+          margin-bottom: 14px !important;
+          padding-left: 18px !important;
+        }}
+
+        .recommendations-content h3,
+        .recommendations-content h4 {{
+          font-size: 18px !important;
+          line-height: 1.35 !important;
+          margin: 18px 0 10px 0 !important;
+          color: #14213D !important;
+        }}
+
+        @media only screen and (max-width: 767px) {{
+  .period-pill {{
+    max-width: 100% !important;
+  }}
+
+  .period-country-cell {{
+    width: 30% !important;
+    padding: 14px 10px !important;
+    font-size: 16px !important;
+  }}
+
+  .period-date-cell {{
+    width: 70% !important;
+    padding: 14px 10px !important;
+    font-size: 15px !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }}
+}}
+
+.sku-product-title {{
+  text-align: center !important;
+}}
+
+        /* Desktop/laptop */
+        @media only screen and (min-width: 768px) {{
+          .email-wrapper {{
+            width: 100% !important;
+            max-width: 80% !important;
+            margin: 0 auto !important;
+          }}
+
+            .sku-product-title {{
+              text-align: left !important;
+            }}
+
+            .period-pill {{
+              max-width: 380px !important;
+            }}
+
+            .period-country-cell {{
+    width: 26% !important;
+    padding: 14px 16px !important;
+  }}
+
+  .period-date-cell {{
+    width: 74% !important;
+    padding: 14px 14px !important;
+    font-size: 15px !important;
+  }}
+
+          .outer-padding {{
+            padding: 0px !important;
+            text-align: center !important;
+          }}
+
+          .main-content {{
+            padding: 34px 32px 28px 32px !important;
+          }}
+
+          .brand-title {{
+            font-size: 60px !important;
+          }}
+
+          .report-title {{
+            font-size: 20px !important;
+          }}
+
+.metrics-table {{
+  display: block !important;
+  width: 100% !important;
+}}
+
+  .metrics-row {{
+    width: 100% !important;
+    display: table !important;
+    table-layout: fixed !important;
+    border-collapse: separate !important;
+    border-spacing: 12px 0 !important; /* gap between cards */
+  }}
+
+  .metric-cell {{
+    display: table-cell !important;
+    width: 20% !important; /* 5 equal cards in one row */
+    vertical-align: top !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }}
+
+.metric-card {{
+  width: 100% !important;
+  min-height: 108px !important;
+  height: 108px !important;
+  box-sizing: border-box !important;
+  padding: 12px 16px 10px 16px !important;
+}}
+
+  .metric-label {{
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+    margin: 0 0 10px 0 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }}
+
+  .metric-value {{
+    font-size: 22px !important;
+    line-height: 1.2 !important;
+    margin: 0 0 8px 0 !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }}
+
+  .metric-delta {{
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }}
+
+}}
+      </style>
     </head>
-    <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px; margin:0;">
-      <div style="
-           max-width:780px;
-           margin:0 auto;
-           background:#fff;
-           border:1px solid #D0D5DD;
-           box-sizing:border-box;
-           overflow:hidden;
-      ">
 
-        <!-- Top green header -->
-        <div style="
-          background:#7FB5A5;
-          padding:18px 24px;
+    <body style="font-family:'Lato', Arial, sans-serif; background:#FFFFFF; padding:0; margin:0;">
+      <div class="outer-padding" style="padding:0;">
+        <div class="email-wrapper" style="
+          width:100%;
+          margin:0 auto;
+          background:#fff;
+          border:none;
+          box-sizing:border-box;
+          overflow:hidden;
         ">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td style="vertical-align:middle; text-align:left;">
-                <div style="font-size:28px; font-weight:300; color:#FFFFFF; letter-spacing:1px;">
-                  |p|
-                </div>
-              </td>
-              <td style="vertical-align:middle; text-align:right;">
-                <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
-                  Business Insights Report
-                </div>
-              </td>
-            </tr>
-          </table>
-        </div>
 
-        <!-- Main content -->
-        <div style="padding:34px 32px 28px 32px; text-align:center;">
-
-          <!-- Brand -->
-          <div style="font-size:60px; line-height:1; font-weight:300; color:#2F6476; margin-bottom:8px;">
-            |phormula|
+          <!-- Top green header -->
+          <div class="top-header" style="background:#7FB5A5; padding:18px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="vertical-align:middle; text-align:left;">
+                  <div style="font-size:28px; font-weight:300; color:#FFFFFF; letter-spacing:1px;">
+                    |p|
+                  </div>
+                </td>
+                <td style="vertical-align:middle; text-align:right;">
+                  <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
+                    Business Insights Report
+                  </div>
+                </td>
+              </tr>
+            </table>
           </div>
 
-          <div style="font-size:20px; color:#414042; font-weight:500; margin-bottom:24px;">
-            Live MTD vs Previous Period – Business Insights
-          </div>
-
-          <!-- Combined pill -->
-          <div style="
-            display:inline-block;
-            background:#D1D3D4;
-            border-radius:24px;
-            overflow:hidden;
-            margin-bottom:30px;
+          <!-- Main content -->
+          <div class="main-content" style="
+            padding:34px 32px 28px 32px;
+            text-align:center;
+            border-left:1px solid #E4E7EC;
+            border-right:1px solid #E4E7EC;
           ">
-            <span style="
-              display:inline-block;
-              padding:10px 20px;
-              font-size:16px;
-              font-weight:700;
-              color:#414042;
-              border-right:1px solid #B8BABC;
-            ">
-              {html.escape(str(country).upper())}
-            </span>
-            <span style="
-              display:inline-block;
-              padding:10px 20px;
-              font-size:16px;
-              font-weight:500;
-              color:#414042;
-            ">
-              {html.escape(str(prev_label))} vs {html.escape(str(curr_label))}
-            </span>
-          </div>
 
-          <hr style="margin:14px 0 26px 0; border:none; border-top:1px solid #D0D5DD;" />
+            <!-- Brand -->
+            <div class="brand-title" style="font-size:60px; line-height:1; font-weight:300; color:#2F6476; margin-bottom:8px;">
+              |phormula|
+            </div>
 
-          <!-- Summary section -->
-          <div style="text-align:left;">
-            <h3 style="color:#37455F; margin:0 0 12px 0; font-size:18px;">
-              Overall Summary
-            </h3>
+            <div class="report-title" style="font-size:18px; color:#414042; font-weight:500; margin-bottom:24px;">
+              Live MTD vs Previous Period – Business Insights
+            </div>
 
-            <div style="font-size:14px; color:#555; margin-bottom:8px;">
-              {summary_html}
-              {portfolio_html}
+            <!-- Combined pill -->
+<div class="period-pill" style="
+  display:block;
+  width:100%;
+  max-width:450px;
+  background:#FFFFFF;
+  border:1px solid #e4e7ec;
+  border-radius:12px;
+  overflow:hidden;
+  margin:0 auto 30px auto;
+  text-align:center;
+  box-sizing:border-box;
+">
+  <table class="period-pill-table" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+    width:100%;
+    border-collapse:separate;
+  ">
+    <tr class="period-pill-row">
+      <td class="period-country-cell" style="
+        padding:16px 22px;
+        font-size:18px;
+        font-weight:700;
+        color:#5EA68E;
+        line-height:1.2;
+        white-space:nowrap;
+        vertical-align:middle;
+        text-align:center;
+        width:28%;
+        border-right:1px solid #e4e7ec;
+      ">
+        {html.escape(str(country).upper())}
+      </td>
+
+      <td class="period-date-cell" style="
+        padding:16px 18px;
+        font-size:16px;
+        font-weight:700;
+        color:#414042;
+        line-height:1.35;
+        white-space:normal;
+        word-break:break-word;
+        overflow-wrap:break-word;
+        vertical-align:middle;
+        text-align:center;
+        width:72%;
+      ">
+        {html.escape(str(prev_label))} vs {html.escape(str(curr_label))}
+      </td>
+    </tr>
+  </table>
+</div>
+
+            <hr style="margin:14px 0 26px 0; border:none; border-top:1px solid #D0D5DD;" />
+
+            <!-- Summary section -->
+            <div style="text-align:left;">
+              <h3 style="color:#37455F; margin:0 0 12px 0; font-size:20px;">
+                Overall Summary
+              </h3>
+
+              <div style="
+                font-size:14px;
+                color:#555;
+                margin-bottom:8px;
+                text-align:justify;
+                text-justify:inter-word;
+                line-height:1.8;
+              ">
+                {summary_html}
+                {portfolio_html}
+              </div>
+            </div>
+
+            <!-- Recommendation section -->
+            <div style="text-align:left; margin-top:28px;">
+              <h3 style="color:#37455F; margin:0 0 14px 0; font-size:20px;">
+                Recommendations
+              </h3>
+
+              <div class="recommendations-content" style="
+                font-size:14px;
+                line-height:1.7;
+                color:#18324A;
+              ">
+                {sku_section_html}
+              </div>
+            </div>
+
+            {deep_link_html}
+
+            <div style="text-align:left; margin-top:24px;">
+              <p style="font-size:12px; color:#999; margin:0 0 6px 0;">
+                This email was auto-generated from Live BI.
+              </p>
+              <p style="font-size:12px; color:#999; margin:0;">
+                Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
+              </p>
             </div>
           </div>
 
-          <!-- Recommendation section -->
-          <div style="text-align:left; margin-top:28px;">
-            <h3 style="color:#37455F; margin:0 0 14px 0; font-size:18px;">
-              Recommendation
-            </h3>
-
-            {sku_section_html}
-          </div>
-
-          {deep_link_html}
-
-          <div style="text-align:left; margin-top:24px;">
-            <p style="font-size:12px; color:#999; margin:0 0 6px 0;">
-              This email was auto-generated from Live BI.
-            </p>
-            <p style="font-size:12px; color:#999; margin:0;">
-              Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
-            </p>
-          </div>
+          <!-- Bottom green footer strip -->
+          <div style="background:#7FB5A5; height:26px;"></div>
         </div>
-
-        <!-- Bottom green footer strip -->
-        <div style="background:#7FB5A5; height:26px;"></div>
       </div>
     </body>
-    </html>
+  </html>
     """
 
     msg = Message(
@@ -1113,9 +1588,6 @@ def send_live_bi_email(
     except Exception as e:
         print(f"[ERROR] Email send failed: {e}")
         traceback.print_exc()
-
-
-
 
 
 

@@ -856,7 +856,7 @@ def finances_mtd_transactions():
 
         for col in money_cols:
             if col in uk_df.columns:
-                uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce").fillna(0) * float(uk_to_usd_rate)
+                uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce") * float(uk_to_usd_rate)
         
         # keep separate US and UK items
         us_df["country"] = "us"
@@ -1109,7 +1109,7 @@ def finances_mtd_transactions():
 
         for col in money_cols:
             if col in prev_uk_df.columns:
-                prev_uk_df[col] = pd.to_numeric(prev_uk_df[col], errors="coerce").fillna(0) * float(prev_uk_to_usd_rate)
+                prev_uk_df[col] = pd.to_numeric(prev_uk_df[col], errors="coerce") * float(prev_uk_to_usd_rate)
 
         prev_combined_df = pd.concat([prev_us_df, prev_uk_df], ignore_index=True)
 
@@ -2008,8 +2008,7 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
-        # replace NaN/Inf before jsonify/to_dict
-        df_sku = df_sku.replace([np.inf, -np.inf], np.nan).where(pd.notnull(df_sku), None)
+        
 
         skuwise_items = df_sku.to_dict(orient="records")
 
