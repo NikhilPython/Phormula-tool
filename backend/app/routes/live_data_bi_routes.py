@@ -1385,6 +1385,21 @@ def _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate):
         ),
     }
 
+def _build_extra_totals_single(daily_rows, rate=1.0):
+    rate = float(rate or 1.0)
+
+    advertising = _sum_daily_key(daily_rows, "advertising") * rate
+    platform_fee = _sum_daily_key(daily_rows, "platform_fee") * rate
+    reimbursement = _sum_daily_key(daily_rows, "rembursement_fee") * rate
+
+    return {
+        "advertising": advertising,
+        "platform_fee": platform_fee,
+        "rembursement_fee": reimbursement,
+        "amazon_fees": platform_fee,
+        "cogs": _sum_daily_key(daily_rows, "cogs") * rate,
+    }
+
 def _build_aligned_totals(skuwise_items_global, extra_totals):
     total = _get_total_row(skuwise_items_global)
 
@@ -1399,14 +1414,6 @@ def _build_aligned_totals(skuwise_items_global, extra_totals):
     cm2_percentage = (cm2_profit / net_sales) * 100 if net_sales else 0
 
     return {
-        "total_current_net_sales": 0,
-        "total_current_profit": 0,
-        "total_current_advertising": 0,
-        "total_current_platform_fees": 0,
-        "total_current_profit_cm2": 0,
-        "total_current_profit_percentage": 0,
-        "total_current_rembursement_fee": 0,
-
         "total_previous_net_sales": round(net_sales, 2),
         "total_previous_profit": round(profit, 2),
         "total_previous_advertising": round(advertising, 2),
@@ -1689,10 +1696,17 @@ def previous_skuwise_global():
     skuwise_items_us = _append_total_row(skuwise_items_us, "us")
     skuwise_items_global = _append_total_row(skuwise_items_global, "global")
 
+    uk_extra = _build_extra_totals_single(uk_daily, uk_to_usd_rate)
+    us_extra = _build_extra_totals_single(us_daily, 1.0)
     global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
 
-    aligned_totals = _build_aligned_totals(skuwise_items_global, global_extra)
-    derived_totals = _build_derived_totals_from_skuwise(skuwise_items_global, global_extra)
+    aligned_totals_uk = _build_aligned_totals(skuwise_items_uk, uk_extra)
+    aligned_totals_us = _build_aligned_totals(skuwise_items_us, us_extra)
+    aligned_totals_global = _build_aligned_totals(skuwise_items_global, global_extra)
+
+    derived_totals_uk = _build_derived_totals_from_skuwise(skuwise_items_uk, uk_extra)
+    derived_totals_us = _build_derived_totals_from_skuwise(skuwise_items_us, us_extra)
+    derived_totals_global = _build_derived_totals_from_skuwise(skuwise_items_global, global_extra)
 
     return jsonify(_json_safe({
         "success": True,
@@ -1707,8 +1721,13 @@ def previous_skuwise_global():
             "pair": "GBP->USD",
             "rate": float(uk_to_usd_rate),
         },
-        "aligned_totals": aligned_totals,
-        "derived_totals": derived_totals,
+        "aligned_totals_global": aligned_totals_global,
+        "aligned_totals_uk": aligned_totals_uk,
+        "aligned_totals_us": aligned_totals_us,
+
+        "derived_totals_global": derived_totals_global,
+        "derived_totals_uk": derived_totals_uk,
+        "derived_totals_us": derived_totals_us,
         "skuwise_items_uk": skuwise_items_uk,
         "skuwise_items_us": skuwise_items_us,
         "skuwise_items_global": skuwise_items_global,
