@@ -1265,7 +1265,7 @@ def finances_mtd_transactions():
 
             "skuwise_items_us": skuwise_items_us,
             "skuwise_items_uk": skuwise_items_uk,
-            "skuwise_items": global_df.to_dict(orient="records"),
+            "skuwise_items_global": global_df.to_dict(orient="records"),
         }), 200
 
     if ui_country in ("us", "usa", "united_states"):
