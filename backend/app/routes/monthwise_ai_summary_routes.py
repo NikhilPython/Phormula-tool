@@ -5,7 +5,7 @@ from datetime import datetime, date
 from config import Config
 from app import db
 from app.models.user_models import HistoricAISummary, UserObjective
-from app.utils.monthwise_ai_summary_utils import get_or_create_summary
+from app.utils.monthwise_ai_summary_utils import get_or_create_summary, get_or_create_global_summary
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
 
@@ -169,15 +169,25 @@ def summary():
             if timeline not in ("ALL", ""):
                 return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400
 
-        result = get_or_create_summary(
-            user_id=user_id,
-            country=country,
-            marketplace_id=marketplace_id,
-            period=period,
-            timeline=timeline,
-            year=year,
-            force_regenerate=False
-        )
+        if country == "global":
+            result = get_or_create_global_summary(
+                user_id=user_id,
+                marketplace_id=marketplace_id,
+                period=period,
+                timeline=timeline,
+                year=year,
+                force_regenerate=False
+            )
+        else:
+            result = get_or_create_summary(
+                user_id=user_id,
+                country=country,
+                marketplace_id=marketplace_id,
+                period=period,
+                timeline=timeline,
+                year=year,
+                force_regenerate=False
+            )
 
         return jsonify(result), 200
 
