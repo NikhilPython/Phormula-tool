@@ -1234,7 +1234,7 @@ def finances_mtd_transactions():
                 "month": month_name,
                 "year": now_utc.year,
             },
-            "previous_period": previous_period,
+            # "previous_period": previous_period,
             "skuwise_tables": {
                 "us": {
                     "name": us_table,
