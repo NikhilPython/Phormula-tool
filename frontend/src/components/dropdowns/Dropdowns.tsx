@@ -2506,10 +2506,49 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const getSkuTotalRow = (rows: any[] = []) =>
     Array.isArray(rows)
-      ? rows.find(
-        (r) => String(r?.sku || r?.product_name).trim().toLowerCase() === "total"
-      ) ?? rows[rows.length - 1] ?? null
+      ? rows.find((r) => {
+        const sku = String(r?.sku || "").trim().toLowerCase();
+        const name = String(r?.product_name || "").trim().toLowerCase();
+        return sku === "total" || name === "total";
+      }) ?? rows[rows.length - 1] ?? null
       : null;
+
+
+  const buildMonthlySkuUrl = (
+    monthVal: string,
+    yearVal: string,
+    countryVal: string
+  ) => {
+    const isGlobal = countryVal.toLowerCase() === "global";
+
+    const skuwiseFileName = isGlobal
+      ? `skuwisemonthly_${userid}_${countryVal}_${monthVal.toLowerCase()}${yearVal}_table`
+      : `skuwisemonthly_${userid}_${countryVal.toLowerCase()}_${monthVal.toLowerCase()}${yearVal}`;
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+    );
+
+    url.searchParams.set("country", countryVal);
+    url.searchParams.set("month", monthVal.toLowerCase());
+    url.searchParams.set("year", String(yearVal));
+
+    if (isGlobal && homeCurrency) {
+      url.searchParams.set("homeCurrency", homeCurrency);
+    }
+
+    return url;
+  };
+
+  const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
+    const idx = monthIndexMap[monthVal.toLowerCase()];
+    const d = new Date(Number(yearVal), idx - 1, 1);
+
+    return {
+      prevMonth: d.toLocaleString("en-US", { month: "long" }).toLowerCase(),
+      prevYear: String(d.getFullYear()),
+    };
+  };
 
   const mapSkuTotalToSummary = (row: any): Summary => ({
     unit_sold: toNum(row?.total_quantity),
@@ -2625,8 +2664,36 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const raw = await res.json();
 
+      let finalRaw = raw;
+
+      if (
+        rangeType === "monthly" &&
+        country.toLowerCase() === "global" &&
+        (!Array.isArray(raw?.previous_data) || raw.previous_data.length === 0)
+      ) {
+        const { prevMonth, prevYear } = getPreviousMonthYear(monthVal, yearVal);
+
+        const prevUrl = buildMonthlySkuUrl(prevMonth, prevYear, country);
+
+        const prevRes = await fetch(prevUrl.toString(), {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+
+        if (prevRes.ok) {
+          const prevRaw = await prevRes.json();
+
+          finalRaw = {
+            ...raw,
+            previous_data: prevRaw?.current_data ?? prevRaw?.data ?? [],
+            previous_table_name: prevRaw?.current_table_name,
+          };
+        }
+      }
+
       const data = buildUploadHistoryFromSkuApi(
-        raw,
+        finalRaw,
         rangeType,
         monthVal,
         quarterVal,
@@ -2634,8 +2701,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         country
       );
 
+      const normalizedCurrentRows = normalizeRowsForParent(finalRaw?.current_data ?? []);
+
       setUploadsData(data);
-      setSkuRows(raw?.current_data ?? []);
+      setSkuRows(normalizedCurrentRows);
+
+      // Make P&L BarGraph use the same /skutableprofit data as cards
+      setBargraphUploads(buildUploadRowFromSkuRows(normalizedCurrentRows));
+      setBargraphLoading(false);
 
       if (data?.summary) {
         if (rangeType === "monthly" && yearVal && monthVal) {
@@ -3229,6 +3302,90 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [showNoDataOverlay]);
 
 
+  // useEffect(() => {
+  //   if (isDemoMode) {
+  //     setBargraphUploads(DEMO_UPLOADS);
+  //     setBargraphUserMeta({
+  //       company_name: "Demo Company",
+  //       brand_name: "Demo Brand",
+  //     });
+  //     setBargraphLoading(false);
+  //     return;
+  //   }
+  //   if (!range || !selectedYear) return;
+
+  //   const ready =
+  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+  //     (range === "yearly" && !!selectedYear);
+
+  //   if (!ready) {
+  //     setBargraphUploads([]);
+  //     return;
+  //   }
+
+  //   const fetchBargraphData = async () => {
+  //     setBargraphLoading(true);
+
+  //     try {
+  //       const token =
+  //         typeof window !== "undefined"
+  //           ? localStorage.getItem("jwtToken")
+  //           : null;
+
+  //       const timeline =
+  //         range === "monthly"
+  //           ? monthNameToNumber(selectedMonth)
+  //           : range === "quarterly"
+  //             ? selectedQuarter
+  //             : "ALL";
+
+  //       const url = new URL(
+  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
+  //       );
+
+  //       url.searchParams.set("country", countryName);
+  //       url.searchParams.set("period", range);
+  //       url.searchParams.set("timeline", String(timeline));
+  //       url.searchParams.set("year", String(selectedYear));
+
+  //       if (countryName.toLowerCase() === "global" && homeCurrency) {
+  //         url.searchParams.set("homeCurrency", homeCurrency);
+  //       }
+
+  //       const res = await fetch(url.toString(), {
+  //         method: "GET",
+  //         headers: token ? { Authorization: `Bearer ${token}` } : {},
+  //         cache: "no-store",
+  //       });
+
+  //       if (!res.ok) {
+  //         setBargraphUploads([]);
+  //         return;
+  //       }
+
+  //       const data = await res.json();
+
+  //       setBargraphUploads(data.uploads ?? []);
+  //       setBargraphUserMeta(data.userMeta ?? null);
+  //     } catch (err) {
+  //       setBargraphUploads([]);
+  //     } finally {
+  //       setBargraphLoading(false);
+  //     }
+  //   };
+
+  //   fetchBargraphData();
+  // }, [
+  //   range,
+  //   selectedMonth,
+  //   selectedQuarter,
+  //   selectedYear,
+  //   countryName,
+  //   homeCurrency,
+  //   isDemoMode,
+  // ]);
+
   useEffect(() => {
     if (isDemoMode) {
       setBargraphUploads(DEMO_UPLOADS);
@@ -3239,79 +3396,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setBargraphLoading(false);
       return;
     }
-    if (!range || !selectedYear) return;
 
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setBargraphUploads([]);
-      return;
-    }
-
-    const fetchBargraphData = async () => {
-      setBargraphLoading(true);
-
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("jwtToken")
-            : null;
-
-        const timeline =
-          range === "monthly"
-            ? monthNameToNumber(selectedMonth)
-            : range === "quarterly"
-              ? selectedQuarter
-              : "ALL";
-
-        const url = new URL(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
-        );
-
-        url.searchParams.set("country", countryName);
-        url.searchParams.set("period", range);
-        url.searchParams.set("timeline", String(timeline));
-        url.searchParams.set("year", String(selectedYear));
-
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
-        }
-
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          setBargraphUploads([]);
-          return;
-        }
-
-        const data = await res.json();
-
-        setBargraphUploads(data.uploads ?? []);
-        setBargraphUserMeta(data.userMeta ?? null);
-      } catch (err) {
-        setBargraphUploads([]);
-      } finally {
-        setBargraphLoading(false);
-      }
-    };
-
-    fetchBargraphData();
-  }, [
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    countryName,
-    homeCurrency,
-    isDemoMode,
-  ]);
+    // BarGraph data is now set inside fetchUploadHistory()
+    // from /skutableprofit, so do not fetch /upload_history here.
+    setBargraphLoading(false);
+  }, [isDemoMode]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -3324,7 +3413,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setGraphPageLoading(false);
       return;
     }
-    if (!range || !selectedYear) return;
+
+    if (!range || !selectedYear || !countryName) return;
 
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
@@ -3336,7 +3426,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    const fetchGraphPageUploads = async () => {
+    const fetchGraphPageUploadsFromSku = async () => {
       setGraphPageLoading(true);
       setGraphPageError(null);
 
@@ -3344,51 +3434,80 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
+        // Monthly: one point from /skutableprofit
+        if (range === "monthly") {
+          const rows = await fetchMonthlySkuRowsForGraph(
+            selectedMonth,
+            selectedYear,
+            countryName,
+            token
+          );
 
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
+          setGraphPageUploads(rows);
+          setGraphPageLoading(false);
+          return;
         }
 
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
+        // Quarterly: three monthly points from /skutableprofit
+        if (range === "quarterly" && selectedQuarter) {
+          const months = quarterToMonths[selectedQuarter];
 
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || "Failed to fetch upload history");
+          const rowsNested = await Promise.all(
+            months.map((m) =>
+              fetchMonthlySkuRowsForGraph(
+                m.toLowerCase(),
+                selectedYear,
+                countryName,
+                token
+              )
+            )
+          );
+
+          setGraphPageUploads(rowsNested.flat());
+          setGraphPageLoading(false);
+          return;
         }
 
-        const json = await res.json();
-        const rows: UploadRow[] = json?.uploads ?? [];
+        // Yearly: twelve monthly points from /skutableprofit
+        if (range === "yearly") {
+          const rowsNested = await Promise.all(
+            allMonths.map((m) =>
+              fetchMonthlySkuRowsForGraph(
+                m.toLowerCase(),
+                selectedYear,
+                countryName,
+                token
+              )
+            )
+          );
 
-        const isGlobal = countryName.toLowerCase() === "global";
-        const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
-        const isUsd = normalizedHomeCurrency === "usd";
-
-        const filtered = rows.filter((r) => {
-          const c = (r.country || "").toLowerCase();
-          if (isGlobal) {
-            if (isUsd) return c === "global" || c === "global_usd";
-            return c === `global_${normalizedHomeCurrency}`;
-          }
-          return c === countryName.toLowerCase();
-        });
-        setGraphPageUploads(filtered);
-        setGraphPageUserMeta(json?.userMeta ?? null);
+          setGraphPageUploads(rowsNested.flat());
+          setGraphPageLoading(false);
+          return;
+        }
       } catch (e: any) {
         setGraphPageUploads([]);
-        setGraphPageError(e?.message || "Failed to fetch upload history");
-      } finally {
+        setGraphPageError(e?.message || "Failed to fetch graph data from SKU tables");
         setGraphPageLoading(false);
       }
     };
 
-    fetchGraphPageUploads();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, isDemoMode]);
+    fetchGraphPageUploadsFromSku();
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    homeCurrency,
+    isDemoMode,
+  ]);
 
+  useEffect(() => {
+    if (activeTab === "skuwiseProfit" && range === "monthly") {
+      handleRangeChange("yearly");
+    }
+  }, [activeTab, range]);
 
   const normalizeRowsForParent = (data: any[]): TableRow[] => {
     return data.map((row) => {
@@ -3502,24 +3621,131 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const buildUploadRowFromSkuRows = (rows: TableRow[]): UploadRow[] => {
+    const totalRow = getSkuTotalRow(rows);
     const summary = buildSummaryFromSkuRows(rows);
+
+    const cm1Profit =
+      summary.total_sales -
+      (summary.total_cous ?? 0) -
+      (summary.total_amazon_fee ?? 0) +
+      toNum((totalRow as any)?.tex_and_credits);
 
     return [
       {
         country: initialCountryName,
         month: selectedMonth || "",
         year: selectedYear,
+
+        // BarGraph: Net Sales
+        total_sales: summary.total_sales,
+
+        // BarGraph: Amazon Fees
+        total_amazon_fee: summary.total_amazon_fee ?? 0,
+
+        // BarGraph: COGS
+        total_cous: summary.total_cous ?? 0,
+
+        // BarGraph: Ads
+        advertising_total: summary.advertising_total ?? 0,
+
+        // BarGraph: Other
+        otherwplatform: summary.otherwplatform ?? 0,
+
+        // BarGraph: Taxes & Credits
+        taxncredit: toNum((totalRow as any)?.tex_and_credits),
+
+        // BarGraph: CM2
+        cm2_profit: summary.cm2_profit,
+
+        // BarGraph: CM1
+        total_profit: cm1Profit,
+      },
+    ];
+  };
+
+  const monthNumberToName = (monthNum: number | string) => {
+    const n = Number(monthNum);
+    const names = [
+      "january", "february", "march", "april", "may", "june",
+      "july", "august", "september", "october", "november", "december",
+    ];
+    return names[n - 1] || "";
+  };
+
+  const buildGraphUploadRowsFromSkuRows = (
+    rows: TableRow[],
+    monthVal: string,
+    yearVal: string,
+    countryVal: string
+  ): UploadRow[] => {
+    const totalRow = getSkuTotalRow(rows);
+    const summary = buildSummaryFromSkuRows(rows);
+
+    const cm1Profit =
+      summary.total_sales -
+      (summary.total_cous ?? 0) -
+      (summary.total_amazon_fee ?? 0) +
+      toNum((totalRow as any)?.tex_and_credits);
+
+    return [
+      {
+        country: countryVal,
+        month: monthVal.toLowerCase(),
+        year: yearVal,
         total_sales: summary.total_sales,
         total_amazon_fee: summary.total_amazon_fee ?? 0,
         total_cous: summary.total_cous ?? 0,
         advertising_total: summary.advertising_total ?? 0,
         otherwplatform: summary.otherwplatform ?? 0,
+        taxncredit: toNum((totalRow as any)?.tex_and_credits),
         cm2_profit: summary.cm2_profit,
-        total_profit: summary.cm2_profit,
+        total_profit: cm1Profit,
       },
     ];
   };
 
+  const fetchMonthlySkuRowsForGraph = async (
+    monthVal: string,
+    yearVal: string,
+    countryVal: string,
+    token: string | null
+  ): Promise<UploadRow[]> => {
+    const isGlobal = countryVal.toLowerCase() === "global";
+
+    const skuwiseFileName = isGlobal
+      ? `skuwisemonthly_${userid}_${countryVal}_${monthVal.toLowerCase()}${yearVal}_table`
+      : `skuwisemonthly_${userid}_${countryVal.toLowerCase()}_${monthVal.toLowerCase()}${yearVal}`;
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+    );
+
+    url.searchParams.set("country", countryVal);
+    url.searchParams.set("month", monthVal.toLowerCase());
+    url.searchParams.set("year", String(yearVal));
+
+    if (isGlobal && homeCurrency) {
+      url.searchParams.set("homeCurrency", homeCurrency);
+    }
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    if (!res.ok) return [];
+
+    const raw = await res.json();
+    const normalizedRows = normalizeRowsForParent(raw?.current_data ?? []);
+
+    return buildGraphUploadRowsFromSkuRows(
+      normalizedRows,
+      monthVal,
+      yearVal,
+      countryVal
+    );
+  };
 
   const marketplaceFeesFromTable = useMemo(() => {
     if (!skuRows?.length) return 0;
@@ -3651,7 +3877,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
 
         <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
-          <PeriodFiltersTable
+          {/* <PeriodFiltersTable
             range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
             selectedMonth={selectedMonth}
             selectedQuarter={selectedQuarter || ""}
@@ -3661,6 +3887,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onMonthChange={handleMonthChange}
             onQuarterChange={handleQuarterChange}
             onYearChange={handleYearChange}
+          /> */}
+          <PeriodFiltersTable
+            range={activeTab === "skuwiseProfit" && range === "monthly" ? "yearly" : range}
+            selectedMonth={activeTab === "skuwiseProfit" ? "" : selectedMonth}
+            selectedQuarter={selectedQuarter}
+            selectedYear={selectedYear}
+            yearOptions={yearOptions}
+            onRangeChange={handleRangeChange}
+            onMonthChange={handleMonthChange}
+            onQuarterChange={handleQuarterChange}
+            onYearChange={handleYearChange}
+            allowedRanges={
+              activeTab === "skuwiseProfit"
+                ? ["quarterly", "yearly"]
+                : ["monthly", "quarterly", "yearly"]
+            }
           />
         </div>
       </div>
@@ -4374,6 +4616,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           homeCurrency={globalHomeCurrency}
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
                           isPreviewMode={isDemoMode}
+                          pnlRowFromSku={bargraphUploads?.[0] ?? null}
+                          summaryFromSku={uploadsData?.summary ?? null}
                         />
 
                         <CMchartofsku
@@ -4508,6 +4752,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           homeCurrency={globalHomeCurrency}
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
                           isPreviewMode={isDemoMode}
+                          pnlRowFromSku={bargraphUploads?.[0] ?? null}
+                          summaryFromSku={uploadsData?.summary ?? null}
                         />
 
                         <CMchartofsku
@@ -4640,6 +4886,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         onExportBase64Ready={setExpenseBreakdownPieBase64}
                         disableInternalFade={isDemoMode}
                         isPreviewMode={isDemoMode}
+                        pnlRowFromSku={bargraphUploads?.[0] ?? null}
+                        summaryFromSku={uploadsData?.summary ?? null}
                       />
 
                       <CMchartofsku
@@ -4742,18 +4990,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           )}
 
-          {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+          {/* {activeTab === "skuwiseProfit" && allDropdownsSelected && (
 
             <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-              {/* <ProductwisePerformance
-              embedded
-              countryNameProp={initialCountryName}
-              rangeProp={range as "monthly" | "quarterly" | "yearly"}
-              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
-              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
-              selectedYearProp={selectedYear ? Number(selectedYear) : ""}
-              initialProductName={defaultTopProductName}
-            /> */}
               <ProductwisePerformance
                 key={[
                   initialCountryName,
@@ -4774,6 +5013,43 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               />
             </div>
 
+          )} */}
+
+          {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+              {(() => {
+                const productWiseRange =
+                  range === "quarterly" ? "quarterly" : "yearly";
+
+                return (
+                  <ProductwisePerformance
+                    key={[
+                      initialCountryName,
+                      productWiseRange,
+                      selectedQuarter,
+                      selectedYear,
+                      defaultTopProductName,
+                      isDemoMode ? "demo" : "live",
+                    ].join("-")}
+                    embedded
+                    countryNameProp={isDemoMode ? "global" : initialCountryName}
+                    rangeProp={productWiseRange}
+                    selectedMonthProp={isDemoMode ? "NA" : ""}
+                    selectedQuarterProp={
+                      isDemoMode
+                        ? ""
+                        : productWiseRange === "quarterly"
+                          ? selectedQuarter
+                          : ""
+                    }
+                    selectedYearProp={
+                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+                    }
+                    initialProductName={defaultTopProductName || "Demo Product A"}
+                  />
+                );
+              })()}
+            </div>
           )}
 
           {activeTab === "cashFlow" && allDropdownsSelected && (

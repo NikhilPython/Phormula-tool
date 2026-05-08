@@ -95,6 +95,15 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TrendTab>("sales_cm1");
 
+  const roundDatasetValues = (datasets: any[] = []) =>
+    datasets.map((ds: any) => ({
+      ...ds,
+      data: (ds.data || []).map((value: any) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? Math.round(num) : value;
+      }),
+    }));
+
   // ✅ AI insights loading state (toggle)
   const [insightsLoading, setInsightsLoading] = useState(false);
 
@@ -132,7 +141,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
       if (!cm1Data) {
         return {
           ...netSalesData,
-          datasets: styleDatasetsByLabel(netSalesData.datasets || []),
+          datasets: roundDatasetValues(styleDatasetsByLabel(netSalesData.datasets || [])),
         };
       }
 
@@ -164,7 +173,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
       return {
         ...netSalesData,
         labels,
-        datasets: [...netSalesDatasets, ...cm1Datasets],
+        datasets: roundDatasetValues([...netSalesDatasets, ...cm1Datasets]),
       };
     }
 
@@ -182,7 +191,64 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     return null;
   }, [chartDataList, activeTab]);
 
-  const processedChartOptions = useMemo(() => chartOptions, [chartOptions]);
+  const processedChartOptions = useMemo(() => {
+    return {
+      ...chartOptions,
+      plugins: {
+        ...chartOptions?.plugins,
+        tooltip: {
+          ...chartOptions?.plugins?.tooltip,
+          callbacks: {
+            ...chartOptions?.plugins?.tooltip?.callbacks,
+            label: (context: any) => {
+              const rawLabel = String(context.dataset.label || "");
+              const value = Math.round(Number(context.parsed.y || 0));
+
+              const isGlobalView =
+                String(exportMeta?.titleCountry || "").toLowerCase() === "global";
+
+              const countryLabel = rawLabel
+                .replace(/net sales/gi, "")
+                .replace(/cm1 profit/gi, "")
+                .replace(/profit/gi, "")
+                .replace(/quantity/gi, "")
+                .replace(/units/gi, "")
+                .trim();
+
+              const metricLabel = /profit/i.test(rawLabel)
+                ? "CM1 Profit"
+                : /net sales/i.test(rawLabel)
+                  ? "Net Sales"
+                  : /quantity|units/i.test(rawLabel)
+                    ? "Units"
+                    : rawLabel;
+
+              const finalLabel = isGlobalView && countryLabel
+                ? `${countryLabel} ${metricLabel}`
+                : metricLabel;
+
+              return `${finalLabel}: ${value.toLocaleString()}`;
+            },
+          },
+        },
+      },
+      scales: {
+        ...chartOptions?.scales,
+        y: {
+          ...chartOptions?.scales?.y,
+          ticks: {
+            ...chartOptions?.scales?.y?.ticks,
+            callback: (value: any) => {
+              const num = Number(value);
+              return Number.isFinite(num)
+                ? Math.round(num).toLocaleString()
+                : value;
+            },
+          },
+        },
+      },
+    };
+  }, [chartOptions, exportMeta?.titleCountry]);
 
   const getTitleByTab = () =>
     activeTab === "sales_cm1" ? "Net Sales + CM1 Profit Trend" : "Units Trend";
@@ -228,7 +294,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
       if (!cm1Data) {
         return {
           ...netSalesData,
-          datasets: styleDatasetsByLabel(netSalesData.datasets || []),
+          datasets: roundDatasetValues(styleDatasetsByLabel(netSalesData.datasets || [])),
         };
       }
 
@@ -245,7 +311,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
       return {
         ...netSalesData,
         labels,
-        datasets: [...netSalesDatasets, ...cm1Datasets],
+        datasets: roundDatasetValues([...netSalesDatasets, ...cm1Datasets]),
       };
     }
 
@@ -434,54 +500,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
               </span>
             </div>
 
-            <div className="my-4 flex flex-wrap items-center gap-3">
-              {nonEmptyCountriesFromApi.map((country) => {
-                const normalized = normalizeCountryKey(country);
-                const color = getCountryColor(normalized);
-                const isChecked = selectedCountries[country as CountryKey] ?? true;
-                const label = formatCountryLabel(normalized);
 
-                return (
-                  <label
-                    key={country}
-                    className={[
-                      "shrink-0",
-                      "flex items-center gap-1 sm:gap-1.5",
-                      "font-semibold select-none whitespace-nowrap",
-                      "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
-                      "text-charcoal-500",
-                      isChecked ? "opacity-100" : "opacity-40",
-                      "cursor-pointer",
-                    ].join(" ")}
-                    onClick={() => onToggleCountry(country as CountryKey)}
-                  >
-                    <span
-                      className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-                      style={{
-                        borderColor: color,
-                        backgroundColor: isChecked ? color : "white",
-                      }}
-                    >
-                      {isChecked && (
-                        <svg
-                          viewBox="0 0 24 24"
-                          width="14"
-                          height="14"
-                          className="text-white"
-                        >
-                          <path
-                            fill="currentColor"
-                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                          />
-                        </svg>
-                      )}
-                    </span>
-
-                    <span className="text-charcoal-500">{label}</span>
-                  </label>
-                );
-              })}
-            </div>
           </div>
 
           {/* RIGHT: Search + Toggle + AI + Download */}
@@ -518,6 +537,55 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
 
             <DownloadIconButton onClick={handleDownload} />
           </div>
+        </div>
+
+        <div className="my-4 flex flex-wrap items-center justify-center gap-3">
+          {nonEmptyCountriesFromApi.map((country) => {
+            const normalized = normalizeCountryKey(country);
+            const color = getCountryColor(normalized);
+            const isChecked = selectedCountries[country as CountryKey] ?? true;
+            const label = formatCountryLabel(normalized);
+
+            return (
+              <label
+                key={country}
+                className={[
+                  "shrink-0",
+                  "flex items-center gap-1 sm:gap-1.5",
+                  "font-semibold select-none whitespace-nowrap",
+                  "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
+                  "text-charcoal-500",
+                  isChecked ? "opacity-100" : "opacity-40",
+                  "cursor-pointer",
+                ].join(" ")}
+                onClick={() => onToggleCountry(country as CountryKey)}
+              >
+                <span
+                  className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                  style={{
+                    borderColor: color,
+                    backgroundColor: isChecked ? color : "white",
+                  }}
+                >
+                  {isChecked && (
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      className="text-white"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                      />
+                    </svg>
+                  )}
+                </span>
+
+                <span className="text-charcoal-500">{label}</span>
+              </label>
+            );
+          })}
         </div>
       </div>
 

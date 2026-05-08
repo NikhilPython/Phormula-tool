@@ -38,21 +38,38 @@ type CircleChartProps = {
   homeCurrency?: string;
   onExportBase64Ready?: (base64: string | null) => void;
   disableInternalFade?: boolean;
-  isPreviewMode?: boolean; // ✅ NEW
+  isPreviewMode?: boolean;
+
+  // Same source as P&L BarGraph
+  pnlRowFromSku?: UploadRow | null;
+
+  // Optional fallback
+summaryFromSku?: CircleSummary | null;
 };
 
-type Summary = {
-  advertising_total: number;
-  cm2_profit: number;
-  total_amazon_fee: number;
-  taxncredit: number;
-  total_cous: number;
-  otherwplatform: number;
+type CircleSummary = {
+  advertising_total?: number;
+  cm2_profit?: number;
+  total_amazon_fee?: number;
+  taxncredit?: number;
+  total_cous?: number;
+  otherwplatform?: number;
+};
+
+type UploadRow = {
+  total_sales?: number;
+  total_amazon_fee?: number;
+  total_cous?: number;
+  advertising_total?: number;
+  otherwplatform?: number;
+  taxncredit?: number;
+  cm2_profit?: number;
+  total_profit?: number;
 };
 
 type UploadHistoryResponse = {
   uploads?: unknown[];
-  summary?: Summary;
+summary?: CircleSummary;
 };
 
 const COLORS = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
@@ -95,6 +112,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
   onExportBase64Ready,
   disableInternalFade = false,
   isPreviewMode = false,
+  pnlRowFromSku = null,
+  summaryFromSku = null,
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
@@ -170,6 +189,29 @@ const CircleChart: React.FC<CircleChartProps> = ({
       return;
     }
 
+    if (pnlRowFromSku) {
+      setUploadsData({
+        summary: {
+          total_cous: toNum(pnlRowFromSku.total_cous),
+          total_amazon_fee: toNum(pnlRowFromSku.total_amazon_fee),
+          taxncredit: toNum(pnlRowFromSku.taxncredit),
+          advertising_total: toNum(pnlRowFromSku.advertising_total),
+          otherwplatform: toNum(pnlRowFromSku.otherwplatform),
+          cm2_profit: toNum(pnlRowFromSku.cm2_profit),
+        },
+      });
+      setLoading(false);
+      setNoDataFound(false);
+      return;
+    }
+
+    if (summaryFromSku) {
+      setUploadsData({ summary: summaryFromSku });
+      setLoading(false);
+      setNoDataFound(false);
+      return;
+    }
+
     const fetchUploadHistory = async () => {
       setLoading(true);
       setNoDataFound(false);
@@ -222,17 +264,19 @@ const CircleChart: React.FC<CircleChartProps> = ({
     };
 
     fetchUploadHistory();
-  }, [
-    isDemoMode,
-    month,
-    year,
-    range,
-    selectedQuarter,
-    countryName,
-    normalizedHomeCurrency,
-    homeCurrency,
-    isGlobalPage,
-  ]);
+}, [
+  isDemoMode,
+  pnlRowFromSku,
+  summaryFromSku,
+  month,
+  year,
+  range,
+  selectedQuarter,
+  countryName,
+  normalizedHomeCurrency,
+  homeCurrency,
+  isGlobalPage,
+]);
 
   useEffect(() => {
     if (isDemoMode) {

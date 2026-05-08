@@ -122,12 +122,25 @@ const isPnlTotalRow = (row: RowData) =>
   String(row?.sku || '').trim().toLowerCase() === 'total';
 
 const buildOthersPnlRow = (rows: RowData[]): RowData => {
+  const nonSummableKeys = new Set([
+    'sku',
+    'product_name',
+    'sr_no',
+  ]);
+
   const numericKeys = Array.from(
     new Set(
       rows.flatMap((row) =>
         Object.keys(row || {}).filter((key) => {
+          if (nonSummableKeys.has(key)) return false;
+
           const value = row[key];
-          return value !== null && value !== undefined && value !== '' && !isNaN(Number(value));
+          return (
+            value !== null &&
+            value !== undefined &&
+            value !== '' &&
+            !isNaN(Number(String(value).replace(/,/g, '').trim()))
+          );
         })
       )
     )
@@ -1101,7 +1114,7 @@ const Pnlforecast: React.FC = () => {
                 align="left"
                 textSize="2xl"
               /> */}
-               <PageBreadcrumb
+              <PageBreadcrumb
                 variant="page"
                 align="left"
                 textSize="2xl"
