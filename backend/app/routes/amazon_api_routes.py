@@ -1224,7 +1224,7 @@ def finances_mtd_transactions():
             "skuwise_items": previous_global_df.to_dict(orient="records")
         }
 
-        return jsonify({
+        payload_out = {
             "success": True,
             "country": "global",
             "conversion": {
@@ -1235,7 +1235,6 @@ def finances_mtd_transactions():
                 "year": now_utc.year,
             },
             "previous_period": previous_period,
-
             "skuwise_tables": {
                 "us": {
                     "name": us_table,
@@ -1256,17 +1255,17 @@ def finances_mtd_transactions():
                     "rows": len(global_df),
                 },
             },
-
             "skuwise_table": {
                 "name": global_table,
                 "saved": True,
                 "rows": len(global_df),
             },
-
             "skuwise_items_us": skuwise_items_us,
             "skuwise_items_uk": skuwise_items_uk,
             "skuwise_items_global": global_df.to_dict(orient="records"),
-        }), 200
+        }
+
+        return jsonify(_json_safe(payload_out)), 200
 
     if ui_country in ("us", "usa", "united_states"):
         transaction_status = "RELEASED"
