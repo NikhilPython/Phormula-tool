@@ -89,8 +89,6 @@ def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
     return None
 
 
-
-
 def severity_suffix(severity: str | None, *, period: str | None = None) -> str:
     """
     Suppress rolling 24-month severity labels for YEARLY reports.
@@ -102,7 +100,6 @@ def severity_suffix(severity: str | None, *, period: str | None = None) -> str:
         return ""
 
     return f" ({severity.replace('_', ' ').replace('24m', '24 months')})"
-
 
 
 def resolve_latest_available_month(user_id: int, country: str):
@@ -140,8 +137,6 @@ def resolve_latest_available_month(user_id: int, country: str):
     return get_latest_completed_month()
 
 
-
-
 def get_latest_completed_month(today=None):
     today = today or date.today()
     if today.month == 1:
@@ -155,7 +150,6 @@ def resolve_latest_two_months():
     """
     year, month = get_latest_completed_month()
     return "monthly", str(month), year
-
 
 
 def get_latest_completed_quarter(today=None):
@@ -216,7 +210,6 @@ def is_latest_period(period, timeline, year, *, user_id, country):
         return False
 
 
-
 def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, year):
     return HistoricAISummary.query.filter_by(
         user_id=user_id,
@@ -226,6 +219,7 @@ def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, y
         timeline=timeline,
         year=year
     ).first()
+
 def save_summary_to_db(data: dict):
     # ---------------- HARD SANITIZE INPUT ----------------
     recos = data.get("recommendations")
@@ -305,7 +299,6 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
         
         return pd.DataFrame()
 
-
 def build_rolling_monthly_series(
     user_id: int,
     country: str,
@@ -347,7 +340,6 @@ def build_rolling_monthly_series(
         })
 
     return series
-
 
 def fetch_month_end_inventory_lookup(user_id: int):
 
@@ -405,8 +397,6 @@ def fetch_month_end_inventory_lookup(user_id: int):
             lookup[key]["expired_inventory"] += units
 
     return lookup
-
-
 
 def build_rolling_sku_series(
     user_id: int,
@@ -689,7 +679,6 @@ def build_yearly_temporal_signals(rolling_series: list) -> dict:
         "cm2_trend_direction": cm2_trend,
     }
 
-
 def compute_period_pct_changes(df_current_total, df_prev_total):
 
     def pct(col):
@@ -739,7 +728,6 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
 
         "acos": pct_point("acos"),
     }
-
 
 
 def build_movement_context(rolling_series: list):
@@ -2805,6 +2793,56 @@ def build_country_usd_numeric_metrics(
         "uk": country_metrics("uk"),
     }
 
+def key_metrics_by_product_name(metrics_by_sku: dict) -> dict:
+    """
+    Converts SKU-keyed metrics into product_name-keyed metrics.
+
+    Input:
+        {
+            "SEMNIWRF": {
+                "product_name": "Refill Pack",
+                ...
+            }
+        }
+
+    Output:
+        {
+            "Refill Pack": {
+                "sku": "SEMNIWRF",
+                "product_name": "Refill Pack",
+                ...
+            }
+        }
+
+    If duplicate product names exist, the SKU is appended to avoid overwriting.
+    """
+
+    if not isinstance(metrics_by_sku, dict):
+        return {}
+
+    output = {}
+
+    for sku, data in metrics_by_sku.items():
+        if not isinstance(data, dict):
+            continue
+
+        product_name = data.get("product_name") or sku
+        product_name = str(product_name).strip() or str(sku)
+
+        key = product_name
+
+        # Prevent duplicate product names from overwriting each other
+        if key in output:
+            key = f"{product_name} ({sku})"
+
+        row = dict(data)
+        row["sku"] = sku
+        row["product_name"] = product_name
+
+        output[key] = row
+
+    return output
+
 
 def run_global_comparison_prompt(global_payload: dict) -> dict:
     resp = openai_client.chat.completions.create(
@@ -3020,258 +3058,6 @@ def render_global_comparison_summary(
 
     return "\n".join(lines)
 
-
-# def get_or_create_global_summary(
-#     user_id,
-#     marketplace_id,
-#     period,
-#     timeline,
-#     year,
-#     objective=None,
-#     target_sku: str | list | None = None,
-#     force_regenerate=False
-# ):
-#     """
-#     Global is not a physical country table.
-#     It runs US and UK independently, then sends both to a global comparison prompt.
-#     Stores global output in DB to avoid repeated LLM calls.
-#     """
-
-#     # ============================================================
-#     # 1. CHECK GLOBAL CACHE FIRST
-#     # ============================================================
-#     cached = fetch_existing_summary(
-#         user_id=user_id,
-#         country="global",
-#         marketplace_id=marketplace_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#     )
-
-#     if cached and not force_regenerate and not target_sku:
-#         cached_recommendations = {}
-
-#         try:
-#             cached_recommendations = (
-#                 json.loads(cached.recommendations)
-#                 if cached.recommendations else {}
-#             )
-#         except Exception:
-#             cached_recommendations = {}
-
-#         return {
-#         "summary": cached.summary,
-#         "scope": "global",
-#         "source": "db",
-#         "global_ai": cached_recommendations.get("global_ai", {}),
-#         "overall_recommendation": cached_recommendations.get("overall_recommendation", ""),
-#         "mapped_product_count": cached_recommendations.get("mapped_product_count", 0),
-
-#         # ✅ cached frontend metrics
-#         "metrics": cached_recommendations.get("metrics", {}),
-
-#         # ✅ cached country-specific values
-#         "inventory_alerts": cached_recommendations.get("inventory_alerts", {}),
-#         "objectives": cached_recommendations.get("objectives", {}),
-
-#         "comparison": {
-#             "period": period,
-#             "timeline": timeline,
-#             "year": year,
-#             "period_label": period_label(period, timeline, year),
-#         },
-#         "metrics_debug": cached_recommendations.get("metrics_debug", {}),
-#     }
-
-#     # ============================================================
-#     # 2. GET US + UK COUNTRY SUMMARIES
-#     # ============================================================
-#     us_result = get_or_create_summary(
-#         user_id=user_id,
-#         country="us",
-#         marketplace_id=marketplace_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#         objective=objective,
-#         target_sku=target_sku,
-#         force_regenerate=True,
-#     )
-
-#     uk_result = get_or_create_summary(
-#         user_id=user_id,
-#         country="uk",
-#         marketplace_id=marketplace_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#         objective=objective,
-#         target_sku=target_sku,
-#         force_regenerate=True,
-#     )
-
-#     us_result = _global_safe_result(us_result)
-#     uk_result = _global_safe_result(uk_result)
-
-#     # ============================================================
-#     # 3. BUILD PRODUCT MAPPING + GLOBAL METRICS
-#     # ============================================================
-#     sku_mapping = fetch_global_sku_mapping(user_id)
-
-#     mapped_product_journeys = build_mapped_product_journeys(
-#         sku_mapping=sku_mapping,
-#         us_result=us_result,
-#         uk_result=uk_result,
-#     )
-
-#     # actual global metrics from skuwisemonthly_{user_id}_global_{month}{year}_table
-#     global_numeric_metrics = build_global_numeric_metrics(
-#         user_id=user_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#     )
-
-#     # US/UK USD-normalized metrics from skuwisemonthly_{user_id}_{country}_usd_{month}{year}
-#     country_usd_metrics = build_country_usd_numeric_metrics(
-#         user_id=user_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#     )
-
-#     metrics_debug = {
-#         "global_metrics_available": bool(global_numeric_metrics.get("available")),
-#         "country_usd_available": {
-#             "us": bool((country_usd_metrics.get("us") or {}).get("available")),
-#             "uk": bool((country_usd_metrics.get("uk") or {}).get("available")),
-#         },
-#     }
-
-#     # ✅ frontend metrics from global table
-#     metrics = {
-#         "portfolio": global_numeric_metrics.get("portfolio", {}),
-#         "sku_current": global_numeric_metrics.get("sku_current", {}),
-#         "sku_mom": global_numeric_metrics.get("sku_mom", {}),
-#     }
-
-#     # ✅ keep US/UK inventory and objectives separate
-#     inventory_alerts_by_country = {
-#         "us": us_result.get("inventory_alerts", {}),
-#         "uk": uk_result.get("inventory_alerts", {}),
-#     }
-
-#     objectives_by_country = {
-#         "us": us_result.get("objective", {}),
-#         "uk": uk_result.get("objective", {}),
-#     }
-
-#     # ============================================================
-#     # 4. BUILD GLOBAL PROMPT PAYLOAD
-#     # ============================================================
-#     global_payload = {
-#         "period": {
-#             "period": period,
-#             "timeline": timeline,
-#             "year": year,
-#             "period_label": period_label(period, timeline, year),
-#         },
-
-#         # actual global selected/previous metrics
-#         "global_numeric_metrics": global_numeric_metrics,
-
-#         # US vs UK metrics in same USD currency
-#         "country_usd_metrics": country_usd_metrics,
-
-#         "us": {
-#             "summary": _extract_summary_intro(us_result),
-#             "portfolio_level_narrative": us_result.get("portfolio_level_narrative", {}),
-#             "portfolio_recommendation": us_result.get("portfolio_recommendation", ""),
-#             "recommendations": _extract_actions(us_result),
-#         },
-#         "uk": {
-#             "summary": _extract_summary_intro(uk_result),
-#             "portfolio_level_narrative": uk_result.get("portfolio_level_narrative", {}),
-#             "portfolio_recommendation": uk_result.get("portfolio_recommendation", ""),
-#             "recommendations": _extract_actions(uk_result),
-#         },
-
-#         # exact mapped product journey input
-#         "mapped_product_journeys": mapped_product_journeys,
-#     }
-
-#     # ============================================================
-#     # 5. RUN GLOBAL LLM
-#     # ============================================================
-#     global_ai = run_global_comparison_prompt(global_payload)
-
-#     final_text = render_global_comparison_summary(
-#         global_ai=global_ai,
-#         us_result=us_result,
-#         uk_result=uk_result,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#     )
-
-#     # ============================================================
-#     # 6. SAVE GLOBAL SUMMARY TO DB
-#     # ============================================================
-#     save_summary_to_db({
-#         "user_id": user_id,
-#         "country": "global",
-#         "marketplace_id": marketplace_id,
-#         "period": period,
-#         "timeline": timeline,
-#         "year": year,
-#         "summary": final_text,
-#         "recommendations": json.dumps({
-#             "global_ai": global_ai,
-#             "overall_recommendation": global_ai.get("global_overall_recommendation", ""),
-#             "mapped_product_count": len(mapped_product_journeys),
-#             "metrics_debug": metrics_debug,
-
-#             # ✅ save frontend metrics from global table
-#             "metrics": metrics,
-
-#             # ✅ save country-specific inventory/objectives
-#             "inventory_alerts": inventory_alerts_by_country,
-#             "objectives": objectives_by_country,
-#         }),
-#         "upsert": True,
-#     })
-
-#     # ============================================================
-#     # 7. RETURN FRESH AI RESPONSE
-#     # ============================================================
-#     return {
-#         "summary": final_text,
-#         "scope": "global",
-#         "source": "ai",
-#         "global_ai": global_ai,
-#         "overall_recommendation": global_ai.get("global_overall_recommendation", ""),
-#         "mapped_product_count": len(mapped_product_journeys),
-
-#         # ✅ frontend metrics from skuwisemonthly_{user_id}_global_{mn}{year}_table
-#         "metrics": metrics,
-
-#         # ✅ separate country inventory alerts
-#         "inventory_alerts": inventory_alerts_by_country,
-
-#         # ✅ separate country objectives
-#         "objectives": objectives_by_country,
-
-#         "comparison": {
-#             "period": period,
-#             "timeline": timeline,
-#             "year": year,
-#             "period_label": period_label(period, timeline, year),
-#         },
-
-#         "metrics_debug": metrics_debug,
-#     }
-
 def get_or_create_global_summary(
     user_id,
     marketplace_id,
@@ -3439,10 +3225,17 @@ def get_or_create_global_summary(
     }
 
     # ✅ frontend metrics from global table
+    # Product-name-keyed for frontend display
     metrics = {
         "portfolio": global_numeric_metrics.get("portfolio", {}),
-        "sku_current": global_numeric_metrics.get("sku_current", {}),
-        "sku_mom": global_numeric_metrics.get("sku_mom", {}),
+
+        "sku_current": key_metrics_by_product_name(
+            global_numeric_metrics.get("sku_current", {})
+        ),
+
+        "sku_mom": key_metrics_by_product_name(
+            global_numeric_metrics.get("sku_mom", {})
+        ),
     }
 
     # ✅ keep US/UK inventory and objectives separate
