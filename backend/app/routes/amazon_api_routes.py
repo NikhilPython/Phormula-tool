@@ -776,6 +776,9 @@ def finances_mtd_transactions():
         )
 
         # remove old grand total before combining
+        uk_gt = uk_df[uk_df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
+        us_gt = us_df[us_df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
+
         uk_df = uk_df[uk_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
         us_df = us_df[us_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
 
@@ -786,6 +789,53 @@ def finances_mtd_transactions():
             month_name=month_name,
             user_currency="gbp",
             selected_currency="usd",
+        )
+        uk_reimbursement = 0
+        us_reimbursement = 0
+
+        if not uk_gt.empty and "current_net_reimbursement" in uk_gt.columns:
+            uk_reimbursement = (
+                pd.to_numeric(uk_gt["current_net_reimbursement"], errors="coerce")
+                .fillna(0)
+                .sum()
+                * float(uk_to_usd_rate)
+            )
+
+        if not us_gt.empty and "current_net_reimbursement" in us_gt.columns:
+            us_reimbursement = (
+                pd.to_numeric(us_gt["current_net_reimbursement"], errors="coerce")
+                .fillna(0)
+                .sum()
+            )
+
+        global_current_net_reimbursement = float(uk_reimbursement) + float(us_reimbursement)
+
+        def gt_money_total(df, col, rate=1):
+            if df.empty or col not in df.columns:
+                return 0
+            return float(
+                pd.to_numeric(df[col], errors="coerce").fillna(0).sum()
+            ) * float(rate)
+
+
+        global_brand_spend = (
+            gt_money_total(uk_gt, "brand_spend", uk_to_usd_rate)
+            + gt_money_total(us_gt, "brand_spend", 1)
+        )
+
+        global_platform_fee_inventory_storage = (
+            gt_money_total(uk_gt, "platform_fee_inventory_storage", uk_to_usd_rate)
+            + gt_money_total(us_gt, "platform_fee_inventory_storage", 1)
+        )
+
+        global_platformfeenew = (
+            gt_money_total(uk_gt, "platformfeenew", uk_to_usd_rate)
+            + gt_money_total(us_gt, "platformfeenew", 1)
+        )
+
+        global_dealsvouchar_ads = (
+            gt_money_total(uk_gt, "dealsvouchar_ads", uk_to_usd_rate)
+            + gt_money_total(us_gt, "dealsvouchar_ads", 1)
         )
 
         # columns that are money values, not IDs/percentages/counts
@@ -806,7 +856,48 @@ def finances_mtd_transactions():
 
         for col in money_cols:
             if col in uk_df.columns:
-                uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce").fillna(0) * float(uk_to_usd_rate)
+                uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce") * float(uk_to_usd_rate)
+        
+        # keep separate US and UK items
+        us_df["country"] = "us"
+        uk_df["country"] = "uk"
+
+        us_df["month"] = month_name
+        uk_df["month"] = month_name
+
+        us_df["year"] = now_utc.year
+        uk_df["year"] = now_utc.year
+
+        us_df["user_id"] = user_id
+        uk_df["user_id"] = user_id
+
+        us_df["generated_at_utc"] = now_utc.isoformat()
+        uk_df["generated_at_utc"] = now_utc.isoformat()
+
+        # save US table as USD
+        us_df.to_sql(
+            us_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        # save UK table after GBP -> USD conversion
+        uk_df.to_sql(
+            uk_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        skuwise_items_us = us_df.to_dict(orient="records")
+        skuwise_items_uk = uk_df.to_dict(orient="records")
 
         combined_df = pd.concat([us_df, uk_df], ignore_index=True)
 
@@ -900,6 +991,76 @@ def finances_mtd_transactions():
         total_row["year"] = now_utc.year
         total_row["user_id"] = user_id
         total_row["generated_at_utc"] = now_utc.isoformat()
+        amazon_fees = (
+            abs(float(total_row.get("selling_fees", 0.0) or 0.0))
+            + abs(float(total_row.get("fba_fees", 0.0) or 0.0))
+        )
+        # ✅ SET GLOBAL TOTAL VALUES FIRST
+        total_row["brand_spend"] = round(global_brand_spend, 2)
+        total_row["platform_fee_inventory_storage"] = round(global_platform_fee_inventory_storage, 2)
+        total_row["platformfeenew"] = round(global_platformfeenew, 2)
+        total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
+
+        product_ads_total = (
+            abs(float(total_row.get("product_spend", 0.0) or 0.0))
+            + abs(float(total_row.get("display_spend", 0.0) or 0.0))
+        )
+
+        cost_ads_total = (
+            abs(float(total_row.get("brand_spend", 0.0) or 0.0))
+            + abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
+        )
+
+        other_transactions_total = (
+            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
+        )
+
+        total_ads = product_ads_total + cost_ads_total
+
+        total_cm2_profit = (
+            float(total_row.get("profit", 0.0) or 0.0)
+            - total_ads
+            - other_transactions_total
+        )
+
+        total_cm2_margins = (
+            total_cm2_profit / total_net_sales * 100
+        ) if total_net_sales else 0
+
+        tacos = (
+            total_ads / total_net_sales * 100
+        ) if total_net_sales else 0
+
+        ads_clicks = float(total_row.get("ads_clicks", 0.0) or 0.0)
+        ads_sale_units = float(total_row.get("ads_sale_units", 0.0) or 0.0)
+        ads_sale_amount = float(total_row.get("ads_sale_amount", 0.0) or 0.0)
+
+        total_row["amazon_fees"] = round(amazon_fees, 2)
+        total_row["advertising_fees"] = round(total_ads, 2)
+        total_row["profit_percentage"] = round((total_cm2_profit / total_net_sales * 100) if total_net_sales else 0, 2)
+        total_row["current_net_reimbursement"] = round(global_current_net_reimbursement, 2)
+
+        total_row["reimbursement_vs_cm2_margins"] = round(
+            (global_current_net_reimbursement / total_cm2_profit * 100)
+            if total_cm2_profit else 0,
+            2
+        )
+
+        total_row["reimbursement_vs_sales"] = round(
+            (global_current_net_reimbursement / total_net_sales * 100)
+            if total_net_sales else 0,
+            2
+        )
+
+        total_row["total_ads"] = round(total_ads, 2)
+        total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
+        total_row["total_cm2_margins"] = round(total_cm2_margins, 2)
+        total_row["tacos_total_advertising_cost_of_sale"] = round(tacos, 2)
+
+        total_row["ads_conversion_rate"] = round((ads_sale_units / ads_clicks * 100) if ads_clicks else 0, 2)
+        total_row["ads_roas"] = round((ads_sale_amount / total_ads) if total_ads else 0, 2)
+        total_row["ads_acos"] = round((total_ads / ads_sale_amount * 100) if ads_sale_amount else 0, 2)
 
         global_df = pd.concat([global_df, pd.DataFrame([total_row])], ignore_index=True)
 
@@ -913,7 +1074,157 @@ def finances_mtd_transactions():
             chunksize=1000,
         )
 
-        return jsonify({
+        prev_month_num = now_utc.month - 1
+        prev_year = now_utc.year
+
+        if prev_month_num == 0:
+            prev_month_num = 12
+            prev_year -= 1
+
+        prev_month_name = _month_name_lower(prev_month_num)
+
+        prev_uk_table = f"skuwisemonthly_{user_id}_uk_{prev_month_name}_{prev_year}"
+        prev_us_table = f"skuwisemonthly_{user_id}_us_{prev_month_name}_{prev_year}"
+
+        prev_uk_df = pd.read_sql_query(
+            f'SELECT * FROM public."{prev_uk_table}"',
+            PHORMULA_ENGINE
+        )
+
+        prev_us_df = pd.read_sql_query(
+            f'SELECT * FROM public."{prev_us_table}"',
+            PHORMULA_ENGINE
+        )
+
+        prev_uk_df = prev_uk_df[prev_uk_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+        prev_us_df = prev_us_df[prev_us_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+
+        prev_uk_to_usd_rate = fetch_conversion_rate(
+            country="us",
+            year=prev_year,
+            month_name=prev_month_name,
+            user_currency="gbp",
+            selected_currency="usd",
+        )
+
+        for col in money_cols:
+            if col in prev_uk_df.columns:
+                prev_uk_df[col] = pd.to_numeric(prev_uk_df[col], errors="coerce") * float(prev_uk_to_usd_rate)
+
+        prev_combined_df = pd.concat([prev_us_df, prev_uk_df], ignore_index=True)
+
+        prev_sum_cols = prev_combined_df.select_dtypes(include=["number"]).columns.tolist()
+
+        for remove_col in ["user_id", "year"]:
+            if remove_col in prev_sum_cols:
+                prev_sum_cols.remove(remove_col)
+
+        prev_combined_df["product_name"] = (
+            prev_combined_df["product_name"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
+
+        prev_combined_df["product_name_group"] = prev_combined_df.apply(
+            lambda r: r["product_name"] if r["product_name"] else str(r["sku"]),
+            axis=1
+        )
+
+        previous_global_df = prev_combined_df.groupby(
+            "product_name_group",
+            as_index=False
+        )[prev_sum_cols].sum()
+
+        # SAME CALCULATIONS AS CURRENT MONTH
+
+        previous_global_df["asp"] = previous_global_df.apply(
+            lambda r: float(r["net_sales"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        previous_global_df["cm1_profit_per_unit"] = previous_global_df.apply(
+            lambda r: float(r["profit"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        previous_global_df["cm1_profit_per"] = previous_global_df.apply(
+            lambda r: float(r["profit"]) / float(r["net_sales"]) * 100
+            if float(r.get("net_sales", 0) or 0) else 0,
+            axis=1
+        )
+
+        previous_global_df["cm2_profit_per_unit"] = previous_global_df.apply(
+            lambda r: float(r["cm2_profit"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1
+        )
+
+        previous_global_df["cm2_profit_per"] = previous_global_df.apply(
+            lambda r: float(r["cm2_profit"]) / float(r["net_sales"]) * 100
+            if float(r.get("net_sales", 0) or 0) else 0,
+            axis=1
+        )
+
+        previous_global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
+
+        # ================= GRAND TOTAL (PREVIOUS) =================
+
+        prev_total_row = {"sku": "GRAND_TOTAL", "product_name": "Grand Total"}
+
+        for col in prev_sum_cols:
+            prev_total_row[col] = float(previous_global_df[col].sum()) if col in previous_global_df.columns else 0
+
+        total_qty = float(prev_total_row.get("quantity", 0) or 0)
+        total_net_sales = float(prev_total_row.get("net_sales", 0) or 0)
+        total_profit = float(prev_total_row.get("profit", 0) or 0)
+        total_cm2 = float(prev_total_row.get("cm2_profit", 0) or 0)
+
+        prev_total_row["asp"] = total_net_sales / total_qty if total_qty else 0
+        prev_total_row["cm1_profit_per_unit"] = total_profit / total_qty if total_qty else 0
+        prev_total_row["cm1_profit_per"] = (total_profit / total_net_sales * 100) if total_net_sales else 0
+        prev_total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
+        prev_total_row["cm2_profit_per"] = (total_cm2 / total_net_sales * 100) if total_net_sales else 0
+
+        prev_total_row["country"] = "global"
+        prev_total_row["month"] = prev_month_name
+        prev_total_row["year"] = prev_year
+        prev_total_row["user_id"] = user_id
+        prev_total_row["generated_at_utc"] = now_utc.isoformat()
+
+        previous_global_df = pd.concat(
+            [previous_global_df, pd.DataFrame([prev_total_row])],
+            ignore_index=True
+        )
+
+        previous_global_df["sku"] = previous_global_df["sku"].fillna("")
+        previous_global_df.loc[
+            previous_global_df["product_name"].astype(str).str.lower() == "grand total",
+            "sku"
+        ] = "GRAND_TOTAL"
+
+        previous_global_df["country"] = "global"
+        previous_global_df["month"] = prev_month_name
+        previous_global_df["year"] = prev_year
+        previous_global_df["user_id"] = user_id
+        previous_global_df["generated_at_utc"] = now_utc.isoformat()
+
+        previous_period = {
+            "country": "global",
+            "month": prev_month_name,
+            "year": prev_year,
+            "conversion": {
+                "from": "GBP",
+                "to": "USD",
+                "rate": prev_uk_to_usd_rate
+            },
+            "skuwise_items": previous_global_df.to_dict(orient="records")
+        }
+
+        payload_out = {
             "success": True,
             "country": "global",
             "conversion": {
@@ -923,13 +1234,38 @@ def finances_mtd_transactions():
                 "month": month_name,
                 "year": now_utc.year,
             },
+            # "previous_period": previous_period,
+            "skuwise_tables": {
+                "us": {
+                    "name": us_table,
+                    "saved": True,
+                    "rows": len(us_df),
+                },
+                "uk": {
+                    "name": uk_table,
+                    "saved": True,
+                    "rows": len(uk_df),
+                    "currency": "USD",
+                    "converted_from": "GBP",
+                    "conversion_rate": uk_to_usd_rate,
+                },
+                "global": {
+                    "name": global_table,
+                    "saved": True,
+                    "rows": len(global_df),
+                },
+            },
             "skuwise_table": {
                 "name": global_table,
                 "saved": True,
                 "rows": len(global_df),
             },
-            "skuwise_items": global_df.to_dict(orient="records"),
-        }), 200
+            "skuwise_items_us": skuwise_items_us,
+            "skuwise_items_uk": skuwise_items_uk,
+            "skuwise_items_global": global_df.to_dict(orient="records"),
+        }
+
+        return jsonify(_json_safe(payload_out)), 200
 
     if ui_country in ("us", "usa", "united_states"):
         transaction_status = "RELEASED"
@@ -1671,8 +2007,7 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
-        # replace NaN/Inf before jsonify/to_dict
-        df_sku = df_sku.replace([np.inf, -np.inf], np.nan).where(pd.notnull(df_sku), None)
+        
 
         skuwise_items = df_sku.to_dict(orient="records")
 

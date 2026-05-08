@@ -8,6 +8,8 @@ from calendar import month_abbr, monthrange
 from datetime import date, datetime, timedelta
 from openai import OpenAI
 import json
+from sqlalchemy import text
+from calendar import month_name
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,6 +35,9 @@ SECRET_KEY = Config.SECRET_KEY
 
 db_url = os.getenv("DATABASE_URL")
 db_url2 = os.getenv("DATABASE_AMAZON_URL")
+db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  # fallback
+
+ADMIN_ENGINE = create_engine(db_url1, pool_pre_ping=True)
 
 engine_hist = create_engine(db_url)
 engine_live = create_engine(db_url2)
@@ -1297,6 +1302,439 @@ def live_mtd_vs_previous():
         traceback.print_exc()
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
+def fetch_conversion_rate(
+    country: str,
+    year: int,
+    month_name: str,
+    user_currency: str,
+    selected_currency: str
+) -> float:
+    sql = text("""
+        SELECT conversion_rate
+        FROM public.currency_conversion
+        WHERE lower(country) = lower(:country)
+          AND year = :year
+          AND lower(month) = lower(:month)
+          AND lower(user_currency) = lower(:user_currency)
+          AND lower(selected_currency) = lower(:selected_currency)
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+
+    params = {
+        "country": (country or "").strip(),
+        "year": int(year),
+        "month": (month_name or "").strip(),
+        "user_currency": (user_currency or "").strip(),
+        "selected_currency": (selected_currency or "").strip(),
+    }
+
+    with ADMIN_ENGINE.connect() as conn:
+        row = conn.execute(sql, params).fetchone()
+
+    if not row or row[0] is None:
+        print("MISSING CONVERSION RATE:", params)
+        return 1.0
+
+    return float(row[0])
 
 
+def _safe_float(v):
+    try:
+        return float(v or 0)
+    except Exception:
+        return 0.0
+
+
+def _get_total_row(items):
+    for row in items or []:
+        if str(row.get("sku", "")).upper() in ("TOTAL", "GRAND_TOTAL"):
+            return row
+    return {}
+
+
+def _sum_daily_key(daily_rows, key):
+    return sum(_safe_float(row.get(key)) for row in (daily_rows or []))
+
+
+def _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate):
+    rate = float(uk_to_usd_rate or 1.0)
+
+    uk_advertising = _sum_daily_key(uk_daily, "advertising") * rate
+    uk_platform_fee = _sum_daily_key(uk_daily, "platform_fee") * rate
+    uk_reimbursement = _sum_daily_key(uk_daily, "rembursement_fee") * rate
+
+    us_advertising = _sum_daily_key(us_daily, "advertising")
+    us_platform_fee = _sum_daily_key(us_daily, "platform_fee")
+    us_reimbursement = _sum_daily_key(us_daily, "rembursement_fee")
+
+    platform_fee_total = uk_platform_fee + us_platform_fee
+
+    return {
+        "advertising": uk_advertising + us_advertising,
+        "platform_fee": platform_fee_total,
+        "rembursement_fee": uk_reimbursement + us_reimbursement,
+
+        # fallback because daily_series does not expose selling_fees/fba_fees
+        "amazon_fees": platform_fee_total,
+
+        # keep 0 until cost_of_unit_sold/cogs is added into fetch_previous_period_data daily_series
+        "cogs": (
+            _sum_daily_key(uk_daily, "cogs") * rate
+            + _sum_daily_key(us_daily, "cogs")
+        ),
+    }
+
+def _build_extra_totals_single(daily_rows, rate=1.0):
+    rate = float(rate or 1.0)
+
+    advertising = _sum_daily_key(daily_rows, "advertising") * rate
+    platform_fee = _sum_daily_key(daily_rows, "platform_fee") * rate
+    reimbursement = _sum_daily_key(daily_rows, "rembursement_fee") * rate
+
+    return {
+        "advertising": advertising,
+        "platform_fee": platform_fee,
+        "rembursement_fee": reimbursement,
+        "amazon_fees": platform_fee,
+        "cogs": _sum_daily_key(daily_rows, "cogs") * rate,
+    }
+
+def _build_aligned_totals(skuwise_items_global, extra_totals):
+    total = _get_total_row(skuwise_items_global)
+
+    net_sales = _safe_float(total.get("net_sales"))
+    profit = _safe_float(total.get("profit"))
+
+    advertising = _safe_float(extra_totals.get("advertising"))
+    platform_fee = _safe_float(extra_totals.get("platform_fee"))
+    reimbursement = _safe_float(extra_totals.get("rembursement_fee"))
+
+    cm2_profit = profit - advertising - platform_fee
+    cm2_percentage = (cm2_profit / net_sales) * 100 if net_sales else 0
+
+    return {
+        "total_previous_net_sales": round(net_sales, 2),
+        "total_previous_profit": round(profit, 2),
+        "total_previous_advertising": round(advertising, 2),
+        "total_previous_platform_fees": round(platform_fee, 2),
+        "total_previous_profit_cm2": round(cm2_profit, 2),
+        "total_previous_profit_percentage": round(cm2_percentage, 2),
+        "total_previous_rembursement_fee": round(reimbursement, 2),
+        "total_previous_net_sales_full_month": round(net_sales, 2),
+    }
+
+
+def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
+    total = _get_total_row(skuwise_items)
+
+    quantity = _safe_float(total.get("quantity"))
+    gross_sales = _safe_float(total.get("gross_sales"))
+    net_sales = _safe_float(total.get("net_sales"))
+    profit = _safe_float(total.get("profit"))
+
+    advertising = _safe_float(extra_totals.get("advertising"))
+    platform_fee = _safe_float(extra_totals.get("platform_fee"))
+    amazon_fees = _safe_float(extra_totals.get("amazon_fees"))
+    cogs = _safe_float(extra_totals.get("cogs"))
+
+    cm2_profit = profit - advertising - platform_fee
+
+    return {
+        "quantity": round(quantity, 2),
+        "gross_sales": round(gross_sales, 2),
+        "net_sales": round(net_sales, 2),
+        "profit": round(profit, 2),
+
+        "cogs": round(cogs, 2),
+        "advertising_fees": round(advertising, 2),
+        "amazon_fees": round(amazon_fees, 2),
+        "platform_fees": round(platform_fee, 2),
+
+        "cm2_profit": round(cm2_profit, 2),
+
+        "asp": round(net_sales / quantity, 2) if quantity else 0,
+        "profit_percentage": round((profit / net_sales) * 100, 2) if net_sales else 0,
+        "cm2_profit_percentage": round((cm2_profit / net_sales) * 100, 2) if net_sales else 0,
+    }
+
+
+@live_data_bi_bp.route("/live_mtd_bi/previous_skuwise_global", methods=["GET"])
+def previous_skuwise_global():
+    import math
+    import pandas as pd
+    import numpy as np
+
+    def _json_safe(obj):
+        if obj is None:
+            return None
+        if isinstance(obj, float):
+            return obj if math.isfinite(obj) else None
+        if isinstance(obj, dict):
+            return {k: _json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_json_safe(x) for x in obj]
+        return obj
+
+    def _items_to_df(items, country):
+        df = pd.DataFrame(items or [])
+        if df.empty:
+            return df
+
+        df["country"] = country
+        df["source_country"] = country
+
+        for col in df.columns:
+            if col not in ("sku", "product_name", "country", "source_country"):
+                df[col] = pd.to_numeric(df[col], errors="ignore")
+
+        return df
+
+    def _convert_uk_to_usd(df, rate):
+        if df.empty:
+            return df
+
+        money_cols = [
+            "product_sales",
+            "gross_sales",
+            "net_sales",
+            "profit",
+            "cogs",
+            "ads_spend",
+            "advertising",
+            "platform_fee",
+            "cm2_profit",
+            "unit_wise_profitability",
+        ]
+
+        for col in money_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0) * float(rate)
+
+        if "asp" in df.columns:
+            df["asp"] = pd.to_numeric(df["asp"], errors="coerce").fillna(0) * float(rate)
+
+        df["currency"] = "USD"
+        return df
+
+    def _clean_product_name_value(value):
+        if value is None:
+            return None
+
+        value = str(value).strip()
+
+        if value.lower() in ("", "0", "nan", "none", "null"):
+            return None
+
+        return value.lower()
+
+    def _build_global_skuwise(us_df, uk_df):
+        combined_df = pd.concat([us_df, uk_df], ignore_index=True)
+
+        if combined_df.empty:
+            return []
+
+        if "product_name" not in combined_df.columns:
+            combined_df["product_name"] = None
+
+        if "sku" not in combined_df.columns:
+            combined_df["sku"] = ""
+
+        combined_df["product_name"] = combined_df["product_name"].apply(_clean_product_name_value)
+        combined_df["sku"] = combined_df["sku"].fillna("").astype(str).str.strip()
+
+        combined_df["product_name_group"] = combined_df.apply(
+            lambda r: r["product_name"] if r["product_name"] else r["sku"],
+            axis=1,
+        )
+
+        combined_df = combined_df[
+            combined_df["product_name_group"].notna()
+            & (combined_df["product_name_group"].astype(str).str.strip() != "")
+        ].copy()
+
+        if combined_df.empty:
+            return []
+
+        sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
+
+        for remove_col in ["user_id", "year"]:
+            if remove_col in sum_cols:
+                sum_cols.remove(remove_col)
+
+        global_df = combined_df.groupby("product_name_group", as_index=False)[sum_cols].sum()
+        global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
+
+        global_df["sku"] = ""
+        global_df["country"] = "global"
+        global_df["currency"] = "USD"
+
+        if "quantity" in global_df.columns and "net_sales" in global_df.columns:
+            global_df["asp"] = global_df.apply(
+                lambda r: float(r["net_sales"]) / float(r["quantity"])
+                if float(r.get("quantity", 0) or 0) else 0,
+                axis=1,
+            )
+
+        if "quantity" in global_df.columns and "profit" in global_df.columns:
+            global_df["unit_wise_profitability"] = global_df.apply(
+                lambda r: float(r["profit"]) / float(r["quantity"])
+                if float(r.get("quantity", 0) or 0) else 0,
+                axis=1,
+            )
+
+        if "net_sales" in global_df.columns:
+            total_net_sales = float(global_df["net_sales"].sum() or 0)
+            global_df["sales_mix"] = (
+                (global_df["net_sales"] / total_net_sales) * 100
+                if total_net_sales else 0
+            )
+
+        return global_df.replace({np.nan: None}).to_dict(orient="records")
+
+    def _append_total_row(items, country):
+        if not items:
+            return items
+
+        df = pd.DataFrame(items)
+        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+
+        total = {}
+        for col in numeric_cols:
+            total[col] = float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+
+        qty = total.get("quantity", 0) or 0
+        net_sales = total.get("net_sales", 0) or 0
+        profit = total.get("profit", 0) or 0
+
+        total["asp"] = net_sales / qty if qty else 0
+        total["unit_wise_profitability"] = profit / qty if qty else 0
+        total["sales_mix"] = 100.0
+
+        total["sku"] = "TOTAL"
+        total["product_name"] = "Total"
+        total["country"] = country
+        total["currency"] = "USD"
+
+        if country in ("uk", "us"):
+            total["source_country"] = country
+
+        return items + [total]
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "success": False,
+            "error": "Authorization token is missing or invalid"
+        }), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(payload.get("user_id"))
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+    as_of = request.args.get("as_of")
+    start_day = request.args.get("start_day")
+    end_day = request.args.get("end_day")
+
+    start_day = int(start_day) if start_day else None
+    end_day = int(end_day) if end_day else None
+
+    ranges = get_mtd_and_prev_ranges(
+        as_of=as_of,
+        start_day=start_day,
+        end_day=end_day,
+    )
+
+    prev_start = ranges["previous"]["start"]
+    prev_end = ranges["previous"]["end"]
+    prev_month_name = month_name[prev_start.month].lower()
+    prev_year = prev_start.year
+
+    try:
+        skuwise_items_uk_raw, uk_daily = fetch_previous_period_data(
+            user_id, "uk", prev_start, prev_end
+        )
+        skuwise_items_us_raw, us_daily = fetch_previous_period_data(
+            user_id, "us", prev_start, prev_end
+        )
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Failed to read previous period UK/US data",
+            "details": str(e),
+        }), 500
+
+    uk_df = _items_to_df(skuwise_items_uk_raw, "uk")
+    us_df = _items_to_df(skuwise_items_us_raw, "us")
+
+    uk_to_usd_rate = fetch_conversion_rate(
+        country="us",
+        year=prev_year,
+        month_name=prev_month_name,
+        user_currency="gbp",
+        selected_currency="usd",
+    ) or 1.0
+
+    uk_df = _convert_uk_to_usd(uk_df, uk_to_usd_rate)
+
+    if not us_df.empty:
+        us_df["currency"] = "USD"
+
+    skuwise_items_uk = uk_df.replace({np.nan: None}).to_dict(orient="records")
+    skuwise_items_us = us_df.replace({np.nan: None}).to_dict(orient="records")
+    skuwise_items_global = _build_global_skuwise(us_df, uk_df)
+
+    skuwise_items_uk = _append_total_row(skuwise_items_uk, "uk")
+    skuwise_items_us = _append_total_row(skuwise_items_us, "us")
+    skuwise_items_global = _append_total_row(skuwise_items_global, "global")
+
+    uk_extra = _build_extra_totals_single(uk_daily, uk_to_usd_rate)
+    us_extra = _build_extra_totals_single(us_daily, 1.0)
+    global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
+
+    aligned_totals_uk = _build_aligned_totals(skuwise_items_uk, uk_extra)
+    aligned_totals_us = _build_aligned_totals(skuwise_items_us, us_extra)
+    aligned_totals_global = _build_aligned_totals(skuwise_items_global, global_extra)
+
+    derived_totals_uk = _build_derived_totals_from_skuwise(skuwise_items_uk, uk_extra)
+    derived_totals_us = _build_derived_totals_from_skuwise(skuwise_items_us, us_extra)
+    derived_totals_global = _build_derived_totals_from_skuwise(skuwise_items_global, global_extra)
+
+    return jsonify(_json_safe({
+        "success": True,
+        "message": "Previous-period global SKU-wise data",
+        "previous_period": {
+            "prev_start": prev_start.isoformat(),
+            "prev_end": prev_end.isoformat(),
+            "month": prev_month_name,
+            "year": prev_year,
+        },
+        "conversion": {
+            "pair": "GBP->USD",
+            "rate": float(uk_to_usd_rate),
+        },
+        "aligned_totals_global": aligned_totals_global,
+        "aligned_totals_uk": aligned_totals_uk,
+        "aligned_totals_us": aligned_totals_us,
+
+        "derived_totals_global": derived_totals_global,
+        "derived_totals_uk": derived_totals_uk,
+        "derived_totals_us": derived_totals_us,
+        "skuwise_items_uk": skuwise_items_uk,
+        "skuwise_items_us": skuwise_items_us,
+        "skuwise_items_global": skuwise_items_global,
+        "count": {
+            "uk": len(skuwise_items_uk),
+            "us": len(skuwise_items_us),
+            "global": len(skuwise_items_global),
+        },
+    })), 200
 

@@ -951,6 +951,9 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
             quantity = float(safe_num(day_sku.get("quantity", 0)).sum()) if len(day_sku) else 0.0
             product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
+            cogs = float(
+                safe_num(day_sku.get("cost_of_unit_sold", 0)).sum()
+            ) if len(day_sku) else 0.0
 
             # ✅ gross_sales per day (robust rebates)
             gross_sales = float((
@@ -985,6 +988,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "advertising": float(advertising_total),
                  # ✅ NEW
                 "rembursement_fee": float(remb_total),
+                "cogs": float(cogs),
+                "cost_of_unit_sold": float(cogs),
             })
 
     daily_series = sorted(daily_series, key=lambda x: x["date"])
