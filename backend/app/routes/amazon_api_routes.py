@@ -1563,6 +1563,64 @@ def finances_mtd_transactions():
             "tax", "credits", "tax_and_credits", "lost_total",
             "ads_sale_amount"
         ]
+        def recalc_response_grand_total(row_df):
+            if row_df.empty:
+                return row_df
+
+            row_df = row_df.copy()
+
+            product_ads_total = (
+                abs(float(row_df.iloc[0].get("product_spend", 0.0) or 0.0))
+                + abs(float(row_df.iloc[0].get("display_spend", 0.0) or 0.0))
+            )
+
+            cost_ads_total = (
+                abs(float(row_df.iloc[0].get("brand_spend", 0.0) or 0.0))
+                + abs(float(row_df.iloc[0].get("dealsvouchar_ads", 0.0) or 0.0))
+            )
+
+            total_ads = product_ads_total + cost_ads_total
+
+            net_sales = float(row_df.iloc[0].get("net_sales", 0.0) or 0.0)
+            profit = float(row_df.iloc[0].get("profit", 0.0) or 0.0)
+
+            other_transactions_total = (
+                abs(float(row_df.iloc[0].get("platform_fee_inventory_storage", 0.0) or 0.0))
+                + abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
+            )
+
+            total_cm2_profit = profit - total_ads - other_transactions_total
+
+            row_df.loc[:, "total_ads"] = round(total_ads, 2)
+            row_df.loc[:, "advertising_fees"] = round(total_ads, 2)
+            row_df.loc[:, "total_cm2_profit"] = round(total_cm2_profit, 2)
+            row_df.loc[:, "total_cm2_margins"] = round(
+                (total_cm2_profit / net_sales * 100) if net_sales else 0,
+                2
+            )
+            row_df.loc[:, "tacos_total_advertising_cost_of_sale"] = round(
+                (total_ads / net_sales * 100) if net_sales else 0,
+                2
+            )
+
+            ads_sale_amount = float(row_df.iloc[0].get("ads_sale_amount", 0.0) or 0.0)
+            ads_clicks = float(row_df.iloc[0].get("ads_clicks", 0.0) or 0.0)
+            ads_sale_units = float(row_df.iloc[0].get("ads_sale_units", 0.0) or 0.0)
+
+            row_df.loc[:, "ads_acos"] = round(
+                (total_ads / ads_sale_amount * 100) if ads_sale_amount else 0,
+                2
+            )
+            row_df.loc[:, "ads_roas"] = round(
+                (ads_sale_amount / total_ads) if total_ads else 0,
+                2
+            )
+            row_df.loc[:, "ads_conversion_rate"] = round(
+                (ads_sale_units / ads_clicks * 100) if ads_clicks else 0,
+                2
+            )
+
+            return row_df
 
         for col in money_cols:
             if col in uk_df.columns:
@@ -1594,6 +1652,8 @@ def finances_mtd_transactions():
         if not us_gt.empty:
             us_gt_response = us_gt.copy()
 
+            us_gt_response = recalc_response_grand_total(us_gt_response)
+
             us_gt_response["country"] = "us"
             us_gt_response["month"] = month_name
             us_gt_response["year"] = now_utc.year
@@ -1612,6 +1672,8 @@ def finances_mtd_transactions():
                         pd.to_numeric(uk_gt_response[col], errors="coerce").fillna(0)
                         * float(uk_to_usd_rate)
                     )
+
+            uk_gt_response = recalc_response_grand_total(uk_gt_response)
 
             uk_gt_response["country"] = "uk"
             uk_gt_response["month"] = month_name
