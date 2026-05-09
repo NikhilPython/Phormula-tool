@@ -979,6 +979,7 @@ class amazon_user(db.Model):
     marketplace_id = db.Column(db.String(20), nullable=False)
     marketplace_name = db.Column(db.String(255), nullable=True)
     currency = db.Column(db.String(10), nullable=True)
+    seller_id = db.Column(db.String(64), nullable=True)
 
     country_code = db.Column(db.String(10), nullable=True)
     country_name = db.Column(db.String(50), nullable=True)
@@ -1183,34 +1184,103 @@ class amazon_sponsored_brands_keywords(db.Model):
         ),
     )
 
+from datetime import datetime
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+from app import db
+
 
 class Product(db.Model):
     __tablename__ = 'products'
     __bind_key__ = 'amazon'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer)
+    user_id = db.Column(db.Integer, index=True)
 
     sku = db.Column(db.String(255), nullable=False, index=True)
     asin = db.Column(db.String(255), index=True)
+    fn_sku = db.Column(db.String(255), index=True)
 
-    product_type = db.Column(db.String(100))
     marketplace_id = db.Column(db.String(255), nullable=False, index=True)
 
-    status = db.Column(db.String(50), default='Active')
+    product_type = db.Column(db.String(150), index=True)
+    condition_type = db.Column(db.String(100))
+
+    status = db.Column(db.String(255), default='Active', index=True)
+
     title = db.Column(db.Text)
-    brand = db.Column(db.String(255))
-    category = db.Column(db.String(255))
+    brand = db.Column(db.String(255), index=True)
+    category = db.Column(db.String(255), index=True)
+    manufacturer = db.Column(db.String(255))
+
+    description = db.Column(db.Text)
+    bullet_points = db.Column(JSONB)
+    generic_keywords = db.Column(JSONB)
+
+    main_image_url = db.Column(db.Text)
+    image_urls = db.Column(JSONB)
+
+    parent_sku = db.Column(db.String(255), index=True)
+    parentage_level = db.Column(db.String(50), index=True)
+    variation_theme = db.Column(db.String(255))
+
+    external_product_id = db.Column(db.String(255), index=True)
+    external_product_id_type = db.Column(db.String(50))
+
+    price_amount = db.Column(db.Numeric(12, 2))
+    price_currency = db.Column(db.String(10))
+    list_price_amount = db.Column(db.Numeric(12, 2))
+    list_price_currency = db.Column(db.String(10))
+
+    fulfillment_channel = db.Column(db.String(255))
+    fulfillment_availability = db.Column(JSONB)
+
+    quantity = db.Column(db.Integer)
+
+    country_of_origin = db.Column(db.String(50))
+    item_form = db.Column(db.String(255))
+    size = db.Column(db.String(255))
+    color = db.Column(db.String(255))
+    scent = db.Column(db.String(255))
+    unit_count = db.Column(db.String(100))
+
+    item_weight_value = db.Column(db.Numeric(12, 3))
+    item_weight_unit = db.Column(db.String(50))
+    package_weight_value = db.Column(db.Numeric(12, 3))
+    package_weight_unit = db.Column(db.String(50))
+
+    item_dimensions = db.Column(JSONB)
+    package_dimensions = db.Column(JSONB)
+
+    is_expiration_dated_product = db.Column(db.Boolean)
+    is_heat_sensitive = db.Column(db.Boolean)
+    contains_liquid_contents = db.Column(db.Boolean)
+
+    fc_shelf_life_days = db.Column(db.Integer)
+
+    issues = db.Column(JSONB)
+    offers = db.Column(JSONB)
+    attributes = db.Column(JSONB)
+    summaries = db.Column(JSONB)
+
+    # Store complete normalized API object here, so no data is lost
     product_data = db.Column(JSONB)
 
-    # 🔥 Amazon listing creation date
+    # Amazon listing creation date
     open_date = db.Column(db.DateTime, index=True)
 
+    amazon_last_updated_at = db.Column(db.DateTime, index=True)
     synced_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint('sku', 'marketplace_id', name='uq_products_sku_mkt'),
     )
-
+    

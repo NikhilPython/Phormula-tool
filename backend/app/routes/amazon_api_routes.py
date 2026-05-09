@@ -11,7 +11,7 @@ from config import Config
 from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, make_response, request
 from app import db
-from app.models.user_models import amazon_user
+from app.models.user_models import amazon_user, Product
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
@@ -74,17 +74,21 @@ amazon_api_bp = Blueprint("amazon_api", __name__)
 # ------------------------------------------------- Routes -------------------------------------------------
 @amazon_api_bp.route("/amazon_api/login", methods=["GET"])
 def amazon_login():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
 
-    token = auth_header.split(' ')[1]
+    token = auth_header.split(" ", 1)[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(user_id or payload.get("user_id"))
     except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token has expired'}), 401
+        return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
-        return jsonify({'error': 'Invalid token'}), 401
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"error": "Invalid token payload"}), 401
 
     _apply_region_and_marketplace_from_request()
 
@@ -113,6 +117,7 @@ def amazon_login():
     else:
         au.region = region
         au.marketplace_id = marketplace_id
+        au.marketplace_name = au.marketplace_name or marketplace_id
 
     db.session.commit()
 
@@ -122,18 +127,27 @@ def amazon_login():
         "success": True,
         "auth_url": amazon_client.get_oauth_url(state),
         "state": state
-    })
+    }), 200
 
 @amazon_api_bp.route("/amazon_api/callback", methods=["GET"])
 def amazon_oauth_callback():
     code = request.args.get("spapi_oauth_code")
     state = request.args.get("state") or ""
 
+    # Amazon sends this in OAuth callback.
+    seller_id = (
+        request.args.get("selling_partner_id")
+        or request.args.get("sellingPartnerId")
+        or request.args.get("seller_id")
+    )
+
+    if not code:
+        return make_response("Missing spapi_oauth_code", 400)
+
     if not state.startswith("uid|"):
         return make_response("Invalid state received", 400)
 
     try:
-        # uid|123|ATVPDKIKX0DER|1713680000
         parts = state.split("|")
         user_id = int(parts[1])
         marketplace_id = parts[2]
@@ -170,7 +184,9 @@ def amazon_oauth_callback():
             user_id=user_id,
             region=amazon_client.region,
             marketplace_id=marketplace_id,
+            marketplace_name=marketplace_id,
             refresh_token=refresh,
+            seller_id=seller_id,
             is_connected=True
         )
         db.session.add(au)
@@ -179,9 +195,13 @@ def amazon_oauth_callback():
         au.is_connected = True
         au.updated_at = datetime.utcnow()
 
+        if seller_id:
+            au.seller_id = seller_id
+
     db.session.commit()
 
     amazon_client.refresh_token = refresh
+
     try:
         with open(".refresh_token", "w") as f:
             f.write(refresh)
@@ -189,21 +209,23 @@ def amazon_oauth_callback():
         pass
 
     return """
-        <html><body style='font-family: system-ui;'>
-            <p>✅ Amazon account linked successfully. You may close this window.</p>
-            <script>
-                try {
-                    if (window.opener) {
-                        window.opener.postMessage(
-                            { type: "amazon_oauth_success", refresh_token: "%s" },
-                            "*"
-                        );
-                    }
-                } catch(e) {}
-                window.close();
-            </script>
-        </body></html>
-    """ % refresh
+        <html>
+            <body style="font-family: system-ui;">
+                <p>✅ Amazon account linked successfully. You may close this window.</p>
+                <script>
+                    try {
+                        if (window.opener) {
+                            window.opener.postMessage(
+                                { type: "amazon_oauth_success" },
+                                "*"
+                            );
+                        }
+                    } catch(e) {}
+                    window.close();
+                </script>
+            </body>
+        </html>
+    """
 
 @amazon_api_bp.route("/amazon_api/status", methods=["GET"])
 def amazon_status():
@@ -269,7 +291,468 @@ def amazon_health():
     ok = bool(amazon_client.get_access_token())
     return jsonify({"status": "healthy" if ok else "error"}), (200 if ok else 500)
 
+# ------------------------------------------------- SKUs and Listings Items API Functions -------------------------------------------------
 
+def _attr_list(attributes, key):
+    if not isinstance(attributes, dict):
+        return []
+    value = attributes.get(key) or []
+    return value if isinstance(value, list) else []
+
+
+def _attr_first(attributes, key, value_key="value"):
+    values = _attr_list(attributes, key)
+    if not values:
+        return None
+
+    first = values[0]
+    if isinstance(first, dict):
+        return first.get(value_key)
+
+    return first
+
+
+def _attr_values(attributes, key):
+    values = _attr_list(attributes, key)
+    output = []
+
+    for item in values:
+        if isinstance(item, dict):
+            value = item.get("value")
+            if value is not None:
+                output.append(value)
+        elif item is not None:
+            output.append(item)
+
+    return output
+
+
+def _parse_amazon_datetime(value):
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _to_bool(value):
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "y")
+
+    return bool(value)
+
+
+def _to_decimal_value(value):
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _status_to_string(status):
+    if isinstance(status, list):
+        return ",".join(str(x) for x in status)
+
+    if status is None:
+        return None
+
+    return str(status)
+
+
+def _get_main_image_url(product, attributes):
+    main_image = product.get("mainImage") or {}
+    if isinstance(main_image, dict) and main_image.get("link"):
+        return main_image.get("link")
+
+    locator = _attr_list(attributes, "main_product_image_locator")
+    if locator and isinstance(locator[0], dict):
+        return locator[0].get("media_location")
+
+    return None
+
+
+def _get_all_image_urls(product, attributes):
+    urls = []
+
+    main_url = _get_main_image_url(product, attributes)
+    if main_url:
+        urls.append(main_url)
+
+    for key, value in attributes.items():
+        if key.startswith("other_product_image_locator"):
+            if isinstance(value, list):
+                for img in value:
+                    if isinstance(img, dict) and img.get("media_location"):
+                        urls.append(img["media_location"])
+
+    # remove duplicates
+    return list(dict.fromkeys(urls))
+
+
+def _get_external_product_identifier(attributes):
+    values = _attr_list(attributes, "externally_assigned_product_identifier")
+    if not values:
+        return None, None
+
+    first = values[0]
+    if not isinstance(first, dict):
+        return None, None
+
+    return first.get("value"), first.get("type")
+
+
+def _get_parent_sku(attributes):
+    values = _attr_list(attributes, "child_parent_sku_relationship")
+    if not values:
+        return None
+
+    first = values[0]
+    if isinstance(first, dict):
+        return first.get("parent_sku")
+
+    return None
+
+
+def _get_variation_theme(attributes):
+    values = _attr_list(attributes, "variation_theme")
+    if not values:
+        return None
+
+    first = values[0]
+    if isinstance(first, dict):
+        return first.get("name")
+
+    return None
+
+
+def _get_unit_count(attributes):
+    values = _attr_list(attributes, "unit_count")
+    if not values:
+        return None
+
+    first = values[0]
+    if not isinstance(first, dict):
+        return str(first)
+
+    value = first.get("value")
+    unit_type = first.get("type") or {}
+    unit_name = unit_type.get("value") if isinstance(unit_type, dict) else None
+
+    if value is not None and unit_name:
+        return f"{value} {unit_name}"
+
+    if value is not None:
+        return str(value)
+
+    return None
+
+
+def _get_list_price(attributes):
+    values = _attr_list(attributes, "list_price")
+    if not values:
+        return None, None
+
+    first = values[0]
+    if not isinstance(first, dict):
+        return None, None
+
+    return (
+        _to_decimal_value(first.get("value_with_tax")),
+        first.get("currency")
+    )
+
+
+def _get_offer_price(offers):
+    if not isinstance(offers, list) or not offers:
+        return None, None
+
+    # prefer B2C / ALL offer
+    selected = None
+    for offer in offers:
+        if not isinstance(offer, dict):
+            continue
+
+        offer_type = offer.get("offerType")
+        audience = offer.get("audience") or {}
+        audience_value = audience.get("value") if isinstance(audience, dict) else None
+
+        if offer_type == "B2C" or audience_value == "ALL":
+            selected = offer
+            break
+
+    if selected is None:
+        selected = offers[0]
+
+    price = selected.get("price") or {}
+    return (
+        _to_decimal_value(price.get("amount")),
+        price.get("currencyCode") or price.get("currency")
+    )
+
+
+def _get_first_fulfillment_channel(fulfillment_availability):
+    if not isinstance(fulfillment_availability, list) or not fulfillment_availability:
+        return None, None
+
+    first = fulfillment_availability[0]
+    if not isinstance(first, dict):
+        return None, None
+
+    return (
+        first.get("fulfillmentChannelCode") or first.get("fulfillment_channel_code"),
+        first.get("quantity")
+    )
+
+
+def _get_weight(attributes, key):
+    values = _attr_list(attributes, key)
+    if not values:
+        return None, None
+
+    first = values[0]
+    if not isinstance(first, dict):
+        return None, None
+
+    return (
+        _to_decimal_value(first.get("value")),
+        first.get("unit")
+    )
+
+
+def _get_fc_shelf_life_days(attributes):
+    values = _attr_list(attributes, "fc_shelf_life")
+    if not values:
+        return None
+
+    first = values[0]
+    if not isinstance(first, dict):
+        return None
+
+    try:
+        return int(float(first.get("value")))
+    except Exception:
+        return None
+    
+
+def _upsert_full_listing_products_to_db(products, marketplace_id, user_id):
+    """
+    Stores full Amazon Listings Items API product data into products table.
+    Normal fields go into columns.
+    Complete JSON goes into product_data.
+    """
+
+    saved_count = 0
+    now = datetime.utcnow()
+
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+
+        sku = product.get("sku")
+        if not sku:
+            continue
+
+        attributes = product.get("attributes") or {}
+        offers = product.get("offers") or []
+        fulfillment_availability = product.get("fulfillmentAvailability") or []
+        issues = product.get("issues") or []
+        summaries = product.get("summaries") or []
+
+        # In your normalized product, summaries may not exist, so fallback to normal fields
+        first_summary = summaries[0] if summaries else {}
+
+        asin = (
+            product.get("asin")
+            or first_summary.get("asin")
+            or _attr_first(attributes, "merchant_suggested_asin")
+        )
+
+        fn_sku = first_summary.get("fnSku") or first_summary.get("fnsku")
+
+        title = (
+            product.get("itemName")
+            or first_summary.get("itemName")
+            or _attr_first(attributes, "item_name")
+        )
+
+        product_type = (
+            product.get("productType")
+            or first_summary.get("productType")
+        )
+
+        condition_type = (
+            product.get("conditionType")
+            or first_summary.get("conditionType")
+            or _attr_first(attributes, "condition_type")
+        )
+
+        status = _status_to_string(
+            product.get("status")
+            or first_summary.get("status")
+        ) or "Active"
+
+        brand = _attr_first(attributes, "brand")
+        manufacturer = _attr_first(attributes, "manufacturer")
+
+        description = _attr_first(attributes, "product_description")
+        bullet_points = _attr_values(attributes, "bullet_point")
+        generic_keywords = _attr_values(attributes, "generic_keyword")
+
+        main_image_url = _get_main_image_url(product, attributes)
+        image_urls = _get_all_image_urls(product, attributes)
+
+        parent_sku = _get_parent_sku(attributes)
+        parentage_level = _attr_first(attributes, "parentage_level")
+        variation_theme = _get_variation_theme(attributes)
+
+        external_id, external_id_type = _get_external_product_identifier(attributes)
+
+        price_amount, price_currency = _get_offer_price(offers)
+        list_price_amount, list_price_currency = _get_list_price(attributes)
+
+        fulfillment_channel, quantity = _get_first_fulfillment_channel(fulfillment_availability)
+
+        country_of_origin = _attr_first(attributes, "country_of_origin")
+        item_form = _attr_first(attributes, "item_form")
+        size = _attr_first(attributes, "size") or _attr_first(attributes, "size_per_pearl")
+        color = _attr_first(attributes, "color")
+        scent = _attr_first(attributes, "scent")
+        unit_count = _get_unit_count(attributes)
+
+        item_weight_value, item_weight_unit = _get_weight(attributes, "item_weight")
+        package_weight_value, package_weight_unit = _get_weight(attributes, "item_package_weight")
+
+        item_dimensions = _attr_list(attributes, "item_dimensions")
+        item_dimensions = item_dimensions[0] if item_dimensions else None
+
+        package_dimensions = _attr_list(attributes, "item_package_dimensions")
+        package_dimensions = package_dimensions[0] if package_dimensions else None
+
+        is_expiration_dated_product = _to_bool(
+            _attr_first(attributes, "is_expiration_dated_product")
+        )
+        is_heat_sensitive = _to_bool(
+            _attr_first(attributes, "is_heat_sensitive")
+        )
+        contains_liquid_contents = _to_bool(
+            _attr_first(attributes, "contains_liquid_contents")
+        )
+
+        fc_shelf_life_days = _get_fc_shelf_life_days(attributes)
+
+        open_date = _parse_amazon_datetime(
+            product.get("createdDate")
+            or first_summary.get("createdDate")
+        )
+
+        amazon_last_updated_at = _parse_amazon_datetime(
+            product.get("lastUpdatedDate")
+            or first_summary.get("lastUpdatedDate")
+        )
+
+        row = Product.query.filter_by(
+            sku=sku,
+            marketplace_id=marketplace_id
+        ).first()
+
+        if not row:
+            row = Product(
+                user_id=user_id,
+                sku=sku,
+                marketplace_id=marketplace_id,
+                created_at=now
+            )
+            db.session.add(row)
+
+        row.user_id = user_id
+        row.sku = sku
+        row.asin = asin
+        row.fn_sku = fn_sku
+        row.marketplace_id = marketplace_id
+
+        row.product_type = product_type
+        row.condition_type = condition_type
+        row.status = status
+
+        row.title = title
+        row.brand = brand
+        row.category = product_type
+        row.manufacturer = manufacturer
+
+        row.description = description
+        row.bullet_points = bullet_points
+        row.generic_keywords = generic_keywords
+
+        row.main_image_url = main_image_url
+        row.image_urls = image_urls
+
+        row.parent_sku = parent_sku
+        row.parentage_level = parentage_level
+        row.variation_theme = variation_theme
+
+        row.external_product_id = external_id
+        row.external_product_id_type = external_id_type
+
+        row.price_amount = price_amount
+        row.price_currency = price_currency
+        row.list_price_amount = list_price_amount
+        row.list_price_currency = list_price_currency
+
+        row.fulfillment_channel = fulfillment_channel
+        row.fulfillment_availability = fulfillment_availability
+        row.quantity = quantity
+
+        row.country_of_origin = country_of_origin
+        row.item_form = item_form
+        row.size = size
+        row.color = color
+        row.scent = scent
+        row.unit_count = unit_count
+
+        row.item_weight_value = item_weight_value
+        row.item_weight_unit = item_weight_unit
+        row.package_weight_value = package_weight_value
+        row.package_weight_unit = package_weight_unit
+
+        row.item_dimensions = item_dimensions
+        row.package_dimensions = package_dimensions
+
+        row.is_expiration_dated_product = is_expiration_dated_product
+        row.is_heat_sensitive = is_heat_sensitive
+        row.contains_liquid_contents = contains_liquid_contents
+        row.fc_shelf_life_days = fc_shelf_life_days
+
+        row.issues = issues
+        row.offers = offers
+        row.attributes = attributes
+        row.summaries = summaries
+
+        # Full normalized Amazon product object
+        row.product_data = product
+
+        row.open_date = open_date
+        row.amazon_last_updated_at = amazon_last_updated_at
+        row.synced_at = now
+        row.updated_at = now
+
+        saved_count += 1
+
+    db.session.commit()
+    return saved_count
 
 
 
@@ -278,28 +761,58 @@ def amazon_health():
 # -------------------------------------------------------
 @amazon_api_bp.route("/amazon_api/skus", methods=["GET"])
 def list_skus():
+    """
+    Fetch seller SKUs from Amazon Listings Items API and optionally save full product info.
+
+    Query params:
+      marketplace_id   optional
+      seller_id        optional temporary fallback for testing
+      full_details     true/false, default true
+      store_in_db      true/false, default false
+      limit            optional integer
+      included_data    default summaries,attributes,offers,fulfillmentAvailability,issues
+      include_raw      true/false, default false
+    """
+
+    # -------------------------
+    # 1) Auth
+    # -------------------------
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Missing Authorization Bearer token"}), 401
+        return jsonify({
+            "success": False,
+            "error": "Authorization token is missing or invalid"
+        }), 401
 
-    token = auth_header.split(" ")[1]
+    token = auth_header.split(" ", 1)[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = int(payload["user_id"])
+        user_id = int(user_id or payload.get("user_id"))
     except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
+        return jsonify({"success": False, "error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
+        return jsonify({"success": False, "error": "Invalid token"}), 401
     except Exception:
-        return jsonify({"error": "Invalid token payload"}), 401
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
 
+    # -------------------------
+    # 2) Marketplace / region
+    # -------------------------
     _apply_region_and_marketplace_from_request()
 
     marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
-    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
-        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    # Load refresh token from DB for this exact marketplace
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported marketplace",
+            "marketplace_id": marketplace_id
+        }), 400
+
+    # -------------------------
+    # 3) Load Amazon connection
+    # -------------------------
     au = amazon_user.query.filter_by(
         user_id=user_id,
         marketplace_id=marketplace_id
@@ -321,40 +834,235 @@ def list_skus():
 
     amazon_client.refresh_token = au.refresh_token
 
-    store_in_db = request.args.get("store_in_db", "true").lower() != "false"
+    # -------------------------
+    # 4) Query options
+    # -------------------------
+    full_details = request.args.get("full_details", "true").lower() != "false"
+    store_in_db = request.args.get("store_in_db", "false").lower() == "true"
+    include_raw = request.args.get("include_raw", "false").lower() == "true"
+
+    included_data = request.args.get(
+        "included_data",
+        "summaries,attributes,offers,fulfillmentAvailability,issues"
+    )
+
+    limit = request.args.get("limit")
+    try:
+        limit = int(limit) if limit else None
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "error": "limit must be a valid integer"
+        }), 400
+
+    # -------------------------
+    # 5) Seller ID
+    # -------------------------
+    seller_id = (
+        getattr(au, "seller_id", None)
+        or getattr(amazon_client, "seller_id", None)
+        or request.args.get("seller_id")
+    )
+
+    if not seller_id:
+        return jsonify({
+            "success": False,
+            "error": "seller_id is missing for this Amazon connection",
+            "hint": (
+                "Reconnect Amazon OAuth so selling_partner_id is saved into amazon_user.seller_id. "
+                "For temporary Postman testing, pass ?seller_id=YOUR_SP_API_SELLER_ID."
+            )
+        }), 400
+
+    # -------------------------
+    # 6) Search Listings Items API
+    # -------------------------
+    all_search_items = []
+    page_token = None
 
     try:
-        skus = _fetch_fba_skus_all(marketplace_id)
+        while True:
+            query_params = {
+                "marketplaceIds": marketplace_id,
+                "includedData": "summaries,offers,fulfillmentAvailability,issues",
+                "pageSize": 20,
+            }
+
+            if page_token:
+                query_params["pageToken"] = page_token
+
+            search_res = amazon_client.make_api_call(
+                f"/listings/2021-08-01/items/{seller_id}",
+                "GET",
+                params=query_params
+            )
+
+            if not search_res or "error" in search_res:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to search seller listings from Amazon",
+                    "details": search_res
+                }), 502
+
+            payload_data = search_res.get("payload") if isinstance(search_res, dict) else None
+            data_source = payload_data if isinstance(payload_data, dict) else search_res
+
+            items = data_source.get("items") or []
+            all_search_items.extend(items)
+
+            if limit and len(all_search_items) >= limit:
+                all_search_items = all_search_items[:limit]
+                break
+
+            pagination = data_source.get("pagination") or {}
+            page_token = (
+                pagination.get("nextToken")
+                or pagination.get("nextPageToken")
+                or pagination.get("nextPageTokenId")
+            )
+
+            if not page_token:
+                break
+
     except Exception as e:
         return jsonify({
             "success": False,
-            "error": f"Failed to fetch SKUs from Amazon: {str(e)}",
+            "error": "Failed to fetch SKUs from Listings Items Search API",
+            "details": str(e),
             "marketplace_id": marketplace_id
         }), 502
 
-    out = {
-        "success": True,
-        "marketplace_id": marketplace_id,
-        "count": len(skus),
-        "skus": skus,
-        "empty_message": "There is no SKU listed in this seller account." if not skus else None,
-        "source": "fba-inventory",
-        "db": {"saved_products": 0},
-        "open_date": {"attempted": False, "updated": 0, "note": None},
-    }
+    # -------------------------
+    # 7) Normalize search result
+    # -------------------------
+    sku_rows = []
 
-    if store_in_db and skus:
+    for item in all_search_items:
+        sku = item.get("sku")
+        summaries = item.get("summaries") or []
+        first_summary = summaries[0] if summaries else {}
+
+        sku_rows.append({
+            "sku": sku,
+            "asin": item.get("asin") or first_summary.get("asin") or first_summary.get("asin1"),
+            "status": first_summary.get("status"),
+            "itemName": first_summary.get("itemName"),
+            "productType": first_summary.get("productType"),
+            "conditionType": first_summary.get("conditionType"),
+            "createdDate": first_summary.get("createdDate"),
+            "lastUpdatedDate": first_summary.get("lastUpdatedDate"),
+            "mainImage": first_summary.get("mainImage"),
+            "summaries": summaries,
+        })
+
+    # -------------------------
+    # 8) Optional full details per SKU
+    # -------------------------
+    details = []
+
+    if full_details:
+        for row in sku_rows:
+            sku = row.get("sku")
+            if not sku:
+                continue
+
+            try:
+                detail_res = amazon_client.make_api_call(
+                    f"/listings/2021-08-01/items/{seller_id}/{sku}",
+                    "GET",
+                    params={
+                        "marketplaceIds": marketplace_id,
+                        "includedData": included_data
+                    }
+                )
+
+                if detail_res and "error" not in detail_res:
+                    payload_detail = detail_res.get("payload") if isinstance(detail_res, dict) else None
+                    detail_data = payload_detail if isinstance(payload_detail, dict) else detail_res
+
+                    summaries = detail_data.get("summaries") or row.get("summaries") or []
+                    first_summary = summaries[0] if summaries else {}
+
+                    product = {
+                        "sku": sku,
+                        "asin": first_summary.get("asin") or row.get("asin"),
+                        "fnSku": first_summary.get("fnSku") or first_summary.get("fnsku"),
+                        "itemName": first_summary.get("itemName") or row.get("itemName"),
+                        "productType": first_summary.get("productType") or row.get("productType"),
+                        "conditionType": first_summary.get("conditionType") or row.get("conditionType"),
+                        "status": first_summary.get("status") or row.get("status"),
+                        "createdDate": first_summary.get("createdDate") or row.get("createdDate"),
+                        "lastUpdatedDate": first_summary.get("lastUpdatedDate") or row.get("lastUpdatedDate"),
+                        "mainImage": first_summary.get("mainImage") or row.get("mainImage"),
+                        "attributes": detail_data.get("attributes") or {},
+                        "offers": detail_data.get("offers") or [],
+                        "fulfillmentAvailability": detail_data.get("fulfillmentAvailability") or [],
+                        "issues": detail_data.get("issues") or [],
+                        "summaries": summaries,
+                    }
+
+                    if include_raw:
+                        product["raw"] = detail_data
+
+                    details.append(product)
+
+                else:
+                    details.append({
+                        **row,
+                        "detail_error": detail_res
+                    })
+
+            except Exception as e:
+                details.append({
+                    **row,
+                    "detail_error": str(e)
+                })
+    else:
+        details = sku_rows
+
+    # -------------------------
+    # 9) Optional DB save
+    # -------------------------
+    saved_count = 0
+    db_error = None
+
+    if store_in_db and details:
         try:
-            out["open_date"]["attempted"] = True
-            saved_count = _upsert_products_to_db_with_open_date(skus, marketplace_id, user_id)
-            out["db"] = {"saved_products": saved_count}
-            out["open_date"]["updated"] = saved_count
+            saved_count = _upsert_full_listing_products_to_db(
+                details,
+                marketplace_id,
+                user_id
+            )
         except Exception as e:
             db.session.rollback()
-            out["db"] = {"saved_products": 0, "error": str(e)}
-            out["open_date"]["note"] = "Failed while fetching open_date / saving products."
+            db_error = str(e)
 
-    return jsonify(out), 200
+    # -------------------------
+    # 10) Response
+    # -------------------------
+    return jsonify({
+        "success": True,
+        "source": "listings-items-api",
+        "marketplace_id": marketplace_id,
+        "seller_id": seller_id,
+        "count": len(details),
+        "full_details": full_details,
+        "included_data": included_data,
+        "skus": details,
+        "empty_message": "There is no SKU listed in this seller account." if not details else None,
+        "db": {
+            "attempted": store_in_db,
+            "saved_products": saved_count,
+            "error": db_error
+        },
+        "notes": {
+            "createdDate": "Saved into products.open_date.",
+            "full_data": "Complete normalized Amazon response is saved into products.product_data.",
+            "attributes": "Full attributes JSON is saved into products.attributes.",
+            "offers": "Full offers JSON is saved into products.offers."
+        }
+    }), 200
+
 
 
 
@@ -450,6 +1158,7 @@ def amazon_account():
         "region": au.region,
         "marketplace_id": marketplace_id,
         "marketplace_name": au.marketplace_name,
+        "seller_id": getattr(au, "seller_id", None),
         "db_country": au.country_name,
         "db_currency": au.currency,
         "count": len(accounts),
@@ -482,6 +1191,7 @@ def list_amazon_connections():
                 "region": r.region,
                 "marketplace_id": r.marketplace_id,
                 "marketplace_name": r.marketplace_name,
+                "seller_id": getattr(r, "seller_id", None),
                 "currency": r.currency,
                 "is_connected": r.is_connected,
                 "country": r.country_name,
