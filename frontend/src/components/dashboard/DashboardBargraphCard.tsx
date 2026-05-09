@@ -32,13 +32,27 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
 }) => {
   const normalizedLabels = useMemo(() => labels ?? [], [labels]);
 
+  const shouldShowAsPositiveBar = (label: string) => {
+    return ["Tax & Credits"].includes(label);
+  };
+
+  const normalizeBarValue = (label: string, value: unknown) => {
+    const n = Math.round(Number(value ?? 0));
+
+    return shouldShowAsPositiveBar(label)
+      ? Math.abs(n)
+      : n;
+  };
+
   const normalizedValues = useMemo(() => {
-    return normalizedLabels.map((_, i) => Math.round(Number(values?.[i] ?? 0)));
+    return normalizedLabels.map((label, i) =>
+      normalizeBarValue(label, values?.[i])
+    );
   }, [normalizedLabels, values]);
 
   const normalizedPrevValues = useMemo(() => {
-    return normalizedLabels.map((_, i) =>
-      Math.round(Number(prevValues?.[i] ?? 0))
+    return normalizedLabels.map((label, i) =>
+      normalizeBarValue(label, prevValues?.[i])
     );
   }, [normalizedLabels, prevValues]);
 
@@ -62,13 +76,17 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
     return normalizedPrevValues;
   }, [previewMode, normalizedLabels, normalizedPrevValues]);
 
-  // derive zero state from actual values instead of trusting parent blindly
   const derivedAllValuesZero = useMemo(() => {
-    return (
-      chartValues.every((v) => !Number(v)) &&
-      chartPrevValues.every((v) => !Number(v))
-    );
-  }, [chartValues, chartPrevValues]);
+    const currentAllZero = chartValues.every((v) => !Number(v));
+
+    if (!expanded) {
+      return currentAllZero;
+    }
+
+    const previousAllZero = chartPrevValues.every((v) => !Number(v));
+
+    return currentAllZero && previousAllZero;
+  }, [chartValues, chartPrevValues, expanded]);
 
   const isZeroState = previewMode || derivedAllValuesZero;
 

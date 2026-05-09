@@ -44,6 +44,7 @@ type Props = {
 
   biEnabled?: boolean;
   biAlignedTotals?: BiAlignedTotalsCard | null;
+  lastMonthToDateHome?: number;
 };
 
 
@@ -65,6 +66,7 @@ export default function SalesTargetStatsCard({
   previousReimbursement,
   biEnabled,
   biAlignedTotals,
+  lastMonthToDateHome,
 }: Props) {
 
   const prevLabel = getPrevMonthShortLabel();
@@ -118,10 +120,15 @@ export default function SalesTargetStatsCard({
       ? biAlignedTotals.total_current_net_sales
       : mtdHome || active?.mtdUSD || 0;
 
-  const prevMtd =
+  const prevMtdFromBi =
     biEnabled && biAlignedTotals
-      ? biAlignedTotals.total_previous_net_sales
-      : active?.lastMonthToDateUSD || 0;
+      ? Number(biAlignedTotals.total_previous_net_sales || 0)
+      : 0;
+
+  const prevMtd =
+    prevMtdFromBi > 0
+      ? prevMtdFromBi
+      : Number(lastMonthToDateHome || active?.lastMonthToDateUSD || 0);
 
   const prevFullMonth =
     biEnabled && biAlignedTotals

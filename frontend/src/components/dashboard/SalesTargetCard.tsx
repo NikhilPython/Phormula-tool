@@ -367,15 +367,39 @@ export default function SalesTargetCard({
     year: "2-digit",
   }).format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
 
+  // const reimbNow =
+  //   biEnabled && biAlignedTotals
+  //     ? (biAlignedTotals.total_current_rembursement_fee ?? 0)
+  //     : (currentReimbursement ?? 0);
+
+  // const reimbPrev =
+  //   biEnabled && biAlignedTotals
+  //     ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
+  //     : (previousReimbursement ?? 0);
+
+  const reimbNowFromProps =
+    typeof currentReimbursement === "number" && Number.isFinite(currentReimbursement)
+      ? currentReimbursement
+      : null;
+
+  const reimbPrevFromProps =
+    typeof previousReimbursement === "number" && Number.isFinite(previousReimbursement)
+      ? previousReimbursement
+      : null;
+
   const reimbNow =
-    biEnabled && biAlignedTotals
-      ? (biAlignedTotals.total_current_rembursement_fee ?? 0)
-      : (currentReimbursement ?? 0);
+    reimbNowFromProps !== null
+      ? reimbNowFromProps
+      : biEnabled && biAlignedTotals
+        ? (biAlignedTotals.total_current_rembursement_fee ?? 0)
+        : 0;
 
   const reimbPrev =
-    biEnabled && biAlignedTotals
-      ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
-      : (previousReimbursement ?? 0);
+    reimbPrevFromProps !== null
+      ? reimbPrevFromProps
+      : biEnabled && biAlignedTotals
+        ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
+        : 0;
 
   // const reimbMax = Math.max(reimbNow, reimbPrev, 1);
   // const reimbNowPct = (reimbNow / reimbMax) * 100;
@@ -655,7 +679,7 @@ export default function SalesTargetCard({
               Monthly Reimbursement
             </div>
 
-            {showReimbDelta && (
+            {/* {showReimbDelta && (
               <div
                 className={`text-[10px] 2xl:text-xs font-medium px-2 py-0.5 rounded ${reimbursementDeltaPct! >= 0
                   ? "bg-green-50 text-green-700"
@@ -666,7 +690,7 @@ export default function SalesTargetCard({
                 {reimbursementDeltaPct! >= 0 ? "▲" : "▼"}{" "}
                 {Math.abs(reimbursementDeltaPct!).toFixed(2)}%
               </div>
-            )}
+            )} */}
           </div>
 
           <div className="mt-2">
