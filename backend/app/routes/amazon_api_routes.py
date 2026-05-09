@@ -1675,6 +1675,11 @@ def finances_mtd_transactions():
         total_row["cm1_profit_per"] = total_profit / total_net_sales * 100 if total_net_sales else 0
         total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
         total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
+        total_row["acos"] = round(
+            (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
+            if total_net_sales else 0,
+            2
+        )
         total_row["country"] = "global"
         total_row["month"] = month_name
         total_row["year"] = now_utc.year
