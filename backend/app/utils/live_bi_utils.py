@@ -729,6 +729,19 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     gross_sales_df = (
         df.groupby("sku", as_index=False)["gross_sales"].sum()
     )
+    # ---- amazon fees per SKU ----
+    for c in ["selling_fees", "fba_fees"]:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    amazon_fees_df = (
+        df.assign(
+            selling_fees=safe_num(df["selling_fees"]),
+            fba_fees=safe_num(df["fba_fees"]),
+        )
+        .groupby("sku", as_index=False)[["selling_fees", "fba_fees"]]
+        .sum()
+    )
 
     # ---- product_name per SKU (first non-null) ----
     if "product_name" in df.columns:
@@ -767,6 +780,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         .merge(name_df, on="sku", how="left")
         .merge(product_sales_df, on="sku", how="left")
         .merge(gross_sales_df, on="sku", how="left")  # ✅ NEW
+        .merge(amazon_fees_df, on="sku", how="left")  # ✅ NEW
         .merge(sales_by[["sku", "sales_metric"]], on="sku", how="left")
         .merge(credits_by[["sku", "credits_metric"]], on="sku", how="left")
         .merge(profit_by[["sku", "profit_metric"]], on="sku", how="left")
@@ -776,6 +790,8 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     metrics["quantity"] = safe_num(metrics.get("quantity", 0.0))
     metrics["product_sales"] = safe_num(metrics.get("product_sales", 0.0))
     metrics["gross_sales"] = safe_num(metrics.get("gross_sales", 0.0))  # ✅ NEW
+    metrics["selling_fees"] = safe_num(metrics.get("selling_fees", 0.0))
+    metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
     metrics["sales_metric"] = safe_num(metrics.get("sales_metric", 0.0))
     metrics["credits_metric"] = safe_num(metrics.get("credits_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
@@ -803,6 +819,8 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         "quantity",
         "product_sales",
         "gross_sales",  # ✅ NEW
+        "selling_fees",  # ✅ NEW
+        "fba_fees",  # ✅ NEW
         "asp",
         "profit",
         "sales_mix",
@@ -954,6 +972,13 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             cogs = float(
                 safe_num(day_sku.get("cost_of_unit_sold", 0)).sum()
             ) if len(day_sku) else 0.0
+            selling_fees = float(
+                safe_num(day_sku.get("selling_fees", 0)).sum()
+            ) if len(day_sku) else 0.0
+
+            fba_fees = float(
+                safe_num(day_sku.get("fba_fees", 0)).sum()
+            ) if len(day_sku) else 0.0
 
             # ✅ gross_sales per day (robust rebates)
             gross_sales = float((
@@ -990,6 +1015,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "rembursement_fee": float(remb_total),
                 "cogs": float(cogs),
                 "cost_of_unit_sold": float(cogs),
+                "selling_fees": float(selling_fees),
+                "fba_fees": float(fba_fees),
             })
 
     daily_series = sorted(daily_series, key=lambda x: x["date"])

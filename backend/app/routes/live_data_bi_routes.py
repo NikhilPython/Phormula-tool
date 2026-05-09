@@ -1370,13 +1370,23 @@ def _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate):
 
     platform_fee_total = uk_platform_fee + us_platform_fee
 
+    uk_amazon_fees = (
+        abs(_sum_daily_key(uk_daily, "selling_fees")) * rate
+        + abs(_sum_daily_key(uk_daily, "fba_fees")) * rate
+    )
+
+    us_amazon_fees = (
+        abs(_sum_daily_key(us_daily, "selling_fees"))
+        + abs(_sum_daily_key(us_daily, "fba_fees"))
+    )
+
     return {
         "advertising": uk_advertising + us_advertising,
         "platform_fee": platform_fee_total,
         "rembursement_fee": uk_reimbursement + us_reimbursement,
 
-        # fallback because daily_series does not expose selling_fees/fba_fees
-        "amazon_fees": platform_fee_total,
+        # amazon fees = selling fees + FBA fees
+        "amazon_fees": uk_amazon_fees + us_amazon_fees,
 
         # keep 0 until cost_of_unit_sold/cogs is added into fetch_previous_period_data daily_series
         "cogs": (
@@ -1392,11 +1402,16 @@ def _build_extra_totals_single(daily_rows, rate=1.0):
     platform_fee = _sum_daily_key(daily_rows, "platform_fee") * rate
     reimbursement = _sum_daily_key(daily_rows, "rembursement_fee") * rate
 
+    amazon_fees = (
+        abs(_sum_daily_key(daily_rows, "selling_fees")) * rate
+        + abs(_sum_daily_key(daily_rows, "fba_fees")) * rate
+    )
+
     return {
         "advertising": advertising,
         "platform_fee": platform_fee,
         "rembursement_fee": reimbursement,
-        "amazon_fees": platform_fee,
+        "amazon_fees": amazon_fees,
         "cogs": _sum_daily_key(daily_rows, "cogs") * rate,
     }
 
@@ -1446,7 +1461,16 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
 
     advertising = _safe_float(extra_totals.get("advertising"))
     platform_fee = _safe_float(extra_totals.get("platform_fee"))
-    amazon_fees = _safe_float(extra_totals.get("amazon_fees"))
+    selling_fees = _safe_float(total.get("selling_fees"))
+    fba_fees = _safe_float(total.get("fba_fees"))
+
+    amazon_fees_from_skuwise = abs(selling_fees) + abs(fba_fees)
+
+    amazon_fees = (
+        amazon_fees_from_skuwise
+        if amazon_fees_from_skuwise
+        else _safe_float(extra_totals.get("amazon_fees"))
+    )
     cogs = _safe_float(extra_totals.get("cogs"))
 
     cm2_profit = profit - advertising - platform_fee
@@ -1516,6 +1540,8 @@ def previous_skuwise_global():
             "platform_fee",
             "cm2_profit",
             "unit_wise_profitability",
+            "selling_fees",
+            "fba_fees",
         ]
 
         for col in money_cols:
