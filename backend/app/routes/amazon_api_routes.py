@@ -1619,8 +1619,16 @@ def finances_mtd_transactions():
                 (ads_sale_units / ads_clicks * 100) if ads_clicks else 0,
                 2
             )
+            platform_fee = (
+                abs(float(row_df.iloc[0].get("platform_fee_inventory_storage", 0.0) or 0.0))
+                + abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
+                - abs(float(row_df.iloc[0].get("lost_total", 0.0) or 0.0))
+            )
+
+            row_df.loc[:, "platform_fee"] = round(platform_fee, 2)
 
             return row_df
+        
 
         for col in money_cols:
             if col in uk_df.columns:
@@ -1793,6 +1801,13 @@ def finances_mtd_transactions():
         total_row["platformfeenew"] = round(global_platformfeenew, 2)
         total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
 
+        total_row["platform_fee"] = round(
+            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
+            - abs(float(total_row.get("lost_total", 0.0) or 0.0)),
+            2,
+        )
+
         product_ads_total = (
             abs(float(total_row.get("product_spend", 0.0) or 0.0))
             + abs(float(total_row.get("display_spend", 0.0) or 0.0))
@@ -1803,10 +1818,7 @@ def finances_mtd_transactions():
             + abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
         )
 
-        other_transactions_total = (
-            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-        )
+        other_transactions_total = float(total_row.get("platform_fee", 0.0) or 0.0)
 
         total_ads = product_ads_total + cost_ads_total
 
@@ -2564,15 +2576,16 @@ def finances_mtd_transactions():
             df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
 
         # total-only breakup columns
+        # total-only breakup columns
         df_sku["platform_fee_inventory_storage"] = 0.0
         df_sku["platformfeenew"] = 0.0
         df_sku["dealsvouchar_ads"] = 0.0
 
         # platform_fee per SKU row
         df_sku["platform_fee"] = (
-            pd.to_numeric(df_sku["platform_fee_inventory_storage"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(df_sku["platformfeenew"], errors="coerce").fillna(0.0)
-            - pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0)
+            pd.to_numeric(df_sku["platform_fee_inventory_storage"], errors="coerce").fillna(0.0).abs()
+            + pd.to_numeric(df_sku["platformfeenew"], errors="coerce").fillna(0.0).abs()
+            - pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).abs()
         )
 
         # profit and cm2
@@ -2680,7 +2693,9 @@ def finances_mtd_transactions():
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
 
         total_row["platform_fee"] = round(
-            float(total_row["platform_fee_inventory_storage"]) + float(total_row["platformfeenew"]) - float(total_row["lost_total"]),
+            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
+            - abs(float(total_row.get("lost_total", 0.0) or 0.0)),
             2,
         )
 
@@ -2788,6 +2803,7 @@ def finances_mtd_transactions():
 
         for col, val in derived_totals.items():
             if col not in [
+                "platform_fee",  # keep corrected platform_fee formula
                 "total_ads",
                 "total_cm2_profit",
                 "total_cm2_margins",

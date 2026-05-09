@@ -1400,7 +1400,7 @@ def _build_extra_totals_single(daily_rows, rate=1.0):
         "cogs": _sum_daily_key(daily_rows, "cogs") * rate,
     }
 
-def _build_aligned_totals(skuwise_items_global, extra_totals, total_previous_net_sales_full_month=None):
+def _build_aligned_totals(skuwise_items_global,extra_totals,total_previous_net_sales_full_month=None,total_previous_rembursement_fee_full_month=None,):
     total = _get_total_row(skuwise_items_global)
 
     net_sales = _safe_float(total.get("net_sales"))
@@ -1420,7 +1420,14 @@ def _build_aligned_totals(skuwise_items_global, extra_totals, total_previous_net
         "total_previous_platform_fees": round(platform_fee, 2),
         "total_previous_profit_cm2": round(cm2_profit, 2),
         "total_previous_profit_percentage": round(cm2_percentage, 2),
-        "total_previous_rembursement_fee": round(reimbursement, 2),
+        "total_previous_rembursement_fee": round(
+            _safe_float(
+                total_previous_rembursement_fee_full_month
+                if total_previous_rembursement_fee_full_month is not None
+                else reimbursement
+            ),
+            2
+        ),
         "total_previous_net_sales_full_month": float(
             total_previous_net_sales_full_month
             if total_previous_net_sales_full_month is not None
@@ -1734,23 +1741,42 @@ def previous_skuwise_global():
         uk_total_previous_net_sales_full_month
         + us_total_previous_net_sales_full_month
     )
+    # ✅ Full previous month reimbursement fee
+    # Use raw daily rows directly because totals_from_daily_series may not include rembursement_fee.
+
+    uk_total_previous_rembursement_fee_full_month = (
+        sum(_safe_float(r.get("rembursement_fee")) for r in (uk_daily_full or []))
+        * float(uk_to_usd_rate)
+    )
+
+    us_total_previous_rembursement_fee_full_month = sum(
+        _safe_float(r.get("rembursement_fee")) for r in (us_daily_full or [])
+    )
+
+    global_total_previous_rembursement_fee_full_month = (
+        uk_total_previous_rembursement_fee_full_month
+        + us_total_previous_rembursement_fee_full_month
+    )
 
     aligned_totals_uk = _build_aligned_totals(
         skuwise_items_uk,
         uk_extra,
         total_previous_net_sales_full_month=uk_total_previous_net_sales_full_month,
+        total_previous_rembursement_fee_full_month=uk_total_previous_rembursement_fee_full_month,
     )
 
     aligned_totals_us = _build_aligned_totals(
         skuwise_items_us,
         us_extra,
         total_previous_net_sales_full_month=us_total_previous_net_sales_full_month,
+        total_previous_rembursement_fee_full_month=us_total_previous_rembursement_fee_full_month,
     )
 
     aligned_totals_global = _build_aligned_totals(
         skuwise_items_global,
         global_extra,
         total_previous_net_sales_full_month=global_total_previous_net_sales_full_month,
+        total_previous_rembursement_fee_full_month=global_total_previous_rembursement_fee_full_month,
     )
 
     derived_totals_uk = _build_derived_totals_from_skuwise(skuwise_items_uk, uk_extra)
