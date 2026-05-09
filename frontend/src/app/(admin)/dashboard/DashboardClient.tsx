@@ -7970,9 +7970,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
         const grand = getGrandTotalRow(rows) as GrandTotalSkuwiseRow;
 
+        const currentPlatformFee = toNumber(
+            grand?.platform_fee ??
+            grand?.platformfeenew ??
+            grand?.other_transactions ??
+            grand?.other
+        );
+
         return {
             "Net Sales": toNumber(grand?.net_sales),
+
             "COGS": toNumber(grand?.cogs),
+
             "Marketplace Fees": toNumber(
                 grand?.amazon_fees ??
                 (
@@ -7980,6 +7989,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     toNumber(grand?.selling_fees)
                 )
             ),
+
             "Tax & Credits": toNumber(
                 grand?.tax_and_credits ??
                 (
@@ -7987,27 +7997,23 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     toNumber(grand?.credits)
                 )
             ),
+
             "Advertisements": toNumber(
                 grand?.total_ads ??
                 grand?.advertising_fees ??
                 grand?.ads_spend
             ),
-            "Others": toNumber(
-                grand?.platformfeenew ??
-                grand?.platform_fee ??
-                grand?.other
-            ),
-            "Other Charges": toNumber(
-                grand?.platformfeenew ??
-                grand?.platform_fee ??
-                grand?.other
-            ),
+
+            // ✅ use platform_fee for current Other Transactions bar
+            "Other Transactions": currentPlatformFee,
+            "Others": currentPlatformFee,
+            "Other Charges": currentPlatformFee,
+
             "CM1 Profit": toNumber(
                 grand?.profit ??
                 grand?.cm1_profit_per
             ),
 
-            // ✅ this fixes your wrong 15,650 value
             "CM2 Profit": toNumber(
                 grand?.total_cm2_profit ??
                 grand?.cm2_profit

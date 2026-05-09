@@ -664,7 +664,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const inventoryText =
     recObj?.inventory_recommendation || block?.inventoryBullets?.join(" ");
 
-  const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
+  const inventoryRecoBullets = toBullets(inventoryText);
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
   const periodBadge = getPeriodBadge(range, year, month, quarter);
   const shouldHideGraphForOtherSkus = !!block?.isOtherSkus;
@@ -959,7 +959,23 @@ const PreviewLockedSection = ({
   );
 };
 
+const parseMoneyFromMetricValue = (value?: string) => {
+  if (!value) return 0;
 
+  const main = value.split("(")[0] || "";
+  const cleaned = main.replace(/[^0-9.-]/g, "");
+  const n = Number(cleaned);
+
+  return Number.isFinite(n) ? n : 0;
+};
+
+const getBlockNetSales = (block: ProductInsightBlock) => {
+  const metric = block.metrics.find(
+    (m) => m.label.trim().toLowerCase() === "net sales"
+  );
+
+  return parseMoneyFromMetricValue(metric?.value);
+};
 
 const ProductInsightsSection = ({
   blocks,
@@ -996,6 +1012,10 @@ const ProductInsightsSection = ({
   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
   const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
+
+  const sortedBlocks = useMemo(() => {
+    return [...blocks].sort((a, b) => getBlockNetSales(b) - getBlockNetSales(a));
+  }, [blocks]);
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
@@ -1119,7 +1139,7 @@ const ProductInsightsSection = ({
       </div>
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {blocks.map((b, idx) => {
+        {sortedBlocks.map((b, idx) => {
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
           return (
@@ -1180,9 +1200,11 @@ const ProductInsightsSection = ({
                 </div>
               )}
               {b.recommendationBullets?.length > 0 && (
-                <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                  {b.recommendationBullets.join(" ")}
-                </p>
+                <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                  {b.recommendationBullets.map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
               )}
             </motion.div>
           );
@@ -1376,19 +1398,30 @@ const formatSummaryPeriod = (text?: string) => {
 
   const inside = m[1].trim();
   const [leftRaw, rightRaw] = inside.split(/\s*vs\s*/i);
+
   if (!leftRaw || !rightRaw) return `(${inside})`;
 
   const formatPart = (part: string) => {
     const p = part.trim();
 
+    // Yearly: 2026
     if (/^\d{4}$/.test(p)) return p;
 
-    const [month, year] = p.split(/\s+/);
-    if (!month || !year) return p;
+    // Quarterly: Q2 2026 -> Q2’26
+    const qMatch = p.match(/^(Q[1-4])\s+(\d{4})$/i);
+    if (qMatch) {
+      return `${qMatch[1].toUpperCase()}’${qMatch[2].slice(-2)}`;
+    }
 
-    const shortMonth = month.slice(0, 3);
-    const shortYear = year.slice(-2);
-    return `${shortMonth}’${shortYear}`;
+    // Monthly: April 2026 -> Apr’26
+    const monthYearMatch = p.match(/^([A-Za-z]+)\s+(\d{4})$/);
+    if (monthYearMatch) {
+      const shortMonth = monthYearMatch[1].slice(0, 3);
+      const shortYear = monthYearMatch[2].slice(-2);
+      return `${shortMonth}’${shortYear}`;
+    }
+
+    return p;
   };
 
   return `(${formatPart(leftRaw)} vs ${formatPart(rightRaw)})`;
@@ -1506,6 +1539,127 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         )}
 
         {/* Inventory Section */}
+        {/* Inventory Section */}
+        {/* {!hasNoAiData && inventoryBullets.length > 0 && (
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+                Inventory Insights
+              </span>
+            </div>
+
+            {(() => {
+              const parseInventoryLine = (line: string) => {
+                const raw = String(line || "").trim();
+                const colonIdx = raw.indexOf(":");
+
+                const left = colonIdx > -1 ? raw.slice(0, colonIdx).trim() : raw;
+                const right = colonIdx > -1 ? raw.slice(colonIdx + 1).trim() : "";
+
+                const country = /^UK\b/i.test(raw)
+                  ? "UK"
+                  : /^US\b/i.test(raw)
+                    ? "US"
+                    : "Other";
+
+                const cleanLabel = left
+                  .replace(/^UK\s+/i, "")
+                  .replace(/^US\s+/i, "")
+                  .trim();
+
+                return {
+                  country,
+                  label: cleanLabel,
+                  value: right,
+                };
+              };
+
+              const grouped = inventoryBullets.reduce(
+                (acc, line) => {
+                  const item = parseInventoryLine(line);
+
+                  if (item.country === "UK") acc.uk.push(item);
+                  else if (item.country === "US") acc.us.push(item);
+                  else acc.other.push(item);
+
+                  return acc;
+                },
+                {
+                  uk: [] as ReturnType<typeof parseInventoryLine>[],
+                  us: [] as ReturnType<typeof parseInventoryLine>[],
+                  other: [] as ReturnType<typeof parseInventoryLine>[],
+                }
+              );
+
+              const CountryInventoryCard = ({
+                title,
+                items,
+                accentClass,
+              }: {
+                title: string;
+                items: ReturnType<typeof parseInventoryLine>[];
+                accentClass: string;
+              }) => {
+                if (!items.length) return null;
+
+                return (
+                  <div className={`rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}>
+                    <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+                      <div className="text-sm font-bold text-slate-800">
+                        {title}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 p-3">
+                      {items.map((item, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
+                        >
+                          <span className="text-sm font-medium text-slate-700 capitalize">
+                            {item.label}
+                          </span>
+
+                          {item.value ? (
+                            <span className="text-sm font-bold text-[#414042] text-right">
+                              {item.value}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <CountryInventoryCard
+                    title="UK Inventory"
+                    items={grouped.uk}
+                    accentClass="border-l-4 border-l-[#5EA68E]"
+                  />
+
+                  <CountryInventoryCard
+                    title="US Inventory"
+                    items={grouped.us}
+                    accentClass="border-l-4 border-l-[#37455F]"
+                  />
+
+                  {grouped.other.length > 0 && (
+                    <CountryInventoryCard
+                      title="Other Inventory"
+                      items={grouped.other}
+                      accentClass="border-l-4 border-l-slate-400"
+                    />
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )} */}
+
+        {/* Inventory Section */}
         {!hasNoAiData && inventoryBullets.length > 0 && (
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="flex items-center gap-2">
@@ -1515,74 +1669,156 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             </div>
 
             {(() => {
-              const detailLines = inventoryBullets.filter((b) =>
-                /for detailed/i.test(b)
-              );
-              const mainLines = inventoryBullets.filter(
-                (b) => !/for detailed/i.test(b)
-              );
+              const isGlobalInventory = countryName.toLowerCase() === "global";
 
-              return (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {mainLines.map((b, i) => {
-                      const raw = String(b || "").trim();
+              const getCountryTitle = () => {
+                const c = countryName.toLowerCase();
 
-                      const isUnfulfillable = /unfulfillable/i.test(raw);
-                      if (isUnfulfillable) {
-                        const match = raw.match(/\(([^)]+)\)/);
-                        const value = match?.[1]?.trim();
-                        const label = raw.replace(/\([^)]+\)/, "").trim();
+                if (c === "uk") return "UK Inventory";
+                if (c === "us") return "US Inventory";
+                if (c === "global") return "Global Inventory";
 
-                        return (
-                          <div
-                            key={i}
-                            className="flex items-start justify-between gap-3 bg-white rounded-lg p-3 border border-amber-100"
-                          >
-                            <span className="text-sm font-medium text-slate-700">
-                              {label}
-                            </span>
-                            {value ? (
-                              <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
-                                {value}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      }
+                return `${countryName.toUpperCase()} Inventory`;
+              };
 
-                      const colonIdx = raw.indexOf(":");
-                      const hasColon = colonIdx > -1;
+              const toTitleLabel = (value: string) => {
+                return String(value || "")
+                  .trim()
+                  .replace(/\s+/g, " ")
+                  .replace(/\b\w/g, (char) => char.toUpperCase())
+                  .replace(/\bSkus\b/g, "SKUs")
+                  .replace(/\bSku\b/g, "SKU")
+                  .replace(/\bUk\b/g, "UK")
+                  .replace(/\bUs\b/g, "US");
+              };
 
-                      const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
-                      const right = hasColon
-                        ? raw.slice(colonIdx + 1).trim()
-                        : "";
+              const parseInventoryLine = (line: string) => {
+                const raw = String(line || "").trim();
+                const colonIdx = raw.indexOf(":");
 
-                      return (
+                const left = colonIdx > -1 ? raw.slice(0, colonIdx).trim() : raw;
+                const right = colonIdx > -1 ? raw.slice(colonIdx + 1).trim() : "";
+
+                const country = /^UK\b/i.test(raw)
+                  ? "UK"
+                  : /^US\b/i.test(raw)
+                    ? "US"
+                    : "";
+
+                const cleanLabel = toTitleLabel(
+                  left
+                    .replace(/^UK\s+/i, "")
+                    .replace(/^US\s+/i, "")
+                    .trim()
+                );
+
+                return {
+                  country,
+                  label: cleanLabel,
+                  value: right,
+                };
+              };
+
+              const CountryInventoryCard = ({
+                title,
+                items,
+                accentClass,
+              }: {
+                title: string;
+                items: ReturnType<typeof parseInventoryLine>[];
+                accentClass: string;
+              }) => {
+                if (!items.length) return null;
+
+                return (
+                  <div
+                    className={`rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}
+                  >
+                    <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+                      <div className="text-sm font-bold text-slate-800">
+                        {title}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-2 p-3">
+                      {items.map((item, i) => (
                         <div
                           key={i}
-                          className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                          className="flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
                         >
                           <span className="text-sm font-medium text-slate-700">
-                            {left}
+                            {item.label}
                           </span>
-                          {right ? (
-                            <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
-                              {right}
+
+                          {item.value ? (
+                            <span className="text-sm font-bold text-[#414042] text-right whitespace-nowrap">
+                              {item.value}
                             </span>
                           ) : null}
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
+                );
+              };
 
-                  {detailLines.map((line, idx) => (
-                    <p key={idx} className="text-xs text-slate-500 italic mt-2">
-                      {line}
-                    </p>
-                  ))}
-                </>
+              const parsedItems = inventoryBullets.map(parseInventoryLine);
+
+              // ✅ Country-wise page: render one country card only
+              if (!isGlobalInventory) {
+                return (
+                  <div className="grid grid-cols-1 gap-4">
+                    <CountryInventoryCard
+                      title={getCountryTitle()}
+                      items={parsedItems}
+                      accentClass={
+                        countryName.toLowerCase() === "uk"
+                          ? "border-l-4 border-l-[#7B9A6D]"
+                          : "border-l-4 border-l-[#3A8EA4]"
+                      }
+                    />
+                  </div>
+                );
+              }
+
+              // ✅ Global page: group UK and US separately
+              const grouped = parsedItems.reduce(
+                (acc, item) => {
+                  if (item.country === "UK") acc.uk.push(item);
+                  else if (item.country === "US") acc.us.push(item);
+                  else acc.other.push(item);
+
+                  return acc;
+                },
+                {
+                  uk: [] as ReturnType<typeof parseInventoryLine>[],
+                  us: [] as ReturnType<typeof parseInventoryLine>[],
+                  other: [] as ReturnType<typeof parseInventoryLine>[],
+                }
+              );
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <CountryInventoryCard
+                    title="UK Inventory"
+                    items={grouped.uk}
+                    accentClass="border-l-4 border-l-[#7B9A6D]"
+                  />
+
+                  <CountryInventoryCard
+                    title="US Inventory"
+                    items={grouped.us}
+                    accentClass="border-l-4 border-l-[#3A8EA4]"
+                  />
+
+                  {grouped.other.length > 0 && (
+                    <CountryInventoryCard
+                      title="Other Inventory"
+                      items={grouped.other}
+                      accentClass="border-l-4 border-l-slate-400"
+                    />
+                  )}
+                </div>
               );
             })()}
           </div>
@@ -2729,6 +2965,319 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
+  const formatMoneyValue = (value: any, currency = "$") => {
+    const n = toNum(value);
+    const sign = n < 0 ? "-" : "";
+    return `${sign}${currency}${Math.abs(n).toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const formatNumberValue = (value: any) => {
+    const n = toNum(value);
+    return n.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  };
+
+  const formatDelta = (deltaPct: any) => {
+    if (deltaPct === null || deltaPct === undefined || Number.isNaN(Number(deltaPct))) {
+      return "";
+    }
+
+    const n = Number(deltaPct);
+    const sign = n >= 0 ? "+" : "";
+    return ` (${sign}${n.toFixed(2)}%)`;
+  };
+
+  const getMetricDelta = (momRow: any, key: string) => {
+    return momRow?.[key]?.delta_pct;
+  };
+
+  const buildGlobalProductInsightLines = (data: any): string[] => {
+    const products = data?.global_ai?.product_journey_comparison ?? [];
+    const skuCurrent = data?.metrics?.sku_current ?? {};
+    const skuMom = data?.metrics?.sku_mom ?? {};
+
+    const lines: string[] = [];
+
+    products.forEach((product: any) => {
+      const productName = product?.product_name || "Unknown Product";
+
+      const currentRow =
+        skuCurrent?.[productName] ||
+        Object.values(skuCurrent || {}).find(
+          (r: any) =>
+            String(r?.product_name || "").trim().toLowerCase() ===
+            String(productName).trim().toLowerCase()
+        ) ||
+        {};
+
+      const momRow =
+        skuMom?.[productName] ||
+        Object.values(skuMom || {}).find(
+          (r: any) =>
+            String(r?.product_name || "").trim().toLowerCase() ===
+            String(productName).trim().toLowerCase()
+        ) ||
+        {};
+
+      lines.push(productName);
+
+      lines.push(
+        `ASP: ${formatMoneyValue(currentRow?.asp)}${formatDelta(
+          getMetricDelta(momRow, "asp")
+        )}`
+      );
+
+      lines.push(
+        `Units: ${formatNumberValue(currentRow?.total_quantity)}${formatDelta(
+          getMetricDelta(momRow, "total_quantity")
+        )}`
+      );
+
+      lines.push(
+        `Net sales: ${formatMoneyValue(currentRow?.net_sales)}${formatDelta(
+          getMetricDelta(momRow, "net_sales")
+        )}`
+      );
+
+      lines.push(
+        `CM1 profit: ${formatMoneyValue(currentRow?.profit)}${formatDelta(
+          getMetricDelta(momRow, "profit")
+        )}`
+      );
+
+      lines.push(
+        `CM1 profit per unit: ${formatMoneyValue(
+          currentRow?.unit_wise_profitability
+        )}${formatDelta(getMetricDelta(momRow, "unit_wise_profitability"))}`
+      );
+
+      lines.push("Product Journey");
+
+      (product?.journey_comparison ?? []).forEach((journeyLine: string) => {
+        lines.push(`- ${journeyLine}`);
+      });
+
+      const countryActions = product?.country_actions ?? {};
+
+      const usRecommendation = countryActions?.us?.recommendation;
+      const ukRecommendation = countryActions?.uk?.recommendation;
+
+      if (ukRecommendation) {
+        lines.push(`Recommendation: UK: ${ukRecommendation}`);
+      }
+
+      if (usRecommendation) {
+        lines.push(`Recommendation: US: ${usRecommendation}`);
+      }
+
+      const usInventory = countryActions?.us?.inventory_recommendation;
+      const ukInventory = countryActions?.uk?.inventory_recommendation;
+
+      if (ukInventory) {
+        lines.push(`Inventory Action: UK: ${ukInventory}`);
+      }
+
+      if (usInventory) {
+        lines.push(`Inventory Action: US: ${usInventory}`);
+      }
+    });
+
+    return lines;
+  };
+
+  const buildGlobalRecommendationsMap = (data: any): RecommendationsMap => {
+    const products = data?.global_ai?.product_journey_comparison ?? [];
+
+    const map: RecommendationsMap = {};
+
+    products.forEach((product: any) => {
+      const productName = product?.product_name;
+      if (!productName) return;
+
+      const actions = product?.country_actions ?? {};
+      const us = actions?.us ?? {};
+      const uk = actions?.uk ?? {};
+
+      map[productName] = {
+        journey_summary: product?.journey_comparison ?? [],
+        recommendation: [
+          uk?.recommendation ? `UK: ${uk.recommendation}` : "",
+          us?.recommendation ? `US: ${us.recommendation}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        inventory_recommendation: [
+          uk?.inventory_recommendation ? `UK: ${uk.inventory_recommendation}` : "",
+          us?.inventory_recommendation ? `US: ${us.inventory_recommendation}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+
+        ads_recommendation: [
+          uk?.ads_recommendation ? `UK: ${uk.ads_recommendation}` : "",
+          us?.ads_recommendation ? `US: ${us.ads_recommendation}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    });
+
+    return map;
+  };
+
+  const buildGlobalInventoryLines = (data: any): string[] => {
+    const alerts = data?.inventory_alerts ?? {};
+    const lines: string[] = [];
+
+    const uk = alerts?.uk;
+    const us = alerts?.us;
+
+    if (uk) {
+      lines.push(
+        `UK ageing inventory: ${uk?.ageing_inventory?.total_units ?? 0} units across ${uk?.ageing_inventory?.total_skus ?? 0
+        } SKUs`
+      );
+
+      lines.push(
+        `UK estimated storage cost: ${formatMoneyValue(
+          uk?.estimated_storage_cost?.value
+        )}`
+      );
+
+      lines.push(
+        `UK unfulfillable inventory: ${uk?.unfulfillable?.units ?? 0} units · ${uk?.unfulfillable?.percentage ?? 0
+        }%`
+      );
+    }
+
+    if (us) {
+      lines.push(
+        `US ageing inventory: ${us?.ageing_inventory?.total_units ?? 0} units across ${us?.ageing_inventory?.total_skus ?? 0
+        } SKUs`
+      );
+
+      lines.push(
+        `US estimated storage cost: ${formatMoneyValue(
+          us?.estimated_storage_cost?.value
+        )}`
+      );
+
+      lines.push(
+        `US unfulfillable inventory: ${us?.unfulfillable?.units ?? 0} units · ${us?.unfulfillable?.percentage ?? 0
+        }%`
+      );
+    }
+
+    return lines;
+  };
+
+  const mapGlobalAiResponseToPanel = (data: any): AiPanelData => {
+    const globalAi = data?.global_ai ?? {};
+
+    const comparison = data?.comparison;
+    const periodLabel = comparison?.period_label || "Selected Period";
+
+    const getPreviousComparisonLabel = () => {
+      if (comparison?.previous_period_label) return comparison.previous_period_label;
+      if (comparison?.previous_label) return comparison.previous_label;
+
+      const period = String(comparison?.period || "").toLowerCase();
+      const currentPeriodLabel = String(comparison?.period_label || "");
+
+      // Monthly: April 2026 -> March 2026
+      const monthYearMatch = currentPeriodLabel.match(/^([A-Za-z]+)\s+(\d{4})$/);
+
+      if (period === "monthly" && monthYearMatch) {
+        const monthName = monthYearMatch[1].toLowerCase();
+        const yearNum = Number(monthYearMatch[2]);
+        const monthIndex = monthIndexMap[monthName];
+
+        if (typeof monthIndex === "number") {
+          const previousDate = new Date(yearNum, monthIndex - 1, 1);
+
+          return previousDate.toLocaleString("en-US", {
+            month: "long",
+            year: "numeric",
+          });
+        }
+
+        return "Previous Month";
+      }
+
+      // Quarterly: Q2 2026 -> Q1 2026
+      const quarterYearMatch = currentPeriodLabel.match(/^(Q[1-4])\s+(\d{4})$/i);
+
+      if (period === "quarterly" && quarterYearMatch) {
+        const currentQuarter = quarterYearMatch[1].toUpperCase();
+        const yearNum = Number(quarterYearMatch[2]);
+
+        const quarterOrder = ["Q1", "Q2", "Q3", "Q4"];
+        const currentIndex = quarterOrder.indexOf(currentQuarter);
+
+        if (currentIndex !== -1) {
+          const previousIndex = currentIndex === 0 ? 3 : currentIndex - 1;
+          const previousYear = currentIndex === 0 ? yearNum - 1 : yearNum;
+
+          return `${quarterOrder[previousIndex]} ${previousYear}`;
+        }
+
+        return "Previous Quarter";
+      }
+
+      // Yearly: 2026 -> 2025
+      if (period === "yearly" && /^\d{4}$/.test(currentPeriodLabel)) {
+        return String(Number(currentPeriodLabel) - 1);
+      }
+
+      return "Previous Period";
+    };
+
+    const previousLabel = getPreviousComparisonLabel();
+
+
+    const summaryBullets = [
+      `Global Business Summary (${periodLabel} vs ${previousLabel})`,
+      globalAi?.global_summary || data?.summary || "",
+      ...(globalAi?.uk_vs_us_comparison ?? []),
+    ].filter(Boolean);
+
+    return {
+      summaryBullets,
+      skuInsightsBullets: buildGlobalProductInsightLines(data),
+      recommendationBullets: [],
+      inventoryBullets: buildGlobalInventoryLines(data),
+      recommendationsMap: buildGlobalRecommendationsMap(data),
+      objective: {
+        country: "global",
+        growth_intent:
+          data?.objectives?.uk?.growth_intent ||
+          data?.objectives?.us?.growth_intent ||
+          "balanced",
+        profit_priority:
+          data?.objectives?.uk?.profit_priority ||
+          data?.objectives?.us?.profit_priority ||
+          "protect_growth",
+        inventory_clearance_priority:
+          Boolean(data?.objectives?.uk?.inventory_clearance_priority) ||
+          Boolean(data?.objectives?.us?.inventory_clearance_priority),
+        time_horizon:
+          data?.objectives?.uk?.time_horizon ||
+          data?.objectives?.us?.time_horizon ||
+          "1_month",
+      },
+      rawSummary: data?.summary ?? globalAi?.global_summary ?? null,
+      rawRecommendations: null,
+      portfolioRecommendation:
+        globalAi?.global_overall_recommendation ||
+        data?.overall_recommendation ||
+        null,
+    };
+  };
 
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (isDemoMode) {
@@ -2737,19 +3286,31 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setAiPanel(DEMO_AI_PANEL);
       return;
     }
-    if (!countryName || !rangeType || !selectedYear) return;
 
-    const requestId = ++aiRequestIdRef.current;
+    const isGlobalAiSummary = countryName.toLowerCase() === "global";
 
-    const timeline =
+    if (!countryName) return;
+
+    // ✅ For Global AI Insights, force only this route:
+    // /summary?country=global&period=monthly&timeline=4&year=2026
+    const aiCountry = isGlobalAiSummary ? "global" : countryName;
+
+    const aiPeriod: RangeType = rangeType;
+
+    const aiTimeline =
       rangeType === "monthly"
         ? monthNameToNumber(selectedMonth)
         : rangeType === "quarterly"
           ? selectedQuarter
           : "ALL";
 
-    if (rangeType === "monthly" && !timeline) return;
-    if (rangeType === "quarterly" && !selectedQuarter) return;
+    const aiYear = selectedYear;
+
+    if (!aiPeriod || !aiYear) return;
+    if (aiPeriod === "monthly" && !aiTimeline) return;
+    if (aiPeriod === "quarterly" && !selectedQuarter) return;
+
+    const requestId = ++aiRequestIdRef.current;
 
     setAiPanelLoading(true);
     setAiPanelError(null);
@@ -2762,10 +3323,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           : null;
 
       const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
-      url.searchParams.set("country", countryName);
-      url.searchParams.set("period", rangeType);
-      url.searchParams.set("timeline", String(timeline));
-      url.searchParams.set("year", String(selectedYear));
+
+      url.searchParams.set("country", aiCountry);
+      url.searchParams.set("period", aiPeriod);
+      url.searchParams.set("timeline", String(aiTimeline));
+      url.searchParams.set("year", String(aiYear));
 
       const res = await fetch(url.toString(), {
         method: "GET",
@@ -2774,21 +3336,34 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       });
 
       if (!res.ok) {
-        if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+        if (requestId !== aiRequestIdRef.current) return;
         setAiPanel(null);
         setAiPanelError("Failed to fetch AI summary");
         return;
       }
 
-      const data: AiSummaryResponse = await res.json();
+      const data: any = await res.json();
 
-      if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+      if (requestId !== aiRequestIdRef.current) return;
 
+      // ✅ Global AI response has a different backend shape.
+      // Map it into the existing AiPanelData UI format.
+      if (
+        data?.scope === "global" ||
+        data?.global_ai ||
+        countryName.toLowerCase() === "global"
+      ) {
+        setAiPanel(mapGlobalAiResponseToPanel(data));
+        return;
+      }
+
+      // Existing non-global mapping
       const sections = parseMdSections(data.summary);
 
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
+
       const { recommendationBullets, inventoryBullets, recommendationsMap } =
         extractRecoAndInventoryBullets(data.recommendations as any);
 
@@ -2816,7 +3391,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         remainingSkusRecommendation,
         portfolioRecommendation: data.portfolio_recommendation ?? null,
       });
-
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return;
       setAiPanel(null);
@@ -3225,7 +3799,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   useEffect(() => {
     if (isDemoMode) return;
 
-    if (!range || !selectedYear) {
+    if (!countryName || !range || !selectedYear) {
       setAiPanel(null);
       return;
     }
@@ -3241,6 +3815,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
 
     fetchAiSummary(range);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, isDemoMode]);
 

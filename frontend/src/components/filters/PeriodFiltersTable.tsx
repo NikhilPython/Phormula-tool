@@ -6,13 +6,14 @@ import React from "react";
 import { FaAngleDown } from "react-icons/fa";
 
 export type Range = "monthly" | "quarterly" | "yearly";
+export type RangeValue = Range | "";
 
 interface Props {
-  range: "monthly" | "quarterly" | "yearly" | undefined;
+  range: RangeValue | undefined;
   selectedMonth: string;
   selectedQuarter: string;
   selectedYear: string | number;
-  yearOptions: (string | number)[]; // kept for compatibility
+  yearOptions: (string | number)[];
   onRangeChange: (v: Range) => void;
   onMonthChange: (v: string) => void;
   onQuarterChange: (v: string) => void;
@@ -63,7 +64,7 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   } = props;
 
   const safeRange: Range | "" =
-    range && allowedRanges.includes(range as Range) ? (range as Range) : "";
+    range && allowedRanges.includes(range) ? range : "";
 
   // Current date (client)
   const now = new Date();
