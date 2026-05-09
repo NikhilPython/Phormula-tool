@@ -1584,9 +1584,45 @@ def finances_mtd_transactions():
         us_df["generated_at_utc"] = now_utc.isoformat()
         uk_df["generated_at_utc"] = now_utc.isoformat()
 
+        # ---------------- Add Grand Total back only for response arrays ----------------
+        # Do NOT use these response DataFrames for global calculation.
 
-        skuwise_items_us = us_df.to_dict(orient="records")
-        skuwise_items_uk = uk_df.to_dict(orient="records")
+        us_response_df = us_df.copy()
+        uk_response_df = uk_df.copy()
+
+        # Add US Grand Total back
+        if not us_gt.empty:
+            us_gt_response = us_gt.copy()
+
+            us_gt_response["country"] = "us"
+            us_gt_response["month"] = month_name
+            us_gt_response["year"] = now_utc.year
+            us_gt_response["user_id"] = user_id
+            us_gt_response["generated_at_utc"] = now_utc.isoformat()
+
+            us_response_df = pd.concat([us_response_df, us_gt_response], ignore_index=True)
+
+        # Add UK Grand Total back, converted GBP -> USD
+        if not uk_gt.empty:
+            uk_gt_response = uk_gt.copy()
+
+            for col in money_cols:
+                if col in uk_gt_response.columns:
+                    uk_gt_response[col] = (
+                        pd.to_numeric(uk_gt_response[col], errors="coerce").fillna(0)
+                        * float(uk_to_usd_rate)
+                    )
+
+            uk_gt_response["country"] = "uk"
+            uk_gt_response["month"] = month_name
+            uk_gt_response["year"] = now_utc.year
+            uk_gt_response["user_id"] = user_id
+            uk_gt_response["generated_at_utc"] = now_utc.isoformat()
+
+            uk_response_df = pd.concat([uk_response_df, uk_gt_response], ignore_index=True)
+
+        skuwise_items_us = us_response_df.to_dict(orient="records")
+        skuwise_items_uk = uk_response_df.to_dict(orient="records")
 
         combined_df = pd.concat([us_df, uk_df], ignore_index=True)
 
@@ -1933,12 +1969,12 @@ def finances_mtd_transactions():
                 "us": {
                     "name": us_table,
                     "saved": False,
-                    "rows": len(us_df),
+                    "rows": len(us_response_df),
                 },
                 "uk": {
                     "name": uk_table,
                     "saved": False,
-                    "rows": len(uk_df),
+                    "rows": len(uk_response_df),
                     "currency": "USD",
                     "converted_from": "GBP",
                     "conversion_rate": uk_to_usd_rate,
