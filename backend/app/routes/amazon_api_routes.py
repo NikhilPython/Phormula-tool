@@ -874,27 +874,6 @@ def finances_mtd_transactions():
         us_df["generated_at_utc"] = now_utc.isoformat()
         uk_df["generated_at_utc"] = now_utc.isoformat()
 
-        # save US table as USD
-        us_df.to_sql(
-            us_table,
-            PHORMULA_ENGINE,
-            schema="public",
-            if_exists="replace",
-            index=False,
-            method="multi",
-            chunksize=1000,
-        )
-
-        # save UK table after GBP -> USD conversion
-        uk_df.to_sql(
-            uk_table,
-            PHORMULA_ENGINE,
-            schema="public",
-            if_exists="replace",
-            index=False,
-            method="multi",
-            chunksize=1000,
-        )
 
         skuwise_items_us = us_df.to_dict(orient="records")
         skuwise_items_uk = uk_df.to_dict(orient="records")
@@ -1238,12 +1217,12 @@ def finances_mtd_transactions():
             "skuwise_tables": {
                 "us": {
                     "name": us_table,
-                    "saved": True,
+                    "saved": False,
                     "rows": len(us_df),
                 },
                 "uk": {
                     "name": uk_table,
-                    "saved": True,
+                    "saved": False,
                     "rows": len(uk_df),
                     "currency": "USD",
                     "converted_from": "GBP",
