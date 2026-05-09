@@ -10,8 +10,7 @@ import DownloadIconButton from "../ui/button/DownloadIconButton";
 // import { saveAs } from "file-saver";
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import SegmentedToggle from "../ui/SegmentedToggle";
-
-type InventoryRow = Record<string, string | number>;
+import type { InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
 
 type InventoryUiRow = {
   sno: React.ReactNode;
