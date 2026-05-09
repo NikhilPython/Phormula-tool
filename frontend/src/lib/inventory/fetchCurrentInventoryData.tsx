@@ -358,6 +358,24 @@ function normalizeInventoryRow(row: InventoryRow): InventoryRow {
   };
 }
 
+function normalizeAlertsMap(rawAlerts: any = {}) {
+  const normalized: Record<string, { alert?: string; alert_type?: string }> = {};
+
+  Object.keys(rawAlerts || {}).forEach((k) => {
+    normalized[normalizeSku(k)] = rawAlerts[k];
+  });
+
+  return normalized;
+}
+
+function addCountryToRows(rows: any[] = [], countryName: "uk" | "us" | "ca") {
+  return rows.map((row) => ({
+    ...row,
+    Country: countryName.toUpperCase(),
+    country: countryName,
+  }));
+}
+
 function getDummyInventoryRows(): InventoryRow[] {
   return [
     {
@@ -440,12 +458,7 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
 
   const json = await res.json().catch(() => ({}));
 
-  const rawAlerts = json?.inventory_alerts || {};
-  const normalizedAlerts: Record<string, { alert?: string; alert_type?: string }> = {};
-
-  Object.keys(rawAlerts).forEach((k) => {
-    normalizedAlerts[normalizeSku(k)] = rawAlerts[k];
-  });
+  const isGlobal = String(country || "").toLowerCase() === "global";
 
   const pickArray = (...values: any[]): any[] => {
     for (const value of values) {
@@ -463,24 +476,59 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
 
   const responseData = json?.data;
 
-  // Supports all likely response shapes:
-  // 1) { skuwise_items: [...] }
-  // 2) { data: { skuwise_items: [...] } }
-  // 3) { data: { rows: [...] } }
-  // 4) { rows: [...] }
-  // 5) { items: [...] }
-  const apiRows = pickArray(
-    json?.skuwise_items,
-    responseData?.skuwise_items,
-    responseData?.rows,
-    responseData?.items,
-    json?.rows,
-    json?.items,
-    json?.table_data,
-    responseData?.table_data
-  );
+  let normalizedAlerts: Record<string, { alert?: string; alert_type?: string }> = {};
+  let apiRows: any[] = [];
+  let warnings: string[] = [];
+
+  if (isGlobal) {
+    const ukRows = addCountryToRows(
+      Array.isArray(json?.skuwise_items_uk) ? json.skuwise_items_uk : [],
+      "uk"
+    );
+
+    const usRows = addCountryToRows(
+      Array.isArray(json?.skuwise_items_us) ? json.skuwise_items_us : [],
+      "us"
+    );
+
+    apiRows = [...ukRows, ...usRows];
+
+    const ukAlerts = normalizeAlertsMap(json?.inventory_alerts_uk);
+    const usAlerts = normalizeAlertsMap(json?.inventory_alerts_us);
+
+    normalizedAlerts = {
+      ...Object.fromEntries(
+        Object.entries(ukAlerts).map(([sku, alert]) => [`UK-${sku}`, alert])
+      ),
+      ...Object.fromEntries(
+        Object.entries(usAlerts).map(([sku, alert]) => [`US-${sku}`, alert])
+      ),
+    };
+
+    warnings = [
+      ...(Array.isArray(json?.warnings_uk) ? json.warnings_uk : []),
+      ...(Array.isArray(json?.warnings_us) ? json.warnings_us : []),
+    ];
+  } else {
+    // Countrywise response: keep existing behavior
+    normalizedAlerts = normalizeAlertsMap(json?.inventory_alerts || {});
+
+    apiRows = pickArray(
+      json?.skuwise_items,
+      responseData?.skuwise_items,
+      responseData?.rows,
+      responseData?.items,
+      json?.rows,
+      json?.items,
+      json?.table_data,
+      responseData?.table_data
+    );
+
+    warnings = json?.warnings || responseData?.warnings || [];
+  }
 
   console.log("[current_inventory raw response]", {
+    isGlobal,
     topLevelKeys: Object.keys(json || {}),
     dataType: typeof responseData,
     dataKeys:
@@ -489,6 +537,12 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
         : [],
     skuwiseTopLevelCount: Array.isArray(json?.skuwise_items)
       ? json.skuwise_items.length
+      : null,
+    skuwiseUkCount: Array.isArray(json?.skuwise_items_uk)
+      ? json.skuwise_items_uk.length
+      : null,
+    skuwiseUsCount: Array.isArray(json?.skuwise_items_us)
+      ? json.skuwise_items_us.length
       : null,
     mappedRowsCount: apiRows.length,
     firstMappedRow: apiRows[0],
@@ -508,7 +562,24 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
   }
 
   return {
-    rows: apiRows.map(normalizeInventoryRow),
+    rows: apiRows.map((row) => {
+      const normalized = normalizeInventoryRow(row);
+
+      if (!isGlobal) {
+        // Countrywise rows stay exactly as before
+        return normalized;
+      }
+
+      const rowCountry = String((row as any)?.country || "").toUpperCase();
+      const sku = normalizeSku((row as any)?.SKU ?? (row as any)?.sku);
+
+      return {
+        ...normalized,
+        Country: rowCountry,
+        country: rowCountry.toLowerCase(),
+        alertKey: `${rowCountry}-${sku}`,
+      };
+    }),
     alerts: normalizedAlerts,
     filename: json?.filename ?? responseData?.filename,
     excelBase64: pickString(
@@ -517,7 +588,7 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
       responseData?.excelBase64,
       responseData?.data
     ),
-    warnings: json?.warnings || responseData?.warnings || [],
+    warnings,
     meta: json?.meta || responseData?.meta,
   };
 }

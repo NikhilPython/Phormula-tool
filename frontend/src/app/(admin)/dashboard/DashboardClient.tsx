@@ -147,6 +147,16 @@ type MonthlySkuwiseRow = {
     isOthers?: boolean;
 };
 
+type GrandTotalSkuwiseRow = Partial<MonthlySkuwiseRow> & {
+    gross_sales?: number;
+    total_ads?: number;
+    advertising_total?: number;
+    advertising_fees?: number;
+    tacos_total_advertising_cost_of_sale?: number;
+    total_cm2_profit?: number;
+    total_cm2_margins?: number;
+};
+
 type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
     isOthers?: boolean;
     isTotal?: boolean;
@@ -540,10 +550,17 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
     };
 }
 
-function computePlSummaryTotals(data: any, skuwiseRows: any[]): PlSummaryTotals {
-    const apiRows = Array.isArray(data?.skuwise_items)
-        ? data.skuwise_items
-        : skuwiseRows || [];
+function computePlSummaryTotals(
+    data: any,
+    skuwiseRows: any[],
+    platform?: PlatformId
+): PlSummaryTotals {
+    const apiRows =
+        platform === "global" && Array.isArray(data?.skuwise_items_global)
+            ? data.skuwise_items_global
+            : Array.isArray(data?.skuwise_items)
+                ? data.skuwise_items
+                : skuwiseRows || [];
 
     return computePlSummaryTotalsFromSkuwise(apiRows);
 }
@@ -2270,17 +2287,15 @@ export default function DashboardPage() {
     // }, [platform, baseURL]);
 
 
-
     const inventoryCountry = useMemo(() => {
-        // Country pages
+        if (platform === "global") return "global";
+
         if (graphRegionToUse === "UK") return "uk";
         if (graphRegionToUse === "US") return "us";
         if (graphRegionToUse === "CA") return "ca";
 
-        // Global page:
-        // inventory is unit-based, so fetch a real marketplace instead of "global"
-        return "uk";
-    }, [graphRegionToUse]);
+        return "global";
+    }, [platform, graphRegionToUse]);
 
     const invMonthYear = useMemo(() => {
         const { monthName, year } = getRegionYearMonth(activeDateRegion);
@@ -2766,27 +2781,53 @@ export default function DashboardPage() {
                 setUnauthorized(true);
                 throw new Error("No token found. Please sign in.");
             }
-            const uiCountry =
-                platform === "amazon-us" ? "us" : platform === "amazon-ca" ? "ca" : "uk";
+
+            const apiCountry =
+                platform === "global"
+                    ? "global"
+                    : platform === "amazon-us"
+                        ? "us"
+                        : platform === "amazon-ca"
+                            ? "ca"
+                            : "uk";
 
             const marketplaceId =
-                (amazonConnections?.find?.((c: any) => (c?.country || "").toLowerCase() === uiCountry)
-                    ?.marketplace_id) ||
-                (uiCountry === "uk"
-                    ? "A1F83G8C2ARO7P"
-                    : uiCountry === "us"
-                        ? "ATVPDKIKX0DER"
-                        : uiCountry === "ca"
-                            ? "A2EUQ1WTGCTBG2"
-                            : "A1F83G8C2ARO7P");
+                apiCountry === "uk"
+                    ? (
+                        amazonConnections?.find?.(
+                            (c: any) => (c?.country || "").toLowerCase() === "uk"
+                        )?.marketplace_id || "A1F83G8C2ARO7P"
+                    )
+                    : apiCountry === "us"
+                        ? (
+                            amazonConnections?.find?.(
+                                (c: any) => (c?.country || "").toLowerCase() === "us"
+                            )?.marketplace_id || "ATVPDKIKX0DER"
+                        )
+                        : apiCountry === "ca"
+                            ? (
+                                amazonConnections?.find?.(
+                                    (c: any) => (c?.country || "").toLowerCase() === "ca"
+                                )?.marketplace_id || "A2EUQ1WTGCTBG2"
+                            )
+                            : "";
 
-            const params = new URLSearchParams({
-                marketplace_id: marketplaceId,
-                store_in_db: "true",
-                country: uiCountry,
-            });
+            const params =
+                apiCountry === "global"
+                    ? new URLSearchParams({
+                        country: "global",
+                        store_in_db: "true",
+                    })
+                    : new URLSearchParams({
+                        country: apiCountry,
+                        marketplace_id: marketplaceId,
+                        store_in_db: "true",
+                        format: "json",
+                    });
 
             const url = `${FIN_MTD_TX_ENDPOINT}?${params.toString()}`;
+
+            console.log("[MTD transactions URL]", url);
 
             const res = await fetch(url, {
                 method: "GET",
@@ -3269,6 +3310,9 @@ export default function DashboardPage() {
 
     const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
         if (typeof window === "undefined") return;
+
+        // ✅ Do not write global cache.
+        if (platform === "global") return;
 
         localStorage.setItem(
             liveCacheKey,
@@ -3859,6 +3903,24 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, [lastRefreshAt]);
 
+    // const handleHardRefresh = useCallback(async () => {
+    //     if (typeof window === "undefined") return;
+
+    //     resetStepState();
+
+    //     try {
+    //         await runDashboardLoadWithSteps();
+
+    //         // First POST /save after main dashboard data has finished loading.
+    //         triggerCachePost();
+    //     } catch (err) {
+    //         console.error("Hard refresh failed:", err);
+    //         isManualRefreshRef.current = false;
+    //         shouldPostCacheRef.current = false;
+    //     }
+    // }, [runDashboardLoadWithSteps, triggerCachePost]);
+
+
     const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
 
@@ -3867,15 +3929,19 @@ export default function DashboardPage() {
         try {
             await runDashboardLoadWithSteps();
 
-            // First POST /save after main dashboard data has finished loading.
-            triggerCachePost();
+            // ✅ Do not save/fill global cache for now.
+            if (platform !== "global") {
+                triggerCachePost();
+            } else {
+                shouldPostCacheRef.current = false;
+                isManualRefreshRef.current = false;
+            }
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
         }
-    }, [runDashboardLoadWithSteps, triggerCachePost]);
-
+    }, [platform, runDashboardLoadWithSteps, triggerCachePost]);
 
     useEffect(() => {
         if (!fxReady) return;
@@ -3888,6 +3954,23 @@ export default function DashboardPage() {
 
         const bootstrapDashboard = async () => {
             try {
+                // ✅ For global page, always call live MTD API.
+                // Do not restore cache before fetchAmazon(), otherwise
+                // /amazon_api/finances/mtd_transactions?country=global&store_in_db=true
+                // may never be hit.
+                if (platform === "global") {
+                    // ✅ Global should always come from fresh API call.
+                    // No backend cache read, no localStorage restore, no cache save.
+                    await runDashboardLoadWithSteps();
+
+                    if (cancelled) return;
+
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+
+                    return;
+                }
+
                 const cacheResult = await getDashboardCacheFromBackend();
 
                 if (cancelled) return;
@@ -4744,11 +4827,33 @@ export default function DashboardPage() {
     const onlyShopify = shopifyIntegrated && !amazonIntegrated;
 
     const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
-        const items = (data as any)?.skuwise_items ?? [];
+        const items =
+            platform === "global"
+                ? (data as any)?.skuwise_items_global ?? []
+                : (data as any)?.skuwise_items ?? [];
+
         if (!Array.isArray(items)) return [];
 
-        const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
-        const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
+        const body =
+            platform === "global"
+                ? items.filter((r: any) => {
+                    const sku = String(r?.sku || "").toUpperCase();
+                    const name = String(r?.product_name || "").trim().toLowerCase();
+
+                    return (
+                        sku !== "GRAND_TOTAL" &&
+                        name !== "grand total" &&
+                        name !== "total"
+                    );
+                })
+                : items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
+
+        const total = items.find((r: any) => {
+            const sku = String(r?.sku || "").toUpperCase();
+            const name = String(r?.product_name || "").trim().toLowerCase();
+
+            return sku === "GRAND_TOTAL" || name === "grand total";
+        });
 
         const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => {
             const tax = Number(r.net_taxes ?? r.tax ?? 0);
@@ -4806,7 +4911,7 @@ export default function DashboardPage() {
         const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
         if (total) mapped.push(mapRow(total, undefined, true));
         return mapped;
-    }, [data]);
+    }, [data, platform]);
 
 
     const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
@@ -5079,29 +5184,33 @@ export default function DashboardPage() {
 
 
 
-    const convertProductwiseRowToDisplay = useCallback(
-        (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
-            if (platform !== "global") return row;
+    // const convertProductwiseRowToDisplay = useCallback(
+    //     (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
+    //         if (platform !== "global") return row;
 
-            const next: MonthlySkuwiseRow = { ...row };
+    //         const next: MonthlySkuwiseRow = { ...row };
 
-            PRODUCTWISE_MONEY_KEYS.forEach((key) => {
-                next[key] = convertToDisplayCurrency(
-                    Number(row[key] ?? 0),
-                    amazonDataCurrency
-                );
-            });
+    //         PRODUCTWISE_MONEY_KEYS.forEach((key) => {
+    //             next[key] = convertToDisplayCurrency(
+    //                 Number(row[key] ?? 0),
+    //                 amazonDataCurrency
+    //             );
+    //         });
 
-            return next;
-        },
-        [platform, convertToDisplayCurrency, amazonDataCurrency]
-    );
+    //         return next;
+    //     },
+    //     [platform, convertToDisplayCurrency, amazonDataCurrency]
+    // );
+
+
+    // const monthlySkuwiseRowsDisplay = useMemo<MonthlySkuwiseRow[]>(() => {
+    //     return (monthlySkuwiseRows || []).map(convertProductwiseRowToDisplay);
+    // }, [monthlySkuwiseRows, convertProductwiseRowToDisplay]);
 
 
     const monthlySkuwiseRowsDisplay = useMemo<MonthlySkuwiseRow[]>(() => {
-        return (monthlySkuwiseRows || []).map(convertProductwiseRowToDisplay);
-    }, [monthlySkuwiseRows, convertProductwiseRowToDisplay]);
-
+        return monthlySkuwiseRows || [];
+    }, [monthlySkuwiseRows]);
 
     // const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
     //     const buildFinalRows = (
@@ -5190,10 +5299,11 @@ export default function DashboardPage() {
         return Math.abs(fba + selling);
     }, [grandTotalRowDisplay]);
 
-    const grandTotalRowRaw = useMemo(() => {
-        return monthlySkuwiseRows.find(
-            (item: any) =>
-                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
+    const grandTotalRowRaw = useMemo<GrandTotalSkuwiseRow | null>(() => {
+        return (
+            monthlySkuwiseRows.find((item: any) => item.sku === "GRAND_TOTAL") ??
+            monthlySkuwiseRows.find((item: any) => item.product_name === "Grand Total") ??
+            null
         );
     }, [monthlySkuwiseRows]);
 
@@ -5201,37 +5311,35 @@ export default function DashboardPage() {
     const amazonPl = () => {
         const sourceCurrency = amazonDataCurrency;
 
-        const sales = convertToDisplayCurrency(
-            toNumberSafe(derived?.net_sales ?? 0),
-            sourceCurrency
-        );
+        const toDisplay = (value: any) => {
+            const n = toNumberSafe(value ?? 0);
 
-        const cogs = convertToDisplayCurrency(
-            toNumberSafe(totals?.cogs ?? grandTotalRowRaw?.cogs ?? 0),
-            sourceCurrency
-        );
+            return platform === "global"
+                ? n
+                : convertToDisplayCurrency(n, sourceCurrency);
+        };
 
-        const fees = convertToDisplayCurrency(
+        const sales = toDisplay(derived?.net_sales ?? 0);
+
+        const cogs = toDisplay(totals?.cogs ?? grandTotalRowRaw?.cogs ?? 0);
+
+        const fees = toDisplay(
             Math.abs(
                 toNumberSafe(grandTotalRowRaw?.fba_fees ?? totals?.fba_fees ?? 0) +
                 toNumberSafe(grandTotalRowRaw?.selling_fees ?? totals?.selling_fees ?? 0)
-            ),
-            sourceCurrency
+            )
         );
 
-        const taxCredits = convertToDisplayCurrency(
-            toNumberSafe(totals?.tax_and_credits ?? grandTotalRowRaw?.tax_and_credits ?? 0),
-            sourceCurrency
+        const taxCredits = toDisplay(
+            totals?.tax_and_credits ?? grandTotalRowRaw?.tax_and_credits ?? 0
         );
 
-        const cm1 = convertToDisplayCurrency(
-            toNumberSafe(derived?.profit ?? totals?.profit ?? grandTotalRowRaw?.profit ?? 0),
-            sourceCurrency
+        const cm1 = toDisplay(
+            derived?.profit ?? totals?.profit ?? grandTotalRowRaw?.profit ?? 0
         );
 
-        const adv = convertToDisplayCurrency(
-            toNumberSafe(derived?.advertising_fees ?? 0),
-            sourceCurrency
+        const adv = toDisplay(
+            derived?.advertising_fees ?? grandTotalRowRaw?.ads_spend ?? 0
         );
 
         const others = convertToDisplayCurrency(
@@ -5436,8 +5544,167 @@ export default function DashboardPage() {
 
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
-        return computePlSummaryTotals(data, monthlySkuwiseRowsDisplay);
+        return computePlSummaryTotals(data, monthlySkuwiseRows, platform)
     }, [data, monthlySkuwiseRowsDisplay]);
+
+    const globalMtdCardData = useMemo(() => {
+        const globalRows =
+            platform === "global" && Array.isArray(data?.skuwise_items_global)
+                ? data.skuwise_items_global
+                : Array.isArray(data?.skuwise_items)
+                    ? data.skuwise_items
+                    : monthlySkuwiseRows || [];
+
+        const globalGrand = getGrandTotalRow(globalRows) as GrandTotalSkuwiseRow;
+
+        const globalTotals = data?.totals || {};
+        const globalDerived = data?.derived_totals || {};
+        const globalPrevTotals = data?.previous_period?.totals || {};
+
+        return {
+            // direct backend grand-total values
+            units: toNumber(
+                globalGrand.quantity ??
+                globalTotals.quantity
+            ),
+            prevUnits: toNumber(globalPrevTotals.quantity),
+
+            grossSales: toNumber(
+                globalGrand.gross_sales ??
+                globalTotals.gross_sales
+            ),
+            prevGrossSales: toNumber(globalPrevTotals.gross_sales),
+
+            netSales: toNumber(
+                globalGrand.net_sales ??
+                globalDerived.net_sales ??
+                plSummaryTotals.net_sales
+            ),
+            prevNetSales: toNumber(globalPrevTotals.net_sales),
+
+            asp: toNumber(
+                globalGrand.asp ??
+                globalDerived.asp
+            ),
+            prevAsp: toNumber(globalPrevTotals.asp),
+
+            ads: toNumber(
+                globalGrand.total_ads ??
+                plSummaryTotals.advertising_total
+            ),
+            prevAds: toNumber(globalPrevTotals.advertising_fees),
+
+            tacos: toNumber(
+                globalGrand.tacos_total_advertising_cost_of_sale ??
+                plSummaryTotals.acos
+            ),
+            prevTacos: toNumber(
+                globalPrevTotals.tacos_total_advertising_cost_of_sale ??
+                globalPrevTotals.acos
+            ),
+
+            cm2Profit: toNumber(
+                globalGrand.total_cm2_profit ??
+                plSummaryTotals.cm2_profit
+            ),
+            prevCm2Profit: toNumber(
+                globalPrevTotals.total_cm2_profit ??
+                globalPrevTotals.cm2_profit
+            ),
+
+            cm2Pct: toNumber(
+                globalGrand.total_cm2_margins ??
+                plSummaryTotals.cm2_margins
+            ),
+            prevCm2Pct: toNumber(
+                globalPrevTotals.total_cm2_margins ??
+                globalPrevTotals.cm2_profit_per ??
+                globalPrevTotals.profit_percentage
+            ),
+        };
+    }, [
+        platform,
+        data,
+        monthlySkuwiseRows,
+        plSummaryTotals.net_sales,
+        plSummaryTotals.advertising_total,
+        plSummaryTotals.acos,
+        plSummaryTotals.cm2_profit,
+        plSummaryTotals.cm2_margins,
+    ]);
+
+
+    const stickyTableTotals = useMemo(() => {
+        const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? {};
+
+        const units = toNumber(row.quantity);
+        const netSales = toNumber(row.net_sales);
+        const asp = toNumber(row.asp);
+
+        const costOfAds = toNumber(
+            platform === "global"
+                ? (
+                    plSummaryTotals.advertising_total ??
+                    row.total_ads ??
+                    row.advertising_total ??
+                    row.advertising_fees ??
+                    row.ads_spend
+                )
+                : (
+                    row.total_ads ??
+                    row.ads_spend ??
+                    row.advertising_total ??
+                    row.advertising_fees
+                )
+        );
+
+        const tacos = toNumber(
+            platform === "global"
+                ? (
+                    plSummaryTotals.acos ??
+                    row.tacos_total_advertising_cost_of_sale ??
+                    row.acos
+                )
+                : (
+                    row.tacos_total_advertising_cost_of_sale ??
+                    row.acos
+                )
+        );
+
+        const cm2Profit = toNumber(
+            platform === "global"
+                ? (
+                    plSummaryTotals.cm2_profit ??
+                    row.total_cm2_profit ??
+                    row.cm2_profit
+                )
+                : (
+                    row.total_cm2_profit ??
+                    row.cm2_profit
+                )
+        );
+
+        const cm2MarginPct = toNumber(
+            row.total_cm2_margins ??
+            row.cm2_profit_per
+        );
+
+        return {
+            units,
+            netSales,
+            asp,
+            costOfAds,
+            tacos,
+            cm2Profit,
+            cm2MarginPct,
+        };
+    }, [
+        platform,
+        grandTotalRowRaw,
+        plSummaryTotals.advertising_total,
+        plSummaryTotals.acos,
+        plSummaryTotals.cm2_profit,
+    ]);
 
     const SKUWISE_LEFT_COLS = [
         { key: "sno", label: "S.No", align: "center" as const },
@@ -6132,6 +6399,9 @@ export default function DashboardPage() {
     const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
         if (typeof window === "undefined") return;
 
+        // ✅ Do not write global localStorage cache.
+        if (platform === "global") return;
+
         const payloadToSave = cachePayload ?? buildDashboardCachePayload();
 
         localStorage.setItem(
@@ -6141,10 +6411,26 @@ export default function DashboardPage() {
                 savedAt: Date.now(),
             })
         );
-    }, [buildDashboardCachePayload, liveCacheKey]);
+    }, [platform, buildDashboardCachePayload, liveCacheKey]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (platform !== "global") return;
+
+        localStorage.removeItem(liveCacheKey);
+        localStorage.removeItem("live-dashboard-cache:global:Global");
+    }, [platform, liveCacheKey]);
 
 
     useEffect(() => {
+
+        // ✅ Completely disable global dashboard cache writes for now.
+        if (platform === "global") {
+            shouldPostCacheRef.current = false;
+            isManualRefreshRef.current = false;
+            return;
+        }
+
         if (!shouldPostCacheRef.current || !isManualRefreshRef.current) return;
         if (!data && !liveBiPayload && !invRows.length) return;
 
@@ -6191,6 +6477,7 @@ export default function DashboardPage() {
                 isManualRefreshRef.current = false;
             });
     }, [
+        platform,
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
         liveCacheKey,
@@ -6208,37 +6495,6 @@ export default function DashboardPage() {
         monthlySpTotalSpend,
         cacheSaveTick,
     ]);
-
-    const tacosFromDisplayedCardsForSummary = useMemo(() => {
-        const netSalesFromCard =
-            platform === "global"
-                ? globalMergedCurrentNet
-                : curr.netSales;
-
-        const adsFromCard =
-            platform === "global"
-                ? globalMergedCostOfAds
-                : adsSpendTotal;
-
-        return netSalesFromCard > 0
-            ? (Math.abs(adsFromCard) / Math.abs(netSalesFromCard)) * 100
-            : 0;
-    }, [
-        platform,
-        globalMergedCurrentNet,
-        globalMergedCostOfAds,
-        curr.netSales,
-        adsSpendTotal,
-    ]);
-
-    const cm2MarginPctForSummary = useMemo(() => {
-        const cm2 = cm2Profit;
-        const netSales = toNumber(plSummaryTotals.net_sales);
-        return netSales ? (cm2 / netSales) * 100 : 0;
-    }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
-
-
-
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
 
@@ -6467,30 +6723,107 @@ export default function DashboardPage() {
         gbpToUsd,
     ]);
 
+    const cm2MarginPctForSummary = useMemo(() => {
+        if (platform === "global") {
+            return toNumber(
+                plSummaryTotals.cm2_margins ??
+                (data as any)?.derived_totals?.cm2_margins ??
+                (data as any)?.derived_totals?.cm2_profit_percentage ??
+                (data as any)?.cm2_margins
+            );
+        }
+
+        const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
+        const cm2 = toNumber(cm2Profit);
+
+        return netSales ? (cm2 / netSales) * 100 : 0;
+    }, [
+        platform,
+        plSummaryTotals.cm2_margins,
+        plSummaryTotals.net_sales,
+        data,
+        stats_mtdHome,
+        cm2Profit,
+    ]);
+
+    const tacosFromDisplayedCardsForSummary = useMemo(() => {
+        if (platform === "global") {
+            return toNumber(
+                plSummaryTotals.acos ??
+                (data as any)?.derived_totals?.tacos_total_advertising_cost_of_sale ??
+                (data as any)?.derived_totals?.tacos ??
+                (data as any)?.tacos_total_advertising_cost_of_sale
+            );
+        }
+
+        const netSalesFromCard = curr.netSales;
+        const adsFromCard = adsSpendTotal;
+
+        return netSalesFromCard > 0
+            ? (Math.abs(adsFromCard) / Math.abs(netSalesFromCard)) * 100
+            : 0;
+    }, [
+        platform,
+        plSummaryTotals.acos,
+        data,
+        curr.netSales,
+        adsSpendTotal,
+    ]);
+
     const reimbursementForSummary = useMemo(() => {
+        if (platform === "global") {
+            return toNumber(
+                plSummaryTotals.net_reimbursement ??
+                (data as any)?.derived_totals?.current_net_reimbursement ??
+                (data as any)?.current_net_reimbursement
+            );
+        }
+
         return toNumber(targets_reimbursement?.current);
-    }, [targets_reimbursement?.current]);
-
-
+    }, [
+        platform,
+        plSummaryTotals.net_reimbursement,
+        data,
+        targets_reimbursement?.current,
+    ]);
 
     const reimbursementVsCm2PctForSummary = useMemo(() => {
+        if (platform === "global") {
+            return toNumber(
+                plSummaryTotals.rembursment_vs_cm2_margins ??
+                (data as any)?.derived_totals?.reimbursement_vs_cm2_margins ??
+                (data as any)?.reimbursement_vs_cm2_margins
+            );
+        }
+
         const cm2 = toNumber(cm2Profit);
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
-    }, [reimbursementForSummary, cm2Profit]);
+    }, [
+        platform,
+        plSummaryTotals.rembursment_vs_cm2_margins,
+        data,
+        reimbursementForSummary,
+        cm2Profit,
+    ]);
 
     const reimbursementVsSalesPctForSummary = useMemo(() => {
-        const netSales =
-            platform === "global"
-                ? toNumber(globalMergedCurrentNet)
-                : toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
+        if (platform === "global") {
+            return toNumber(
+                plSummaryTotals.reimbursement_vs_sales ??
+                (data as any)?.derived_totals?.reimbursement_vs_sales ??
+                (data as any)?.reimbursement_vs_sales
+            );
+        }
 
+        const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [
         platform,
-        globalMergedCurrentNet,
-        reimbursementForSummary,
+        plSummaryTotals.reimbursement_vs_sales,
         plSummaryTotals.net_sales,
+        data,
         stats_mtdHome,
+        reimbursementForSummary,
     ]);
 
 
@@ -6598,8 +6931,6 @@ export default function DashboardPage() {
         brandName,
         profileHomeCurrency,
     ]);
-
-
 
     const rangeCompletedPct = useMemo(() => {
         if (!selectedStartDay || !selectedEndDay) return 0;
@@ -7374,7 +7705,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.units.current
                 : isStickyGlobal
-                    ? (globalUseBi ? biCardKpis.curr.units : globalCurrUnits)
+                    ? stickyTableTotals.units
                     : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)),
             previous: shouldShowDummyUi
                 ? dummyStatData.units.previous
@@ -7401,7 +7732,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.netSales.current
                 : isStickyGlobal
-                    ? globalMergedCurrentNet
+                    ? stickyTableTotals.netSales
                     : (showLiveBI && rangeActive
                         ? biCardKpis.curr.netSales
                         : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
@@ -7437,7 +7768,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.asp.current
                 : isStickyGlobal
-                    ? globalMergedCurrentAsp
+                    ? stickyTableTotals.asp
                     : (showLiveBI && rangeActive
                         ? biCardKpis.curr.asp
                         : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
@@ -7473,7 +7804,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.costOfAds.current
                 : isStickyGlobal
-                    ? globalMergedCostOfAds
+                    ? stickyTableTotals.costOfAds
                     : (useBiForAmazonCards
                         ? (cm2Ready
                             ? convertToDisplayCurrency(
@@ -7532,7 +7863,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.tacos.current
                 : isStickyGlobal
-                    ? globalMergedTacos
+                    ? stickyTableTotals.tacos
                     : (useBiForAmazonCards
                         ? (cm2Ready
                             ? (() => {
@@ -7604,7 +7935,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             current: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.current
                 : isStickyGlobal
-                    ? globalMergedCm2Profit
+                    ? stickyTableTotals.cm2Profit
                     : (useBiCm2
                         ? (cm2Ready
                             ? convertToDisplayCurrency(
@@ -8191,86 +8522,77 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const secondsLeft = remainingSteps * 30;
 
 
-    const getCountryMtdCardData = useCallback(
-        (country: "uk" | "us") => {
-            const payload = readCountryCache(country);
-            const data = payload?.data || {};
+    const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
+        const rows =
+            country === "uk"
+                ? Array.isArray(data?.skuwise_items_uk)
+                    ? data.skuwise_items_uk
+                    : []
+                : Array.isArray(data?.skuwise_items_us)
+                    ? data.skuwise_items_us
+                    : [];
 
-            const totals = data?.totals || {};
-            const derived = data?.derived_totals || {};
-            const prevTotals = data?.previous_period?.totals || {};
-            const biTotals = payload?.biAlignedTotals || {};
+        const grand = getGrandTotalRow(rows);
 
-            const toUsd = (value: any) => {
-                const n = toNumberSafe(value);
-                return country === "uk" ? n * gbpToUsd : n;
-            };
+        const prevTotals =
+            country === "uk"
+                ? data?.previous_period_uk?.totals || {}
+                : data?.previous_period_us?.totals || {};
 
-            const units = toNumberSafe(totals?.quantity);
-            const prevUnits = toNumberSafe(prevTotals?.quantity);
+        return {
+            units: toNumber(grand?.quantity),
+            prevUnits: toNumber(prevTotals?.quantity),
 
-            const grossSales = toUsd(totals?.gross_sales);
-            const prevGrossSales = toUsd(prevTotals?.gross_sales);
+            grossSales: toNumber(grand?.gross_sales),
+            prevGrossSales: toNumber(prevTotals?.gross_sales),
 
-            const netSales = toUsd(derived?.net_sales);
-            const prevNetSales = toUsd(prevTotals?.net_sales);
+            netSales: toNumber(grand?.net_sales),
+            prevNetSales: toNumber(prevTotals?.net_sales),
 
-            const asp = toUsd(derived?.asp);
-            const prevAsp = toUsd(prevTotals?.asp);
+            asp: toNumber(grand?.asp),
+            prevAsp: toNumber(prevTotals?.asp),
 
-            const ads =
-                country === "us"
-                    ? toNumberSafe(payload?.adsSpendTotal ?? payload?.data?.adsSpendTotal ?? 0)
-                    : toUsd(payload?.adsSpendTotal ?? payload?.data?.adsSpendTotal ?? 0);
+            // direct total-row values
+            ads: toNumber(
+                grand?.total_ads ??
+                grand?.advertising_fees ??
+                grand?.ads_spend
+            ),
+            prevAds: toNumber(
+                prevTotals?.total_ads ??
+                prevTotals?.advertising_fees
+            ),
 
-            const prevAds =
-                country === "us"
-                    ? toNumberSafe(prevTotals?.advertising_fees ?? 0)
-                    : toUsd(prevTotals?.advertising_fees ?? 0);
+            tacos: toNumber(
+                grand?.tacos_total_advertising_cost_of_sale ??
+                grand?.acos
+            ),
+            prevTacos: toNumber(
+                prevTotals?.tacos_total_advertising_cost_of_sale ??
+                prevTotals?.acos
+            ),
 
-            const tacos = netSales > 0 ? (ads / netSales) * 100 : 0;
-            const prevTacos = prevNetSales > 0 ? (prevAds / prevNetSales) * 100 : 0;
+            cm2Profit: toNumber(
+                grand?.total_cm2_profit ??
+                grand?.cm2_profit
+            ),
+            prevCm2Profit: toNumber(
+                prevTotals?.total_cm2_profit ??
+                prevTotals?.cm2_profit
+            ),
 
-            const cm2Profit =
-                toUsd(
-                    biTotals?.total_current_profit_cm2 ??
-                    biTotals?.total_current_profit ??
-                    derived?.cm2_profit ??
-                    0
-                );
-
-            const prevCm2Profit =
-                toUsd(
-                    biTotals?.total_previous_profit_cm2 ??
-                    biTotals?.total_previous_profit ??
-                    prevTotals?.cm2_profit ??
-                    0
-                );
-
-            const cm2Pct = netSales > 0 ? (cm2Profit / netSales) * 100 : 0;
-            const prevCm2Pct = prevNetSales > 0 ? (prevCm2Profit / prevNetSales) * 100 : 0;
-
-            return {
-                units,
-                prevUnits,
-                grossSales,
-                prevGrossSales,
-                netSales,
-                prevNetSales,
-                asp,
-                prevAsp,
-                ads,
-                prevAds,
-                tacos,
-                prevTacos,
-                cm2Profit,
-                prevCm2Profit,
-                cm2Pct,
-                prevCm2Pct,
-            };
-        },
-        [readCountryCache, gbpToUsd]
-    );
+            cm2Pct: toNumber(
+                grand?.total_cm2_margins ??
+                grand?.profit_percentage ??
+                grand?.cm2_profit_per
+            ),
+            prevCm2Pct: toNumber(
+                prevTotals?.total_cm2_margins ??
+                prevTotals?.profit_percentage ??
+                prevTotals?.cm2_profit_per
+            ),
+        };
+    }, [data]);
 
     const renderCountryMtdCards = (country: "uk" | "us") => {
         const c = getCountryMtdCardData(country);
@@ -8373,6 +8695,113 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         bottomLabel={prevLabel}
                         className="border-[#6D8F61] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
+                    />
+                </div>
+            </div>
+        );
+    };
+
+    const renderGlobalMtdCards = () => {
+        const c = globalMtdCardData;
+
+        return (
+            <div className="">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <AmazonStatCard
+                        label="Units"
+                        current={c.units}
+                        previous={c.prevUnits}
+                        deltaPct={null}
+                        formatter={fmtInt}
+                        bottomLabel={prevLabel}
+                        className="border-[#FDD36F] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="Gross Sales"
+                        current={c.grossSales}
+                        previous={c.prevGrossSales}
+                        deltaPct={null}
+                        formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                        bottomLabel={prevLabel}
+                        className="border-[#ED9F50] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="Net Sales"
+                        current={c.netSales}
+                        previous={c.prevNetSales}
+                        deltaPct={null}
+                        formatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                        bottomLabel={prevLabel}
+                        className="border-[#6BBDE3] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="ASP"
+                        current={c.asp}
+                        previous={c.prevAsp}
+                        deltaPct={null}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
+                        bottomLabel={prevLabel}
+                        className="border-[#B75A5A] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="Cost of Ads"
+                        current={c.ads}
+                        previous={c.prevAds}
+                        deltaPct={null}
+                        inverseDelta
+                        formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                        bottomLabel={prevLabel}
+                        className="border-[#C49466] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="TACoS"
+                        current={c.tacos}
+                        previous={c.prevTacos}
+                        deltaPct={null}
+                        inverseDelta
+                        formatter={fmtPct2}
+                        previousFormatter={fmtPct2}
+                        bottomLabel={prevLabel}
+                        className="border-[#3A8EA4] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="CM2 Profit"
+                        current={c.cm2Profit}
+                        previous={c.prevCm2Profit}
+                        deltaPct={null}
+                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                        bottomLabel={prevLabel}
+                        className="border-[#B8C78C] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
+                        label="CM2 Profit %"
+                        current={c.cm2Pct}
+                        previous={c.prevCm2Pct}
+                        deltaPct={null}
+                        formatter={fmtPct2}
+                        previousFormatter={fmtPct2}
+                        bottomLabel={prevLabel}
+                        className="border-[#7B9A6D] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
                     />
                 </div>
             </div>
@@ -8556,9 +8985,9 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="Units"
-                                                current={shouldShowDummyUi ? dummyStatData.units.current : globalMergedCurrentUnits}
-                                                previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMergedPrevUnits}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.units.deltaPct : safeDeltaPct(globalMergedCurrentUnits, globalMergedPrevUnits)}
+                                                current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
+                                                previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={fmtInt}
                                                 bottomLabel={prevLabel}
@@ -8567,9 +8996,9 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="Gross Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMergedCurrentGross}
-                                                previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMergedPrevGross}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.grossSales.deltaPct : safeDeltaPct(globalMergedCurrentGross, globalMergedPrevGross)}
+                                                current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
+                                                previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={roundedMoneyFormatter}
                                                 previousFormatter={roundedMoneyFormatter}
@@ -8579,9 +9008,9 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="Net Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMergedCurrentNet}
-                                                previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMergedPrevNet}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.netSales.deltaPct : safeDeltaPct(globalMergedCurrentNet, globalMergedPrevNet)}
+                                                current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
+                                                previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={roundedMoneyFormatter}
                                                 previousFormatter={roundedMoneyFormatter}
@@ -8591,22 +9020,23 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="ASP"
-                                                current={shouldShowDummyUi ? dummyStatData.asp.current : globalMergedCurrentAsp}
-                                                previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMergedPrevAsp}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.asp.deltaPct : safeDeltaPct(globalMergedCurrentAsp, globalMergedPrevAsp)}
+                                                current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
+                                                previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={formatDisplayAmount}
+                                                previousFormatter={formatDisplayAmount}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                             />
 
                                             <AmazonStatCard
                                                 label="Cost of Ads"
-                                                current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMergedCostOfAds}
-                                                previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMergedPrevCostOfAds}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.costOfAds.deltaPct : safeDeltaPct(globalMergedCostOfAds, globalMergedPrevCostOfAds)}
+                                                current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
+                                                previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
+                                                deltaPct={null}
                                                 inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={roundedMoneyFormatter}
                                                 previousFormatter={roundedMoneyFormatter}
                                                 bottomLabel={prevLabel}
@@ -8615,21 +9045,22 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="TACoS"
-                                                current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMergedTacos}
-                                                previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMergedPrevTacos}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.tacos.deltaPct : safeDeltaPct(globalMergedTacos, globalMergedPrevTacos)}
+                                                current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
+                                                previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
+                                                deltaPct={null}
                                                 inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={fmtPct2}
+                                                previousFormatter={fmtPct2}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                                             />
 
                                             <AmazonStatCard
                                                 label="CM2 Profit"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMergedCm2Profit}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMergedPrevCm2Profit}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.cm2Profit.deltaPct : safeDeltaPct(globalMergedCm2Profit, globalMergedPrevCm2Profit)}
+                                                current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
+                                                previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
                                                 formatter={roundedMoneyFormatter}
                                                 previousFormatter={roundedMoneyFormatter}
@@ -8639,11 +9070,12 @@ ${pageLoading
 
                                             <AmazonStatCard
                                                 label="CM2 Profit %"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMergedCm2Pct}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMergedPrevCm2Pct}
-                                                deltaPct={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.deltaPct : safeDeltaPct(globalMergedCm2Pct, globalMergedPrevCm2Pct)}
+                                                current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
+                                                previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
+                                                deltaPct={null}
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
-                                                formatter={fmtPct}
+                                                formatter={fmtPct2}
+                                                previousFormatter={fmtPct2}
                                                 bottomLabel={prevLabel}
                                                 className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                             />
@@ -9512,7 +9944,13 @@ ${pageLoading
                                                     {
                                                         id: "cm2_profit",
                                                         label: "CM2 Profit/Loss",
-                                                        endValue: Math.round(cm2Profit),
+                                                        endValue: Number(
+                                                            (
+                                                                platform === "global"
+                                                                    ? plSummaryTotals.cm2_profit
+                                                                    : cm2Profit
+                                                            ).toFixed(2)
+                                                        )
                                                     },
                                                     {
                                                         id: "cm2_margins",
@@ -9523,13 +9961,13 @@ ${pageLoading
                                                     {
                                                         id: "tacos",
                                                         label: "TACoS (Total Advertising Cost of Sale)",
-                                                        endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`,
+                                                        endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`
                                                     },
 
                                                     {
                                                         id: "net_reimb",
                                                         label: "Net Reimbursement",
-                                                        endValue: Number(reimbursementForSummary.toFixed(2)),
+                                                        endValue: Number(reimbursementForSummary.toFixed(2))
                                                     },
                                                     {
                                                         id: "rv_cm2",

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 // import * as XLSX from "xlsx-js-style";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
@@ -9,6 +9,7 @@ import DataTable, { ColumnDef } from "../ui/table/DataTable";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 // import { saveAs } from "file-saver";
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import SegmentedToggle from "../ui/SegmentedToggle";
 
 type InventoryRow = Record<string, string | number>;
 
@@ -308,6 +309,11 @@ export default function CurrentInventorySection({
   displayCurrency
 }: CurrentInventorySectionProps) {
 
+  const [selectedInventoryCountry, setSelectedInventoryCountry] =
+    useState<"uk" | "us">("uk");
+
+  const isGlobalInventory = region === "Global";
+
   const displayRegion = useMemo(() => {
     if (region === "UK") return "UK";
     if (region === "US") return "US";
@@ -327,11 +333,55 @@ export default function CurrentInventorySection({
   );
 
   const storageSourceCurrency: CurrencyCode = useMemo(() => {
-    if (region === "UK" || region === "Global") return "GBP";
+    if (region === "Global") {
+      return selectedInventoryCountry === "us" ? "USD" : "GBP";
+    }
+
+    if (region === "UK") return "GBP";
     if (region === "US") return "USD";
     if (region === "CA") return "CAD";
+
     return "GBP";
-  }, [region]);
+  }, [region, selectedInventoryCountry]);
+
+  const visibleInvRows = useMemo(() => {
+    if (!Array.isArray(invRows)) return [];
+
+    if (!isGlobalInventory) return invRows;
+
+    return invRows.filter((row) => {
+      const rowCountry = String(
+        (row as any).country ||
+        (row as any).Country ||
+        ""
+      ).toLowerCase();
+
+      return rowCountry === selectedInventoryCountry;
+    });
+  }, [invRows, isGlobalInventory, selectedInventoryCountry]);
+
+  const visibleInventoryAlerts = useMemo(() => {
+    if (!isGlobalInventory) return inventoryAlerts;
+
+    const prefix = `${selectedInventoryCountry.toUpperCase()}-`;
+    const next: Record<string, { alert?: string; alert_type?: string }> = {};
+
+    Object.entries(inventoryAlerts || {}).forEach(([key, value]) => {
+      const normalizedKey = String(key).trim().toUpperCase();
+
+      if (normalizedKey.startsWith(prefix)) {
+        const skuOnly = normalizedKey.slice(prefix.length);
+
+        // Current table lookup uses SKU-only key.
+        next[skuOnly] = value;
+
+        // Keep prefixed key too, in case needed later.
+        next[normalizedKey] = value;
+      }
+    });
+
+    return next;
+  }, [inventoryAlerts, isGlobalInventory, selectedInventoryCountry]);
 
   const storageHeaderLabel = useMemo(() => {
     return `Estimated storage cost (${getCurrencySymbol(displayCurrency)})`;
@@ -472,10 +522,10 @@ export default function CurrentInventorySection({
   /* -------- Transform backend rows → UI rows for DataTable -------- */
 
   const tableRows: InventoryUiRow[] = useMemo(() => {
-    if (!invRows?.length) return [];
+    if (!visibleInvRows?.length) return [];
 
     // 1) Filter out empty + backend total rows
-    const usable = invRows.filter((r) => {
+    const usable = visibleInvRows.filter((r) => {
       const name = String(r["Product Name"] ?? "").trim();
       const sku = String(r["SKU"] ?? "").trim();
       const isEmpty = !name && !sku;
@@ -571,7 +621,7 @@ export default function CurrentInventorySection({
       } = c;
 
       const skuKey = normalizeSku((row as any)["SKU"]);
-      const alertText = inventoryAlerts?.[skuKey]?.alert || "";
+      const alertText = visibleInventoryAlerts?.[skuKey]?.alert || "";
 
       return {
         rowType: "normal",
@@ -698,21 +748,21 @@ export default function CurrentInventorySection({
     return uiRows;
     // }, [invRows, findMtdKey, findSales30Key, inventoryAlerts]);
   }, [
-    invRows,
+    visibleInvRows,
     findMtdKey,
     findSales30Key,
-    inventoryAlerts,
+    visibleInventoryAlerts,
     convertToDisplayCurrency,
     storageSourceCurrency,
   ]);
 
   const exportDataRows = useMemo(() => {
-    if (!invRows?.length) return [];
+    if (!visibleInvRows?.length) return [];
 
     const normalRows: InventoryRow[] = [];
     let totalRow: InventoryRow | null = null;
 
-    invRows.forEach((r) => {
+    visibleInvRows.forEach((r) => {
       const name = String(r["Product Name"] ?? "").trim();
       const sku = String(r["SKU"] ?? "").trim();
       const isEmpty = !name && !sku;
@@ -760,7 +810,7 @@ export default function CurrentInventorySection({
         "Inventory 180+ Days": inventory180Plus,
         "Estimated Storage Cost": estStorage,
         "Inventory Coverage Ratio": coverage,
-        "Inventory Alerts": isTotal ? "" : (inventoryAlerts?.[sku]?.alert || ""),
+        "Inventory Alerts": isTotal ? "" : (visibleInventoryAlerts?.[sku]?.alert || ""),
       };
     };
 
@@ -810,7 +860,8 @@ export default function CurrentInventorySection({
     finalRows.push(totalExportRow);
     return finalRows;
 
-  }, [invRows, inventoryAlerts, findMtdKey, findSales30Key]);
+  }, [visibleInvRows, visibleInventoryAlerts, findMtdKey, findSales30Key]);
+
   const downloadInventoryExcel = useCallback(() => {
     if (!exportDataRows.length) return;
 
@@ -980,17 +1031,31 @@ export default function CurrentInventorySection({
       flex flex-col
     "
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
         </div>
 
-        <DownloadIconButton
-          onClick={downloadInventoryExcel}
-          // disabled={invLoading || !invRows?.length}
-          disabled={invLoading || !exportDataRows.length}
-          className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-        />
+        <div className="flex items-center gap-2">
+          {isGlobalInventory && (
+            <SegmentedToggle<"uk" | "us">
+              value={selectedInventoryCountry}
+              onChange={setSelectedInventoryCountry}
+              options={[
+                { value: "uk", label: "UK" },
+                { value: "us", label: "US" },
+              ]}
+              compact
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            />
+          )}
+
+          <DownloadIconButton
+            onClick={downloadInventoryExcel}
+            disabled={invLoading || !exportDataRows.length}
+            className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+          />
+        </div>
       </div>
 
       {invError ? (
