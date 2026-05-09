@@ -1400,7 +1400,7 @@ def _build_extra_totals_single(daily_rows, rate=1.0):
         "cogs": _sum_daily_key(daily_rows, "cogs") * rate,
     }
 
-def _build_aligned_totals(skuwise_items_global, extra_totals):
+def _build_aligned_totals(skuwise_items_global, extra_totals, total_previous_net_sales_full_month=None):
     total = _get_total_row(skuwise_items_global)
 
     net_sales = _safe_float(total.get("net_sales"))
@@ -1421,7 +1421,11 @@ def _build_aligned_totals(skuwise_items_global, extra_totals):
         "total_previous_profit_cm2": round(cm2_profit, 2),
         "total_previous_profit_percentage": round(cm2_percentage, 2),
         "total_previous_rembursement_fee": round(reimbursement, 2),
-        "total_previous_net_sales_full_month": round(net_sales, 2),
+        "total_previous_net_sales_full_month": float(
+            total_previous_net_sales_full_month
+            if total_previous_net_sales_full_month is not None
+            else net_sales
+        ),
     }
 
 
@@ -1657,6 +1661,12 @@ def previous_skuwise_global():
     prev_end = ranges["previous"]["end"]
     prev_month_name = month_name[prev_start.month].lower()
     prev_year = prev_start.year
+    prev_full_start = date(prev_start.year, prev_start.month, 1)
+    prev_full_end = date(
+        prev_start.year,
+        prev_start.month,
+        monthrange(prev_start.year, prev_start.month)[1]
+    )
 
     try:
         skuwise_items_uk_raw, uk_daily = fetch_previous_period_data(
@@ -1664,6 +1674,13 @@ def previous_skuwise_global():
         )
         skuwise_items_us_raw, us_daily = fetch_previous_period_data(
             user_id, "us", prev_start, prev_end
+        )
+        _, uk_daily_full = fetch_previous_period_data(
+            user_id, "uk", prev_full_start, prev_full_end
+        )
+
+        _, us_daily_full = fetch_previous_period_data(
+            user_id, "us", prev_full_start, prev_full_end
         )
     except Exception as e:
         return jsonify({
@@ -1700,9 +1717,41 @@ def previous_skuwise_global():
     us_extra = _build_extra_totals_single(us_daily, 1.0)
     global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
 
-    aligned_totals_uk = _build_aligned_totals(skuwise_items_uk, uk_extra)
-    aligned_totals_us = _build_aligned_totals(skuwise_items_us, us_extra)
-    aligned_totals_global = _build_aligned_totals(skuwise_items_global, global_extra)
+    # ✅ Full previous month net sales only
+    uk_full_totals = totals_from_daily_series(uk_daily_full)
+    us_full_totals = totals_from_daily_series(us_daily_full)
+
+    uk_total_previous_net_sales_full_month = (
+        float(uk_full_totals.get("net_sales", 0) or 0)
+        * float(uk_to_usd_rate)
+    )
+
+    us_total_previous_net_sales_full_month = float(
+        us_full_totals.get("net_sales", 0) or 0
+    )
+
+    global_total_previous_net_sales_full_month = (
+        uk_total_previous_net_sales_full_month
+        + us_total_previous_net_sales_full_month
+    )
+
+    aligned_totals_uk = _build_aligned_totals(
+        skuwise_items_uk,
+        uk_extra,
+        total_previous_net_sales_full_month=uk_total_previous_net_sales_full_month,
+    )
+
+    aligned_totals_us = _build_aligned_totals(
+        skuwise_items_us,
+        us_extra,
+        total_previous_net_sales_full_month=us_total_previous_net_sales_full_month,
+    )
+
+    aligned_totals_global = _build_aligned_totals(
+        skuwise_items_global,
+        global_extra,
+        total_previous_net_sales_full_month=global_total_previous_net_sales_full_month,
+    )
 
     derived_totals_uk = _build_derived_totals_from_skuwise(skuwise_items_uk, uk_extra)
     derived_totals_us = _build_derived_totals_from_skuwise(skuwise_items_us, us_extra)
