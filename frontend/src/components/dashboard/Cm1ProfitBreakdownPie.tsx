@@ -70,6 +70,8 @@ export default function Cm1ProfitBreakdownPie({
   const activeTitle =
     profitPieType === "cm1" ? "CM1 Profit Breakdown" : "CM2 Profit Breakdown";
 
+  const showDelta = profitPieType === "cm1";
+
   const [isLaptop, setIsLaptop] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [legendTick, setLegendTick] = useState(0);
@@ -339,13 +341,13 @@ export default function Cm1ProfitBreakdownPie({
 
               return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toLocaleString()} (${Math.round(
                 slice?.pct ?? 0
-              )}%) (${deltaText})`;
+              )}%)${showDelta ? ` (${deltaText})` : ""}`;
             },
           },
         },
       },
     };
-  }, [currencySymbol, isLaptop, isDesktop, displayData]);
+  }, [currencySymbol, isLaptop, isDesktop, displayData, showDelta]);
 
   // ✅ Sync legend once chart mounts (so isVisible reads correctly)
   useEffect(() => {
@@ -581,7 +583,7 @@ export default function Cm1ProfitBreakdownPie({
                               >
                                 {currencySymbol}
                                 {value.toLocaleString()} ({pct}%){" "}
-                                <span className={deltaClass}>({deltaText})</span>
+                                {showDelta && <span className={deltaClass}>({deltaText})</span>}
                               </div>
                             </div>
                           </div>
