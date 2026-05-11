@@ -1944,7 +1944,8 @@ export default function DashboardPage() {
         biLoading ||
         invLoading ||
         monthlySpLoading ||
-        fxLoading;
+        fxLoading ||
+        previousSkuwiseGlobalLoading;
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -2166,14 +2167,25 @@ export default function DashboardPage() {
         setPrevTargetSummaries(next);
     }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
-    useEffect(() => {
-        fetchTargetSummary();
-    }, [fetchTargetSummary]);
+    // useEffect(() => {
+    //     fetchTargetSummary();
+    // }, [fetchTargetSummary]);
+
+    // useEffect(() => {
+    //     fetchTargetSummary();
+    //     fetchPrevTargetSummary();
+    // }, [fetchTargetSummary, fetchPrevTargetSummary]);
 
     useEffect(() => {
+        if (platform === "global") return;
+        fetchTargetSummary();
+    }, [platform, fetchTargetSummary]);
+
+    useEffect(() => {
+        if (platform === "global") return;
         fetchTargetSummary();
         fetchPrevTargetSummary();
-    }, [fetchTargetSummary, fetchPrevTargetSummary]);
+    }, [platform, fetchTargetSummary, fetchPrevTargetSummary]);
 
 
     const inventoryCountry = useMemo(() => {
@@ -2912,12 +2924,6 @@ export default function DashboardPage() {
     );
 
     const runDashboardLoadWithSteps = useCallback(async () => {
-        await fetchFxRates();
-
-        if (platform === "global") {
-            await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay);
-        }
-
         if (isMonthYearNA) {
             resetStepState();
             return;
@@ -2942,34 +2948,35 @@ export default function DashboardPage() {
         });
 
         try {
+            setStep(1, "MTD Fetching", 5, "Preparing dashboard refresh...");
 
-            // STEP 2: MTD Fetching
-            setStep(1, "MTD Fetching", 5, "Preparing MTD fetch...");
+            setStep(1, "MTD Fetching", 10, "Fetching currency rates...");
+            await fetchFxRates();
+
+            setStep(1, "MTD Fetching", 15, "Fetching target summary...");
+            await fetchTargetSummary();
+            await fetchPrevTargetSummary();
+
+            if (platform === "global") {
+                setStep(1, "MTD Fetching", 22, "Fetching previous SKU-wise global data...");
+                await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay);
+            }
 
             const jwtToken =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-            const country =
-                platform === "amazon-us"
-                    ? "US"
-                    : platform === "amazon-ca"
-                        ? "CA"
-                        : "UK";
-
             if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
-
-                // Fire-and-forget. Do not await.
                 void runAdsBackgroundSync();
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
-            setStep(1, "MTD Fetching", 62);
+            setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(1, "MTD Fetching", 78);
+                setStep(1, "MTD Fetching", 78, "Fetching Live BI data...");
                 await fetchBiSeries(selectedStartDay, selectedEndDay);
             } else {
                 setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
@@ -2988,13 +2995,12 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
-            // STEP 3: Inventory Fetch
-            setStep(2, "Inventory Fetch", 20);
+            setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
             await fetchInventory();
+
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            // STEP 4: Plotting Graph
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
 
@@ -3013,37 +3019,39 @@ export default function DashboardPage() {
                 ...prev,
                 active: false,
             }));
-            setLoadingStartedAt(null);
 
+            setLoadingStartedAt(null);
             setDashboardBusy(false);
         } catch (e: any) {
             console.error("runDashboardLoadWithSteps failed:", e);
             setError(e?.message || "Failed to load dashboard");
             setDashboardBusy(false);
-        } finally {
-            // setAdsLoading(false);
+            setStepProgress((prev) => ({
+                ...prev,
+                active: false,
+            }));
         }
     }, [
         isMonthYearNA,
         platform,
-        baseURL,
-        activeDateRegion,
         showLiveBI,
         selectedStartDay,
         selectedEndDay,
         shopifyStore,
         fetchFxRates,
-        fetchMonthlySp,
+        fetchTargetSummary,
+        fetchPrevTargetSummary,
+        fetchPreviousSkuwiseGlobal,
         fetchAmazon,
         fetchBiSeries,
         fetchShopify,
         fetchShopifyPrev,
         fetchInventory,
         runAdsBackgroundSync,
-        fetchPreviousSkuwiseGlobal,
     ]);
 
     const liveDashboardCountry = useMemo(() => {
+        if (platform === "global") return "global";
         if (platform === "amazon-us") return "us";
         if (platform === "amazon-ca") return "ca";
         return "uk";
@@ -3120,9 +3128,6 @@ export default function DashboardPage() {
     const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
         if (typeof window === "undefined") return;
 
-        // ✅ Do not write global cache.
-        if (platform === "global") return;
-
         localStorage.setItem(
             liveCacheKey,
             JSON.stringify({
@@ -3151,12 +3156,20 @@ export default function DashboardPage() {
         setBiPeriods(parsed?.biPeriods ?? null);
         setLiveBiPayload(parsed?.liveBiPayload ?? null);
         setBiAlignedTotals(parsed?.biAlignedTotals ?? null);
+
         setInvRows(parsed?.invRows ?? []);
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
         setMonthlySpRows(parsed?.monthlySpRows ?? []);
         setMonthlySpTotalSpend(parsed?.monthlySpTotalSpend ?? null);
-        setLiveBiReady(!!parsed?.liveBiReady);
 
+        setTargetSummaries(parsed?.targetSummaries ?? {});
+        setPrevTargetSummaries(parsed?.prevTargetSummaries ?? {});
+        setShopifyRows(parsed?.shopifyRows ?? []);
+        setShopifyPrevRows(parsed?.shopifyPrevRows ?? []);
+        setPreviousSkuwiseGlobalData(parsed?.previousSkuwiseGlobalData ?? null);
+        setGlobalCountryPayloads(parsed?.globalCountryPayloads ?? {});
+
+        setLiveBiReady(!!parsed?.liveBiReady);
         setBiStatus(parsed?.biStatus ?? (parsed?.biDailySeries ? "ready" : "idle"));
         setBiLoading(false);
         setBiError(null);
@@ -3738,19 +3751,14 @@ export default function DashboardPage() {
         try {
             await runDashboardLoadWithSteps();
 
-            // ✅ Do not save/fill global cache for now.
-            if (platform !== "global") {
-                triggerCachePost();
-            } else {
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
-            }
+            // ✅ countrywise + global both save after refresh
+            triggerCachePost();
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
         }
-    }, [platform, runDashboardLoadWithSteps, triggerCachePost]);
+    }, [runDashboardLoadWithSteps, triggerCachePost]);
 
     useEffect(() => {
         if (!fxReady) return;
@@ -3763,23 +3771,6 @@ export default function DashboardPage() {
 
         const bootstrapDashboard = async () => {
             try {
-                // ✅ For global page, always call live MTD API.
-                // Do not restore cache before fetchAmazon(), otherwise
-                // /amazon_api/finances/mtd_transactions?country=global&store_in_db=true
-                // may never be hit.
-                if (platform === "global") {
-                    // ✅ Global should always come from fresh API call.
-                    // No backend cache read, no localStorage restore, no cache save.
-                    await runDashboardLoadWithSteps();
-
-                    if (cancelled) return;
-
-                    shouldPostCacheRef.current = false;
-                    isManualRefreshRef.current = false;
-
-                    return;
-                }
-
                 const cacheResult = await getDashboardCacheFromBackend();
 
                 if (cancelled) return;
@@ -3789,6 +3780,15 @@ export default function DashboardPage() {
                     isManualRefreshRef.current = false;
 
                     applyDashboardCachePayload(cacheResult.payload);
+
+                    if (cacheResult.updatedAt) {
+                        const ts = new Date(cacheResult.updatedAt).getTime();
+                        if (!Number.isNaN(ts)) {
+                            setDbUpdatedAt(ts);
+                            setLastRefreshAt(ts);
+                            localStorage.setItem(LAST_REFRESH_KEY, String(ts));
+                        }
+                    }
 
                     localStorage.setItem(
                         liveCacheKey,
@@ -3808,6 +3808,7 @@ export default function DashboardPage() {
                     return;
                 }
 
+                // First-time fallback only: no DB cache and no browser cache.
                 await runDashboardLoadWithSteps();
 
                 if (cancelled) return;
@@ -6366,17 +6367,25 @@ export default function DashboardPage() {
             cm2Profit,
             grandTotalProfit: toNumber(grandTotalRowDisplay?.profit),
             grandTotalPlatformFee: toNumber(grandTotalRowDisplay?.platform_fee),
-
             shipmentCharges: toNumber(plSummaryTotals?.shipment_charges ?? 0),
 
             biDailySeries,
             biPeriods,
             liveBiPayload,
             biAlignedTotals,
+
             invRows,
             inventoryAlerts,
             monthlySpRows,
             monthlySpTotalSpend,
+
+            targetSummaries,
+            prevTargetSummaries,
+            shopifyRows,
+            shopifyPrevRows,
+            previousSkuwiseGlobalData,
+            globalCountryPayloads,
+
             liveBiReady,
             biStatus,
             savedAt: Date.now(),
@@ -6384,9 +6393,9 @@ export default function DashboardPage() {
     }, [
         data,
         adsSpendTotal,
+        cm2Profit,
         grandTotalRowDisplay?.profit,
         grandTotalRowDisplay?.platform_fee,
-        cm2Profit,
         plSummaryTotals?.shipment_charges,
         biDailySeries,
         biPeriods,
@@ -6396,15 +6405,18 @@ export default function DashboardPage() {
         inventoryAlerts,
         monthlySpRows,
         monthlySpTotalSpend,
+        targetSummaries,
+        prevTargetSummaries,
+        shopifyRows,
+        shopifyPrevRows,
+        previousSkuwiseGlobalData,
+        globalCountryPayloads,
         liveBiReady,
         biStatus,
     ]);
 
     const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
         if (typeof window === "undefined") return;
-
-        // ✅ Do not write global localStorage cache.
-        if (platform === "global") return;
 
         const payloadToSave = cachePayload ?? buildDashboardCachePayload();
 
@@ -6415,26 +6427,18 @@ export default function DashboardPage() {
                 savedAt: Date.now(),
             })
         );
-    }, [platform, buildDashboardCachePayload, liveCacheKey]);
+    }, [buildDashboardCachePayload, liveCacheKey]);
+
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
+    //     if (platform !== "global") return;
+
+    //     localStorage.removeItem(liveCacheKey);
+    //     localStorage.removeItem("live-dashboard-cache:global:Global");
+    // }, [platform, liveCacheKey]);
+
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (platform !== "global") return;
-
-        localStorage.removeItem(liveCacheKey);
-        localStorage.removeItem("live-dashboard-cache:global:Global");
-    }, [platform, liveCacheKey]);
-
-
-    useEffect(() => {
-
-        // ✅ Completely disable global dashboard cache writes for now.
-        if (platform === "global") {
-            shouldPostCacheRef.current = false;
-            isManualRefreshRef.current = false;
-            return;
-        }
-
         if (!shouldPostCacheRef.current || !isManualRefreshRef.current) return;
         if (!data && !liveBiPayload && !invRows.length) return;
 
@@ -6452,7 +6456,6 @@ export default function DashboardPage() {
         const payload = buildDashboardCachePayload();
 
         try {
-            // 1) always store browser cache first
             localStorage.setItem(
                 liveCacheKey,
                 JSON.stringify({
@@ -6461,15 +6464,17 @@ export default function DashboardPage() {
                 })
             );
 
-            // optional init marker if you still want it
             localStorage.setItem("live-dashboard-cache-init", "initialized");
         } catch (e) {
             console.error("Failed to write local cache:", e);
         }
+
         saveDashboardCacheToBackend(payload)
             .then((serverUpdatedAt) => {
                 if (serverUpdatedAt != null) {
                     setDbUpdatedAt(serverUpdatedAt);
+                    setLastRefreshAt(serverUpdatedAt);
+                    localStorage.setItem(LAST_REFRESH_KEY, String(serverUpdatedAt));
                 }
 
                 shouldPostCacheRef.current = false;
@@ -6481,7 +6486,6 @@ export default function DashboardPage() {
                 isManualRefreshRef.current = false;
             });
     }, [
-        platform,
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
         liveCacheKey,
@@ -8246,8 +8250,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
     //     : biDailySeriesHome;
 
     const finalBiDailySeriesHome: GraphDailySeries | null = shouldShowDummyUi
-    ? (dummyBiDailySeriesHome as GraphDailySeries)
-    : biDailySeriesHome;
+        ? (dummyBiDailySeriesHome as GraphDailySeries)
+        : biDailySeriesHome;
 
     const finalBiPeriods = shouldShowDummyUi ? dummyBiPeriods : biPeriods;
 
@@ -9107,22 +9111,22 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     <div className="flex flex-col items-end gap-1">
 
 
-                        {platform !== "global" && (
-                            <button
-                                onClick={handleHardRefresh}
-                                disabled={pageLoading}
-                                className={`shrink-0 rounded-md border shadow-sm
+                        {/* {platform !== "global" && ( */}
+                        <button
+                            onClick={handleHardRefresh}
+                            disabled={pageLoading}
+                            className={`shrink-0 rounded-md border shadow-sm
 px-2 py-1 text-[10px]
 sm:px-3 sm:py-1.5 sm:text-xs
 2xl:text-sm
 ${pageLoading
-                                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                        : "border-gray-300 bg-white hover:bg-gray-50"
-                                    }`}
-                            >
-                                {pageLoading ? "Refreshing…" : "Refresh"}
-                            </button>
-                        )}
+                                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                    : "border-gray-300 bg-white hover:bg-gray-50"
+                                }`}
+                        >
+                            {pageLoading ? "Refreshing…" : "Refresh"}
+                        </button>
+                        {/* )} */}
                         {dbUpdatedAt && (
                             <span className="text-sm text-gray-500">
                                 Last Updated at{" "}
@@ -9178,7 +9182,7 @@ ${pageLoading
                                                 <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                             </div>
 
-                                            {showLiveBI && platform === "global" && (
+                                            {/* {showLiveBI && platform === "global" && (
                                                 <div className="shrink-0 ml-auto">
                                                     <RangePicker
                                                         selectedStartDay={selectedStartDay}
@@ -9212,7 +9216,7 @@ ${pageLoading
                                                         }}
                                                     />
                                                 </div>
-                                            )}
+                                            )} */}
                                         </div>
 
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
