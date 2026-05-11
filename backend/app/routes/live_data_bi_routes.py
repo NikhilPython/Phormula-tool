@@ -1624,6 +1624,7 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
     gross_sales = _safe_float(total.get("gross_sales"))
     net_sales = _safe_float(total.get("net_sales"))
     profit = _safe_float(total.get("profit"))
+    tax_and_credits = _safe_float(total.get("tax_and_credits"))
 
     advertising = _safe_float(extra_totals.get("advertising"))
     platform_fee = _safe_float(extra_totals.get("platform_fee"))
@@ -1646,6 +1647,7 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
         "gross_sales": round(gross_sales, 2),
         "net_sales": round(net_sales, 2),
         "profit": round(profit, 2),
+        "tax_and_credits": round(tax_and_credits, 2),
 
         "cogs": round(cogs, 2),
         "advertising_fees": round(advertising, 2),
@@ -1708,6 +1710,7 @@ def previous_skuwise_global():
             "unit_wise_profitability",
             "selling_fees",
             "fba_fees",
+            "tax_and_credits",  # ✅ NEW
         ]
 
         for col in money_cols:

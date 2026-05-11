@@ -796,6 +796,9 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     metrics["credits_metric"] = safe_num(metrics.get("credits_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
 
+    # ✅ tax_and_credits comes from uk_credits()
+    metrics["tax_and_credits"] = metrics["credits_metric"]
+
     metrics["net_sales"] = metrics["sales_metric"]
     metrics["profit"] = metrics["profit_metric"]
 
@@ -821,6 +824,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         "gross_sales",  # ✅ NEW
         "selling_fees",  # ✅ NEW
         "fba_fees",  # ✅ NEW
+        "tax_and_credits",  # ✅ NEW
         "asp",
         "profit",
         "sales_mix",
