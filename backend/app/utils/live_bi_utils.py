@@ -11,7 +11,7 @@ import json
 from openai import OpenAIError
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
 from app.utils.uk_coverage_ratio_utils import fetch_sku_product_mapping, construct_prev_table_name, compute_inventory_coverage_ratio
-
+from app.utils.uk_prompts_utils import LIVE_BI_PROMPT_1_ANALYSIS, LIVE_BI_INVENTORY_SUMMARY_PROMPT, LIVE_BI_PROMPT_1_5_SUMMARY
 
 from app.utils.formulas_utils import (
     uk_sales,
@@ -34,7 +34,7 @@ db_url3 = os.getenv("DATABASE_CHATBOT_URL")
 engine_hist = create_engine(db_url)
 engine_live = create_engine(db_url2)
 engine_chatbot = create_engine(db_url3)
-
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 oa_client = OpenAI(api_key=OPENAI_API_KEY)
 # simple process-level debounce (survives hot reload)
@@ -1565,304 +1565,6 @@ def calculate_growth(prev_data, curr_data, key="sku", numeric_fields=None) -> li
 
     return results
 
-LIVE_BI_PROMPT_1_ANALYSIS = """You are a Senior Amazon Business Analyst.
-
-You are analysing IN-PROGRESS (MTD) Amazon performance data.
-This data is NOT final and may change before month-end.
-
-The data you receive:
-- Is partially accumulated (MTD vs previous period).
-- Contains SKU-level and portfolio-level metrics.
-- May contain volatility and incomplete signals.
-- Is directionally reliable, not final.
-
-You will receive:
-- SKU-level month-over-month comparisons
-- Portfolio-level aggregates
-- A rolling historical movement_context (from finalized historic data)
-- Inventory signals (coverage, ageing, Amazon flags)
-- A list of focus_skus (Top SKUs by current CM1 profit)
-
-────────────────────────────────────────
-YOUR ROLE (CRITICAL)
-────────────────────────────────────────
-
-You are an ANALYSIS ENGINE.
-
-Your responsibility is to identify:
-- WHAT materially changed
-- WHY it likely changed
-- WHAT business dimension was impacted
-
-You MUST NOT:
-- Recommend actions
-- Suggest pricing changes
-- Suggest ads or visibility changes
-- Write advice or strategy
-- Write prose explanations
-
-────────────────────────────────────────
-ANALYSIS DISCIPLINE (MANDATORY)
-────────────────────────────────────────
-
-1) DIRECTION OVER PRECISION
-- Treat % changes as directional signals, not final truth.
-- Avoid extreme language unless supported by rolling context.
-
-2) MOVEMENT CONTEXT USAGE
-- Use movement_context to classify changes as:
-  - normal
-  - extreme
-  - reversal
-  - continuation
-- Do NOT narrate raw deltas when context exists.
-
-3) CAUSAL CLASSIFICATION
-- If net sales changed, classify whether driven by:
-  - unit movement
-  - pricing (ASP)
-  - mix concentration
-- If CM1 profit changed, identify:
-  - per-unit profitability impact
-  - volume-driven profit impact
-
-────────────────────────────────────────
-INVENTORY SIGNAL HANDLING (MANDATORY)
-────────────────────────────────────────
-
-Inventory signals are provided in inventory_signals.summary.
-
-Each inventory signal includes:
-- type (supply | ageing | excess)
-- label
-- list of affected product names
-- count of affected products
-
-Rules:
-- Inventory signals are PORTFOLIO-LEVEL only.
-- Do NOT attach inventory signals to SKU diagnosis_codes.
-- Do NOT infer pricing, demand, or visibility causes from inventory signals.
-- Use inventory signals ONLY to identify operational risk exposure.
-
-You MUST:
-- Detect whether inventory risk exists.
-- Classify inventory exposure as present or absent.
-- Include inventory risk as a separate portfolio signal.
-
-
-────────────────────────────────────────
-PRODUCT-LEVEL DIAGNOSIS (MANDATORY)
-────────────────────────────────────────
-
-For each SKU in focus_skus:
-- Assign diagnosis codes explaining the dominant commercial pattern.
-- Use ONLY the allowed diagnosis codes.
-- Select the MINIMUM number of codes required.
-
-ALLOWED DIAGNOSIS CODES:
-- pricing_supports_volume
-- pricing_effective
-- demand_weakness
-- visibility_constraint
-- mixed_signal
-
-PRICING DIRECTION DEFINITION (CRITICAL):
-
-- Pricing is considered REDUCED if asp_curr < asp_prev.
-- ANY decrease in ASP counts as pricing reduced, regardless of magnitude.
-- Percentage thresholds, rounding, or "flat" interpretations are NOT allowed.
-- Pricing is considered STABLE only if asp_curr == asp_prev.
-- Pricing is considered INCREASED only if asp_curr > asp_prev.
-
-
-DIAGNOSTIC DEFINITIONS (DETERMINISTIC):
-
-- pricing_supports_volume
-  → unit growth positive AND CM1 profit per unit declining
-
-- pricing_effective
-  → unit growth positive AND CM1 profit per unit stable or increasing
-
-- demand_weakness
-  → units and net sales declining while pricing is NOT reduced
-
-- visibility_constraint
-  → units and net sales declining AND asp_curr < asp_prev
-
-- mixed_signal
-  → no dominant pricing or demand signal
-
-
-DIAGNOSIS PRECEDENCE (STRICT):
-
-1) UNIT DOMINANCE RULE  
-   If unit growth is positive, visibility_constraint is NOT allowed.
-
-2) PRICE-CUT FAILURE RULE  
-   If units and net sales decline AND pricing is reduced,  
-   classify as visibility_constraint (NOT demand_weakness).
-
-3) DEMAND WEAKNESS ELIGIBILITY  
-   demand_weakness is allowed ONLY when pricing is NOT reduced.
-
-4) PRICING DOMINANCE OVERRIDE  
-    If asp_curr < asp_prev,  
-    "demand_weakness" MUST NOT be selected.
-
-
-
-Each SKU may have:
-- 1 primary diagnosis
-- Maximum 2 diagnosis codes.
-
-────────────────────────────────────────
-OUTPUT RULES (NON-NEGOTIABLE)
-────────────────────────────────────────
-
-- Output STRICT JSON ONLY.
-- Do NOT include prose, bullets, or explanations.
-- Do NOT include actions or recommendations.
-- Every field must be populated.
-
-────────────────────────────────────────
-MANDATORY OUTPUT FORMAT (STRICT JSON)
-────────────────────────────────────────
-
-{
-  "portfolio_signals": {
-    "units": {
-      "direction": "increase | decrease | flat",
-      "severity": "extreme | normal",
-      "confidence": "high | medium | low"
-    },
-    "net_sales": {
-      "direction": "increase | decrease | flat",
-      "severity": "extreme | normal"
-    },
-    "asp": {
-      "direction": "increase | decrease | flat"
-    },
-    "cm1_profit": {
-      "direction": "increase | decrease | flat"
-    }
-  },
-  "primary_causal_chain": [
-    "unit_growth",
-    "asp_change",
-    "mix_shift",
-    "cm1_profit_change"
-  ],
-  "product_insights": {
-    "<sku>": {
-      "diagnosis_codes": [
-        "mixed_signal"
-      ]
-    }
-  }
-}
-"""
-
-
-LIVE_BI_PROMPT_1_5_SUMMARY = """
-You are an executive summary generator for Live (MTD) Amazon Business Intelligence.
-
-Your task:
-Generate a concise executive performance summary using:
-- analysis_output (directional signals and causal chain)
-- numeric_context (percent changes, absolute deltas, costs, currency)
-- user_objective
-
-Important context:
-- Data is in-progress (MTD), not final.
-- Use cautious executive finance language.
-
-Additional context:
-- inventory_signals may be present indicating operational risk.
-- Inventory signals are directional and non-financial.
-- Inventory risk must be summarised separately from commercial performance.
-
-
-Mandatory metric coverage:
-You must explicitly cover ALL five metrics:
-1) Units
-2) Net Sales
-3) CM1 Profit
-4) CM1 Profit per Unit
-5) ASP
-6) ACOS (Advertising Cost of Sales — advertising efficiency)
-
-Rules:
-- Each metric must appear at least once in either summary_text or metric_bullets.
-- CM1 Profit per Unit must be included even if flat or declining.
-- ACOS must be explicitly mentioned at least once.
-- If a metric shows limited movement, explicitly state that it remained stable or broadly unchanged.
-
-Metric interpretation rules:
-- Units represent demand or volume momentum.
-- Net Sales represent volume multiplied by pricing.
-- CM1 Profit represents total contribution margin.
-- CM1 Profit per Unit represents margin efficiency per sale.
-- ASP represents pricing discipline and mix signal.
-- ACOS represents advertising efficiency (lower ACOS = better efficiency, higher ACOS = weaker efficiency).
-
-
-Strict prohibitions:
-- Do not recommend actions.
-- Do not suggest changes.
-- Do not introduce new metrics.
-- Do not include explanations outside directional logic.
-
-Output rules:
-- Output MUST be valid JSON only.
-- Do not use markdown.
-- Do not include text outside the JSON object.
-- Do not include unescaped currency symbols outside strings.
-
-Mandatory output format:
-{
-  "summary_text": "2-3 sentences in executive tone covering all five metrics",
-  "metric_bullets": [
-    "Units summary",
-    "Net Sales summary",
-    "CM1 Profit summary",
-    "CM1 Profit per Unit summary",
-    "ASP summary",
-    "ACOS summary"
-
-  ]
-}
-"""
-
-
-LIVE_BI_INVENTORY_SUMMARY_PROMPT = """
-You are an Amazon Inventory Risk Analyst.
-
-You are given portfolio-level inventory alerts.
-Each alert represents operational risk, not performance.
-
-Rules:
-- Do NOT recommend actions.
-- Do NOT mention pricing, ads, or sales.
-- Do NOT repeat SKU-level metrics.
-- Use executive, cautious language.
-- Base statements ONLY on provided alerts.
-
-Your task:
-Summarize overall inventory risk exposure.
-
-Output STRICT JSON only.
-
-Mandatory format:
-{
-  "summary_text": "1-2 sentence executive summary of inventory risk",
-  "alert_bullets": [
-    "One bullet per alert type"
-  ]
-}
-"""
-
-
-
 def fmt_metric(value, pct, symbol="£", decimals=2):
     if value is None:
         value = 0.0
@@ -1872,7 +1574,205 @@ def fmt_metric(value, pct, symbol="£", decimals=2):
     formatted_value = f"{value:,.{decimals}f}"
     return f"{symbol}{formatted_value} ({pct:+.2f}%)"
 
+def build_global_journey_comparison_for_product(
+    product_name,
+    uk_data,
+    us_data,
+):
+    """
+    Creates one combined UK+US historical journey comparison for a product.
+    """
 
+    def _compact_country_payload(country_data):
+        compact = []
+
+        for sku, payload in (country_data or {}).items():
+            growth_row = payload.get("growth_row", {}) or {}
+
+            compact.append({
+                "sku": sku,
+                "journey_summary": payload.get("journey_summary", []),
+                "current_mtd": {
+                    "units": growth_row.get("quantity_curr"),
+                    "net_sales": growth_row.get("net_sales_curr"),
+                    "profit": growth_row.get("profit_curr"),
+                    "asp": growth_row.get("asp_curr"),
+                    "unit_profitability": growth_row.get("unit_wise_profitability_curr"),
+                    "sales_mix": growth_row.get("Sales Mix (Current)"),
+                },
+                "previous_mtd": {
+                    "units": growth_row.get("quantity_prev"),
+                    "net_sales": growth_row.get("net_sales_prev"),
+                    "profit": growth_row.get("profit_prev"),
+                    "asp": growth_row.get("asp_prev"),
+                    "unit_profitability": growth_row.get("unit_wise_profitability_prev"),
+                    "sales_mix": growth_row.get("sales_mix_prev"),
+                },
+                "movement": {
+                    "units": (growth_row.get("Unit Growth (%)") or {}).get("value"),
+                    "net_sales": (growth_row.get("Net Sales Growth (%)") or {}).get("value"),
+                    "profit": (growth_row.get("CM1 Profit Impact (%)") or {}).get("value"),
+                    "asp": (growth_row.get("ASP Growth (%)") or {}).get("value"),
+                    "unit_profitability": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
+                },
+                "inventory_recommendation": payload.get("inventory_recommendation"),
+                "ads_recommendation": payload.get("ads_recommendation"),
+            })
+
+        return compact
+
+    uk_payload = _compact_country_payload(uk_data)
+    us_payload = _compact_country_payload(us_data)
+
+    if not uk_payload and not us_payload:
+        return []
+
+    # If only one country exists, do not fake a UK/US comparison.
+    if uk_payload and not us_payload:
+        out = []
+        for item in uk_payload:
+            for bullet in item.get("journey_summary", []):
+                out.append(f"In the UK, {bullet}")
+        return out[:7]
+
+    if us_payload and not uk_payload:
+        out = []
+        for item in us_payload:
+            for bullet in item.get("journey_summary", []):
+                out.append(f"In the US, {bullet}")
+        return out[:7]
+
+    prompt = f"""
+You are creating a combined UK + US product journey comparison for Amazon BI.
+
+Product:
+{product_name}
+
+UK data:
+{json.dumps(uk_payload, indent=2, default=str)}
+
+US data:
+{json.dumps(us_payload, indent=2, default=str)}
+
+Task:
+Create a concise journey_comparison array comparing the historical and current journey of this same product across UK and US.
+
+Rules:
+- Return valid JSON only.
+- Do not return markdown.
+- Output only this shape:
+{{
+  "journey_comparison": [
+    "bullet 1",
+    "bullet 2"
+  ]
+}}
+- Write 5 to 7 bullets.
+- Mention US and UK explicitly.
+- Compare scale, demand, net sales, CM1 profit, ASP, unit profitability, and inventory pressure when available.
+- Do not recommend actions.
+- Do not say data is unavailable unless both countries are empty.
+- Keep bullets executive and factual.
+"""
+
+    try:
+        resp = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You return valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+        )
+
+        raw = resp.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+
+        journey_comparison = parsed.get("journey_comparison", [])
+
+        if isinstance(journey_comparison, list):
+            return [str(x) for x in journey_comparison if x]
+
+        return []
+
+    except Exception as e:
+        print("[AI ERROR] Failed to build global journey comparison:", product_name, e)
+
+        fallback = []
+
+        for item in us_payload:
+            for bullet in item.get("journey_summary", []):
+                fallback.append(f"In the US, {bullet}")
+
+        for item in uk_payload:
+            for bullet in item.get("journey_summary", []):
+                fallback.append(f"In the UK, {bullet}")
+
+        return fallback[:7]
+
+# def render_live_recommended_action(
+#     *,
+#     growth_row: dict,
+#     recommendation: str,
+#     ads_recommendation: str | None = None,
+#     inventory_recommendation: str | None = None,
+#     journey_summary: list[str] | None = None,
+#     currency_symbol="£",
+#     inventory_alerts: dict | None = None,   # portfolio alerts
+#     render_portfolio_inventory: bool = False,  # control rendering
+# ) -> str:
+
+#     lines = []
+
+#     name = growth_row.get("product_name") or growth_row.get("sku")
+#     lines.append(name)
+#     lines.append("")
+
+#     # ---------- Metrics ----------
+#     lines.append(
+#         f"ASP: {fmt_metric(growth_row['asp_curr'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"Units: {fmt_metric(growth_row['quantity_curr'], growth_row['Unit Growth (%)']['value'], '', decimals=0)}"
+#     )
+#     lines.append(
+#         f"Net sales: {fmt_metric(growth_row['net_sales_curr'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"CM1 profit: {fmt_metric(growth_row['profit_curr'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
+#     )
+
+#     # ---------- Product Journey ----------
+#     if journey_summary:
+#         lines.append("")
+#         lines.append("Product Journey:")
+#         for bullet in journey_summary:
+#             lines.append(f"- {bullet}")
+
+#     # ---------- Commercial Recommendation ----------
+#     lines.append("")
+#     lines.append(f"Recommendation: {recommendation}")
+
+#     # ---------- Advertising Recommendation ----------
+#     if ads_recommendation:
+#         lines.append("")
+#         lines.append(f"Advertising: {ads_recommendation}")
+
+#     # ---------- Inventory Recommendation (SKU level) ----------
+#     if inventory_recommendation:
+#         lines.append("")
+#         lines.append(f"• Inventory action: {inventory_recommendation}")
+
+#     return "\n".join(lines)
 
 def render_live_recommended_action(
     *,
@@ -1886,9 +1786,21 @@ def render_live_recommended_action(
     render_portfolio_inventory: bool = False,  # control rendering
 ) -> str:
 
+    def _safe_text(value, fallback=""):
+        if value is None:
+            return fallback
+        try:
+            if pd.isna(value):
+                return fallback
+        except Exception:
+            pass
+        return str(value)
+
     lines = []
 
     name = growth_row.get("product_name") or growth_row.get("sku")
+    name = _safe_text(name, fallback=_safe_text(growth_row.get("sku"), "Unknown SKU"))
+
     lines.append(name)
     lines.append("")
 
@@ -1914,23 +1826,24 @@ def render_live_recommended_action(
         lines.append("")
         lines.append("Product Journey:")
         for bullet in journey_summary:
-            lines.append(f"- {bullet}")
+            lines.append(f"- {_safe_text(bullet)}")
 
     # ---------- Commercial Recommendation ----------
     lines.append("")
-    lines.append(f"Recommendation: {recommendation}")
+    lines.append(f"Recommendation: {_safe_text(recommendation, 'Monitor performance')}")
 
     # ---------- Advertising Recommendation ----------
     if ads_recommendation:
         lines.append("")
-        lines.append(f"Advertising: {ads_recommendation}")
+        lines.append(f"Advertising: {_safe_text(ads_recommendation)}")
 
     # ---------- Inventory Recommendation (SKU level) ----------
     if inventory_recommendation:
         lines.append("")
-        lines.append(f"• Inventory action: {inventory_recommendation}")
+        lines.append(f"• Inventory action: {_safe_text(inventory_recommendation)}")
 
-    return "\n".join(lines)
+    return "\n".join(str(line) for line in lines)
+
 
 def render_portfolio_inventory_block(inventory_alerts, currency_symbol="£"):
     if not inventory_alerts:
@@ -2891,94 +2804,6 @@ def club_inventory_alerts_by_type(
 
 
 
-# def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
-#     alerts = {}
-
-#     # -----------------------------------
-#     # Coverage ratio
-#     # -----------------------------------
-#     coverage_df = compute_inventory_coverage_ratio(user_id, country)
-#     coverage_map = {
-#         str(r["sku"]).strip(): r["inventory_coverage_ratio"]
-#         for _, r in coverage_df.iterrows()
-#         if r.get("sku") is not None
-#     }
-
-#     # -----------------------------------
-#     # Inventory aged data (DB-backed)
-#     # -----------------------------------
-#     inv_df = fetch_inventory_aged_by_user(user_id)
-
-#     for _, r in inv_df.iterrows():
-#         sku = r.get("sku")
-#         if not sku:
-#             continue
-#         sku = str(sku).strip()
-
-#         def _num(col):
-#             v = r.get(col)
-#             return float(v) if v is not None else 0.0
-
-#         # -----------------------------------
-#         # ✅ AGEING (MATCHES DB COLUMNS)
-#         # -----------------------------------
-#         aged_qty = (
-#             _num("inv-age-181-to-330-days")
-#             + _num("inv-age-331-to-365-days")
-#         )
-#         overaged = aged_qty > 0
-
-#         # -----------------------------------
-#         # ✅ STORAGE COST (MATCHES DB COLUMN)
-#         # -----------------------------------
-#         estimated_storage_cost = _num("estimated-storage-cost-next-month")
-
-#         # -----------------------------------
-#         # Coverage
-#         # -----------------------------------
-#         coverage_ratio = coverage_map.get(sku)
-
-#         alert = "No alert"
-#         alert_type = "none"
-
-#         # 1️⃣ SUPPLY (highest priority)
-#         if coverage_ratio is not None and coverage_ratio <= 2:
-#             alert = "High alert"
-#             alert_type = "supply"
-
-#         elif coverage_ratio is not None and coverage_ratio <= 5:
-#             alert = "Please send shipment"
-#             alert_type = "supply"
-
-#          # 2️⃣ EXCESS INVENTORY (monitoring)
-#         elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
-#             alert = "High inventory coverage ratio."
-#             alert_type = "excess"    
-
-#         # 2️⃣ HIGH STORAGE COST
-#         elif estimated_storage_cost > 100:
-#             alert = "High storage cost"
-#             alert_type = "cost"
-
-#         # 3️⃣ AGEING INVENTORY
-#         elif overaged:
-#             alert = "Ageing Inventory. Ref. AI Insights"
-#             alert_type = "ageing"
-
-#         # 4️⃣ High storage cost (independent alert)
-#         if estimated_storage_cost > 100:
-#             if alert_type == "none":
-#                 alert = "High storage cost"
-#                 alert_type = "cost"
-#             else:
-#                 alert += " | High storage cost"
-
-#         alerts[sku] = {
-#             "alert": alert,
-#             "alert_type": alert_type,
-#         }
-
-#     return alerts
 
 def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_df: pd.DataFrame = None) -> dict:
     alerts = {}

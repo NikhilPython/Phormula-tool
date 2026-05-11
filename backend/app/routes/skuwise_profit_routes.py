@@ -14,7 +14,8 @@ from app.utils.monthwise_ai_summary_utils import (
     run_prompt_2_strategy,
     build_sku_inventory_flags,
     fetch_inventory_aged_by_user,
-    get_or_create_summary
+    get_or_create_summary,
+    get_or_create_global_summary
 )
 from app.models.user_models import UserObjective
 
@@ -615,24 +616,95 @@ def productwise_growth_ai():
         # ==============================
         # GET SUMMARY ENGINE OUTPUT
         # ==============================
-        summary_result = get_or_create_summary(
-            user_id=int(user_id),
-            country=country,
-            marketplace_id=None,
-            period=None,
-            timeline=None,
-            year=None,
-            objective=None,
-            target_sku=key,
-            force_regenerate=True
-        )
+        country_actions = {}
 
-        sku_actions = summary_result.get("sku_actions") or {}
-        sku_block = sku_actions.get(key) or {}
+        if country == "global":
+            # ✅ GLOBAL FLOW:
+            # Use the new global architecture.
+            # Do not pass target_sku because global works product-wise through mapped US/UK journeys.
+            summary_result = get_or_create_global_summary(
+                user_id=int(user_id),
+                marketplace_id=None,
+                period=None,
+                timeline=None,
+                year=None,
+                objective=objective_v2,
+                target_sku=None,
+                force_regenerate=False
+            )
 
-        product_journey = sku_block.get("journey_summary") or []
-        recommendation = sku_block.get("recommendation")
-        inventory_recommendation = sku_block.get("inventory_recommendation")
+            global_ai = summary_result.get("global_ai") or {}
+            product_items = global_ai.get("product_journey_comparison") or []
+
+            matched_product = None
+
+            def norm(v):
+                return str(v or "").strip().lower()
+
+            for product_item in product_items:
+                if not isinstance(product_item, dict):
+                    continue
+
+                item_product_name = product_item.get("product_name")
+
+                if norm(item_product_name) == norm(product_name):
+                    matched_product = product_item
+                    break
+
+            if matched_product:
+                product_journey = matched_product.get("journey_comparison") or []
+                country_actions = matched_product.get("country_actions") or {}
+
+                us_actions = country_actions.get("us") or {}
+                uk_actions = country_actions.get("uk") or {}
+
+                us_rec = us_actions.get("recommendation")
+                uk_rec = uk_actions.get("recommendation")
+
+                us_inv = us_actions.get("inventory_recommendation")
+                uk_inv = uk_actions.get("inventory_recommendation")
+
+                recommendation_parts = []
+                if us_rec:
+                    recommendation_parts.append(f"US: {us_rec}")
+                if uk_rec:
+                    recommendation_parts.append(f"UK: {uk_rec}")
+
+                inventory_parts = []
+                if us_inv:
+                    inventory_parts.append(f"US: {us_inv}")
+                if uk_inv:
+                    inventory_parts.append(f"UK: {uk_inv}")
+
+                recommendation = " | ".join(recommendation_parts) if recommendation_parts else None
+                inventory_recommendation = " | ".join(inventory_parts) if inventory_parts else None
+
+            else:
+                product_journey = []
+                recommendation = None
+                inventory_recommendation = None
+                country_actions = {}
+
+        else:
+            # ✅ COUNTRY FLOW: existing SKU-wise behavior
+            summary_result = get_or_create_summary(
+                user_id=int(user_id),
+                country=country,
+                marketplace_id=None,
+                period=None,
+                timeline=None,
+                year=None,
+                objective=None,
+                target_sku=key,
+                force_regenerate=True
+            )
+
+            sku_actions = summary_result.get("sku_actions") or {}
+            sku_block = sku_actions.get(key) or {}
+
+            product_journey = sku_block.get("journey_summary") or []
+            recommendation = sku_block.get("recommendation")
+            inventory_recommendation = sku_block.get("inventory_recommendation")
 
 
         # ==============================
@@ -642,7 +714,7 @@ def productwise_growth_ai():
 
         if country in ("uk", "us"):
 
-            inventory_aged_df = fetch_inventory_aged_by_user(int(user_id))
+            inventory_aged_df = fetch_inventory_aged_by_user(int(user_id), country=country)
 
             if inventory_aged_df is not None and not inventory_aged_df.empty:
 
@@ -701,6 +773,9 @@ def productwise_growth_ai():
             # STRATEGY ENGINE OUTPUT
             "recommendation": recommendation,
             "inventory_recommendation": inventory_recommendation,
+
+            # ✅ For global, contains separate US/UK recommendation, inventory, ads actions
+            "country_actions": country_actions,
 
             # INVENTORY FLAG
             "sku_inventory_alert": sku_inventory_flags,

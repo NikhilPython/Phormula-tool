@@ -13,7 +13,7 @@ from calendar import month_name
 from calendar import month_name, month_abbr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAIError
-from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
+from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month, get_or_create_global_summary
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.models.user_models import UserObjective
 
@@ -680,10 +680,54 @@ def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month
     return sorted(history, key=lambda x: x["period"])
 
 
+def resolve_latest_available_month_for_bi(user_id: int, country_lower: str):
+    """
+    Country tables and global tables have different names.
+    For global, latest table is:
+        skuwisemonthly_{user_id}_global_{month}{year}_table
 
+    For country, use existing resolve_latest_available_month.
+    """
 
+    country_lower = str(country_lower).lower().strip()
 
+    if country_lower != "global":
+        return resolve_latest_available_month(user_id, country_lower)
 
+    pattern = f"skuwisemonthly_{user_id}_global_%"
+
+    q = text("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name LIKE :pattern
+    """)
+
+    latest_period = None
+
+    with user_engine.connect() as conn:
+        rows = conn.execute(q, {"pattern": pattern}).fetchall()
+
+    for row in rows:
+        table_name = row[0]
+        period_key = parse_period_from_table_name(
+            table_name,
+            user_id,
+            "global"
+        )
+
+        if not period_key:
+            continue
+
+        if latest_period is None or period_key > latest_period:
+            latest_period = period_key
+
+    if latest_period:
+        y, m = latest_period.split("-")
+        return int(y), int(m)
+
+    # fallback: use US latest if no global table found
+    return resolve_latest_available_month(user_id, "us")
 
 
 @business_intelligence_bp.route('/analyze_skus', methods=['POST'])
@@ -717,24 +761,25 @@ def analyze_skus():
             # -------------------------------------------------
             # DEFINE KEY
             # -------------------------------------------------
-            if is_global and not sku:
+            if is_global:
+                # For global, product journey is product_name based
                 key = product_name
             elif sku:
                 key = sku
             else:
                 key = product_name
 
-
             recommendation = None
             inventory_recommendation = None
             product_journey = []
+            country_actions = {}
 
             try:
 
                 # -------------------------------------------------
                 # GET LATEST MONTH
                 # -------------------------------------------------
-                latest_year, latest_month = resolve_latest_available_month(
+                latest_year, latest_month = resolve_latest_available_month_for_bi(
                     int(user_id),
                     country.lower()
                 )
@@ -744,32 +789,102 @@ def analyze_skus():
                 # -------------------------------------------------
                 with app.app_context():
 
-                    summary_result = get_or_create_summary(
-                        user_id=int(user_id),
-                        country=country.lower(),
-                        marketplace_id=None,
-                        period="monthly",
-                        timeline=str(latest_month),
-                        year=int(latest_year),
-                        objective=objective_v2,
-                        target_sku=key,
-                        force_regenerate=True
-                    )
+                    if is_global:
+                        # GLOBAL FLOW:
+                        # Do NOT pass target_sku here.
+                        # Global journey is created by mapped_product_journeys,
+                        # then we pick the matching product from global_ai.
+                        summary_result = get_or_create_global_summary(
+                            user_id=int(user_id),
+                            marketplace_id=None,
+                            period="monthly",
+                            timeline=str(latest_month),
+                            year=int(latest_year),
+                            objective=objective_v2,
+                            target_sku=None,
+                            force_regenerate=False
+                        )
 
-                sku_actions = summary_result.get("sku_actions") or {}
-                sku_block = sku_actions.get(key) or {}
+                        global_ai = summary_result.get("global_ai") or {}
+                        product_items = global_ai.get("product_journey_comparison") or []
 
-                recommendation = sku_block.get("recommendation")
-                inventory_recommendation = sku_block.get("inventory_recommendation")
+                        matched_product = None
 
-                performance_journey = sku_block.get("journey_summary") or []
-                inventory_journey = sku_block.get("inventory_journey_summary") or []
+                        def norm(v):
+                            return str(v or "").strip().lower()
 
-                product_journey = performance_journey + inventory_journey
+                        for product_item in product_items:
+                            if not isinstance(product_item, dict):
+                                continue
+
+                            item_product_name = product_item.get("product_name")
+
+                            if norm(item_product_name) == norm(product_name):
+                                matched_product = product_item
+                                break
+
+                        if matched_product:
+                            product_journey = matched_product.get("journey_comparison") or []
+                            country_actions = matched_product.get("country_actions") or {}
+
+                            us_actions = country_actions.get("us") or {}
+                            uk_actions = country_actions.get("uk") or {}
+
+                            us_rec = us_actions.get("recommendation")
+                            uk_rec = uk_actions.get("recommendation")
+
+                            us_inv = us_actions.get("inventory_recommendation")
+                            uk_inv = uk_actions.get("inventory_recommendation")
+
+                            # Keep old frontend fields working, but include both countries
+                            recommendation_parts = []
+                            if us_rec:
+                                recommendation_parts.append(f"US: {us_rec}")
+                            if uk_rec:
+                                recommendation_parts.append(f"UK: {uk_rec}")
+
+                            inventory_parts = []
+                            if us_inv:
+                                inventory_parts.append(f"US: {us_inv}")
+                            if uk_inv:
+                                inventory_parts.append(f"UK: {uk_inv}")
+
+                            recommendation = " | ".join(recommendation_parts) if recommendation_parts else None
+                            inventory_recommendation = " | ".join(inventory_parts) if inventory_parts else None
+
+                        else:
+                            product_journey = []
+                            recommendation = None
+                            inventory_recommendation = None
+                            country_actions = {}
+
+                    else:
+                        # COUNTRY FLOW: existing behavior
+                        summary_result = get_or_create_summary(
+                            user_id=int(user_id),
+                            country=country.lower(),
+                            marketplace_id=None,
+                            period="monthly",
+                            timeline=str(latest_month),
+                            year=int(latest_year),
+                            objective=objective_v2,
+                            target_sku=key,
+                            force_regenerate=True
+                        )
+
+                        sku_actions = summary_result.get("sku_actions") or {}
+                        sku_block = sku_actions.get(key) or {}
+
+                        recommendation = sku_block.get("recommendation")
+                        inventory_recommendation = sku_block.get("inventory_recommendation")
+
+                        performance_journey = sku_block.get("journey_summary") or []
+                        inventory_journey = sku_block.get("inventory_journey_summary") or []
+
+                        product_journey = performance_journey + inventory_journey
 
             except Exception as e:
                 print("Strategy engine failed:", e)
-
 
             return key, {
                 "sku": sku,
@@ -777,6 +892,7 @@ def analyze_skus():
                 "product_journey": product_journey,
                 "recommendation": recommendation,
                 "inventory_recommendation": inventory_recommendation,
+                "country_actions": country_actions,
                 "key_used": key,
                 "is_global": is_global,
                 "objective": objective_v2

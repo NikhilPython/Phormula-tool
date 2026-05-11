@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 import jwt
 import os
+import numpy as np
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 from config import Config
@@ -14,7 +15,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts,)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -121,6 +122,506 @@ def align_prev_curr_by_sku(prev_data, curr_data):
         prev_df.to_dict(orient="records"),
         curr_df.to_dict(orient="records"),
     )
+
+def remove_total_rows(items):
+    clean = []
+
+    for r in items or []:
+        sku = str(r.get("sku") or "").strip().upper()
+        product_name = str(r.get("product_name") or "").strip().lower()
+
+        if sku in ("TOTAL", "GRAND_TOTAL"):
+            continue
+
+        if product_name in ("total", "grand total"):
+            continue
+
+        clean.append(r)
+
+    return clean
+
+
+def align_prev_curr_by_product_name(prev_data, curr_data):
+    prev_df = pd.DataFrame(prev_data or [])
+    curr_df = pd.DataFrame(curr_data or [])
+
+    if "product_name" not in prev_df.columns:
+        prev_df["product_name"] = None
+
+    if "product_name" not in curr_df.columns:
+        curr_df["product_name"] = None
+
+    def clean_name(x):
+        if x is None:
+            return None
+
+        x = str(x).strip().lower()
+
+        if x in ("", "0", "nan", "none", "null", "total", "grand total"):
+            return None
+
+        return x
+
+    prev_df["product_name"] = prev_df["product_name"].apply(clean_name)
+    curr_df["product_name"] = curr_df["product_name"].apply(clean_name)
+
+    prev_df = prev_df[prev_df["product_name"].notna()]
+    curr_df = curr_df[curr_df["product_name"].notna()]
+
+    all_products = set(prev_df["product_name"]) | set(curr_df["product_name"])
+
+    if not all_products:
+        return [], []
+
+    base = pd.DataFrame({"product_name": list(all_products)})
+
+    prev_df = base.merge(prev_df, on="product_name", how="left")
+    curr_df = base.merge(curr_df, on="product_name", how="left")
+
+    numeric_cols = [
+        "quantity",
+        "net_sales",
+        "product_sales",
+        "gross_sales",
+        "profit",
+        "asp",
+        "unit_wise_profitability",
+        "sales_mix",
+        "advertising",
+        "platform_fee",
+        "ads_spend",
+        "cm2_profit",
+        "selling_fees",
+        "fba_fees",
+        "tax_and_credits",
+    ]
+
+    for c in numeric_cols:
+        if c in prev_df.columns:
+            prev_df[c] = pd.to_numeric(prev_df[c], errors="coerce").fillna(0.0)
+
+        if c in curr_df.columns:
+            curr_df[c] = pd.to_numeric(curr_df[c], errors="coerce").fillna(0.0)
+
+    return (
+        prev_df.replace({np.nan: None}).to_dict(orient="records"),
+        curr_df.replace({np.nan: None}).to_dict(orient="records"),
+    )
+
+def build_global_country_recommendations(
+    *,
+    user_id,
+    country,
+    prev_items,
+    curr_items,
+    user_objective,
+    currency_symbol="$",
+    anchor_year=None,
+    anchor_month=None,
+    analysis=None,
+):
+    """
+    Builds country-specific recommendations for global Live BI.
+
+    Important:
+    - Recommendations stay separate for UK and US.
+    - recommendation comes from Excel rule override, same as single-country flow.
+    - ads_recommendation, inventory_recommendation, journey_summary come from Prompt-2.
+    - rendered_action is included for UI compatibility.
+    """
+
+    prev_aligned, curr_aligned = align_prev_curr_by_sku(
+        prev_items,
+        curr_items,
+    )
+
+    if not curr_aligned:
+        return {}
+
+    growth_data = calculate_growth(
+        prev_aligned,
+        curr_aligned,
+        key="sku",
+    )
+
+    existing_sorted = sorted(
+        [
+            r for r in growth_data
+            if r.get("Sales Mix (Current)") is not None
+        ],
+        key=lambda x: x["Sales Mix (Current)"],
+        reverse=True,
+    )
+
+    total_sales_mix = sum(
+        r.get("Sales Mix (Current)") or 0
+        for r in existing_sorted
+    )
+
+    cumulative = 0.0
+    top_80 = []
+
+    for r in existing_sorted:
+        mix = r.get("Sales Mix (Current)") or 0
+        proportion = cumulative / total_sales_mix if total_sales_mix else 0
+
+        if proportion <= 0.8:
+            top_80.append(r)
+            cumulative += mix
+
+    growth_intent = user_objective.get("growth_intent", "balanced")
+    profit_priority = user_objective.get("profit_priority", "protect_growth")
+
+    # -------------------------------------------------
+    # 1. Build live context, same style as single country
+    # -------------------------------------------------
+    sku_live_context = []
+
+    for growth_row in top_80:
+        sku = growth_row.get("sku")
+        if not sku:
+            continue
+
+        sku_live_context.append({
+            "sku": sku,
+            "quantity": {
+                "previous": growth_row.get("quantity_prev"),
+                "current": growth_row.get("quantity_curr"),
+            },
+            "asp": {
+                "previous": growth_row.get("asp_prev"),
+                "current": growth_row.get("asp_curr"),
+            },
+            "net_sales": {
+                "previous": growth_row.get("net_sales_prev"),
+                "current": growth_row.get("net_sales_curr"),
+            },
+            "cm1_profit": {
+                "previous": growth_row.get("profit_prev"),
+                "current": growth_row.get("profit_curr"),
+            },
+            "profit_per_unit": {
+                "previous": growth_row.get("unit_wise_profitability_prev"),
+                "current": growth_row.get("unit_wise_profitability_curr"),
+            },
+            "movement_intensity": {
+                "units": (growth_row.get("Unit Growth (%)") or {}).get("value"),
+                "asp": (growth_row.get("ASP Growth (%)") or {}).get("value"),
+                "net_sales": (growth_row.get("Net Sales Growth (%)") or {}).get("value"),
+                "cm1_profit": (growth_row.get("CM1 Profit Impact (%)") or {}).get("value"),
+                "profit_per_unit": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
+            },
+        })
+
+    # -------------------------------------------------
+    # 2. Excel recommendations, same as single-country override
+    # -------------------------------------------------
+    excel_live_recommendations = {}
+
+    for row in sku_live_context:
+        sku = row.get("sku")
+        if not sku:
+            continue
+
+        rec = get_excel_recommendation_from_live_context(
+            sku_live_row=row,
+            growth_intent=growth_intent,
+            profit_priority=profit_priority,
+        )
+
+        if rec is None:
+            rec_text = "Monitor performance"
+        else:
+            try:
+                rec_text = "Monitor performance" if pd.isna(rec) else str(rec)
+            except Exception:
+                rec_text = str(rec)
+
+        excel_live_recommendations[sku] = rec_text
+
+    # -------------------------------------------------
+    # 3. Inventory flags for this country
+    # -------------------------------------------------
+    try:
+        sku_inventory_flags = generate_sku_inventory_flags(
+            user_id=user_id,
+            country=country,
+            focus_skus=[r.get("sku") for r in top_80],
+        )
+    except Exception as e:
+        print("[WARN] Failed to build global country inventory flags:", country, e)
+        sku_inventory_flags = {}
+
+    # -------------------------------------------------
+    # 4. Ads context for this country
+    # -------------------------------------------------
+    sku_ads_context = []
+
+    for r in top_80:
+        sku = r.get("sku")
+        if not sku:
+            continue
+
+        sku_ads_context.append({
+            "sku": sku,
+            "ads_spend_curr": r.get("ads_spend_curr", 0),
+            "acos_curr": r.get("acos_curr", 0),
+            "cm2_profit_curr": r.get("cm2_profit_curr", 0),
+            "cm2_margin_curr": r.get("cm2_margin_curr", 0),
+            "net_sales_curr": r.get("net_sales_curr", 0),
+        })
+
+    ads_monthly = {
+        "total_ads_spend": sum(float(r.get("ads_spend_curr") or 0) for r in top_80),
+        "total_cm2_profit": sum(float(r.get("cm2_profit_curr") or 0) for r in top_80),
+    }
+
+    # -------------------------------------------------
+    # 5. SKU time series for journey_summary
+    # -------------------------------------------------
+    sku_time_series = {}
+
+    for r in top_80:
+        sku = r.get("sku")
+        if not sku:
+            continue
+
+        try:
+            sku_time_series[sku] = build_rolling_sku_series(
+                user_id=user_id,
+                country=country,
+                sku=sku,
+                anchor_year=anchor_year,
+                anchor_month=anchor_month,
+            )
+        except Exception as e:
+            print("[WARN] Failed to build global country time series:", country, sku, e)
+
+    # -------------------------------------------------
+    # 6. Prompt-2 strategy for ads/inventory/journey
+    # -------------------------------------------------
+    strategy_parsed = {}
+
+    try:
+        strategy_raw = run_prompt_2_strategy(
+            analysis_insights=analysis or {},
+            objective_v2=user_objective,
+            focus_skus=[r.get("sku") for r in top_80],
+            sku_time_series=sku_time_series,
+            inventory_alerts={},
+            sku_inventory_flags=sku_inventory_flags,
+            country=country,
+            sku_ads_context=sku_ads_context,
+            sku_live_context=sku_live_context,
+            ads_monthly=ads_monthly,
+            remaining_skus_context={},
+        )
+
+        strategy_parsed = json.loads(strategy_raw) if strategy_raw else {}
+
+    except Exception as e:
+        print("[AI ERROR] Global country strategy generation failed:", country, e)
+        strategy_parsed = {}
+
+    sku_strategy_actions = strategy_parsed.get("sku_actions", {}) or {}
+
+    # -------------------------------------------------
+    # 7. Build final country recommendations
+    # -------------------------------------------------
+    recommended_actions = {}
+
+    for growth_row in top_80:
+        sku = growth_row.get("sku")
+        if not sku:
+            continue
+
+        sku_strategy = sku_strategy_actions.get(sku, {}) or {}
+
+        recommendation_text = excel_live_recommendations.get(
+            sku,
+            sku_strategy.get("recommendation", "Monitor performance"),
+        )
+
+        def _safe_optional_text(value, fallback):
+            if value is None:
+                return fallback
+
+            try:
+                if pd.isna(value):
+                    return fallback
+            except Exception:
+                pass
+
+            value = str(value).strip()
+
+            if value.lower() in ("", "0", "0.0", "nan", "none", "null"):
+                return fallback
+
+            return value
+
+
+        def _safe_journey_list(value):
+            if value is None:
+                return []
+
+            try:
+                if pd.isna(value):
+                    return []
+            except Exception:
+                pass
+
+            if isinstance(value, list):
+                return [str(x) for x in value if x]
+
+            if isinstance(value, str):
+                value = value.strip()
+                if value.lower() in ("", "0", "0.0", "nan", "none", "null"):
+                    return []
+                return [value]
+
+            return []
+
+
+        ads_recommendation = _safe_optional_text(
+            sku_strategy.get("ads_recommendation"),
+            fallback="not coming.",
+        )
+
+        inventory_recommendation = _safe_optional_text(
+            sku_strategy.get("inventory_recommendation"),
+            fallback="not coming.",
+        )
+
+        journey_summary = _safe_journey_list(
+            sku_strategy.get("journey_summary")
+        )
+
+        rendered_action = render_live_recommended_action(
+            growth_row=growth_row,
+            recommendation=recommendation_text,
+            ads_recommendation=ads_recommendation,
+            inventory_recommendation=inventory_recommendation,
+            journey_summary=journey_summary,
+            currency_symbol=currency_symbol,
+        )
+
+        recommended_actions[sku] = {
+            "country": country,
+            "sku": sku,
+            "product_name": growth_row.get("product_name"),
+
+            # separate fields
+            "recommendation": recommendation_text,
+            "ads_recommendation": ads_recommendation,
+            "inventory_recommendation": inventory_recommendation,
+            "journey_summary": journey_summary,
+
+            # full old-style rendered text
+            "rendered_action": rendered_action,
+
+            # useful for frontend cards
+            "growth_row": growth_row,
+        }
+
+    return recommended_actions
+
+def build_global_product_journey_from_country_actions(
+    uk_actions,
+    us_actions,
+):
+    """
+    Combines UK + US journey_summary by product_name.
+
+    Output shape:
+    {
+        "passion fruit": {
+            "product_name": "Passion Fruit",
+            "journey_comparison": [...],
+            "uk": {...},
+            "us": {...}
+        }
+    }
+    """
+
+    product_journey = {}
+
+    def _safe_product_name(value, fallback):
+        if value is None:
+            return fallback
+
+        try:
+            if pd.isna(value):
+                return fallback
+        except Exception:
+            pass
+
+        value = str(value).strip()
+
+        if value.lower() in ("", "0", "0.0", "nan", "none", "null"):
+            return fallback
+
+        return value
+
+    def _safe_journey_list(value):
+        if value is None:
+            return []
+
+        try:
+            if pd.isna(value):
+                return []
+        except Exception:
+            pass
+
+        if isinstance(value, list):
+            return [str(x) for x in value if x]
+
+        if isinstance(value, str):
+            value = value.strip()
+            if value.lower() in ("", "0", "0.0", "nan", "none", "null"):
+                return []
+            return [value]
+
+        return []
+
+    def add_country_actions(country, actions):
+        for sku, action in (actions or {}).items():
+            product_name = _safe_product_name(
+                action.get("product_name"),
+                fallback=str(sku),
+            )
+
+            product_key = product_name.strip().lower()
+
+            if product_key not in product_journey:
+                product_journey[product_key] = {
+                    "product_name": product_name,
+                    "uk": {},
+                    "us": {},
+                    "journey_comparison": [],
+                }
+
+            journey_summary = _safe_journey_list(action.get("journey_summary"))
+
+            product_journey[product_key][country][sku] = {
+                "sku": sku,
+                "journey_summary": journey_summary,
+                "recommendation": action.get("recommendation"),
+                "ads_recommendation": action.get("ads_recommendation"),
+                "inventory_recommendation": action.get("inventory_recommendation"),
+                "growth_row": action.get("growth_row", {}),
+            }
+
+    add_country_actions("uk", uk_actions)
+    add_country_actions("us", us_actions)
+
+    for product_key, product_data in product_journey.items():
+        product_data["journey_comparison"] = build_global_journey_comparison_for_product(
+            product_name=product_data.get("product_name"),
+            uk_data=product_data.get("uk", {}),
+            us_data=product_data.get("us", {}),
+        )
+
+    return product_journey
 
 
 def build_cm1_profit_pie_slices(
@@ -407,6 +908,357 @@ def live_mtd_vs_previous():
         prev_full_end = date(prev_full_start.year, prev_full_start.month, last_day_prev)
 
         key_column = "sku"
+
+        if country == "global":
+            key_column = "product_name"
+
+            from app.routes.amazon_api_routes import get_current_global_data_for_live_bi
+            current_global_payload = get_current_global_data_for_live_bi(user_id)
+
+            previous_global_payload = get_previous_global_data_for_live_bi(
+                user_id=user_id,
+                as_of=as_of,
+                start_day=start_day,
+                end_day=end_day,
+            )
+
+            curr_global_items = remove_total_rows(
+                current_global_payload.get("skuwise_items_global", [])
+            )
+            prev_global_items = remove_total_rows(
+                previous_global_payload.get("skuwise_items_global", [])
+            )
+
+            curr_uk_items = remove_total_rows(
+                current_global_payload.get("skuwise_items_uk", [])
+            )
+            curr_us_items = remove_total_rows(
+                current_global_payload.get("skuwise_items_us", [])
+            )
+
+            prev_uk_items = remove_total_rows(
+                previous_global_payload.get("skuwise_items_uk", [])
+            )
+            prev_us_items = remove_total_rows(
+                previous_global_payload.get("skuwise_items_us", [])
+            )
+
+            prev_data_aligned, curr_data = align_prev_curr_by_product_name(
+                prev_global_items,
+                curr_global_items,
+            )
+
+            if not curr_data:
+                return jsonify({
+                    "status": "loading",
+                    "message": "Global data is still syncing. Please wait a few seconds."
+                }), 202
+
+            growth_data = calculate_growth(
+                prev_data_aligned,
+                curr_data,
+                key="product_name",
+            )
+
+            prev_keys = {
+                r.get("product_name")
+                for r in prev_data_aligned
+                if r.get("product_name")
+            }
+
+            existing = [
+                r for r in growth_data
+                if r.get("product_name") in prev_keys
+                and r.get("Sales Mix (Current)") is not None
+            ]
+
+            existing_sorted = sorted(
+                existing,
+                key=lambda x: x["Sales Mix (Current)"],
+                reverse=True,
+            )
+
+            total_sales_mix = sum(
+                r["Sales Mix (Current)"]
+                for r in existing_sorted
+                if r["Sales Mix (Current)"] is not None
+            )
+
+            cumulative = 0.0
+            top_80_skus = []
+            other_skus = []
+
+            for r in existing_sorted:
+                mix = r["Sales Mix (Current)"]
+                proportion = cumulative / total_sales_mix if total_sales_mix else 0
+
+                if proportion <= 0.8:
+                    top_80_skus.append(r)
+                    cumulative += mix
+                else:
+                    other_skus.append(r)
+
+            prev_label = (
+                f"{month_abbr[prev_start.month].capitalize()}'"
+                f"{str(prev_start.year)[-2:]} {prev_start.day}–{prev_end.day}"
+            )
+
+            curr_label = (
+                f"{month_abbr[curr_start.month].capitalize()}'"
+                f"{str(curr_start.year)[-2:]} {curr_start.day}–{curr_end.day}"
+            )
+
+            prev_totals = aggregate_totals(prev_data_aligned)
+            curr_totals = aggregate_totals(curr_data)
+
+            prev_totals["total_asp"] = compute_total_asp(prev_data_aligned)
+            curr_totals["total_asp"] = compute_total_asp(curr_data)
+
+            prev_totals["unit_wise_profitability"] = compute_total_unit_profitability(
+                prev_data_aligned
+            )
+            curr_totals["unit_wise_profitability"] = compute_total_unit_profitability(
+                curr_data
+            )
+
+            currency = {
+                "symbol": "$",
+                "code": "USD",
+            }
+
+            # -------------------------------------------------
+            # GLOBAL: Portfolio inventory blocks by country
+            # -------------------------------------------------
+            try:
+                inv_df = fetch_inventory_aged_by_user(user_id)
+
+                portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
+                    inv_df,
+                    user_id=user_id,
+                    country="uk",
+                )
+
+                portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
+                    inv_df,
+                    user_id=user_id,
+                    country="us",
+                )
+
+                portfolio_inventory_block_uk = render_portfolio_inventory_block(
+                    inventory_alerts=portfolio_inventory_alerts_uk,
+                    currency_symbol="£",
+                )
+
+                portfolio_inventory_block_us = render_portfolio_inventory_block(
+                    inventory_alerts=portfolio_inventory_alerts_us,
+                    currency_symbol="$",
+                )
+
+            except Exception as e:
+                print("[WARN] Failed to build global portfolio inventory blocks:", e)
+
+                portfolio_inventory_alerts_uk = {}
+                portfolio_inventory_alerts_us = {}
+
+                portfolio_inventory_block_uk = ""
+                portfolio_inventory_block_us = ""
+
+            sku_context = build_sku_context(growth_data, max_items=5)
+
+            payload_ai = build_ai_summary(
+                prev_totals,
+                curr_totals,
+                top_80_skus,
+                prev_label,
+                curr_label,
+                sku_context=sku_context,
+                inventory_signals={},
+                portfolio_inventory_alerts={
+    "uk": portfolio_inventory_alerts_uk,
+    "us": portfolio_inventory_alerts_us,
+},
+                prev_fee_totals=previous_global_payload.get("derived_totals_global", {}),
+                curr_fee_totals=current_global_payload.get("derived_totals_global", {}),
+                estimated_storage_cost_next_month=fetch_estimated_storage_cost_next_month(user_id),
+                currency=currency,
+                user_objective=user_objective,
+                movement_context=movement_context,
+                sku_to_product={},
+                user_id=user_id,
+                country="global",
+                current_year=ranges["meta"]["current_year"],
+                current_month=ranges["meta"]["current_month"],
+            )
+
+            payload_ai["country_split"] = {
+                "uk": {
+                    "previous": previous_global_payload.get("derived_totals_uk", {}),
+                    "current": current_global_payload.get("derived_totals_uk", {}),
+                },
+                "us": {
+                    "previous": previous_global_payload.get("derived_totals_us", {}),
+                    "current": current_global_payload.get("derived_totals_us", {}),
+                },
+            }
+
+            objective_hash = generate_objective_hash(user_objective)
+
+            cached_ai = get_cached_live_ai(
+                user_id=user_id,
+                country="global",
+                start_date=curr_start,
+                end_date=curr_end,
+                objective_hash=objective_hash,
+            )
+
+            analysis = {}
+            summary_out = {
+                "summary_text": "",
+                "metric_bullets": [],
+            }
+
+            if cached_ai:
+                analysis = cached_ai["analysis"]
+                summary_out = cached_ai["summary"]
+            else:
+                try:
+                    analysis = run_live_prompt_1_analysis(payload_ai)
+
+                    summary_out = run_live_prompt_1_5_summary(
+                        analysis_output=analysis,
+                        numeric_context={
+                            "periods": payload_ai["periods"],
+                            "pct_changes": payload_ai["pct_changes"],
+                            "selling_costs": payload_ai["selling_costs"],
+                            "roas": payload_ai["roas"],
+                            "movement_context": payload_ai["movement_context"],
+                            "currency": payload_ai["currency"],
+
+                            # global-only: let LLM see UK + US split
+                            "country_split": payload_ai.get("country_split", {}),
+                        },
+                        user_objective=user_objective,
+                    )
+
+                    save_live_ai_cache(
+                        user_id=user_id,
+                        country="global",
+                        start_date=curr_start,
+                        end_date=curr_end,
+                        objective_hash=objective_hash,
+                        analysis=analysis,
+                        summary=summary_out,
+                        strategy={},
+                    )
+
+                except Exception as e:
+                    print("[AI ERROR] Failed to generate global summary:", e)
+
+            recommended_actions_uk = build_global_country_recommendations(
+                user_id=user_id,
+                country="uk",
+                prev_items=prev_uk_items,
+                curr_items=curr_uk_items,
+                user_objective=user_objective,
+                currency_symbol="$",
+                anchor_year=anchor_year,
+                anchor_month=anchor_month,
+                analysis=analysis,
+            )
+
+            recommended_actions_us = build_global_country_recommendations(
+                user_id=user_id,
+                country="us",
+                prev_items=prev_us_items,
+                curr_items=curr_us_items,
+                user_objective=user_objective,
+                currency_symbol="$",
+                anchor_year=anchor_year,
+                anchor_month=anchor_month,
+                analysis=analysis,
+            )
+
+            product_journey = build_global_product_journey_from_country_actions(
+                uk_actions=recommended_actions_uk,
+                us_actions=recommended_actions_us,
+            )
+
+            response_payload = {
+            "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
+            "country": "global",
+            "currency": currency,
+
+            "portfolio_inventory_block": {
+                "uk": portfolio_inventory_block_uk,
+                "us": portfolio_inventory_block_us,
+            },
+
+            "portfolio_inventory_alerts": {
+                "uk": portfolio_inventory_alerts_uk,
+                "us": portfolio_inventory_alerts_us,
+            },
+
+            "periods": {
+                    "previous": {
+                        "label": prev_label,
+                        "start": prev_start.isoformat(),
+                        "end": prev_end.isoformat(),
+                    },
+                    "current_mtd": {
+                        "label": curr_label,
+                        "start": curr_start.isoformat(),
+                        "end": curr_end.isoformat(),
+                    },
+                },
+
+                "overall_summary": {
+                    "summary_text": summary_out.get("summary_text", ""),
+                    "metric_bullets": summary_out.get("metric_bullets", []),
+                },
+
+                "categorized_growth": {
+                    "top_80_products": top_80_skus,
+                    "other_products": other_skus,
+                },
+                "product_journey": product_journey,    
+                "recommended_actions_mtd": {
+                    "uk": recommended_actions_uk,
+                    "us": recommended_actions_us,
+                },
+
+                "skuwise_items": {
+                    "current_global": curr_global_items,
+                    "previous_global": prev_global_items,
+                    "current_uk": curr_uk_items,
+                    "previous_uk": prev_uk_items,
+                    "current_us": curr_us_items,
+                    "previous_us": prev_us_items,
+                },
+
+                "aligned_totals": previous_global_payload.get("aligned_totals_global", {}),
+                "derived_totals": {
+                    "previous_global": previous_global_payload.get("derived_totals_global", {}),
+                    "current_global": current_global_payload.get("derived_totals_global", {}),
+
+                    "previous_uk": previous_global_payload.get("derived_totals_uk", {}),
+                    "current_uk": current_global_payload.get("derived_totals_uk", {}),
+
+                    "previous_us": previous_global_payload.get("derived_totals_us", {}),
+                    "current_us": current_global_payload.get("derived_totals_us", {}),
+                },
+
+                "conversion": {
+                    "current": current_global_payload.get("conversion"),
+                    "previous": previous_global_payload.get("conversion"),
+                },
+            }
+
+            try:
+                response_payload = round_numeric_values(response_payload, ndigits=2)
+            except Exception as e:
+                print("[WARN] round_numeric_values failed for global:", e)
+
+            return jsonify(response_payload), 200
 
         # ---------------------------
         # FETCH DATA
@@ -779,8 +1631,9 @@ def live_mtd_vs_previous():
         currency_map = {
             "uk": {"symbol": "£", "code": "GBP"},
             "us": {"symbol": "$", "code": "USD"},
+            "global": {"symbol": "$", "code": "USD"},
         }
-        currency = currency_map.get(country, {"symbol": "£", "code": "GBP"})
+        currency = currency_map.get(country, {"symbol": "$", "code": "USD"})
 
         # ---------------------------
         # SKU → PRODUCT NAME MAP (FOR INVENTORY CLUBBING)
@@ -1662,197 +2515,134 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
     }
 
 
-@live_data_bi_bp.route("/live_mtd_bi/previous_skuwise_global", methods=["GET"])
-def previous_skuwise_global():
-    import math
-    import pandas as pd
-    import numpy as np
-
-    def _json_safe(obj):
-        if obj is None:
-            return None
-        if isinstance(obj, float):
-            return obj if math.isfinite(obj) else None
-        if isinstance(obj, dict):
-            return {k: _json_safe(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_json_safe(x) for x in obj]
-        return obj
-
-    def _items_to_df(items, country):
-        df = pd.DataFrame(items or [])
-        if df.empty:
-            return df
-
-        df["country"] = country
-        df["source_country"] = country
-
-        for col in df.columns:
+def _items_to_df(items, country):
+    df = pd.DataFrame(items or [])
+    if df.empty:
+        return df
+    df["country"] = country
+    df["source_country"] = country
+    for col in df.columns:
             if col not in ("sku", "product_name", "country", "source_country"):
                 df[col] = pd.to_numeric(df[col], errors="ignore")
+    return df
 
+def _convert_uk_to_usd(df, rate):
+    if df.empty:
         return df
+    money_cols = [
+        "product_sales",
+        "gross_sales",
+        "net_sales",
+        "profit",
+        "cogs",
+        "ads_spend",
+        "advertising",
+        "platform_fee",
+        "cm2_profit",
+        "unit_wise_profitability",
+        "selling_fees",
+        "fba_fees",
+        "tax_and_credits",  # ✅ NEW
+    ]
+    for col in money_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0) * float(rate)
+    if "asp" in df.columns:
+        df["asp"] = pd.to_numeric(df["asp"], errors="coerce").fillna(0) * float(rate)
+    df["currency"] = "USD"
+    return df
 
-    def _convert_uk_to_usd(df, rate):
-        if df.empty:
-            return df
+def _clean_product_name_value(value):
+    if value is None:
+        return None
 
-        money_cols = [
-            "product_sales",
-            "gross_sales",
-            "net_sales",
-            "profit",
-            "cogs",
-            "ads_spend",
-            "advertising",
-            "platform_fee",
-            "cm2_profit",
-            "unit_wise_profitability",
-            "selling_fees",
-            "fba_fees",
-            "tax_and_credits",  # ✅ NEW
-        ]
+    value = str(value).strip()
 
-        for col in money_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0) * float(rate)
+    if value.lower() in ("", "0", "nan", "none", "null"):
+        return None
 
-        if "asp" in df.columns:
-            df["asp"] = pd.to_numeric(df["asp"], errors="coerce").fillna(0) * float(rate)
+    return value.lower()
 
-        df["currency"] = "USD"
-        return df
 
-    def _clean_product_name_value(value):
-        if value is None:
-            return None
-
-        value = str(value).strip()
-
-        if value.lower() in ("", "0", "nan", "none", "null"):
-            return None
-
-        return value.lower()
-
-    def _build_global_skuwise(us_df, uk_df):
-        combined_df = pd.concat([us_df, uk_df], ignore_index=True)
-
-        if combined_df.empty:
-            return []
-
-        if "product_name" not in combined_df.columns:
-            combined_df["product_name"] = None
-
-        if "sku" not in combined_df.columns:
-            combined_df["sku"] = ""
-
-        combined_df["product_name"] = combined_df["product_name"].apply(_clean_product_name_value)
-        combined_df["sku"] = combined_df["sku"].fillna("").astype(str).str.strip()
-
-        combined_df["product_name_group"] = combined_df.apply(
-            lambda r: r["product_name"] if r["product_name"] else r["sku"],
+def _build_global_skuwise(us_df, uk_df):
+    combined_df = pd.concat([us_df, uk_df], ignore_index=True)
+    if combined_df.empty:
+        return []
+    if "product_name" not in combined_df.columns:
+        combined_df["product_name"] = None
+    if "sku" not in combined_df.columns:
+        combined_df["sku"] = ""
+    combined_df["product_name"] = combined_df["product_name"].apply(_clean_product_name_value)
+    combined_df["sku"] = combined_df["sku"].fillna("").astype(str).str.strip()
+    combined_df["product_name_group"] = combined_df.apply(
+        lambda r: r["product_name"] if r["product_name"] else r["sku"],
+        axis=1,
+    )
+    combined_df = combined_df[
+        combined_df["product_name_group"].notna()
+        & (combined_df["product_name_group"].astype(str).str.strip() != "")
+    ].copy()
+    if combined_df.empty:
+        return []
+    sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
+    for remove_col in ["user_id", "year"]:
+        if remove_col in sum_cols:
+            sum_cols.remove(remove_col)
+    global_df = combined_df.groupby("product_name_group", as_index=False)[sum_cols].sum()
+    global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
+    global_df["sku"] = ""
+    global_df["country"] = "global"
+    global_df["currency"] = "USD"
+    if "quantity" in global_df.columns and "net_sales" in global_df.columns:
+        global_df["asp"] = global_df.apply(
+            lambda r: float(r["net_sales"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
             axis=1,
         )
+    if "quantity" in global_df.columns and "profit" in global_df.columns:
+        global_df["unit_wise_profitability"] = global_df.apply(
+            lambda r: float(r["profit"]) / float(r["quantity"])
+            if float(r.get("quantity", 0) or 0) else 0,
+            axis=1,
+        )
+    if "net_sales" in global_df.columns:
+        total_net_sales = float(global_df["net_sales"].sum() or 0)
+        global_df["sales_mix"] = (
+            (global_df["net_sales"] / total_net_sales) * 100
+            if total_net_sales else 0
+        )
+    return global_df.replace({np.nan: None}).to_dict(orient="records")
 
-        combined_df = combined_df[
-            combined_df["product_name_group"].notna()
-            & (combined_df["product_name_group"].astype(str).str.strip() != "")
-        ].copy()
+def _append_total_row(items, country):
+    if not items:
+        return items
+    df = pd.DataFrame(items)
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    total = {}
+    for col in numeric_cols:
+        total[col] = float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+    qty = total.get("quantity", 0) or 0
+    net_sales = total.get("net_sales", 0) or 0
+    profit = total.get("profit", 0) or 0
+    total["asp"] = net_sales / qty if qty else 0
+    total["unit_wise_profitability"] = profit / qty if qty else 0
+    total["sales_mix"] = 100.0
+    total["sku"] = "TOTAL"
+    total["product_name"] = "Total"
+    total["country"] = country
+    total["currency"] = "USD"
+    if country in ("uk", "us"):
+        total["source_country"] = country
+    return items + [total]
 
-        if combined_df.empty:
-            return []
 
-        sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
 
-        for remove_col in ["user_id", "year"]:
-            if remove_col in sum_cols:
-                sum_cols.remove(remove_col)
-
-        global_df = combined_df.groupby("product_name_group", as_index=False)[sum_cols].sum()
-        global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
-
-        global_df["sku"] = ""
-        global_df["country"] = "global"
-        global_df["currency"] = "USD"
-
-        if "quantity" in global_df.columns and "net_sales" in global_df.columns:
-            global_df["asp"] = global_df.apply(
-                lambda r: float(r["net_sales"]) / float(r["quantity"])
-                if float(r.get("quantity", 0) or 0) else 0,
-                axis=1,
-            )
-
-        if "quantity" in global_df.columns and "profit" in global_df.columns:
-            global_df["unit_wise_profitability"] = global_df.apply(
-                lambda r: float(r["profit"]) / float(r["quantity"])
-                if float(r.get("quantity", 0) or 0) else 0,
-                axis=1,
-            )
-
-        if "net_sales" in global_df.columns:
-            total_net_sales = float(global_df["net_sales"].sum() or 0)
-            global_df["sales_mix"] = (
-                (global_df["net_sales"] / total_net_sales) * 100
-                if total_net_sales else 0
-            )
-
-        return global_df.replace({np.nan: None}).to_dict(orient="records")
-
-    def _append_total_row(items, country):
-        if not items:
-            return items
-
-        df = pd.DataFrame(items)
-        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-
-        total = {}
-        for col in numeric_cols:
-            total[col] = float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
-
-        qty = total.get("quantity", 0) or 0
-        net_sales = total.get("net_sales", 0) or 0
-        profit = total.get("profit", 0) or 0
-
-        total["asp"] = net_sales / qty if qty else 0
-        total["unit_wise_profitability"] = profit / qty if qty else 0
-        total["sales_mix"] = 100.0
-
-        total["sku"] = "TOTAL"
-        total["product_name"] = "Total"
-        total["country"] = country
-        total["currency"] = "USD"
-
-        if country in ("uk", "us"):
-            total["source_country"] = country
-
-        return items + [total]
-
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({
-            "success": False,
-            "error": "Authorization token is missing or invalid"
-        }), 401
-
-    token = auth_header.split(" ")[1]
-
-    try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = int(payload.get("user_id"))
-    except jwt.ExpiredSignatureError:
-        return jsonify({"success": False, "error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"success": False, "error": "Invalid token"}), 401
-    except Exception:
-        return jsonify({"success": False, "error": "Invalid token payload"}), 401
-
-    as_of = request.args.get("as_of")
-    start_day = request.args.get("start_day")
-    end_day = request.args.get("end_day")
-
-    start_day = int(start_day) if start_day else None
-    end_day = int(end_day) if end_day else None
-
+def get_previous_global_data_for_live_bi(
+    user_id,
+    as_of=None,
+    start_day=None,
+    end_day=None,
+):
     ranges = get_mtd_and_prev_ranges(
         as_of=as_of,
         start_day=start_day,
@@ -1861,8 +2651,10 @@ def previous_skuwise_global():
 
     prev_start = ranges["previous"]["start"]
     prev_end = ranges["previous"]["end"]
+
     prev_month_name = month_name[prev_start.month].lower()
     prev_year = prev_start.year
+
     prev_full_start = date(prev_start.year, prev_start.month, 1)
     prev_full_end = date(
         prev_start.year,
@@ -1870,26 +2662,21 @@ def previous_skuwise_global():
         monthrange(prev_start.year, prev_start.month)[1]
     )
 
-    try:
-        skuwise_items_uk_raw, uk_daily = fetch_previous_period_data(
-            user_id, "uk", prev_start, prev_end
-        )
-        skuwise_items_us_raw, us_daily = fetch_previous_period_data(
-            user_id, "us", prev_start, prev_end
-        )
-        _, uk_daily_full = fetch_previous_period_data(
-            user_id, "uk", prev_full_start, prev_full_end
-        )
+    skuwise_items_uk_raw, uk_daily = fetch_previous_period_data(
+        user_id, "uk", prev_start, prev_end
+    )
 
-        _, us_daily_full = fetch_previous_period_data(
-            user_id, "us", prev_full_start, prev_full_end
-        )
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": "Failed to read previous period UK/US data",
-            "details": str(e),
-        }), 500
+    skuwise_items_us_raw, us_daily = fetch_previous_period_data(
+        user_id, "us", prev_start, prev_end
+    )
+
+    _, uk_daily_full = fetch_previous_period_data(
+        user_id, "uk", prev_full_start, prev_full_end
+    )
+
+    _, us_daily_full = fetch_previous_period_data(
+        user_id, "us", prev_full_start, prev_full_end
+    )
 
     uk_df = _items_to_df(skuwise_items_uk_raw, "uk")
     us_df = _items_to_df(skuwise_items_us_raw, "us")
@@ -1919,7 +2706,6 @@ def previous_skuwise_global():
     us_extra = _build_extra_totals_single(us_daily, 1.0)
     global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
 
-    # ✅ Full previous month net sales only
     uk_full_totals = totals_from_daily_series(uk_daily_full)
     us_full_totals = totals_from_daily_series(us_daily_full)
 
@@ -1936,8 +2722,6 @@ def previous_skuwise_global():
         uk_total_previous_net_sales_full_month
         + us_total_previous_net_sales_full_month
     )
-    # ✅ Full previous month reimbursement fee
-    # Use raw daily rows directly because totals_from_daily_series may not include rembursement_fee.
 
     uk_total_previous_rembursement_fee_full_month = (
         sum(_safe_float(r.get("rembursement_fee")) for r in (uk_daily_full or []))
@@ -1974,13 +2758,22 @@ def previous_skuwise_global():
         total_previous_rembursement_fee_full_month=global_total_previous_rembursement_fee_full_month,
     )
 
-    derived_totals_uk = _build_derived_totals_from_skuwise(skuwise_items_uk, uk_extra)
-    derived_totals_us = _build_derived_totals_from_skuwise(skuwise_items_us, us_extra)
-    derived_totals_global = _build_derived_totals_from_skuwise(skuwise_items_global, global_extra)
+    derived_totals_uk = _build_derived_totals_from_skuwise(
+        skuwise_items_uk,
+        uk_extra,
+    )
 
-    return jsonify(_json_safe({
-        "success": True,
-        "message": "Previous-period global SKU-wise data",
+    derived_totals_us = _build_derived_totals_from_skuwise(
+        skuwise_items_us,
+        us_extra,
+    )
+
+    derived_totals_global = _build_derived_totals_from_skuwise(
+        skuwise_items_global,
+        global_extra,
+    )
+
+    return {
         "previous_period": {
             "prev_start": prev_start.isoformat(),
             "prev_end": prev_end.isoformat(),
@@ -1991,6 +2784,7 @@ def previous_skuwise_global():
             "pair": "GBP->USD",
             "rate": float(uk_to_usd_rate),
         },
+
         "aligned_totals_global": aligned_totals_global,
         "aligned_totals_uk": aligned_totals_uk,
         "aligned_totals_us": aligned_totals_us,
@@ -1998,13 +2792,85 @@ def previous_skuwise_global():
         "derived_totals_global": derived_totals_global,
         "derived_totals_uk": derived_totals_uk,
         "derived_totals_us": derived_totals_us,
+
         "skuwise_items_uk": skuwise_items_uk,
         "skuwise_items_us": skuwise_items_us,
         "skuwise_items_global": skuwise_items_global,
-        "count": {
-            "uk": len(skuwise_items_uk),
-            "us": len(skuwise_items_us),
-            "global": len(skuwise_items_global),
-        },
-    })), 200
 
+        "uk_daily": uk_daily,
+        "us_daily": us_daily,
+    }
+
+@live_data_bi_bp.route("/live_mtd_bi/previous_skuwise_global", methods=["GET"])
+def previous_skuwise_global():
+    import math
+
+    def _json_safe(obj):
+        if obj is None:
+            return None
+        if isinstance(obj, float):
+            return obj if math.isfinite(obj) else None
+        if isinstance(obj, dict):
+            return {k: _json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_json_safe(x) for x in obj]
+        return obj
+
+    # ---------------- Auth ----------------
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "success": False,
+            "error": "Authorization token is missing or invalid"
+        }), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(payload.get("user_id"))
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+    # ---------------- Params ----------------
+    as_of = request.args.get("as_of")
+    start_day = request.args.get("start_day")
+    end_day = request.args.get("end_day")
+
+    try:
+        start_day = int(start_day) if start_day else None
+        end_day = int(end_day) if end_day else None
+    except ValueError:
+        start_day = None
+        end_day = None
+
+    # ---------------- Shared previous-global builder ----------------
+    try:
+        payload_out = get_previous_global_data_for_live_bi(
+            user_id=user_id,
+            as_of=as_of,
+            start_day=start_day,
+            end_day=end_day,
+        )
+
+        payload_out["success"] = True
+        payload_out["message"] = "Previous-period global SKU-wise data"
+
+        payload_out["count"] = {
+            "uk": len(payload_out.get("skuwise_items_uk", [])),
+            "us": len(payload_out.get("skuwise_items_us", [])),
+            "global": len(payload_out.get("skuwise_items_global", [])),
+        }
+
+        return jsonify(_json_safe(payload_out)), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Failed to read previous period UK/US data",
+            "details": str(e),
+        }), 500
