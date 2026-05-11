@@ -1750,7 +1750,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-2 p-3">
+                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-2 p-3">
                       {items.map((item, i) => (
                         <div
                           key={i}
@@ -1825,7 +1825,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     <CountryInventoryCard
                       title="Other Inventory"
                       items={grouped.other}
-                      accentClass="border-l-4 border-l-slate-400"
+                      accentClass="border-l-4 border-l-slate-400 lg:col-span-2"
                     />
                   )}
                 </div>

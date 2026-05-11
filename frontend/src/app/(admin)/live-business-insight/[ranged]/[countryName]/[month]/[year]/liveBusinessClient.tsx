@@ -39,14 +39,19 @@ const toNumberSafe = (v: any) => {
 };
 
 type MonthsforBIProps = {
-  countryName: string; // "uk" | "us" | "ca" | "global"
+  countryName: string;
   sourceCountryName?: string;
-  ranged: string;      // "QTD", "MTD", etc
-  month: string;       // "november"
-  year: string;        // "2025"
+  ranged: string;
+  month: string;
+  year: string;
   initialData?: ApiResponse | null;
-  disableAutoFetch?: boolean; // when true, LiveBusinessClient will NOT fetch
+  disableAutoFetch?: boolean;
   onGenerateInsights?: () => Promise<void>;
+
+  // ✅ NEW: optional global live MTD params
+  asOf?: string;      // "2026-05-11"
+  startDay?: number; // 1
+  endDay?: number;   // 11
 };
 
 // =========================
@@ -130,8 +135,10 @@ interface SkuInsight {
 
 interface PeriodInfo {
   label: string;
-  start_date: string;
-  end_date: string;
+  start_date?: string;
+  end_date?: string;
+  start?: string;
+  end?: string;
 }
 
 interface ApiResponse {
@@ -165,11 +172,13 @@ interface ApiResponse {
     summary_text?: string;
   };
   overall_actions?: string[] | Record<string, string>;
-  recommended_actions_mtd?: Record<string, string>;
+  recommended_actions_mtd?: Record<string, any>;
+  portfolio_inventory_block?: string | number | Record<string, string>;
+  product_journey?: Record<string, any>;
+  portfolio_inventory_alerts?: Record<string, any>;
   remaining_skus_recommendation?: string | number;
   remaining_skus_block?: string | number;
   portfolio_recommendation?: string | number;
-  portfolio_inventory_block?: string | number;
 }
 
 // =========================
@@ -210,8 +219,46 @@ const capitalizeWords = (value: string) =>
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const normalizeTextBlock = (value: unknown): string =>
-  typeof value === "string" ? value : "";
+const normalizeTextBlock = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+
+  // ✅ Global returns { uk: "...", us: "..." }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([country, text]) => {
+        if (!text) return "";
+        return `## ${country.toUpperCase()}\n${String(text)}`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  return "";
+};
+
+const getLiveMtdParams = ({
+  isGlobal,
+  asOf,
+  startDay,
+  endDay,
+}: {
+  isGlobal: boolean;
+  asOf?: string;
+  startDay?: number;
+  endDay?: number;
+}) => {
+  if (!isGlobal) return null;
+
+  const finalAsOf = asOf || getTodayKey();
+  const parsedDay = Number(finalAsOf.split("-")[2]);
+
+  return {
+    as_of: finalAsOf,
+    start_day: startDay ?? 1,
+    end_day: endDay ?? parsedDay,
+  };
+};
 
 // =========================
 // Main Component
@@ -226,6 +273,9 @@ export default function LiveBusinessClient({
   initialData,
   disableAutoFetch = false,
   onGenerateInsights,
+  asOf,
+  startDay,
+  endDay,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
 
@@ -798,6 +848,112 @@ export default function LiveBusinessClient({
   //   }
   // };
 
+  const normalizeGlobalCategorizedGrowth = (raw?: any): CategorizedGrowth => {
+    return normalizeCategorizedGrowth({
+      top_80_skus: raw?.top_80_skus || raw?.top_80_products || [],
+      new_or_reviving_skus: raw?.new_or_reviving_skus || [],
+      other_skus: raw?.other_skus || raw?.other_products || [],
+
+      top_80_total: raw?.top_80_total || null,
+      new_or_reviving_total: raw?.new_or_reviving_total || null,
+      other_total: raw?.other_total || null,
+      all_skus_total: raw?.all_skus_total || null,
+    });
+  };
+
+  const flattenGlobalRecommendedActions = (recommended?: Record<string, any>) => {
+    const flat: Record<string, any> = {};
+
+    Object.entries(recommended || {}).forEach(([country, actions]) => {
+      Object.entries(actions || {}).forEach(([sku, action]: [string, any]) => {
+        const key = `${country}:${sku}`;
+
+        // Existing UI expects parseRecommendedAction(text), so keep strings as strings.
+        // If backend returns object, convert it to a readable block.
+        if (typeof action === "string") {
+          flat[key] = action;
+          return;
+        }
+
+        const growth = action?.growth_row || {};
+        const productName = growth?.product_name || action?.product_name || sku;
+
+        flat[key] = [
+          `Product Journey: ${(action?.journey_summary || []).join(" ")}`,
+          `Recommendation: ${action?.recommendation || "Monitor performance"}`,
+          `Advertising: ${action?.ads_recommendation || "Monitor current advertising."}`,
+          `Inventory: ${action?.inventory_recommendation || "Inventory position is stable."}`,
+          `Product: ${productName}`,
+        ].join("\n");
+      });
+    });
+
+    return flat;
+  };
+
+  const buildGlobalSkuInsights = (payload: ApiResponse): Record<string, SkuInsight> => {
+    const insights: Record<string, SkuInsight> = {};
+
+    Object.entries(payload.product_journey || {}).forEach(([productKey, journey]: [string, any]) => {
+      const productName = journey?.product_name || productKey;
+
+      const insightText = [
+        `Product Journey: ${(journey?.journey_comparison || []).join(" ")}`,
+        `Recommendation: ${extractGlobalRecommendation(journey)}`,
+        `Advertising: ${extractGlobalAdvertising(journey)}`,
+        `Inventory: ${extractGlobalInventory(journey)}`,
+      ].join("\n");
+
+      insights[productKey] = {
+        product_name: productName,
+        insight: insightText,
+        product_journey: journey?.journey_comparison || [],
+        recommendation: extractGlobalRecommendation(journey),
+        advertising: extractGlobalAdvertising(journey),
+        inventory_recommendation: extractGlobalInventory(journey),
+        raw_global_journey: journey,
+      };
+    });
+
+    return insights;
+  };
+
+  const extractGlobalRecommendation = (journey: any): string => {
+    const countries = ["uk", "us"];
+
+    for (const country of countries) {
+      const skuBlocks = journey?.[country] || {};
+      const first = Object.values(skuBlocks)[0] as any;
+      if (first?.recommendation) return first.recommendation;
+    }
+
+    return "Monitor performance across UK and US.";
+  };
+
+  const extractGlobalAdvertising = (journey: any): string => {
+    const countries = ["uk", "us"];
+
+    for (const country of countries) {
+      const skuBlocks = journey?.[country] || {};
+      const first = Object.values(skuBlocks)[0] as any;
+      if (first?.ads_recommendation) return first.ads_recommendation;
+    }
+
+    return "Monitor current advertising.";
+  };
+
+  const extractGlobalInventory = (journey: any): string => {
+    const countries = ["uk", "us"];
+
+    for (const country of countries) {
+      const skuBlocks = journey?.[country] || {};
+      const first = Object.values(skuBlocks)[0] as any;
+      if (first?.inventory_recommendation) return first.inventory_recommendation;
+    }
+
+    return "Inventory position is stable.";
+  };
+
   const hydrateFromPayload = (payload: ApiResponse) => {
     const newPeriods = payload.periods || null;
 
@@ -807,7 +963,9 @@ export default function LiveBusinessClient({
       other_skus: [],
     };
 
-    const normalized = normalizeCategorizedGrowth(rawCat);
+    const normalized = isGlobalData()
+      ? normalizeGlobalCategorizedGrowth(rawCat)
+      : normalizeCategorizedGrowth(rawCat);
 
     setPeriods(newPeriods);
     setCategorizedGrowth(normalized);
@@ -822,7 +980,11 @@ export default function LiveBusinessClient({
         ? payload.overall_actions
         : []
     );
-    setRecommendedActions(payload.recommended_actions_mtd || {});
+    setRecommendedActions(
+      isGlobalData()
+        ? flattenGlobalRecommendedActions(payload.recommended_actions_mtd || {})
+        : payload.recommended_actions_mtd || {}
+    );
     setRemainingSkusBlock(normalizeTextBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation));
     setPortfolioRecommendation(normalizeTextBlock(payload.portfolio_recommendation));
     setPortfolioInventoryBlock(normalizeTextBlock(payload.portfolio_inventory_block));
@@ -830,7 +992,10 @@ export default function LiveBusinessClient({
     setAdsRecommendation(payload.ads_recommendation || "");
     setInventorySummary(payload.inventory_summary || null);
 
-    const liveInsights = payload.ai_insights || {};
+    const liveInsights = isGlobalData()
+      ? buildGlobalSkuInsights(payload)
+      : payload.ai_insights || {};
+
     setSkuInsights(liveInsights);
   };
 
@@ -918,14 +1083,27 @@ export default function LiveBusinessClient({
     }
 
     try {
+      const liveMtdParams = getLiveMtdParams({
+        isGlobal: normalizedCountry === "global",
+        asOf,
+        startDay,
+        endDay,
+      });
+
       const res = await api.get<ApiResponse>('/live_mtd_bi', {
-        params: {
-          countryName: normalizedCountry,
-          ranged,
-          month,
-          year,
-          generate_ai_insights: generateInsights ? 'true' : 'false',
-        },
+        params: normalizedCountry === "global"
+          ? {
+            countryName: "global",
+            ...liveMtdParams,
+            generate_ai_insights: "false",
+          }
+          : {
+            countryName: normalizedCountry,
+            ranged,
+            month,
+            year,
+            generate_ai_insights: generateInsights ? "true" : "false",
+          },
       });
 
       const newPeriods = res.data.periods || null;
@@ -935,7 +1113,9 @@ export default function LiveBusinessClient({
         other_skus: [],
       };
 
-      const normalized = normalizeCategorizedGrowth(rawCat);
+      const normalized = normalizedCountry === "global"
+        ? normalizeGlobalCategorizedGrowth(rawCat)
+        : normalizeCategorizedGrowth(rawCat);
 
       setPeriods(newPeriods);
       setCategorizedGrowth(normalized);
@@ -955,7 +1135,11 @@ export default function LiveBusinessClient({
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
       setOverallActions(Array.isArray(res.data.overall_actions) ? res.data.overall_actions : []);
-      setRecommendedActions(res.data.recommended_actions_mtd || {});
+      setRecommendedActions(
+        normalizedCountry === "global"
+          ? flattenGlobalRecommendedActions(res.data.recommended_actions_mtd || {})
+          : res.data.recommended_actions_mtd || {}
+      );
       setAdsRecommendation(adsRecommendationFromApi);
       setInventorySummary(inventoryFromApi);
       setRemainingSkusBlock(remainingBlock);
@@ -964,8 +1148,11 @@ export default function LiveBusinessClient({
       setObjectiveContext(res.data.objective_context || null);
       setInsightDate(getTodayKey());
 
-      const liveInsights = res.data.ai_insights || {};
-      if (generateInsights) {
+      const liveInsights = normalizedCountry === "global"
+        ? buildGlobalSkuInsights(res.data)
+        : res.data.ai_insights || {};
+
+      if (normalizedCountry === "global" || generateInsights) {
         setSkuInsights(liveInsights);
       }
     } catch (err: any) {
@@ -994,11 +1181,21 @@ export default function LiveBusinessClient({
 
   useEffect(() => {
     if (disableAutoFetch) return;
-    if (!normalizedCountry || normalizedCountry === 'global') return;
-    fetchLiveBi(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedCountry, ranged, month, year, disableAutoFetch]);
+    if (!normalizedCountry) return;
 
+    fetchLiveBi(false);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    normalizedCountry,
+    ranged,
+    month,
+    year,
+    disableAutoFetch,
+    asOf,
+    startDay,
+    endDay,
+  ]);
   // =========================
   // AI insights generate (button)
   // =========================
@@ -1021,7 +1218,7 @@ export default function LiveBusinessClient({
         await onGenerateInsights();
         return;
       }
-      await fetchLiveBi(true);
+      await fetchLiveBi(normalizedCountry === "global" ? false : true);
     } catch (err: any) {
       console.error('generate insights error:', err?.response?.data || err.message);
     } finally {
@@ -1210,8 +1407,8 @@ export default function LiveBusinessClient({
   };
 
   const formatRangeLabel = (p?: PeriodInfo) => {
-    const s = parseISODateSafe(p?.start_date);
-    const e = parseISODateSafe(p?.end_date);
+    const s = parseISODateSafe(p?.start_date || p?.start);
+    const e = parseISODateSafe(p?.end_date || p?.end);
     if (!s || !e) return "";
 
     const sm = s.toLocaleString("en-US", { month: "short" });
@@ -1222,14 +1419,11 @@ export default function LiveBusinessClient({
 
     const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
 
-    // Most MTD cases: "Jan 1-19"
     if (sameMonth) return `${sm} ${sd}-${ed}`;
 
-    // Spans months within same year: "Dec 25-Jan 19"
     const sameYear = s.getFullYear() === e.getFullYear();
     if (sameYear) return `${sm} ${sd}-${em} ${ed}`;
 
-    // Spans years: "Dec 25, 2025-Jan 19, 2026"
     return `${sm} ${sd}, ${s.getFullYear()}-${em} ${ed}, ${e.getFullYear()}`;
   };
 
@@ -2784,7 +2978,7 @@ export default function LiveBusinessClient({
 
       return {
         sNo: <CenterCell value={idx + 1} />,
-        product: item.product_name || item.sku || 'N/A',
+        product: capitalizeWords(item.product_name || item.sku || 'N/A'),
         salesMix: <CenterCell value={salesMix} />,
         profitMix: <CenterCell value={profitMix} />,
         unit: isNewRev ? renderNewRevGrowthOrDash(item['Unit Growth']) : renderGrowthOrNA(item['Unit Growth']),
@@ -3138,6 +3332,138 @@ export default function LiveBusinessClient({
     return Number.isFinite(numeric) ? numeric : 0;
   };
 
+  const toTitleCase = (value: string) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const getGrowthValue = (row: any, key: string) => {
+    const raw = row?.[key];
+    const value = typeof raw === "object" ? raw?.value : raw;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const formatGrowth = (value: number) => {
+    const sign = value > 0 ? "+" : "";
+    return `(${sign}${value.toFixed(2)}%)`;
+  };
+
+  const formatGlobalMetricValue = (
+    value: number,
+    growth: number,
+    type: "money" | "number" = "money"
+  ) => {
+    const main =
+      type === "number"
+        ? Number(value || 0).toLocaleString()
+        : formatDisplayAmount(Number(value || 0));
+
+    return `${main} ${formatGrowth(growth)}`;
+  };
+
+  const getGlobalProductJourney = (productName: string) => {
+    const key = String(productName || "").trim().toLowerCase();
+
+    const direct = (skuInsights as any)?.[key]?.raw_global_journey;
+    if (direct) return direct;
+
+    const entry = Object.values(skuInsights || {}).find((item: any) => {
+      const product = String(item?.product_name || "").trim().toLowerCase();
+      return product === key || product.includes(key) || key.includes(product);
+    }) as any;
+
+    return entry?.raw_global_journey || null;
+  };
+
+  const getFirstCountryAction = (journey: any, country: "uk" | "us") => {
+    const countryObj = journey?.[country] || {};
+    return Object.values(countryObj || {})[0] as any;
+  };
+
+  const globalRecommendationCards = useMemo(() => {
+    if (!isGlobalData()) return [];
+
+    return [...(categorizedGrowth.top_80_skus || [])]
+      .filter((row) => !isTotalLikeRow(row))
+      .sort((a, b) => Number(b?.net_sales_curr || 0) - Number(a?.net_sales_curr || 0))
+      .map((row) => {
+        const productName = row.product_name || "";
+        const journey = getGlobalProductJourney(productName);
+
+        const ukAction = getFirstCountryAction(journey, "uk");
+        const usAction = getFirstCountryAction(journey, "us");
+
+        const metrics = [
+          {
+            label: "ASP",
+            value: formatGlobalMetricValue(
+              Number(row.asp_curr || 0),
+              getGrowthValue(row, "ASP Growth (%)")
+            ),
+          },
+          {
+            label: "Units",
+            value: formatGlobalMetricValue(
+              Number(row.quantity_curr || 0),
+              getGrowthValue(row, "Unit Growth (%)"),
+              "number"
+            ),
+          },
+          {
+            label: "Net sales",
+            value: formatGlobalMetricValue(
+              Number(row.net_sales_curr || 0),
+              getGrowthValue(row, "Net Sales Growth (%)")
+            ),
+          },
+          {
+            label: "CM1 profit",
+            value: formatGlobalMetricValue(
+              Number(row.profit_curr || 0),
+              getGrowthValue(row, "CM1 Profit Impact (%)")
+            ),
+          },
+          {
+            label: "CM1 profit per unit",
+            value: formatGlobalMetricValue(
+              Number(row.unit_wise_profitability_curr || 0),
+              getGrowthValue(row, "Profit Per Unit (%)")
+            ),
+          },
+        ];
+
+        const recommendationPoints = [
+          ukAction?.recommendation ? `UK: ${ukAction.recommendation}` : "",
+          usAction?.recommendation ? `US: ${usAction.recommendation}` : "",
+        ].filter(Boolean);
+
+        const advertisingPoints = [
+          ukAction?.ads_recommendation ? `UK: ${ukAction.ads_recommendation}` : "",
+          usAction?.ads_recommendation ? `US: ${usAction.ads_recommendation}` : "",
+        ].filter(Boolean);
+
+        const inventoryPoints = [
+          ukAction?.inventory_recommendation ? `UK: ${ukAction.inventory_recommendation}` : "",
+          usAction?.inventory_recommendation ? `US: ${usAction.inventory_recommendation}` : "",
+        ].filter(Boolean);
+
+        const journeyPoints = Array.isArray(journey?.journey_comparison)
+          ? journey.journey_comparison
+          : [];
+
+        return {
+          key: productName,
+          productName: toTitleCase(productName),
+          metrics,
+          journeyPoints,
+          recommendationPoints,
+          advertisingPoints,
+          inventoryPoints,
+        };
+      });
+  }, [categorizedGrowth.top_80_skus, skuInsights, displayCurrency]);
+
   const sortedRecommendations = useMemo(() => {
     return Object.entries(recommendedActions)
       .map(([key, text]) => {
@@ -3158,6 +3484,317 @@ export default function LiveBusinessClient({
       })
       .sort((a, b) => b.netSales - a.netSales);
   }, [recommendedActions, convertMetricValueString, displayCurrency]);
+
+  const parseGlobalInventoryItems = (inventoryText: string) => {
+    const lines = String(inventoryText || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const result: Record<
+      "uk" | "us",
+      {
+        ageingInventory?: string;
+        estimatedStorageCost?: string;
+        unfulfillableInventory?: string;
+        highCoverage?: string;
+      }
+    > = {
+      uk: {},
+      us: {},
+    };
+
+    let currentCountry: "uk" | "us" | null = null;
+
+    for (const line of lines) {
+      const clean = line.replace(/^[-•]\s*/, "").trim();
+
+      if (/^##\s*UK/i.test(clean)) {
+        currentCountry = "uk";
+        continue;
+      }
+
+      if (/^##\s*US/i.test(clean)) {
+        currentCountry = "us";
+        continue;
+      }
+
+      if (/^##\s*INVENTORY/i.test(clean)) continue;
+      if (!currentCountry) continue;
+
+      if (/ageing inventory/i.test(clean)) {
+        const match = clean.match(/:\s*(.+)$/);
+        result[currentCountry].ageingInventory = match?.[1]?.trim() || clean;
+        continue;
+      }
+
+      if (/est\.?\s*storage cost|estimated storage cost/i.test(clean)) {
+        const match = clean.match(/:\s*(.+)$/);
+        result[currentCountry].estimatedStorageCost = match?.[1]?.trim() || clean;
+        continue;
+      }
+
+      if (/unfulfillable/i.test(clean)) {
+        const match = clean.match(/:\s*(.+)$/);
+        result[currentCountry].unfulfillableInventory =
+          match?.[1]?.trim() ||
+          clean.replace(/^Unfulfillable inventory\s*/i, "").trim();
+        continue;
+      }
+
+      if (/high coverage/i.test(clean)) {
+        const match = clean.match(/:\s*(.+)$/);
+        result[currentCountry].highCoverage = match?.[1]?.trim() || clean;
+        continue;
+      }
+    }
+
+    return result;
+  };
+
+  const parseSingleCountryInventoryItems = (inventoryText: string) => {
+    const lines = String(inventoryText || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^[-•]\s*/, "").trim());
+
+    const result: {
+      ageingInventory?: string;
+      highCoverage?: string;
+      unfulfillableInventory?: string;
+      estimatedStorageCost?: string;
+      detailNote?: string;
+    } = {};
+
+    for (const line of lines) {
+      if (/^##\s*INVENTORY/i.test(line)) continue;
+
+      if (/ageing inventory/i.test(line)) {
+        const match = line.match(/:\s*(.+)$/);
+        result.ageingInventory = match?.[1]?.trim() || line.replace(/^Ageing inventory\s*/i, "").trim();
+        continue;
+      }
+
+      if (/high coverage/i.test(line)) {
+        const match = line.match(/:\s*(.+)$/);
+        result.highCoverage = match?.[1]?.trim() || line.replace(/^High coverage SKUs\s*/i, "").trim();
+        continue;
+      }
+
+      if (/unfulfillable/i.test(line)) {
+        const match = line.match(/:\s*(.+)$/);
+        result.unfulfillableInventory = match?.[1]?.trim() || line;
+        continue;
+      }
+
+      if (/storage cost|est\.?\s*storage/i.test(line)) {
+        const match = line.match(/:\s*(.+)$/);
+        result.estimatedStorageCost = match?.[1]?.trim() || line.replace(/^Est\.?\s*storage cost next month\s*/i, "").trim();
+        continue;
+      }
+
+      if (/inventory reconciliation/i.test(line) || /for detailed inventory insights/i.test(line)) {
+        result.detailNote = line;
+        continue;
+      }
+    }
+
+    return result;
+  };
+
+  const getInventoryAccentClass = (country?: string) => {
+    const c = String(country || "").toLowerCase();
+
+    if (c === "uk") return "border-l-[#7B9A6D]";
+    if (c === "us") return "border-l-[#3A8EA4]";
+    if (c === "ca") return "border-l-[#D97706]";
+    if (c === "india") return "border-l-[#8B5CF6]";
+
+    return "border-l-[#5EA68E]";
+  };
+
+  const SingleCountryInventoryInsights = () => {
+    const inventory = parseSingleCountryInventoryItems(portfolioInventoryBlock);
+
+    const rows = [
+      {
+        label: "Ageing Inventory (181+ Days)",
+        value: inventory.ageingInventory,
+      },
+      {
+        label: "High Coverage SKUs",
+        value: inventory.highCoverage,
+      },
+      {
+        label: "Unfulfillable Inventory Remains Below 1%",
+        value: inventory.unfulfillableInventory,
+      },
+      {
+        label: "Est. Storage Cost Next Month",
+        value: inventory.estimatedStorageCost,
+      },
+      {
+        label: "For Detailed Inventory Insights, Please Refer To The Inventory Reconciliation Tab.",
+        value: inventory.detailNote ? "" : undefined,
+        fullWidth: true,
+      },
+    ].filter((row) => row.value !== undefined);
+
+    if (!rows.length) return null;
+
+    const countryTitle =
+      normalizedCountry === "uk"
+        ? "UK Inventory"
+        : normalizedCountry === "us"
+          ? "US Inventory"
+          : normalizedCountry === "ca"
+            ? "CA Inventory"
+            : `${titleCountry} Inventory`;
+
+    return (
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+            Inventory Insights
+          </span>
+        </div>
+
+        <div
+          className={[
+            "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4",
+            getInventoryAccentClass(normalizedCountry),
+          ].join(" ")}
+        >
+          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+            <div className="text-sm font-bold text-slate-800">
+              {countryTitle}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
+            {rows.map((item, idx) => (
+              <div
+                key={idx}
+                className={[
+                  "flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2",
+                  item.fullWidth ? "md:col-span-1" : "",
+                ].join(" ")}
+              >
+                <span className="text-sm font-medium text-slate-700">
+                  {item.label}
+                </span>
+
+                {item.value && (
+                  <span className="text-sm font-bold text-[#414042] text-right">
+                    {item.value}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const GlobalInventoryInsights = () => {
+    const inventory = parseGlobalInventoryItems(portfolioInventoryBlock);
+
+    const InventoryCountryCard = ({
+      title,
+      items,
+      accentClass,
+    }: {
+      title: string;
+      items: {
+        ageingInventory?: string;
+        estimatedStorageCost?: string;
+        unfulfillableInventory?: string;
+        highCoverage?: string;
+      };
+      accentClass: string;
+    }) => {
+      const rows = [
+        {
+          label: "Ageing Inventory",
+          value: items.ageingInventory,
+        },
+        {
+          label: "Estimated Storage Cost",
+          value: items.estimatedStorageCost,
+        },
+        {
+          label: "Unfulfillable Inventory",
+          value: items.unfulfillableInventory,
+        },
+        {
+          label: "High Coverage SKUs",
+          value: items.highCoverage,
+        },
+      ].filter((row) => row.value);
+
+      if (!rows.length) return null;
+
+      return (
+        <div
+          className={`rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4 ${accentClass}`}
+        >
+          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+            <div className="text-sm font-bold text-slate-800">{title}</div>
+          </div>
+
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-2 p-3">
+            {rows.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
+              >
+                <span className="text-sm font-medium text-slate-700">
+                  {item.label}
+                </span>
+
+                <span className="text-sm font-bold text-[#414042] text-right">
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    const hasInventory =
+      Object.values(inventory.uk).some(Boolean) ||
+      Object.values(inventory.us).some(Boolean);
+
+    if (!hasInventory) return null;
+
+    return (
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+            Inventory Insights
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <InventoryCountryCard
+            title="UK Inventory"
+            items={inventory.uk}
+            accentClass={getInventoryAccentClass("uk")}
+          />
+
+          <InventoryCountryCard
+            title="US Inventory"
+            items={inventory.us}
+            accentClass={getInventoryAccentClass("us")}
+          />
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <>
@@ -3195,7 +3832,11 @@ export default function LiveBusinessClient({
                   <div className="flex-1">
                     {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
                       <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full h-full flex flex-col">
-                        <PageBreadcrumb pageTitle="Business Summary" variant="page" align="left" />
+                        <PageBreadcrumb
+                          pageTitle={isGlobalData() ? "Global Business Summary" : "Business Summary"}
+                          variant="page"
+                          align="left"
+                        />
 
                         {summaryText && (
                           <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1">
@@ -3217,7 +3858,7 @@ export default function LiveBusinessClient({
                     )}
                   </div>
 
-                  <div className="lg:w-1/3 flex">
+                  <div className={isGlobalData() ? "hidden" : "lg:w-1/3 flex"}>
                     {objectiveContext && (
                       <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full h-full flex flex-col">
                         <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
@@ -3228,203 +3869,296 @@ export default function LiveBusinessClient({
                 </div>
 
                 {/* 3) Recommended Actions (cards) */}
-                {recommendedActions && Object.keys(recommendedActions).length > 0 && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
-                    <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
+                {(
+                  isGlobalData()
+                    ? globalRecommendationCards.length > 0
+                    : recommendedActions && Object.keys(recommendedActions).length > 0
+                ) && (
+                    <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                      <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
 
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {sortedRecommendations.map(({ key, text, parsed, netSales }, idx) => {
-                        const recommendationPoints = parsed.recommendationPoints;
-
-                        const borderColor = topBorderColors[idx % topBorderColors.length];
-
-                        return (
-                          <motion.div
-                            key={key}
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.35, delay: idx * 0.06 }}
-                            className={[
-                              "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-                              "border-t-4",
-                              "p-3 space-y-3",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-                                {idx + 1}. {parsed.productName}
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedRec({
-                                    productName: parsed.productName,
-                                    metrics: parsed.metrics,
-                                    journeyPoints: parsed.journeyPoints,
-                                    recommendationPoints: parsed.recommendationPoints,
-                                    advertisingPoints: parsed.advertisingPoints,
-                                    inventoryPoints: parsed.inventoryPoints,
-                                    showChart: true,
-                                  });
-                                  setRecDrawerOpen(true);
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {isGlobalData()
+                          ? globalRecommendationCards.map((card, idx) => {
+                            return (
+                              <motion.div
+                                key={card.key}
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.35, delay: idx * 0.06 }}
+                                className={[
+                                  "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                                  "border-t-4",
+                                  "p-3 space-y-3",
+                                ].join(" ")}
                               >
-                                Detailed View
-                              </button>
-                            </div>
-
-                            {parsed.metrics?.length > 0 && (
-                              <div className="grid grid-cols-3 gap-2">
-                                {parsed.metrics.map((m, i) => (
-                                  <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0">
-                                    <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
-                                      {m.label}
-                                    </div>
-                                    <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
-                                      {(() => {
-                                        const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                                        const mainValue = match?.[1]?.trim() || m.value;
-                                        const percentPart = match?.[2] || "";
-
-                                        const isNegative = percentPart.includes("-");
-                                        const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
-
-                                        return (
-                                          <>
-                                            <span className="text-slate-900 truncate">
-                                              {mainValue}
-                                            </span>
-
-                                            {percentPart && (
-                                              <span className="shrink-0" style={{ color: percentColor }}>
-                                                {percentPart}
-                                              </span>
-                                            )}
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+                                    {idx + 1}. {card.productName}
                                   </div>
-                                ))}
-                              </div>
-                            )}
 
-                            {recommendationPoints?.length > 0 && (
-                              <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                                <div className="line-clamp-2">
-                                  {recommendationPoints[0]}
-                                </div>
-                              </div>
-                            )}
-                          </motion.div>
-                        )
-                      })}
-
-                      {remainingSkusBlock?.trim() && (() => {
-                        const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
-                        const otherIdx = Object.keys(recommendedActions).length;
-                        const borderColor = topBorderColors[otherIdx % topBorderColors.length];
-
-                        return (
-                          <motion.div
-                            key="other-skus-card"
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
-                            className={[
-                              "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-                              "border-t-4",
-                              "p-3 space-y-3",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-                                {otherIdx + 1}. {parsedOther.productName}
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedRec({
-                                    productName: parsedOther.productName,
-                                    metrics: parsedOther.metrics,
-                                    journeyPoints: parsedOther.journeyPoints,
-                                    recommendationPoints: parsedOther.recommendationPoints,
-                                    advertisingPoints: parsedOther.advertisingPoints,
-                                    inventoryPoints: parsedOther.inventoryPoints,
-                                    showChart: false,
-                                  });
-                                  setRecDrawerOpen(true);
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
-                              >
-                                Detailed View
-                              </button>
-                            </div>
-
-                            {parsedOther.metrics?.length > 0 && (
-                              <div className="grid grid-cols-3 gap-2">
-                                {parsedOther.metrics.map((m, i) => (
-                                  <div
-                                    key={i}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRec({
+                                        productName: card.productName,
+                                        metrics: card.metrics,
+                                        journeyPoints: card.journeyPoints,
+                                        recommendationPoints: card.recommendationPoints,
+                                        advertisingPoints: card.advertisingPoints,
+                                        inventoryPoints: card.inventoryPoints,
+                                        showChart: true,
+                                      });
+                                      setRecDrawerOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
                                   >
-                                    <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
-                                      {m.label}
-                                    </div>
+                                    Detailed View
+                                  </button>
+                                </div>
 
-                                    <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
-                                      {(() => {
-                                        const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                                        const mainValue = match?.[1]?.trim() || m.value;
-                                        const percentPart = match?.[2] || "";
-                                        const isNegative = percentPart.includes("-");
-                                        const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+                                {card.metrics?.length > 0 && (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {card.metrics.map((m, i) => (
+                                      <div
+                                        key={i}
+                                        className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                      >
+                                        <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                          {m.label}
+                                        </div>
 
-                                        return (
-                                          <>
-                                            <span className="text-slate-900 truncate">
-                                              {mainValue}
-                                            </span>
-                                            {percentPart && (
-                                              <span
-                                                className="shrink-0"
-                                                style={{ color: percentColor }}
-                                              >
-                                                {percentPart}
-                                              </span>
-                                            )}
-                                          </>
-                                        );
-                                      })()}
+                                        <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                          {(() => {
+                                            const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+                                            const mainValue = match?.[1]?.trim() || m.value;
+                                            const percentPart = match?.[2] || "";
+                                            const isNegative = percentPart.includes("-");
+                                            const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+                                            return (
+                                              <>
+                                                <span className="text-slate-900 truncate">
+                                                  {mainValue}
+                                                </span>
+
+                                                {percentPart && (
+                                                  <span className="shrink-0" style={{ color: percentColor }}>
+                                                    {percentPart}
+                                                  </span>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {card.recommendationPoints?.length > 0 && (
+                                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                                    {card.recommendationPoints.map((line, i) => (
+                                      <p key={i}>{line}</p>
+                                    ))}
+                                  </div>
+                                )}
+                              </motion.div>
+                            );
+                          })
+                          : sortedRecommendations.map(({ key, text, parsed, netSales }, idx) => {
+                            const recommendationPoints = parsed.recommendationPoints;
+
+                            return (
+                              <motion.div
+                                key={key}
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.35, delay: idx * 0.06 }}
+                                className={[
+                                  "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                                  "border-t-4",
+                                  "p-3 space-y-3",
+                                ].join(" ")}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+                                    {idx + 1}. {parsed.productName}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRec({
+                                        productName: parsed.productName,
+                                        metrics: parsed.metrics,
+                                        journeyPoints: parsed.journeyPoints,
+                                        recommendationPoints: parsed.recommendationPoints,
+                                        advertisingPoints: parsed.advertisingPoints,
+                                        inventoryPoints: parsed.inventoryPoints,
+                                        showChart: true,
+                                      });
+                                      setRecDrawerOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
+                                  >
+                                    Detailed View
+                                  </button>
+                                </div>
+
+                                {parsed.metrics?.length > 0 && (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {parsed.metrics.map((m, i) => (
+                                      <div
+                                        key={i}
+                                        className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                      >
+                                        <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                          {m.label}
+                                        </div>
+
+                                        <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                          {(() => {
+                                            const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+                                            const mainValue = match?.[1]?.trim() || m.value;
+                                            const percentPart = match?.[2] || "";
+                                            const isNegative = percentPart.includes("-");
+                                            const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+                                            return (
+                                              <>
+                                                <span className="text-slate-900 truncate">
+                                                  {mainValue}
+                                                </span>
+
+                                                {percentPart && (
+                                                  <span className="shrink-0" style={{ color: percentColor }}>
+                                                    {percentPart}
+                                                  </span>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {recommendationPoints?.length > 0 && (
+                                  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                                    <div className="line-clamp-2">
+                                      {recommendationPoints[0]}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
+                                )}
+                              </motion.div>
+                            );
+                          })}
 
-                            {parsedOther.recommendationPoints?.length > 0 && (
-                              <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                                <div className="line-clamp-2">
-                                  {parsedOther.recommendationPoints[0]}
+                        {!isGlobalData() && remainingSkusBlock?.trim() && (() => {
+                          const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
+                          const otherIdx = Object.keys(recommendedActions).length;
+                          const borderColor = topBorderColors[otherIdx % topBorderColors.length];
+
+                          return (
+                            <motion.div
+                              key="other-skus-card"
+                              initial={{ opacity: 0, y: 16 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
+                              className={[
+                                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                                "border-t-4",
+                                "p-3 space-y-3",
+                              ].join(" ")}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+                                  {otherIdx + 1}. {parsedOther.productName}
                                 </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRec({
+                                      productName: parsedOther.productName,
+                                      metrics: parsedOther.metrics,
+                                      journeyPoints: parsedOther.journeyPoints,
+                                      recommendationPoints: parsedOther.recommendationPoints,
+                                      advertisingPoints: parsedOther.advertisingPoints,
+                                      inventoryPoints: parsedOther.inventoryPoints,
+                                      showChart: false,
+                                    });
+                                    setRecDrawerOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
+                                >
+                                  Detailed View
+                                </button>
                               </div>
-                            )}
-                          </motion.div>
-                        );
-                      })()}
+
+                              {parsedOther.metrics?.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {parsedOther.metrics.map((m, i) => (
+                                    <div
+                                      key={i}
+                                      className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                    >
+                                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                        {m.label}
+                                      </div>
+
+                                      <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                        {(() => {
+                                          const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+                                          const mainValue = match?.[1]?.trim() || m.value;
+                                          const percentPart = match?.[2] || "";
+                                          const isNegative = percentPart.includes("-");
+                                          const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+                                          return (
+                                            <>
+                                              <span className="text-slate-900 truncate">
+                                                {mainValue}
+                                              </span>
+                                              {percentPart && (
+                                                <span
+                                                  className="shrink-0"
+                                                  style={{ color: percentColor }}
+                                                >
+                                                  {percentPart}
+                                                </span>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {parsedOther.recommendationPoints?.length > 0 && (
+                                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                                  <div className="line-clamp-2">
+                                    {parsedOther.recommendationPoints[0]}
+                                  </div>
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* 4) Inventory Insight */}
-                <InventoryInsightsSection
-                  title="Inventory Insight"
-                  inventoryBullets={parsedPortfolioInventory.inventoryBullets}
-                  summaryText={parsedPortfolioInventory.summaryText}
-                />
+                {isGlobalData() ? (
+                  <GlobalInventoryInsights />
+                ) : (
+                  <SingleCountryInventoryInsights />
+                )}
 
               </div>
             )}
