@@ -1014,7 +1014,17 @@ const ProductInsightsSection = ({
   const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
 
   const sortedBlocks = useMemo(() => {
-    return [...blocks].sort((a, b) => getBlockNetSales(b) - getBlockNetSales(a));
+    return [...blocks].sort((a, b) => {
+      const aIsOther = a.isOtherSkus || a.name.trim().toLowerCase() === "other skus";
+      const bIsOther = b.isOtherSkus || b.name.trim().toLowerCase() === "other skus";
+
+      // Always keep Other SKUs at the end
+      if (aIsOther && !bIsOther) return 1;
+      if (!aIsOther && bIsOther) return -1;
+
+      // Sort all normal products by Net Sales descending
+      return getBlockNetSales(b) - getBlockNetSales(a);
+    });
   }, [blocks]);
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
@@ -3567,12 +3577,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       } else if (range === "quarterly" && selectedQuarter) {
         monthsToFetch = quarterToMonths[selectedQuarter];
       } else if (range === "yearly") {
-        const fetchedPeriods = readFetchedPeriods();
-        const fetchedMonthsForYear = (fetchedPeriods[selectedYear] || []).map(
-          (m) => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()
-        );
+        const currentDate = new Date();
+        const selectedYearNum = Number(selectedYear);
+        const currentYear = currentDate.getFullYear();
+        const currentMonthIndex = currentDate.getMonth(); // 0 = Jan, 11 = Dec
 
-        monthsToFetch = fetchedMonthsForYear;
+        if (selectedYearNum === currentYear) {
+          // Current year: fetch only Jan through current month
+          monthsToFetch = allMonths.slice(0, currentMonthIndex + 1);
+        } else if (selectedYearNum < currentYear) {
+          // Past year: fetch all 12 months
+          monthsToFetch = allMonths;
+        } else {
+          // Future year: fetch nothing
+          monthsToFetch = [];
+        }
       }
 
       if (!monthsToFetch.length) {
