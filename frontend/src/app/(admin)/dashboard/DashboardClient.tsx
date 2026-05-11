@@ -270,7 +270,14 @@ type DailyPoint = {
 };
 
 
-type DailySeries = {
+type ApiDailySeries = {
+    previous?: DailyPoint[];
+    current_mtd?: DailyPoint[];
+    previous_global?: DailyPoint[];
+    current_mtd_global?: DailyPoint[];
+};
+
+type GraphDailySeries = {
     previous: DailyPoint[];
     current_mtd: DailyPoint[];
 };
@@ -302,7 +309,7 @@ type BiApiResponse = {
         previous?: PeriodInfo;
         current_mtd?: PeriodInfo;
     };
-    daily_series?: DailySeries;
+    daily_series?: ApiDailySeries;
 
     aligned_totals?: BiAlignedTotals;
 
@@ -1394,8 +1401,8 @@ export default function DashboardPage() {
 
 
     const biCountryName = useMemo(() => {
-        if (platform === "global") return "uk";
-        return countryName;
+        if (platform === "global") return "global";
+        return countryName; // uk / us / ca for countrywise pages
     }, [platform, countryName]);
 
     const biDataCurrency = useMemo(() => currencyForCountry(biCountryName), [biCountryName]);
@@ -1861,7 +1868,7 @@ export default function DashboardPage() {
     const [selectedEndDay, setSelectedEndDay] = useState<number | null>(null);
     const [biLoading, setBiLoading] = useState(false);
     const [biError, setBiError] = useState<string | null>(null);
-    const [biDailySeries, setBiDailySeries] = useState<DailySeries | null>(null);
+    const [biDailySeries, setBiDailySeries] = useState<ApiDailySeries | null>(null);
     const [biPeriods, setBiPeriods] = useState<BiApiResponse["periods"] | null>(null);
     const [liveBiPayload, setLiveBiPayload] = useState<any>(null);
     const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
@@ -2390,35 +2397,99 @@ export default function DashboardPage() {
                         ? "₹"
                         : "¤";
 
-    const biDailySeriesHome = useMemo(() => {
+    // const biDailySeriesHome = useMemo(() => {
+    //     if (!biDailySeries) return null;
+
+    //     const fromCurrency: CurrencyCode =
+    //         platform === "global" ? "USD" : biDataCurrency;
+
+    //     const currentSource =
+    //         platform === "global"
+    //             ? biDailySeries.current_mtd_global || biDailySeries.current_mtd || []
+    //             : biDailySeries.current_mtd || [];
+
+    //     const previousSource =
+    //         platform === "global"
+    //             ? biDailySeries.previous_global || biDailySeries.previous || []
+    //             : biDailySeries.previous || [];
+
+    //     const convPoint = (p: DailyPoint): DailyPoint => ({
+    //         ...p,
+
+    //         // units should never be currency converted
+    //         quantity: Number(p.quantity || 0),
+
+    //         net_sales:
+    //             p.net_sales != null
+    //                 ? convertToDisplayCurrency(Number(p.net_sales || 0), fromCurrency)
+    //                 : p.net_sales,
+
+    //         gross_sales:
+    //             p.gross_sales != null
+    //                 ? convertToDisplayCurrency(Number(p.gross_sales || 0), fromCurrency)
+    //                 : p.gross_sales,
+
+    //         profit:
+    //             p.profit != null
+    //                 ? convertToDisplayCurrency(Number(p.profit || 0), fromCurrency)
+    //                 : p.profit,
+
+    //         cm2_profit:
+    //             p.cm2_profit != null
+    //                 ? convertToDisplayCurrency(Number(p.cm2_profit || 0), fromCurrency)
+    //                 : p.cm2_profit,
+    //     });
+
+    //     return {
+    //         previous: previousSource.map(convPoint),
+    //         current_mtd: currentSource.map(convPoint),
+    //     };
+    // }, [biDailySeries, convertToDisplayCurrency, biDataCurrency, platform]);
+
+    const biDailySeriesHome = useMemo<GraphDailySeries | null>(() => {
         if (!biDailySeries) return null;
 
         const fromCurrency: CurrencyCode =
             platform === "global" ? "USD" : biDataCurrency;
 
+        const currentSource: DailyPoint[] =
+            platform === "global"
+                ? biDailySeries.current_mtd_global || biDailySeries.current_mtd || []
+                : biDailySeries.current_mtd || [];
+
+        const previousSource: DailyPoint[] =
+            platform === "global"
+                ? biDailySeries.previous_global || biDailySeries.previous || []
+                : biDailySeries.previous || [];
+
         const convPoint = (p: DailyPoint): DailyPoint => ({
             ...p,
+            quantity: Number(p.quantity || 0),
+
             net_sales:
                 p.net_sales != null
-                    ? convertToDisplayCurrency(p.net_sales, fromCurrency)
+                    ? convertToDisplayCurrency(Number(p.net_sales || 0), fromCurrency)
                     : p.net_sales,
+
             gross_sales:
                 p.gross_sales != null
-                    ? convertToDisplayCurrency(p.gross_sales, fromCurrency)
+                    ? convertToDisplayCurrency(Number(p.gross_sales || 0), fromCurrency)
                     : p.gross_sales,
+
             profit:
                 p.profit != null
-                    ? convertToDisplayCurrency(p.profit, fromCurrency)
+                    ? convertToDisplayCurrency(Number(p.profit || 0), fromCurrency)
                     : p.profit,
+
             cm2_profit:
                 p.cm2_profit != null
-                    ? convertToDisplayCurrency(p.cm2_profit, fromCurrency)
+                    ? convertToDisplayCurrency(Number(p.cm2_profit || 0), fromCurrency)
                     : p.cm2_profit,
         });
 
         return {
-            previous: (biDailySeries.previous || []).map(convPoint),
-            current_mtd: (biDailySeries.current_mtd || []).map(convPoint),
+            previous: previousSource.map(convPoint),
+            current_mtd: currentSource.map(convPoint),
         };
     }, [biDailySeries, convertToDisplayCurrency, biDataCurrency, platform]);
 
@@ -2672,7 +2743,14 @@ export default function DashboardPage() {
             if (!showLiveBI) return;
 
             const normalized = (biCountryName || "").toLowerCase();
-            if (!normalized || normalized === "global") return;
+
+            if (!normalized) return;
+
+            // Safety: only global page can call countryName=global
+            if (normalized === "global" && platform !== "global") return;
+
+            // Safety: countrywise pages should never accidentally call global
+            if (platform !== "global" && normalized === "global") return;
 
             setBiError(null);
             setBiLoading(true);
@@ -2753,7 +2831,7 @@ export default function DashboardPage() {
                 setBiLoading(false);
             }
         },
-        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
+        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA, platform]
     );
 
     const fetchPreviousSkuwiseGlobal = useCallback(async (
@@ -7263,7 +7341,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
         },
     };
 
-    const dummyBiDailySeriesHome: DailySeries = {
+    const dummyBiDailySeriesHome: GraphDailySeries = {
         previous: [
             { date: "2026-03-01", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
             { date: "2026-03-02", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
@@ -8138,36 +8216,38 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
 
 
-    const globalLiveBiDailySeriesHome = useMemo(() => {
-        if (platform !== "global") return biDailySeriesHome;
+    // const globalLiveBiDailySeriesHome = useMemo(() => {
+    //     if (platform !== "global") return biDailySeriesHome;
 
-        const ukPayload = readCountryCache("uk");
-        const usPayload = readCountryCache("us");
+    //     const ukPayload = readCountryCache("uk");
+    //     const usPayload = readCountryCache("us");
 
-        const ukSeries = ukPayload?.biDailySeries;
-        const usSeries = usPayload?.biDailySeries;
+    //     const ukSeries = ukPayload?.biDailySeries;
+    //     const usSeries = usPayload?.biDailySeries;
 
-        if (!ukSeries && !usSeries) return biDailySeriesHome;
+    //     if (!ukSeries && !usSeries) return biDailySeriesHome;
 
-        return {
-            previous: mergeSeries(
-                ukSeries?.previous || [],
-                usSeries?.previous || []
-            ),
-            current_mtd: mergeSeries(
-                ukSeries?.current_mtd || [],
-                usSeries?.current_mtd || []
-            ),
-        };
-    }, [platform, biDailySeriesHome, readCountryCache, mergeSeries]);
+    //     return {
+    //         previous: mergeSeries(
+    //             ukSeries?.previous || [],
+    //             usSeries?.previous || []
+    //         ),
+    //         current_mtd: mergeSeries(
+    //             ukSeries?.current_mtd || [],
+    //             usSeries?.current_mtd || []
+    //         ),
+    //     };
+    // }, [platform, biDailySeriesHome, readCountryCache, mergeSeries]);
 
     // const finalBiDailySeriesHome = shouldShowDummyUi ? dummyBiDailySeriesHome : biDailySeriesHome;
 
-    const finalBiDailySeriesHome = shouldShowDummyUi
-        ? dummyBiDailySeriesHome
-        : platform === "global"
-            ? globalLiveBiDailySeriesHome
-            : biDailySeriesHome;
+    // const finalBiDailySeriesHome = shouldShowDummyUi
+    //     ? dummyBiDailySeriesHome
+    //     : biDailySeriesHome;
+
+    const finalBiDailySeriesHome: GraphDailySeries | null = shouldShowDummyUi
+    ? (dummyBiDailySeriesHome as GraphDailySeries)
+    : biDailySeriesHome;
 
     const finalBiPeriods = shouldShowDummyUi ? dummyBiPeriods : biPeriods;
 
