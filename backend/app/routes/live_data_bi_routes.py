@@ -470,17 +470,92 @@ def live_mtd_vs_previous():
             }), 202
 
         # ---------------------------
-        # FULL PREVIOUS MONTH (for charts)
+        # FULL PREVIOUS MONTH + DAILY SERIES: UK / US / GLOBAL
         # ---------------------------
-        _, prev_daily_full = fetch_previous_period_data(
-            user_id, country, prev_full_start, prev_full_end
+
+        uk_to_usd_rate = fetch_conversion_rate(
+            country="us",
+            year=prev_start.year,
+            month_name=month_name[prev_start.month].lower(),
+            user_currency="gbp",
+            selected_currency="usd",
+        ) or 1.0
+
+        # Previous full month
+        _, previous_uk_raw = fetch_previous_period_data(
+            user_id, "uk", prev_full_start, prev_full_end
         )
 
-        prev_full_totals = totals_from_daily_series(prev_daily_full)
+        _, previous_us_raw = fetch_previous_period_data(
+            user_id, "us", prev_full_start, prev_full_end
+        )
+
+        previous_uk = _convert_daily_series_to_usd(previous_uk_raw, uk_to_usd_rate)
+        previous_us = _tag_daily_series(previous_us_raw, "us")
+        previous_global = _build_global_daily_series(previous_us, previous_uk)
+
+        # ✅ Full previous month total based on selected country
+        if country == "global":
+            prev_full_totals = totals_from_daily_series(previous_global)
+        elif country == "uk":
+            prev_full_totals = totals_from_daily_series(previous_uk)
+        else:
+            prev_full_totals = totals_from_daily_series(previous_us)
+
         total_previous_net_sales_full_month = float(
             prev_full_totals.get("net_sales", 0) or 0
         )
 
+        # Current MTD
+        _, current_mtd_uk_raw = fetch_current_mtd_data(
+            user_id, "uk", curr_start, curr_end
+        )
+
+        _, current_mtd_us_raw = fetch_current_mtd_data(
+            user_id, "us", curr_start, curr_end
+        )
+
+        current_mtd_uk = _convert_daily_series_to_usd(current_mtd_uk_raw, uk_to_usd_rate)
+        current_mtd_us = _tag_daily_series(current_mtd_us_raw, "us")
+        current_mtd_global = _build_global_daily_series(current_mtd_us, current_mtd_uk)
+
+        # Previous aligned period
+        _, previous_aligned_uk_raw = fetch_previous_period_data(
+            user_id, "uk", prev_start, prev_end
+        )
+
+        _, previous_aligned_us_raw = fetch_previous_period_data(
+            user_id, "us", prev_start, prev_end
+        )
+
+        previous_aligned_uk = _convert_daily_series_to_usd(
+            previous_aligned_uk_raw,
+            uk_to_usd_rate,
+        )
+
+        previous_aligned_us = _tag_daily_series(
+            previous_aligned_us_raw,
+            "us",
+        )
+
+        previous_aligned_global = _build_global_daily_series(
+            previous_aligned_us,
+            previous_aligned_uk,
+        )
+
+        # ✅ Backward-compatible selected-country series
+        if country == "global":
+            prev_daily_full = previous_global
+            prev_daily_aligned_selected = previous_aligned_global
+            curr_daily_selected = current_mtd_global
+        elif country == "uk":
+            prev_daily_full = previous_uk
+            prev_daily_aligned_selected = previous_aligned_uk
+            curr_daily_selected = current_mtd_uk
+        else:
+            prev_daily_full = previous_us
+            prev_daily_aligned_selected = previous_aligned_us
+            curr_daily_selected = current_mtd_us
         # ---------------------------
         # PLATFORM FEES + ADS (SUMMARY ONLY)
         # ---------------------------
@@ -1223,12 +1298,31 @@ def live_mtd_vs_previous():
             "cm1_profit_pie": cm1_profit_pie,
 
             "daily_series": {
+                "current_mtd_global": current_mtd_global,
+                "current_mtd_uk": current_mtd_uk,
+                "current_mtd_us": current_mtd_us,
+
+                "previous_global": previous_global,
+                "previous_uk": previous_uk,
+                "previous_us": previous_us,
+
+                # old keys keep frontend compatibility
                 "previous": prev_daily_full,
-                "current_mtd": curr_daily,
+                "current_mtd": curr_daily_selected,
             },
+
             "daily_series_aligned": {
-                "previous": prev_daily_aligned,
-                "current_mtd": curr_daily,
+                "current_mtd_global": current_mtd_global,
+                "current_mtd_uk": current_mtd_uk,
+                "current_mtd_us": current_mtd_us,
+
+                "previous_global": previous_aligned_global,
+                "previous_uk": previous_aligned_uk,
+                "previous_us": previous_aligned_us,
+
+                # old keys keep frontend compatibility
+                "previous": prev_daily_aligned_selected,
+                "current_mtd": curr_daily_selected,
             },
 
             
@@ -1344,6 +1438,78 @@ def _safe_float(v):
         return float(v or 0)
     except Exception:
         return 0.0
+    
+DAILY_MONEY_COLS = [
+    "product_sales",
+    "gross_sales",
+    "net_sales",
+    "profit",
+    "platform_fee",
+    "advertising",
+    "rembursement_fee",
+    "cogs",
+    "cost_of_unit_sold",
+    "selling_fees",
+    "fba_fees",
+]
+
+
+def _convert_daily_series_to_usd(rows, rate):
+    rate = float(rate or 1.0)
+    out = []
+
+    for r in rows or []:
+        nr = dict(r)
+
+        for col in DAILY_MONEY_COLS:
+            if col in nr:
+                nr[col] = _safe_float(nr.get(col)) * rate
+
+        nr["country"] = "uk"
+        nr["source_country"] = "uk"
+        nr["currency"] = "USD"
+
+        out.append(nr)
+
+    return out
+
+
+def _tag_daily_series(rows, country):
+    out = []
+
+    for r in rows or []:
+        nr = dict(r)
+        nr["country"] = country
+        nr["source_country"] = country
+        nr["currency"] = "USD"
+        out.append(nr)
+
+    return out
+
+
+def _build_global_daily_series(us_rows, uk_rows_usd):
+    by_date = {}
+
+    for r in (us_rows or []) + (uk_rows_usd or []):
+        d = r.get("date")
+        if not d:
+            continue
+
+        if d not in by_date:
+            by_date[d] = {
+                "date": d,
+                "country": "global",
+                "currency": "USD",
+            }
+
+        for key, val in r.items():
+            if key in ("date", "country", "source_country", "currency"):
+                continue
+
+            if isinstance(val, (int, float)):
+                by_date[d][key] = _safe_float(by_date[d].get(key)) + _safe_float(val)
+
+    return [by_date[d] for d in sorted(by_date.keys())]
 
 
 def _get_total_row(items):
