@@ -2286,20 +2286,40 @@ def run_live_prompt_1_5_summary(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": LIVE_BI_PROMPT_1_5_SUMMARY},
-                {"role": "user", "content": json.dumps(payload)},
+                {"role": "user", "content": json.dumps(payload, default=str)},
             ],
             temperature=0,
             response_format={"type": "json_object"},
-            max_tokens=300,
+
+            
+            max_tokens=1600,
         )
 
-        return json.loads(resp.choices[0].message.content)
+        raw = resp.choices[0].message.content or "{}"
+
+        try:
+            parsed = json.loads(raw)
+        except Exception as parse_error:
+            print("[AI ERROR] Prompt-1.5 raw response was:", raw)
+            raise parse_error
+
+        summary_text = parsed.get("summary_text", "")
+        metric_bullets = parsed.get("metric_bullets", [])
+
+        if not isinstance(metric_bullets, list):
+            metric_bullets = []
+
+        return {
+            "summary_text": str(summary_text or ""),
+            "metric_bullets": [str(x) for x in metric_bullets if x],
+        }
 
     except Exception as e:
         print("[AI ERROR] Prompt-1.5 summary failed:", e)
-        return {"summary_bullets": []}
-
-
+        return {
+            "summary_text": "",
+            "metric_bullets": [],
+        }
 
 
 def run_inventory_ai_summary(inventory_summary: dict) -> dict:
