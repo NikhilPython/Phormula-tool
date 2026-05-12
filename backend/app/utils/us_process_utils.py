@@ -30,6 +30,44 @@ def get_previous_month_year(month, year):
     prev_month = MONTHS_REVERSE_MAP[prev_month_num]
     return prev_month, year
 
+_TABLE_COL_CACHE = {}
+
+def get_table_columns(conn, table_name: str, schema: str = "public"):
+    cache_key = f"{schema}.{table_name}"
+    if cache_key in _TABLE_COL_CACHE:
+        return _TABLE_COL_CACHE[cache_key]
+
+    q = text("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = :schema
+          AND table_name = :table
+        ORDER BY ordinal_position
+    """)
+    rows = conn.execute(q, {"schema": schema, "table": table_name}).fetchall()
+    cols = [r[0] for r in rows]
+    _TABLE_COL_CACHE[cache_key] = cols
+    return cols
+
+
+def safe_to_sql(df: pd.DataFrame, table_name: str, conn, if_exists="append",
+                index=False, method="multi", chunksize=100):
+    db_cols = get_table_columns(conn, table_name)
+
+    if not df.columns.is_unique:
+        df = df.loc[:, ~df.columns.duplicated()].copy()
+
+    keep_cols = [c for c in db_cols if c in df.columns]
+    df2 = df[keep_cols].copy()
+
+    df2.to_sql(
+        table_name,
+        conn,
+        if_exists=if_exists,
+        index=index,
+        method=method,
+        chunksize=chunksize
+    )
 
 def process_skuwise_us_data(user_id, country, month, year):
     engine = create_engine(db_url)
@@ -37,7 +75,15 @@ def process_skuwise_us_data(user_id, country, month, year):
     conn = engine.connect()
 
     source_table = f"user_{user_id}_{country}_{month}{year}_data"
-    target_table = f"skuwisemonthly_{user_id}_{country}_{month}{year}"
+
+    # Main detailed monthly table, same as UK:
+    # example: nse_2_us_april2025
+    target_table = f"nse_{user_id}_{country}_{month}{year}"
+
+    # Summary monthly table, old US monthly format:
+    target_table_nse = f"skuwisemonthly_{user_id}_{country}_{month}{year}"
+
+    # Rolling country table
     target_table2 = f"skuwisemonthly_{user_id}_{country}"
 
     target_table_us = f"skuwisemonthly_{user_id}"
@@ -46,7 +92,9 @@ def process_skuwise_us_data(user_id, country, month, year):
     target_table_gbp = f"skuwisemonthlygbp_{user_id}"
 
     prev_month, prev_year = get_previous_month_year(month, year)
-    prev_table = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}"
+
+    # Previous month should also come from NSE table, same as UK
+    prev_table = f"nse_{user_id}_{country}_{prev_month}{prev_year}"
 
     def create_monthly_table(table_name):
 
@@ -94,6 +142,89 @@ def process_skuwise_us_data(user_id, country, month, year):
                 reimbursement_vs_sales REAL,
                 sales_mix REAL,
                 profit_mix REAL,
+                month TEXT,
+                year TEXT,
+                country TEXT,
+                user_id INTEGER
+            )
+        """))
+
+    def create_us_nse_full_table(table_name):
+        conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+        conn.execute(text(f"""
+            CREATE TABLE {table_name} (
+                id SERIAL PRIMARY KEY,
+                product_name TEXT,
+                sku TEXT,
+                quantity INTEGER,
+                return_quantity INTEGER,
+                total_quantity INTEGER,
+
+                product_sales REAL,
+                product_sales_tax REAL,
+                postage_credits REAL,
+                shipping_credits REAL,
+                shipping_credits_tax REAL,
+                gift_wrap_credits REAL,
+                giftwrap_credits_tax REAL,
+
+                promotional_rebates REAL,
+                promotional_rebates_tax REAL,
+                promotional_rebates_percentage REAL,
+
+                gross_sales REAL,
+                refund_sales REAL,
+                tex_and_credits REAL,
+                net_sales REAL,
+
+                price_in_gbp REAL,
+                cost_of_unit_sold REAL,
+
+                marketplace_facilitator_tax REAL,
+                other_transaction_fees REAL,
+                selling_fees REAL,
+                refund_selling_fees REAL,
+                fba_fees REAL,
+                other REAL,
+                total REAL,
+                amazon_fee REAL,
+
+                net_taxes REAL,
+                net_credits REAL,
+                misc_transaction REAL,
+
+                profit REAL,
+                unit_wise_profitability REAL,
+                profit_percentage REAL,
+
+                lost_total REAL,
+                visible_ads REAL,
+                dealsvouchar_ads REAL,
+                advertising_total REAL,
+
+                platformfeenew REAL,
+                platform_fee REAL,
+                platform_fee_inventory_storage REAL,
+
+                shipment_charges REAL,
+                shipment_fees REAL,
+
+                cm2_profit REAL,
+                cm2_profit_percentage REAL,
+                cm2_margins REAL,
+                acos REAL,
+
+                rembursement_fee REAL,
+                rembursment_vs_cm2_margins REAL,
+                reimbursement_vs_sales REAL,
+
+                sales_mix REAL,
+                profit_mix REAL,
+
+                errorstatus TEXT,
+                answer REAL,
+                difference REAL,
+
                 month TEXT,
                 year TEXT,
                 country TEXT,
@@ -1040,7 +1171,8 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped = pd.concat([sku_grouped, pd.DataFrame([sum_row])], ignore_index=True)
 
         # ---------- create tables ----------
-        create_monthly_table(target_table)
+        create_us_nse_full_table(target_table)      # nse_{user_id}_{country}_{month}{year}
+        create_monthly_table(target_table_nse)      # skuwisemonthly_{user_id}_{country}_{month}{year}
         create_monthly_table(target_table2)
         create_monthly_table(target_table_us)
         create_monthly_table(target_table_ind)
@@ -1059,8 +1191,68 @@ def process_skuwise_us_data(user_id, country, month, year):
             "net sales": "net_sales",
             "net taxes": "net_taxes",
             "net credits": "net_credits",
-            "profit%": "profit_percentage"
+            "profit%": "profit_percentage",
+            "shipment_charges": "shipment_charges"
         })
+        # Full detailed NSE dataframe for nse_{user_id}_{country}_{month}{year}
+        df_nse_full = sku_grouped.copy()
+        
+        US_NSE_FULL_COLUMNS = [
+            "product_name", "sku", "quantity", "return_quantity", "total_quantity",
+
+            "product_sales", "product_sales_tax", "postage_credits",
+            "shipping_credits", "shipping_credits_tax",
+            "gift_wrap_credits", "giftwrap_credits_tax",
+
+            "promotional_rebates", "promotional_rebates_tax",
+            "promotional_rebates_percentage",
+
+            "gross_sales", "refund_sales", "tex_and_credits", "net_sales",
+
+            "price_in_gbp", "cost_of_unit_sold",
+
+            "marketplace_facilitator_tax", "other_transaction_fees",
+            "selling_fees", "refund_selling_fees", "fba_fees",
+            "other", "total", "amazon_fee",
+
+            "net_taxes", "net_credits", "misc_transaction",
+
+            "profit", "unit_wise_profitability", "profit_percentage",
+
+            "lost_total", "visible_ads", "dealsvouchar_ads", "advertising_total",
+
+            "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
+
+            "shipment_charges", "shipment_fees",
+
+            "cm2_profit", "cm2_profit_percentage", "cm2_margins", "acos",
+
+            "rembursement_fee", "rembursment_vs_cm2_margins",
+            "reimbursement_vs_sales",
+
+            "sales_mix", "profit_mix",
+
+            "errorstatus", "answer", "difference",
+
+            "month", "year", "country", "user_id"
+        ]
+
+        TEXT_COLS_US_NSE = {
+            "product_name", "sku", "errorstatus", "month", "year", "country"
+        }
+
+        for col in US_NSE_FULL_COLUMNS:
+            if col not in df_nse_full.columns:
+                df_nse_full[col] = "" if col in TEXT_COLS_US_NSE else 0
+
+        for col in US_NSE_FULL_COLUMNS:
+            if col in TEXT_COLS_US_NSE:
+                df_nse_full[col] = df_nse_full[col].astype(str).fillna("")
+            else:
+                df_nse_full[col] = pd.to_numeric(df_nse_full[col], errors="coerce").fillna(0)
+
+        df_nse_full = df_nse_full[US_NSE_FULL_COLUMNS]
+
         final_columns = [
             "sku", "product_name", "quantity", "return_quantity", "total_quantity",
             "asp", "gross_sales", "refund_sales", "tex_and_credits", "net_sales",
@@ -1082,8 +1274,14 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped = sku_grouped[final_columns]
 
         # ---------- save local ----------
-        sku_grouped.to_sql(target_table, conn, if_exists="append", index=False, method="multi")
-        sku_grouped.to_sql(target_table2, conn, if_exists="replace", index=False, method="multi")
+        # Full detailed NSE table
+        safe_to_sql(df_nse_full, target_table, conn, if_exists="append", index=False, method="multi", chunksize=100)
+
+        # Reduced monthly summary table
+        safe_to_sql(sku_grouped, target_table_nse, conn, if_exists="append", index=False, method="multi", chunksize=100)
+
+        # Rolling country table
+        safe_to_sql(sku_grouped, target_table2, conn, if_exists="replace", index=False, method="multi", chunksize=100)
 
         # ---------- currency conversion ----------
         rate_us = 1.0
@@ -1139,10 +1337,10 @@ def process_skuwise_us_data(user_id, country, month, year):
             df_currency["month"] = month.lower()
             df_currency["year"] = str(year)
 
-        df_usd.to_sql(target_table_us, conn, if_exists="replace", index=False, method="multi")
-        df_ind.to_sql(target_table_ind, conn, if_exists="replace", index=False, method="multi")
-        df_can.to_sql(target_table_can, conn, if_exists="replace", index=False, method="multi")
-        df_gbp.to_sql(target_table_gbp, conn, if_exists="replace", index=False, method="multi")
+        safe_to_sql(df_usd, target_table_us, conn, if_exists="append", index=False, method="multi", chunksize=100)
+        safe_to_sql(df_ind, target_table_ind, conn, if_exists="append", index=False, method="multi", chunksize=100)
+        safe_to_sql(df_can, target_table_can, conn, if_exists="append", index=False, method="multi", chunksize=100)
+        safe_to_sql(df_gbp, target_table_gbp, conn, if_exists="append", index=False, method="multi", chunksize=100)
 
         try:
             conn.commit()
