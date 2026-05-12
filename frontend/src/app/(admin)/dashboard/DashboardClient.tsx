@@ -3001,7 +3001,7 @@ export default function DashboardPage() {
             await fetchPrevTargetSummary();
 
             if (platform === "global") {
-                setStep(1, "MTD Fetching", 22, "Fetching previous SKU-wise global data...");
+                setStep(1, "MTD Fetching", 22, "Fetching SKU-wise global data...");
                 await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay);
             }
 

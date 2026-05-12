@@ -1836,7 +1836,7 @@ export default function ObjectivesPageClient({
   }, [token, isPreviewMode, country, integratedCountries]);
 
   const handleConnectAmazonPreview = () => {
-    router.push(`/profile/${countryName}/NA/NA`);
+    router.push(`/profile/${resolvedTargetCountry}/NA/NA`);
   };
 
   return (
