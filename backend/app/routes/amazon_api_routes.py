@@ -1831,13 +1831,15 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     total_cm2_profit = (
         float(total_row.get("profit", 0.0) or 0.0)
-        - total_ads
-        - other_transactions_total
+        - float(total_row.get("ads_spend", 0.0) or 0.0)
     )
 
+    total_row["cm2_profit"] = round(total_cm2_profit, 2)
+    total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
+
     total_cm2_margins = (
-        total_cm2_profit / total_net_sales * 100
-    ) if total_net_sales else 0
+        total_cm2_profit / float(total_row.get("net_sales", 0.0) or 0.0) * 100.0
+    ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
 
     tacos = (
         total_ads / total_net_sales * 100
@@ -2681,9 +2683,7 @@ def finances_mtd_transactions():
 
         total_cm2_profit = (
             float(total_row.get("profit", 0.0) or 0.0)
-            - product_ads_total
-            - other_transactions_total
-            - cost_ads_total
+            - float(total_row.get("ads_spend", 0.0) or 0.0)
         )
 
         total_cm2_margins = (
@@ -2702,7 +2702,7 @@ def finances_mtd_transactions():
             float(current_net_reimbursement or 0.0) / float(total_row.get("net_sales", 0.0) or 0.0) * 100.0
         ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
 
-        total_row["total_ads"] = round(cost_ads_total, 2)
+        total_row["total_ads"] = round(product_ads_total + cost_ads_total, 2)
         total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
         total_row["total_cm2_margins"] = round(total_cm2_margins, 2)
         total_row["tacos_total_advertising_cost_of_sale"] = round(tacos, 2)
@@ -2744,6 +2744,7 @@ def finances_mtd_transactions():
         for col, val in derived_totals.items():
             if col not in [
                 "platform_fee",  # keep corrected platform_fee formula
+                "cm2_profit",   # keep CM2 = CM1 Profit - Ads Spend
                 "total_ads",
                 "total_cm2_profit",
                 "total_cm2_margins",
