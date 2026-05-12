@@ -319,6 +319,11 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             tzinfo=timezone.utc
         )
 
+        now_utc = datetime.now(timezone.utc)
+
+        if year == now_utc.year and month_number == now_utc.month:
+            month_end = now_utc
+
         current_month_col = f"Current Month Units Sold ({month_name})"
         amazon_engine = db.get_engine(bind="amazon")
 
@@ -401,7 +406,23 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             how="left"
         )
 
-        sales_30_as_of = date(year, month_number, 6)
+        today_utc = datetime.now(timezone.utc).date()
+
+        # If selected month is current month, use today.
+        # If selected month is a past month, use that month's last day.
+        # If selected month is future, also cap to today to avoid future data.
+        selected_month_last_day = date(
+            year,
+            month_number,
+            monthrange(year, month_number)[1]
+        )
+
+        if year == today_utc.year and month_number == today_utc.month:
+            sales_30_as_of = today_utc
+        elif selected_month_last_day < today_utc:
+            sales_30_as_of = selected_month_last_day
+        else:
+            sales_30_as_of = today_utc
 
         sales_30_df = fetch_last_30_days_units(
             user_id=user_id,
@@ -529,9 +550,13 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         final_df.insert(0, "Sno.", range(1, len(final_df) + 1))
 
+        # Use the same value that is displayed as "Current Inventory"
+        current_inventory_for_coverage = safe_numeric(final_df["available"], 0)
+        sales_last_30_days = safe_numeric(final_df["Sales Last 30 Days"], 0)
+
         final_df["Coverage Ratio (In Months)"] = (
-            final_df["Inventory at the end of the month"]
-            / final_df["Sales Last 30 Days"].replace(0, pd.NA)
+            current_inventory_for_coverage
+            / sales_last_30_days.replace(0, pd.NA)
         ).fillna(0).round(2)
 
         inventory_alerts = generate_inventory_alerts_for_all_skus(
@@ -577,7 +602,18 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             col: (final_df[col].sum() if col in numeric_columns and col != "Sno." else "")
             for col in final_df.columns
         }
+
         total_row["Product Name"] = "Total"
+
+        total_current_inventory = float(safe_numeric(final_df["available"], 0).sum())
+        total_sales_30 = float(safe_numeric(final_df["Sales Last 30 Days"], 0).sum())
+
+        total_row["Coverage Ratio (In Months)"] = (
+            round(total_current_inventory / total_sales_30, 2)
+            if total_sales_30 > 0
+            else 0
+        )
+
         final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
         filename = f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}.xlsx"
