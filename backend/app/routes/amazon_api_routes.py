@@ -1515,6 +1515,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "gift_wrap_credits", "shipping_credits_tax", "giftwrap_credits_tax",
         "promotional_rebates", "promotional_rebates_tax",
         "marketplace_facilitator_tax", "selling_fees", "fba_fees",
+        "marketplace_fees",  # IMPORTANT: convert UK marketplace fees to USD
         "other", "gross_sales", "cogs", "profit", "net_sales",
         "ads_spend", "product_spend", "display_spend", "brand_spend",
         "platform_fee", "platform_fee_inventory_storage",
@@ -1713,6 +1714,53 @@ def get_current_global_data_for_live_bi(user_id: int):
     global_df.rename(columns={"product_name_group": "product_name"}, inplace=True)
     global_df["sku"] = ""
 
+    # ---------------- GLOBAL P&L FORMULA FIX ----------------
+    # Make global use the same formula as UK/US productwise table.
+
+    for col in [
+        "net_sales",
+        "cogs",
+        "marketplace_fees",
+        "tax_and_credits",
+        "ads_spend",
+        "product_spend",
+        "display_spend",
+    ]:
+        if col not in global_df.columns:
+            global_df[col] = 0.0
+        global_df[col] = pd.to_numeric(global_df[col], errors="coerce").fillna(0.0)
+
+    # If ads_spend is missing / stale, rebuild it from product + display.
+    global_df["ads_spend"] = (
+        pd.to_numeric(global_df["product_spend"], errors="coerce").fillna(0.0)
+        + pd.to_numeric(global_df["display_spend"], errors="coerce").fillna(0.0)
+    )
+
+    # Other Transactions = positive tax_and_credits
+    # Other Transactions = US other + UK other converted to USD
+    # Do NOT rebuild this from tax_and_credits globally.
+    if "other" not in global_df.columns:
+        global_df["other"] = 0.0
+
+    global_df["other"] = pd.to_numeric(
+        global_df["other"],
+        errors="coerce"
+    ).fillna(0.0)
+
+    # CM1 Profit = Net Sales - COGS - Marketplace Fees + Other Transactions
+    global_df["profit"] = (
+        pd.to_numeric(global_df["net_sales"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(global_df["cogs"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(global_df["marketplace_fees"], errors="coerce").fillna(0.0)
+        + pd.to_numeric(global_df["other"], errors="coerce").fillna(0.0)
+    ).round(2)
+
+    # CM2 Profit = CM1 Profit - Ads Spend
+    global_df["cm2_profit"] = (
+        pd.to_numeric(global_df["profit"], errors="coerce").fillna(0.0)
+        - pd.to_numeric(global_df["ads_spend"], errors="coerce").fillna(0.0)
+    ).round(2)
+
     global_df["asp"] = global_df.apply(
         lambda r: float(r["net_sales"]) / float(r["quantity"])
         if float(r.get("quantity", 0) or 0) else 0,
@@ -1779,6 +1827,30 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     total_qty = float(total_row.get("quantity", 0) or 0)
     total_net_sales = float(total_row.get("net_sales", 0) or 0)
+
+    # Global total Other Transactions = sum of country-wise Other Transactions
+    total_row["other"] = round(
+        float(pd.to_numeric(global_df["other"], errors="coerce").fillna(0.0).sum())
+        if "other" in global_df.columns else 0.0,
+        2,
+    )
+
+    # Global total CM1 Profit
+    total_row["profit"] = round(
+        float(total_row.get("net_sales", 0.0) or 0.0)
+        - float(total_row.get("cogs", 0.0) or 0.0)
+        - float(total_row.get("marketplace_fees", 0.0) or 0.0)
+        + float(total_row.get("other", 0.0) or 0.0),
+        2,
+    )
+
+    # Global total CM2 Profit
+    total_row["cm2_profit"] = round(
+        float(total_row.get("profit", 0.0) or 0.0)
+        - float(total_row.get("ads_spend", 0.0) or 0.0),
+        2,
+    )
+
     total_profit = float(total_row.get("profit", 0) or 0)
     total_cm2 = float(total_row.get("cm2_profit", 0) or 0)
 
@@ -1829,10 +1901,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     other_transactions_total = float(total_row.get("platform_fee", 0.0) or 0.0)
     total_ads = product_ads_total + cost_ads_total
 
-    total_cm2_profit = (
-        float(total_row.get("profit", 0.0) or 0.0)
-        - float(total_row.get("ads_spend", 0.0) or 0.0)
-    )
+    total_cm2_profit = float(total_row.get("cm2_profit", 0.0) or 0.0)
 
     total_row["cm2_profit"] = round(total_cm2_profit, 2)
     total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
@@ -1906,7 +1975,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "net_sales": round(total_net_sales, 2),
         "gross_sales": round(float(total_row.get("gross_sales", 0.0) or 0.0), 2),
         "asp": round(float(total_row.get("asp", 0.0) or 0.0), 2),
-        "profit": round(total_profit, 2),
+        "profit": round(float(total_row.get("profit", 0.0) or 0.0), 2),
         "cm2_profit": round(total_cm2_profit, 2),
         "profit_percentage": round(
             (total_cm2_profit / total_net_sales * 100) if total_net_sales else 0,
@@ -2399,6 +2468,26 @@ def finances_mtd_transactions():
             + _col(df_sku, "marketplace_facilitator_tax")
         ).fillna(0.0)
         df_sku["tax_and_credits"] = (df_sku["credits"] - df_sku["tax"].abs()).round(2)
+        # ---------------- CM1 PROFIT FIX ----------------
+        # Marketplace Fees = Selling Fees + FBA Fees
+        df_sku["marketplace_fees"] = (
+            pd.to_numeric(df_sku["selling_fees"], errors="coerce").fillna(0.0).abs()
+            + pd.to_numeric(df_sku["fba_fees"], errors="coerce").fillna(0.0).abs()
+        )
+
+        # Other Transactions
+        if "other" not in df_sku.columns:
+            df_sku["other"] = 0.0
+
+        df_sku["other"] = pd.to_numeric(df_sku["other"], errors="coerce").fillna(0.0)
+
+        # CM1 Profit = Net Sales - COGS - Marketplace Fees + Other Transactions
+        df_sku["profit"] = (
+            pd.to_numeric(df_sku["net_sales"], errors="coerce").fillna(0.0)
+            - pd.to_numeric(df_sku["cogs"], errors="coerce").fillna(0.0)
+            - df_sku["marketplace_fees"]
+            + df_sku["tax_and_credits"].fillna(0.0)
+        ).round(2)
 
         # -------- ADS merge --------
         ads_total_product_spend = 0.0
@@ -2612,6 +2701,44 @@ def finances_mtd_transactions():
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
         total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
+        # Grand Total Marketplace Fees
+        total_row["marketplace_fees"] = round(
+            float(pd.to_numeric(df_sku["marketplace_fees"], errors="coerce").fillna(0.0).sum())
+            if "marketplace_fees" in df_sku.columns else 0.0,
+            2,
+        )
+
+        # Grand Total Tax and Credits / Other Transactions
+        total_row["credits"] = round(
+            float(pd.to_numeric(df_sku["credits"], errors="coerce").fillna(0.0).sum())
+            if "credits" in df_sku.columns else 0.0,
+            2,
+        )
+
+        total_row["tax"] = round(
+            float(pd.to_numeric(df_sku["tax"], errors="coerce").fillna(0.0).sum())
+            if "tax" in df_sku.columns else 0.0,
+            2,
+        )
+
+        total_row["tax_and_credits"] = round(
+            float(total_row["credits"]) - abs(float(total_row["tax"])),
+            2,
+        )
+
+        # If frontend displays "Other Transactions" from `other`,
+        # keep it same as tax_and_credits.
+        total_row["other"] = abs(float(total_row.get("tax_and_credits", 0.0) or 0.0))
+
+        # Grand Total CM1 Profit
+        # CM1 = Net Sales - COGS - Marketplace Fees + Tax and Credits
+        total_row["profit"] = round(
+            float(total_row.get("net_sales", 0.0) or 0.0)
+            - float(total_row.get("cogs", 0.0) or 0.0)
+            - float(total_row.get("marketplace_fees", 0.0) or 0.0)
+            + float(total_row.get("other", 0.0) or 0.0),
+            2,
+        )
 
         total_row["ads_impressions"] = float(df_sku["ads_impressions"].sum()) if "ads_impressions" in df_sku.columns else 0.0
         total_row["ads_clicks"] = float(df_sku["ads_clicks"].sum()) if "ads_clicks" in df_sku.columns else 0.0
@@ -2661,9 +2788,9 @@ def finances_mtd_transactions():
         total_row["cm2_profit_per_unit"] = (total_row["cm2_profit"] / total_qty) if total_qty else 0.0
         total_row["cm2_profit_per"] = (total_row["cm2_profit"] / g_net_sales * 100.0) if g_net_sales else 0.0
 
-        total_row["credits"] = float(df_sku["credits"].sum()) if "credits" in df_sku.columns else 0.0
-        total_row["tax"] = float(df_sku["tax"].sum()) if "tax" in df_sku.columns else 0.0
-        total_row["tax_and_credits"] = round(float(total_row["credits"]) - abs(float(total_row["tax"])), 2)
+        # total_row["credits"] = float(df_sku["credits"].sum()) if "credits" in df_sku.columns else 0.0
+        # total_row["tax"] = float(df_sku["tax"].sum()) if "tax" in df_sku.columns else 0.0
+        # total_row["tax_and_credits"] = round(float(total_row["credits"]) - abs(float(total_row["tax"])), 2)
         # ================= DASHBOARD SUMMARY VALUES =================
 
         cost_ads_total = (
@@ -2743,7 +2870,8 @@ def finances_mtd_transactions():
 
         for col, val in derived_totals.items():
             if col not in [
-                "platform_fee",  # keep corrected platform_fee formula
+                "platform_fee",
+                "profit",       # keep CM1 = Net Sales - COGS - Marketplace Fees + Other
                 "cm2_profit",   # keep CM2 = CM1 Profit - Ads Spend
                 "total_ads",
                 "total_cm2_profit",
