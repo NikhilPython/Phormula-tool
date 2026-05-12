@@ -835,10 +835,8 @@ const MonthsforBI: React.FC = () => {
   };
 
   const handleConnectAmazonPreview = () => {
-    const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
-    router.push(`/profile/${connectCountry}/NA/NA`);
+    router.push(`/profile/${countryName}/NA/NA`);
   };
-
 
   // =========================
   // PREVIEW / DUMMY DATA
@@ -3489,20 +3487,20 @@ const MonthsforBI: React.FC = () => {
               </span>
             </h2> */}
             <PageBreadcrumb
-                            variant="page"
-                            align="left"
-                            textSize="2xl"
-                            pageTitle={
-                              <div className="flex flex-wrap items-baseline gap-2">
-                                <span className="text-[#414042] font-bold">
-                                   Business Insights - AI Analyst&nbsp;- Amazon
-                                </span>
-                                <span className="text-green-500 font-bold">
-                                  {countryName?.toUpperCase()}
-                                </span>
-                              </div>
-                            }
-                          />
+              variant="page"
+              align="left"
+              textSize="2xl"
+              pageTitle={
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-[#414042] font-bold">
+                    Business Insights - AI Analyst&nbsp;- Amazon
+                  </span>
+                  <span className="text-green-500 font-bold">
+                    {countryName?.toUpperCase()}
+                  </span>
+                </div>
+              }
+            />
             <p>
               <i className="text-xs 2xl:text-sm">
                 Select the year and month for both periods to compare growth metrics.

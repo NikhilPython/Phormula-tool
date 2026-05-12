@@ -6900,9 +6900,8 @@ export default function DashboardPage() {
     };
 
     const handleConnectAmazonPreview = () => {
-        const connectCountry = countryName === "global" ? "uk" : countryName;
-        router.push(`/profile/${connectCountry}/NA/NA`);
-    };
+        router.push(`/profile/${countryName}/NA/NA`);
+    }; 
 
     const handleHashNavigation = useCallback((rawHash?: string) => {
         if (typeof window === "undefined") return;

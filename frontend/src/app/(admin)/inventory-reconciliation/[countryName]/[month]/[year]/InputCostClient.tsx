@@ -2246,8 +2246,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   };
 
   const handleConnectAmazonPreview = () => {
-    const connectCountry = countryName === "global" ? "uk" : countryName;
-    router.push(`/profile/${connectCountry}/NA/NA`);
+    router.push(`/profile/${countryName}/NA/NA`);
   };
 
   if (pageLoading) {

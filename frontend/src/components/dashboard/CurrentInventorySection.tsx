@@ -549,7 +549,12 @@ export default function CurrentInventorySection({
       const mtdKey = findMtdKey(r);
       const sales30Key = findSales30Key(r);
 
-      const currentInventory = toNumberSafe(r["Inventory at the end of the month"]);
+      const currentInventory = toNumberSafe(
+        (r as any)["Current Inventory"] ??
+        (r as any)["Inventory at the end of the month"] ??
+        (r as any)["available"] ??
+        0
+      );
       const mtdSales = toNumberSafe(mtdKey ? (r as any)[mtdKey] : 0);
       const sales30 = toNumberSafe(sales30Key ? (r as any)[sales30Key] : 0);
 
@@ -577,8 +582,19 @@ export default function CurrentInventorySection({
 
       const inventory180Plus = age181to270 + age271to365 + age365plus;
 
-      const denom = mtdSales + sales30;
-      const coverage = denom > 0 ? currentInventory / denom : 0;
+      const coverageFromBackend = toNumberSafe(
+        (r as any)["Coverage Ratio (In Months)"] ??
+        (r as any)["Coverage Ratio"] ??
+        (r as any)["coverage_ratio"] ??
+        0
+      );
+
+      const coverage =
+        coverageFromBackend > 0
+          ? coverageFromBackend
+          : sales30 > 0
+            ? currentInventory / sales30
+            : 0;
 
       const salesRank = toNumberSafe((r as any)["sales-rank"]);
       const estStorage = toNumberSafe((r as any)["estimated-storage-cost-next-month"]);
@@ -962,65 +978,6 @@ export default function CurrentInventorySection({
       },
     ];
   }, [storageHeaderLabel]);
-
-  // return (
-  //   <div
-  //     className="
-  //       mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
-  //       w-full max-w-full overflow-hidden
-  //       flex flex-col
-  //     "
-  //   >
-  //     <div className="mb-3 flex items-center justify-between">
-  //       <div className="flex items-baseline gap-2">
-  //         <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
-  //       </div>
-
-  //       <DownloadIconButton
-  //         onClick={downloadInventoryExcel}
-  //         disabled={invLoading || !invRows?.length}
-  //         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-  //       />
-  //     </div>
-
-  //     {invError ? (
-  //       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-  //         {invError}
-  //       </div>
-  //     ) : (
-  //       <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
-  //         <div className="min-w-0">
-  //           <DataTable
-  //             columns={columns}
-  //             data={invLoading ? [] : tableRows}
-  //             loading={false}
-  //             paginate={true}
-  //             pageSize={15}
-  //             scrollY={false}
-  //             maxHeight="none"
-  //             emptyMessage={invLoading ? "" : "No inventory data."}
-  //             rowClassName={(row) => {
-  //               if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
-  //               if (row.rowType === "others") return "!bg-[#FFFFFF]";
-  //               return "bg-white";
-  //             }}
-  //             tableClassName="
-  //         table-fixed w-full
-  //         [&_th]:whitespace-normal
-  //         [&_th]:break-words
-  //         [&_th]:leading-snug
-  //         [&_th>div]:[display:-webkit-box]
-  //         [&_th>div]:[-webkit-box-orient:vertical]
-  //         [&_th>div]:[-webkit-line-clamp:3]
-  //         [&_th>div]:overflow-hidden
-  //         [&_th>div]:text-ellipsis
-  //       "
-  //           />
-  //         </div>
-  //       </div>
-  //     )}
-  //   </div>
-  // );
 
   return (
     <div

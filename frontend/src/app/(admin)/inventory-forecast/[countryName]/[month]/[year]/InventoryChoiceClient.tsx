@@ -860,10 +860,9 @@ export default function InventoryFlowPage() {
     );
   };
 
-  const handleConnectAmazonPreview = () => {
-    const connectCountry = countryName === 'global' ? 'uk' : countryName;
-    router.push(`/profile/${connectCountry}/NA/NA`);
-  };
+const handleConnectAmazonPreview = () => {
+    router.push(`/profile/${countryName}/NA/NA`);
+};
 
   return (
     <>

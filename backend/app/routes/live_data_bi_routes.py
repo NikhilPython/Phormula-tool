@@ -1334,22 +1334,24 @@ def live_mtd_vs_previous():
         ) or 1.0
 
         # Previous full month
-        _, previous_uk_raw = fetch_previous_period_data(
-            user_id, "uk", prev_full_start, prev_full_end
-        )
+        previous_uk = []
+        previous_us = []
+        previous_global = []
 
-        _, previous_us_raw = fetch_previous_period_data(
-            user_id, "us", prev_full_start, prev_full_end
-        )
+        if country == "uk":
+            _, previous_uk_raw = fetch_previous_period_data(
+                user_id, "uk", prev_full_start, prev_full_end
+            )
+            previous_uk = _convert_daily_series_to_usd(previous_uk_raw, uk_to_usd_rate)
 
-        previous_uk = _convert_daily_series_to_usd(previous_uk_raw, uk_to_usd_rate)
-        previous_us = _tag_daily_series(previous_us_raw, "us")
-        previous_global = _build_global_daily_series(previous_us, previous_uk)
+        elif country == "us":
+            _, previous_us_raw = fetch_previous_period_data(
+                user_id, "us", prev_full_start, prev_full_end
+            )
+            previous_us = _tag_daily_series(previous_us_raw, "us")
 
         # ✅ Full previous month total based on selected country
-        if country == "global":
-            prev_full_totals = totals_from_daily_series(previous_global)
-        elif country == "uk":
+        if country == "uk":
             prev_full_totals = totals_from_daily_series(previous_uk)
         else:
             prev_full_totals = totals_from_daily_series(previous_us)
@@ -1359,48 +1361,47 @@ def live_mtd_vs_previous():
         )
 
         # Current MTD
-        _, current_mtd_uk_raw = fetch_current_mtd_data(
-            user_id, "uk", curr_start, curr_end
-        )
+        current_mtd_uk = []
+        current_mtd_us = []
+        current_mtd_global = []
 
-        _, current_mtd_us_raw = fetch_current_mtd_data(
-            user_id, "us", curr_start, curr_end
-        )
+        if country == "uk":
+            _, current_mtd_uk_raw = fetch_current_mtd_data(
+                user_id, "uk", curr_start, curr_end
+            )
+            current_mtd_uk = _convert_daily_series_to_usd(current_mtd_uk_raw, uk_to_usd_rate)
 
-        current_mtd_uk = _convert_daily_series_to_usd(current_mtd_uk_raw, uk_to_usd_rate)
-        current_mtd_us = _tag_daily_series(current_mtd_us_raw, "us")
-        current_mtd_global = _build_global_daily_series(current_mtd_us, current_mtd_uk)
+        elif country == "us":
+            _, current_mtd_us_raw = fetch_current_mtd_data(
+                user_id, "us", curr_start, curr_end
+            )
+            current_mtd_us = _tag_daily_series(current_mtd_us_raw, "us")
 
         # Previous aligned period
-        _, previous_aligned_uk_raw = fetch_previous_period_data(
-            user_id, "uk", prev_start, prev_end
-        )
+        previous_aligned_uk = []
+        previous_aligned_us = []
+        previous_aligned_global = []
 
-        _, previous_aligned_us_raw = fetch_previous_period_data(
-            user_id, "us", prev_start, prev_end
-        )
+        if country == "uk":
+            _, previous_aligned_uk_raw = fetch_previous_period_data(
+                user_id, "uk", prev_start, prev_end
+            )
+            previous_aligned_uk = _convert_daily_series_to_usd(
+                previous_aligned_uk_raw,
+                uk_to_usd_rate,
+            )
 
-        previous_aligned_uk = _convert_daily_series_to_usd(
-            previous_aligned_uk_raw,
-            uk_to_usd_rate,
-        )
-
-        previous_aligned_us = _tag_daily_series(
-            previous_aligned_us_raw,
-            "us",
-        )
-
-        previous_aligned_global = _build_global_daily_series(
-            previous_aligned_us,
-            previous_aligned_uk,
-        )
+        elif country == "us":
+            _, previous_aligned_us_raw = fetch_previous_period_data(
+                user_id, "us", prev_start, prev_end
+            )
+            previous_aligned_us = _tag_daily_series(
+                previous_aligned_us_raw,
+                "us",
+            )
 
         # ✅ Backward-compatible selected-country series
-        if country == "global":
-            prev_daily_full = previous_global
-            prev_daily_aligned_selected = previous_aligned_global
-            curr_daily_selected = current_mtd_global
-        elif country == "uk":
+        if country == "uk":
             prev_daily_full = previous_uk
             prev_daily_aligned_selected = previous_aligned_uk
             curr_daily_selected = current_mtd_uk

@@ -1322,10 +1322,9 @@ export default function InputCostPage({ params }: Params) {
     );
   };
 
-  const handleConnectAmazonPreview = () => {
-    const connectCountry = countryName === 'global' ? 'uk' : countryName;
-    router.push(`/profile/${connectCountry}/NA/NA`);
-  };
+const handleConnectAmazonPreview = () => {
+    router.push(`/profile/${countryName}/NA/NA`);
+};
 
   const handleWarehouseDownload = async () => {
     if (!warehouseData || warehouseData.length === 0) {

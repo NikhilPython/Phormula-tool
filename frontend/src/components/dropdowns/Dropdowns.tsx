@@ -4445,10 +4445,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     );
   };
 
-  const handleConnectAmazonPreview = () => {
-    const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
-    router.push(`/profile/${connectCountry}/NA/NA`);
-  };
+const handleConnectAmazonPreview = () => {
+    router.push(`/profile/${countryName}/NA/NA`);
+};
 
 
 
