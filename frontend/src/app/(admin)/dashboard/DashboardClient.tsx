@@ -1539,12 +1539,10 @@ export default function DashboardPage() {
     // Move this here, before runAdsBackgroundSync
     const isManualRefreshRef = useRef(false);
     const shouldPostCacheRef = useRef(false);
-    const [cacheSaveTick, setCacheSaveTick] = useState(0);
 
     const triggerCachePost = useCallback(() => {
         shouldPostCacheRef.current = true;
         isManualRefreshRef.current = true;
-        setCacheSaveTick((x) => x + 1);
     }, []);
 
     const [pendingHash, setPendingHash] = useState<string>("");
@@ -1766,8 +1764,13 @@ export default function DashboardPage() {
         }
     }, [platform, isMonthYearNA, activeDateRegion]);
 
+    const adsBackgroundLoadingRef = useRef(false);
+    const adsSeededRef = useRef(false);
+    const adsSeedErrorRef = useRef<string | null>(null);
+    const adsBackgroundErrorRef = useRef<string | null>(null);
+
     const runAdsBackgroundSync = useCallback(async () => {
-        if (adsBackgroundLoading) return;
+        if (adsBackgroundLoadingRef.current) return;
         if (isMonthYearNA) return;
         if (platform === "shopify") return;
 
@@ -1775,7 +1778,7 @@ export default function DashboardPage() {
             typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
         if (!jwtToken) {
-            setAdsBackgroundError("No token found. Please sign in.");
+            adsBackgroundErrorRef.current = "No token found. Please sign in.";
             return;
         }
 
@@ -1786,11 +1789,10 @@ export default function DashboardPage() {
                     ? "CA"
                     : "UK";
 
-        setAdsBackgroundLoading(true);
-        setAdsBackgroundError(null);
+        adsBackgroundLoadingRef.current = true;
+        adsBackgroundErrorRef.current = null;
 
         try {
-            // Slow calls run in background. Do not await this from dashboard loader.
             await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
             if (country === "UK" || country === "US") {
@@ -1830,30 +1832,23 @@ export default function DashboardPage() {
                 throw new Error(errMsg || "monthly_sp_sd_to_db failed");
             }
 
-            setAdsSeeded(true);
-            setAdsSeedError(null);
+            adsSeededRef.current = true;
+            adsSeedErrorRef.current = null;
 
-            // Refresh ads UI silently after background sync completes.
-            await fetchMonthlySp(true);
-
-            // Trigger second POST /save with updated ads data.
-            // triggerCachePost();
+            // IMPORTANT: do not update UI automatically here.
+            // await fetchMonthlySp(true);
         } catch (e: any) {
             console.error("Background ads sync failed:", e);
-            setAdsSeeded(false);
-            setAdsSeedError(e?.message || "Ads background sync failed");
-            setAdsBackgroundError(e?.message || "Ads background sync failed");
+            adsSeededRef.current = false;
+            adsSeedErrorRef.current = e?.message || "Ads background sync failed";
+            adsBackgroundErrorRef.current = e?.message || "Ads background sync failed";
         } finally {
-            setAdsBackgroundLoading(false);
+            adsBackgroundLoadingRef.current = false;
         }
     }, [
         isMonthYearNA,
         platform,
-        baseURL,
         activeDateRegion,
-        fetchMonthlySp,
-        adsBackgroundLoading,
-        triggerCachePost,
     ]);
 
     useEffect(() => {
@@ -3273,10 +3268,6 @@ export default function DashboardPage() {
         selectedEndDay,
     ]);
 
-    // const liveCacheKey = useMemo(() => {
-    //     return `live-dashboard-cache:${platform}:${activeDateRegion}:${selectedStartDay ?? "na"}:${selectedEndDay ?? "na"}`;
-    // }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
-
     const liveCacheKey = useMemo(() => {
         const country =
             platform === "amazon-us" ? "us" :
@@ -3285,7 +3276,7 @@ export default function DashboardPage() {
                         "global";
 
         return `live-dashboard-cache:${country}:${activeDateRegion}`;
-    }, [platform, activeDateRegion, selectedStartDay, selectedEndDay]);
+    }, [platform, activeDateRegion]);
 
 
     const restoreLiveCacheFromLocalStorage = useCallback(() => {
@@ -3713,7 +3704,6 @@ export default function DashboardPage() {
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
     const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
-    const [refreshNow, setRefreshNow] = useState(Date.now());
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
 
@@ -3735,18 +3725,10 @@ export default function DashboardPage() {
         }
     }, []);
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setRefreshNow(Date.now());
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, []);
-
     const getRelativeRefreshText = useCallback((ts: number | null) => {
         if (!ts) return "Never refreshed";
 
-        const diffMs = refreshNow - ts;
+        const diffMs = Date.now() - ts;
         const diffSec = Math.floor(diffMs / 1000);
         const diffMin = Math.floor(diffSec / 60);
         const diffHr = Math.floor(diffMin / 60);
@@ -3756,35 +3738,7 @@ export default function DashboardPage() {
         if (diffMin < 60) return `${diffMin} min ago`;
         if (diffHr < 24) return `${diffHr} hr ago`;
         return `${diffDay} day ago`;
-    }, [refreshNow]);
-
-    useEffect(() => {
-        if (!lastRefreshAt) return;
-
-        const interval = setInterval(() => {
-            setLastRefreshAt((prev) => (prev ? prev : null));
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [lastRefreshAt]);
-
-    // const handleHardRefresh = useCallback(async () => {
-    //     if (typeof window === "undefined") return;
-
-    //     resetStepState();
-
-    //     try {
-    //         await runDashboardLoadWithSteps();
-
-    //         // First POST /save after main dashboard data has finished loading.
-    //         triggerCachePost();
-    //     } catch (err) {
-    //         console.error("Hard refresh failed:", err);
-    //         isManualRefreshRef.current = false;
-    //         shouldPostCacheRef.current = false;
-    //     }
-    // }, [runDashboardLoadWithSteps, triggerCachePost]);
-
+    }, []);
 
     const handleHardRefresh = useCallback(async () => {
         if (typeof window === "undefined") return;
@@ -6444,7 +6398,7 @@ export default function DashboardPage() {
         invRows,
         monthlySpRows,
         monthlySpTotalSpend,
-        cacheSaveTick,
+        // cacheSaveTick,
     ]);
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
@@ -8160,37 +8114,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const finalAllValuesZero = shouldShowDummyUi ? false : allValuesZero;
 
-
-
-    // const globalLiveBiDailySeriesHome = useMemo(() => {
-    //     if (platform !== "global") return biDailySeriesHome;
-
-    //     const ukPayload = readCountryCache("uk");
-    //     const usPayload = readCountryCache("us");
-
-    //     const ukSeries = ukPayload?.biDailySeries;
-    //     const usSeries = usPayload?.biDailySeries;
-
-    //     if (!ukSeries && !usSeries) return biDailySeriesHome;
-
-    //     return {
-    //         previous: mergeSeries(
-    //             ukSeries?.previous || [],
-    //             usSeries?.previous || []
-    //         ),
-    //         current_mtd: mergeSeries(
-    //             ukSeries?.current_mtd || [],
-    //             usSeries?.current_mtd || []
-    //         ),
-    //     };
-    // }, [platform, biDailySeriesHome, readCountryCache, mergeSeries]);
-
-    // const finalBiDailySeriesHome = shouldShowDummyUi ? dummyBiDailySeriesHome : biDailySeriesHome;
-
-    // const finalBiDailySeriesHome = shouldShowDummyUi
-    //     ? dummyBiDailySeriesHome
-    //     : biDailySeriesHome;
-
     const finalBiDailySeriesHome: GraphDailySeries | null = shouldShowDummyUi
         ? (dummyBiDailySeriesHome as GraphDailySeries)
         : biDailySeriesHome;
@@ -8201,142 +8124,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyMonthlySkuwiseRowsForTable
         : monthlySkuwiseRowsForTable;
 
-    // const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
-    //     const rows = (finalMonthlySkuwiseRowsForTable || [])
-    //         .filter((r: any) => !r.isTotal && !r.isOthers)
-    //         .map((r: any) => ({
-    //             name: r.product_name || r.sku || "Unknown",
-    //             value: Number(r.cm2_profit || 0),
-    //             prevValue: 0,
-    //             pct: 0,
-    //             deltaPct: null,
-    //         }))
-    //         .filter((r) => r.value !== 0);
-
-    //     const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
-
-    //     return rows.map((r) => ({
-    //         ...r,
-    //         pct: (Math.abs(r.value) / total) * 100,
-    //     }));
-    // }, [finalMonthlySkuwiseRowsForTable]);
-
-
-    // const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
-    //     const normalizeName = (name: any) =>
-    //         String(name || "Unknown").trim().toLowerCase();
-
-    //     const toPieCurrency = (v: number) => {
-    //         const n = Number(v || 0);
-    //         if (!n) return 0;
-
-    //         if (platform === "global") {
-    //             return convertToDisplayCurrency(n, biSourceCurrency);
-    //         }
-
-    //         return n;
-    //     };
-
-    //     const previousMetaByName = new Map<
-    //         string,
-    //         { prevValue: number; deltaPct: number | null }
-    //     >();
-
-    //     const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
-
-    //     if (Array.isArray(apiSlices)) {
-    //         apiSlices.forEach((s: any) => {
-    //             const name = String(s?.name || "Others").trim();
-
-    //             previousMetaByName.set(normalizeName(name), {
-    //                 prevValue: toPieCurrency(Number(s?.profit_prev || 0)),
-    //                 deltaPct: s?.delta_pct == null ? null : Number(s.delta_pct),
-    //             });
-    //         });
-    //     }
-
-    //     const cg = liveBiPayload?.categorized_growth;
-    //     const top80 = Array.isArray(cg?.top_80_skus) ? cg.top_80_skus : [];
-    //     const other = Array.isArray(cg?.other_skus) ? cg.other_skus : [];
-
-    //     [...top80, ...other].forEach((r: any) => {
-    //         const name = String(r?.product_name ?? r?.name ?? "Unknown").trim();
-    //         const prevValue = toPieCurrency(Number(r?.profit_prev ?? 0));
-    //         const currValue = toPieCurrency(Number(r?.profit_curr ?? 0));
-
-    //         previousMetaByName.set(normalizeName(name), {
-    //             prevValue,
-    //             deltaPct:
-    //                 prevValue !== 0
-    //                     ? ((currValue - prevValue) / Math.abs(prevValue)) * 100
-    //                     : null,
-    //         });
-    //     });
-
-    //     const allRows = (finalMonthlySkuwiseRowsForTable || [])
-    //         .filter((r: any) => !r.isTotal)
-    //         .map((r: any) => {
-    //             const name = String(r.product_name || r.sku || "Unknown").trim();
-    //             const meta = previousMetaByName.get(normalizeName(name));
-
-    //             return {
-    //                 name,
-    //                 value: Number(r.profit ?? 0),
-    //                 prevValue: meta?.prevValue ?? 0,
-    //                 deltaPct: meta?.deltaPct ?? null,
-    //                 isTableOthers:
-    //                     r.isOthers ||
-    //                     normalizeName(r.product_name) === "others" ||
-    //                     normalizeName(r.sku) === "others",
-    //             };
-    //         })
-    //         .filter((r) => r.value !== 0 || r.prevValue !== 0);
-
-    //     // Top 5 should be real product rows only.
-    //     // The table's existing "Others" row must not become a named slice;
-    //     // it must be added into the final pie "Others".
-    //     const namedRows = allRows
-    //         .filter((r) => !r.isTableOthers)
-    //         .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-
-    //     const tableOthersRows = allRows.filter((r) => r.isTableOthers);
-
-    //     const top = namedRows.slice(0, 5);
-    //     const rest = [...namedRows.slice(5), ...tableOthersRows];
-
-    //     if (rest.length) {
-    //         const restCurr = rest.reduce((sum, r) => sum + r.value, 0);
-    //         const restPrev = rest.reduce((sum, r) => sum + r.prevValue, 0);
-
-    //         top.push({
-    //             name: "Others",
-    //             value: restCurr,
-    //             prevValue: restPrev,
-    //             deltaPct:
-    //                 restPrev !== 0
-    //                     ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
-    //                     : null,
-    //             isTableOthers: true,
-    //         });
-    //     }
-
-    //     const total = top.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
-
-    //     return top.map((r) => ({
-    //         name: r.name,
-    //         value: r.value,
-    //         prevValue: r.prevValue,
-    //         deltaPct: r.deltaPct,
-    //         pct: (Math.abs(r.value) / total) * 100,
-    //     }));
-    // }, [
-    //     finalMonthlySkuwiseRowsForTable,
-    //     liveBiPayload?.cm1_profit_pie,
-    //     liveBiPayload?.categorized_growth,
-    //     platform,
-    //     biSourceCurrency,
-    //     convertToDisplayCurrency,
-    // ]);
 
     const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const prevCm2ByName = buildPreviousProfitMap("cm2_profit");
