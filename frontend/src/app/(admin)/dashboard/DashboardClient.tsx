@@ -6901,7 +6901,7 @@ export default function DashboardPage() {
 
     const handleConnectAmazonPreview = () => {
         router.push(`/profile/${countryName}/NA/NA`);
-    }; 
+    };
 
     const handleHashNavigation = useCallback((rawHash?: string) => {
         if (typeof window === "undefined") return;
@@ -8386,23 +8386,101 @@ Keep enough stock for validation but avoid over-committing too early.`,
         buildPreviousProfitMap,
     ]);
 
+    // const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+    //     const prevProfitByName = buildPreviousProfitMap("profit");
+
+    //     const rows = (finalMonthlySkuwiseRowsForTable || [])
+    //         .filter((r: any) => {
+    //             const name = String(r?.product_name || "").trim().toLowerCase();
+    //             const sku = String(r?.sku || "").trim().toUpperCase();
+
+    //             return (
+    //                 !r?.isTotal &&
+    //                 !r?.isOthers &&
+    //                 sku !== "TOTAL" &&
+    //                 sku !== "GRAND_TOTAL" &&
+    //                 name !== "total" &&
+    //                 name !== "grand total"
+    //             );
+    //         })
+    //         .map((r: any) => {
+    //             const name = normalizeProductDisplayName(
+    //                 r?.product_name || r?.sku || "Unknown"
+    //             );
+
+    //             const value = Number(r?.profit ?? r?.cm1_profit ?? 0);
+    //             const prevValue = prevProfitByName.get(normalizePieName(name)) ?? 0;
+
+    //             return {
+    //                 name,
+    //                 value,
+    //                 prevValue,
+    //                 pct: 0,
+    //                 deltaPct: safeDeltaPct(value, prevValue),
+    //             };
+    //         })
+    //         .filter((r) => r.value !== 0 || r.prevValue !== 0);
+
+    //     const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
+
+    //     return rows
+    //         .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    //         .map((r) => ({
+    //             ...r,
+    //             pct: (Math.abs(r.value) / total) * 100,
+    //         }));
+    // }, [
+    //     finalMonthlySkuwiseRowsForTable,
+    //     buildPreviousProfitMap,
+    // ]);
+
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+        // ✅ Countrywise: use live_mtd_bi categorized_growth directly
+        if (platform !== "global") {
+            const growthRows =
+                liveBiPayload?.categorized_growth?.new_or_reviving_skus || [];
+
+            const rows: Cm1PieSlice[] = growthRows
+                .map((r: any) => {
+                    const name = normalizeProductDisplayName(
+                        r?.product_name || r?.sku || "Unknown"
+                    );
+
+                    const value = Number(r?.profit_curr ?? 0);
+                    const prevValue = Number(r?.profit_prev ?? 0);
+
+                    return {
+                        name,
+                        value,
+                        prevValue,
+                        pct: 0,
+                        deltaPct: safeDeltaPct(value, prevValue),
+                    };
+                })
+                .filter((r: Cm1PieSlice) => {
+                    const n = r.name.toLowerCase();
+                    return (
+                        n !== "total" &&
+                        n !== "grand total" &&
+                        n !== "unknown" &&
+                        (r.value !== 0 || r.prevValue !== 0)
+                    );
+                });
+
+            const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
+
+            return rows
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .map((r) => ({
+                    ...r,
+                    pct: (Math.abs(r.value) / total) * 100,
+                }));
+        }
+
+        // ✅ Global: keep existing SKU-wise global previous map logic
         const prevProfitByName = buildPreviousProfitMap("profit");
 
-        const rows = (finalMonthlySkuwiseRowsForTable || [])
-            .filter((r: any) => {
-                const name = String(r?.product_name || "").trim().toLowerCase();
-                const sku = String(r?.sku || "").trim().toUpperCase();
-
-                return (
-                    !r?.isTotal &&
-                    !r?.isOthers &&
-                    sku !== "TOTAL" &&
-                    sku !== "GRAND_TOTAL" &&
-                    name !== "total" &&
-                    name !== "grand total"
-                );
-            })
+        const rows: Cm1PieSlice[] = (finalMonthlySkuwiseRowsForTable || [])
             .map((r: any) => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
@@ -8430,6 +8508,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 pct: (Math.abs(r.value) / total) * 100,
             }));
     }, [
+        platform,
+        liveBiPayload,
         finalMonthlySkuwiseRowsForTable,
         buildPreviousProfitMap,
     ]);
