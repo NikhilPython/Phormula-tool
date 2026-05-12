@@ -152,99 +152,105 @@ export default function Cm1ProfitBreakdownPie({
   //   ];
   // }, [data]);
 
-  const displayData = useMemo<Cm1PieSlice[]>(() => {
-    const arr = (activeData || []).filter((d) => Number(d.value || 0) !== 0);
-    if (!arr.length) return [];
+ const displayData = useMemo<Cm1PieSlice[]>(() => {
+  const isOthers = (name?: string) =>
+    String(name || "").trim().toLowerCase() === "others";
 
-    const isOthers = (name?: string) => (name || "").trim().toLowerCase() === "others";
+  const isTotal = (name?: string) => {
+    const n = String(name || "").trim().toLowerCase();
+    return (
+      n === "total" ||
+      n === "grand total" ||
+      n === "total_segment" ||
+      n.includes("total")
+    );
+  };
 
-    // ✅ If backend already produced "Others", don't create another one.
-    const hasOthers = arr.some((d) => isOthers(d.name));
+  // ✅ Remove Total rows first
+  const arr = (activeData || [])
+    .filter((d) => !isTotal(d.name))
+    .filter((d) => Number(d.value || 0) !== 0 || Number(d.prevValue || 0) !== 0);
 
-    const normalized = arr.map((d) => {
-      const v = Math.abs(Number(d.value || 0));
-      const pv = Math.abs(Number(d.prevValue || 0));
-      const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
+  if (!arr.length) return [];
 
-      return {
-        ...d,
-        name: (d.name || "").trim() || "Others",
-        value: v,
-        prevValue: pv,
-        // keep pct from backend if present; else compute later
-        pct: Number(d.pct || 0),
-        // prefer backend deltaPct if provided, else fallback
-        deltaPct: d.deltaPct ?? fallbackDelta,
-      };
-    });
+  const normalized = arr.map((d) => {
+    const v = Math.abs(Number(d.value || 0));
+    const pv = Math.abs(Number(d.prevValue || 0));
+    const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
 
-    // ✅ If pct missing/0, compute it from normalized values
-    const total = normalized.reduce((s, d) => s + (Number(d.value) || 0), 0) || 1;
-    const withPct = normalized.map((d) => ({
+    return {
       ...d,
-      pct: d.pct ? d.pct : (Number(d.value || 0) / total) * 100,
-    }));
-
-    // ✅ Helper: always move "Others" to the end (if present)
-    const othersLast = (rows: Cm1PieSlice[]) => {
-      const nonOthers = rows.filter((r) => !isOthers(r.name));
-      const others = rows.filter((r) => isOthers(r.name));
-      return [...nonOthers, ...others];
+      name: String(d.name || "").trim() || "Others",
+      value: v,
+      prevValue: pv,
+      pct: Number(d.pct || 0),
+      deltaPct: d.deltaPct ?? fallbackDelta,
     };
+  });
 
-    if (hasOthers) {
-      // ✅ backend already aggregated to exactly what you want
-      return othersLast(withPct);
-    }
+  // ✅ Separate existing Others, but do NOT skip grouping
+  const existingOthersRows = normalized.filter((d) => isOthers(d.name));
+  const skuRows = normalized.filter((d) => !isOthers(d.name));
 
-    // Fallback: only if backend didn't send Others
-    const sorted = [...withPct].sort(
-      (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
-    );
+  const sorted = [...skuRows].sort(
+    (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
+  );
 
-    const totalAbs =
-      sorted.reduce((s, d) => s + Math.abs(Number(d.value || 0)), 0) || 1;
+  const totalAbs =
+    normalized.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0) || 1;
 
-    let cum = 0;
-    let cutoff = 0;
-    for (let i = 0; i < sorted.length; i++) {
-      cum += Math.abs(Number(sorted[i].value || 0));
-      cutoff = i + 1;
-      if (cum / totalAbs >= TARGET_SHARE) break;
-    }
+  let cumulative = 0;
+  let cutoff = 0;
 
-    const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
-    const kept = sorted.slice(0, keepCount);
-    const rest = sorted.slice(keepCount);
+  for (let i = 0; i < sorted.length; i++) {
+    cumulative += Math.abs(Number(sorted[i].value || 0));
+    cutoff = i + 1;
 
-    if (!rest.length) return othersLast(kept);
+    if (cumulative / totalAbs >= TARGET_SHARE) break;
+  }
 
-    const othersValue = rest.reduce(
-      (s, d) => s + Math.abs(Number(d.value || 0)),
-      0
-    );
-    const othersPrev = rest.reduce(
-      (s, d) => s + Math.abs(Number(d.prevValue || 0)),
-      0
-    );
+  // ✅ Minimum 5 SKUs, or more if needed to reach 80%
+  const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
 
-    const othersPct = totalAbs ? (othersValue / totalAbs) * 100 : 0;
-    const othersDeltaPct =
-      othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+  const kept = sorted.slice(0, keepCount);
+  const rest = sorted.slice(keepCount);
 
-    return othersLast([
-      ...kept,
-      {
-        name: "Others",
-        value: othersValue,
-        prevValue: othersPrev,
-        pct: othersPct,
-        deltaPct: othersDeltaPct,
-      },
-    ]);
-  }, [activeData]);
+  // ✅ Existing Others + all non-kept SKUs become one Others row
+  const othersSource = [...rest, ...existingOthersRows];
 
+  const rebuiltKept = kept.map((d) => ({
+    ...d,
+    pct: (Math.abs(Number(d.value || 0)) / totalAbs) * 100,
+  }));
 
+  if (!othersSource.length) {
+    return rebuiltKept;
+  }
+
+  const othersValue = othersSource.reduce(
+    (sum, d) => sum + Math.abs(Number(d.value || 0)),
+    0
+  );
+
+  const othersPrev = othersSource.reduce(
+    (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
+    0
+  );
+
+  const othersDeltaPct =
+    othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+
+  return [
+    ...rebuiltKept,
+    {
+      name: "Others",
+      value: othersValue,
+      prevValue: othersPrev,
+      pct: (othersValue / totalAbs) * 100,
+      deltaPct: othersDeltaPct,
+    },
+  ];
+}, [activeData]);
 
   const exportChartBase64 = () => {
     try {
