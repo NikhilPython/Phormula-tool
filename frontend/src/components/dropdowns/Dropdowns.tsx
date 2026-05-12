@@ -1246,6 +1246,8 @@ const MonthlyObjectiveStrip = ({
   className = "",
   targetSummary,
   currencySymbol = "$",
+  countryName = "",
+  range = "",
 }: {
   objective?: ObjectivePayload;
   className?: string;
@@ -1255,15 +1257,31 @@ const MonthlyObjectiveStrip = ({
     cashflow_total?: number;
   } | null;
   currencySymbol?: string;
+  countryName?: string;
+  range?: RangeType;
 }) => {
-  const growth =
-    objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
+  const isGlobal = countryName.toLowerCase() === "global";
 
-  const profit =
-    objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
+  const objectiveTitle =
+    range === "monthly"
+      ? "Monthly Objectives & Targets"
+      : range === "quarterly"
+        ? "Quarterly Objectives & Targets"
+        : range === "yearly"
+          ? "Yearly Objectives & Targets"
+          : "Objectives & Targets";
 
-  const inventory =
-    typeof objective?.inventory_clearance_priority === "boolean"
+  const growth = isGlobal
+    ? "-"
+    : objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
+
+  const profit = isGlobal
+    ? "-"
+    : objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
+
+  const inventory = isGlobal
+    ? "-"
+    : typeof objective?.inventory_clearance_priority === "boolean"
       ? objective.inventory_clearance_priority
         ? "Yes"
         : "No"
@@ -1337,7 +1355,7 @@ const MonthlyObjectiveStrip = ({
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <PageBreadcrumb
-            pageTitle="Monthly Objectives & Targets"
+            pageTitle={objectiveTitle}
             variant="page"
             textSize="2xl"
             align="left"
@@ -1351,7 +1369,7 @@ const MonthlyObjectiveStrip = ({
             key={item.label}
             className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-2 transition-all duration-200 hover:shadow-sm"
           >
-            <div className={`absolute left-0 top-0 h-full w-1 `} />
+            <div className={`absolute left-0 top-0 h-full w-1`} />
 
             <div className="pl-2">
               <div className="text-[11px] 2xl:text-xs font-medium text-slate-500 leading-tight">
@@ -1359,7 +1377,7 @@ const MonthlyObjectiveStrip = ({
               </div>
 
               <div
-                className={`mt-2  text-sm font-semibold leading-snug capitalize break-words ${item.valueClass}`}
+                className={`mt-2 text-sm font-semibold leading-snug capitalize break-words ${item.valueClass}`}
               >
                 {item.value}
               </div>
@@ -1521,6 +1539,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                   objective={objective}
                   targetSummary={targetSummary}
                   currencySymbol={currencySymbol}
+                  countryName={countryName}
+                  range={range}
                   className="h-full"
                 />
               </div>
@@ -4445,9 +4465,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     );
   };
 
-const handleConnectAmazonPreview = () => {
+  const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
-};
+  };
 
 
 

@@ -252,6 +252,8 @@ export default function Cm1ProfitBreakdownPie({
   ];
 }, [activeData]);
 
+
+
   const exportChartBase64 = () => {
     try {
       const chart = chartRef.current;

@@ -169,13 +169,13 @@ export default function SalesTargetStatsCard({
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
 
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
-        {value !== "Global" && (
+        {activeRegion !== "Global" && (
           <button
             type="button"
             onClick={() => {
-              const country = value.toLowerCase(); // uk, us, ca
-              const month = monthName.toLowerCase(); // february
-              const fullYear = String(year); // 2026
+              const country = activeRegion.toLowerCase();
+              const month = monthName.toLowerCase();
+              const fullYear = String(year);
 
               router.push(
                 `/objectives-targets/${country}/${month}/${fullYear}?tab=targets_and_objectives`

@@ -3283,6 +3283,7 @@ export default function LiveBusinessClient({
 
   const ObjectiveCards = ({
     objective,
+    isGlobal = false,
     className = "",
   }: {
     objective?: {
@@ -3290,15 +3291,31 @@ export default function LiveBusinessClient({
       profit_priority?: string;
       inventory_clearance_priority?: boolean;
     } | null;
+    isGlobal?: boolean;
     className?: string;
   }) => {
-    const growth = objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
-    const profit = objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
-    const inv = objective?.inventory_clearance_priority ? "Yes" : "No";
+    const growth = isGlobal
+      ? "-"
+      : objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
+
+    const profit = isGlobal
+      ? "-"
+      : objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
+
+    const inv = isGlobal
+      ? "-"
+      : typeof objective?.inventory_clearance_priority === "boolean"
+        ? objective.inventory_clearance_priority
+          ? "Yes"
+          : "No"
+        : "Not Defined";
 
     const Card = ({ label, value }: { label: string; value: string }) => (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="2xl:text-xs text-[10px] text-charcoal-500">{label}</div>
+        <div className="2xl:text-xs text-[10px] text-charcoal-500">
+          {label}
+        </div>
+
         <div className="mt-1 text-sm 2xl:text-base font-semibold text-charcoal-500 capitalize">
           {value}
         </div>
@@ -3306,7 +3323,7 @@ export default function LiveBusinessClient({
     );
 
     return (
-      <div className={`grid grid-cols-1  gap-5 ${className}`}>
+      <div className={`grid grid-cols-1 gap-5 ${className}`}>
         <Card label="Growth" value={growth} />
         <Card label="Profit" value={profit} />
         <Card label="Inventory Dilution" value={inv} />
@@ -3858,13 +3875,20 @@ export default function LiveBusinessClient({
                     )}
                   </div>
 
-                  <div className={isGlobalData() ? "hidden" : "lg:w-1/3 flex"}>
-                    {objectiveContext && (
-                      <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full h-full flex flex-col">
-                        <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
-                        <ObjectiveCards objective={objectiveContext} className="mt-3 flex-1" />
-                      </div>
-                    )}
+                  <div className="lg:w-1/3 flex">
+                    <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full h-full flex flex-col">
+                      <PageBreadcrumb
+                        pageTitle="Monthly Objective"
+                        variant="page"
+                        align="left"
+                      />
+
+                      <ObjectiveCards
+                        objective={objectiveContext}
+                        isGlobal={isGlobalData()}
+                        className="mt-3 flex-1"
+                      />
+                    </div>
                   </div>
                 </div>
 

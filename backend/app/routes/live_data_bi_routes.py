@@ -821,6 +821,8 @@ def save_live_ai_cache(
 
     db.session.commit()
 
+
+
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
 def live_mtd_vs_previous():
     auth_header = request.headers.get("Authorization")
@@ -978,25 +980,46 @@ def live_mtd_vs_previous():
                 reverse=True,
             )
 
-            total_sales_mix = sum(
-                r["Sales Mix (Current)"]
-                for r in existing_sorted
-                if r["Sales Mix (Current)"] is not None
-            )
+            # -------------------------------------------------
+            # GLOBAL DISPLAY RULE:
+            # Show top 5 products + one combined Other SKUs card
+            # -------------------------------------------------
+            top_80_skus = existing_sorted[:5]
+            other_skus = existing_sorted[5:]
 
-            cumulative = 0.0
-            top_80_skus = []
-            other_skus = []
+            # -------------------------------------------------
+            # GLOBAL: Combined Other SKUs card
+            # -------------------------------------------------
+            other_products_total_row = None
 
-            for r in existing_sorted:
-                mix = r["Sales Mix (Current)"]
-                proportion = cumulative / total_sales_mix if total_sales_mix else 0
+            if other_skus:
+                other_product_names = {
+                    r.get("product_name")
+                    for r in other_skus
+                    if r.get("product_name")
+                }
 
-                if proportion <= 0.8:
-                    top_80_skus.append(r)
-                    cumulative += mix
-                else:
-                    other_skus.append(r)
+                prev_other_products = [
+                    r for r in prev_data_aligned
+                    if r.get("product_name") in other_product_names
+                ]
+
+                curr_other_products = [
+                    r for r in curr_data
+                    if r.get("product_name") in other_product_names
+                ]
+
+                other_products_total_row = build_segment_total_row(
+                    prev_other_products,
+                    curr_other_products,
+                    key="product_name",
+                    label="Other SKUs",
+                )
+
+                if other_products_total_row:
+                    other_products_total_row["product_name"] = "Other SKUs"
+                    other_products_total_row["is_other_skus_card"] = True
+
 
             prev_label = (
                 f"{month_abbr[prev_start.month].capitalize()}'"
@@ -1063,20 +1086,27 @@ def live_mtd_vs_previous():
                 portfolio_inventory_block_uk = ""
                 portfolio_inventory_block_us = ""
 
-            sku_context = build_sku_context(growth_data, max_items=5)
+            sku_context = build_sku_context(
+                top_80_skus + ([other_products_total_row] if other_products_total_row else []),
+                max_items=6,
+            )
+
+            global_summary_products = (
+                top_80_skus + ([other_products_total_row] if other_products_total_row else [])
+            )
 
             payload_ai = build_ai_summary(
                 prev_totals,
                 curr_totals,
-                top_80_skus,
+                global_summary_products,
                 prev_label,
                 curr_label,
                 sku_context=sku_context,
                 inventory_signals={},
                 portfolio_inventory_alerts={
-    "uk": portfolio_inventory_alerts_uk,
-    "us": portfolio_inventory_alerts_us,
-},
+                    "uk": portfolio_inventory_alerts_uk,
+                    "us": portfolio_inventory_alerts_us,
+                },
                 prev_fee_totals=previous_global_payload.get("derived_totals_global", {}),
                 curr_fee_totals=current_global_payload.get("derived_totals_global", {}),
                 estimated_storage_cost_next_month=fetch_estimated_storage_cost_next_month(user_id),
@@ -1090,15 +1120,283 @@ def live_mtd_vs_previous():
                 current_month=ranges["meta"]["current_month"],
             )
 
+            # -------------------------------------------------
+            # GLOBAL: Country split for deeper UK vs US summary
+            # -------------------------------------------------
+            prev_uk_aligned_for_summary, curr_uk_aligned_for_summary = align_prev_curr_by_sku(
+                prev_uk_items,
+                curr_uk_items,
+            )
+
+            prev_us_aligned_for_summary, curr_us_aligned_for_summary = align_prev_curr_by_sku(
+                prev_us_items,
+                curr_us_items,
+            )
+
+            uk_growth_for_summary = calculate_growth(
+                prev_uk_aligned_for_summary,
+                curr_uk_aligned_for_summary,
+                key="sku",
+            )
+
+            us_growth_for_summary = calculate_growth(
+                prev_us_aligned_for_summary,
+                curr_us_aligned_for_summary,
+                key="sku",
+            )
+
+            def _country_driver_summary(growth_rows):
+                rows = growth_rows or []
+
+                total_units_curr = sum(float(r.get("quantity_curr") or 0) for r in rows)
+                total_units_prev = sum(float(r.get("quantity_prev") or 0) for r in rows)
+
+                total_sales_curr = sum(float(r.get("net_sales_curr") or 0) for r in rows)
+                total_sales_prev = sum(float(r.get("net_sales_prev") or 0) for r in rows)
+
+                total_profit_curr = sum(float(r.get("profit_curr") or 0) for r in rows)
+                total_profit_prev = sum(float(r.get("profit_prev") or 0) for r in rows)
+
+                total_unit_profit_curr = (
+                    total_profit_curr / total_units_curr
+                    if total_units_curr else 0
+                )
+
+                total_unit_profit_prev = (
+                    total_profit_prev / total_units_prev
+                    if total_units_prev else 0
+                )
+
+                total_asp_curr = (
+                    total_sales_curr / total_units_curr
+                    if total_units_curr else 0
+                )
+
+                total_asp_prev = (
+                    total_sales_prev / total_units_prev
+                    if total_units_prev else 0
+                )
+
+                def pct(curr, prev):
+                    if not prev:
+                        return None
+                    return ((curr - prev) / abs(prev)) * 100
+
+                return {
+                    "units": {
+                        "previous": total_units_prev,
+                        "current": total_units_curr,
+                        "absolute_change": total_units_curr - total_units_prev,
+                        "pct_change": pct(total_units_curr, total_units_prev),
+                    },
+                    "net_sales": {
+                        "previous": total_sales_prev,
+                        "current": total_sales_curr,
+                        "absolute_change": total_sales_curr - total_sales_prev,
+                        "pct_change": pct(total_sales_curr, total_sales_prev),
+                    },
+                    "cm1_profit": {
+                        "previous": total_profit_prev,
+                        "current": total_profit_curr,
+                        "absolute_change": total_profit_curr - total_profit_prev,
+                        "pct_change": pct(total_profit_curr, total_profit_prev),
+                    },
+                    "cm1_profit_per_unit": {
+                        "previous": total_unit_profit_prev,
+                        "current": total_unit_profit_curr,
+                        "absolute_change": total_unit_profit_curr - total_unit_profit_prev,
+                        "pct_change": pct(total_unit_profit_curr, total_unit_profit_prev),
+                    },
+                    "asp": {
+                        "previous": total_asp_prev,
+                        "current": total_asp_curr,
+                        "absolute_change": total_asp_curr - total_asp_prev,
+                        "pct_change": pct(total_asp_curr, total_asp_prev),
+                    },
+                }
+
+            def _top_country_products(growth_rows, limit=5):
+                return sorted(
+                    [
+                        r for r in (growth_rows or [])
+                        if r.get("Sales Mix (Current)") is not None
+                    ],
+                    key=lambda x: x.get("Sales Mix (Current)") or 0,
+                    reverse=True,
+                )[:limit]
+
             payload_ai["country_split"] = {
                 "uk": {
                     "previous": previous_global_payload.get("derived_totals_uk", {}),
                     "current": current_global_payload.get("derived_totals_uk", {}),
+                    "driver_summary": _country_driver_summary(uk_growth_for_summary),
+                    "top_products": _top_country_products(uk_growth_for_summary),
                 },
                 "us": {
                     "previous": previous_global_payload.get("derived_totals_us", {}),
                     "current": current_global_payload.get("derived_totals_us", {}),
+                    "driver_summary": _country_driver_summary(us_growth_for_summary),
+                    "top_products": _top_country_products(us_growth_for_summary),
                 },
+            }
+            # -------------------------------------------------
+            # GLOBAL: ACOS / TACoS + CLEAN CM1 METRICS
+            # -------------------------------------------------
+            def _safe_float(value, default=0.0):
+                try:
+                    if value is None:
+                        return default
+                    return float(value)
+                except Exception:
+                    return default
+
+
+            def _pct_change(curr, prev):
+                curr = _safe_float(curr)
+                prev = _safe_float(prev)
+
+                if prev == 0:
+                    return 0.0
+
+                return round(((curr - prev) / abs(prev)) * 100, 2)
+
+
+            curr_global_for_summary = current_global_payload.get("derived_totals_global", {}) or {}
+            prev_global_for_summary = previous_global_payload.get("derived_totals_global", {}) or {}
+            aligned_global_for_summary = previous_global_payload.get("aligned_totals_global", {}) or {}
+
+            # -----------------------------
+            # CM1 CLEAN GLOBAL METRICS
+            # -----------------------------
+            current_units = _safe_float(curr_global_for_summary.get("quantity"))
+            previous_units = _safe_float(prev_global_for_summary.get("quantity"))
+
+            current_net_sales = _safe_float(curr_global_for_summary.get("net_sales"))
+            previous_net_sales = _safe_float(
+                prev_global_for_summary.get("net_sales")
+                or aligned_global_for_summary.get("total_previous_net_sales")
+            )
+
+            # IMPORTANT: CM1 Profit only = profit
+            current_cm1_profit = _safe_float(curr_global_for_summary.get("profit"))
+            previous_cm1_profit = _safe_float(
+                prev_global_for_summary.get("profit")
+                or aligned_global_for_summary.get("total_previous_profit")
+            )
+
+            current_cm1_profit_per_unit = (
+                current_cm1_profit / current_units
+                if current_units else 0.0
+            )
+
+            previous_cm1_profit_per_unit = (
+                previous_cm1_profit / previous_units
+                if previous_units else 0.0
+            )
+
+            current_asp = _safe_float(curr_global_for_summary.get("asp"))
+            previous_asp = _safe_float(prev_global_for_summary.get("asp"))
+
+            if not current_asp and current_units:
+                current_asp = current_net_sales / current_units
+
+            if not previous_asp and previous_units:
+                previous_asp = previous_net_sales / previous_units
+
+            # -----------------------------
+            # ACOS / TACoS
+            # -----------------------------
+            current_ads = _safe_float(
+                curr_global_for_summary.get("advertising_fees")
+                or curr_global_for_summary.get("total_ads")
+            )
+
+            previous_ads = _safe_float(
+                prev_global_for_summary.get("advertising_fees")
+                or aligned_global_for_summary.get("total_previous_advertising")
+            )
+
+            # Prefer dashboard TACoS / ACOS if available
+            current_acos = _safe_float(
+                curr_global_for_summary.get("tacos_total_advertising_cost_of_sale")
+            )
+
+            # Fallback calculation
+            if not current_acos and current_net_sales:
+                current_acos = round((current_ads / current_net_sales) * 100, 2)
+
+            previous_acos = (
+                round((previous_ads / previous_net_sales) * 100, 2)
+                if previous_net_sales else 0.0
+            )
+
+            acos_pct_change = _pct_change(current_acos, previous_acos)
+
+            if current_acos < previous_acos:
+                acos_interpretation = "improved"
+                acos_direction_text = (
+                    f"ACOS/TACoS decreased from {previous_acos:.2f}% to {current_acos:.2f}%, "
+                    f"meaning advertising efficiency improved by {abs(acos_pct_change):.2f}%."
+                )
+                acos_improvement_pct = abs(acos_pct_change)
+            elif current_acos > previous_acos:
+                acos_interpretation = "worsened"
+                acos_direction_text = (
+                    f"ACOS/TACoS increased from {previous_acos:.2f}% to {current_acos:.2f}%, "
+                    f"meaning advertising efficiency worsened by {abs(acos_pct_change):.2f}%."
+                )
+                acos_improvement_pct = 0.0
+            else:
+                acos_interpretation = "stable"
+                acos_direction_text = (
+                    f"ACOS/TACoS remained unchanged at {current_acos:.2f}%."
+                )
+                acos_improvement_pct = 0.0
+
+            acos_context = {
+                "metric": "ACOS/TACoS",
+                "current": round(current_acos, 2),
+                "previous": round(previous_acos, 2),
+                "pct_change": round(acos_pct_change, 2),
+                "improvement_pct": round(acos_improvement_pct, 2),
+                "current_ads": round(current_ads, 2),
+                "previous_ads": round(previous_ads, 2),
+                "ads_pct_change": _pct_change(current_ads, previous_ads),
+                "lower_is_better": True,
+                "interpretation": acos_interpretation,
+                "direction_text": acos_direction_text,
+            }
+
+            clean_global_metrics = {
+                "units": {
+                    "current": round(current_units, 2),
+                    "previous": round(previous_units, 2),
+                    "pct_change": _pct_change(current_units, previous_units),
+                },
+                "net_sales": {
+                    "current": round(current_net_sales, 2),
+                    "previous": round(previous_net_sales, 2),
+                    "pct_change": _pct_change(current_net_sales, previous_net_sales),
+                },
+                "cm1_profit": {
+                    "current": round(current_cm1_profit, 2),
+                    "previous": round(previous_cm1_profit, 2),
+                    "pct_change": _pct_change(current_cm1_profit, previous_cm1_profit),
+                },
+                "cm1_profit_per_unit": {
+                    "current": round(current_cm1_profit_per_unit, 2),
+                    "previous": round(previous_cm1_profit_per_unit, 2),
+                    "pct_change": _pct_change(
+                        current_cm1_profit_per_unit,
+                        previous_cm1_profit_per_unit,
+                    ),
+                },
+                "asp": {
+                    "current": round(current_asp, 2),
+                    "previous": round(previous_asp, 2),
+                    "pct_change": _pct_change(current_asp, previous_asp),
+                },
+                "acos": acos_context,
             }
 
             objective_hash = generate_objective_hash(user_objective)
@@ -1125,20 +1423,45 @@ def live_mtd_vs_previous():
                     analysis = run_live_prompt_1_analysis(payload_ai)
 
                     summary_out = run_live_prompt_1_5_summary(
-                        analysis_output=analysis,
-                        numeric_context={
-                            "periods": payload_ai["periods"],
-                            "pct_changes": payload_ai["pct_changes"],
-                            "selling_costs": payload_ai["selling_costs"],
-                            "roas": payload_ai["roas"],
-                            "movement_context": payload_ai["movement_context"],
-                            "currency": payload_ai["currency"],
+                    analysis_output=analysis,
+                    numeric_context={
+                    "report_type": "global",
+                    "periods": payload_ai["periods"],
+                    "pct_changes": payload_ai["pct_changes"],
+                    "selling_costs": payload_ai["selling_costs"],
+                    "roas": payload_ai["roas"],
+                    "movement_context": payload_ai["movement_context"],
+                    "currency": payload_ai["currency"],
 
-                            # global-only: let LLM see UK + US split
-                            "country_split": payload_ai.get("country_split", {}),
-                        },
-                        user_objective=user_objective,
-                    )
+                    # Important: force country-level global comparison
+                    "country_split": payload_ai.get("country_split", {}),
+                    "global_top_products": top_80_skus[:5],
+
+                    # Use this as the MAIN source for executive summary
+                    "clean_global_metrics": clean_global_metrics,
+
+                    # Keep raw totals only for backup/context
+                    "global_totals": {
+                        "previous": previous_global_payload.get("derived_totals_global", {}),
+                        "current": current_global_payload.get("derived_totals_global", {}),
+                        "aligned_previous": previous_global_payload.get("aligned_totals_global", {}),
+                    },
+
+                    # Direct ACOS/TACoS context
+                    "acos": acos_context,
+
+                    # Important: force CM1 only
+                    "profit_metric": "CM1 Profit",
+
+                    "metric_rules": {
+                        "primary_source": "Use numeric_context.clean_global_metrics as the primary source for Units, Net Sales, CM1 Profit, CM1 Profit per Unit, ASP, and ACOS/TACoS.",
+                        "profit_metric_source": "Use CM1 Profit only from clean_global_metrics.cm1_profit. Do not use CM2 Profit.",
+                        "acos_source": "Use numeric_context.acos as the source of truth for ACOS/TACoS.",
+                        "acos_interpretation": "Lower ACOS/TACoS is better. If current is lower than previous, advertising efficiency improved.",
+                    },
+                },
+                    user_objective=user_objective,
+                )
 
                     save_live_ai_cache(
                         user_id=user_id,
@@ -1183,6 +1506,129 @@ def live_mtd_vs_previous():
                 us_actions=recommended_actions_us,
             )
 
+            # -------------------------------------------------
+            # GLOBAL: Daily series for charts
+            # Restored from older working route.
+            # Do NOT depend on current_global_payload / previous_global_payload
+            # for chart series because those helpers may not return daily_series keys.
+            # -------------------------------------------------
+
+            uk_to_usd_rate_for_charts = fetch_conversion_rate(
+                country="us",
+                year=prev_start.year,
+                month_name=month_name[prev_start.month].lower(),
+                user_currency="gbp",
+                selected_currency="usd",
+            ) or 1.0
+
+            # -------------------------------------------------
+            # Previous FULL month daily series
+            # Used by daily_series.previous_global / previous_uk / previous_us
+            # -------------------------------------------------
+            _, previous_uk_raw = fetch_previous_period_data(
+                user_id,
+                "uk",
+                prev_full_start,
+                prev_full_end,
+            )
+
+            _, previous_us_raw = fetch_previous_period_data(
+                user_id,
+                "us",
+                prev_full_start,
+                prev_full_end,
+            )
+
+            previous_uk = _convert_daily_series_to_usd(
+                previous_uk_raw,
+                uk_to_usd_rate_for_charts,
+            )
+
+            previous_us = _tag_daily_series(
+                previous_us_raw,
+                "us",
+            )
+
+            previous_global = _build_global_daily_series(
+                previous_us,
+                previous_uk,
+            )
+
+            # -------------------------------------------------
+            # Current MTD daily series
+            # Used by daily_series.current_mtd_global / current_mtd_uk / current_mtd_us
+            # -------------------------------------------------
+            _, current_mtd_uk_raw = fetch_current_mtd_data(
+                user_id,
+                "uk",
+                curr_start,
+                curr_end,
+            )
+
+            _, current_mtd_us_raw = fetch_current_mtd_data(
+                user_id,
+                "us",
+                curr_start,
+                curr_end,
+            )
+
+            current_mtd_uk = _convert_daily_series_to_usd(
+                current_mtd_uk_raw,
+                uk_to_usd_rate_for_charts,
+            )
+
+            current_mtd_us = _tag_daily_series(
+                current_mtd_us_raw,
+                "us",
+            )
+
+            current_mtd_global = _build_global_daily_series(
+                current_mtd_us,
+                current_mtd_uk,
+            )
+
+            # -------------------------------------------------
+            # Previous ALIGNED period daily series
+            # Used by daily_series_aligned.previous_global / previous_uk / previous_us
+            # -------------------------------------------------
+            _, previous_aligned_uk_raw = fetch_previous_period_data(
+                user_id,
+                "uk",
+                prev_start,
+                prev_end,
+            )
+
+            _, previous_aligned_us_raw = fetch_previous_period_data(
+                user_id,
+                "us",
+                prev_start,
+                prev_end,
+            )
+
+            previous_aligned_uk = _convert_daily_series_to_usd(
+                previous_aligned_uk_raw,
+                uk_to_usd_rate_for_charts,
+            )
+
+            previous_aligned_us = _tag_daily_series(
+                previous_aligned_us_raw,
+                "us",
+            )
+
+            previous_aligned_global = _build_global_daily_series(
+                previous_aligned_us,
+                previous_aligned_uk,
+            )
+
+            # -------------------------------------------------
+            # Backward-compatible selected-country chart keys
+            # Frontend may still read daily_series.previous/current_mtd
+            # -------------------------------------------------
+            prev_daily_full = previous_global
+            prev_daily_aligned_selected = previous_aligned_global
+            curr_daily_selected = current_mtd_global
+
+
             response_payload = {
             "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
             "country": "global",
@@ -1217,9 +1663,43 @@ def live_mtd_vs_previous():
                 },
 
                 "categorized_growth": {
-                    "top_80_products": top_80_skus,
+                    "top_80_products": (
+                        top_80_skus + ([other_products_total_row] if other_products_total_row else [])
+                    ),
                     "other_products": other_skus,
+                    "other_products_total": other_products_total_row,
                 },
+                # ✅ ADD THIS BACK FOR GLOBAL CHARTS
+                "daily_series": {
+                    "current_mtd_global": current_mtd_global,
+                    "current_mtd_uk": current_mtd_uk,
+                    "current_mtd_us": current_mtd_us,
+
+                    "previous_global": previous_global,
+                    "previous_uk": previous_uk,
+                    "previous_us": previous_us,
+
+                    # old keys keep frontend compatibility
+                    "previous": prev_daily_full,
+                    "current_mtd": curr_daily_selected,
+                },
+
+                # ✅ ADD THIS BACK FOR GLOBAL CHARTS
+                "daily_series_aligned": {
+                    "current_mtd_global": current_mtd_global,
+                    "current_mtd_uk": current_mtd_uk,
+                    "current_mtd_us": current_mtd_us,
+
+                    "previous_global": previous_aligned_global,
+                    "previous_uk": previous_aligned_uk,
+                    "previous_us": previous_aligned_us,
+
+                    # old keys keep frontend compatibility
+                    "previous": prev_daily_aligned_selected,
+                    "current_mtd": curr_daily_selected,
+                },
+
+
                 "product_journey": product_journey,    
                 "recommended_actions_mtd": {
                     "uk": recommended_actions_uk,
@@ -2250,6 +2730,9 @@ def live_mtd_vs_previous():
         traceback.print_exc()
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
+
+
+
 def fetch_conversion_rate(
     country: str,
     year: int,
@@ -2801,6 +3284,8 @@ def get_previous_global_data_for_live_bi(
         "uk_daily": uk_daily,
         "us_daily": us_daily,
     }
+
+
 
 @live_data_bi_bp.route("/live_mtd_bi/previous_skuwise_global", methods=["GET"])
 def previous_skuwise_global():
