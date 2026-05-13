@@ -2637,7 +2637,8 @@ def build_country_usd_numeric_metrics(
     user_id: int,
     period: str,
     timeline: str,
-    year: int
+    year: int,
+    available_countries: list[str] | None = None,
 ) -> dict:
     """
     Builds USD-normalized US and UK selected-period vs previous-period metrics.
@@ -2743,9 +2744,11 @@ def build_country_usd_numeric_metrics(
             "products": sku_mom,
         }
 
-    return {
+    available_countries = available_countries or SUPPORTED_GLOBAL_COUNTRIES
+
+    result = {
         "currency": "USD",
-        "currency_note": "US and UK values in this section are USD-normalized for apples-to-apples comparison.",
+        "currency_note": "Country values are USD-normalized where available.",
         "selected_period": {
             "period": period,
             "timeline": timeline,
@@ -2758,9 +2761,12 @@ def build_country_usd_numeric_metrics(
             "year": p_year,
             "period_label": period_label(p_period, p_timeline, p_year),
         },
-        "us": country_metrics("us"),
-        "uk": country_metrics("uk"),
     }
+
+    for country in available_countries:
+        result[country] = country_metrics(country)
+
+    return result
 
 def key_metrics_by_product_name(metrics_by_sku: dict) -> dict:
     """
@@ -2828,8 +2834,10 @@ def run_global_comparison_prompt(global_payload: dict) -> dict:
         print("\n❌ Global comparison JSON parse failed")
         return {
             "global_summary": "",
+            "country_comparison": [],
             "uk_vs_us_comparison": [],
             "product_journey_comparison": [],
+            "other_skus_comparison": {},
             "global_overall_recommendation": "",
         }
     
@@ -3003,6 +3011,7 @@ def render_global_comparison_summary(
     timeline: str,
     year: int,
     remaining_agg: dict | None = None,
+    available_countries: list[str] | None = None,
 ) -> str:
     """
     AI-written global summary renderer.
@@ -3011,6 +3020,9 @@ def render_global_comparison_summary(
     """
 
     lines = []
+
+    available_countries = available_countries or []
+    is_multi_country = len(available_countries) >= 2
 
     # ------------------------------------------------------------
     # Format helpers
@@ -3216,27 +3228,56 @@ def get_or_create_global_summary(
     # - old monthly / old quarterly => recommendations hidden
     # - yearly => recommendations hidden
     # ============================================================
-    us_is_latest = is_latest_period(
-        period,
-        timeline,
-        year,
+    available_countries = get_available_global_countries(
         user_id=user_id,
-        country="us",
+        period=period,
+        timeline=timeline,
+        year=year,
     )
 
-    uk_is_latest = is_latest_period(
-        period,
-        timeline,
-        year,
-        user_id=user_id,
-        country="uk",
-    )
+    if not available_countries:
+        return {
+            "summary": "No country data is available for the selected global period.",
+            "scope": "global",
+            "source": "no_data",
+            "global_ai": {},
+            "overall_recommendation": "",
+            "mapped_product_count": 0,
+            "available_countries": [],
+            "allow_recommendations": False,
+            "metrics": {},
+            "inventory_alerts": {},
+            "objectives": {},
+            "comparison": {
+                "period": period,
+                "timeline": timeline,
+                "year": year,
+                "period_label": period_label(period, timeline, year),
+            },
+            "metrics_debug": {
+                "available_countries": [],
+                "is_single_country_global": False,
+                "global_metrics_available": False,
+                "country_usd_available": {},
+            },
+        }
+
+
+    country_latest_flags = {
+        country: is_latest_period(
+            period,
+            timeline,
+            year,
+            user_id=user_id,
+            country=country,
+        )
+        for country in available_countries
+    }
 
     allow_global_recommendations = False
 
     if period in ("monthly", "quarterly"):
-        # Safer global rule: allow recommendations only if both countries are latest
-        allow_global_recommendations = us_is_latest or uk_is_latest
+        allow_global_recommendations = any(country_latest_flags.values())
 
     elif period == "yearly":
         allow_global_recommendations = False
@@ -3264,76 +3305,78 @@ def get_or_create_global_summary(
         except Exception:
             cached_recommendations = {}
 
-        return {
-            "summary": cached.summary,
-            "scope": "global",
-            "source": "db",
-            "global_ai": cached_recommendations.get("global_ai", {}),
-            "overall_recommendation": cached_recommendations.get("overall_recommendation", ""),
-            "mapped_product_count": cached_recommendations.get("mapped_product_count", 0),
+        cached_available_countries = cached_recommendations.get("available_countries")
 
-            # ✅ same recommendation rule returned from DB
-            "allow_recommendations": cached_recommendations.get(
-                "allow_global_recommendations",
-                allow_global_recommendations,
-            ),
+        # Important:
+        # If old cache does not have available_countries, do NOT trust it.
+        # It may contain old US/UK comparison text.
+        cache_country_match = cached_available_countries == available_countries
 
-            # ✅ cached frontend metrics
-            "metrics": cached_recommendations.get("metrics", {}),
+        if cache_country_match:
+            return {
+                "summary": cached.summary,
+                "scope": "global",
+                "source": "db",
+                "global_ai": cached_recommendations.get("global_ai", {}),
+                "overall_recommendation": cached_recommendations.get("overall_recommendation", ""),
+                "mapped_product_count": cached_recommendations.get("mapped_product_count", 0),
+                "available_countries": cached_available_countries,
+                "allow_recommendations": cached_recommendations.get(
+                    "allow_global_recommendations",
+                    allow_global_recommendations,
+                ),
+                "metrics": cached_recommendations.get("metrics", {}),
+                "inventory_alerts": cached_recommendations.get("inventory_alerts", {}),
+                "objectives": cached_recommendations.get("objectives", {}),
+                "comparison": {
+                    "period": period,
+                    "timeline": timeline,
+                    "year": year,
+                    "period_label": period_label(period, timeline, year),
+                },
+                "metrics_debug": cached_recommendations.get("metrics_debug", {}),
+            }
 
-            # ✅ cached country-specific values
-            "inventory_alerts": cached_recommendations.get("inventory_alerts", {}),
-            "objectives": cached_recommendations.get("objectives", {}),
-
-            "comparison": {
-                "period": period,
-                "timeline": timeline,
-                "year": year,
-                "period_label": period_label(period, timeline, year),
-            },
-            "metrics_debug": cached_recommendations.get("metrics_debug", {}),
-        }
+        # If cache does not match current country availability,
+        # continue below and regenerate fresh global summary.
 
     # ============================================================
     # 2. GET US + UK COUNTRY SUMMARIES
     # ============================================================
-    us_result = get_or_create_summary(
-        user_id=user_id,
-        country="us",
-        marketplace_id=marketplace_id,
-        period=period,
-        timeline=timeline,
-        year=year,
-        objective=objective,
-        target_sku=target_sku,
-        force_regenerate=True,
-    )
+    country_results = {}
 
-    uk_result = get_or_create_summary(
-        user_id=user_id,
-        country="uk",
-        marketplace_id=marketplace_id,
-        period=period,
-        timeline=timeline,
-        year=year,
-        objective=objective,
-        target_sku=target_sku,
-        force_regenerate=True,
-    )
+    for country in available_countries:
+        country_results[country] = _global_safe_result(
+            get_or_create_summary(
+                user_id=user_id,
+                country=country,
+                marketplace_id=marketplace_id,
+                period=period,
+                timeline=timeline,
+                year=year,
+                objective=objective,
+                target_sku=target_sku,
+                force_regenerate=True,
+            )
+        )
 
-    us_result = _global_safe_result(us_result)
-    uk_result = _global_safe_result(uk_result)
+    # Keep these only for backward compatibility with existing functions.
+    us_result = country_results.get("us", {})
+    uk_result = country_results.get("uk", {})
 
     # ============================================================
     # 3. BUILD PRODUCT MAPPING + GLOBAL METRICS
     # ============================================================
     sku_mapping = fetch_global_sku_mapping(user_id)
 
-    mapped_product_journeys = build_mapped_product_journeys(
-        sku_mapping=sku_mapping,
-        us_result=us_result,
-        uk_result=uk_result,
-    )
+    if len(available_countries) >= 2:
+        mapped_product_journeys = build_mapped_product_journeys(
+            sku_mapping=sku_mapping,
+            us_result=us_result,
+            uk_result=uk_result,
+        )
+    else:
+        mapped_product_journeys = []
 
     # actual global metrics from skuwisemonthly_{user_id}_global_{month}{year}_table
     global_numeric_metrics = build_global_numeric_metrics(
@@ -3349,13 +3392,16 @@ def get_or_create_global_summary(
         period=period,
         timeline=timeline,
         year=year,
+        available_countries=available_countries,
     )
 
     metrics_debug = {
+        "available_countries": available_countries,
+        "is_single_country_global": len(available_countries) == 1,
         "global_metrics_available": bool(global_numeric_metrics.get("available")),
         "country_usd_available": {
-            "us": bool((country_usd_metrics.get("us") or {}).get("available")),
-            "uk": bool((country_usd_metrics.get("uk") or {}).get("available")),
+            country: bool((country_usd_metrics.get(country) or {}).get("available"))
+            for country in available_countries
         },
     }
 
@@ -3377,15 +3423,14 @@ def get_or_create_global_summary(
         "remaining_agg": global_numeric_metrics.get("remaining_agg", {}),
     }
 
-    # ✅ keep US/UK inventory and objectives separate
     inventory_alerts_by_country = {
-        "us": us_result.get("inventory_alerts", {}),
-        "uk": uk_result.get("inventory_alerts", {}),
+        country: result.get("inventory_alerts", {})
+        for country, result in country_results.items()
     }
 
     objectives_by_country = {
-        "us": us_result.get("objective", {}),
-        "uk": uk_result.get("objective", {}),
+        country: result.get("objective", {})
+        for country, result in country_results.items()
     }
 
     # ============================================================
@@ -3399,26 +3444,23 @@ def get_or_create_global_summary(
             "period_label": period_label(period, timeline, year),
         },
 
-        # actual global selected/previous metrics
+        "available_countries": available_countries,
+        "is_single_country_global": len(available_countries) == 1,
+
         "global_numeric_metrics": global_numeric_metrics,
 
-        # US vs UK metrics in same USD currency
         "country_usd_metrics": country_usd_metrics,
 
-        "us": {
-            "summary": _extract_summary_intro(us_result),
-            "portfolio_level_narrative": us_result.get("portfolio_level_narrative", {}),
-            "portfolio_recommendation": us_result.get("portfolio_recommendation", ""),
-            "recommendations": _extract_actions(us_result),
-        },
-        "uk": {
-            "summary": _extract_summary_intro(uk_result),
-            "portfolio_level_narrative": uk_result.get("portfolio_level_narrative", {}),
-            "portfolio_recommendation": uk_result.get("portfolio_recommendation", ""),
-            "recommendations": _extract_actions(uk_result),
+        "countries": {
+            country: {
+                "summary": _extract_summary_intro(result),
+                "portfolio_level_narrative": result.get("portfolio_level_narrative", {}),
+                "portfolio_recommendation": result.get("portfolio_recommendation", ""),
+                "recommendations": _extract_actions(result),
+            }
+            for country, result in country_results.items()
         },
 
-        # exact mapped product journey input
         "mapped_product_journeys": mapped_product_journeys,
 
         "other_skus": {
@@ -3448,8 +3490,12 @@ def get_or_create_global_summary(
             if not isinstance(country_actions, dict):
                 continue
 
-            for country_key in ("us", "uk"):
-                actions = country_actions.get(country_key)
+            for country_key in available_countries:
+                actions = (
+                    country_actions.get(country_key)
+                    or country_actions.get(country_key.upper())
+                )
+
                 if not isinstance(actions, dict):
                     continue
 
@@ -3649,3 +3695,35 @@ def fetch_country_usd_precalc_table(
     except Exception:
         return pd.DataFrame()
 
+SUPPORTED_GLOBAL_COUNTRIES = ["us", "uk"]
+
+
+def get_available_global_countries(
+    *,
+    user_id: int,
+    period: str,
+    timeline: str,
+    year: int
+) -> list[str]:
+    """
+    Returns only countries that actually have selected-period data.
+    Example:
+    - only UK connected -> ["uk"]
+    - only US connected -> ["us"]
+    - both connected -> ["us", "uk"]
+    """
+    available = []
+
+    for country in SUPPORTED_GLOBAL_COUNTRIES:
+        df = fetch_precalc_table(
+            user_id=user_id,
+            country=country,
+            period=period,
+            timeline=timeline,
+            year=year,
+        )
+
+        if not df.empty:
+            available.append(country)
+
+    return available
