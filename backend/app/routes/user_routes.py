@@ -243,7 +243,7 @@ def forgot_password():
     # Generate and send email only if user exists
     token = generate_reset_token(user.id)
     reset_url = f"http://localhost:3000/reset_password/{token}"
-    send_reset_email(user.email, reset_url)
+    send_reset_email(user.email, reset_url, user.name)
 
     return jsonify({'success': True, 'message': 'Password reset email sent.'}), 200
 

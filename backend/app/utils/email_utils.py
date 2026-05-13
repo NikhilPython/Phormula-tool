@@ -353,7 +353,8 @@ def send_welcome_and_verification_emails(email, name, verification_link):
 #     msg.html = html_body
 #     mail.send(msg)
 
-def send_reset_email(to_email, reset_url):
+def send_reset_email(to_email, reset_url, name=None):
+    display_name = (name or "there").strip()
     msg = Message(
         "Password Reset Request",
         sender=("Phormula Care Team", "care@phormula.io"),
@@ -485,7 +486,7 @@ def send_reset_email(to_email, reset_url):
               border-right:1px solid #e4e7ec;
             ">
               <p style="margin:0 0 18px 0; text-align:left;">
-                Dear <strong>{to_email}</strong>,
+                Dear <strong>{html.escape(display_name)}</strong>,
               </p>
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
@@ -2084,35 +2085,38 @@ def mark_bi_email_sent(user_id: int, country: str) -> None:
 
 
 
-def get_user_email_by_id(user_id: int) -> str | None:
+def get_user_email_and_name_by_id(user_id: int):
     """
-    Fetch email from public.user table.
-    Uses double quotes because 'user' is a reserved keyword.
+    Fetch email and name from public.user table.
     """
     try:
         query = text("""
-            SELECT email
+            SELECT email, name
             FROM "user"
             WHERE id = :uid
             LIMIT 1
         """)
+
         with engine_hist.connect() as conn:
             row = conn.execute(query, {"uid": user_id}).fetchone()
 
         if not row:
             print(f"[WARN] No user found with id={user_id}")
-            return None
+            return None, None
 
-        # row may be tuple or Row
-        return row[0] if isinstance(row, tuple) else row.email
+        user_email = row[0] if isinstance(row, tuple) else row.email
+        user_name = row[1] if isinstance(row, tuple) else row.name
+
+        return user_email, (user_name or "there").strip()
 
     except Exception as e:
-        print(f"[ERROR] Failed to fetch user email for id={user_id}: {e}")
-        return None
+        print(f"[ERROR] Failed to fetch user email/name for id={user_id}: {e}")
+        return None, None
 
 def send_email_with_attachment(
     *,
     to_email: str,
+    user_name: str = "there",
     subject: str,
     body: str,
     attachment_bytes: bytes,
@@ -2231,7 +2235,7 @@ def send_email_with_attachment(
               border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;
             ">
               <p style="margin:0 0 18px 0; text-align:left;">
-                Hi,
+                Hi <strong>{html.escape(user_name or "there")}</strong>,
               </p>
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">

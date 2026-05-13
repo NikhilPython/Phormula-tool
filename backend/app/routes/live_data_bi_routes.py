@@ -16,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product)
-from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
+from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.uk_time_series_utils import build_rolling_sku_series,build_remaining_skus_time_series
@@ -2678,7 +2678,7 @@ def live_mtd_vs_previous():
         # # ---------------------------
         # user_email = payload.get("email") or request.args.get("email")
         # if not user_email:
-        #     user_email = get_user_email_by_id(user_id)
+        #     user_email = get_user_email_and_name_by_id(user_id)
 
         # if user_email:
         #     cache_key = (user_id, country)

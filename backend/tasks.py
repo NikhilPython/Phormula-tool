@@ -9,12 +9,12 @@ from app.models.user_models import User
 from app.services.live_bi_email_service import build_live_mtd_bi_payload
 from app.utils.email_utils import (
     send_live_bi_email,
-    get_user_email_by_id,
+    get_user_email_and_name_by_id,
     has_recent_bi_email,
     mark_bi_email_sent,
 )
 from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
-from app.utils.email_utils import get_user_email_by_id, send_email_with_attachment
+from app.utils.email_utils import get_user_email_and_name_by_id, send_email_with_attachment
 from app.services.forecast_service import generate_forecast_for_user
 from app.routes.forecast_routes import generate_forecast_core
 SECRET_KEY = Config.SECRET_KEY
@@ -90,7 +90,7 @@ def send_live_bi_email_daily():
                         continue
                     processed.add(dedupe_key)
 
-                    user_email = user.get("email") or get_user_email_by_id(user_id)
+                    user_email = user.get("email") or get_user_email_and_name_by_id(user_id)
 
                     if not user_email:
                         print(f"[WARN] No email found for user_id={user_id}")
@@ -300,7 +300,7 @@ def sync_amazon_monthly_transactions():
             for user in users:
                 try:
                     user_id = user["user_id"]
-                    email = user.get("email") or get_user_email_by_id(user_id)
+                    email = user.get("email") or get_user_email_and_name_by_id(user_id)
                     country = (user.get("country") or "uk").strip().lower()
 
                     dedupe_key = (user_id, country)

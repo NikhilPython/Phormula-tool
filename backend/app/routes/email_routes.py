@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request, make_response
 
 from config import Config
 from app.utils.token_utils import get_effective_user_id_from_token
-from app.utils.email_utils import send_email_with_attachment, get_user_email_by_id
+from app.utils.email_utils import send_email_with_attachment, get_user_email_and_name_by_id, get_user_email_and_name_by_id
 
 load_dotenv()
 
@@ -72,7 +72,8 @@ def send_report_email():
             return response, 401
 
         # 2) Recipient email
-        to_email = get_user_email_by_id(user_id)
+        to_email, user_name = get_user_email_and_name_by_id(user_id)
+
         if not to_email:
             response = jsonify({
                 "success": False,
@@ -174,6 +175,7 @@ def send_report_email():
         # 8) Send email
         send_email_with_attachment(
             to_email=to_email,
+            user_name=user_name,
             subject=subject,
             body=body,
             attachment_bytes=attachment_bytes,
@@ -199,3 +201,5 @@ def send_report_email():
         })
         response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
         return response, 500 
+    
+
