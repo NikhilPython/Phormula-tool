@@ -1050,32 +1050,45 @@ def live_mtd_vs_previous():
             }
 
             # -------------------------------------------------
-            # GLOBAL: Portfolio inventory blocks by country
+            # GLOBAL: Portfolio inventory blocks by available country only
             # -------------------------------------------------
+            available_countries = (
+                current_global_payload.get("available_countries")
+                or previous_global_payload.get("available_countries")
+                or []
+            )
+
             try:
                 inv_df = fetch_inventory_aged_by_user(user_id)
+                portfolio_inventory_alerts_uk = {}
+                portfolio_inventory_alerts_us = {}
 
-                portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
-                    inv_df,
-                    user_id=user_id,
-                    country="uk",
-                )
+                portfolio_inventory_block_uk = ""
+                portfolio_inventory_block_us = ""
 
-                portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
-                    inv_df,
-                    user_id=user_id,
-                    country="us",
-                )
+                if "uk" in available_countries:
+                    portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
+                        inv_df,
+                        user_id=user_id,
+                        country="uk",
+                    )
 
-                portfolio_inventory_block_uk = render_portfolio_inventory_block(
-                    inventory_alerts=portfolio_inventory_alerts_uk,
-                    currency_symbol="£",
-                )
+                    portfolio_inventory_block_uk = render_portfolio_inventory_block(
+                        inventory_alerts=portfolio_inventory_alerts_uk,
+                        currency_symbol="£",
+                    )
 
-                portfolio_inventory_block_us = render_portfolio_inventory_block(
-                    inventory_alerts=portfolio_inventory_alerts_us,
-                    currency_symbol="$",
-                )
+                if "us" in available_countries:
+                    portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
+                        inv_df,
+                        user_id=user_id,
+                        country="us",
+                    )
+
+                    portfolio_inventory_block_us = render_portfolio_inventory_block(
+                        inventory_alerts=portfolio_inventory_alerts_us,
+                        currency_symbol="$",
+                    )
 
             except Exception as e:
                 print("[WARN] Failed to build global portfolio inventory blocks:", e)
@@ -1414,10 +1427,12 @@ def live_mtd_vs_previous():
                 "summary_text": "",
                 "metric_bullets": [],
             }
+            global_strategy_parsed = {}
 
             if cached_ai:
                 analysis = cached_ai["analysis"]
                 summary_out = cached_ai["summary"]
+                global_strategy_parsed = cached_ai.get("strategy", {}) or {}
             else:
                 try:
                     analysis = run_live_prompt_1_analysis(payload_ai)
@@ -1463,6 +1478,134 @@ def live_mtd_vs_previous():
                     user_objective=user_objective,
                 )
 
+                    
+
+                except Exception as e:
+                    print("[AI ERROR] Failed to generate global summary:", e)
+
+
+            # -------------------------------------------------
+            # GLOBAL: Prompt-2 portfolio strategy
+            # -------------------------------------------------
+            if not global_strategy_parsed:
+                try:
+                    global_live_context = []
+
+                    for r in top_80_skus:
+                        product_name = r.get("product_name")
+                        if not product_name:
+                            continue
+
+                        global_live_context.append({
+                            "sku": product_name,
+                            "product_name": product_name,
+                            "quantity": {
+                                "previous": r.get("quantity_prev"),
+                                "current": r.get("quantity_curr"),
+                            },
+                            "asp": {
+                                "previous": r.get("asp_prev"),
+                                "current": r.get("asp_curr"),
+                            },
+                            "net_sales": {
+                                "previous": r.get("net_sales_prev"),
+                                "current": r.get("net_sales_curr"),
+                            },
+                            "cm1_profit": {
+                                "previous": r.get("profit_prev"),
+                                "current": r.get("profit_curr"),
+                            },
+                            "profit_per_unit": {
+                                "previous": r.get("unit_wise_profitability_prev"),
+                                "current": r.get("unit_wise_profitability_curr"),
+                            },
+                            "movement_intensity": {
+                                "units": (r.get("Unit Growth (%)") or {}).get("value"),
+                                "asp": (r.get("ASP Growth (%)") or {}).get("value"),
+                                "net_sales": (r.get("Net Sales Growth (%)") or {}).get("value"),
+                                "cm1_profit": (r.get("CM1 Profit Impact (%)") or {}).get("value"),
+                                "profit_per_unit": (r.get("Profit Per Unit (%)") or {}).get("value"),
+                            },
+                        })
+
+                    global_ads_context = []
+
+                    for r in top_80_skus:
+                        product_name = r.get("product_name")
+                        if not product_name:
+                            continue
+
+                        global_ads_context.append({
+                            "sku": product_name,
+                            "product_name": product_name,
+                            "ads_spend_curr": r.get("ads_spend_curr", 0),
+                            "acos_curr": r.get("acos_curr", 0),
+                            "cm2_profit_curr": r.get("cm2_profit_curr", 0),
+                            "cm2_margin_curr": r.get("cm2_margin_curr", 0),
+                            "net_sales_curr": r.get("net_sales_curr", 0),
+                        })
+
+                    global_ads_monthly = {
+                        "total_ads_spend": sum(float(r.get("ads_spend_curr") or 0) for r in top_80_skus),
+                        "total_cm2_profit": sum(float(r.get("cm2_profit_curr") or 0) for r in top_80_skus),
+                    }
+
+                    global_inventory_alerts = {
+                        "available_countries": available_countries,
+                        "uk": portfolio_inventory_alerts_uk if "uk" in available_countries else {},
+                        "us": portfolio_inventory_alerts_us if "us" in available_countries else {},
+                    }
+
+                    global_strategy_raw = run_prompt_2_strategy(
+                        analysis_insights=analysis or {},
+                        objective_v2=user_objective,
+                        focus_skus=[
+                            r.get("product_name")
+                            for r in top_80_skus
+                            if r.get("product_name")
+                        ],
+                        sku_time_series={},
+                        inventory_alerts=global_inventory_alerts,
+                        sku_inventory_flags={},
+                        country="global",
+                        sku_ads_context=global_ads_context,
+                        sku_live_context=global_live_context,
+                        ads_monthly=global_ads_monthly,
+                        remaining_skus_context={
+                            "label": "Other SKUs",
+                            "aggregated_metrics": other_products_total_row,
+                            "products": other_skus,
+                            "instruction": (
+                                "You must generate BOTH fields for the aggregated Other SKUs group. "
+                                "This is not a single SKU; it represents all products outside the top products. "
+                                "Return a concise action recommendation under the exact key remaining_skus_recommendation. "
+                                "Return the journey explanation under the exact key remaining_skus_journey_summary. "
+                                "Do not omit remaining_skus_recommendation."
+                            ),
+                        } if other_products_total_row else {},
+                    )
+
+                    global_strategy_parsed = json.loads(global_strategy_raw) if global_strategy_raw else {}
+
+                    print("[DEBUG] global_strategy_parsed keys:", global_strategy_parsed.keys())
+                    print("[DEBUG] remaining_skus_recommendation:", global_strategy_parsed.get("remaining_skus_recommendation"))
+                    print("[DEBUG] remaining_skus_journey_summary:", global_strategy_parsed.get("remaining_skus_journey_summary"))
+
+                except Exception as e:
+                    print("[AI ERROR] Global portfolio strategy generation failed:", e)
+                    global_strategy_parsed = {}
+
+            portfolio_recommendation = (
+                global_strategy_parsed.get("portfolio_recommendation")
+                or global_strategy_parsed.get("recommendation")
+                or global_strategy_parsed.get("recommended_action")
+            )
+
+            if not portfolio_recommendation:
+                portfolio_recommendation = "AI portfolio recommendation could not be generated for this refresh."
+
+            if not cached_ai:
+                try:
                     save_live_ai_cache(
                         user_id=user_id,
                         country="global",
@@ -1471,12 +1614,12 @@ def live_mtd_vs_previous():
                         objective_hash=objective_hash,
                         analysis=analysis,
                         summary=summary_out,
-                        strategy={},
+                        strategy=global_strategy_parsed,
                     )
-
                 except Exception as e:
-                    print("[AI ERROR] Failed to generate global summary:", e)
+                    print("[WARN] Failed to save global AI cache:", e)
 
+            
             recommended_actions_uk = build_global_country_recommendations(
                 user_id=user_id,
                 country="uk",
@@ -1507,10 +1650,68 @@ def live_mtd_vs_previous():
             )
 
             # -------------------------------------------------
+            # GLOBAL: Add Other SKUs recommendation + journey
+            # -------------------------------------------------
+            other_skus_recommendation = None
+            other_skus_journey = []
+
+            if other_products_total_row:
+                try:
+                    remaining_context = global_strategy_parsed.get("remaining_skus_context") or {}
+                    remaining_strategy = global_strategy_parsed.get("remaining_skus_strategy") or {}
+
+                    other_skus_recommendation = (
+                        global_strategy_parsed.get("remaining_skus_recommendation")
+                        or global_strategy_parsed.get("other_skus_recommendation")
+                        or global_strategy_parsed.get("other_products_recommendation")
+                        or remaining_context.get("recommendation")
+                        or remaining_strategy.get("recommendation")
+                    )
+
+                    raw_other_journey = (
+                        global_strategy_parsed.get("remaining_skus_journey_summary")
+                        or global_strategy_parsed.get("other_skus_journey_summary")
+                        or global_strategy_parsed.get("other_products_journey_summary")
+                        or []
+                    )
+
+                    if isinstance(raw_other_journey, list):
+                        other_skus_journey = [str(x) for x in raw_other_journey if x]
+                    elif isinstance(raw_other_journey, str) and raw_other_journey.strip():
+                        other_skus_journey = [raw_other_journey.strip()]
+                    else:
+                        other_skus_journey = []
+
+                except Exception as e:
+                    print("[WARN] Failed to extract global Other SKUs strategy:", e)
+                    other_skus_recommendation = None
+                    other_skus_journey = []
+
+                if not other_skus_recommendation:
+                    other_skus_recommendation = None
+
+                if not other_skus_journey:
+                    other_skus_journey = []
+
+               
+                product_journey["other skus"] = {
+                    "product_name": "Other SKUs",
+                    "journey_comparison": other_skus_journey,
+                    "uk": {},
+                    "us": {},
+                    "recommendation": other_skus_recommendation,
+                    "journey_summary": other_skus_journey,
+                    "is_other_skus_card": True,
+                }
+
+                other_products_total_row["recommendation"] = other_skus_recommendation
+                other_products_total_row["journey_summary"] = other_skus_journey
+                other_products_total_row["product_journey"] = other_skus_journey
+
+            # -------------------------------------------------
             # GLOBAL: Daily series for charts
-            # Restored from older working route.
-            # Do NOT depend on current_global_payload / previous_global_payload
-            # for chart series because those helpers may not return daily_series keys.
+            # Best-effort: use whichever country exists.
+            # Do NOT crash if UK or US historical/current table is missing.
             # -------------------------------------------------
 
             uk_to_usd_rate_for_charts = fetch_conversion_rate(
@@ -1521,18 +1722,53 @@ def live_mtd_vs_previous():
                 selected_currency="usd",
             ) or 1.0
 
+
+            def safe_fetch_previous_period_data_for_global(user_id, country, start_date, end_date):
+                try:
+                    items, daily_rows = fetch_previous_period_data(
+                        user_id,
+                        country,
+                        start_date,
+                        end_date,
+                    )
+                    return items or [], daily_rows or []
+                except Exception as e:
+                    print(
+                        f"[WARN] Global chart previous {country.upper()} data unavailable "
+                        f"for {start_date} to {end_date}: {e}"
+                    )
+                    return [], []
+
+
+            def safe_fetch_current_mtd_data_for_global(user_id, country, start_date, end_date):
+                try:
+                    items, daily_rows = fetch_current_mtd_data(
+                        user_id,
+                        country,
+                        start_date,
+                        end_date,
+                    )
+                    return items or [], daily_rows or []
+                except Exception as e:
+                    print(
+                        f"[WARN] Global chart current {country.upper()} data unavailable "
+                        f"for {start_date} to {end_date}: {e}"
+                    )
+                    return [], []
+
+
             # -------------------------------------------------
             # Previous FULL month daily series
             # Used by daily_series.previous_global / previous_uk / previous_us
             # -------------------------------------------------
-            _, previous_uk_raw = fetch_previous_period_data(
+            _, previous_uk_raw = safe_fetch_previous_period_data_for_global(
                 user_id,
                 "uk",
                 prev_full_start,
                 prev_full_end,
             )
 
-            _, previous_us_raw = fetch_previous_period_data(
+            _, previous_us_raw = safe_fetch_previous_period_data_for_global(
                 user_id,
                 "us",
                 prev_full_start,
@@ -1542,30 +1778,31 @@ def live_mtd_vs_previous():
             previous_uk = _convert_daily_series_to_usd(
                 previous_uk_raw,
                 uk_to_usd_rate_for_charts,
-            )
+            ) if previous_uk_raw else []
 
             previous_us = _tag_daily_series(
                 previous_us_raw,
                 "us",
-            )
+            ) if previous_us_raw else []
 
             previous_global = _build_global_daily_series(
                 previous_us,
                 previous_uk,
             )
 
+
             # -------------------------------------------------
             # Current MTD daily series
             # Used by daily_series.current_mtd_global / current_mtd_uk / current_mtd_us
             # -------------------------------------------------
-            _, current_mtd_uk_raw = fetch_current_mtd_data(
+            _, current_mtd_uk_raw = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "uk",
                 curr_start,
                 curr_end,
             )
 
-            _, current_mtd_us_raw = fetch_current_mtd_data(
+            _, current_mtd_us_raw = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "us",
                 curr_start,
@@ -1575,30 +1812,31 @@ def live_mtd_vs_previous():
             current_mtd_uk = _convert_daily_series_to_usd(
                 current_mtd_uk_raw,
                 uk_to_usd_rate_for_charts,
-            )
+            ) if current_mtd_uk_raw else []
 
             current_mtd_us = _tag_daily_series(
                 current_mtd_us_raw,
                 "us",
-            )
+            ) if current_mtd_us_raw else []
 
             current_mtd_global = _build_global_daily_series(
                 current_mtd_us,
                 current_mtd_uk,
             )
 
+
             # -------------------------------------------------
             # Previous ALIGNED period daily series
             # Used by daily_series_aligned.previous_global / previous_uk / previous_us
             # -------------------------------------------------
-            _, previous_aligned_uk_raw = fetch_previous_period_data(
+            _, previous_aligned_uk_raw = safe_fetch_previous_period_data_for_global(
                 user_id,
                 "uk",
                 prev_start,
                 prev_end,
             )
 
-            _, previous_aligned_us_raw = fetch_previous_period_data(
+            _, previous_aligned_us_raw = safe_fetch_previous_period_data_for_global(
                 user_id,
                 "us",
                 prev_start,
@@ -1608,17 +1846,18 @@ def live_mtd_vs_previous():
             previous_aligned_uk = _convert_daily_series_to_usd(
                 previous_aligned_uk_raw,
                 uk_to_usd_rate_for_charts,
-            )
+            ) if previous_aligned_uk_raw else []
 
             previous_aligned_us = _tag_daily_series(
                 previous_aligned_us_raw,
                 "us",
-            )
+            ) if previous_aligned_us_raw else []
 
             previous_aligned_global = _build_global_daily_series(
                 previous_aligned_us,
                 previous_aligned_uk,
             )
+
 
             # -------------------------------------------------
             # Backward-compatible selected-country chart keys
@@ -1635,13 +1874,13 @@ def live_mtd_vs_previous():
             "currency": currency,
 
             "portfolio_inventory_block": {
-                "uk": portfolio_inventory_block_uk,
-                "us": portfolio_inventory_block_us,
+                "uk": portfolio_inventory_block_uk if "uk" in available_countries else "",
+                "us": portfolio_inventory_block_us if "us" in available_countries else "",
             },
 
             "portfolio_inventory_alerts": {
-                "uk": portfolio_inventory_alerts_uk,
-                "us": portfolio_inventory_alerts_us,
+                "uk": portfolio_inventory_alerts_uk if "uk" in available_countries else {},
+                "us": portfolio_inventory_alerts_us if "us" in available_countries else {},
             },
 
             "periods": {
@@ -1661,6 +1900,8 @@ def live_mtd_vs_previous():
                     "summary_text": summary_out.get("summary_text", ""),
                     "metric_bullets": summary_out.get("metric_bullets", []),
                 },
+
+                "portfolio_recommendation": portfolio_recommendation,
 
                 "categorized_growth": {
                     "top_80_products": (
@@ -1700,7 +1941,13 @@ def live_mtd_vs_previous():
                 },
 
 
-                "product_journey": product_journey,    
+                "product_journey": product_journey,
+
+                "other_skus_strategy": {
+                    "recommendation": other_skus_recommendation,
+                    "journey_summary": other_skus_journey,
+                } if other_products_total_row else {},
+
                 "recommended_actions_mtd": {
                     "uk": recommended_actions_uk,
                     "us": recommended_actions_us,
@@ -3146,24 +3393,141 @@ def get_previous_global_data_for_live_bi(
         monthrange(prev_start.year, prev_start.month)[1]
     )
 
-    skuwise_items_uk_raw, uk_daily = fetch_previous_period_data(
-        user_id, "uk", prev_start, prev_end
+    # -------------------------------------------------------------------------
+    # SAFE FETCH HELPERS
+    # -------------------------------------------------------------------------
+    def safe_fetch_previous_period_data(user_id, country, start_date, end_date):
+        try:
+            items, daily = fetch_previous_period_data(
+                user_id,
+                country,
+                start_date,
+                end_date,
+            )
+
+            return items or [], daily or []
+
+        except Exception as e:
+           return [], []
+
+    def safe_items_to_df(items, country):
+        try:
+            return _items_to_df(items or [], country)
+        except Exception as e:
+            print(f"[WARN] Failed to convert {country.upper()} items to df: {e}")
+            return pd.DataFrame()
+
+    def safe_append_total_row(items, country):
+        try:
+            return _append_total_row(items or [], country)
+        except Exception as e:
+            print(f"[WARN] Failed to append total row for {country.upper()}: {e}")
+            return items or []
+
+    def empty_aligned_totals():
+        return {
+            "total_previous_net_sales": 0,
+            "total_previous_profit": 0,
+            "total_previous_advertising": 0,
+            "total_previous_platform_fees": 0,
+            "total_previous_profit_cm2": 0,
+            "total_previous_profit_percentage": 0,
+            "total_previous_rembursement_fee": 0,
+            "total_previous_net_sales_full_month": 0,
+        }
+
+    def empty_derived_totals():
+        return {
+            "quantity": 0,
+            "gross_sales": 0,
+            "net_sales": 0,
+            "profit": 0,
+            "tax_and_credits": 0,
+            "cogs": 0,
+            "advertising_fees": 0,
+            "amazon_fees": 0,
+            "platform_fees": 0,
+            "cm2_profit": 0,
+            "asp": 0,
+            "profit_percentage": 0,
+            "cm2_profit_percentage": 0,
+        }
+
+    def safe_build_aligned_totals(
+        skuwise_items,
+        extra_totals,
+        total_previous_net_sales_full_month=0,
+        total_previous_rembursement_fee_full_month=0,
+    ):
+        if not skuwise_items:
+            return empty_aligned_totals()
+
+        try:
+            return _build_aligned_totals(
+                skuwise_items,
+                extra_totals,
+                total_previous_net_sales_full_month=total_previous_net_sales_full_month,
+                total_previous_rembursement_fee_full_month=total_previous_rembursement_fee_full_month,
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to build aligned totals: {e}")
+            return empty_aligned_totals()
+
+    def safe_build_derived_totals(skuwise_items, extra_totals):
+        if not skuwise_items:
+            return empty_derived_totals()
+
+        try:
+            return _build_derived_totals_from_skuwise(
+                skuwise_items,
+                extra_totals,
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to build derived totals: {e}")
+            return empty_derived_totals()
+
+    # -------------------------------------------------------------------------
+    # FETCH PREVIOUS ALIGNED PERIOD SAFELY
+    # -------------------------------------------------------------------------
+    skuwise_items_uk_raw, uk_daily = safe_fetch_previous_period_data(
+        user_id,
+        "uk",
+        prev_start,
+        prev_end,
     )
 
-    skuwise_items_us_raw, us_daily = fetch_previous_period_data(
-        user_id, "us", prev_start, prev_end
+    skuwise_items_us_raw, us_daily = safe_fetch_previous_period_data(
+        user_id,
+        "us",
+        prev_start,
+        prev_end,
     )
 
-    _, uk_daily_full = fetch_previous_period_data(
-        user_id, "uk", prev_full_start, prev_full_end
+    # -------------------------------------------------------------------------
+    # FETCH PREVIOUS FULL MONTH SAFELY
+    # -------------------------------------------------------------------------
+    _, uk_daily_full = safe_fetch_previous_period_data(
+        user_id,
+        "uk",
+        prev_full_start,
+        prev_full_end,
     )
 
-    _, us_daily_full = fetch_previous_period_data(
-        user_id, "us", prev_full_start, prev_full_end
+    _, us_daily_full = safe_fetch_previous_period_data(
+        user_id,
+        "us",
+        prev_full_start,
+        prev_full_end,
     )
 
-    uk_df = _items_to_df(skuwise_items_uk_raw, "uk")
-    us_df = _items_to_df(skuwise_items_us_raw, "us")
+    uk_df = safe_items_to_df(skuwise_items_uk_raw, "uk")
+    us_df = safe_items_to_df(skuwise_items_us_raw, "us")
+
+    available_countries = []
+    if not uk_df.empty:
+        available_countries.append("uk")
+    if not us_df.empty:
+        available_countries.append("us")
 
     uk_to_usd_rate = fetch_conversion_rate(
         country="us",
@@ -3173,25 +3537,73 @@ def get_previous_global_data_for_live_bi(
         selected_currency="usd",
     ) or 1.0
 
-    uk_df = _convert_uk_to_usd(uk_df, uk_to_usd_rate)
+    # -------------------------------------------------------------------------
+    # CONVERT UK TO USD SAFELY
+    # -------------------------------------------------------------------------
+    if not uk_df.empty:
+        try:
+            uk_df = _convert_uk_to_usd(uk_df, uk_to_usd_rate)
+        except Exception as e:
+            print(f"[WARN] Failed to convert UK previous data to USD: {e}")
 
     if not us_df.empty:
         us_df["currency"] = "USD"
 
-    skuwise_items_uk = uk_df.replace({np.nan: None}).to_dict(orient="records")
-    skuwise_items_us = us_df.replace({np.nan: None}).to_dict(orient="records")
-    skuwise_items_global = _build_global_skuwise(us_df, uk_df)
+    skuwise_items_uk = (
+        uk_df.replace({np.nan: None}).to_dict(orient="records")
+        if not uk_df.empty
+        else []
+    )
 
-    skuwise_items_uk = _append_total_row(skuwise_items_uk, "uk")
-    skuwise_items_us = _append_total_row(skuwise_items_us, "us")
-    skuwise_items_global = _append_total_row(skuwise_items_global, "global")
+    skuwise_items_us = (
+        us_df.replace({np.nan: None}).to_dict(orient="records")
+        if not us_df.empty
+        else []
+    )
 
-    uk_extra = _build_extra_totals_single(uk_daily, uk_to_usd_rate)
-    us_extra = _build_extra_totals_single(us_daily, 1.0)
-    global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
+    # Build global from whichever country exists.
+    try:
+        skuwise_items_global = _build_global_skuwise(us_df, uk_df)
+    except Exception as e:
+        print(f"[WARN] Failed to build previous global skuwise items: {e}")
+        skuwise_items_global = []
 
-    uk_full_totals = totals_from_daily_series(uk_daily_full)
-    us_full_totals = totals_from_daily_series(us_daily_full)
+    skuwise_items_uk = safe_append_total_row(skuwise_items_uk, "uk")
+    skuwise_items_us = safe_append_total_row(skuwise_items_us, "us")
+    skuwise_items_global = safe_append_total_row(skuwise_items_global, "global")
+
+    # -------------------------------------------------------------------------
+    # EXTRA TOTALS SAFELY
+    # -------------------------------------------------------------------------
+    try:
+        uk_extra = _build_extra_totals_single(uk_daily, uk_to_usd_rate)
+    except Exception as e:
+        print(f"[WARN] Failed to build UK extra totals: {e}")
+        uk_extra = {}
+
+    try:
+        us_extra = _build_extra_totals_single(us_daily, 1.0)
+    except Exception as e:
+        print(f"[WARN] Failed to build US extra totals: {e}")
+        us_extra = {}
+
+    try:
+        global_extra = _build_extra_totals(uk_daily, us_daily, uk_to_usd_rate)
+    except Exception as e:
+        print(f"[WARN] Failed to build global extra totals: {e}")
+        global_extra = {}
+
+    try:
+        uk_full_totals = totals_from_daily_series(uk_daily_full)
+    except Exception as e:
+        print(f"[WARN] Failed to build UK full-month totals: {e}")
+        uk_full_totals = {}
+
+    try:
+        us_full_totals = totals_from_daily_series(us_daily_full)
+    except Exception as e:
+        print(f"[WARN] Failed to build US full-month totals: {e}")
+        us_full_totals = {}
 
     uk_total_previous_net_sales_full_month = (
         float(uk_full_totals.get("net_sales", 0) or 0)
@@ -3221,43 +3633,66 @@ def get_previous_global_data_for_live_bi(
         + us_total_previous_rembursement_fee_full_month
     )
 
-    aligned_totals_uk = _build_aligned_totals(
+    # -------------------------------------------------------------------------
+    # ALIGNED TOTALS
+    # -------------------------------------------------------------------------
+    aligned_totals_uk = safe_build_aligned_totals(
         skuwise_items_uk,
         uk_extra,
         total_previous_net_sales_full_month=uk_total_previous_net_sales_full_month,
         total_previous_rembursement_fee_full_month=uk_total_previous_rembursement_fee_full_month,
     )
 
-    aligned_totals_us = _build_aligned_totals(
+    aligned_totals_us = safe_build_aligned_totals(
         skuwise_items_us,
         us_extra,
         total_previous_net_sales_full_month=us_total_previous_net_sales_full_month,
         total_previous_rembursement_fee_full_month=us_total_previous_rembursement_fee_full_month,
     )
 
-    aligned_totals_global = _build_aligned_totals(
+    aligned_totals_global = safe_build_aligned_totals(
         skuwise_items_global,
         global_extra,
         total_previous_net_sales_full_month=global_total_previous_net_sales_full_month,
         total_previous_rembursement_fee_full_month=global_total_previous_rembursement_fee_full_month,
     )
 
-    derived_totals_uk = _build_derived_totals_from_skuwise(
+    # -------------------------------------------------------------------------
+    # DERIVED TOTALS
+    # -------------------------------------------------------------------------
+    derived_totals_uk = safe_build_derived_totals(
         skuwise_items_uk,
         uk_extra,
     )
 
-    derived_totals_us = _build_derived_totals_from_skuwise(
+    derived_totals_us = safe_build_derived_totals(
         skuwise_items_us,
         us_extra,
     )
 
-    derived_totals_global = _build_derived_totals_from_skuwise(
+    derived_totals_global = safe_build_derived_totals(
         skuwise_items_global,
         global_extra,
     )
 
+    payload_country = "global" if len(available_countries) > 1 else (
+        available_countries[0] if available_countries else "global"
+    )
+
     return {
+        "success": True,
+        "country": payload_country,
+        "requested_country": "global",
+        "available_countries": available_countries,
+        "message": (
+            "Previous GLOBAL data built from UK and US"
+            if len(available_countries) > 1
+            else (
+                f"Previous GLOBAL fallback data built from {available_countries[0].upper()} only"
+                if available_countries
+                else "No previous UK or US data available"
+            )
+        ),
         "previous_period": {
             "prev_start": prev_start.isoformat(),
             "prev_end": prev_end.isoformat(),

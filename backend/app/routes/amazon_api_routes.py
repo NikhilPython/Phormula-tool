@@ -1426,10 +1426,13 @@ def _country_to_sku_col(country: str) -> str:
     return "sku_uk"
 
 
+
 def get_current_global_data_for_live_bi(user_id: int):
     import math
     import pandas as pd
+    import numpy as np
     from datetime import datetime, timezone
+    from sqlalchemy import text
 
     now_utc = datetime.now(timezone.utc)
     month_name = _month_name_lower(now_utc.month)
@@ -1438,22 +1441,111 @@ def get_current_global_data_for_live_bi(user_id: int):
     us_table = f"skuwisemonthly_{user_id}_us_{month_name}_{now_utc.year}"
     global_table = f"skuwisemonthly_{user_id}_global_{month_name}_{now_utc.year}"
 
-    uk_df = pd.read_sql_query(
-        f'SELECT * FROM public."{uk_table}"',
-        PHORMULA_ENGINE
-    )
+    # -------------------------------------------------------------------------
+    # SAFE TABLE READS
+    # -------------------------------------------------------------------------
+    def table_exists(table_name):
+        sql = text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = :table_name
+            )
+        """)
+        try:
+            with PHORMULA_ENGINE.connect() as conn:
+                return bool(conn.execute(sql, {"table_name": table_name}).scalar())
+        except Exception as e:
+            print(f"[WARN] table_exists failed for {table_name}: {e}")
+            return False
 
-    us_df = pd.read_sql_query(
-        f'SELECT * FROM public."{us_table}"',
-        PHORMULA_ENGINE
-    )
+    def safe_read_skuwise_table(table_name, country):
+        if not table_exists(table_name):
+            print(f"[WARN] {country.upper()} table missing, skipping: {table_name}")
+            return pd.DataFrame()
+
+        try:
+            return pd.read_sql_query(
+                f'SELECT * FROM public."{table_name}"',
+                PHORMULA_ENGINE
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to read {country.upper()} table {table_name}: {e}")
+            return pd.DataFrame()
+
+    uk_df = safe_read_skuwise_table(uk_table, "uk")
+    us_df = safe_read_skuwise_table(us_table, "us")
+
+    available_countries = []
+    if not uk_df.empty:
+        available_countries.append("uk")
+    if not us_df.empty:
+        available_countries.append("us")
+
+    if not available_countries:
+        return {
+            "success": False,
+            "status": "loading",
+            "country": "global",
+            "requested_country": "global",
+            "available_countries": [],
+            "message": "No UK or US current-month SKU-wise data is available yet.",
+            "conversion": {
+                "from": "GBP",
+                "to": "USD",
+                "rate": 1.0,
+                "month": month_name,
+                "year": now_utc.year,
+            },
+            "skuwise_tables": {
+                "us": {
+                    "name": us_table,
+                    "saved": False,
+                    "rows": 0,
+                    "available": False,
+                },
+                "uk": {
+                    "name": uk_table,
+                    "saved": False,
+                    "rows": 0,
+                    "available": False,
+                    "currency": "USD",
+                    "converted_from": "GBP",
+                    "conversion_rate": 1.0,
+                },
+                "global": {
+                    "name": global_table,
+                    "saved": False,
+                    "rows": 0,
+                    "available": False,
+                },
+            },
+            "skuwise_table": {
+                "name": global_table,
+                "saved": False,
+                "rows": 0,
+            },
+            "derived_totals_global": {},
+            "skuwise_items_us": [],
+            "skuwise_items_uk": [],
+            "skuwise_items_global": [],
+        }
+
+    # -------------------------------------------------------------------------
+    # SPLIT GRAND TOTAL ROWS SAFELY
+    # -------------------------------------------------------------------------
+    def split_grand_total(df):
+        if df is None or df.empty or "sku" not in df.columns:
+            return pd.DataFrame(), df if df is not None else pd.DataFrame()
+
+        gt = df[df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
+        body = df[df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+        return gt, body
 
     # remove old grand total before combining
-    uk_gt = uk_df[uk_df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
-    us_gt = us_df[us_df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
-
-    uk_df = uk_df[uk_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
-    us_df = us_df[us_df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+    uk_gt, uk_df = split_grand_total(uk_df)
+    us_gt, us_df = split_grand_total(us_df)
 
     uk_to_usd_rate = fetch_conversion_rate(
         country="us",
@@ -1484,7 +1576,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     global_current_net_reimbursement = float(uk_reimbursement) + float(us_reimbursement)
 
     def gt_money_total(df, col, rate=1):
-        if df.empty or col not in df.columns:
+        if df is None or df.empty or col not in df.columns:
             return 0
         return float(
             pd.to_numeric(df[col], errors="coerce").fillna(0).sum()
@@ -1515,7 +1607,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "gift_wrap_credits", "shipping_credits_tax", "giftwrap_credits_tax",
         "promotional_rebates", "promotional_rebates_tax",
         "marketplace_facilitator_tax", "selling_fees", "fba_fees",
-        "marketplace_fees",  # IMPORTANT: convert UK marketplace fees to USD
+        "marketplace_fees",
         "other", "gross_sales", "cogs", "profit", "net_sales",
         "ads_spend", "product_spend", "display_spend", "brand_spend",
         "platform_fee", "platform_fee_inventory_storage",
@@ -1527,7 +1619,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     ]
 
     def recalc_response_grand_total(row_df):
-        if row_df.empty:
+        if row_df is None or row_df.empty:
             return row_df
 
         row_df = row_df.copy()
@@ -1593,29 +1685,33 @@ def get_current_global_data_for_live_bi(user_id: int):
 
         return row_df
 
+    # -------------------------------------------------------------------------
+    # CONVERT UK MONEY COLUMNS TO USD
+    # -------------------------------------------------------------------------
     for col in money_cols:
-        if col in uk_df.columns:
+        if not uk_df.empty and col in uk_df.columns:
             uk_df[col] = pd.to_numeric(uk_df[col], errors="coerce") * float(uk_to_usd_rate)
 
-    # keep separate US and UK items
-    us_df["country"] = "us"
-    uk_df["country"] = "uk"
+    # -------------------------------------------------------------------------
+    # ADD COUNTRY METADATA SAFELY
+    # -------------------------------------------------------------------------
+    def add_country_metadata(df, country):
+        if df is None or df.empty:
+            return pd.DataFrame()
 
-    us_df["month"] = month_name
-    uk_df["month"] = month_name
+        df = df.copy()
+        df["country"] = country
+        df["month"] = month_name
+        df["year"] = now_utc.year
+        df["user_id"] = user_id
+        df["generated_at_utc"] = now_utc.isoformat()
+        return df
 
-    us_df["year"] = now_utc.year
-    uk_df["year"] = now_utc.year
+    us_df = add_country_metadata(us_df, "us")
+    uk_df = add_country_metadata(uk_df, "uk")
 
-    us_df["user_id"] = user_id
-    uk_df["user_id"] = user_id
-
-    us_df["generated_at_utc"] = now_utc.isoformat()
-    uk_df["generated_at_utc"] = now_utc.isoformat()
-
-    us_response_df = us_df.copy()
-    uk_response_df = uk_df.copy()
-
+    us_response_df = us_df.copy() if not us_df.empty else pd.DataFrame()
+    uk_response_df = uk_df.copy() if not uk_df.empty else pd.DataFrame()
 
     def _add_country_growth_fields(df):
         if df is None or df.empty:
@@ -1649,7 +1745,6 @@ def get_current_global_data_for_live_bi(user_id: int):
                 df["sales_mix"] = 0.0
 
         return df
-
 
     us_response_df = _add_country_growth_fields(us_response_df)
     uk_response_df = _add_country_growth_fields(uk_response_df)
@@ -1686,10 +1781,36 @@ def get_current_global_data_for_live_bi(user_id: int):
 
         uk_response_df = pd.concat([uk_response_df, uk_gt_response], ignore_index=True)
 
-    skuwise_items_us = us_response_df.to_dict(orient="records")
-    skuwise_items_uk = uk_response_df.to_dict(orient="records")
+    skuwise_items_us = (
+        us_response_df.replace({np.nan: None}).to_dict(orient="records")
+        if us_response_df is not None and not us_response_df.empty
+        else []
+    )
 
-    combined_df = pd.concat([us_df, uk_df], ignore_index=True)
+    skuwise_items_uk = (
+        uk_response_df.replace({np.nan: None}).to_dict(orient="records")
+        if uk_response_df is not None and not uk_response_df.empty
+        else []
+    )
+
+    # -------------------------------------------------------------------------
+    # COMBINE ONLY AVAILABLE COUNTRIES
+    # -------------------------------------------------------------------------
+    frames_to_combine = []
+
+    if not us_df.empty:
+        frames_to_combine.append(us_df)
+
+    if not uk_df.empty:
+        frames_to_combine.append(uk_df)
+
+    combined_df = pd.concat(frames_to_combine, ignore_index=True)
+
+    if "product_name" not in combined_df.columns:
+        combined_df["product_name"] = ""
+
+    if "sku" not in combined_df.columns:
+        combined_df["sku"] = ""
 
     sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
 
@@ -1718,6 +1839,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     # Make global use the same formula as UK/US productwise table.
 
     for col in [
+        "quantity",
         "net_sales",
         "cogs",
         "marketplace_fees",
@@ -1736,7 +1858,6 @@ def get_current_global_data_for_live_bi(user_id: int):
         + pd.to_numeric(global_df["display_spend"], errors="coerce").fillna(0.0)
     )
 
-    # Other Transactions = positive tax_and_credits
     # Other Transactions = US other + UK other converted to USD
     # Do NOT rebuild this from tax_and_credits globally.
     if "other" not in global_df.columns:
@@ -1768,9 +1889,9 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     global_df["cm1_profit_per_unit"] = global_df.apply(
-    lambda r: float(r["profit"]) / float(r["quantity"])
-    if float(r.get("quantity", 0) or 0) else 0,
-    axis=1
+        lambda r: float(r["profit"]) / float(r["quantity"])
+        if float(r.get("quantity", 0) or 0) else 0,
+        axis=1
     )
 
     # IMPORTANT:
@@ -1820,9 +1941,15 @@ def get_current_global_data_for_live_bi(user_id: int):
     global_df["user_id"] = user_id
     global_df["generated_at_utc"] = now_utc.isoformat()
 
+    # Recompute numeric columns after derived columns were added.
+    total_sum_cols = global_df.select_dtypes(include=["number"]).columns.tolist()
+    for remove_col in ["user_id", "year"]:
+        if remove_col in total_sum_cols:
+            total_sum_cols.remove(remove_col)
+
     total_row = {"sku": "GRAND_TOTAL", "product_name": "Grand Total"}
 
-    for col in sum_cols:
+    for col in total_sum_cols:
         total_row[col] = float(global_df[col].sum()) if col in global_df.columns else 0
 
     total_qty = float(total_row.get("quantity", 0) or 0)
@@ -1856,9 +1983,12 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     total_row["asp"] = total_net_sales / total_qty if total_qty else 0
     total_row["cm1_profit_per_unit"] = total_profit / total_qty if total_qty else 0
+    total_row["unit_wise_profitability"] = total_profit / total_qty if total_qty else 0
     total_row["cm1_profit_per"] = total_profit / total_net_sales * 100 if total_net_sales else 0
     total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
     total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
+    total_row["sales_mix"] = 100.0 if total_net_sales else 0.0
+
     total_row["acos"] = round(
         (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
         if total_net_sales else 0,
@@ -1958,6 +2088,7 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     global_df = pd.concat([global_df, pd.DataFrame([total_row])], ignore_index=True)
 
+    # Keep DB write for global table.
     global_df.to_sql(
         global_table,
         PHORMULA_ENGINE,
@@ -1990,9 +2121,18 @@ def get_current_global_data_for_live_bi(user_id: int):
         "reimbursement_vs_sales": total_row["reimbursement_vs_sales"],
     }
 
+    payload_country = "global" if len(available_countries) > 1 else available_countries[0]
+
     payload_out = {
         "success": True,
-        "country": "global",
+        "country": payload_country,
+        "requested_country": "global",
+        "available_countries": available_countries,
+        "message": (
+            "Live GLOBAL data built from UK and US"
+            if len(available_countries) > 1
+            else f"Live GLOBAL fallback data built from {available_countries[0].upper()} only"
+        ),
         "conversion": {
             "from": "GBP",
             "to": "USD",
@@ -2004,12 +2144,14 @@ def get_current_global_data_for_live_bi(user_id: int):
             "us": {
                 "name": us_table,
                 "saved": False,
-                "rows": len(us_response_df),
+                "rows": len(us_response_df) if us_response_df is not None else 0,
+                "available": "us" in available_countries,
             },
             "uk": {
                 "name": uk_table,
                 "saved": False,
-                "rows": len(uk_response_df),
+                "rows": len(uk_response_df) if uk_response_df is not None else 0,
+                "available": "uk" in available_countries,
                 "currency": "USD",
                 "converted_from": "GBP",
                 "conversion_rate": uk_to_usd_rate,
@@ -2018,6 +2160,7 @@ def get_current_global_data_for_live_bi(user_id: int):
                 "name": global_table,
                 "saved": True,
                 "rows": len(global_df),
+                "available": True,
             },
         },
         "skuwise_table": {
@@ -2028,11 +2171,10 @@ def get_current_global_data_for_live_bi(user_id: int):
         "derived_totals_global": derived_totals_global,
         "skuwise_items_us": skuwise_items_us,
         "skuwise_items_uk": skuwise_items_uk,
-        "skuwise_items_global": global_df.to_dict(orient="records"),
+        "skuwise_items_global": global_df.replace({np.nan: None}).to_dict(orient="records"),
     }
 
     return payload_out
-
 
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():

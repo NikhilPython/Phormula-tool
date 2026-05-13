@@ -9,7 +9,7 @@ import numpy as np
 from openai import OpenAI
 import json
 from openai import OpenAIError
-from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
+from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month, get_or_create_global_summary
 from app.utils.uk_coverage_ratio_utils import fetch_sku_product_mapping, construct_prev_table_name, compute_inventory_coverage_ratio
 from app.utils.uk_prompts_utils import LIVE_BI_PROMPT_1_ANALYSIS, LIVE_BI_INVENTORY_SUMMARY_PROMPT, LIVE_BI_PROMPT_1_5_SUMMARY
 
@@ -3037,6 +3037,68 @@ def generate_sku_inventory_flags(
 
 
 
+# def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
+
+#     sku = safe_strip(item.get("sku"), default=None)
+#     product_name = safe_strip(item.get("product_name"), default="this product")
+
+#     key = sku or product_name
+#     is_new_or_reviving = item.get("new_or_reviving", False)
+
+#     recommendation = None
+#     inventory_recommendation = None
+#     product_journey = []
+
+#     try:
+
+#         # -------------------------------------------------
+#         # Resolve latest month for strategy engine
+#         # -------------------------------------------------
+#         latest_year, latest_month = resolve_latest_available_month(
+#             int(user_id),
+#             country.lower()
+#         )
+
+#         # -------------------------------------------------
+#         # Call strategy engine (same engine used everywhere)
+#         # -------------------------------------------------
+#         summary_result = get_or_create_summary(
+#             user_id=int(user_id),
+#             country=country.lower(),
+#             marketplace_id=None,
+#             period="monthly",
+#             timeline=str(latest_month),
+#             year=int(latest_year),
+#             objective=None,
+#             target_sku=key,
+#             force_regenerate=True
+#         )
+
+#         sku_actions = summary_result.get("sku_actions") or {}
+#         sku_block = sku_actions.get(key) or {}
+
+#         recommendation = sku_block.get("recommendation")
+#         inventory_recommendation = sku_block.get("inventory_recommendation")
+
+#         performance_journey = sku_block.get("journey_summary") or []
+#         inventory_journey = sku_block.get("inventory_journey_summary") or []
+
+#         product_journey = performance_journey + inventory_journey
+
+#     except Exception as e:
+#         print("[LIVE STRATEGY ENGINE ERROR]", e)
+
+#     return key, {
+#         "sku": sku,
+#         "product_name": product_name,
+#         "product_journey": product_journey,
+#         "recommendation": recommendation,
+#         "inventory_recommendation": inventory_recommendation,
+#         "key_used": key,
+#         "is_new_or_reviving": is_new_or_reviving
+#     }
+
+
 def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
 
     sku = safe_strip(item.get("sku"), default=None)
@@ -3050,40 +3112,131 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
     product_journey = []
 
     try:
+        country_key = country.lower()
 
         # -------------------------------------------------
         # Resolve latest month for strategy engine
         # -------------------------------------------------
-        latest_year, latest_month = resolve_latest_available_month(
-            int(user_id),
-            country.lower()
-        )
+        if country_key == "global":
+            # Global uses US + UK internally.
+            # If resolve_latest_available_month supports "global", use it.
+            # Otherwise fallback to US latest month.
+            try:
+                latest_year, latest_month = resolve_latest_available_month(
+                    int(user_id),
+                    "global"
+                )
+            except Exception:
+                latest_year, latest_month = resolve_latest_available_month(
+                    int(user_id),
+                    "us"
+                )
+        else:
+            latest_year, latest_month = resolve_latest_available_month(
+                int(user_id),
+                country_key
+            )
 
         # -------------------------------------------------
-        # Call strategy engine (same engine used everywhere)
+        # GLOBAL strategy engine
         # -------------------------------------------------
-        summary_result = get_or_create_summary(
-            user_id=int(user_id),
-            country=country.lower(),
-            marketplace_id=None,
-            period="monthly",
-            timeline=str(latest_month),
-            year=int(latest_year),
-            objective=None,
-            target_sku=key,
-            force_regenerate=True
-        )
+        if country_key == "global":
 
-        sku_actions = summary_result.get("sku_actions") or {}
-        sku_block = sku_actions.get(key) or {}
+            summary_result = get_or_create_global_summary(
+                user_id=int(user_id),
+                marketplace_id=None,
+                period="monthly",
+                timeline=str(latest_month),
+                year=int(latest_year),
+                objective=None,
+                target_sku=key,
+                force_regenerate=True
+            )
 
-        recommendation = sku_block.get("recommendation")
-        inventory_recommendation = sku_block.get("inventory_recommendation")
+            global_ai = summary_result.get("global_ai") or {}
+            product_comparisons = global_ai.get("product_journey_comparison") or []
 
-        performance_journey = sku_block.get("journey_summary") or []
-        inventory_journey = sku_block.get("inventory_journey_summary") or []
+            matched_product = None
 
-        product_journey = performance_journey + inventory_journey
+            for product in product_comparisons:
+                if not isinstance(product, dict):
+                    continue
+
+                possible_keys = [
+                    product.get("sku"),
+                    product.get("product_name"),
+                    product.get("mapped_product_name"),
+                    product.get("global_product_name"),
+                    product.get("name"),
+                ]
+
+                possible_keys = [
+                    safe_strip(value, default=None)
+                    for value in possible_keys
+                    if value
+                ]
+
+                if key in possible_keys or product_name in possible_keys:
+                    matched_product = product
+                    break
+
+            if matched_product:
+                product_journey = (
+                    matched_product.get("journey_summary")
+                    or matched_product.get("product_journey")
+                    or matched_product.get("comparison_journey")
+                    or []
+                )
+
+                country_actions = matched_product.get("country_actions") or {}
+
+                us_actions = country_actions.get("us") or {}
+                uk_actions = country_actions.get("uk") or {}
+
+                recommendation = {
+                    "us": us_actions.get("recommendation"),
+                    "uk": uk_actions.get("recommendation"),
+                    "global": matched_product.get("recommendation")
+                }
+
+                inventory_recommendation = {
+                    "us": us_actions.get("inventory_recommendation"),
+                    "uk": uk_actions.get("inventory_recommendation"),
+                    "global": matched_product.get("inventory_recommendation")
+                }
+
+            else:
+                recommendation = summary_result.get("overall_recommendation")
+                inventory_recommendation = None
+                product_journey = []
+
+        # -------------------------------------------------
+        # NORMAL country strategy engine
+        # -------------------------------------------------
+        else:
+
+            summary_result = get_or_create_summary(
+                user_id=int(user_id),
+                country=country_key,
+                marketplace_id=None,
+                period="monthly",
+                timeline=str(latest_month),
+                year=int(latest_year),
+                objective=None,
+                target_sku=key,
+                force_regenerate=True
+            )
+
+            sku_actions = summary_result.get("sku_actions") or {}
+            sku_block = sku_actions.get(key) or {}
+
+            recommendation = sku_block.get("recommendation")
+            inventory_recommendation = sku_block.get("inventory_recommendation")
+
+            performance_journey = sku_block.get("journey_summary") or []
+            inventory_journey = sku_block.get("inventory_journey_summary") or []
+
+            product_journey = performance_journey + inventory_journey
 
     except Exception as e:
         print("[LIVE STRATEGY ENGINE ERROR]", e)
@@ -3097,6 +3250,3 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
         "key_used": key,
         "is_new_or_reviving": is_new_or_reviving
     }
-
-
-

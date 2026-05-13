@@ -2539,6 +2539,9 @@ def build_global_numeric_metrics(
             "portfolio": {},
             "sku_current": {},
             "sku_mom": {},
+              # ✅ add these
+            "focus_skus": [],
+            "remaining_agg": {},
             "products": {},
         }
 
@@ -2587,6 +2590,13 @@ def build_global_numeric_metrics(
         global_sku_current,
         global_sku_prev,
     )
+    global_focus_skus = select_focus_skus_by_sales_mix(global_sku_current)
+
+    global_remaining_agg = build_remaining_skus_aggregate(
+        sku_current=global_sku_current,
+        sku_prev=global_sku_prev,
+        focus_skus=global_focus_skus,
+    )
 
     return {
         "available": True,
@@ -2613,6 +2623,9 @@ def build_global_numeric_metrics(
         # ✅ frontend metrics from skuwisemonthly_{user_id}_global_{mn}{year}_table
         "sku_current": global_sku_current,
         "sku_mom": global_sku_mom,
+        # ✅ ADD THESE
+        "focus_skus": global_focus_skus,
+        "remaining_agg": global_remaining_agg,
 
         # optional backwards compatibility
         "products": global_sku_mom,
@@ -2809,7 +2822,6 @@ def run_global_comparison_prompt(global_payload: dict) -> dict:
         ],
         temperature=0.2,
     )
-
     try:
         return json.loads(resp.choices[0].message.content)
     except Exception:
@@ -2820,6 +2832,29 @@ def run_global_comparison_prompt(global_payload: dict) -> dict:
             "product_journey_comparison": [],
             "global_overall_recommendation": "",
         }
+    
+def fmt_pct(x):
+    return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
+
+def fmt_number(x, decimals=2):
+    if not isinstance(x, (int, float)):
+        return "N/A"
+    if decimals == 0:
+        return f"{int(round(x)):,}"
+    return f"{x:,.{decimals}f}"
+def fmt_currency(x):
+    return f"${x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
+    if not isinstance(metric_dict, dict):
+        return "N/A"
+    current = metric_dict.get("current")
+    pct = metric_dict.get("delta_pct")
+    current_str = (
+        fmt_currency(current)
+        if is_currency
+        else fmt_number(current, decimals=decimals)
+    )
+    return f"{current_str} ({fmt_pct(pct)})"
 
 
 def render_global_comparison_summary(
@@ -2829,7 +2864,8 @@ def render_global_comparison_summary(
     uk_result: dict,
     period: str,
     timeline: str,
-    year: int
+    year: int,
+    remaining_agg: dict | None = None,
 ) -> str:
     """
     AI-written global summary renderer.
@@ -2838,6 +2874,8 @@ def render_global_comparison_summary(
     """
 
     lines = []
+
+    
 
     lines.append("Global Business Summary")
     lines.append(f"Period: {period_label(period, timeline, year)}")
