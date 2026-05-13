@@ -237,6 +237,16 @@ const normalizeTextBlock = (value: unknown): string => {
   return "";
 };
 
+const isOthersCardName = (name: string) => {
+  const value = String(name || "").trim().toLowerCase();
+  return (
+    value === "others" ||
+    value === "other skus" ||
+    value === "other sku" ||
+    value === "other"
+  );
+};
+
 const getLiveMtdParams = ({
   isGlobal,
   asOf,
@@ -3401,88 +3411,222 @@ export default function LiveBusinessClient({
   const globalRecommendationCards = useMemo(() => {
     if (!isGlobalData()) return [];
 
-    return [...(categorizedGrowth.top_80_skus || [])]
+    const isOthersCardName = (name: string) => {
+      const value = String(name || "").trim().toLowerCase();
+
+      return (
+        value === "others" ||
+        value === "other" ||
+        value === "other skus" ||
+        value === "other sku" ||
+        value === "other products" ||
+        value === "other product"
+      );
+    };
+
+    const getNetSalesValue = (row: any) => {
+      return Number(
+        row?.net_sales_curr ??
+        row?.net_sales_month2 ??
+        row?.net_sales ??
+        0
+      );
+    };
+
+    // ✅ only Top 80 SKUs for top cards
+    const top80Rows = [...(categorizedGrowth.top_80_skus || [])]
       .filter((row) => !isTotalLikeRow(row))
-      .sort((a, b) => Number(b?.net_sales_curr || 0) - Number(a?.net_sales_curr || 0))
-      .map((row) => {
-        const productName = row.product_name || "";
-        const journey = getGlobalProductJourney(productName);
+      .filter((row) => !isOthersCardName(row.product_name || ""))
+      .sort((a, b) => getNetSalesValue(b) - getNetSalesValue(a))
+      .slice(0, 5);
 
-        const ukAction = getFirstCountryAction(journey, "uk");
-        const usAction = getFirstCountryAction(journey, "us");
+    // ✅ build one Other SKUs row from other_total if available,
+    // otherwise manually aggregate categorizedGrowth.other_skus
+    const otherRows = [...(categorizedGrowth.other_skus || [])].filter(
+      (row) => !isTotalLikeRow(row)
+    );
 
-        const metrics = [
-          {
-            label: "ASP",
-            value: formatGlobalMetricValue(
-              Number(row.asp_curr || 0),
-              getGrowthValue(row, "ASP Growth (%)")
-            ),
-          },
-          {
-            label: "Units",
-            value: formatGlobalMetricValue(
-              Number(row.quantity_curr || 0),
-              getGrowthValue(row, "Unit Growth (%)"),
-              "number"
-            ),
-          },
-          {
-            label: "Net sales",
-            value: formatGlobalMetricValue(
-              Number(row.net_sales_curr || 0),
-              getGrowthValue(row, "Net Sales Growth (%)")
-            ),
-          },
-          {
-            label: "CM1 profit",
-            value: formatGlobalMetricValue(
-              Number(row.profit_curr || 0),
-              getGrowthValue(row, "CM1 Profit Impact (%)")
-            ),
-          },
-          {
-            label: "CM1 profit per unit",
-            value: formatGlobalMetricValue(
-              Number(row.unit_wise_profitability_curr || 0),
-              getGrowthValue(row, "Profit Per Unit (%)")
-            ),
-          },
-        ];
+    const otherCardRow =
+      categorizedGrowth.other_total ||
+      otherRows.find((row) => isOthersCardName(row.product_name || "")) ||
+      (otherRows.length
+        ? otherRows.reduce(
+          (acc: any, row: any) => {
+            acc.product_name = "Other Skus";
 
-        const recommendationPoints = [
+            acc.quantity_curr += Number(
+              row?.quantity_curr ??
+              row?.quantity_month2 ??
+              row?.quantity ??
+              0
+            );
+
+            acc.net_sales_curr += Number(
+              row?.net_sales_curr ??
+              row?.net_sales_month2 ??
+              row?.net_sales ??
+              0
+            );
+
+            acc.profit_curr += Number(
+              row?.profit_curr ??
+              row?.profit_month2 ??
+              row?.profit ??
+              0
+            );
+
+            const qty = Number(
+              row?.quantity_curr ??
+              row?.quantity_month2 ??
+              row?.quantity ??
+              0
+            );
+
+            const asp = Number(
+              row?.asp_curr ??
+              row?.asp_month2 ??
+              row?.asp ??
+              0
+            );
+
+            const unitProfit = Number(
+              row?.unit_wise_profitability_curr ??
+              row?.unit_wise_profitability_month2 ??
+              row?.unit_wise_profitability ??
+              0
+            );
+
+            acc._aspWeighted += asp * qty;
+            acc._unitProfitWeighted += unitProfit * qty;
+
+            return acc;
+          },
+          {
+            product_name: "Other Skus",
+            quantity_curr: 0,
+            net_sales_curr: 0,
+            profit_curr: 0,
+            _aspWeighted: 0,
+            _unitProfitWeighted: 0,
+          }
+        )
+        : null);
+
+    if (otherCardRow && otherCardRow.quantity_curr) {
+      otherCardRow.asp_curr =
+        Number(otherCardRow.quantity_curr) > 0
+          ? Number(otherCardRow.net_sales_curr || 0) /
+          Number(otherCardRow.quantity_curr)
+          : 0;
+
+      otherCardRow.unit_wise_profitability_curr =
+        Number(otherCardRow.quantity_curr) > 0
+          ? Number(otherCardRow.profit_curr || 0) /
+          Number(otherCardRow.quantity_curr)
+          : 0;
+    }
+
+    // ✅ final output: Top 5 + Other Skus at end
+    const finalRows = otherCardRow
+      ? [...top80Rows, otherCardRow]
+      : top80Rows;
+
+    return finalRows.map((row) => {
+      const productName = row.product_name || "";
+      const journey = getGlobalProductJourney(productName);
+
+      const ukAction = getFirstCountryAction(journey, "uk");
+      const usAction = getFirstCountryAction(journey, "us");
+
+      const metrics = [
+        {
+          label: "ASP",
+          value: formatGlobalMetricValue(
+            Number(row.asp_curr || row.asp_month2 || row.asp || 0),
+            getGrowthValue(row, "ASP Growth (%)")
+          ),
+        },
+        {
+          label: "Units",
+          value: formatGlobalMetricValue(
+            Number(row.quantity_curr || row.quantity_month2 || row.quantity || 0),
+            getGrowthValue(row, "Unit Growth (%)"),
+            "number"
+          ),
+        },
+        {
+          label: "Net sales",
+          value: formatGlobalMetricValue(
+            Number(row.net_sales_curr || row.net_sales_month2 || row.net_sales || 0),
+            getGrowthValue(row, "Net Sales Growth (%)")
+          ),
+        },
+        {
+          label: "CM1 profit",
+          value: formatGlobalMetricValue(
+            Number(row.profit_curr || row.profit_month2 || row.profit || 0),
+            getGrowthValue(row, "CM1 Profit Impact (%)")
+          ),
+        },
+        {
+          label: "CM1 profit per unit",
+          value: formatGlobalMetricValue(
+            Number(
+              row.unit_wise_profitability_curr ||
+              row.unit_wise_profitability_month2 ||
+              row.unit_wise_profitability ||
+              0
+            ),
+            getGrowthValue(row, "Profit Per Unit (%)")
+          ),
+        },
+      ];
+
+      const recommendationPoints = isOthersCardName(productName)
+        ? [
+          remainingSkusBlock ||
+          "Monitor the remaining SKUs and prioritize actions based on visibility, ASP, units, net sales, and CM1 profit.",
+        ].filter(Boolean)
+        : [
           ukAction?.recommendation ? `UK: ${ukAction.recommendation}` : "",
           usAction?.recommendation ? `US: ${usAction.recommendation}` : "",
         ].filter(Boolean);
 
-        const advertisingPoints = [
-          ukAction?.ads_recommendation ? `UK: ${ukAction.ads_recommendation}` : "",
-          usAction?.ads_recommendation ? `US: ${usAction.ads_recommendation}` : "",
-        ].filter(Boolean);
+      const advertisingPoints = [
+        ukAction?.ads_recommendation ? `UK: ${ukAction.ads_recommendation}` : "",
+        usAction?.ads_recommendation ? `US: ${usAction.ads_recommendation}` : "",
+      ].filter(Boolean);
 
-        const inventoryPoints = [
-          ukAction?.inventory_recommendation ? `UK: ${ukAction.inventory_recommendation}` : "",
-          usAction?.inventory_recommendation ? `US: ${usAction.inventory_recommendation}` : "",
-        ].filter(Boolean);
+      const inventoryPoints = [
+        ukAction?.inventory_recommendation ? `UK: ${ukAction.inventory_recommendation}` : "",
+        usAction?.inventory_recommendation ? `US: ${usAction.inventory_recommendation}` : "",
+      ].filter(Boolean);
 
-        const journeyPoints = Array.isArray(journey?.journey_comparison)
-          ? journey.journey_comparison
-          : [];
+      const journeyPoints = Array.isArray(journey?.journey_comparison)
+        ? journey.journey_comparison
+        : [];
 
-        return {
-          key: productName,
-          productName: toTitleCase(productName),
-          metrics,
-          journeyPoints,
-          recommendationPoints,
-          advertisingPoints,
-          inventoryPoints,
-        };
-      });
-  }, [categorizedGrowth.top_80_skus, skuInsights, displayCurrency]);
+      return {
+        key: productName,
+        productName: toTitleCase(productName),
+        metrics,
+        journeyPoints,
+        recommendationPoints,
+        advertisingPoints,
+        inventoryPoints,
+      };
+    });
+  }, [
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.other_skus,
+    categorizedGrowth.other_total,
+    skuInsights,
+    displayCurrency,
+    remainingSkusBlock,
+  ]);
 
   const sortedRecommendations = useMemo(() => {
-    return Object.entries(recommendedActions)
+    const cards = Object.entries(recommendedActions)
       .map(([key, text]) => {
         const parsed = parseRecommendedAction(text);
 
@@ -3497,9 +3641,18 @@ export default function LiveBusinessClient({
           text,
           parsed,
           netSales,
+          isOthers: isOthersCardName(parsed.productName),
         };
-      })
-      .sort((a, b) => b.netSales - a.netSales);
+      });
+
+    const othersCard = cards.find((card) => card.isOthers);
+
+    const top5Cards = cards
+      .filter((card) => !card.isOthers)
+      .sort((a, b) => b.netSales - a.netSales)
+      .slice(0, 5);
+
+    return othersCard ? [...top5Cards, othersCard] : top5Cards;
   }, [recommendedActions, convertMetricValueString, displayCurrency]);
 
   const parseGlobalInventoryItems = (inventoryText: string) => {

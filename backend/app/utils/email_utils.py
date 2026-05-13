@@ -37,7 +37,6 @@ def test_send_email():
     except Exception as e:
         print(f"Failed to send test email: {e}")
 
-
 def send_welcome_and_verification_emails(email, name, verification_link):
     try:
         welcome_msg = Message(
@@ -103,19 +102,16 @@ def send_welcome_and_verification_emails(email, name, verification_link):
             <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                 <tr>
-                  <td width="80" style="
-                    font-size:28px;
-                    line-height:28px;
-                    font-weight:300;
-                    color:#ffffff;
-                    text-align:left;
-                    vertical-align:middle;
-                    white-space:nowrap;
-                  ">
-                    |p|
+                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
+                    <img
+                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                      alt="Phormula"
+                      width="40"
+                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+                    />
                   </td>
 
-                  <td width="472" align="right" class="top-report-title" style="
+                  <td width="382" align="right" class="top-report-title" style="
                     font-size:16px;
                     line-height:18px;
                     color:#f8edce;
@@ -138,15 +134,12 @@ def send_welcome_and_verification_emails(email, name, verification_link):
               border-left:1px solid #e4e7ec;
               border-right:1px solid #e4e7ec;
             ">
-              <div style="
-                font-size:36px;
-                color:#1d6d84;
-                line-height:1.2;
-                margin-bottom:8px;
-                font-weight:300;
-              ">
-                |phormula|
-              </div>
+              <img
+                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                alt="Phormula Logo"
+                width="220"
+                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+              />
 
               <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
                 Welcome to Phormula
@@ -325,7 +318,7 @@ def send_welcome_and_verification_emails(email, name, verification_link):
     except Exception as e:
         print(f"Failed to send email to {email}: {e}")
         raise e
-
+    
 # def send_reset_email(to_email, reset_url):
 #     msg = Message(
 #         'Password Reset Request',
@@ -418,19 +411,16 @@ def send_reset_email(to_email, reset_url, name=None):
             <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                 <tr>
-                  <td width="80" style="
-                    font-size:28px;
-                    line-height:28px;
-                    font-weight:300;
-                    color:#ffffff;
-                    text-align:left;
-                    vertical-align:middle;
-                    white-space:nowrap;
-                  ">
-                    |p|
+                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
+                    <img
+                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                      alt="Phormula"
+                      width="40"
+                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+                    />
                   </td>
 
-                  <td width="472" align="right" class="top-report-title" style="
+                  <td width="382" align="right" class="top-report-title" style="
                     font-size:16px;
                     line-height:18px;
                     color:#f8edce;
@@ -453,15 +443,12 @@ def send_reset_email(to_email, reset_url, name=None):
               border-left:1px solid #e4e7ec;
               border-right:1px solid #e4e7ec;
             ">
-              <div style="
-                font-size:36px;
-                color:#1d6d84;
-                line-height:1.2;
-                margin-bottom:8px;
-                font-weight:300;
-              ">
-                |phormula|
-              </div>
+              <img
+                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                alt="Phormula Logo"
+                width="220"
+                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+              />
 
               <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
                 Reset your password
@@ -952,7 +939,7 @@ def send_live_bi_email(
 
     if not to_email:
         print("[WARN] No email provided.")
-        return
+        return False
 
     subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
 
@@ -1223,7 +1210,7 @@ def send_live_bi_email(
             "Net sales": "Net Sales",
             "ASP": "ASP",
             "CM1 profit": "CM1 Profit",
-            "CM1 profit per unit": "CM1 Profit per Unit",
+            "CM1 profit per unit": "CM1 Profit/Unit",
         }
         display_label = label_display_map.get(label, label)
 
@@ -1747,7 +1734,7 @@ def send_live_bi_email(
         /* Desktop/laptop */
         @media only screen and (min-width: 768px) {{
           .email-wrapper {{
-            width: 100% !important;
+             width: 78% !important;
             max-width: 80% !important;
             margin: 0 auto !important;
           }}
@@ -1853,32 +1840,36 @@ def send_live_bi_email(
 
     <body style="font-family:'Lato', Arial, sans-serif; background:#FFFFFF; padding:0; margin:0;">
       <div class="outer-padding" style="padding:0;">
-        <div class="email-wrapper" style="
-          width:100%;
-          margin:0 auto;
-          background:#fff;
-          border:none;
-          box-sizing:border-box;
-          overflow:hidden;
-        ">
+       <div class="email-wrapper" style="
+  width:100%;
+  max-width:1100px;
+  margin:0 auto;
+  background:#fff;
+  border:none;
+  box-sizing:border-box;
+  overflow:hidden;
+">
 
           <!-- Top green header -->
-          <div class="top-header" style="background:#7FB5A5; padding:18px 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td style="vertical-align:middle; text-align:left;">
-                  <div style="font-size:28px; font-weight:300; color:#FFFFFF; letter-spacing:1px;">
-                    |p|
-                  </div>
-                </td>
-                <td style="vertical-align:middle; text-align:right;">
-                  <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
-                    Business Insights Report
-                  </div>
-                </td>
-              </tr>
-            </table>
-          </div>
+<div class="top-header" style="background:#7FB5A5; padding:18px 24px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="vertical-align:middle; text-align:left; width:110px; white-space:nowrap;">
+        <img
+          src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+          alt="Phormula"
+          width="40"
+          style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+        />
+      </td>
+      <td style="vertical-align:middle; text-align:right;">
+        <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
+          Business Insights Report
+        </div>
+      </td>
+    </tr>
+  </table>
+</div>
 
           <!-- Main content -->
           <div class="main-content" style="
@@ -1889,9 +1880,12 @@ def send_live_bi_email(
           ">
 
             <!-- Brand -->
-            <div class="brand-title" style="font-size:60px; line-height:1; font-weight:300; color:#2F6476; margin-bottom:8px;">
-              |phormula|
-            </div>
+            <img
+              src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+              alt="Phormula Logo"
+              width="220"
+              style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+            />
 
             <div class="report-title" style="font-size:18px; color:#414042; font-weight:500; margin-bottom:24px;">
               Live MTD vs Previous Period – Business Insights
@@ -2025,9 +2019,11 @@ def send_live_bi_email(
     try:
         mail.send(msg)
         print(f"[INFO] Live BI email sent to {to_email}")
+        return True
     except Exception as e:
         print(f"[ERROR] Email send failed: {e}")
         traceback.print_exc()
+        return False
 
 
 
@@ -2112,7 +2108,6 @@ def get_user_email_and_name_by_id(user_id: int):
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email/name for id={user_id}: {e}")
         return None, None
-
 def send_email_with_attachment(
     *,
     to_email: str,
@@ -2139,14 +2134,22 @@ def send_email_with_attachment(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     @media only screen and (max-width: 600px) {{
-    .email-container {{
-      width: 100% !important;
-      max-width: 100% !important;
-    }}
+      .email-container {{
+        width: 100% !important;
+        max-width: 100% !important;
+      }}
 
       .top-report-title {{
         font-size: 14px !important;
         line-height: 18px !important;
+      }}
+
+      .content-cell {{
+        padding: 22px 24px 26px 24px !important;
+      }}
+
+      .note-cell {{
+        padding: 14px 24px 16px 24px !important;
       }}
 
       .cta-wrap {{
@@ -2161,8 +2164,9 @@ def send_email_with_attachment(
     }}
   </style>
 </head>
+
 <body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
     <tr>
       <td align="center">
 
@@ -2178,28 +2182,25 @@ def send_email_with_attachment(
             <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                 <tr>
-                  <td width="80" style="
-                    font-size:28px;
-                    line-height:28px;
-                    font-weight:300;
-                    color:#ffffff;
-                    text-align:left;
+                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
+                    <img
+                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                      alt="Phormula"
+                      width="40"
+                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+                    />
+                  </td>
+
+                  <td width="382" align="right" class="top-report-title" style="
+                    font-size:16px;
+                    line-height:18px;
+                    color:#f8edce;
+                    text-align:right;
                     vertical-align:middle;
                     white-space:nowrap;
                   ">
-                    |p|
+                    Amazon SKU Performance Report
                   </td>
-
-                <td width="472" align="right" class="top-report-title" style="
-                  font-size:16px;
-                  line-height:18px;
-                  color:#f8edce;
-                  text-align:right;
-                  vertical-align:middle;
-                  white-space:nowrap;
-                ">
-                  Amazon SKU Performance Report
-                </td>
                 </tr>
               </table>
             </td>
@@ -2207,10 +2208,18 @@ def send_email_with_attachment(
 
           <!-- logo/title -->
           <tr>
-            <td align="center" style="padding:28px 30px 18px 30px; background:#ffffff; border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;">
-              <div style="font-size:36px; color:#1d6d84; line-height:1.2; margin-bottom:8px; font-weight:300;">
-                |phormula|
-              </div>
+            <td align="center" style="
+              padding:28px 30px 18px 30px;
+              background:#ffffff;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <img
+                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                alt="Phormula Logo"
+                width="220"
+                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+              />
 
               <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
                 Your Amazon SKU-wise Monthly Report is ready
@@ -2225,14 +2234,15 @@ def send_email_with_attachment(
 
           <!-- body -->
           <tr>
-            <td style="
+            <td class="content-cell" style="
               padding:22px 32px 26px 32px;
               color:#444444;
               font-size:14px;
               line-height:1.7;
               text-align:justify;
               text-justify:inter-word;
-              border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
             ">
               <p style="margin:0 0 18px 0; text-align:left;">
                 Hi <strong>{html.escape(user_name or "there")}</strong>,
@@ -2304,32 +2314,32 @@ def send_email_with_attachment(
               </p>
 
               <!-- CTA -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 24px 0; border-collapse:collapse;">
-                  <tr>
-                    <td align="center" class="cta-wrap" style="text-align:center;">
-                      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto; border-collapse:collapse;">
-                        <tr>
-                          <td align="center" style="text-align:center;">
-                            <a href="https://phormula.io" class="cta-button" style="
-                              display:inline-block;
-                              background:#37455f;
-                              color:#f8edce;
-                              padding:12px 24px;
-                              text-decoration:none;
-                              font-size:14px;
-                              font-weight:bold;
-                              border-radius:10px;
-                              text-align:center;
-                              margin:0 auto;
-                            ">
-                              Open Phormula Dashboard
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 24px 0; border-collapse:collapse;">
+                <tr>
+                  <td align="center" class="cta-wrap" style="text-align:center;">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto; border-collapse:collapse;">
+                      <tr>
+                        <td align="center" style="text-align:center;">
+                          <a href="https://phormula.io" class="cta-button" style="
+                            display:inline-block;
+                            background:#37455f;
+                            color:#f8edce;
+                            padding:12px 24px;
+                            text-decoration:none;
+                            font-size:14px;
+                            font-weight:bold;
+                            border-radius:10px;
+                            text-align:center;
+                            margin:0 auto;
+                          ">
+                            Open Phormula Dashboard
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
 
               <p style="margin:18px 0 0 0; text-align:left;">
                 Warm regards,
@@ -2349,7 +2359,7 @@ def send_email_with_attachment(
 
           <!-- full-width note section -->
           <tr>
-            <td style="
+            <td class="note-cell" style="
               border-top:1px solid #dddddd;
               padding:14px 32px 16px 32px;
               background:#ffffff;
@@ -2357,7 +2367,8 @@ def send_email_with_attachment(
               color:#999999;
               line-height:1.6;
               text-align:left;
-              border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
             ">
               This email was generated automatically by Phormula.
             </td>

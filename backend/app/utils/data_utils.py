@@ -76,22 +76,72 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
 
         msg.html = f"""
 <html>
-<body style="margin:0; padding:0;  font-family:Arial, Helvetica, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style=" padding:16px 0;">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    @media only screen and (max-width: 600px) {{
+      .email-container {{
+        width: 100% !important;
+        max-width: 100% !important;
+      }}
+
+      .top-report-title {{
+        font-size: 14px !important;
+        line-height: 18px !important;
+      }}
+
+      .content-cell {{
+        padding: 22px 24px 26px 24px !important;
+      }}
+
+      .cta-wrap {{
+        text-align: center !important;
+      }}
+
+      .cta-button {{
+        display: inline-block !important;
+        margin: 0 auto !important;
+        text-align: center !important;
+      }}
+    }}
+  </style>
+</head>
+
+<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff; width:600px; max-width:600px;">
-          
+
+        <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="
+          background:#ffffff;
+          width:600px;
+          max-width:600px;
+          border-collapse:collapse;
+        ">
+
           <!-- top green bar -->
-          <tr >
+          <tr>
             <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                 <tr>
-                  <td width="80" style="font-size:28px; line-height:28px; font-weight:300; color:#ffffff; text-align:left; vertical-align:middle;">
-                    |p|
+                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
+                    <img
+                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                      alt="Phormula"
+                      width="40"
+                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+                    />
                   </td>
 
-                  <td width="472" align="right" style="font-size:12px; color:#f8edce; text-align:right; vertical-align:middle; white-space:nowrap;">
+                  <td width="382" align="right" class="top-report-title" style="
+                    font-size:16px;
+                    line-height:18px;
+                    color:#f8edce;
+                    text-align:right;
+                    vertical-align:middle;
+                    white-space:nowrap;
+                  ">
                     Inventory &amp; Dispatch Report
                   </td>
                 </tr>
@@ -101,11 +151,20 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
 
           <!-- logo/title -->
           <tr>
-            <td align="center" style="padding:28px 30px 18px 30px; background:#ffffff; border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec">
-              <div style="font-size:36px; color:#1d6d84; line-height:1.2; margin-bottom:8px;">
-                |phormula|
-              </div>
-              <div style="font-size:18px; color:#4a4a4a;">
+            <td align="center" style="
+              padding:28px 30px 18px 30px;
+              background:#ffffff;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <img
+                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                alt="Phormula Logo"
+                width="220"
+                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+              />
+
+              <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
                 Your {month_title} {year_text} Forecast Report is ready
               </div>
             </td>
@@ -118,16 +177,19 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
 
           <!-- body -->
           <tr>
-            <td style="
+            <td class="content-cell" style="
               padding:22px 32px 26px 32px;
               color:#444444;
               font-size:14px;
               line-height:1.7;
               text-align:justify;
               text-justify:inter-word;
-              border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
             ">
-              <p style="margin:0 0 18px 0; text-align:left;">Hey {user_name},</p>
+              <p style="margin:0 0 18px 0; text-align:left;">
+                Hey {user_name},
+              </p>
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
                 Please find attached your inventory forecast and dispatch report for
@@ -143,15 +205,49 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
                 Thank you for your continued partnership. We look forward to hearing from you.
               </p>
 
-              <p style="margin:18px 0 0 0; text-align:left;">Warm regards,</p>
-              <p style="margin:0; text-align:left;"><strong>The Phormula Team</strong></p>
-              <p style="margin:0; text-align:left;">care@phormula.io</p>
+              <p style="margin:18px 0 0 0; text-align:left;">
+                Warm regards,
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <strong>The Phormula Team</strong>
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
+                  care@phormula.io
+                </a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- full-width note section -->
+          <tr>
+            <td style="
+              border-top:1px solid #dddddd;
+              padding:14px 32px 16px 32px;
+              background:#ffffff;
+              font-size:12px;
+              color:#999999;
+              line-height:1.6;
+              text-align:left;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              This email was generated automatically by Phormula.
             </td>
           </tr>
 
           <!-- footer -->
           <tr>
-            <td align="center" style="background:#5ea68e; padding:12px 18px; color:#f8edce; font-size:12px; text-align:center;">
+            <td align="center" style="
+              background:#5ea68e;
+              padding:12px 18px;
+              color:#f8edce;
+              font-size:12px;
+              line-height:1.5;
+              text-align:center;
+            ">
               © 2026 Phormula. All rights reserved.
             </td>
           </tr>
@@ -184,8 +280,6 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
         print(f"Failed to send forecast email: {e}")
         raise
     
-
-
 def generate_pnl_report(year: int, month: str) -> dict:
     """
     Generate a simple P&L (profit and Loss) report for a given month and year.
