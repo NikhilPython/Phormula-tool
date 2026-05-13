@@ -75,94 +75,94 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
         year_text = str(year)
 
         msg.html = f"""
-        <html>
-        <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f2; padding:16px 0;">
-            <tr>
-              <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
-                  
-                  <!-- top green bar -->
-                  <tr>
-                    <td style="background:#5ea68e; padding:10px 18px; color:#ffffff;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td style="font-size:28px; line-height:28px; font-weight:300; color:#ffffff;">
-                            |p|
-                          </td>
-                          <td align="right" style="font-size:12px; color:#f8edce;">
-                            Inventory &amp; Dispatch Report
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+<html>
+<body style="margin:0; padding:0;  font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style=" padding:16px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff; width:600px; max-width:600px;">
+          
+          <!-- top green bar -->
+          <tr >
+            <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;">
+                <tr>
+                  <td width="80" style="font-size:28px; line-height:28px; font-weight:300; color:#ffffff; text-align:left; vertical-align:middle;">
+                    |p|
+                  </td>
 
-                  <!-- logo/title -->
-                  <tr>
-                    <td align="center" style="padding:28px 30px 18px 30px; background:#ffffff;">
-                      <div style="font-size:26px; color:#1d6d84; line-height:1.2; margin-bottom:8px;">
-                        |phormula|
-                      </div>
-                      <div style="font-size:14px; color:#4a4a4a;">
-                        Your {month_title} {year_text} Forecast Report is ready
-                      </div>
-                    </td>
-                  </tr>
+                  <td width="472" align="right" style="font-size:12px; color:#f8edce; text-align:right; vertical-align:middle; white-space:nowrap;">
+                    Inventory &amp; Dispatch Report
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-                  <!-- divider -->
-                  <tr>
-                    <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
-                  </tr>
+          <!-- logo/title -->
+          <tr>
+            <td align="center" style="padding:28px 30px 18px 30px; background:#ffffff; border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec">
+              <div style="font-size:36px; color:#1d6d84; line-height:1.2; margin-bottom:8px;">
+                |phormula|
+              </div>
+              <div style="font-size:18px; color:#4a4a4a;">
+                Your {month_title} {year_text} Forecast Report is ready
+              </div>
+            </td>
+          </tr>
 
-                  <!-- body -->
-                  <tr>
-                    <td style="padding:22px 32px 26px 32px; color:#444444; font-size:14px; line-height:1.7;">
-                      <p style="margin:0 0 18px 0;">Hey {user_name},</p>
+          <!-- divider -->
+          <tr>
+            <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
+          </tr>
 
-                      <p style="margin:0 0 14px 0;">
-                        Please find attached your inventory forecast and dispatch report for
-                        {month_title} {year_text}. It covers your current stock positions,
-                        demand projections, and dispatch performance for the period.
-                      </p>
+          <!-- body -->
+          <tr>
+            <td style="
+              padding:22px 32px 26px 32px;
+              color:#444444;
+              font-size:14px;
+              line-height:1.7;
+              text-align:justify;
+              text-justify:inter-word;
+              border-left:1px solid #e4e7ec;border-right:1px solid #e4e7ec
+            ">
+              <p style="margin:0 0 18px 0; text-align:left;">Hey {user_name},</p>
 
-                      <p style="margin:0 0 14px 0;">
-                        Kindly review at your earliest convenience and flag anything that needs attention.
-                      </p>
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                Please find attached your inventory forecast and dispatch report for
+                {month_title} {year_text}. It covers your current stock positions,
+                demand projections, and dispatch performance for the period.
+              </p>
 
-                      <p style="margin:0 0 14px 0;">
-                        Thank you for your continued partnership. We look forward to hearing from you.
-                      </p>
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                Kindly review at your earliest convenience and flag anything that needs attention.
+              </p>
 
-                      <p style="margin:18px 0 0 0;">Warm regards,</p>
-                      <p style="margin:0;"><strong>The Phormula Team</strong></p>
-                      <p style="margin:0;">care@phormula.io</p>
-                    </td>
-                  </tr>
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                Thank you for your continued partnership. We look forward to hearing from you.
+              </p>
 
-                  <!-- footer -->
-                  <tr>
-                    <td style="background:#5ea68e; padding:12px 18px; color:#ffffff; font-size:12px;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td style="font-size:12px; color:#f8edce;">
-                            © 2026 Phormula. All rights reserved.
-                          </td>
-                          <td align="right" style="font-size:12px; color:#f8edce;">
-                            Unsubscribe &nbsp;&nbsp; Support
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
+              <p style="margin:18px 0 0 0; text-align:left;">Warm regards,</p>
+              <p style="margin:0; text-align:left;"><strong>The Phormula Team</strong></p>
+              <p style="margin:0; text-align:left;">care@phormula.io</p>
+            </td>
+          </tr>
 
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-        """
+          <!-- footer -->
+          <tr>
+            <td align="center" style="background:#5ea68e; padding:12px 18px; color:#f8edce; font-size:12px; text-align:center;">
+              © 2026 Phormula. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
         q = StoredFile.query.filter_by(user_id=user_id, filename=file_name)
         if country:
