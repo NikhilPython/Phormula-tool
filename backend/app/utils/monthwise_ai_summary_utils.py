@@ -2857,6 +2857,143 @@ def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
     return f"{current_str} ({fmt_pct(pct)})"
 
 
+# def render_global_comparison_summary(
+#     *,
+#     global_ai: dict,
+#     us_result: dict,
+#     uk_result: dict,
+#     period: str,
+#     timeline: str,
+#     year: int,
+#     remaining_agg: dict | None = None,
+# ) -> str:
+#     """
+#     AI-written global summary renderer.
+#     Shows one UK vs US comparison summary, product journey comparison,
+#     one global recommendation, then separate US and UK product recommendations.
+#     """
+
+#     lines = []
+
+    
+
+#     lines.append("Global Business Summary")
+#     lines.append(f"Period: {period_label(period, timeline, year)}")
+
+#     # ============================================================
+#     # AI GLOBAL OVERALL SUMMARY
+#     # ============================================================
+#     if global_ai.get("global_summary"):
+#         lines.append("")
+#         lines.append("## OVERALL SUMMARY")
+#         lines.append(global_ai["global_summary"])
+
+#     # ============================================================
+#     # AI UK VS US COMPARISON
+#     # ============================================================
+#     if global_ai.get("uk_vs_us_comparison"):
+#         lines.append("")
+#         lines.append("## UK VS US COMPARISON")
+#         for point in global_ai["uk_vs_us_comparison"]:
+#             lines.append(f"• {point}")
+
+#     # ============================================================
+#     # AI PRODUCT-WISE JOURNEY COMPARISON
+#     # ============================================================
+#     if global_ai.get("product_journey_comparison"):
+#         lines.append("")
+#         lines.append("## PRODUCT JOURNEY")
+
+#         for item in global_ai["product_journey_comparison"]:
+#             if isinstance(item, dict):
+#                 product_name = item.get("product_name") or "Unknown Product"
+#                 sku_us = item.get("sku_us") or "N/A"
+#                 sku_uk = item.get("sku_uk") or "N/A"
+#                 journey_comparison = item.get("journey_comparison") or []
+
+#                 lines.append("")
+#                 lines.append(f"### {product_name}")
+#                 lines.append(f"• US SKU: {sku_us}")
+#                 lines.append(f"• UK SKU: {sku_uk}")
+
+#                 if isinstance(journey_comparison, list) and journey_comparison:
+#                     for point in journey_comparison:
+#                         if isinstance(point, str) and point.strip():
+#                             lines.append(f"• {point}")
+
+#                 elif isinstance(journey_comparison, str) and journey_comparison.strip():
+#                     lines.append(f"• {journey_comparison}")
+
+#                 # ✅ NEW: show US/UK actions inside same product block
+#                 country_actions = item.get("country_actions") or {}
+
+#                 us_actions = country_actions.get("us") or {}
+#                 uk_actions = country_actions.get("uk") or {}
+
+#                 if us_actions or uk_actions:
+#                     lines.append("")
+#                     lines.append("• Country actions:")
+
+#                     if isinstance(us_actions, dict) and any(str(v).strip() for v in us_actions.values() if v):
+#                         lines.append("   - US:")
+#                         if us_actions.get("recommendation"):
+#                             lines.append(f"      • Recommendation: {us_actions['recommendation']}")
+#                         if us_actions.get("inventory_recommendation"):
+#                             lines.append(f"      • Inventory action: {us_actions['inventory_recommendation']}")
+#                         if us_actions.get("ads_recommendation"):
+#                             lines.append(f"      • Ads action: {us_actions['ads_recommendation']}")
+
+#                     if isinstance(uk_actions, dict) and any(str(v).strip() for v in uk_actions.values() if v):
+#                         lines.append("   - UK:")
+#                         if uk_actions.get("recommendation"):
+#                             lines.append(f"      • Recommendation: {uk_actions['recommendation']}")
+#                         if uk_actions.get("inventory_recommendation"):
+#                             lines.append(f"      • Inventory action: {uk_actions['inventory_recommendation']}")
+#                         if uk_actions.get("ads_recommendation"):
+#                             lines.append(f"      • Ads action: {uk_actions['ads_recommendation']}")
+
+#             elif isinstance(item, str):
+#                 # fallback if model returns old format
+#                 lines.append(f"• {item}")
+    
+    
+#     # ============================================================
+#     # GLOBAL OTHER SKUs
+#     # ============================================================
+#     if remaining_agg:
+#         lines.append("")
+#         lines.append("## OTHER SKUs")
+
+#         lines.append(
+#             f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
+#         )
+
+#         lines.append(
+#             f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'), decimals=0)}"
+#         )
+
+#         lines.append(
+#             f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
+#         )
+
+#         lines.append(
+#             f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
+#         )
+
+#         lines.append(
+#             f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
+#         )
+    
+#     # ============================================================
+#     # AI GLOBAL OVERALL RECOMMENDATION
+#     # ============================================================
+#     if global_ai.get("global_overall_recommendation"):
+#         lines.append("")
+#         lines.append("## OVERALL RECOMMENDATION")
+#         lines.append(f"• {global_ai['global_overall_recommendation']}")
+
+#     return "\n".join(lines)
+
 def render_global_comparison_summary(
     *,
     global_ai: dict,
@@ -2870,12 +3007,42 @@ def render_global_comparison_summary(
     """
     AI-written global summary renderer.
     Shows one UK vs US comparison summary, product journey comparison,
-    one global recommendation, then separate US and UK product recommendations.
+    Other SKUs journey/actions, and one global recommendation.
     """
 
     lines = []
 
-    
+    # ------------------------------------------------------------
+    # Format helpers
+    # ------------------------------------------------------------
+    def fmt_pct(x):
+        return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_number(x, decimals=2):
+        if not isinstance(x, (int, float)):
+            return "N/A"
+
+        if decimals == 0:
+            return f"{int(round(x)):,}"
+
+        return f"{x:,.{decimals}f}"
+
+    def fmt_currency(x):
+        return f"${x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
+        if not isinstance(metric_dict, dict):
+            return "N/A"
+
+        current = metric_dict.get("current")
+        pct = metric_dict.get("delta_pct")
+
+        if is_currency:
+            current_str = fmt_currency(current)
+        else:
+            current_str = fmt_number(current, decimals=decimals)
+
+        return f"{current_str} ({fmt_pct(pct)})"
 
     lines.append("Global Business Summary")
     lines.append(f"Period: {period_label(period, timeline, year)}")
@@ -2924,7 +3091,6 @@ def render_global_comparison_summary(
                 elif isinstance(journey_comparison, str) and journey_comparison.strip():
                     lines.append(f"• {journey_comparison}")
 
-                # ✅ NEW: show US/UK actions inside same product block
                 country_actions = item.get("country_actions") or {}
 
                 us_actions = country_actions.get("us") or {}
@@ -2953,8 +3119,66 @@ def render_global_comparison_summary(
                             lines.append(f"      • Ads action: {uk_actions['ads_recommendation']}")
 
             elif isinstance(item, str):
-                # fallback if model returns old format
                 lines.append(f"• {item}")
+
+    # ============================================================
+    # GLOBAL OTHER SKUs
+    # ============================================================
+    if remaining_agg:
+        lines.append("")
+        lines.append("## OTHER SKUs")
+
+        lines.append(
+            f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'), decimals=0)}"
+        )
+
+        lines.append(
+            f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
+        )
+
+        # ✅ Other SKUs journey + actions, same behavior as product cards
+        other_skus_comparison = global_ai.get("other_skus_comparison") or {}
+
+        other_journey = other_skus_comparison.get("journey_comparison")
+        if isinstance(other_journey, list) and other_journey:
+            lines.append("• Product journey:")
+            for point in other_journey:
+                if isinstance(point, str) and point.strip():
+                    lines.append(f"   - {point}")
+
+        elif isinstance(other_journey, str) and other_journey.strip():
+            lines.append("• Product journey:")
+            lines.append(f"   - {other_journey}")
+
+        country_actions = other_skus_comparison.get("country_actions") or {}
+        global_actions = country_actions.get("global") or {}
+
+        if isinstance(global_actions, dict) and any(
+            str(v).strip() for v in global_actions.values() if v
+        ):
+            lines.append("")
+            lines.append("• Country actions:")
+
+            if global_actions.get("recommendation"):
+                lines.append(f"   - Recommendation: {global_actions['recommendation']}")
+
+            if global_actions.get("inventory_recommendation"):
+                lines.append(f"   - Inventory action: {global_actions['inventory_recommendation']}")
+
+            if global_actions.get("ads_recommendation"):
+                lines.append(f"   - Ads action: {global_actions['ads_recommendation']}")
 
     # ============================================================
     # AI GLOBAL OVERALL RECOMMENDATION
@@ -2965,6 +3189,9 @@ def render_global_comparison_summary(
         lines.append(f"• {global_ai['global_overall_recommendation']}")
 
     return "\n".join(lines)
+
+
+
 
 def get_or_create_global_summary(
     user_id,
@@ -3009,7 +3236,7 @@ def get_or_create_global_summary(
 
     if period in ("monthly", "quarterly"):
         # Safer global rule: allow recommendations only if both countries are latest
-        allow_global_recommendations = us_is_latest and uk_is_latest
+        allow_global_recommendations = us_is_latest or uk_is_latest
 
     elif period == "yearly":
         allow_global_recommendations = False
@@ -3144,6 +3371,10 @@ def get_or_create_global_summary(
         "sku_mom": key_metrics_by_product_name(
             global_numeric_metrics.get("sku_mom", {})
         ),
+
+        # ✅ ADD THESE FOR GLOBAL OTHER SKU CARD
+        "focus_skus": global_numeric_metrics.get("focus_skus", []),
+        "remaining_agg": global_numeric_metrics.get("remaining_agg", {}),
     }
 
     # ✅ keep US/UK inventory and objectives separate
@@ -3189,6 +3420,12 @@ def get_or_create_global_summary(
 
         # exact mapped product journey input
         "mapped_product_journeys": mapped_product_journeys,
+
+        "other_skus": {
+            "product_name": "Other SKUs",
+            "aggregated_metrics": global_numeric_metrics.get("remaining_agg", {}),
+            "focus_skus": global_numeric_metrics.get("focus_skus", []),
+        },
     }
 
     # ============================================================
@@ -3220,6 +3457,17 @@ def get_or_create_global_summary(
                 actions["inventory_recommendation"] = ""
                 actions["ads_recommendation"] = ""
 
+        # ✅ Remove Other SKUs recommendation/actions also
+        other_skus_comparison = global_ai.get("other_skus_comparison")
+        if isinstance(other_skus_comparison, dict):
+            country_actions = other_skus_comparison.get("country_actions")
+            if isinstance(country_actions, dict):
+                global_actions = country_actions.get("global")
+                if isinstance(global_actions, dict):
+                    global_actions["recommendation"] = ""
+                    global_actions["inventory_recommendation"] = ""
+                    global_actions["ads_recommendation"] = ""
+
     final_text = render_global_comparison_summary(
         global_ai=global_ai,
         us_result=us_result,
@@ -3227,6 +3475,7 @@ def get_or_create_global_summary(
         period=period,
         timeline=timeline,
         year=year,
+        remaining_agg=global_numeric_metrics.get("remaining_agg", {}),
     )
 
     # ============================================================
@@ -3291,6 +3540,9 @@ def get_or_create_global_summary(
 
         "metrics_debug": metrics_debug,
     }
+
+
+
 
 def build_global_table_name(user_id: int, period: str, timeline: str, year: int) -> str:
     """

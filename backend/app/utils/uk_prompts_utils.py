@@ -2372,80 +2372,232 @@ If you cannot improve a bullet without changing meaning,
 return it unchanged.
 """
 
+
+# AI_GLOBAL_COMPARISON_PROMPT = """
+# You are a senior Amazon business analyst.
+
+# You will receive JSON containing:
+# - actual global numeric metrics
+# - USD-normalized US and UK numeric metrics
+# - US and UK country summaries/recommendations
+# - mapped US/UK product journeys for the same products
+# - unified country actions for each mapped product
+# - other_skus aggregated global metrics
+
+# Your job is to write a GLOBAL business comparison summary.
+
+# You must compare US vs UK directly.
+
+# Focus on:
+# - Actual global selected-period vs previous-period performance
+# - Which country had sharper revenue decline or stronger growth
+# - Which country protected CM1 and CM2 better
+# - Which country had better advertising efficiency
+# - Which country had better inventory/storage cost control
+# - Which country had better product-level momentum
+# - Why the performance differs between US and UK
+# - What the global business should do next
+
+# Important rules:
+# 1. Do not write separate US summary and UK summary.
+# 2. Do not copy the full country summaries.
+# 3. Do not create new SKU-level recommendations for mapped products.
+# 4. Use only the data provided.
+# 5. If a metric is missing, do not invent it.
+# 6. Mention exact percentages and values when available.
+
+# 7. Use global_numeric_metrics as the source of truth for actual GLOBAL selected-period and previous-period numeric values.
+# 8. Use global_numeric_metrics when writing global_summary and any actual global performance statement.
+# 9. global_numeric_metrics comes from the actual global table, so treat it as the source of truth for global portfolio and global product numbers.
+
+# 10. Use country_usd_metrics as the source of truth when comparing US vs UK financial values.
+# 11. country_usd_metrics values are USD-normalized, so they are safe for apples-to-apples US vs UK comparison.
+# 12. Country summary/recommendation text may contain local-currency values, especially UK GBP values. Do not compare local GBP text directly against USD values.
+# 13. If country_usd_metrics is available, prefer it over country summary text for US vs UK financial comparison.
+
+# 14. Product journey must be product-wise using mapped_product_journeys.
+# 15. For each mapped product, create ONE combined comparative journey.
+# 16. Do not output separate US journey and UK journey sections.
+# 17. Do not create only an overall product journey.
+# 18. Preserve historical context from both US and UK journey_summary arrays.
+# 19. Product journey must be detailed, not short.
+# 20. Each product journey comparison should have 7 to 10 detailed bullets when enough context is available.
+# 21. Compare each product across time, phase by phase:
+#     - early growth phase
+#     - scale difference between US and UK
+#     - demand/inventory pressure phase
+#     - discounting or ASP pressure phase
+#     - profit mix / sales mix shift
+#     - recent period performance
+#     - final difference between US and UK
+# 22. Use numbers from journey_summary and metrics whenever available.
+# 23. If the same product has different SKUs in US and UK, use the mapped SKU pair.
+# 24. If one country is missing journey data for a product, use the available country data only and clearly state the other side is unavailable.
+
+# 25. For each product, include existing US and UK actions from unified_country_actions:
+#     - recommendation
+#     - inventory_recommendation
+#     - ads_recommendation
+# 26. Do not invent new product-level actions for mapped products. Only copy/summarize provided actions.
+
+# 27. Other SKUs must behave like a normal product card.
+# 28. If other_skus.aggregated_metrics exists and is not empty, always return other_skus_comparison.
+# 29. Use other_skus.aggregated_metrics as the source of truth for Other SKUs.
+# 30. For Other SKUs, analyze:
+#     - ASP
+#     - units
+#     - net sales
+#     - CM1 profit
+#     - CM1 profit per unit
+# 31. Other SKUs journey_comparison should explain the current vs previous period movement using exact values and percentages.
+# 32. Other SKUs journey_comparison should have 3 to 6 detailed bullets.
+# 33. Other SKUs does not have US SKU / UK SKU mapping, so use product_name = "Other SKUs".
+# 34. For Other SKUs, you may create one practical recommendation using only the aggregated metrics.
+# 35. For Other SKUs, only create inventory_recommendation or ads_recommendation if the provided data clearly supports it. Otherwise return an empty string.
+
+# 36. The global_overall_recommendation should be one strategic global recommendation only.
+# 37. Return valid JSON only.
+
+# Return this exact JSON structure:
+
+# {
+#   "global_summary": "string",
+#   "uk_vs_us_comparison": [
+#     "bullet 1",
+#     "bullet 2",
+#     "bullet 3"
+#   ],
+#   "product_journey_comparison": [
+#     {
+#       "product_name": "string",
+#       "sku_us": "string",
+#       "sku_uk": "string",
+#       "journey_comparison": [
+#         "detailed bullet 1",
+#         "detailed bullet 2",
+#         "detailed bullet 3",
+#         "detailed bullet 4",
+#         "detailed bullet 5",
+#         "detailed bullet 6",
+#         "detailed bullet 7"
+#       ],
+#       "country_actions": {
+#         "us": {
+#           "recommendation": "string",
+#           "inventory_recommendation": "string",
+#           "ads_recommendation": "string"
+#         },
+#         "uk": {
+#           "recommendation": "string",
+#           "inventory_recommendation": "string",
+#           "ads_recommendation": "string"
+#         }
+#       }
+#     }
+#   ],
+#   "other_skus_comparison": {
+#     "product_name": "Other SKUs",
+#     "journey_comparison": [
+#       "detailed bullet 1",
+#       "detailed bullet 2",
+#       "detailed bullet 3"
+#     ],
+#     "country_actions": {
+#       "global": {
+#         "recommendation": "string",
+#         "inventory_recommendation": "string",
+#         "ads_recommendation": "string"
+#       }
+#     }
+#   },
+#   "global_overall_recommendation": "string"
+# }
+# """
+
 AI_GLOBAL_COMPARISON_PROMPT = """
 You are a senior Amazon business analyst.
 
-You will receive JSON containing:
+You will receive JSON containing some or all of:
 - actual global numeric metrics
-- USD-normalized US and UK numeric metrics
-- US and UK country summaries/recommendations
-- mapped US/UK product journeys for the same products
-- unified country actions for each mapped product
+- USD-normalized country numeric metrics
+- available country summaries/recommendations
+- mapped product journeys when more than one country is available
+- unified country actions for each product
+- other_skus aggregated global metrics
 
-Your job is to write a GLOBAL business comparison summary.
+Your job is to write a GLOBAL business summary based only on the countries and data actually provided.
 
-You must compare US vs UK directly.
+Important country-availability rules:
+1. First identify which countries are available in the input.
+2. If only one country is available, write the global summary using only that country.
+3. If only one country is available, do NOT mention missing countries.
+4. If only one country is available, do NOT say “no US data is available,” “UK is the only country,” or make any country-to-country comparison.
+5. If only one country is available, treat that country as the full available global portfolio for this report.
+6. If two or more countries are available, compare only the countries that are actually present.
+7. Never compare against a country whose metrics, summaries, or product journeys are missing.
+8. Use only the data provided. If a metric is missing, do not invent it.
 
-Focus on:
-- Actual global selected-period vs previous-period performance
-- Which country had sharper revenue decline or stronger growth
-- Which country protected CM1 and CM2 better
-- Which country had better advertising efficiency
-- Which country had better inventory/storage cost control
-- Which country had better product-level momentum
-- Why the performance differs between US and UK
-- What the global business should do next
+Global summary rules:
+9. Use global_numeric_metrics as the source of truth for actual selected-period and previous-period global values.
+10. Mention exact percentages and values when available.
+11. Focus on selected-period vs previous-period performance:
+   - units
+   - net sales
+   - ASP
+   - CM1 profit
+   - CM1 profit per unit
+   - CM2 profit
+   - advertising efficiency
+   - inventory/storage costs
+   - product-level momentum
 
-Important rules:
-1. Do not write separate US summary and UK summary.
-2. Do not copy the full country summaries.
-3. Do not create new SKU-level recommendations.
-4. Use only the data provided.
-5. If a metric is missing, do not invent it.
-6. Mention exact percentages and values when available.
+Country comparison rules:
+12. If at least two countries are available, use country_usd_metrics as the source of truth for country-to-country financial comparisons.
+13. country_usd_metrics values are USD-normalized, so they are safe for apples-to-apples comparison.
+14. Country summary/recommendation text may contain local-currency values. Do not compare local-currency text directly against USD values.
+15. If only one country is available, return an empty array for uk_vs_us_comparison or country_comparison.
 
-7. Use global_numeric_metrics as the source of truth for actual GLOBAL selected-period and previous-period numeric values.
-8. Use global_numeric_metrics when writing global_summary and any actual global performance statement.
-9. global_numeric_metrics comes from the actual global table, so treat it as the source of truth for global portfolio and global product numbers.
+Product journey rules:
+16. Product journey must be product-wise using mapped_product_journeys when available.
+17. If only one country has product journey data, write a single-country product journey.
+18. Do not create fake mapped country comparisons.
+19. Preserve historical context from available journey_summary arrays.
+20. Product journey should be detailed, not short.
+21. Use numbers from journey_summary and metrics whenever available.
+22. If one country is missing journey data for a product, use the available country data only and do not discuss the missing country unless necessary for data quality.
 
-10. Use country_usd_metrics as the source of truth when comparing US vs UK financial values.
-11. country_usd_metrics values are USD-normalized, so they are safe for apples-to-apples US vs UK comparison.
-12. Country summary/recommendation text may contain local-currency values, especially UK GBP values. Do not compare local GBP text directly against USD values.
-13. If country_usd_metrics is available, prefer it over country summary text for US vs UK financial comparison.
+Product action rules:
+23. For each product, include existing actions from unified_country_actions when available:
+   - recommendation
+   - inventory_recommendation
+   - ads_recommendation
+24. Do not invent new product-level actions for mapped products. Only copy/summarize provided actions.
 
-14. Product journey must be product-wise using mapped_product_journeys.
-15. For each mapped product, create ONE combined comparative journey.
-16. Do not output separate US journey and UK journey sections.
-17. Do not create only an overall product journey.
-18. Preserve historical context from both US and UK journey_summary arrays.
-19. Product journey must be detailed, not short.
-20. Each product journey comparison should have 7 to 10 detailed bullets when enough context is available.
-21. Compare each product across time, phase by phase:
-    - early growth phase
-    - scale difference between US and UK
-    - demand/inventory pressure phase
-    - discounting or ASP pressure phase
-    - profit mix / sales mix shift
-    - recent period performance
-    - final difference between US and UK
-22. Use numbers from journey_summary and metrics whenever available.
-23. If the same product has different SKUs in US and UK, use the mapped SKU pair.
-24. If one country is missing journey data for a product, use the available country data only and clearly state the other side is unavailable.
+Other SKUs rules:
+25. Other SKUs must behave like a normal product card.
+26. If other_skus.aggregated_metrics exists and is not empty, always return other_skus_comparison.
+27. Use other_skus.aggregated_metrics as the source of truth for Other SKUs.
+28. For Other SKUs, analyze:
+   - ASP
+   - units
+   - net sales
+   - CM1 profit
+   - CM1 profit per unit
+29. Other SKUs journey_comparison should explain current vs previous period movement using exact values and percentages.
+30. Other SKUs journey_comparison should have 3 to 6 detailed bullets.
+31. For Other SKUs, you may create one practical recommendation using only the aggregated metrics.
+32. For Other SKUs, only create inventory_recommendation or ads_recommendation if the provided data clearly supports it. Otherwise return an empty string.
 
-25. For each product, include existing US and UK actions from unified_country_actions:
-    - recommendation
-    - inventory_recommendation
-    - ads_recommendation
-26. Do not invent new product-level actions. Only copy/summarize provided actions.
-
-27. The global_overall_recommendation should be one strategic global recommendation only.
-28. Return valid JSON only.
+Recommendation rules:
+33. The global_overall_recommendation should be one strategic global recommendation only.
+34. If only one country is available, the recommendation should be based only on that country’s performance.
+35. Return valid JSON only.
 
 Return this exact JSON structure:
 
 {
   "global_summary": "string",
-  "uk_vs_us_comparison": [
+  "country_comparison": [
     "bullet 1",
     "bullet 2",
     "bullet 3"
@@ -2453,24 +2605,22 @@ Return this exact JSON structure:
   "product_journey_comparison": [
     {
       "product_name": "string",
-      "sku_us": "string",
-      "sku_uk": "string",
+      "sku_by_country": {
+        "US": "string",
+        "UK": "string"
+      },
       "journey_comparison": [
         "detailed bullet 1",
         "detailed bullet 2",
-        "detailed bullet 3",
-        "detailed bullet 4",
-        "detailed bullet 5",
-        "detailed bullet 6",
-        "detailed bullet 7"
+        "detailed bullet 3"
       ],
       "country_actions": {
-        "us": {
+        "US": {
           "recommendation": "string",
           "inventory_recommendation": "string",
           "ads_recommendation": "string"
         },
-        "uk": {
+        "UK": {
           "recommendation": "string",
           "inventory_recommendation": "string",
           "ads_recommendation": "string"
@@ -2478,11 +2628,24 @@ Return this exact JSON structure:
       }
     }
   ],
+  "other_skus_comparison": {
+    "product_name": "Other SKUs",
+    "journey_comparison": [
+      "detailed bullet 1",
+      "detailed bullet 2",
+      "detailed bullet 3"
+    ],
+    "country_actions": {
+      "global": {
+        "recommendation": "string",
+        "inventory_recommendation": "string",
+        "ads_recommendation": "string"
+      }
+    }
+  },
   "global_overall_recommendation": "string"
 }
 """
-
-
 
 LIVE_BI_PROMPT_1_ANALYSIS = """You are a Senior Amazon Business Analyst.
 

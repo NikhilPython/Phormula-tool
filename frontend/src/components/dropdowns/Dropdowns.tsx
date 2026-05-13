@@ -599,6 +599,90 @@ const mergeToSingleBullet = (arr: string[]) => {
   return [cleaned.join(" ")];
 };
 
+const formatPct = (v: any) => {
+  if (v === null || v === undefined || !Number.isFinite(Number(v))) return "";
+  const n = Number(v);
+  return `(${n >= 0 ? "+" : ""}${n.toFixed(2)}%)`;
+};
+
+const formatMoney = (v: any, symbol = "$") => {
+  const n = Number(v ?? 0);
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const buildOtherSkusInsightLines = (
+  apiData: any,
+  currencySymbol = "$",
+  countryName = "global"
+): string[] => {
+  const otherComparison = apiData?.global_ai?.other_skus_comparison;
+  const remainingAgg = apiData?.metrics?.remaining_agg;
+
+  if (!otherComparison && !remainingAgg) return [];
+
+  const countryKey = String(countryName || "global").toLowerCase();
+
+  const actionObj =
+    otherComparison?.country_actions?.[countryKey] ||
+    otherComparison?.country_actions?.global ||
+    {};
+
+  const journeyLines = Array.isArray(otherComparison?.journey_comparison)
+    ? otherComparison.journey_comparison
+    : [];
+
+  const productName =
+    otherComparison?.product_name ||
+    remainingAgg?.product_name ||
+    "Other SKUs";
+
+  return [
+    productName,
+
+    `ASP: ${formatMoney(remainingAgg?.asp?.current, currencySymbol)} ${formatPct(
+      remainingAgg?.asp?.delta_pct
+    )}`,
+
+    `Units: ${Number(
+      remainingAgg?.total_quantity?.current ?? 0
+    ).toLocaleString()} ${formatPct(
+      remainingAgg?.total_quantity?.delta_pct
+    )}`,
+
+    `Net sales: ${formatMoney(
+      remainingAgg?.net_sales?.current,
+      currencySymbol
+    )} ${formatPct(remainingAgg?.net_sales?.delta_pct)}`,
+
+    `CM1 profit: ${formatMoney(
+      remainingAgg?.profit?.current,
+      currencySymbol
+    )} ${formatPct(remainingAgg?.profit?.delta_pct)}`,
+
+    `CM1 profit per unit: ${formatMoney(
+      remainingAgg?.unit_wise_profitability?.current,
+      currencySymbol
+    )} ${formatPct(remainingAgg?.unit_wise_profitability?.delta_pct)}`,
+
+    "Product Journey",
+
+    ...journeyLines.map((line: string) => `- ${line}`),
+
+    actionObj?.recommendation
+      ? `Recommendation: ${actionObj.recommendation}`
+      : "",
+
+    actionObj?.inventory_recommendation
+      ? `Inventory Action: ${actionObj.inventory_recommendation}`
+      : "",
+  ].filter(Boolean);
+};
+
+
 const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?: string) => {
   const yy = String(year || "").slice(-2);
 
@@ -1405,6 +1489,8 @@ type AiSingleInsightCardProps = {
   range: RangeType;
   selectedYear: string;
   selectedQuarter: Quarter | "";
+  selectedMonth?: string;
+
   homeCurrency?: string;
   countryName: string;
   portfolioRecommendation?: string | null;
@@ -1471,6 +1557,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   range,
   selectedYear,
   selectedQuarter,
+  selectedMonth,
   homeCurrency,
   targetSummary,
   currencySymbol = "$",
@@ -1560,6 +1647,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 range={range}
                 selectedYear={selectedYear}
                 selectedQuarter={selectedQuarter}
+                selectedMonth={range === "monthly" ? selectedMonth : ""}
                 homeCurrency={homeCurrency}
                 countryName={countryName}
                 drawerPeriodText={drawerPeriodText}
@@ -3278,7 +3366,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     return {
       summaryBullets,
-      skuInsightsBullets: buildGlobalProductInsightLines(data),
+      skuInsightsBullets: [
+        ...buildGlobalProductInsightLines(data),
+        ...buildOtherSkusInsightLines(data, currencySymbol, "global"),
+      ],
       recommendationBullets: [],
       inventoryBullets: buildGlobalInventoryLines(data),
       recommendationsMap: buildGlobalRecommendationsMap(data),
@@ -5565,6 +5656,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     range={range}
                     selectedYear={selectedYear}
                     selectedQuarter={selectedQuarter}
+                    selectedMonth={selectedMonth}
                     homeCurrency={globalHomeCurrency}
                     countryName={initialCountryName}
                     portfolioRecommendation={aiPanel?.portfolioRecommendation}
