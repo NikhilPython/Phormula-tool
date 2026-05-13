@@ -3540,13 +3540,6 @@ export default function LiveBusinessClient({
 
       const metrics = [
         {
-          label: "ASP",
-          value: formatGlobalMetricValue(
-            Number(row.asp_curr || row.asp_month2 || row.asp || 0),
-            getGrowthValue(row, "ASP Growth (%)")
-          ),
-        },
-        {
           label: "Units",
           value: formatGlobalMetricValue(
             Number(row.quantity_curr || row.quantity_month2 || row.quantity || 0),
@@ -3559,6 +3552,13 @@ export default function LiveBusinessClient({
           value: formatGlobalMetricValue(
             Number(row.net_sales_curr || row.net_sales_month2 || row.net_sales || 0),
             getGrowthValue(row, "Net Sales Growth (%)")
+          ),
+        },
+        {
+          label: "ASP",
+          value: formatGlobalMetricValue(
+            Number(row.asp_curr || row.asp_month2 || row.asp || 0),
+            getGrowthValue(row, "ASP Growth (%)")
           ),
         },
         {
@@ -3914,7 +3914,7 @@ export default function LiveBusinessClient({
             <div className="text-sm font-bold text-slate-800">{title}</div>
           </div>
 
-          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-2 p-3">
+          <div className="grid grid-cols-1 min-[1700px]:grid-cols-2 gap-2 p-3">
             {rows.map((item, idx) => (
               <div
                 key={idx}
@@ -4084,7 +4084,7 @@ export default function LiveBusinessClient({
                                         recommendationPoints: card.recommendationPoints,
                                         advertisingPoints: card.advertisingPoints,
                                         inventoryPoints: card.inventoryPoints,
-                                        showChart: true,
+                                        showChart: !isOthersCardName(card.productName),
                                       });
                                       setRecDrawerOpen(true);
                                     }}

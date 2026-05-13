@@ -1546,7 +1546,7 @@ def send_live_bi_email(
             year_value = year_match.group(1)
             current_year = f"20{year_value}" if len(year_value) == 2 else year_value
 
-        dashboard_url = f"http://localhost:3000/live-dashboard/{country_slug}/{current_month}/{current_year}#ai-insights"
+        dashboard_url = f"http://www.phormula.io/live-dashboard/{country_slug}/{current_month}/{current_year}#ai-insights"
 
         deep_link_html = f"""
         <p style="text-align:center; margin-top:24px;">
