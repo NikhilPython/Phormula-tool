@@ -26,6 +26,8 @@ type UserDataResponse = {
 type AddMemberErrorResponse = {
   error?: string;
   message?: string;
+  email_sent?: boolean;
+  email_message?: string;
 };
 
 const COUNTRY_OPTIONS = [

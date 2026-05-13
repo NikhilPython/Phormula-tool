@@ -407,6 +407,7 @@ def add_member():
                 member_name,
                 email,
                 temp_password,
+                token_name,
                 countries,
                 marketplaces,
                 modules,
@@ -415,6 +416,7 @@ def add_member():
             email_sent = True
             email_message = "Invitation email sent successfully."
         except Exception as e:
+            current_app.logger.exception("Member invite email failed")
             email_message = f"Member created but invite email failed: {str(e)}"
 
         return jsonify({
