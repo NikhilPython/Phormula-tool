@@ -2673,50 +2673,70 @@ def live_mtd_vs_previous():
             "remaining_skus_block": remaining_skus_block,   # ✅ ADD THIS
         }
 
-        # # ---------------------------
-        # # SEND EMAIL (USING FINAL RESPONSE PAYLOAD)
-        # # ---------------------------
-        # user_email = payload.get("email") or request.args.get("email")
-        # if not user_email:
-        #     user_email = get_user_email_and_name_by_id(user_id)
+        # ---------------------------
+        # SEND EMAIL
+        # ---------------------------
+        user_email = payload.get("email") or request.args.get("email")
+        user_name = None
 
-        # if user_email:
-        #     cache_key = (user_id, country)
-        #     if cache_key not in _SENT_EMAIL_CACHE:
-        #         if not has_recent_bi_email(user_id, country, hours=24):
-        #             try:
-        #                 email_token_payload = {
-        #                     "user_id": user_id,
-        #                     "email": user_email,
-        #                     "scope": "live_mtd_bi",
-        #                     "exp": datetime.utcnow() + timedelta(hours=24),
-        #                 }
-        #                 email_token = jwt.encode(
-        #                     email_token_payload,
-        #                     SECRET_KEY,
-        #                     algorithm="HS256",
-        #                 )
+        if not user_email:
+            user_email, user_name = get_user_email_and_name_by_id(user_id)
 
-        #                 send_live_bi_email(
-        #                     to_email=user_email,
-        #                     overall_summary=response_payload["overall_summary"],
-        #                     overall_actions=response_payload["overall_actions"],
-        #                     sku_actions=recommended_actions_mtd,
-                            
-        #                     country=country,
-        #                     prev_label=prev_label,
-        #                     curr_label=curr_label,
-        #                     deep_link_token=email_token,
-        #                     portfolio_recommendation=response_payload.get("portfolio_recommendation"),
-        #                 )
+        if isinstance(user_email, tuple):
+            user_email = user_email[0]
 
+        user_email = str(user_email).strip() if user_email else None
 
+        print("[EMAIL DEBUG] user_id:", user_id)
+        print("[EMAIL DEBUG] country:", country)
+        print("[EMAIL DEBUG] user_email:", user_email)
 
-        #                 mark_bi_email_sent(user_id, country)
-        #                 _SENT_EMAIL_CACHE.add(cache_key)
+        if user_email:
+            cache_key = (user_id, country)
 
-        #             except Exception as e:
-        #                 print("[WARN] Error sending live BI email:", e)
+            already_in_cache = cache_key in _SENT_EMAIL_CACHE
+            recently_sent = has_recent_bi_email(user_id, country, hours=24)
+
+            print("[EMAIL DEBUG] already_in_cache:", already_in_cache)
+            print("[EMAIL DEBUG] recently_sent:", recently_sent)
+
+            if not already_in_cache and not recently_sent:
+                try:
+                    email_token_payload = {
+                        "user_id": user_id,
+                        "email": user_email,
+                        "scope": "live_mtd_bi",
+                        "exp": datetime.utcnow() + timedelta(hours=24),
+                    }
+
+                    email_token = jwt.encode(
+                        email_token_payload,
+                        SECRET_KEY,
+                        algorithm="HS256",
+                    )
+
+                    sent = send_live_bi_email(
+                        to_email=user_email,
+                        overall_summary=response_payload["overall_summary"],
+                        overall_actions=response_payload["overall_actions"],
+                        sku_actions=recommended_actions_mtd,
+                        country=country,
+                        prev_label=prev_label,
+                        curr_label=curr_label,
+                        deep_link_token=email_token,
+                        portfolio_recommendation=response_payload.get("portfolio_recommendation"),
+                    )
+
+                    if sent:
+                        mark_bi_email_sent(user_id, country)
+                        _SENT_EMAIL_CACHE.add(cache_key)
+                    else:
+                        print("[WARN] Live BI email was not sent, so not marking as sent.")
+
+                except Exception as e:
+                    print("[WARN] Error sending live BI email:", e)
+        else:
+            print("[WARN] No user email found, skipping Live BI email.")
 
         try:
             response_payload = round_numeric_values(response_payload, ndigits=2)

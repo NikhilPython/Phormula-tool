@@ -494,7 +494,7 @@ export default function LiveBiLineChartPanel({
       <div style={{ marginTop: "-5px" }} className="min-h-[260px]">
         {loading ? (
           <div className="flex items-center justify-center h-[260px]">
-            <Loader />
+            <Loader className="bg-[transparent]" />
           </div>
         ) : error ? (
           <div className="text-sm text-red-500">{error}</div>

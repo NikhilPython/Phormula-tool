@@ -175,6 +175,144 @@ def _email_exists_globally(email: str):
 # Email
 # ==========================================================
 
+# def send_member_invite_email(member_name, email, password, token_name, countries, marketplaces, modules, role):
+#     """
+#     Invite email with role + access summary.
+#     """
+#     msg = Message(
+#         subject="Welcome to Phormula — Your Member Account Access",
+#         sender=("Phormula Care Team", "care@phormula.io"),
+#         recipients=[email],
+#     )
+
+#     login_url = "http://localhost:3000/signin"
+
+#     countries_str = ", ".join(countries) if countries else "-"
+#     marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
+#     role_str = role or "-"
+
+#     module_labels = {
+#         "LIVE_DASHBOARD": "Live Dashboard",
+#         "FINANCE_DASHBOARDS": "Finance Dashboards",
+#         "BUSINESS_INTELLIGENCE": "Business Intelligence",
+#         "INVENTORY_PLANNING": "Inventory Planning",
+#     }
+#     modules_pretty = ", ".join([module_labels.get(m, m) for m in modules]) if modules else "-"
+
+#     year = datetime.utcnow().year
+#     greet = f"Welcome, {member_name}!" if member_name else "Welcome!"
+
+#     msg.html = f"""
+# <!DOCTYPE html>
+# <html lang="en">
+# <head>
+#   <meta charset="UTF-8" />
+#   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+#   <title>Welcome to Phormula</title>
+# </head>
+# <body style="margin:0; padding:0; background:#f5f7fb; font-family:Arial, Helvetica, sans-serif;">
+#   <div style="max-width:640px; margin:0 auto; padding:24px;">
+#     <div style="background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 20px rgba(16,24,40,0.08); border:1px solid #e6eaf2;">
+#       <div style="padding:22px 24px; background:linear-gradient(135deg, #37455F 0%, #5EA68E 100%);">
+#         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+#           <div style="color:#ffffff;">
+#             <div style="font-size:18px; font-weight:700; letter-spacing:0.2px;">Phormula</div>
+#             <div style="font-size:13px; opacity:0.9;">Your member account has been created</div>
+#           </div>
+#           <div style="color:#ffffff; font-size:12px; opacity:0.85;">
+#             {datetime.utcnow().strftime("%b %d, %Y")}
+#           </div>
+#         </div>
+#       </div>
+
+#       <div style="padding:24px;">
+#         <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">{greet}</h2>
+#         <p style="margin:0 0 14px; color:#475467; font-size:14px; line-height:1.6;">
+#           An administrator has added you as a <b>Member</b> in Phormula. Below are your login details and the access you’ve been granted.
+#         </p>
+
+#         <div style="background:#f8fafc; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
+#           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
+#             Your Login Credentials
+#           </div>
+
+#           <div style="display:flex; flex-wrap:wrap; gap:10px;">
+#             <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
+#               <div style="color:#667085; font-size:12px; margin-bottom:4px;">Email</div>
+#               <div style="color:#101828; font-size:13px; font-weight:600; word-break:break-all;">{email}</div>
+#             </div>
+
+#             <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
+#               <div style="color:#667085; font-size:12px; margin-bottom:4px;">Temporary Password</div>
+#               <div style="color:#101828; font-size:13px; font-weight:600;">{password}</div>
+#             </div>
+#           </div>
+
+#           <div style="margin-top:10px; color:#667085; font-size:12px; line-height:1.5;">
+#             <b>Security tip:</b> Please change your password after your first login.
+#           </div>
+#         </div>
+
+#         <div style="background:#ffffff; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
+#           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
+#             Your Access
+#           </div>
+
+#           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+#             <tr>
+#               <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Role</td>
+#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{role_str}</td>
+#             </tr>
+#             <tr style="border-top:1px solid #eef2f7;">
+#               <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Countries</td>
+#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{countries_str}</td>
+#             </tr>
+#             <tr style="border-top:1px solid #eef2f7;">
+#               <td style="padding:10px 0; color:#667085; font-size:12px;">Marketplaces</td>
+#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600; word-break:break-word;">
+#                 {marketplaces_str}
+#               </td>
+#             </tr>
+#             <tr style="border-top:1px solid #eef2f7;">
+#               <td style="padding:10px 0; color:#667085; font-size:12px;">Modules</td>
+#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">
+#                 {modules_pretty}
+#               </td>
+#             </tr>
+#           </table>
+#         </div>
+
+#         <div style="text-align:center; margin:22px 0 6px;">
+#           <a href="{login_url}"
+#              style="display:inline-block; background:#37455F; color:#F8EDCF; text-decoration:none; padding:12px 22px;
+#                     border-radius:12px; font-size:14px; font-weight:700; box-shadow:0 6px 14px rgba(55,69,95,0.18);">
+#             Login to Phormula
+#           </a>
+#         </div>
+
+#         <div style="text-align:center; color:#667085; font-size:12px; margin-top:10px;">
+#           If the button doesn’t work, copy and paste this link:<br/>
+#           <span style="color:#344054; word-break:break-all;">{login_url}</span>
+#         </div>
+
+#         <div style="margin-top:18px; padding-top:14px; border-top:1px solid #eef2f7; color:#667085; font-size:12px; line-height:1.6;">
+#           If you did not expect this email, please contact support at
+#           <a href="mailto:care@phormula.io" style="color:#5EA68E; text-decoration:none; font-weight:700;">care@phormula.io</a>.
+#           <br/>
+#           Token reference: <span style="color:#344054; font-weight:700;">{token_name}</span>
+#         </div>
+#       </div>
+#     </div>
+
+#     <div style="text-align:center; color:#98a2b3; font-size:12px; margin-top:14px;">
+#       © {year} Phormula. All rights reserved.
+#     </div>
+#   </div>
+# </body>
+# </html>
+#     """
+#     mail.send(msg)
+
 def send_member_invite_email(member_name, email, password, token_name, countries, marketplaces, modules, role):
     """
     Invite email with role + access summary.
@@ -185,7 +323,7 @@ def send_member_invite_email(member_name, email, password, token_name, countries
         recipients=[email],
     )
 
-    login_url = "http://localhost:3000/signin"
+    login_url = "http://www.phormula.io/signin"
 
     countries_str = ", ".join(countries) if countries else "-"
     marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
@@ -206,112 +344,421 @@ def send_member_invite_email(member_name, email, password, token_name, countries
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to Phormula</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    @media only screen and (max-width: 600px) {{
+      .email-container {{
+        width: 100% !important;
+        max-width: 100% !important;
+      }}
+
+      .top-report-title {{
+        font-size: 14px !important;
+        line-height: 18px !important;
+      }}
+
+      .content-cell {{
+        padding: 22px 24px 26px 24px !important;
+      }}
+
+      .note-cell {{
+        padding: 14px 24px 16px 24px !important;
+      }}
+
+      .cta-wrap {{
+        text-align: center !important;
+      }}
+
+      .cta-button {{
+        display: inline-block !important;
+        margin: 0 auto !important;
+        text-align: center !important;
+      }}
+
+      .cred-col {{
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }}
+
+      .cred-spacer {{
+        display: none !important;
+      }}
+    }}
+  </style>
 </head>
-<body style="margin:0; padding:0; background:#f5f7fb; font-family:Arial, Helvetica, sans-serif;">
-  <div style="max-width:640px; margin:0 auto; padding:24px;">
-    <div style="background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 20px rgba(16,24,40,0.08); border:1px solid #e6eaf2;">
-      <div style="padding:22px 24px; background:linear-gradient(135deg, #37455F 0%, #5EA68E 100%);">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-          <div style="color:#ffffff;">
-            <div style="font-size:18px; font-weight:700; letter-spacing:0.2px;">Phormula</div>
-            <div style="font-size:13px; opacity:0.9;">Your member account has been created</div>
-          </div>
-          <div style="color:#ffffff; font-size:12px; opacity:0.85;">
-            {datetime.utcnow().strftime("%b %d, %Y")}
-          </div>
-        </div>
-      </div>
 
-      <div style="padding:24px;">
-        <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">{greet}</h2>
-        <p style="margin:0 0 14px; color:#475467; font-size:14px; line-height:1.6;">
-          An administrator has added you as a <b>Member</b> in Phormula. Below are your login details and the access you’ve been granted.
-        </p>
+<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
+    <tr>
+      <td align="center">
 
-        <div style="background:#f8fafc; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
-          <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
-            Your Login Credentials
-          </div>
+        <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="
+          background:#ffffff;
+          width:600px;
+          max-width:600px;
+          border-collapse:collapse;
+        ">
 
-          <div style="display:flex; flex-wrap:wrap; gap:10px;">
-            <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
-              <div style="color:#667085; font-size:12px; margin-bottom:4px;">Email</div>
-              <div style="color:#101828; font-size:13px; font-weight:600; word-break:break-all;">{email}</div>
-            </div>
+          <!-- top green bar -->
+          <tr>
+            <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
+                <tr>
+                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
+                    <img
+                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                      alt="Phormula"
+                      width="40"
+                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
+                    />
+                  </td>
+                  <td width="382" align="right" class="top-report-title" style="
+                    font-size:16px;
+                    line-height:18px;
+                    color:#f8edce;
+                    text-align:right;
+                    vertical-align:middle;
+                    white-space:nowrap;
+                  ">
+                    Member Account Access
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-            <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
-              <div style="color:#667085; font-size:12px; margin-bottom:4px;">Temporary Password</div>
-              <div style="color:#101828; font-size:13px; font-weight:600;">{password}</div>
-            </div>
-          </div>
+          <!-- logo/title -->
+          <tr>
+            <td align="center" style="
+              padding:28px 30px 18px 30px;
+              background:#ffffff;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <img
+                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                alt="Phormula Logo"
+                width="220"
+                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
+              />
+              <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
+                Your member account has been created
+              </div>
+            </td>
+          </tr>
 
-          <div style="margin-top:10px; color:#667085; font-size:12px; line-height:1.5;">
-            <b>Security tip:</b> Please change your password after your first login.
-          </div>
-        </div>
+          <!-- divider -->
+          <tr>
+            <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
+          </tr>
 
-        <div style="background:#ffffff; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
-          <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
-            Your Access
-          </div>
+          <!-- body -->
+          <tr>
+            <td class="content-cell" style="
+              padding:22px 32px 26px 32px;
+              color:#444444;
+              font-size:14px;
+              line-height:1.7;
+              text-align:left;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <p style="margin:0 0 18px 0; text-align:left;">
+                <strong>{greet}</strong>
+              </p>
 
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-            <tr>
-              <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Role</td>
-              <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{role_str}</td>
-            </tr>
-            <tr style="border-top:1px solid #eef2f7;">
-              <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Countries</td>
-              <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{countries_str}</td>
-            </tr>
-            <tr style="border-top:1px solid #eef2f7;">
-              <td style="padding:10px 0; color:#667085; font-size:12px;">Marketplaces</td>
-              <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600; word-break:break-word;">
-                {marketplaces_str}
-              </td>
-            </tr>
-            <tr style="border-top:1px solid #eef2f7;">
-              <td style="padding:10px 0; color:#667085; font-size:12px;">Modules</td>
-              <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">
-                {modules_pretty}
-              </td>
-            </tr>
-          </table>
-        </div>
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                An administrator has added you as a <strong>Member</strong> in Phormula.
+                Below are your login credentials and the access permissions granted to your account.
+              </p>
 
-        <div style="text-align:center; margin:22px 0 6px;">
-          <a href="{login_url}"
-             style="display:inline-block; background:#37455F; color:#F8EDCF; text-decoration:none; padding:12px 22px;
-                    border-radius:12px; font-size:14px; font-weight:700; box-shadow:0 6px 14px rgba(55,69,95,0.18);">
-            Login to Phormula
-          </a>
-        </div>
+              <!-- ============================================================
+                   ACCOUNT DETAILS CARD
+              ============================================================ -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                margin:22px 0;
+                border-collapse:separate;
+                border-spacing:0;
+                border:1px solid #d9d9d9;
+                border-radius:8px;
+                background:#F8FBFA;
+              ">
 
-        <div style="text-align:center; color:#667085; font-size:12px; margin-top:10px;">
-          If the button doesn’t work, copy and paste this link:<br/>
-          <span style="color:#344054; word-break:break-all;">{login_url}</span>
-        </div>
+                <!-- Credentials section -->
+                <tr>
+                  <td style="background:#F8FBFA; padding:20px 22px 18px 22px; border-radius:8px 8px 0 0;">
 
-        <div style="margin-top:18px; padding-top:14px; border-top:1px solid #eef2f7; color:#667085; font-size:12px; line-height:1.6;">
-          If you did not expect this email, please contact support at
-          <a href="mailto:care@phormula.io" style="color:#5EA68E; text-decoration:none; font-weight:700;">care@phormula.io</a>.
-          <br/>
-          Token reference: <span style="color:#344054; font-weight:700;">{token_name}</span>
-        </div>
-      </div>
-    </div>
+                    <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#999999; margin-bottom:14px; font-family:Arial, Helvetica, sans-serif;">
+                      Login Credentials
+                    </div>
 
-    <div style="text-align:center; color:#98a2b3; font-size:12px; margin-top:14px;">
-      © {year} Phormula. All rights reserved.
-    </div>
-  </div>
+                    <!-- Two-column credential boxes -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td class="cred-col" width="48%" style="
+                          background:#ffffff;
+                          border:1px solid #dddddd;
+                          border-radius:6px;
+                          padding:14px 16px;
+                          vertical-align:top;
+                        ">
+                          <div style="font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#999999; margin-bottom:6px; font-family:Arial, Helvetica, sans-serif;">
+                            Email address
+                          </div>
+                          <div style="font-size:14px; font-weight:bold; color:#37455f; word-break:break-all; font-family:Arial, Helvetica, sans-serif;">
+                            {email}
+                          </div>
+                        </td>
+
+                        <td class="cred-spacer" width="4%" style="font-size:1px;">&nbsp;</td>
+
+                        <td class="cred-col" width="48%" style="
+                          background:#ffffff;
+                          border:1px solid #dddddd;
+                          border-radius:6px;
+                          padding:14px 16px;
+                          vertical-align:top;
+                        ">
+                          <div style="font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#999999; margin-bottom:6px; font-family:Arial, Helvetica, sans-serif;">
+                            Temporary password
+                          </div>
+                          <div style="font-size:14px; font-weight:bold; color:#444444; letter-spacing:0.04em; font-family:'Courier New', Courier, monospace;">
+                            {password}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Security tip -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin-top:12px;">
+                    <tr>
+                        <td style="
+                        background:#fff8e8;
+                        border:1px solid #f0d891;
+                        padding:12px 16px;
+                        ">
+                        <span style="font-size:13px; color:#8a5a00; line-height:1.6; font-family:Arial, Helvetica, sans-serif;">
+                            <strong>Security tip:</strong> Please change your password after your first login.
+                        </span>
+                        </td>
+                    </tr>
+                    </table>
+
+                  </td>
+                </tr>
+
+                <!-- Section divider -->
+                <tr>
+                  <td style="background:#ffffff; padding:0 22px;">
+                    <div style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</div>
+                  </td>
+                </tr>
+
+                <!-- Access Summary section -->
+                <tr>
+                  <td style="background:#F8FBFA; padding:18px 22px 22px 22px; border-radius:0 0 8px 8px;">
+
+                    <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#999999; margin-bottom:12px; font-family:Arial, Helvetica, sans-serif;">
+                      Access Summary
+                    </div>
+
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate; border-spacing:0 4px;">
+
+                      <!-- Role -->
+                      <tr>
+                        <td style="background:#ffffff; border:1px solid #dddddd; border-radius:6px; padding:10px 14px;">
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td style="font-size:13px; color:#444444; font-family:Arial, Helvetica, sans-serif; vertical-align:middle;">
+                                Role
+                              </td>
+                              <td align="right" style="vertical-align:middle;">
+                                <span style="
+                                  font-size:12px; font-weight:bold;
+                                  color:#444444; background:#f1f1f1;
+                                  padding:3px 10px; border-radius:20px;
+                                  font-family:Arial, Helvetica, sans-serif;
+                                ">
+                                  {role_str}
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+
+                      <!-- Countries -->
+                      <tr>
+                        <td style="background:#ffffff; border:1px solid #dddddd; border-radius:6px; padding:10px 14px;">
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td style="font-size:13px; color:#444444; font-family:Arial, Helvetica, sans-serif; vertical-align:middle;">
+                                Countries
+                              </td>
+                              <td align="right" style="vertical-align:middle;">
+                                <span style="
+                                  font-size:12px; font-weight:bold;
+                                  color:#444444; background:#f1f1f1;
+                                  padding:3px 10px; border-radius:20px;
+                                  font-family:Arial, Helvetica, sans-serif;
+                                ">
+                                  {countries_str}
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+
+                      <!-- Marketplaces -->
+                      <tr>
+                        <td style="background:#ffffff; border:1px solid #dddddd; border-radius:6px; padding:10px 14px;">
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td style="font-size:13px; color:#444444; font-family:Arial, Helvetica, sans-serif; vertical-align:middle;">
+                                Marketplaces
+                              </td>
+                              <td align="right" style="vertical-align:middle;">
+                                <span style="
+                                  font-size:12px; font-weight:500;
+                                  color:#444444; background:#f1f1f1;
+                                  padding:3px 10px; border-radius:20px;
+                                  font-family:'Courier New', Courier, monospace;
+                                  letter-spacing:0.04em;
+                                ">
+                                  {marketplaces_str}
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+
+                      <!-- Modules -->
+                      <tr>
+                        <td style="background:#ffffff; border:1px solid #dddddd; border-radius:6px; padding:10px 14px;">
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td style="font-size:13px; color:#444444; font-family:Arial, Helvetica, sans-serif; vertical-align:middle;">
+                                Modules
+                              </td>
+                              <td align="right" style="vertical-align:middle;">
+                                <span style="
+                                  font-size:12px; font-weight:bold;
+                                  color:#444444; background:#f1f1f1;
+                                  padding:3px 10px; border-radius:20px;
+                                  font-family:Arial, Helvetica, sans-serif;
+                                ">
+                                  {modules_pretty}
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+              <!-- ============================================================
+                   END ACCOUNT DETAILS CARD
+              ============================================================ -->
+
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                You can now sign in to Phormula using the credentials above. After logging in,
+                please update your temporary password to keep your account secure.
+              </p>
+
+              <!-- CTA -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                width:100%;
+                margin:26px 0 24px 0;
+                border-collapse:collapse;
+              ">
+                <tr>
+                  <td align="center" class="cta-wrap" style="text-align:center !important; padding:0; margin:0;">
+                    <a href="{login_url}" class="cta-button" style="
+                      display:inline-block;
+                      background:#37455f;
+                      color:#f8edce;
+                      padding:12px 30px;
+                      text-decoration:none;
+                      font-size:14px;
+                      font-weight:bold;
+                      border-radius:10px;
+                      text-align:center;
+                      line-height:20px;
+                      margin:0 auto;
+                    ">
+                      Login to Phormula
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:18px 0 0 0; text-align:left;">
+                Warm regards,
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <strong>The Phormula Team</strong>
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
+                  care@phormula.io
+                </a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- full-width note section -->
+          <tr>
+            <td class="note-cell" style="
+              border-top:1px solid #dddddd;
+              padding:14px 32px 16px 32px;
+              background:#ffffff;
+              font-size:12px;
+              color:#999999;
+              line-height:1.6;
+              text-align:left;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              This email was generated automatically by Phormula.
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td align="center" style="
+              background:#5ea68e;
+              padding:12px 18px;
+              color:#f8edce;
+              font-size:12px;
+              line-height:1.5;
+              text-align:center;
+            ">
+              &copy; {year} Phormula. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
     """
+
     mail.send(msg)
+
 
 
 # ==========================================================
