@@ -1210,7 +1210,7 @@ def send_live_bi_email(
             "Net sales": "Net Sales",
             "ASP": "ASP",
             "CM1 profit": "CM1 Profit",
-            "CM1 profit per unit": "CM1 Profit per Unit",
+            "CM1 profit per unit": "CM1 Profit/Unit",
         }
         display_label = label_display_map.get(label, label)
 
@@ -1734,7 +1734,7 @@ def send_live_bi_email(
         /* Desktop/laptop */
         @media only screen and (min-width: 768px) {{
           .email-wrapper {{
-            width: 100% !important;
+             width: 78% !important;
             max-width: 80% !important;
             margin: 0 auto !important;
           }}
@@ -1840,14 +1840,15 @@ def send_live_bi_email(
 
     <body style="font-family:'Lato', Arial, sans-serif; background:#FFFFFF; padding:0; margin:0;">
       <div class="outer-padding" style="padding:0;">
-        <div class="email-wrapper" style="
-          width:100%;
-          margin:0 auto;
-          background:#fff;
-          border:none;
-          box-sizing:border-box;
-          overflow:hidden;
-        ">
+       <div class="email-wrapper" style="
+  width:100%;
+  max-width:1100px;
+  margin:0 auto;
+  background:#fff;
+  border:none;
+  box-sizing:border-box;
+  overflow:hidden;
+">
 
           <!-- Top green header -->
 <div class="top-header" style="background:#7FB5A5; padding:18px 24px;">
