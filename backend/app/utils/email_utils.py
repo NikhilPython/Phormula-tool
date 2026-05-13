@@ -326,29 +326,300 @@ def send_welcome_and_verification_emails(email, name, verification_link):
         print(f"Failed to send email to {email}: {e}")
         raise e
 
+# def send_reset_email(to_email, reset_url):
+#     msg = Message(
+#         'Password Reset Request',
+#         sender='care@phormula.io',
+#         recipients=[to_email]
+#     )
+
+#     # HTML email body
+#     html_body = f"""
+#     <html>
+#     <body style="font-family: 'Lato', Arial, sans-serif; background-color: #f4f4f4; padding: 20px; margin: 0;">
+#     <div style="max-width: 600px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; border: 2px solid#5EA68E; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);">
+#         <img src="https://i.postimg.cc/43T3k86Z/logo.png" alt="Phormula Logo" style="width: 200px; height: auto; display: block; margin: 0 auto 20px;" />
+#         <p style="font-size: 14px; line-height: 1.6; color: #555;"> Dear {to_email},</p>
+#         <p style="font-size: 14px; line-height: 1.6; color: #555;">We have received a request to reset your password. To proceed, please click the button below:</p>        
+#         <a href="{reset_url}" style="display: inline-block; background-color: #37455F; color: #f8edcf; padding: 8px 20px; text-align: center; text-decoration: none; font-size: 14px; border-radius: 8px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); transition: background-color 0.3s ease; cursor: pointer;">Reset Your Password</a>        
+#         <p style="font-size: 14px; color: #777;">If you did not request this change, please disregard this email.</p>
+#         <p style="font-size: 14px; color: #555;">If you need assistance, feel free to contact our support team at <a href="mailto:care@phormula.io" style="color: #007bff;">care@phormula.io</a>.</p>
+#         <p style="font-size: 14px; color: #555;">Best regards, <br>The Phormula Team</p>
+#         </div>
+#     </body>
+#     </html>
+#     """
+
+#     msg.html = html_body
+#     mail.send(msg)
+
 def send_reset_email(to_email, reset_url):
     msg = Message(
-        'Password Reset Request',
-        sender='care@phormula.io',
+        "Password Reset Request",
+        sender=("Phormula Care Team", "care@phormula.io"),
         recipients=[to_email]
     )
 
-    # HTML email body
     html_body = f"""
-    <html>
-    <body style="font-family: 'Lato', Arial, sans-serif; background-color: #f4f4f4; padding: 20px; margin: 0;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; border: 2px solid#5EA68E; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);">
-        <img src="https://i.postimg.cc/43T3k86Z/logo.png" alt="Phormula Logo" style="width: 200px; height: auto; display: block; margin: 0 auto 20px;" />
-        <p style="font-size: 14px; line-height: 1.6; color: #555;"> Dear {to_email},</p>
-        <p style="font-size: 14px; line-height: 1.6; color: #555;">We have received a request to reset your password. To proceed, please click the button below:</p>        
-        <a href="{reset_url}" style="display: inline-block; background-color: #37455F; color: #f8edcf; padding: 8px 20px; text-align: center; text-decoration: none; font-size: 14px; border-radius: 8px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); transition: background-color 0.3s ease; cursor: pointer;">Reset Your Password</a>        
-        <p style="font-size: 14px; color: #777;">If you did not request this change, please disregard this email.</p>
-        <p style="font-size: 14px; color: #555;">If you need assistance, feel free to contact our support team at <a href="mailto:care@phormula.io" style="color: #007bff;">care@phormula.io</a>.</p>
-        <p style="font-size: 14px; color: #555;">Best regards, <br>The Phormula Team</p>
-        </div>
-    </body>
-    </html>
-    """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    @media only screen and (max-width: 600px) {{
+      .email-container {{
+        width: 100% !important;
+        max-width: 100% !important;
+      }}
+
+      .top-report-title {{
+        font-size: 14px !important;
+        line-height: 18px !important;
+      }}
+
+      .content-cell {{
+        padding:22px 24px 26px 24px !important;
+      }}
+
+      .note-cell {{
+        padding:14px 24px 16px 24px !important;
+      }}
+
+      .cta-wrap {{
+        text-align:center !important;
+      }}
+
+      .cta-button {{
+        display:inline-block !important;
+        margin:0 auto !important;
+        text-align:center !important;
+      }}
+    }}
+  </style>
+</head>
+
+<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
+    <tr>
+      <td align="center">
+
+        <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="
+          background:#ffffff;
+          width:600px;
+          max-width:600px;
+          border-collapse:collapse;
+        ">
+
+          <!-- top green bar -->
+          <tr>
+            <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
+                <tr>
+                  <td width="80" style="
+                    font-size:28px;
+                    line-height:28px;
+                    font-weight:300;
+                    color:#ffffff;
+                    text-align:left;
+                    vertical-align:middle;
+                    white-space:nowrap;
+                  ">
+                    |p|
+                  </td>
+
+                  <td width="472" align="right" class="top-report-title" style="
+                    font-size:16px;
+                    line-height:18px;
+                    color:#f8edce;
+                    text-align:right;
+                    vertical-align:middle;
+                    white-space:nowrap;
+                  ">
+                    Password Reset
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- logo/title -->
+          <tr>
+            <td align="center" style="
+              padding:28px 30px 18px 30px;
+              background:#ffffff;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <div style="
+                font-size:36px;
+                color:#1d6d84;
+                line-height:1.2;
+                margin-bottom:8px;
+                font-weight:300;
+              ">
+                |phormula|
+              </div>
+
+              <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
+                Reset your password
+              </div>
+            </td>
+          </tr>
+
+          <!-- divider -->
+          <tr>
+            <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
+          </tr>
+
+          <!-- body -->
+          <tr>
+            <td class="content-cell" style="
+              padding:22px 32px 26px 32px;
+              color:#444444;
+              font-size:14px;
+              line-height:1.7;
+              text-align:left;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              <p style="margin:0 0 18px 0; text-align:left;">
+                Dear <strong>{to_email}</strong>,
+              </p>
+
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                We received a request to reset the password for your Phormula account.
+                To continue, please click the button below and follow the instructions to create a new password.
+              </p>
+
+              <!-- info box -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                margin:20px 0 22px 0;
+                background:#eef7f3;
+                border:1px solid #cfe9dc;
+                border-collapse:collapse;
+              ">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <div style="font-size:14px; font-weight:bold; color:#37455f; margin-bottom:10px;">
+                      Important security note
+                    </div>
+
+                    <ul style="
+                      margin:0;
+                      padding-left:18px;
+                      color:#444444;
+                      font-size:14px;
+                      line-height:1.8;
+                      text-align:left;
+                    ">
+                      <li>Use this reset link only if you requested a password change.</li>
+                      <li>If you did not request this, you can safely ignore this email.</li>
+                      <li>For security, do not share this password reset link with anyone.</li>
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                width:100%;
+                margin:26px 0 24px 0;
+                border-collapse:collapse;
+              ">
+                <tr>
+                  <td align="center" class="cta-wrap" style="
+                    text-align:center !important;
+                    padding:0;
+                    margin:0;
+                  ">
+                    <a href="{reset_url}" class="cta-button" style="
+                      display:inline-block;
+                      background:#37455f;
+                      color:#f8edce;
+                      padding:12px 30px;
+                      text-decoration:none;
+                      font-size:14px;
+                      font-weight:bold;
+                      border-radius:10px;
+                      text-align:center;
+                      line-height:20px;
+                      margin:0 auto;
+                    ">
+                      Reset Your Password
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
+                If the button does not work, copy and paste the password reset link into your browser.
+                This link is intended only for resetting your Phormula account password.
+              </p>
+
+              <p style="margin:0 0 18px 0; color:#777777; text-align:justify; text-justify:inter-word;">
+                If you need assistance, our support team is available at
+                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
+                  care@phormula.io
+                </a>.
+              </p>
+
+              <p style="margin:18px 0 0 0; text-align:left;">
+                Warm regards,
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <strong>The Phormula Team</strong>
+              </p>
+
+              <p style="margin:0; text-align:left;">
+                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
+                  care@phormula.io
+                </a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- full-width note section -->
+          <tr>
+            <td class="note-cell" style="
+              border-top:1px solid #dddddd;
+              padding:14px 32px 16px 32px;
+              background:#ffffff;
+              font-size:12px;
+              color:#999999;
+              line-height:1.6;
+              text-align:left;
+              border-left:1px solid #e4e7ec;
+              border-right:1px solid #e4e7ec;
+            ">
+              This email was generated automatically by Phormula.
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td align="center" style="
+              background:#5ea68e;
+              padding:12px 18px;
+              color:#f8edce;
+              font-size:12px;
+              line-height:1.5;
+              text-align:center;
+            ">
+              © 2026 Phormula. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
     msg.html = html_body
     mail.send(msg)
@@ -1838,165 +2109,6 @@ def get_user_email_by_id(user_id: int) -> str | None:
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email for id={user_id}: {e}")
         return None
-
-# def send_email_with_attachment(
-#     *,
-#     to_email: str,
-#     subject: str,
-#     body: str,
-#     attachment_bytes: bytes,
-#     attachment_filename: str,
-#     mime_type: str = "application/octet-stream",
-# ):
-#     msg = EmailMessage()
-#     msg["Subject"] = subject
-#     msg["From"] = f'{os.getenv("MAIL_DEFAULT_SENDER_NAME", "Phormula Care")} <{os.getenv("MAIL_USERNAME")}>'
-#     msg["To"] = to_email
-
-#     # ✅ Plain fallback
-#     msg.set_content(body)
-
-#     html_body = f"""
-# <html>
-# <body style="margin:0; padding:0; background:#f4f6f8; font-family:Arial, sans-serif;">
-#   <div style="padding:32px 16px;">
-#     <div style="
-#       max-width:640px;
-#       margin:0 auto;
-#       background:#ffffff;
-#       border:1px solid #e5e7eb;
-#       border-radius:16px;
-#       overflow:hidden;
-#       box-shadow:0 8px 24px rgba(15,23,42,0.06);
-#     ">
-
-#       <!-- Top bar -->
-#       <div style="background:linear-gradient(135deg, #37455F 0%, #2F6476 100%); padding:24px 28px;">
-#         <div style="font-size:24px; font-weight:700; color:#ffffff; letter-spacing:0.2px;">
-#           Phormula
-#         </div>
-#         <div style="font-size:13px; color:#dbe4ea; margin-top:6px;">
-#           Amazon SKU Performance Report
-#         </div>
-#       </div>
-
-#       <!-- Main content -->
-#       <div style="padding:32px 28px 28px 28px;">
-
-#         <p style="font-size:15px; color:#1f2937; margin:0 0 16px 0;">Hi,</p>
-
-#         <p style="font-size:15px; color:#4b5563; line-height:1.7; margin:0 0 18px 0;">
-#           Your <strong>Amazon SKU-wise monthly report</strong> is ready and attached to this email.
-#         </p>
-
-#         <!-- Attachment card -->
-#         <div style="
-#           background:#f8fafc;
-#           border:1px solid #e5e7eb;
-#           border-radius:12px;
-#           padding:14px 16px;
-#           margin:20px 0;
-#         ">
-#           <div style="font-size:13px; color:#6b7280; margin-bottom:6px;">
-#             Attached file
-#           </div>
-#           <div style="font-size:16px; color:#111827; font-weight:700;">
-#             {attachment_filename}
-#           </div>
-#         </div>
-
-#         <!-- Value section -->
-#         <div style="
-#           background:#eef7f3;
-#           border:1px solid #cfe9dc;
-#           border-radius:12px;
-#           padding:16px 18px;
-#           margin:20px 0 22px 0;
-#         ">
-#           <div style="font-size:14px; font-weight:700; color:#1f2937; margin-bottom:10px;">
-#             What’s inside this report
-#           </div>
-#           <ul style="margin:0; padding-left:18px; color:#4b5563; font-size:14px; line-height:1.8;">
-#             <li>SKU-level sales and net sales performance</li>
-#             <li>Profitability metrics including ASP and margin view</li>
-#             <li>Refunds, returns, fees, and deductions</li>
-#             <li>A clean monthly view to support faster decision-making</li>
-#           </ul>
-#         </div>
-
-#         <p style="font-size:14px; color:#4b5563; line-height:1.7; margin:0 0 22px 0;">
-#           For deeper analysis, including trends, profitability breakdowns, and business insights,
-#           open your dashboard in Phormula.
-#         </p>
-
-#         <!-- CTA -->
-#         <div style="text-align:center; margin:28px 0 24px 0;">
-#           <a href="https://phormula.io"
-#              style="
-#                display:inline-block;
-#                background:#37455F;
-#                color:#ffffff;
-#                padding:13px 26px;
-#                text-decoration:none;
-#                border-radius:10px;
-#                font-size:14px;
-#                font-weight:700;
-#              ">
-#             Open Phormula Dashboard
-#           </a>
-#         </div>
-
-#         <!-- Footer note -->
-#         <div style="
-#           border-top:1px solid #e5e7eb;
-#           padding-top:18px;
-#           margin-top:8px;
-#         ">
-#           <p style="font-size:12px; color:#9ca3af; line-height:1.7; margin:0 0 8px 0;">
-#             This email was generated automatically by Phormula.
-#           </p>
-#           <p style="font-size:13px; color:#6b7280; margin:0 0 14px 0;">
-#             Need help? Contact us at
-#             <a href="mailto:care@phormula.io" style="color:#37455F; text-decoration:none;">care@phormula.io</a>
-#           </p>
-#           <p style="font-size:13px; color:#6b7280; margin:0;">
-#             Regards,<br/>
-#             <strong>Phormula Team</strong>
-#           </p>
-#         </div>
-
-#       </div>
-#     </div>
-#   </div>
-# </body>
-# </html>
-# """
-
-#     msg.add_alternative(html_body, subtype="html")
-
-#     # Attachment
-#     maintype, subtype = mime_type.split("/", 1)
-#     msg.add_attachment(
-#         attachment_bytes,
-#         maintype=maintype,
-#         subtype=subtype,
-#         filename=attachment_filename,
-#     )
-
-#     # SMTP send
-#     smtp_host = os.getenv("MAIL_SERVER")
-#     smtp_port = int(os.getenv("MAIL_PORT", "587"))
-#     smtp_user = os.getenv("MAIL_USERNAME")
-#     smtp_pass = os.getenv("MAIL_PASSWORD")
-#     use_tls = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
-
-#     with smtplib.SMTP(smtp_host, smtp_port) as server:
-#         if use_tls:
-#             server.starttls()
-#         if smtp_user and smtp_pass:
-#             server.login(smtp_user, smtp_pass)
-#         server.send_message(msg)
-
 
 def send_email_with_attachment(
     *,
