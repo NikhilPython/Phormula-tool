@@ -2865,142 +2865,6 @@ def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
     return f"{current_str} ({fmt_pct(pct)})"
 
 
-# def render_global_comparison_summary(
-#     *,
-#     global_ai: dict,
-#     us_result: dict,
-#     uk_result: dict,
-#     period: str,
-#     timeline: str,
-#     year: int,
-#     remaining_agg: dict | None = None,
-# ) -> str:
-#     """
-#     AI-written global summary renderer.
-#     Shows one UK vs US comparison summary, product journey comparison,
-#     one global recommendation, then separate US and UK product recommendations.
-#     """
-
-#     lines = []
-
-    
-
-#     lines.append("Global Business Summary")
-#     lines.append(f"Period: {period_label(period, timeline, year)}")
-
-#     # ============================================================
-#     # AI GLOBAL OVERALL SUMMARY
-#     # ============================================================
-#     if global_ai.get("global_summary"):
-#         lines.append("")
-#         lines.append("## OVERALL SUMMARY")
-#         lines.append(global_ai["global_summary"])
-
-#     # ============================================================
-#     # AI UK VS US COMPARISON
-#     # ============================================================
-#     if global_ai.get("uk_vs_us_comparison"):
-#         lines.append("")
-#         lines.append("## UK VS US COMPARISON")
-#         for point in global_ai["uk_vs_us_comparison"]:
-#             lines.append(f"• {point}")
-
-#     # ============================================================
-#     # AI PRODUCT-WISE JOURNEY COMPARISON
-#     # ============================================================
-#     if global_ai.get("product_journey_comparison"):
-#         lines.append("")
-#         lines.append("## PRODUCT JOURNEY")
-
-#         for item in global_ai["product_journey_comparison"]:
-#             if isinstance(item, dict):
-#                 product_name = item.get("product_name") or "Unknown Product"
-#                 sku_us = item.get("sku_us") or "N/A"
-#                 sku_uk = item.get("sku_uk") or "N/A"
-#                 journey_comparison = item.get("journey_comparison") or []
-
-#                 lines.append("")
-#                 lines.append(f"### {product_name}")
-#                 lines.append(f"• US SKU: {sku_us}")
-#                 lines.append(f"• UK SKU: {sku_uk}")
-
-#                 if isinstance(journey_comparison, list) and journey_comparison:
-#                     for point in journey_comparison:
-#                         if isinstance(point, str) and point.strip():
-#                             lines.append(f"• {point}")
-
-#                 elif isinstance(journey_comparison, str) and journey_comparison.strip():
-#                     lines.append(f"• {journey_comparison}")
-
-#                 # ✅ NEW: show US/UK actions inside same product block
-#                 country_actions = item.get("country_actions") or {}
-
-#                 us_actions = country_actions.get("us") or {}
-#                 uk_actions = country_actions.get("uk") or {}
-
-#                 if us_actions or uk_actions:
-#                     lines.append("")
-#                     lines.append("• Country actions:")
-
-#                     if isinstance(us_actions, dict) and any(str(v).strip() for v in us_actions.values() if v):
-#                         lines.append("   - US:")
-#                         if us_actions.get("recommendation"):
-#                             lines.append(f"      • Recommendation: {us_actions['recommendation']}")
-#                         if us_actions.get("inventory_recommendation"):
-#                             lines.append(f"      • Inventory action: {us_actions['inventory_recommendation']}")
-#                         if us_actions.get("ads_recommendation"):
-#                             lines.append(f"      • Ads action: {us_actions['ads_recommendation']}")
-
-#                     if isinstance(uk_actions, dict) and any(str(v).strip() for v in uk_actions.values() if v):
-#                         lines.append("   - UK:")
-#                         if uk_actions.get("recommendation"):
-#                             lines.append(f"      • Recommendation: {uk_actions['recommendation']}")
-#                         if uk_actions.get("inventory_recommendation"):
-#                             lines.append(f"      • Inventory action: {uk_actions['inventory_recommendation']}")
-#                         if uk_actions.get("ads_recommendation"):
-#                             lines.append(f"      • Ads action: {uk_actions['ads_recommendation']}")
-
-#             elif isinstance(item, str):
-#                 # fallback if model returns old format
-#                 lines.append(f"• {item}")
-    
-    
-#     # ============================================================
-#     # GLOBAL OTHER SKUs
-#     # ============================================================
-#     if remaining_agg:
-#         lines.append("")
-#         lines.append("## OTHER SKUs")
-
-#         lines.append(
-#             f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
-#         )
-
-#         lines.append(
-#             f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'), decimals=0)}"
-#         )
-
-#         lines.append(
-#             f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
-#         )
-
-#         lines.append(
-#             f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
-#         )
-
-#         lines.append(
-#             f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
-#         )
-    
-#     # ============================================================
-#     # AI GLOBAL OVERALL RECOMMENDATION
-#     # ============================================================
-#     if global_ai.get("global_overall_recommendation"):
-#         lines.append("")
-#         lines.append("## OVERALL RECOMMENDATION")
-#         lines.append(f"• {global_ai['global_overall_recommendation']}")
-
-#     return "\n".join(lines)
 
 def render_global_comparison_summary(
     *,
@@ -3070,11 +2934,24 @@ def render_global_comparison_summary(
     # ============================================================
     # AI UK VS US COMPARISON
     # ============================================================
-    if global_ai.get("uk_vs_us_comparison"):
+    country_comparison = (
+        global_ai.get("country_comparison")
+        or global_ai.get("uk_vs_us_comparison")
+        or []
+    )
+
+    if country_comparison:
         lines.append("")
-        lines.append("## UK VS US COMPARISON")
-        for point in global_ai["uk_vs_us_comparison"]:
-            lines.append(f"• {point}")
+
+        if is_multi_country:
+            lines.append("## COUNTRY COMPARISON")
+        else:
+            country_label = available_countries[0].upper() if available_countries else "COUNTRY"
+            lines.append(f"## {country_label} PERFORMANCE")
+
+        for point in country_comparison:
+            if isinstance(point, str) and point.strip():
+                lines.append(f"• {point}")
 
     # ============================================================
     # AI PRODUCT-WISE JOURNEY COMPARISON
@@ -3086,14 +2963,34 @@ def render_global_comparison_summary(
         for item in global_ai["product_journey_comparison"]:
             if isinstance(item, dict):
                 product_name = item.get("product_name") or "Unknown Product"
-                sku_us = item.get("sku_us") or "N/A"
-                sku_uk = item.get("sku_uk") or "N/A"
                 journey_comparison = item.get("journey_comparison") or []
 
                 lines.append("")
                 lines.append(f"### {product_name}")
-                lines.append(f"• US SKU: {sku_us}")
-                lines.append(f"• UK SKU: {sku_uk}")
+
+                if is_multi_country:
+                    sku_us = item.get("sku_us")
+                    sku_uk = item.get("sku_uk")
+
+                    if sku_us:
+                        lines.append(f"• US SKU: {sku_us}")
+                    if sku_uk:
+                        lines.append(f"• UK SKU: {sku_uk}")
+
+                else:
+                    country = available_countries[0] if available_countries else None
+
+                    if country:
+                        sku_by_country = item.get("sku_by_country") or {}
+
+                        sku_value = (
+                            item.get(f"sku_{country}")
+                            or sku_by_country.get(country)
+                            or sku_by_country.get(country.upper())
+                        )
+
+                        if sku_value:
+                            lines.append(f"• {country.upper()} SKU: {sku_value}")
 
                 if isinstance(journey_comparison, list) and journey_comparison:
                     for point in journey_comparison:
@@ -3105,31 +3002,46 @@ def render_global_comparison_summary(
 
                 country_actions = item.get("country_actions") or {}
 
-                us_actions = country_actions.get("us") or {}
-                uk_actions = country_actions.get("uk") or {}
+                if isinstance(country_actions, dict) and country_actions:
+                    rendered_any_action = False
+                    action_lines = []
 
-                if us_actions or uk_actions:
-                    lines.append("")
-                    lines.append("• Country actions:")
+                    for country in available_countries:
+                        actions = (
+                            country_actions.get(country)
+                            or country_actions.get(country.upper())
+                            or {}
+                        )
 
-                    if isinstance(us_actions, dict) and any(str(v).strip() for v in us_actions.values() if v):
-                        lines.append("   - US:")
-                        if us_actions.get("recommendation"):
-                            lines.append(f"      • Recommendation: {us_actions['recommendation']}")
-                        if us_actions.get("inventory_recommendation"):
-                            lines.append(f"      • Inventory action: {us_actions['inventory_recommendation']}")
-                        if us_actions.get("ads_recommendation"):
-                            lines.append(f"      • Ads action: {us_actions['ads_recommendation']}")
+                        if not isinstance(actions, dict):
+                            continue
 
-                    if isinstance(uk_actions, dict) and any(str(v).strip() for v in uk_actions.values() if v):
-                        lines.append("   - UK:")
-                        if uk_actions.get("recommendation"):
-                            lines.append(f"      • Recommendation: {uk_actions['recommendation']}")
-                        if uk_actions.get("inventory_recommendation"):
-                            lines.append(f"      • Inventory action: {uk_actions['inventory_recommendation']}")
-                        if uk_actions.get("ads_recommendation"):
-                            lines.append(f"      • Ads action: {uk_actions['ads_recommendation']}")
+                        if not any(str(v).strip() for v in actions.values() if v):
+                            continue
 
+                        rendered_any_action = True
+
+                        if is_multi_country:
+                            action_lines.append(f"   - {country.upper()}:")
+
+                            if actions.get("recommendation"):
+                                action_lines.append(f"      • Recommendation: {actions['recommendation']}")
+                            if actions.get("inventory_recommendation"):
+                                action_lines.append(f"      • Inventory action: {actions['inventory_recommendation']}")
+                            if actions.get("ads_recommendation"):
+                                action_lines.append(f"      • Ads action: {actions['ads_recommendation']}")
+                        else:
+                            if actions.get("recommendation"):
+                                action_lines.append(f"   - Recommendation: {actions['recommendation']}")
+                            if actions.get("inventory_recommendation"):
+                                action_lines.append(f"   - Inventory action: {actions['inventory_recommendation']}")
+                            if actions.get("ads_recommendation"):
+                                action_lines.append(f"   - Ads action: {actions['ads_recommendation']}")
+
+                    if rendered_any_action:
+                        lines.append("")
+                        lines.append("• Country actions:")
+                        lines.extend(action_lines)
             elif isinstance(item, str):
                 lines.append(f"• {item}")
 
@@ -3313,12 +3225,26 @@ def get_or_create_global_summary(
         cache_country_match = cached_available_countries == available_countries
 
         if cache_country_match:
+            cached_global_ai = normalize_global_ai_country_action_keys(
+                cached_recommendations.get("global_ai", {})
+            )
+
+            cached_global_recommendations = (
+                cached_recommendations.get("frontend_recommendations")
+                or cached_recommendations.get("recommendations")
+                or extract_global_recommendations(
+                    global_ai=cached_global_ai,
+                    available_countries=available_countries,
+                )
+            )
+
             return {
                 "summary": cached.summary,
                 "scope": "global",
                 "source": "db",
-                "global_ai": cached_recommendations.get("global_ai", {}),
+                "global_ai": cached_global_ai,
                 "overall_recommendation": cached_recommendations.get("overall_recommendation", ""),
+                "recommendations": cached_global_recommendations,
                 "mapped_product_count": cached_recommendations.get("mapped_product_count", 0),
                 "available_countries": cached_available_countries,
                 "allow_recommendations": cached_recommendations.get(
@@ -3475,6 +3401,10 @@ def get_or_create_global_summary(
     # ============================================================
     global_ai = run_global_comparison_prompt(global_payload)
 
+    # Keep frontend-compatible lowercase country action keys:
+    # country_actions["UK"] becomes country_actions["uk"]
+    global_ai = normalize_global_ai_country_action_keys(global_ai)
+
     # ============================================================
     # 5A. SUPPRESS RECOMMENDATIONS FOR OLD PERIODS / YEARLY
     # ============================================================
@@ -3514,6 +3444,11 @@ def get_or_create_global_summary(
                     global_actions["inventory_recommendation"] = ""
                     global_actions["ads_recommendation"] = ""
 
+    global_recommendations = extract_global_recommendations(
+        global_ai=global_ai,
+        available_countries=available_countries,
+    )
+
     final_text = render_global_comparison_summary(
         global_ai=global_ai,
         us_result=us_result,
@@ -3522,6 +3457,7 @@ def get_or_create_global_summary(
         timeline=timeline,
         year=year,
         remaining_agg=global_numeric_metrics.get("remaining_agg", {}),
+        available_countries=available_countries,
     )
 
     # ============================================================
@@ -3536,21 +3472,23 @@ def get_or_create_global_summary(
         "year": year,
         "summary": final_text,
         "recommendations": json.dumps({
-            "global_ai": global_ai,
-            "overall_recommendation": global_ai.get("global_overall_recommendation", ""),
-            "mapped_product_count": len(mapped_product_journeys),
-            "metrics_debug": metrics_debug,
+        "global_ai": global_ai,
+        "overall_recommendation": global_ai.get("global_overall_recommendation", ""),
 
-            # ✅ save recommendation rule
-            "allow_global_recommendations": allow_global_recommendations,
+        # Frontend-compatible recommendation object
+        "frontend_recommendations": global_recommendations,
 
-            # ✅ save frontend metrics from global table
-            "metrics": metrics,
+        "mapped_product_count": len(mapped_product_journeys),
+        "metrics_debug": metrics_debug,
+        "available_countries": available_countries,
 
-            # ✅ save country-specific inventory/objectives
-            "inventory_alerts": inventory_alerts_by_country,
-            "objectives": objectives_by_country,
-        }),
+        "allow_global_recommendations": allow_global_recommendations,
+
+        "metrics": metrics,
+
+        "inventory_alerts": inventory_alerts_by_country,
+        "objectives": objectives_by_country,
+    }),
         "upsert": True,
     })
 
@@ -3563,18 +3501,16 @@ def get_or_create_global_summary(
         "source": "ai",
         "global_ai": global_ai,
         "overall_recommendation": global_ai.get("global_overall_recommendation", ""),
+        "recommendations": global_recommendations,
         "mapped_product_count": len(mapped_product_journeys),
+        "available_countries": available_countries,
 
-        # ✅ same recommendation rule returned fresh
         "allow_recommendations": allow_global_recommendations,
 
-        # ✅ frontend metrics from skuwisemonthly_{user_id}_global_{mn}{year}_table
         "metrics": metrics,
 
-        # ✅ separate country inventory alerts
         "inventory_alerts": inventory_alerts_by_country,
 
-        # ✅ separate country objectives
         "objectives": objectives_by_country,
 
         "comparison": {
@@ -3727,3 +3663,86 @@ def get_available_global_countries(
             available.append(country)
 
     return available
+
+def normalize_global_ai_country_action_keys(global_ai: dict) -> dict:
+    """
+    Keeps frontend compatibility by forcing country_actions keys to lowercase.
+    Example:
+    country_actions["UK"] -> country_actions["uk"]
+    country_actions["US"] -> country_actions["us"]
+    """
+    if not isinstance(global_ai, dict):
+        return global_ai
+
+    for item in global_ai.get("product_journey_comparison", []):
+        if not isinstance(item, dict):
+            continue
+
+        country_actions = item.get("country_actions")
+        if not isinstance(country_actions, dict):
+            continue
+
+        normalized_actions = {}
+
+        for country_key, actions in country_actions.items():
+            normalized_actions[str(country_key).lower()] = actions
+
+        item["country_actions"] = normalized_actions
+
+    return global_ai
+
+
+def extract_global_recommendations(global_ai: dict, available_countries: list[str]) -> dict:
+    """
+    Returns frontend-friendly recommendations without changing frontend.
+    Shape is simple:
+    {
+      "Product Name": {
+        "recommendation": "...",
+        "inventory_recommendation": "...",
+        "ads_recommendation": "..."
+      },
+      "Other SKUs": {...}
+    }
+    """
+    if not isinstance(global_ai, dict):
+        return {}
+
+    output = {}
+
+    for item in global_ai.get("product_journey_comparison", []):
+        if not isinstance(item, dict):
+            continue
+
+        product_name = item.get("product_name") or "Unknown Product"
+        country_actions = item.get("country_actions") or {}
+
+        for country in available_countries:
+            actions = country_actions.get(country) or {}
+
+            if not isinstance(actions, dict):
+                continue
+
+            if any(str(v).strip() for v in actions.values() if v):
+                output[product_name] = {
+                    "recommendation": actions.get("recommendation", ""),
+                    "inventory_recommendation": actions.get("inventory_recommendation", ""),
+                    "ads_recommendation": actions.get("ads_recommendation", ""),
+                }
+                break
+
+    other_skus_comparison = global_ai.get("other_skus_comparison") or {}
+    other_actions = (
+        other_skus_comparison
+        .get("country_actions", {})
+        .get("global", {})
+    )
+
+    if isinstance(other_actions, dict) and any(str(v).strip() for v in other_actions.values() if v):
+        output["Other SKUs"] = {
+            "recommendation": other_actions.get("recommendation", ""),
+            "inventory_recommendation": other_actions.get("inventory_recommendation", ""),
+            "ads_recommendation": other_actions.get("ads_recommendation", ""),
+        }
+
+    return output
