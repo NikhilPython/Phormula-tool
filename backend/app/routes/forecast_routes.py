@@ -711,62 +711,8 @@ def forecast_global():
                 }
             }), 404
 
-        if len(present) == 1:
-            only = present[0]
-
-            if only == 'uk':
-                if uk_bytes and not load_file_from_db(
-                    user_id=user_id,
-                    country='uk',
-                    filename=uk_name
-                ):
-                    save_file_to_db(
-                        user_id=user_id,
-                        country='uk',
-                        filename=uk_name,
-                        file_bytes=uk_bytes,
-                        kind="inventory_forecast",
-                        month=mv,
-                        year=year,
-                        content_type=XLSX_MIME
-                    )
-
-                stored = load_file_from_db(
-                    user_id=user_id,
-                    country='uk',
-                    filename=uk_name
-                )
-
-                return send_db_file(stored, download_name=uk_name)
-
-            if only == 'us':
-                if us_bytes and not load_file_from_db(
-                    user_id=user_id,
-                    country='us',
-                    filename=us_name
-                ):
-                    save_file_to_db(
-                        user_id=user_id,
-                        country='us',
-                        filename=us_name,
-                        file_bytes=us_bytes,
-                        kind="inventory_forecast",
-                        month=mv,
-                        year=year,
-                        content_type=XLSX_MIME
-                    )
-
-                stored = load_file_from_db(
-                    user_id=user_id,
-                    country='us',
-                    filename=us_name
-                )
-
-                return send_db_file(stored, download_name=us_name)
-
         def normalize_forecast_df(df):
             df = df.copy()
-
             df.columns = [str(c).strip() for c in df.columns]
 
             rename_map = {}
@@ -786,10 +732,147 @@ def forecast_global():
                 df['sku'] = df['sku'].astype(str).str.strip()
 
             if 'Product Name' in df.columns:
-                df['Product Name'] = df['Product Name'].fillna('').astype(str).str.strip()
+                df['Product Name'] = (
+                    df['Product Name']
+                    .fillna('')
+                    .astype(str)
+                    .str.strip()
+                )
 
             return df
 
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}(\s+Sold)?$")
+
+        def month_sort_key(col):
+            try:
+                return pd.to_datetime(
+                    str(col).replace(" Sold", "").replace("'", ""),
+                    format="%b%y"
+                )
+            except Exception:
+                return pd.Timestamp.max
+
+        # =========================================================
+        # CASE 1: Only UK or only US exists
+        # Create a real GLOBAL-format file with header at row 1.
+        # Do NOT save raw UK/US bytes directly as global.
+        # =========================================================
+        if len(present) == 1:
+            only = present[0]
+
+            if only == 'uk':
+                source_df = df_uk
+                source_name = uk_name
+                source_country = 'uk'
+            else:
+                source_df = df_us
+                source_name = us_name
+                source_country = 'us'
+
+            if source_df is None:
+                source_stored = load_file_from_db(
+                    user_id=user_id,
+                    country=source_country,
+                    filename=source_name
+                )
+
+                if not source_stored:
+                    return jsonify({
+                        'error': f'{source_country.upper()} forecast file not found'
+                    }), 404
+
+                source_df = pd.read_excel(
+                    BytesIO(source_stored.data),
+                    header=6,
+                    engine='openpyxl'
+                )
+
+            source_df = normalize_forecast_df(source_df)
+
+            month_cols = [
+                c for c in source_df.columns
+                if month_pattern.match(str(c))
+            ]
+
+            month_cols = sorted(month_cols, key=month_sort_key)
+
+            if not month_cols:
+                return jsonify({
+                    'error': 'No forecast month columns found in single-country file',
+                    'source_country': source_country,
+                    'source_columns': list(source_df.columns)
+                }), 400
+
+            if 'Product Name' not in source_df.columns:
+                source_df['Product Name'] = ''
+
+            if 'sku' not in source_df.columns:
+                source_df['sku'] = ''
+
+            keep_cols = ['Product Name', 'sku'] + month_cols
+            global_df = source_df[keep_cols].copy()
+
+            global_df = global_df[
+                (global_df['Product Name'].astype(str).str.strip().str.lower() != 'total')
+                & (global_df['sku'].astype(str).str.strip().str.lower() != 'total')
+            ].copy()
+
+            for col in month_cols:
+                global_df[col] = pd.to_numeric(
+                    global_df[col],
+                    errors='coerce'
+                ).fillna(0)
+
+            total_row = {
+                'Product Name': 'Total',
+                'sku': 'Total'
+            }
+
+            for col in month_cols:
+                total_row[col] = global_df[col].sum()
+
+            global_df = pd.concat(
+                [global_df, pd.DataFrame([total_row])],
+                ignore_index=True
+            )
+
+            global_df = global_df[['Product Name', 'sku'] + month_cols]
+
+            buf = BytesIO()
+            global_df.to_excel(buf, index=False, engine='openpyxl')
+            buf.seek(0)
+
+            save_file_to_db(
+                user_id=user_id,
+                country='global',
+                filename=global_name,
+                file_bytes=buf.getvalue(),
+                kind="inventory_forecast",
+                month=mv,
+                year=year,
+                content_type=XLSX_MIME
+            )
+
+            global_stored = load_file_from_db(
+                user_id=user_id,
+                country='global',
+                filename=global_name
+            )
+
+            if not global_stored:
+                return jsonify({
+                    'error': 'Global forecast file was not saved in DB'
+                }), 500
+
+            return send_db_file(
+                global_stored,
+                download_name=global_name
+            )
+
+        # =========================================================
+        # CASE 2: Both UK and US exist
+        # Merge them and save as global.
+        # =========================================================
         df_uk = normalize_forecast_df(df_uk)
         df_us = normalize_forecast_df(df_us)
 
@@ -808,8 +891,6 @@ def forecast_global():
                 'us_columns': list(df_us.columns)
             }), 400
 
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}(\s+Sold)?$")
-
         month_cols_uk = [
             c for c in df_uk.columns
             if month_pattern.match(str(c))
@@ -819,12 +900,6 @@ def forecast_global():
             c for c in df_us.columns
             if month_pattern.match(str(c))
         ]
-
-        def month_sort_key(col):
-            try:
-                return pd.to_datetime(str(col).replace(" Sold", "").replace("'", ""), format="%b%y")
-            except Exception:
-                return pd.Timestamp.max
 
         forecast_cols = sorted(
             set(month_cols_uk) | set(month_cols_us),
@@ -843,6 +918,16 @@ def forecast_global():
 
         df_uk = df_uk[keep_uk].copy()
         df_us = df_us[keep_us].copy()
+
+        df_uk = df_uk[
+            (df_uk['Product Name'].astype(str).str.strip().str.lower() != 'total')
+            & (df_uk['sku'].astype(str).str.strip().str.lower() != 'total')
+        ].copy()
+
+        df_us = df_us[
+            (df_us['Product Name'].astype(str).str.strip().str.lower() != 'total')
+            & (df_us['sku'].astype(str).str.strip().str.lower() != 'total')
+        ].copy()
 
         for col in month_cols_uk:
             df_uk[col] = pd.to_numeric(df_uk[col], errors='coerce').fillna(0)
@@ -868,11 +953,20 @@ def forecast_global():
                     + pd.to_numeric(merged[col_us], errors='coerce').fillna(0)
                 )
             elif col_uk in merged.columns:
-                merged[col] = pd.to_numeric(merged[col_uk], errors='coerce').fillna(0)
+                merged[col] = pd.to_numeric(
+                    merged[col_uk],
+                    errors='coerce'
+                ).fillna(0)
             elif col_us in merged.columns:
-                merged[col] = pd.to_numeric(merged[col_us], errors='coerce').fillna(0)
+                merged[col] = pd.to_numeric(
+                    merged[col_us],
+                    errors='coerce'
+                ).fillna(0)
             elif col in merged.columns:
-                merged[col] = pd.to_numeric(merged[col], errors='coerce').fillna(0)
+                merged[col] = pd.to_numeric(
+                    merged[col],
+                    errors='coerce'
+                ).fillna(0)
             else:
                 merged[col] = 0
 
@@ -880,7 +974,18 @@ def forecast_global():
 
         sku_df = (
             global_df.groupby('Product Name')['sku']
-            .apply(lambda x: ', '.join(sorted(set(str(v).strip() for v in x if str(v).strip() and str(v).strip().lower() != 'nan'))))
+            .apply(
+                lambda x: ', '.join(
+                    sorted(
+                        set(
+                            str(v).strip()
+                            for v in x
+                            if str(v).strip()
+                            and str(v).strip().lower() != 'nan'
+                        )
+                    )
+                )
+            )
             .reset_index()
         )
 
@@ -890,7 +995,12 @@ def forecast_global():
             .sum()
         )
 
-        global_df = pd.merge(global_df, sku_df, on='Product Name', how='left')
+        global_df = pd.merge(
+            global_df,
+            sku_df,
+            on='Product Name',
+            how='left'
+        )
 
         total_row = {
             'Product Name': 'Total',
@@ -904,6 +1014,8 @@ def forecast_global():
             [global_df, pd.DataFrame([total_row])],
             ignore_index=True
         )
+
+        global_df = global_df[['Product Name', 'sku'] + forecast_cols]
 
         buf = BytesIO()
         global_df.to_excel(buf, index=False, engine='openpyxl')
@@ -951,7 +1063,7 @@ def forecast_global():
             'error': 'Internal server error',
             'message': str(e)
         }), 500
-    
+          
 
 
 @forecast_bp.route('/api/manual_forecast', methods=['POST'])
