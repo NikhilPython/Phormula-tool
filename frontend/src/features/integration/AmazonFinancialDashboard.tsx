@@ -165,9 +165,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -223,6 +223,28 @@ async function syncInventoryAgedOnce(country: string) {
   await apiJson(`/amazon_api/inventory/aged`, { method: "GET" });
 
   markDone(key);
+}
+
+
+async function fetchProductInformation(params: {
+  marketplace_id: string;
+  store_in_db?: boolean;
+  full_details?: boolean;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+
+  qs.set("marketplace_id", params.marketplace_id);
+  qs.set("store_in_db", String(params.store_in_db ?? true));
+  qs.set("full_details", String(params.full_details ?? true));
+
+  if (params.limit) {
+    qs.set("limit", String(params.limit));
+  }
+
+  return apiJson(`/amazon_api/skus?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 /**
@@ -316,18 +338,18 @@ async function fetchMonthlyTransactionsExcel(params: {
   }
 
   const qs = new URLSearchParams({
-  year: String(params.year),
-  month: String(params.month),
-  marketplace_id: params.marketplace_id,
-  run_upload_pipeline: String(params.run_upload_pipeline),
-  country: params.country,
-  format: "excel",
-  store_in_db: String(params.store_in_db),
+    year: String(params.year),
+    month: String(params.month),
+    marketplace_id: params.marketplace_id,
+    run_upload_pipeline: String(params.run_upload_pipeline),
+    country: params.country,
+    format: "excel",
+    store_in_db: String(params.store_in_db),
 
-  // important: fetch RELEASED + DEFERRED, not only RELEASED
-  transaction_status:
-    params.country.toLowerCase() === "us" ? "all" : "RELEASED",
-});
+    // important: fetch RELEASED + DEFERRED, not only RELEASED
+    transaction_status:
+      params.country.toLowerCase() === "us" ? "all" : "RELEASED",
+  });
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
   const res = await fetch(url, {
@@ -681,11 +703,12 @@ async function runForecastAndPoSequence(params: {
   );
 
   params.setStep(
-    7,
+    8,
     "Forecast",
     0,
     `Running inventory forecast for ${currentGoingMonthName} ${currentGoingYearStr}...`
   );
+
   await runForecast({
     country: params.country,
     year: currentGoingYearStr,
@@ -693,11 +716,12 @@ async function runForecastAndPoSequence(params: {
   });
 
   params.setStep(
-    7,
+    8,
     "Forecast",
     25,
     `Fetching dispatch file for ${dispatchPeriod.month} ${dispatchPeriod.year}...`
   );
+
   await fetchDispatchFile({
     country: params.country,
     month: dispatchPeriod.month,
@@ -705,11 +729,12 @@ async function runForecastAndPoSequence(params: {
   });
 
   params.setStep(
-    7,
+    8,
     "Forecast",
     55,
     `Checking purchase order file for ${currentGoingMonthName} ${currentGoingYearStr}...`
   );
+
   let poRes = await fetchGeneratedPOFile({
     country: params.country,
     month: currentGoingMonthLower,
@@ -718,7 +743,7 @@ async function runForecastAndPoSequence(params: {
 
   if (!poRes.ok && poRes.status === 404) {
     params.setStep(
-      7,
+      8,
       "Forecast",
       75,
       `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
@@ -730,7 +755,8 @@ async function runForecastAndPoSequence(params: {
       month: currentGoingMonthLower,
     });
 
-    params.setStep(7, "Forecast", 90, "Fetching purchase order file...");
+    params.setStep(8, "Forecast", 90, "Fetching purchase order file...");
+
     poRes = await fetchGeneratedPOFile({
       country: params.country,
       month: currentGoingMonthLower,
@@ -747,7 +773,12 @@ async function runForecastAndPoSequence(params: {
 
   await poRes.blob();
 
-  params.setStep(7, "Forecast", 100, "Forecast, dispatch, and purchase order ready");
+  params.setStep(
+    8,
+    "Forecast",
+    100,
+    "Forecast, dispatch, and purchase order ready"
+  );
 
   return {
     redirectMonthSlug: currentGoingMonthLower,
@@ -1160,17 +1191,26 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       // Step 3: Fee Preview
       setStep(3, "Fee Preview", 0, "Preparing fee preview...");
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate fee preview
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       markStepComplete(3);
 
-      // Step 4: Inventory
-      // Step 4: Inventory
-      setStep(4, "Inventory", 0, "Syncing inventory data...");
+      // Step 4: Product Information
+      setStep(4, "Product Information", 0, "Fetching Amazon product information...");
 
-      // ye existing API as-is hit hogi
+      await fetchProductInformation({
+        marketplace_id: marketplaceIdUsed,
+        store_in_db: true,
+        full_details: true,
+      });
+
+      setStep(4, "Product Information", 100, "Product information synced successfully");
+      markStepComplete(4);
+
+      // Step 5: Inventory
+      setStep(5, "Inventory", 0, "Syncing inventory data...");
+
       await syncInventoryAgedOnce(countryUsed);
 
-      // iske alawa ledger-summary bhi hit hogi
       await fetchInventoryLedgerSummary({
         marketplace_id: marketplaceIdUsed,
         month: `${y}-${two(mNum)}`,
@@ -1178,10 +1218,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         keep_first_last: false,
       });
 
-      markStepComplete(4);
+      markStepComplete(5);
 
-      // Step 5: Historic Data (per month, ~20 seconds)
-      setStep(5, "Historic Data", 0, `Fetching data for ${y}-${two(mNum)}...`);
+      // Step 6: Historic Data (per month, ~20 seconds)
+      setStep(6, "Historic Data", 0, `Fetching data for ${y}-${two(mNum)}...`);
       await fetchMonthlyTransactionsExcel({
         year: y,
         month: mNum,
@@ -1190,10 +1230,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         run_upload_pipeline: true,
         store_in_db: true,
       });
-      markStepComplete(5);
+      markStepComplete(6);
 
-      // Step 6: Live Data (LIVE MTD BI)
-      setStep(6, "Live Data", 0, "Fetching live MTD BI data...");
+      // Step 7: Live Data (LIVE MTD BI)
+      setStep(7, "Live Data", 0, "Fetching live MTD BI data...");
 
       const monthName = fullMonthNames[mNum - 1]; // convert 3 → March
 
@@ -1203,11 +1243,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         year: y,
       });
 
-      setStep(6, "Live Data", 100, "Live BI data ready");
-      markStepComplete(6);
+      setStep(7, "Live Data", 100, "Live BI data ready");
+      markStepComplete(7);
 
-      // Step 7: Inventory Forecast + Purchase Order
-      // Step 7: Inventory Forecast + Purchase Order
+      // Step 8: Inventory Forecast + Purchase Order
       const latestMonthSlug = fullMonthNames[mNum - 1].toLowerCase();
 
       let redirectMonthSlug = latestMonthSlug;
@@ -1224,16 +1263,16 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         redirectMonthSlug = forecastResult.redirectMonthSlug;
         redirectYear = forecastResult.redirectYear;
 
-        markStepComplete(7);
+        markStepComplete(8);
       } else {
-        setStep(7, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
-        markStepComplete(7);
+        setStep(8, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
+        markStepComplete(8);
       }
 
-      // Step 8: Plotting Graph
-      setStep(8, "Plotting Graph", 0, "Preparing charts...");
+      // Step 9: Plotting Graph
+      setStep(9, "Plotting Graph", 0, "Preparing charts...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      markStepComplete(8);
+      markStepComplete(9);
 
       await new Promise((r) => setTimeout(r, 600));
 
@@ -1324,9 +1363,20 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       await new Promise((resolve) => setTimeout(resolve, 1000));
       markStepComplete(3);
 
-      // Step 4: Inventory
-      // Step 4: Inventory
-      setStep(4, "Inventory", 0, "Syncing inventory data...");
+      // Step 4: Product Information
+      setStep(4, "Product Information", 0, "Fetching Amazon product information...");
+
+      await fetchProductInformation({
+        marketplace_id: marketplaceIdUsed,
+        store_in_db: true,
+        full_details: true,
+      });
+
+      setStep(4, "Product Information", 100, "Product information synced successfully");
+      markStepComplete(4);
+
+      // Step 5: Inventory
+      setStep(5, "Inventory", 0, "Syncing inventory data...");
       try {
         // existing API as-is
         await syncInventoryAgedOnce(countryUsed);
@@ -1344,14 +1394,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           keep_first_last: false,
         });
 
-        markStepComplete(4);
+        markStepComplete(5);
       } catch (e) {
         console.error("inventory sync failed", e);
         throw e;
       }
 
-      // Step 5: Historic Data (per month, ~20 seconds each)
-      setStep(5, "Historic Data", 0, `Fetching data for ${months.length} months...`);
+      // Step 6: Historic Data (per month, ~20 seconds each)
+      setStep(6, "Historic Data", 0, `Fetching data for ${months.length} months...`);
       let ok = 0;
       let fail = 0;
 
@@ -1359,7 +1409,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         const { y, mNum, mIdx } = months[i];
         const monthProgress = Math.round(((i + 1) / months.length) * 100);
 
-        setStep(5, "Historic Data", monthProgress, `Month ${i + 1}/${months.length}: ${y}-${two(mNum)}`);
+        setStep(6, "Historic Data", monthProgress, `Month ${i + 1}/${months.length}: ${y}-${two(mNum)}`);
         setRangeProgress({ currentMonth: i + 1, totalMonths: months.length, ok, fail });
 
         try {
@@ -1382,14 +1432,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         const monthSlug = fullMonthNames[mIdx].toLowerCase();
         updateLatestFetchedPeriod(monthSlug, String(y));
       }
-      markStepComplete(5);
-
-      // Step 6: Live Data
-      setStep(6, "Live Data", 100, "Finalizing data sync...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
       markStepComplete(6);
 
-      // Step 7: Inventory Forecast + Purchase Order
+      // Step 7: Live Data
+      setStep(7, "Live Data", 100, "Finalizing data sync...");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      markStepComplete(7);
+
+      // Step 8: Inventory Forecast + Purchase Order
 
       const last = months[months.length - 1];
       const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
@@ -1408,21 +1458,21 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         redirectMonthSlug = forecastResult.redirectMonthSlug;
         redirectYear = forecastResult.redirectYear;
 
-        markStepComplete(7);
+        markStepComplete(8);
       } else {
         setStep(
-          7,
+          8,
           "Inventory Forecast",
           100,
           "Skipped (requires ≥ 6 months data)"
         );
-        markStepComplete(7);
+        markStepComplete(8);
       }
 
-      // Step 8: Plotting Graph
-      setStep(8, "Plotting Graph", 0, "Preparing charts...");
+      // Step 9: Plotting Graph
+      setStep(9, "Plotting Graph", 0, "Preparing charts...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      markStepComplete(8);
+      markStepComplete(9);
 
       await new Promise((r) => setTimeout(r, 600));
 
@@ -1495,20 +1545,22 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       { num: 1, label: "Currency Conversion" },
       { num: 2, label: "Category Fees" },
       { num: 3, label: "Fee Preview" },
-      { num: 4, label: "Inventory Data" },
-      { num: 5, label: "Historic Data" },
-      { num: 6, label: "Live Data" },
-      { num: 7, label: "Inventory Forecast" },
-      { num: 8, label: "Plotting Graph" },
+      { num: 4, label: "Product Information" },
+      { num: 5, label: "Inventory Data" },
+      { num: 6, label: "Historic Data" },
+      { num: 7, label: "Live Data" },
+      { num: 8, label: "Inventory Forecast" },
+      { num: 9, label: "Plotting Graph" },
     ]
     : [
       { num: 1, label: "Currency Conversion" },
       { num: 2, label: "Category Fees" },
       { num: 3, label: "Fee Preview" },
-      { num: 4, label: "Inventory Data" },
-      { num: 5, label: "Historic Data" },
-      { num: 6, label: "Live Data" },
-      { num: 7, label: "Plotting Graph" },
+      { num: 4, label: "Product Information" },
+      { num: 5, label: "Inventory Data" },
+      { num: 6, label: "Historic Data" },
+      { num: 7, label: "Live Data" },
+      { num: 8, label: "Plotting Graph" },
     ];
 
   const periodFeatureMap: Record<number, {
@@ -1588,11 +1640,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     return periodFeatureMap[selectedPeriod] ?? null;
   }, [selectedPeriod]);
 
-  const shouldHideStep8 =
+  const shouldHidePlottingGraph =
     selectedPeriod === 1 || selectedPeriod === 3;
 
-  const visibleSteps = shouldHideStep8
-    ? steps.filter((s) => s.num !== 8)
+  const visibleSteps = shouldHidePlottingGraph
+    ? steps.filter((s) => s.label !== "Plotting Graph")
     : steps;
 
   return (

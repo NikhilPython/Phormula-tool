@@ -2038,7 +2038,7 @@ const DEMO_UPLOAD_HISTORY: UploadHistoryResponse = {
 
 const DEMO_AI_PANEL: AiPanelData = {
   summaryBullets: [
-    "Business performance remained healthy (Jan 26 vs Dec 25)",
+    "Business Summary (Jan 26 vs Dec 25)",
     "Net sales improved due to better conversion and stronger contribution from hero SKUs.",
     "CM2 remained positive, though ad costs increased slightly as spend was pushed on scaling products.",
   ],
