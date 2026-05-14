@@ -319,32 +319,6 @@ def send_welcome_and_verification_emails(email, name, verification_link):
         print(f"Failed to send email to {email}: {e}")
         raise e
     
-# def send_reset_email(to_email, reset_url):
-#     msg = Message(
-#         'Password Reset Request',
-#         sender='care@phormula.io',
-#         recipients=[to_email]
-#     )
-
-#     # HTML email body
-#     html_body = f"""
-#     <html>
-#     <body style="font-family: 'Lato', Arial, sans-serif; background-color: #f4f4f4; padding: 20px; margin: 0;">
-#     <div style="max-width: 600px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; border: 2px solid#5EA68E; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);">
-#         <img src="https://i.postimg.cc/43T3k86Z/logo.png" alt="Phormula Logo" style="width: 200px; height: auto; display: block; margin: 0 auto 20px;" />
-#         <p style="font-size: 14px; line-height: 1.6; color: #555;"> Dear {to_email},</p>
-#         <p style="font-size: 14px; line-height: 1.6; color: #555;">We have received a request to reset your password. To proceed, please click the button below:</p>        
-#         <a href="{reset_url}" style="display: inline-block; background-color: #37455F; color: #f8edcf; padding: 8px 20px; text-align: center; text-decoration: none; font-size: 14px; border-radius: 8px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); transition: background-color 0.3s ease; cursor: pointer;">Reset Your Password</a>        
-#         <p style="font-size: 14px; color: #777;">If you did not request this change, please disregard this email.</p>
-#         <p style="font-size: 14px; color: #555;">If you need assistance, feel free to contact our support team at <a href="mailto:care@phormula.io" style="color: #007bff;">care@phormula.io</a>.</p>
-#         <p style="font-size: 14px; color: #555;">Best regards, <br>The Phormula Team</p>
-#         </div>
-#     </body>
-#     </html>
-#     """
-
-#     msg.html = html_body
-#     mail.send(msg)
 
 def send_reset_email(to_email, reset_url, name=None):
     display_name = (name or "there").strip()
