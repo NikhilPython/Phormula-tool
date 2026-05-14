@@ -1195,41 +1195,6 @@ export default function LiveBusinessClient({
   // Initial load (cached + live)
   // =========================
 
-  // useEffect(() => {
-  //   const saved = loadCompareFromStorage();
-  //   const todayKey = getTodayKey();
-
-  //   if (saved) {
-  //     if (saved.categorizedGrowth) setCategorizedGrowth(saved.categorizedGrowth);
-  //     if (saved.periods) setPeriods(saved.periods);
-  //     if (saved.month2Label) setMonth2Label(saved.month2Label);
-  //     if (saved.activeTab) setActiveTab(saved.activeTab);
-  //     if (saved.portfolioRecommendation) setPortfolioRecommendation(saved.portfolioRecommendation);
-
-  //     if (saved.insightDate === todayKey) {
-  //       if (saved.overallActions) setOverallActions(saved.overallActions);
-  //       if (saved.summaryText) setSummaryText(saved.summaryText);
-  //       if (saved.overallSummary) setOverallSummary(saved.overallSummary);
-  //       if (saved.objectiveContext) {
-  //         setObjectiveContext(saved.objectiveContext);
-  //       }
-
-  //       setInsightDate(todayKey);
-  //     }
-  //   }
-
-  //   const cachedInsights = loadInsightsFromStorage();
-  //   if (cachedInsights && Object.keys(cachedInsights).length) {
-  //     setSkuInsights(cachedInsights);
-  //   }
-  // }, []);
-
-  // useEffect(() => {
-  //   const saved = loadCompareFromStorage();
-  //   if (saved) saveCompareToStorage({ ...saved, activeTab });
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [activeTab]);
-
   const parsePortfolioInventoryBlock = (raw: string) => {
     if (!raw || typeof raw !== "string") {
       return { inventoryBullets: [], summaryText: "" };
@@ -4548,7 +4513,8 @@ export default function LiveBusinessClient({
                     <AiButton
                       onClick={analyzeSkus}
                       disabled={
-                        !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+                        loadingInsight ||
+                        !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
                           (k) =>
                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                         )
@@ -4606,7 +4572,8 @@ export default function LiveBusinessClient({
                     <AiButton
                       onClick={analyzeSkus}
                       disabled={
-                        !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+                        loadingInsight ||
+                        !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
                           (k) =>
                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                         )

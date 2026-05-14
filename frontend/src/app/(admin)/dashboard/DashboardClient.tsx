@@ -168,6 +168,7 @@ type FetchLiveBiPayloadArgs = {
     startDay?: number | null;
     endDay?: number | null;
     generateInsights?: boolean;
+    skipLoader?: boolean;
 };
 
 type ProductwiseMoneyKey =
@@ -2953,12 +2954,79 @@ export default function DashboardPage() {
             startDay = selectedStartDay,
             endDay = selectedEndDay,
             generateInsights = false,
+            skipLoader = false,
         }: FetchLiveBiPayloadArgs = {}) => {
-            setSummaryLoading(true);
-            aiRequestedRef.current = !!generateInsights;
-            await fetchBiSeries(startDay, endDay);
+            if (isMonthYearNA) return;
+
+            const shouldShowBiLoader = !skipLoader && !generateInsights;
+
+            setBiError(null);
+
+            if (shouldShowBiLoader) {
+                setBiLoading(true);
+                setBiStatus("loading");
+            }
+
+            try {
+                const token =
+                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+                const params = new URLSearchParams({
+                    countryName: biCountryName.toLowerCase(),
+                    ranged: "MTD",
+                    month: currMonthName.toLowerCase(),
+                    year: String(currYear),
+                    generate_ai_insights: generateInsights ? "true" : "false",
+                });
+
+                if (startDay != null && endDay != null) {
+                    params.set("start_day", String(startDay));
+                    params.set("end_day", String(endDay));
+                }
+
+                const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                });
+
+                if (!res.ok) {
+                    throw new Error(`BI failed: ${res.status}`);
+                }
+
+                const json: BiApiResponse = await res.json();
+
+                setLiveBiPayload(json);
+                setBiPeriods(json?.periods || null);
+                setBiDailySeries(json?.daily_series || null);
+                setBiAlignedTotals(json?.aligned_totals || null);
+                setLiveBiReady(true);
+
+                if (!skipLoader) {
+                    setBiStatus("ready");
+                }
+
+                return json;
+            } catch (e: any) {
+                setBiError(e?.message || "Failed to load BI data");
+
+                if (!skipLoader) {
+                    setBiStatus("error");
+                }
+
+                throw e;
+            } finally {
+                if (shouldShowBiLoader) {
+                    setBiLoading(false);
+                }
+            }
         },
-        [fetchBiSeries, selectedStartDay, selectedEndDay]
+        [
+            selectedStartDay,
+            selectedEndDay,
+            isMonthYearNA,
+            biCountryName,
+            currMonthName,
+            currYear,
+        ]
     );
 
     const runDashboardLoadWithSteps = useCallback(async () => {
@@ -9907,7 +9975,11 @@ ${pageLoading
                                     disableAutoFetch
                                     onGenerateInsights={async () => {
                                         if (shouldShowDummyUi) return;
-                                        await fetchLiveBiPayload({ generateInsights: true });
+
+                                        await fetchLiveBiPayload({
+                                            generateInsights: true,
+                                            skipLoader: true, // ✅ prevents dashboard/page loaders
+                                        });
                                     }}
                                 />
                             )
