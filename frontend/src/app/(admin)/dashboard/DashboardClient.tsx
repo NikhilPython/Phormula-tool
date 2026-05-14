@@ -2070,21 +2070,6 @@ export default function DashboardPage() {
     useEffect(() => {
         const timezone = getTimezoneForRegion(activeDateRegion);
         const now = new Date();
-
-        console.log({
-            activeDateRegion,
-            timezone,
-            regionDateTime: now.toLocaleString("en-GB", {
-                timeZone: timezone,
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-                hour12: false,
-            }),
-        });
     }, [activeDateRegion]);
 
     useEffect(() => {
@@ -2268,13 +2253,7 @@ export default function DashboardPage() {
                 year: invMonthYear.year,
                 XLSX,
             });
-            console.log("[inventory debug]", {
-                inventoryCountry,
-                month: invMonthYear.month,
-                year: invMonthYear.year,
-                rowsCount: rows.length,
-                firstRow: rows[0],
-            });
+          
             setInvRows(rows);
             setInventoryAlerts(alerts);
         } catch (e: any) {
@@ -2611,8 +2590,7 @@ export default function DashboardPage() {
 
             const url = `${FIN_MTD_TX_ENDPOINT}?${params.toString()}`;
 
-            console.log("[MTD transactions URL]", url);
-
+         
             const res = await fetch(url, {
                 method: "GET",
                 headers: {
@@ -3561,13 +3539,7 @@ export default function DashboardPage() {
             };
         });
 
-        console.table(prevGraphDebugRows);
-        console.log("[PREVIOUS GRAPH UK/US/MERGED SOURCE]", {
-            gbpToUsd,
-            ukPrevTotals,
-            usPrevTotals,
-            rows: prevGraphDebugRows,
-        });
+        // console.table(prevGraphDebugRows);
 
         const prevUnits = mergeNumberField(ukPrevTotals, usPrevTotals, "quantity");
         const prevNetSales = mergeMoneyField(ukPrevTotals, usPrevTotals, "net_sales");
@@ -3615,40 +3587,6 @@ export default function DashboardPage() {
 
         const prevFullMonthNetSales =
             ukPrevFullMonthNetSalesUSD + usPrevFullMonthNetSalesUSD;
-
-        console.log("[GLOBAL PREVIOUS MONTH MERGE DEBUG]", {
-            fx: { gbpToUsd },
-
-            ukPrevious: {
-                net_sales_gbp: ukPrevTotals?.net_sales,
-                net_sales_usd: toNumberSafe(ukPrevTotals?.net_sales) * gbpToUsd,
-                cogs_gbp: ukPrevTotals?.cogs,
-                cogs_usd: toNumberSafe(ukPrevTotals?.cogs) * gbpToUsd,
-                tax_and_credits_gbp: ukPrevTotals?.tax_and_credits,
-                tax_and_credits_usd: toNumberSafe(ukPrevTotals?.tax_and_credits) * gbpToUsd,
-                profit_gbp: ukPrevTotals?.profit,
-                profit_usd: toNumberSafe(ukPrevTotals?.profit) * gbpToUsd,
-                cm2_profit_gbp: ukPrevTotals?.cm2_profit,
-                cm2_profit_usd: toNumberSafe(ukPrevTotals?.cm2_profit) * gbpToUsd,
-            },
-
-            usPrevious: {
-                net_sales_usd: usPrevTotals?.net_sales,
-                cogs_usd: usPrevTotals?.cogs,
-                tax_and_credits_usd: usPrevTotals?.tax_and_credits,
-                profit_usd: usPrevTotals?.profit,
-                cm2_profit_usd: usPrevTotals?.cm2_profit,
-            },
-
-            mergedPrevious: {
-                net_sales: prevNetSales,
-                gross_sales: prevGrossSales,
-                advertising: prevAdvertising,
-                cm2_profit: prevCm2Profit,
-                profit: prevProfit,
-                full_month_net_sales: prevFullMonthNetSales,
-            },
-        });
 
         const currentTacos =
             currentNetSales > 0 ? (currentAdvertising / currentNetSales) * 100 : 0;
@@ -6239,7 +6177,7 @@ export default function DashboardPage() {
 
     const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
     const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
-    console.log("rawAdsSpendTotal", rawAdsSpendTotal)
+ 
     const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
 
     const globalBottomCards = useMemo(() => {
@@ -8241,53 +8179,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
         buildPreviousProfitMap,
     ]);
 
-    // const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
-    //     const prevProfitByName = buildPreviousProfitMap("profit");
-
-    //     const rows = (finalMonthlySkuwiseRowsForTable || [])
-    //         .filter((r: any) => {
-    //             const name = String(r?.product_name || "").trim().toLowerCase();
-    //             const sku = String(r?.sku || "").trim().toUpperCase();
-
-    //             return (
-    //                 !r?.isTotal &&
-    //                 !r?.isOthers &&
-    //                 sku !== "TOTAL" &&
-    //                 sku !== "GRAND_TOTAL" &&
-    //                 name !== "total" &&
-    //                 name !== "grand total"
-    //             );
-    //         })
-    //         .map((r: any) => {
-    //             const name = normalizeProductDisplayName(
-    //                 r?.product_name || r?.sku || "Unknown"
-    //             );
-
-    //             const value = Number(r?.profit ?? r?.cm1_profit ?? 0);
-    //             const prevValue = prevProfitByName.get(normalizePieName(name)) ?? 0;
-
-    //             return {
-    //                 name,
-    //                 value,
-    //                 prevValue,
-    //                 pct: 0,
-    //                 deltaPct: safeDeltaPct(value, prevValue),
-    //             };
-    //         })
-    //         .filter((r) => r.value !== 0 || r.prevValue !== 0);
-
-    //     const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
-
-    //     return rows
-    //         .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-    //         .map((r) => ({
-    //             ...r,
-    //             pct: (Math.abs(r.value) / total) * 100,
-    //         }));
-    // }, [
-    //     finalMonthlySkuwiseRowsForTable,
-    //     buildPreviousProfitMap,
-    // ]);
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         // ✅ Countrywise: use live_mtd_bi categorized_growth directly

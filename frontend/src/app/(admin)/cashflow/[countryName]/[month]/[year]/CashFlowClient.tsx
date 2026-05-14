@@ -412,14 +412,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-  // const getSafeValue = (key: keyof SummaryShape) => {
-  //   return (effectiveData?.summary?.[key] ?? 0) as number;
-  // };
-
-  // const allValuesZero =
-  //   !effectiveData?.summary ||
-  //   Object.values(effectiveData.summary).every((v) => !v);
-
   // API helpers (using fetch)
   const fetchSpecificPeriodData = async (
     requestMonth: string | null,
@@ -460,7 +452,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       throw new Error(err.error || `HTTP ${res.status}`);
     }
     const json = (await res.json()) as APIResponse;
-    console.log("API response for", json);
     return json;
   };
 

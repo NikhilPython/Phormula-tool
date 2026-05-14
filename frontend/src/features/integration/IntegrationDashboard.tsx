@@ -89,7 +89,6 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
 
       // ✅ NEW: open Amazon Ads modal and do NOTHING else (no existing flow changes)
       if (provider === "amazon_ads") {
-        console.log("Opening Amazon Ads modal from event:", custom.detail);
         setShowAmazonAdsConnect(true);
         return;
       }
@@ -112,7 +111,6 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
     try {
       setAdsConnecting(true);
       setAdsError(null);
-      console.log("Amazon Ads Connect/Sync clicked");
     } catch (err) {
       console.error(err);
       setAdsError("Amazon Ads action failed");
@@ -128,11 +126,8 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
         setShopifyLoading(true);
 
         const token = reduxToken; // from useSelector
-        console.log("JWT from Redux:", token);
-        console.log("API BASE URL:", process.env.NEXT_PUBLIC_API_BASE_URL);
 
         if (!token) {
-          console.log("No JWT found in Redux store.");
           return;
         }
 
@@ -155,7 +150,6 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
         }
 
         const data = await res.json();
-        console.log("Shopify store from backend:", data);
 
         if (!res.ok || data?.error) {
           return;
@@ -264,12 +258,10 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
     if (key === "shopify") {
       if (isShopifyConnected) {
         const url = buildShopifyOrdersUrl();
-        console.log("Shopify already connected, redirecting to:", url);
         router.push(url);
         return;
       }
 
-      console.log("No Shopify access token – opening Shopify intro modal");
       setShopifyStage("intro");
     }
   };

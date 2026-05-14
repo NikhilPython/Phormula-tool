@@ -14,9 +14,6 @@ export default function AmazonAdsIntegrationFlow() {
     const handler = (e: Event) => {
       const custom = e as CustomEvent<{ provider?: string }>;
       const provider = custom.detail?.provider;
-
-      console.log("Global integration handler received:", provider);
-
       if (provider === "amazon_ads") {
         setOpen(true);
       }
@@ -31,7 +28,6 @@ export default function AmazonAdsIntegrationFlow() {
     try {
       setAdsConnecting(true);
       setAdsError(null);
-      console.log("Amazon Ads connect clicked (wire backend later)");
     } catch (err) {
       console.error(err);
       setAdsError("Amazon Ads action failed");

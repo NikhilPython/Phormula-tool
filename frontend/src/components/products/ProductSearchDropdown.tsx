@@ -66,7 +66,6 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
 
       const json = await res.json();
-      console.log("ALL products response:", json);
 
       // tries multiple keys in case backend uses a different name
       const list = normalizeProducts(
@@ -109,7 +108,6 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         const json = await res.json();
-        console.log("SEARCH response:", json);
 
         const list = normalizeProducts(
           json.product_names ?? json.products ?? json.product_list

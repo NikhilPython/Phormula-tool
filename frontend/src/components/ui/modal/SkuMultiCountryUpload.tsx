@@ -431,7 +431,6 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
 
     try {
       const res = await uploadSku({ file }).unwrap();
-      console.log("Upload success:", res);
 
       setError("");
       resetPreview();
@@ -440,7 +439,6 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
 
       onComplete();
     } catch (e: any) {
-      console.log("Upload failed (RTK error):", e);
       const msg =
         e?.data?.error ||
         e?.data?.message ||

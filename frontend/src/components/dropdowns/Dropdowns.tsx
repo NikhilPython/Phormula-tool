@@ -3823,7 +3823,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     try {
       setAdsConnecting(true);
       setAdsError(null);
-      console.log("Amazon Ads Connect/Sync clicked");
     } catch (err) {
       console.error(err);
       setAdsError("Amazon Ads action failed");

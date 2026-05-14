@@ -268,7 +268,6 @@ export default function AmazonConnectLegacy({
       localStorage.setItem(`amazonMarketplaceId_${region}`, finalMarketplaceId);
       localStorage.setItem("amazonMarketplaceId", finalMarketplaceId);
 
-      console.log("Marketplace ID saved:", finalMarketplaceId);
     } catch (err) {
       console.error("submitSelectForm marketplace save error:", err);
     }

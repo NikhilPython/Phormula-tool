@@ -214,7 +214,6 @@ const fetchFxRates = useCallback(async () => {
     if (inr != null) setInrToUsd(Number(inr));
     if (cad != null) setCadToUsd(Number(cad));
 
-    console.log("✅ FX rates loaded from DB:", { gbp, inr, cad });
   } catch (err) {
     console.error("Failed to fetch FX rates", err);
   } finally {

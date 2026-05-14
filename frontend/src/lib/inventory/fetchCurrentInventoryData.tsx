@@ -219,8 +219,6 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
     body: JSON.stringify({ month, year, country }),
   });
 
-  console.log("Current Inventory", res)
-
   if (!res.ok) {
     const errJson = await res.json().catch(() => ({}));
     throw new Error(errJson?.error || "Failed to fetch CurrentInventory data");
@@ -296,27 +294,6 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
 
     warnings = json?.warnings || responseData?.warnings || [];
   }
-
-  console.log("[current_inventory raw response]", {
-    isGlobal,
-    topLevelKeys: Object.keys(json || {}),
-    dataType: typeof responseData,
-    dataKeys:
-      responseData && typeof responseData === "object" && !Array.isArray(responseData)
-        ? Object.keys(responseData)
-        : [],
-    skuwiseTopLevelCount: Array.isArray(json?.skuwise_items)
-      ? json.skuwise_items.length
-      : null,
-    skuwiseUkCount: Array.isArray(json?.skuwise_items_uk)
-      ? json.skuwise_items_uk.length
-      : null,
-    skuwiseUsCount: Array.isArray(json?.skuwise_items_us)
-      ? json.skuwise_items_us.length
-      : null,
-    mappedRowsCount: apiRows.length,
-    firstMappedRow: apiRows[0],
-  });
 
   if (!apiRows.length) {
     console.warn("[current_inventory] No inventory rows found in JSON response", json);

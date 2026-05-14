@@ -418,11 +418,7 @@ export default function SignInForm() {
 
       const hasMarketplace = marketplaceIds.length > 0;
 
-      console.log("get_user_data response:", me);
-      console.log("marketplace_ids:", marketplaceIds);
-      console.log("hasMarketplace:", hasMarketplace);
-
-      if (!hasMarketplace) {
+       if (!hasMarketplace) {
         router.replace("/choose-country?onboard=1");
         return;
       }

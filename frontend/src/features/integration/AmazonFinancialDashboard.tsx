@@ -1461,12 +1461,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         throw new Error("Forecast requires at least 5 months of historic data.");
       }
 
-      console.log("🚀 QUICK TEST START");
-
       for (let i = 0; i < months.length; i++) {
         const { y, mNum } = months[i];
 
-        console.log(`📦 Fetching historic data for ${y}-${two(mNum)}...`);
         await fetchMonthlyTransactionsExcel({
           year: y,
           month: mNum,
@@ -1828,16 +1825,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           </div>
         )}
 
-        {/* {busy && remainingSeconds !== null && (
-          <div className="mt-2 text-center text-xs text-slate-500">
-            Estimated time remaining:{" "}
-            <span className="font-medium tabular-nums">
-              {Math.floor(remainingSeconds / 60)}:
-              {String(remainingSeconds % 60).padStart(2, "0")}
-            </span>
-          </div>
-        )} */}
-
         {busy && stepProgress.active && currentStep > 0 && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 backdrop-blur-[1px] px-4">
             <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-md">
@@ -1863,9 +1850,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                     <p className="text-lg font-semibold text-[#37455F] leading-tight">
                       Syncing dashboard data
                     </p>
-                    {/* <p className="text-xs text-slate-400 mt-0.5 leading-tight">
-                      {stepProgress.detail || "Initialising…"}
-                    </p> */}
                   </div>
                 </div>
 
@@ -1978,16 +1962,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                   );
                 })}
               </div>
-
-              {/* Bottom status bar */}
-              {/* <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                <p className="text-xs text-slate-400 truncate">
-                  {stepProgress.detail || "Initialising dashboard…"}
-                </p>
-                <span className="text-xs text-slate-400 shrink-0 ml-3">
-                  Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
-                </span>
-              </div> */}
 
               <div className="mt-5 pt-4 border-t border-slate-100">
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">

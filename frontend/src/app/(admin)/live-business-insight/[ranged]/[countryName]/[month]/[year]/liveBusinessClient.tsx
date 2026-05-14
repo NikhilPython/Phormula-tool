@@ -360,15 +360,6 @@ export default function LiveBusinessClient({
       const inrUsd = getRate("inr", "usd");
       const cadUsd = getRate("cad", "usd");
 
-      console.log("FX month/year lookup", {
-        month: currentMonth,
-        year: currentYear,
-        gbpUsd,
-        inrUsd,
-        cadUsd,
-        matchedRows: currentRows,
-      });
-
       if (gbpUsd != null) setGbpToUsd(gbpUsd);
       if (inrUsd != null) setInrToUsd(inrUsd);
       if (cadUsd != null) setCadToUsd(cadUsd);
@@ -887,46 +878,6 @@ export default function LiveBusinessClient({
   // Persistence helpers
   // =========================
 
-  // const saveCompareToStorage = (payload: any) => {
-  //   if (typeof window === 'undefined') return;
-  //   try {
-  //     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  //   } catch (e) {
-  //     console.warn('Failed to save BI compare state:', e);
-  //   }
-  // };
-
-  // const loadCompareFromStorage = (): any => {
-  //   if (typeof window === 'undefined') return null;
-  //   try {
-  //     const raw = localStorage.getItem(STORAGE_KEY);
-  //     return raw ? JSON.parse(raw) : null;
-  //   } catch (e) {
-  //     console.warn('Failed to load BI compare state:', e);
-  //     return null;
-  //   }
-  // };
-
-  // const saveInsightsToStorage = (insights: Record<string, SkuInsight>) => {
-  //   if (typeof window === 'undefined') return;
-  //   try {
-  //     localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights || {}));
-  //   } catch (e) {
-  //     console.warn('Failed to save insights:', e);
-  //   }
-  // };
-
-  // const loadInsightsFromStorage = (): Record<string, SkuInsight> => {
-  //   if (typeof window === 'undefined') return {};
-  //   try {
-  //     const raw = localStorage.getItem(INSIGHTS_KEY);
-  //     return raw ? JSON.parse(raw) : {};
-  //   } catch (e) {
-  //     console.warn('Failed to load insights:', e);
-  //     return {};
-  //   }
-  // };
-
   // Normalize backend growth field names -> existing frontend keys
   const normalizeCategorizedGrowth = (raw?: any): CategorizedGrowth => {
     const mapRow = (row: any): SkuItem => {
@@ -949,7 +900,6 @@ export default function LiveBusinessClient({
         if (row[backendKey] != null) clone[frontKey] = row[backendKey];
       });
 
-      // ✅ keep UI working (your table uses Sales Growth, Excel uses Net Sales Growth)
       // Handles 0 correctly
       if (clone['Net Sales Growth'] != null && clone['Sales Growth'] == null) {
         clone['Sales Growth'] = clone['Net Sales Growth'];

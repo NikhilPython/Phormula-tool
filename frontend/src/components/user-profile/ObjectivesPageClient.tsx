@@ -1201,8 +1201,6 @@ export default function ObjectivesPageClient({
         throw new Error(result?.error || "Failed to save monthly target summary.");
       }
 
-      console.log("Monthly target saved:", result);
-
       setIsTargetEditMode(false);
       setEditingPid(null);
       setDraftTarget("");

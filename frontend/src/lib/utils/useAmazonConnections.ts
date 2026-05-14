@@ -58,7 +58,6 @@ export const useAmazonConnections = (): UseAmazonConnectionsReturn => {
         }
 
         const data = await res.json();
-        console.log("Connections Data", data);
 
         if (!res.ok || !data?.success) {
           dispatch(setConnections([]));
