@@ -2850,8 +2850,10 @@ def fmt_number(x, decimals=2):
     if decimals == 0:
         return f"{int(round(x)):,}"
     return f"{x:,.{decimals}f}"
+
 def fmt_currency(x):
     return f"${x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+
 def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
     if not isinstance(metric_dict, dict):
         return "N/A"

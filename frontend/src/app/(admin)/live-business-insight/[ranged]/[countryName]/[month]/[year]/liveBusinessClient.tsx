@@ -630,32 +630,207 @@ export default function LiveBusinessClient({
   const buildMetricsForSku = (item: SkuItem) => {
     const m: { label: string; value: string; color?: string }[] = [];
 
-    const unit = (item as any)?.["Unit Growth"]?.value;
-    const asp = (item as any)?.["ASP Growth"]?.value;
-    const sales =
-      (item as any)?.["Sales Growth"]?.value ??
-      (item as any)?.["Net Sales Growth"]?.value;
-    const unitProfit = (item as any)?.["Profit Per Unit"]?.value;
-    const profitImpact = (item as any)?.["CM1 Profit Impact"]?.value;
-
-    const push = (label: string, v: any) => {
-      if (v == null) return;
-      const pct = fmtPct(v);
-      const isNeg = String(pct).includes("-");
-      m.push({
-        label,
-        value: `(${pct})`,
-        color: isNeg ? "#FF5C5C" : "#5EA68E",
-      });
+    const getGrowth = (key: string) => {
+      const raw = (item as any)?.[key];
+      const n = Number(typeof raw === "object" ? raw?.value : raw);
+      return Number.isFinite(n) ? n : 0;
     };
 
-    push("Units", unit);
-    push("ASP", asp);
-    push("Net sales", sales);
-    push("CM1 profit per unit", unitProfit);
-    push("CM1 profit", profitImpact);
+    const formatPct = (v: number) => {
+      const sign = v > 0 ? "+" : "";
+      return `${sign}${v.toFixed(2)}%`;
+    };
+
+    const formatValueWithGrowth = (
+      actualValue: number,
+      growthValue: number,
+      type: "money" | "number" = "money"
+    ) => {
+      const mainValue =
+        type === "number"
+          ? Number(actualValue || 0).toLocaleString()
+          : formatDisplayAmount(
+            convertToDisplayCurrency(Number(actualValue || 0), sourceCurrency)
+          );
+
+      return `${mainValue} (${formatPct(growthValue)})`;
+    };
+
+    m.push({
+      label: "Units",
+      value: formatValueWithGrowth(
+        Number(
+          (item as any).quantity_month2 ??
+          (item as any).quantity_curr ??
+          item.quantity ??
+          0
+        ),
+        getGrowth("Unit Growth"),
+        "number"
+      ),
+      color: getGrowth("Unit Growth") < 0 ? "#FF5C5C" : "#5EA68E",
+    });
+
+    m.push({
+      label: "Net sales",
+      value: formatValueWithGrowth(
+        Number(
+          (item as any).net_sales_month2 ??
+          (item as any).net_sales_curr ??
+          item.net_sales ??
+          0
+        ),
+        getGrowth("Sales Growth") || getGrowth("Net Sales Growth"),
+        "money"
+      ),
+      color:
+        (getGrowth("Sales Growth") || getGrowth("Net Sales Growth")) < 0
+          ? "#FF5C5C"
+          : "#5EA68E",
+    });
+
+    m.push({
+      label: "ASP",
+      value: formatValueWithGrowth(
+        Number(
+          (item as any).asp_month2 ??
+          (item as any).asp_curr ??
+          item.asp ??
+          0
+        ),
+        getGrowth("ASP Growth"),
+        "money"
+      ),
+      color: getGrowth("ASP Growth") < 0 ? "#FF5C5C" : "#5EA68E",
+    });
+
+    m.push({
+      label: "CM1 profit",
+      value: formatValueWithGrowth(
+        Number(
+          (item as any).profit_month2 ??
+          (item as any).profit_curr ??
+          item.profit ??
+          0
+        ),
+        getGrowth("CM1 Profit Impact"),
+        "money"
+      ),
+      color: getGrowth("CM1 Profit Impact") < 0 ? "#FF5C5C" : "#5EA68E",
+    });
+
+    m.push({
+      label: "CM1 profit per unit",
+      value: formatValueWithGrowth(
+        Number(
+          (item as any).unit_wise_profitability_month2 ??
+          (item as any).unit_wise_profitability_curr ??
+          item.unit_wise_profitability ??
+          0
+        ),
+        getGrowth("Profit Per Unit"),
+        "money"
+      ),
+      color: getGrowth("Profit Per Unit") < 0 ? "#FF5C5C" : "#5EA68E",
+    });
 
     return m;
+  };
+
+  const toPoints = (value: unknown): string[] => {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+      return value
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+    }
+
+    return String(value)
+      .split(/\r?\n|(?<=\.)\s+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  };
+
+  const getCountryActionFromGlobalJourney = (
+    journey: any,
+    country: "uk" | "us" | "ca" | "india"
+  ) => {
+    const blocks = journey?.[country] || {};
+    return Object.values(blocks || {})[0] as any;
+  };
+
+  const buildSelectedRecFromSkuInsight = (
+    item: SkuItem,
+    insight?: SkuInsight | null
+  ) => {
+    const productName = item?.product_name || insight?.product_name || "Details";
+
+    return {
+      productName,
+      metrics: buildMetricsForSku(item),
+
+      // ✅ Single-country /live_mtd_bi response
+      journeyPoints: toPoints(insight?.product_journey),
+      recommendationPoints: toPoints(insight?.recommendation),
+      advertisingPoints: toPoints(insight?.advertising),
+      inventoryPoints: toPoints(insight?.inventory_recommendation),
+
+      showChart: true,
+    };
+  };
+
+  const buildSelectedRecFromGlobalSkuInsight = (
+    item: SkuItem,
+    insight?: SkuInsight | null
+  ) => {
+    const productName = item?.product_name || insight?.product_name || "Details";
+    const journey = insight?.raw_global_journey;
+
+    const ukAction = getCountryActionFromGlobalJourney(journey, "uk");
+    const usAction = getCountryActionFromGlobalJourney(journey, "us");
+    const caAction = getCountryActionFromGlobalJourney(journey, "ca");
+    const indiaAction = getCountryActionFromGlobalJourney(journey, "india");
+
+    const countryActions = [
+      ["UK", ukAction],
+      ["US", usAction],
+      ["CA", caAction],
+      ["India", indiaAction],
+    ] as const;
+
+    return {
+      productName,
+      metrics: buildMetricsForSku(item),
+
+      // ✅ Global product journey comparison
+      journeyPoints: Array.isArray(journey?.journey_comparison)
+        ? journey.journey_comparison
+        : toPoints(insight?.product_journey),
+
+      // ✅ Countrywise recommendations
+      recommendationPoints: countryActions
+        .map(([country, action]) =>
+          action?.recommendation ? `${country}: ${action.recommendation}` : ""
+        )
+        .filter(Boolean),
+
+      advertisingPoints: countryActions
+        .map(([country, action]) =>
+          action?.ads_recommendation ? `${country}: ${action.ads_recommendation}` : ""
+        )
+        .filter(Boolean),
+
+      inventoryPoints: countryActions
+        .map(([country, action]) =>
+          action?.inventory_recommendation
+            ? `${country}: ${action.inventory_recommendation}`
+            : ""
+        )
+        .filter(Boolean),
+
+      showChart: true,
+    };
   };
 
   const buildSelectedRecFromInsight = (
@@ -2365,6 +2540,28 @@ export default function LiveBusinessClient({
     });
   };
 
+  const sortMetricsByOrder = (
+    metrics: { label: string; value: string; color?: string }[]
+  ) => {
+    const order = [
+      "units",
+      "net sales",
+      "asp",
+      "cm1 profit",
+      "cm1 profit per unit",
+    ];
+
+    return [...metrics].sort((a, b) => {
+      const aIndex = order.indexOf(a.label.trim().toLowerCase());
+      const bIndex = order.indexOf(b.label.trim().toLowerCase());
+
+      return (
+        (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) -
+        (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex)
+      );
+    });
+  };
+
   const parseRecommendedAction = (raw: string) => {
     const lines = (raw || "")
       .split("\n")
@@ -2401,7 +2598,7 @@ export default function LiveBusinessClient({
 
     return {
       productName,
-      metrics,
+      metrics: sortMetricsByOrder(metrics),
       insightText,
       journeyPoints: sections.journeyPoints,
       recommendationPoints: sections.recommendationPoints,
@@ -2446,7 +2643,8 @@ export default function LiveBusinessClient({
 
     return {
       productName,
-      metrics,
+      metrics: sortMetricsByOrder(metrics),
+      insightText,
       journeyPoints: sections.journeyPoints,
       recommendationPoints: sections.recommendationPoints,
       advertisingPoints: sections.advertisingPoints,
@@ -2802,32 +3000,25 @@ export default function LiveBusinessClient({
     if (!Object.keys(skuInsights).length) return null;
 
     const entry = getInsightForItem(item);
+
     if (entry) {
       return (
         <button
-          className="font-semibold underline"
+          type="button"
           onClick={() => {
-            setFbType(null);
-            setFbText('');
-            setFbSuccess(false);
+            const insightEntry = getInsightForItem(item);
+            const insight = insightEntry?.[1] || null;
 
-            setSelectedSku(entry[0]);      // optional (agar feedback etc chahiye)
-            setSelectedSkuItem(item);      // ✅ store clicked row
+            const selected = isGlobalData()
+              ? buildSelectedRecFromGlobalSkuInsight(item, insight)
+              : buildSelectedRecFromSkuInsight(item, insight);
 
-            const insightData =
-              skuInsights[entry[0] as keyof typeof skuInsights] ||
-              getInsightByProductName(item.product_name)?.[1];
-
-            const insightText = insightData?.insight || "";
-            const prodName = insightData?.product_name || item.product_name || "";
-
-            // ✅ Open SAME "Detailed View" drawer
-            setSelectedRec(buildSelectedRecFromInsight(item, insightText, prodName));
+            setSelectedSkuItem(item);
+            setSelectedSku(item.sku || item.product_name);
+            setSelectedRec(selected);
             setRecDrawerOpen(true);
-
-            // ❌ do NOT open old AI drawer
-            // setModalOpen(true);
           }}
+          className="font-semibold underline"
         >
           View Insights
         </button>
@@ -2835,11 +3026,12 @@ export default function LiveBusinessClient({
     }
 
     return (
-      <em style={{ color: '#888' }}>
+      <em style={{ color: "#888" }}>
         Not analyzed
         <br />
         <small style={{ fontSize: 10 }}>
-          ({isGlobalData() ? 'Global/Product Name' : 'SKU'}: {item.product_name || item.sku || 'N/A'})
+          ({isGlobalData() ? "Global/Product Name" : "SKU"}:{" "}
+          {item.product_name || item.sku || "N/A"})
         </small>
       </em>
     );

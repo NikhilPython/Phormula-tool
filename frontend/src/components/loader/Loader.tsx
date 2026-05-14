@@ -21,7 +21,7 @@ export default function Loader({
   size: customSize, // rename prop to avoid clash
   label = "Loading…",
   roundedClass = "rounded-2xl",
-  backgroundClass = "bg-neutral-100 dark:bg-neutral-900/70 backdrop-blur",
+  backgroundClass = "",
   transparent = false,
   className = "",
   forceFallback = false,

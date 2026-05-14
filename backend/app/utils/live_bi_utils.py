@@ -3098,6 +3098,19 @@ def generate_sku_inventory_flags(
 #         "is_new_or_reviving": is_new_or_reviving
 #     }
 
+def generate_live_insight_with_app_context(app, item, country, prev_label, curr_label, user_id, month2):
+    with app.app_context():
+        return generate_live_insight(
+            item,
+            country,
+            prev_label,
+            curr_label,
+            user_id,
+            month2
+        )
+
+
+
 
 def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
 
@@ -3112,7 +3125,27 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
     product_journey = []
 
     try:
-        country_key = country.lower()
+        country_key = safe_strip(country, default="").lower()
+
+        COUNTRY_MAP = {
+            "usa": "us",
+            "united states": "us",
+            "united states of america": "us",
+            "gb": "uk",
+            "great britain": "uk",
+            "united kingdom": "uk",
+        }
+
+        country_key = COUNTRY_MAP.get(country_key, country_key)
+
+        print("[LIVE INSIGHT START]", {
+            "input_country": country,
+            "country_key": country_key,
+            "sku": sku,
+            "product_name": product_name,
+            "key": key,
+            "user_id": user_id,
+        })
 
         # -------------------------------------------------
         # Resolve latest month for strategy engine
@@ -3210,6 +3243,12 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
                 inventory_recommendation = None
                 product_journey = []
 
+            print("[LIVE INSIGHT MONTH]", {
+            "country_key": country_key,
+            "latest_year": latest_year,
+            "latest_month": latest_month,
+            })        
+
         # -------------------------------------------------
         # NORMAL country strategy engine
         # -------------------------------------------------
@@ -3227,19 +3266,100 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
                 force_regenerate=True
             )
 
-            sku_actions = summary_result.get("sku_actions") or {}
+
+            print("[COUNTRY SUMMARY RAW]", {
+                "country_key": country_key,
+                "key": key,
+                "summary_type": type(summary_result).__name__,
+                "summary_keys": list(summary_result.keys()) if isinstance(summary_result, dict) else None,
+            })
+
+            sku_actions = (
+                summary_result.get("sku_actions")
+                or summary_result.get("ai_insights")
+                or {}
+            )
+
+            print("[COUNTRY SKU ACTIONS]", {
+                "country_key": country_key,
+                "key": key,
+                "sku_actions_type": type(sku_actions).__name__,
+                "sku_action_keys": list(sku_actions.keys())[:20] if isinstance(sku_actions, dict) else None,
+                "has_exact_key": key in sku_actions if isinstance(sku_actions, dict) else False,
+            })
+
             sku_block = sku_actions.get(key) or {}
+
+            # Fallback matching because global handles multiple keys,
+            # but country was only checking exact key match.
+            if not sku_block:
+                normalized_key = safe_strip(key, default="").lower()
+                normalized_product_name = safe_strip(product_name, default="").lower()
+
+                for action_key, block in sku_actions.items():
+                    if not isinstance(block, dict):
+                        continue
+
+                    possible_keys = [
+                        action_key,
+                        block.get("sku"),
+                        block.get("product_name"),
+                        block.get("mapped_product_name"),
+                        block.get("global_product_name"),
+                        block.get("name"),
+                    ]
+
+                    possible_keys = [
+                        safe_strip(value, default="").lower()
+                        for value in possible_keys
+                        if value
+                    ]
+
+                    if normalized_key in possible_keys or normalized_product_name in possible_keys:
+                        sku_block = block
+                        break
+
+            print("[COUNTRY SKU MATCH]", {
+                "country_key": country_key,
+                "requested_key": key,
+                "requested_product_name": product_name,
+                "matched": bool(sku_block),
+                "matched_sku": sku_block.get("sku") if isinstance(sku_block, dict) else None,
+                "matched_product_name": sku_block.get("product_name") if isinstance(sku_block, dict) else None,
+                "sku_block_keys": list(sku_block.keys()) if isinstance(sku_block, dict) else None,
+            })
 
             recommendation = sku_block.get("recommendation")
             inventory_recommendation = sku_block.get("inventory_recommendation")
 
-            performance_journey = sku_block.get("journey_summary") or []
-            inventory_journey = sku_block.get("inventory_journey_summary") or []
+            performance_journey = (
+                sku_block.get("journey_summary")
+                or sku_block.get("product_journey")
+                or sku_block.get("comparison_journey")
+                or []
+            )
+
+            inventory_journey = (
+                sku_block.get("inventory_journey_summary")
+                or sku_block.get("inventory_journey")
+                or []
+            )
 
             product_journey = performance_journey + inventory_journey
 
     except Exception as e:
+        import traceback
         print("[LIVE STRATEGY ENGINE ERROR]", e)
+        traceback.print_exc()
+
+    print("[LIVE INSIGHT RESULT]", {
+    "country_key": country_key if "country_key" in locals() else None,
+    "key": key,
+    "recommendation": recommendation,
+    "inventory_recommendation": inventory_recommendation,
+    "product_journey_count": len(product_journey) if isinstance(product_journey, list) else None,
+    "is_new_or_reviving": is_new_or_reviving,
+})
 
     return key, {
         "sku": sku,
