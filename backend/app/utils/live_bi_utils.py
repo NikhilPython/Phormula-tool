@@ -3037,67 +3037,6 @@ def generate_sku_inventory_flags(
 
 
 
-# def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
-
-#     sku = safe_strip(item.get("sku"), default=None)
-#     product_name = safe_strip(item.get("product_name"), default="this product")
-
-#     key = sku or product_name
-#     is_new_or_reviving = item.get("new_or_reviving", False)
-
-#     recommendation = None
-#     inventory_recommendation = None
-#     product_journey = []
-
-#     try:
-
-#         # -------------------------------------------------
-#         # Resolve latest month for strategy engine
-#         # -------------------------------------------------
-#         latest_year, latest_month = resolve_latest_available_month(
-#             int(user_id),
-#             country.lower()
-#         )
-
-#         # -------------------------------------------------
-#         # Call strategy engine (same engine used everywhere)
-#         # -------------------------------------------------
-#         summary_result = get_or_create_summary(
-#             user_id=int(user_id),
-#             country=country.lower(),
-#             marketplace_id=None,
-#             period="monthly",
-#             timeline=str(latest_month),
-#             year=int(latest_year),
-#             objective=None,
-#             target_sku=key,
-#             force_regenerate=True
-#         )
-
-#         sku_actions = summary_result.get("sku_actions") or {}
-#         sku_block = sku_actions.get(key) or {}
-
-#         recommendation = sku_block.get("recommendation")
-#         inventory_recommendation = sku_block.get("inventory_recommendation")
-
-#         performance_journey = sku_block.get("journey_summary") or []
-#         inventory_journey = sku_block.get("inventory_journey_summary") or []
-
-#         product_journey = performance_journey + inventory_journey
-
-#     except Exception as e:
-#         print("[LIVE STRATEGY ENGINE ERROR]", e)
-
-#     return key, {
-#         "sku": sku,
-#         "product_name": product_name,
-#         "product_journey": product_journey,
-#         "recommendation": recommendation,
-#         "inventory_recommendation": inventory_recommendation,
-#         "key_used": key,
-#         "is_new_or_reviving": is_new_or_reviving
-#     }
-
 def generate_live_insight_with_app_context(app, item, country, prev_label, curr_label, user_id, month2):
     with app.app_context():
         return generate_live_insight(

@@ -24,10 +24,20 @@ load_dotenv()
 SECRET_KEY = Config.SECRET_KEY
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 db_url = os.getenv('DATABASE_URL')
+db_url2 = os.getenv("DATABASE_AMAZON_URL")
 oa_client = OpenAI(api_key=OPENAI_API_KEY)
 
 user_engine = create_engine(
     db_url,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=3,
+    max_overflow=2,
+    pool_timeout=30,
+)
+
+amazon_engine = create_engine(
+    db_url2,
     pool_pre_ping=True,
     pool_recycle=1800,
     pool_size=3,
@@ -439,6 +449,70 @@ def print_comparison_range():
 
         # Identify SKU/Product groups
         country_lower = country.lower()
+
+        def marketplace_id_for_country(country_lower):
+            if country_lower == "uk":
+                return "A1F83G8C2ARO7P"
+            if country_lower == "us":
+                return "ATVPDKIKX0DER"
+            return None
+
+
+        def get_new_skus_from_products_table(country_lower, sku_keys, end_year, end_month):
+            """
+            Uses products table from amazon DB to identify new SKUs.
+
+            New SKU rule:
+            - UK marketplace_id = A1F83G8C2ARO7P
+            - US marketplace_id = ATVPDKIKX0DER
+            - open_date must fall within the last 6 months ending at selected month2/year2
+            - only checks SKUs present in month2
+            """
+            marketplace_id = marketplace_id_for_country(country_lower)
+
+            if not marketplace_id or not sku_keys:
+                return set()
+
+            last6_periods_for_open_date = last_n_months_set(end_year, end_month, 6)
+
+            q = text("""
+                SELECT sku, open_date
+                FROM products
+                WHERE marketplace_id = :marketplace_id
+                AND sku = ANY(:sku_list)
+                AND open_date IS NOT NULL
+            """)
+
+            new_skus = set()
+
+            with amazon_engine.connect() as conn:
+                rows = conn.execute(q, {
+                    "marketplace_id": marketplace_id,
+                    "sku_list": list(sku_keys)
+                }).fetchall()
+
+            for row in rows:
+                sku = row[0]
+                open_date = row[1]
+
+                if not sku or not open_date:
+                    continue
+
+                try:
+                    # open_date may be datetime or string like "2025-05-23 12:51:52.722"
+                    if hasattr(open_date, "strftime"):
+                        open_period = open_date.strftime("%Y-%m")
+                    else:
+                        open_period = str(open_date).strip()[:7]
+
+                    if open_period in last6_periods_for_open_date:
+                        new_skus.add(str(sku).strip())
+
+                except Exception as e:
+                    print(f"Warning parsing open_date for sku={sku}: {e}")
+
+            return new_skus
+
         last6_periods = last_n_months_set(int(year2), int(month2), 6)
 
         if country_lower == 'global':
@@ -475,77 +549,126 @@ def print_comparison_range():
         month2_keys = {str(row.get(scan_key)).strip() for row in data2 if row.get(scan_key) is not None and str(row.get(scan_key)).strip()}
 
         # ✅ Reviving
-        reviving_keys = month2_keys - month1_keys
+        # ✅ New / Reviving split
+        if country_lower == "global":
+            # For global, keep current logic.
+            reviving_keys = month2_keys - month1_keys
 
-        # ✅ Newly launched (baseline based)
-        def shift_month(year, month, offset):
-            y, m = int(year), int(month)
-            m += int(offset)
-            while m <= 0:
-                m += 12
-                y -= 1
-            while m > 12:
-                m -= 12
-                y += 1
-            return y, m
+            def shift_month(year, month, offset):
+                y, m = int(year), int(month)
+                m += int(offset)
 
-        def table_period(tname):
-            return parse_period_from_table_name(tname, user_id, country_lower) or "9999-99"
+                while m <= 0:
+                    m += 12
+                    y -= 1
 
-        last6_tables_sorted = sorted(last6_tables, key=table_period)  # oldest -> newest
+                while m > 12:
+                    m -= 12
+                    y += 1
 
-        baseline_keys = set()
-        baseline_table = None
-        baseline_period = None
+                return y, m
 
-        pre_y, pre_m = shift_month(year2, month2, -6)
-        try:
-            pre_table = construct_table_name(user_id, country, pre_m, pre_y)
-        except Exception:
-            pre_table = None
+            def table_period(tname):
+                return parse_period_from_table_name(tname, user_id, country_lower) or "9999-99"
 
-        pre_exists = False
-        if pre_table:
-            q_exists = text("""
-                SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema='public' AND table_name=:t
-                LIMIT 1
-            """)
-            with user_engine.connect() as conn:
-                pre_exists = bool(conn.execute(q_exists, {"t": pre_table}).first())
+            last6_tables_sorted = sorted(last6_tables, key=table_period)
 
-        if pre_exists:
-            baseline_table = pre_table
-            baseline_period = f"{int(pre_y):04d}-{int(pre_m):02d}"
+            baseline_keys = set()
+            baseline_table = None
+            baseline_period = None
+
+            pre_y, pre_m = shift_month(year2, month2, -6)
+
             try:
-                baseline_keys = query_only_keys(baseline_table)
-            except Exception as e:
-                print(f"Warning reading keys from baseline pre-window table {baseline_table}: {e}")
-                baseline_keys = set()
-        else:
-            if last6_tables_sorted:
-                baseline_table = last6_tables_sorted[0]
-                baseline_period = table_period(baseline_table)
+                pre_table = construct_table_name(user_id, country, pre_m, pre_y)
+            except Exception:
+                pre_table = None
+
+            pre_exists = False
+
+            if pre_table:
+                q_exists = text("""
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema='public' AND table_name=:t
+                    LIMIT 1
+                """)
+
+                with user_engine.connect() as conn:
+                    pre_exists = bool(conn.execute(q_exists, {"t": pre_table}).first())
+
+            if pre_exists:
+                baseline_table = pre_table
+                baseline_period = f"{int(pre_y):04d}-{int(pre_m):02d}"
+
                 try:
                     baseline_keys = query_only_keys(baseline_table)
                 except Exception as e:
-                    print(f"Warning reading keys from baseline oldest table {baseline_table}: {e}")
+                    print(f"Warning reading keys from baseline pre-window table {baseline_table}: {e}")
                     baseline_keys = set()
-                print(f"[NEW-LAUNCH] Pre-window missing. Using oldest-available baseline: {baseline_period} table={baseline_table} keys={len(baseline_keys)}")
+
             else:
-                print("[NEW-LAUNCH] No last6 tables available; baseline empty.")
-                baseline_keys = set()
+                if last6_tables_sorted:
+                    baseline_table = last6_tables_sorted[0]
+                    baseline_period = table_period(baseline_table)
 
-        newly_launched_keys = (month2_keys - baseline_keys) if baseline_keys else set()
+                    try:
+                        baseline_keys = query_only_keys(baseline_table)
+                    except Exception as e:
+                        print(f"Warning reading keys from baseline oldest table {baseline_table}: {e}")
+                        baseline_keys = set()
 
-        # New/Reviving = reviving OR newly launched
-        new_reviving_keys = reviving_keys | newly_launched_keys
-        # ✅ Build bucket rows
-        new_reviving_growth = [
+                    print(
+                        f"[NEW-LAUNCH] Pre-window missing. "
+                        f"Using oldest-available baseline: {baseline_period} "
+                        f"table={baseline_table} keys={len(baseline_keys)}"
+                    )
+
+                else:
+                    print("[NEW-LAUNCH] No last6 tables available; baseline empty.")
+                    baseline_keys = set()
+
+            new_sku_keys = (month2_keys - baseline_keys) if baseline_keys else set()
+
+            # Mutual exclusivity:
+            # if SKU is new, it should not appear in reviving.
+            reviving_keys = reviving_keys - new_sku_keys
+
+        else:
+            # For US / UK, use products.open_date from amazon DB for new SKUs.
+            new_sku_keys = get_new_skus_from_products_table(
+                country_lower=country_lower,
+                sku_keys=month2_keys,
+                end_year=int(year2),
+                end_month=int(month2)
+            )
+
+            # Current reviving logic remains same:
+            # SKU exists in month2 but not in month1.
+            # But remove SKUs already classified as new.
+            reviving_keys = (month2_keys - month1_keys) - new_sku_keys
+
+
+        new_skus_growth = [
             row for row in growth_data
-            if (row.get(scan_key) is not None and str(row.get(scan_key)).strip() in new_reviving_keys)
+            if (
+                row.get(scan_key) is not None
+                and str(row.get(scan_key)).strip() in new_sku_keys
+            )
         ]
+
+        reviving_skus_growth = [
+            row for row in growth_data
+            if (
+                row.get(scan_key) is not None
+                and str(row.get(scan_key)).strip() in reviving_keys
+            )
+        ]
+
+        # Internal-only combined key set.
+        # This is only for excluding new + reviving SKUs from Top 80% and Other SKUs.
+        # Do not return this as JSON.
+        new_reviving_keys = new_sku_keys | reviving_keys
 
         # ✅ DEDUPE: exclude New/Reviving SKUs from existing buckets
         existing_growth = [
@@ -578,14 +701,41 @@ def print_comparison_range():
             else:
                 other_skus.append(row)
 
-        # ✅ All SKUs tab: union of all three buckets (no duplicates due to dedupe above)
-        all_skus = top_80_skus + new_reviving_growth + other_skus
+       
+        # ✅ All SKUs tab: union of all four buckets
+        # ✅ All SKUs tab: union of all four buckets
+        all_skus = top_80_skus + new_skus_growth + reviving_skus_growth + other_skus
 
-        # ✅ Totals returned separately (frontend renders its own total row)
-        top_80_total = build_total_row(top_80_skus, key_column, bucket_label="Total (Top 80%)") if top_80_skus else None
-        new_or_reviving_total = build_total_row(new_reviving_growth, key_column, bucket_label="Total (New/Reviving)") if new_reviving_growth else None
-        other_total = build_total_row(other_skus, key_column, bucket_label="Total (Other SKUs)") if other_skus else None
-        all_skus_total = build_total_row(all_skus, key_column, bucket_label="Total (All SKUs)") if all_skus else None
+        # ✅ Totals returned separately
+        top_80_total = build_total_row(
+            top_80_skus,
+            key_column,
+            bucket_label="Total (Top 80%)"
+        ) if top_80_skus else None
+
+        new_skus_total = build_total_row(
+            new_skus_growth,
+            key_column,
+            bucket_label="Total (New SKUs)"
+        ) if new_skus_growth else None
+
+        reviving_skus_total = build_total_row(
+            reviving_skus_growth,
+            key_column,
+            bucket_label="Total (Reviving SKUs)"
+        ) if reviving_skus_growth else None
+
+        other_total = build_total_row(
+            other_skus,
+            key_column,
+            bucket_label="Total (Other SKUs)"
+        ) if other_skus else None
+
+        all_skus_total = build_total_row(
+            all_skus,
+            key_column,
+            bucket_label="Total (All SKUs)"
+        ) if all_skus else None
 
         return jsonify({
             'message': 'Comparison range received',
@@ -596,29 +746,30 @@ def print_comparison_range():
             },
             'categorized_growth': {
                 'top_80_skus': top_80_skus,
-                'new_or_reviving_skus': new_reviving_growth,
+                'new_skus': new_skus_growth,
+                'reviving_skus': reviving_skus_growth,
                 'other_skus': other_skus,
                 'all_skus': all_skus,
 
                 # ✅ totals separate
                 'top_80_total': top_80_total,
-                'new_or_reviving_total': new_or_reviving_total,
+                'new_skus_total': new_skus_total,
+                'reviving_skus_total': reviving_skus_total,
                 'other_total': other_total,
                 'all_skus_total': all_skus_total,
-            },'reimbursement_totals': {
+            },
+            'reimbursement_totals': {
                 'month1': round(reimbursement_total_month1, 2),
                 'month2': round(reimbursement_total_month2, 2)
             },
-             'advertising_totals': {   # ✅ add this
-            'month1': round(advertising_total_month1, 2),
-            'month2': round(advertising_total_month2, 2)
+            'advertising_totals': {
+                'month1': round(advertising_total_month1, 2),
+                'month2': round(advertising_total_month2, 2)
             },
-            'expense_totals': {   # ✅ NEW
-            'month1': round(expense_total_month1, 2),
-            'month2': round(expense_total_month2, 2)
+            'expense_totals': {
+                'month1': round(expense_total_month1, 2),
+                'month2': round(expense_total_month2, 2)
             },
-
-            
         }), 200
 
     except jwt.ExpiredSignatureError:
