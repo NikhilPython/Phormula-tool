@@ -282,10 +282,11 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
     const brandName =
         (userData as any)?.brandName ||
-        (userData as any)?.brand_name 
+        (userData as any)?.brand_name ||
+        (userData as any)?.brand ||
         "";
 
-   
+
     const handleDownloadSkuAnalysisTabsExcel = () => {
         if (isPreviewMode) return;
 

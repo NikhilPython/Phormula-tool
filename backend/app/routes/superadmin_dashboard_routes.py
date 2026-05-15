@@ -11,8 +11,10 @@ from app.models.user_models import CurrencyConversion, Category, UserAdmin , Use
 from sqlalchemy.exc import IntegrityError
 from flask import current_app
 import os,jwt
-import csv
-from datetime import datetime
+from app.utils.amazon_utils import amazon_client, db_url, db_url1
+from datetime import datetime, timezone
+from app.models.user_models import User
+from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
 
 
 superadmin_dashboard_bp = Blueprint('superadmin_dashboard', __name__)
@@ -835,4 +837,447 @@ def update_user_status():
             "error": str(e)
         }), 500
     
-    
+
+
+# =========================================================
+# ROUTE: Run monthly transaction sync for all active users
+# Runs each user's UploadHistory months up to requested year/month.
+# Skips months Amazon Finance API rejects because of 2-year limit.
+# =========================================================
+@superadmin_dashboard_bp.route("/amazon_api/formula_update", methods=["GET"])
+def formula_update():
+    # -------------------------
+    # 1) Superadmin Auth
+    # -------------------------
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "success": False,
+            "error": "Authorization token is missing or invalid"
+        }), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+
+        if not decoded.get("is_superadmin"):
+            return jsonify({
+                "success": False,
+                "error": "Only superadmin can run formula update"
+            }), 403
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({
+            "success": False,
+            "error": "Token has expired"
+        }), 401
+
+    except jwt.InvalidTokenError:
+        return jsonify({
+            "success": False,
+            "error": "Invalid token"
+        }), 401
+
+    # -------------------------
+    # 2) Params
+    # -------------------------
+    now_utc = datetime.now(timezone.utc)
+
+    try:
+        end_year = int(request.args.get("year", now_utc.year))
+        end_month = int(request.args.get("month", now_utc.month))
+
+        if end_month < 1 or end_month > 12:
+            raise ValueError
+
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "error": "Invalid year or month"
+        }), 400
+
+    transaction_status = request.args.get("transaction_status")
+    marketplace_id_arg = request.args.get("marketplace_id")
+    transaction_type_filter = request.args.get("transaction_type")
+
+    store_in_db = request.args.get("store_in_db", "true").lower() != "false"
+    run_upload = request.args.get("run_upload_pipeline", "false").lower() == "true"
+
+    requested_country = (request.args.get("country") or "").strip().lower()
+
+    # Optional: run only one user
+    requested_user_id = request.args.get("user_id")
+    try:
+        requested_user_id = int(requested_user_id) if requested_user_id else None
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "error": "user_id must be a valid integer"
+        }), 400
+
+    # Optional: run only requested year/month instead of all UploadHistory months
+    single_month_only = (
+        request.args.get("single_month_only", "false").lower() == "true"
+    )
+
+    # -------------------------
+    # 3) Helpers
+    # -------------------------
+    month_order = {
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12,
+
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "sept": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
+
+    excluded_countries = {
+        "global",
+        "global_inr",
+        "global_cad",
+        "global_gbp",
+        "uk_usd",
+    }
+
+    def normalize_country(value):
+        value = (value or "").strip().lower()
+
+        if value in ("united kingdom", "gb", "great britain"):
+            return "uk"
+
+        if value in ("united states", "usa", "us"):
+            return "us"
+
+        if value in ("ca", "canada"):
+            return "canada"
+
+        return value
+
+    def marketplace_to_country(marketplace_id_value):
+        marketplace_id_value = (marketplace_id_value or "").strip()
+
+        if marketplace_id_value == "ATVPDKIKX0DER":
+            return "us"
+
+        if marketplace_id_value == "A1F83G8C2ARO7P":
+            return "uk"
+
+        if marketplace_id_value == "A2EUQ1WTGCTBG2":
+            return "canada"
+
+        return "us"
+
+    def get_user_country(user, user_marketplace_id):
+        if requested_country:
+            return normalize_country(requested_country)
+
+        user_country = normalize_country(getattr(user, "country", None))
+
+        if user_country:
+            return user_country
+
+        return marketplace_to_country(user_marketplace_id)
+
+    def get_amazon_finance_cutoff_date():
+        """
+        Amazon Finance Transactions API rejects postedAfter before 2 years from today.
+        Example: if today is 2026-05-15, postedAfter before 2024-05-15 fails.
+        Since monthly sync starts at day 1, May 2024 must be skipped.
+        """
+        try:
+            return now_utc.replace(year=now_utc.year - 2)
+        except ValueError:
+            # Handles Feb 29
+            return now_utc.replace(year=now_utc.year - 2, day=28)
+
+    def is_month_allowed_by_amazon(year_value, month_value):
+        month_start = datetime(
+            int(year_value),
+            int(month_value),
+            1,
+            tzinfo=timezone.utc
+        )
+
+        amazon_cutoff_date = get_amazon_finance_cutoff_date()
+
+        return month_start >= amazon_cutoff_date
+
+    def parse_upload_history_month(row):
+        month_name = (row.month or "").strip().lower()
+        year_value = row.year
+
+        if not year_value:
+            return None
+
+        try:
+            year_value = int(year_value)
+        except Exception:
+            return None
+
+        if month_name.isdigit():
+            month_number = int(month_name)
+        else:
+            month_number = month_order.get(month_name)
+
+        if not month_number or month_number < 1 or month_number > 12:
+            return None
+
+        return {
+            "year": year_value,
+            "month": month_number,
+            "month_name": month_name,
+        }
+
+    def get_available_months_for_user(user_id, country):
+        rows = UploadHistory.query.filter_by(user_id=user_id).all()
+
+        normalized_country = normalize_country(country)
+
+        country_rows = [
+            row for row in rows
+            if normalize_country(getattr(row, "country", None)) == normalized_country
+        ]
+
+        # Fallback: use all non-global upload history rows
+        if not country_rows:
+            country_rows = [
+                row for row in rows
+                if normalize_country(getattr(row, "country", None)) not in excluded_countries
+            ]
+
+        unique_months = {}
+        skipped_old_months = []
+
+        for row in country_rows:
+            parsed = parse_upload_history_month(row)
+
+            if not parsed:
+                continue
+
+            year_value = parsed["year"]
+            month_number = parsed["month"]
+
+            # Do not run future months beyond requested end month
+            if (year_value, month_number) > (end_year, end_month):
+                continue
+
+            # Skip months Amazon Finance API will reject
+            if not is_month_allowed_by_amazon(year_value, month_number):
+                skipped_old_months.append({
+                    "year": year_value,
+                    "month": month_number,
+                    "reason": "older_than_amazon_finance_api_2_year_limit",
+                })
+                continue
+
+            unique_months[(year_value, month_number)] = parsed
+
+        months_to_run = [
+            unique_months[key]
+            for key in sorted(unique_months.keys())
+        ]
+
+        return months_to_run, skipped_old_months
+
+    # -------------------------
+    # 4) Validate single month if requested
+    # -------------------------
+    if single_month_only and not is_month_allowed_by_amazon(end_year, end_month):
+        return jsonify({
+            "success": False,
+            "error": "Requested month is older than Amazon Finance API 2-year limit",
+            "requested_year": end_year,
+            "requested_month": end_month,
+            "amazon_cutoff_date": get_amazon_finance_cutoff_date().date().isoformat(),
+            "hint": "Use a newer month or remove single_month_only so old UploadHistory months are skipped."
+        }), 400
+
+    # -------------------------
+    # 5) Get active users
+    # -------------------------
+    query = User.query.filter_by(status=True)
+
+    if requested_user_id:
+        query = query.filter(User.id == requested_user_id)
+
+    users = query.order_by(User.id.asc()).all()
+
+    results = []
+    success_count = 0
+    failed_count = 0
+    total_month_runs = 0
+    total_skipped_old_months = 0
+
+    # -------------------------
+    # 6) Run sync user by user, month by month
+    # -------------------------
+    for user in users:
+        user_id = user.id
+
+        user_marketplace_id = (
+            marketplace_id_arg
+            or getattr(user, "marketplace_id", None)
+            or amazon_client.marketplace_id
+            or ""
+        ).strip()
+
+        ui_country = get_user_country(user, user_marketplace_id)
+
+        skipped_old_months = []
+
+        if single_month_only:
+            months_to_run = [{
+                "year": end_year,
+                "month": end_month,
+                "month_name": None,
+            }]
+            months_count_from_upload_history = 1
+
+        else:
+            months_to_run, skipped_old_months = get_available_months_for_user(
+                user_id=user_id,
+                country=ui_country,
+            )
+
+            months_count_from_upload_history = len(months_to_run)
+
+            # If there is no UploadHistory for this user/country,
+            # fall back to requested month only, but only if Amazon allows it.
+            if not months_to_run:
+                if is_month_allowed_by_amazon(end_year, end_month):
+                    months_to_run = [{
+                        "year": end_year,
+                        "month": end_month,
+                        "month_name": None,
+                    }]
+                else:
+                    skipped_old_months.append({
+                        "year": end_year,
+                        "month": end_month,
+                        "reason": "older_than_amazon_finance_api_2_year_limit",
+                    })
+
+        total_skipped_old_months += len(skipped_old_months)
+
+        user_result = {
+            "user_id": user_id,
+            "email": getattr(user, "email", None),
+            "country": ui_country,
+            "marketplace_id": user_marketplace_id,
+            "months_found": months_count_from_upload_history,
+            "months_attempted": len(months_to_run),
+            "months_skipped": len(skipped_old_months),
+            "skipped_months": skipped_old_months,
+            "success_count": 0,
+            "failed_count": 0,
+            "months": [],
+        }
+
+        for month_item in months_to_run:
+            run_year = int(month_item["year"])
+            run_month = int(month_item["month"])
+
+            total_month_runs += 1
+
+            try:
+                result = sync_monthly_transactions_for_user(
+                    user_id=user_id,
+                    year=run_year,
+                    month=run_month,
+                    country=ui_country,
+                    marketplace_id=user_marketplace_id or amazon_client.marketplace_id,
+                    transaction_status=transaction_status,
+                    transaction_type_filter=transaction_type_filter,
+                    store_in_db=store_in_db,
+                    run_upload=run_upload,
+                    db_url=db_url,
+                    db_url_aux=db_url1,
+                )
+
+                pipeline_result = result.get("pipeline_result") or {}
+
+                # Do not return huge Base64 excel_file in all-user response
+                safe_pipeline_result = {
+                    k: v
+                    for k, v in pipeline_result.items()
+                    if k != "excel_file"
+                }
+
+                month_success = bool(result.get("success"))
+
+                if month_success:
+                    user_result["success_count"] += 1
+                    success_count += 1
+                else:
+                    user_result["failed_count"] += 1
+                    failed_count += 1
+
+                user_result["months"].append({
+                    "year": run_year,
+                    "month": run_month,
+                    "success": month_success,
+                    "status": result.get("status"),
+                    "error": result.get("error"),
+                    "transactions_count": len(result.get("transactions", [])),
+                    "pipeline_result": safe_pipeline_result,
+                    "has_excel_file": bool(pipeline_result.get("excel_file")),
+                })
+
+            except Exception as e:
+                user_result["failed_count"] += 1
+                failed_count += 1
+
+                user_result["months"].append({
+                    "year": run_year,
+                    "month": run_month,
+                    "success": False,
+                    "status": None,
+                    "error": str(e),
+                    "transactions_count": 0,
+                    "pipeline_result": {},
+                    "has_excel_file": False,
+                })
+
+        user_result["success"] = user_result["failed_count"] == 0
+        results.append(user_result)
+
+    # -------------------------
+    # 7) Response
+    # -------------------------
+    return jsonify({
+        "success": True,
+        "message": "Formula update completed for all users",
+        "mode": "single_month_only" if single_month_only else "upload_history_months",
+        "end_year": end_year,
+        "end_month": end_month,
+        "amazon_cutoff_date": get_amazon_finance_cutoff_date().date().isoformat(),
+        "total_users": len(users),
+        "total_month_runs": total_month_runs,
+        "total_skipped_old_months": total_skipped_old_months,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": results,
+    }), 200
+
