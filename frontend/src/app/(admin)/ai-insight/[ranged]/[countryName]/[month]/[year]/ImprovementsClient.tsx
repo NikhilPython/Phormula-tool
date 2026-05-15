@@ -90,18 +90,24 @@ interface SkuItem {
 
 interface CategorizedGrowth {
   top_80_skus: SkuItem[];
-  new_or_reviving_skus: SkuItem[];
-  other_skus: SkuItem[];
 
-  // ✅ add
+  // keep for charts/export/backward compatibility
+  new_or_reviving_skus: SkuItem[];
+
+  // new separated groups
+  new_skus?: SkuItem[];
+  reviving_skus?: SkuItem[];
+
+  other_skus: SkuItem[];
   all_skus?: SkuItem[];
 
   top_80_total?: SkuItem | null;
   new_or_reviving_total?: SkuItem | null;
+  new_total?: SkuItem | null;
+  reviving_total?: SkuItem | null;
   other_total?: SkuItem | null;
   all_skus_total?: SkuItem | null;
 }
-
 
 
 interface SkuInsight {
@@ -147,7 +153,12 @@ interface ApiResponse {
 // =========================
 const API_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
-type TabKey = 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus' | 'all_skus';
+type TabKey =
+  | 'top_80_skus'
+  | 'new_skus'
+  | 'reviving_skus'
+  | 'other_skus'
+  | 'all_skus';
 
 // Persist keys
 const STORAGE_KEY = 'bi_insight_data';        // compare inputs + results
@@ -335,6 +346,14 @@ const MonthsforBI: React.FC = () => {
     },
   ];
 
+  const NEW_DUMMY: SkuItem[] = [
+    NEW_REV_DUMMY[0],
+  ];
+
+  const REVIVING_DUMMY: SkuItem[] = [
+    NEW_REV_DUMMY[1],
+  ];
+
   const OTHER_DUMMY: SkuItem[] = [
     {
       product_name: "Demo Product E",
@@ -364,18 +383,30 @@ const MonthsforBI: React.FC = () => {
 
   const DUMMY_CATEGORIZED_GROWTH: CategorizedGrowth = {
     top_80_skus: TOP_80_DUMMY,
-    new_or_reviving_skus: NEW_REV_DUMMY,
+
+    // keep combined for charts
+    new_or_reviving_skus: [
+      ...NEW_DUMMY,
+      ...REVIVING_DUMMY,
+    ],
+
+    // separate table tabs
+    new_skus: NEW_DUMMY,
+    reviving_skus: REVIVING_DUMMY,
+
     other_skus: OTHER_DUMMY,
 
-    // ✅ merged list for All SKUs tab
     all_skus: [
       ...TOP_80_DUMMY,
-      ...NEW_REV_DUMMY,
+      ...NEW_DUMMY,
+      ...REVIVING_DUMMY,
       ...OTHER_DUMMY,
     ],
 
     top_80_total: null,
     new_or_reviving_total: null,
+    new_total: null,
+    reviving_total: null,
     other_total: null,
     all_skus_total: null,
   };
@@ -460,14 +491,17 @@ const MonthsforBI: React.FC = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Data + UI state
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
     top_80_skus: [],
     new_or_reviving_skus: [],
+    new_skus: [],
+    reviving_skus: [],
     other_skus: [],
-    all_skus: [],              // ✅ add
+    all_skus: [],
     top_80_total: null,
     new_or_reviving_total: null,
+    new_total: null,
+    reviving_total: null,
     other_total: null,
     all_skus_total: null,
   });
@@ -1824,13 +1858,26 @@ const MonthsforBI: React.FC = () => {
 
   const isGlobalData = () => (countryName || '').toLowerCase() === 'global';
   const getTabLabel = (key: TabKey): string =>
-    key === 'top_80_skus' ? 'Top 80% SKUs'
-      : key === 'new_or_reviving_skus' ? 'New/Reviving SKUs'
-        : key === 'other_skus' ? 'Other SKUs'
-          : 'All SKUs';
+    key === 'top_80_skus'
+      ? 'Top 80% SKUs'
+      : key === 'new_skus'
+        ? 'New SKUs'
+        : key === 'reviving_skus'
+          ? 'Reviving SKUs'
+          : key === 'other_skus'
+            ? 'Other SKUs'
+            : 'All SKUs';
 
   const getTabNumberForFeedback = (key: keyof CategorizedGrowth): number =>
-    key === 'top_80_skus' ? 1 : key === 'new_or_reviving_skus' ? 2 : 3;
+    key === 'top_80_skus'
+      ? 1
+      : key === 'new_skus'
+        ? 2
+        : key === 'reviving_skus'
+          ? 3
+          : key === 'other_skus'
+            ? 4
+            : 5;
 
   // ✅ NEW helper: check if (year, month) allowed by backend
   const isPeriodAvailable = (year: string, month: string) => {
@@ -1887,55 +1934,25 @@ const MonthsforBI: React.FC = () => {
     const mapRow = (row: any): SkuItem => {
       const clone: any = { ...row };
 
-      // sales mix key mapping (if needed)
-      if (row['Sales Mix (Current)'] != null) clone['Sales Mix (Month2)'] = row['Sales Mix (Current)'];
+      if (row['Sales Mix (Current)'] != null) {
+        clone['Sales Mix (Month2)'] = row['Sales Mix (Current)'];
+      }
 
-      // growth field mapping (if your backend uses (%) keys)
       const fieldMap: Record<string, string> = {
         'Unit Growth (%)': 'Unit Growth',
         'ASP Growth (%)': 'ASP Growth',
         'Gross Sales Growth (%)': 'Gross Sales Growth',
         'Net Sales Growth (%)': 'Net Sales Growth',
         'Sales Mix Change (%)': 'Sales Mix Change',
-        'Profit Per Unit (%)': 'Profit Per Unit',
         'CM1 Profit Impact (%)': 'CM1 Profit Impact',
+        'Profit Per Unit (%)': 'Profit Per Unit',
       };
-      Object.entries(fieldMap).forEach(([bk, fk]) => {
-        if (row[bk] != null) clone[fk] = row[bk];
+
+      Object.entries(fieldMap).forEach(([oldKey, newKey]) => {
+        if (clone[oldKey] != null && clone[newKey] == null) {
+          clone[newKey] = clone[oldKey];
+        }
       });
-
-      // prev/curr → month1/month2 (aapke months compare page me bhi same keys use ho rahe)
-      clone.total_quantity_month1 = row.total_quantity_month1 ?? row.total_quantity_prev ?? null;
-      clone.total_quantity_month2 = row.total_quantity_month2 ?? row.total_quantity_curr ?? null;
-
-      clone.asp_month1 = row.asp_month1 ?? row.asp_prev ?? null;
-      clone.asp_month2 = row.asp_month2 ?? row.asp_curr ?? null;
-
-      clone.net_sales_month1 = row.net_sales_month1 ?? row.net_sales_prev ?? null;
-      clone.net_sales_month2 = row.net_sales_month2 ?? row.net_sales_curr ?? null;
-
-      clone.gross_sales_month1 = row.gross_sales_month1 ?? row.product_sales_prev ?? null;
-      clone.gross_sales_month2 = row.gross_sales_month2 ?? row.product_sales_curr ?? null;
-
-
-      clone.sales_mix_month1 = row.sales_mix_month1 ?? row.sales_mix_prev ?? null;
-      clone.sales_mix_month2 = row.sales_mix_month2 ?? row.sales_mix_curr ?? row['Sales Mix (Current)'] ?? null;
-
-      clone.profit_percentage_month1 = row.profit_percentage_month1 ?? row.profit_percentage_prev ?? null;
-      clone.profit_percentage_month2 = row.profit_percentage_month2 ?? row.profit_percentage_curr ?? null;
-
-
-      clone.unit_wise_profitability_month1 =
-        row.unit_wise_profitability_month1 ?? row.unit_wise_profitability_prev ?? null;
-      clone.unit_wise_profitability_month2 =
-        row.unit_wise_profitability_month2 ?? row.unit_wise_profitability_curr ?? null;
-
-      clone.profit_month1 = row.profit_month1 ?? row.profit_prev ?? null;
-      clone.profit_month2 = row.profit_month2 ?? row.profit_curr ?? null;
-
-      clone.rembursement_fee_month1 = row.rembursement_fee_month1 ?? row.rembursement_fee_prev ?? null;
-      clone.rembursement_fee_month2 = row.rembursement_fee_month2 ?? row.rembursement_fee_curr ?? null;
-
 
       return clone;
     };
@@ -1943,33 +1960,54 @@ const MonthsforBI: React.FC = () => {
     const empty: CategorizedGrowth = {
       top_80_skus: [],
       new_or_reviving_skus: [],
+      new_skus: [],
+      reviving_skus: [],
       other_skus: [],
+      all_skus: [],
       top_80_total: null,
       new_or_reviving_total: null,
+      new_total: null,
+      reviving_total: null,
       other_total: null,
       all_skus_total: null,
     };
 
     if (!raw) return empty;
 
+    const newSkus = (raw.new_skus || raw.new_sku || []).map(mapRow);
+    const revivingSkus = (raw.reviving_skus || raw.reviving_sku || []).map(mapRow);
+
+    const combinedNewReviving =
+      raw.new_or_reviving_skus?.length
+        ? raw.new_or_reviving_skus.map(mapRow)
+        : [...newSkus, ...revivingSkus];
+
     return {
       top_80_skus: (raw.top_80_skus || []).map(mapRow),
-      new_or_reviving_skus: (raw.new_or_reviving_skus || []).map(mapRow),
+
+      // keep this combined key for charts/export
+      new_or_reviving_skus: combinedNewReviving,
+
+      // separate keys for table tabs
+      new_skus: newSkus,
+      reviving_skus: revivingSkus,
+
       other_skus: (raw.other_skus || []).map(mapRow),
 
       all_skus: (raw.all_skus || [
         ...(raw.top_80_skus || []),
-        ...(raw.new_or_reviving_skus || []),
+        ...combinedNewReviving,
         ...(raw.other_skus || []),
       ]).map(mapRow),
 
       top_80_total: raw.top_80_total ? mapRow(raw.top_80_total) : null,
       new_or_reviving_total: raw.new_or_reviving_total ? mapRow(raw.new_or_reviving_total) : null,
+      new_total: raw.new_total ? mapRow(raw.new_total) : null,
+      reviving_total: raw.reviving_total ? mapRow(raw.reviving_total) : null,
       other_total: raw.other_total ? mapRow(raw.other_total) : null,
       all_skus_total: raw.all_skus_total ? mapRow(raw.all_skus_total) : null,
     };
   };
-
 
   // =========================
   // Load persisted state on mount

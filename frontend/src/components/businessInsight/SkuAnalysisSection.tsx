@@ -20,7 +20,8 @@ import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 export type TabKey =
     | "top_80_skus"
-    | "new_or_reviving_skus"
+    | "new_skus"
+    | "reviving_skus"
     | "other_skus"
     | "all_skus";
 
@@ -56,12 +57,21 @@ export interface SkuItem {
 
 export interface CategorizedGrowth {
     top_80_skus: SkuItem[];
+
+    // keep this for charts/export/backward compatibility
     new_or_reviving_skus: SkuItem[];
+
+    // new individual table tabs
+    new_skus?: SkuItem[];
+    reviving_skus?: SkuItem[];
+
     other_skus: SkuItem[];
     all_skus?: SkuItem[];
 
     top_80_total?: SkuItem | null;
     new_or_reviving_total?: SkuItem | null;
+    new_total?: SkuItem | null;
+    reviving_total?: SkuItem | null;
     other_total?: SkuItem | null;
     all_skus_total?: SkuItem | null;
 }
@@ -210,7 +220,8 @@ const SkuAnalysisSection: React.FC<Props> = ({
         try {
             const allSkus: SkuItem[] = [
                 ...(categorizedGrowth.top_80_skus || []),
-                ...(categorizedGrowth.new_or_reviving_skus || []),
+                ...(categorizedGrowth.new_skus || []),
+                ...(categorizedGrowth.reviving_skus || []),
                 ...(categorizedGrowth.other_skus || []),
             ];
 
@@ -267,7 +278,8 @@ const SkuAnalysisSection: React.FC<Props> = ({
         () => [
             { value: "all_skus" as const, label: "All SKUs" },
             { value: "top_80_skus" as const, label: "Top 80% SKUs" },
-            { value: "new_or_reviving_skus" as const, label: "New/Reviving SKUs" },
+            { value: "new_skus" as const, label: "New SKUs" },
+            { value: "reviving_skus" as const, label: "Reviving SKUs" },
             { value: "other_skus" as const, label: "Other SKUs" },
         ],
         []
@@ -316,7 +328,13 @@ const SkuAnalysisSection: React.FC<Props> = ({
     };
 
     const currentTabData = useMemo(() => {
-        const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
+        const fullCurrent = (
+            activeTab === "new_skus"
+                ? categorizedGrowth.new_skus || []
+                : activeTab === "reviving_skus"
+                    ? categorizedGrowth.reviving_skus || []
+                    : categorizedGrowth?.[activeTab] || []
+        ) as SkuItem[];
 
         if (activeTab !== "all_skus") return fullCurrent;
 
@@ -486,7 +504,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                 product_name: "Total",
                 sales_mix: `${fixed.toFixed(2)}%`,
                 sales_mix_change:
-                    activeTab !== "new_or_reviving_skus" ? 0 : undefined,
+                    activeTab !== "new_skus" && activeTab !== "reviving_skus" ? 0 : undefined,
                 unit_growth: pct(
                     sum("total_quantity_month1"),
                     sum("total_quantity_month2")
@@ -529,7 +547,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
             },
         ];
 
-        if (activeTab !== "new_or_reviving_skus") {
+        if (activeTab !== "new_skus" && activeTab !== "reviving_skus") {
             cols.push({
                 key: "sales_mix_change",
                 header: "Sales Mix Change (%)",
@@ -629,7 +647,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
     ]);
 
     const hasAnyRows = (
-        ["all_skus", "top_80_skus", "new_or_reviving_skus", "other_skus"] as TabKey[]
+        ["all_skus", "top_80_skus", "new_skus", "reviving_skus", "other_skus"] as TabKey[]
     ).some((k) => (categorizedGrowth[k] || []).length > 0);
 
     if (!hasAnyRows) return null;
@@ -641,6 +659,17 @@ const SkuAnalysisSection: React.FC<Props> = ({
                 ? getInsightByProductName(selectedSku)?.[1] || null
                 : null;
 
+    const getSkuEmptyMessage = () => {
+        if (activeTab === "new_skus") {
+            return "No new SKU had been launched within the last 6 months.";
+        }
+
+        if (activeTab === "reviving_skus") {
+            return "No reviving SKU was identified in the last 6 months.";
+        }
+
+        return "No data found.";
+    };
 
     return (
         <>
@@ -660,7 +689,12 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 disabled={
                                     loadingInsight ||
                                     isPreviewMode ||
-                                    !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                                    ![
+                                        "top_80_skus",
+                                        "new_skus",
+                                        "reviving_skus",
+                                        "other_skus",
+                                    ].some(
                                         (k) =>
                                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                                     )
@@ -725,7 +759,12 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 disabled={
                                     loadingInsight ||
                                     isPreviewMode ||
-                                    !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                                    ![
+                                        "top_80_skus",
+                                        "new_skus",
+                                        "reviving_skus",
+                                        "other_skus",
+                                    ].some(
                                         (k) =>
                                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])
                                                 ?.length > 0
@@ -761,6 +800,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         maxHeight="60vh"
                         loading={false}
                         headerMaxWidth={140}
+                        emptyMessage={getSkuEmptyMessage()}
                         rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
                     />
                 </div>
