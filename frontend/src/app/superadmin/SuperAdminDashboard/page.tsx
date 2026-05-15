@@ -48,6 +48,7 @@ type StatusFilter = "all" | "active" | "inactive";
 
 export default function SuperAdminDashboardPage() {
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [formulaUpdating, setFormulaUpdating] = useState<boolean>(false);
   const [emailInput, setEmailInput] = useState<string>("");
   const [searchResult, setSearchResult] = useState<DashboardResponse | null>(null);
   const [defaultData, setDefaultData] = useState<DashboardResponse | null>(null);
@@ -72,18 +73,18 @@ export default function SuperAdminDashboardPage() {
     { value: "inactive" as const, label: "Inactive" },
   ];
 
- const normalizeStatus = (status?: string | boolean) => {
-  if (status === true) return "active";
-  if (status === false) return "inactive";
+  const normalizeStatus = (status?: string | boolean) => {
+    if (status === true) return "active";
+    if (status === false) return "inactive";
 
-  const s = String(status ?? "").trim().toLowerCase();
+    const s = String(status ?? "").trim().toLowerCase();
 
-  if (s === "inactive" || s === "disabled" || s === "false") {
-    return "inactive";
-  }
+    if (s === "inactive" || s === "disabled" || s === "false") {
+      return "inactive";
+    }
 
-  return "active";
-};
+    return "active";
+  };
 
   useEffect(() => {
     const fetchDefaultData = async () => {
@@ -139,6 +140,102 @@ export default function SuperAdminDashboardPage() {
   useEffect(() => {
     setUsersData(defaultData?.users || []);
   }, [defaultData]);
+
+  const handleFormulaUpdate = async () => {
+    const token = localStorage.getItem("superadmin_token");
+
+    if (!token) {
+      toast.error("Superadmin token not found. Please login again.");
+      router.push("/superadmin/CDPAdminConsole");
+      return;
+    }
+
+    const marketplaces = [
+      {
+        country: "uk",
+        marketplace_id: "A1F83G8C2ARO7P",
+      },
+      {
+        country: "us",
+        marketplace_id: "ATVPDKIKX0DER",
+      },
+    ];
+
+    try {
+      setFormulaUpdating(true);
+      setShowSettings(false);
+
+      const results = [];
+
+      for (const item of marketplaces) {
+        const url =
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update` +
+          `?country=${item.country}` +
+          `&marketplace_id=${item.marketplace_id}` +
+          `&store_in_db=true` +
+          `&run_upload_pipeline=false` +
+          `&transaction_status=RELEASED`;
+
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const json = await response.json().catch(() => ({}));
+
+        if (!response.ok || !json?.success) {
+          throw new Error(
+            json?.error ||
+            json?.message ||
+            `Formula update failed for ${item.country.toUpperCase()}`
+          );
+        }
+
+        results.push({
+          country: item.country,
+          success_count: json.success_count || 0,
+          failed_count: json.failed_count || 0,
+          total_month_runs: json.total_month_runs || 0,
+          total_skipped_old_months: json.total_skipped_old_months || 0,
+        });
+      }
+
+      const totalSuccess = results.reduce(
+        (sum, item) => sum + item.success_count,
+        0
+      );
+
+      const totalFailed = results.reduce(
+        (sum, item) => sum + item.failed_count,
+        0
+      );
+
+      const totalRuns = results.reduce(
+        (sum, item) => sum + item.total_month_runs,
+        0
+      );
+
+      const totalSkipped = results.reduce(
+        (sum, item) => sum + item.total_skipped_old_months,
+        0
+      );
+
+      toast.success(
+        `Formula update completed for UK & US. Runs: ${totalRuns}, Success: ${totalSuccess}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`
+      );
+
+      console.log("Formula update results:", results);
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Formula update failed";
+      toast.error(msg);
+    } finally {
+      setFormulaUpdating(false);
+    }
+  };
 
   const handleLogout = async () => {
     setShowSettings(false);
@@ -283,117 +380,117 @@ export default function SuperAdminDashboardPage() {
     usersData.map((u) => (u.country || "").trim().toLowerCase()).filter(Boolean)
   ).size;
 
-const summaryCards = [
-  {
-    title: "Total Users",
-    value: totalUsers,
-    accent: "border-[#F4C04E] border-t-[#F4C04E]",
-    subText: `${activeUsers} active users`,
-  },
-  {
-    title: "Active Brands",
-    value: totalBrands,
-    accent: "border-[#C78B57] border-t-[#C78B57]",
-    subText: `${totalBrands} total brands`,
-  },
-  {
-    title: "Companies",
-    value: totalCompanies,
-    accent: "border-[#2EA8E5] border-t-[#2EA8E5]",
-    subText: `${totalCompanies} total companies`,
-  },
-  {
-    title: "Marketplaces",
-    value: totalMarketplaces,
-    accent: "border-[#93A95B] border-t-[#93A95B]",
-    subText: `${inactiveUsers} inactive users`,
-  },
-];
+  const summaryCards = [
+    {
+      title: "Total Users",
+      value: totalUsers,
+      accent: "border-[#F4C04E] border-t-[#F4C04E]",
+      subText: `${activeUsers} active users`,
+    },
+    {
+      title: "Active Brands",
+      value: totalBrands,
+      accent: "border-[#C78B57] border-t-[#C78B57]",
+      subText: `${totalBrands} total brands`,
+    },
+    {
+      title: "Companies",
+      value: totalCompanies,
+      accent: "border-[#2EA8E5] border-t-[#2EA8E5]",
+      subText: `${totalCompanies} total companies`,
+    },
+    {
+      title: "Marketplaces",
+      value: totalMarketplaces,
+      accent: "border-[#93A95B] border-t-[#93A95B]",
+      subText: `${inactiveUsers} inactive users`,
+    },
+  ];
 
- const handleToggleStatus = async (user: UserRow) => {
-  const emailKey = user.email;
-  const currentStatus = normalizeStatus(user.status);
-  const nextStatus = currentStatus === "active" ? false : true;
+  const handleToggleStatus = async (user: UserRow) => {
+    const emailKey = user.email;
+    const currentStatus = normalizeStatus(user.status);
+    const nextStatus = currentStatus === "active" ? false : true;
 
-  try {
-    setActionLoading((prev) => ({ ...prev, [emailKey]: true }));
+    try {
+      setActionLoading((prev) => ({ ...prev, [emailKey]: true }));
 
-    const token = localStorage.getItem("superadmin_token");
-    if (!token) {
-      toast.error("No authentication token found");
-      router.push("/superadmin/CDPAdminConsole");
-      return;
-    }
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/update_user_status`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          status: nextStatus,
-        }),
+      const token = localStorage.getItem("superadmin_token");
+      if (!token) {
+        toast.error("No authentication token found");
+        router.push("/superadmin/CDPAdminConsole");
+        return;
       }
-    );
 
-    const data = await response.json().catch(() => ({}));
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/update_user_status`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            status: nextStatus,
+          }),
+        }
+      );
 
-    if (!response.ok) {
-      throw new Error(data?.message || "Failed to update status");
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || "Failed to update status");
+      }
+
+      const updatedStatus =
+        data?.status === true || String(data?.status).toLowerCase() === "true"
+          ? "active"
+          : "inactive";
+
+      setUsersData((prev) =>
+        prev.map((u) =>
+          String(u.id) === String(user.id)
+            ? { ...u, status: updatedStatus }
+            : u
+        )
+      );
+
+      setDefaultData((prev) => {
+        if (!prev?.users) return prev;
+        return {
+          ...prev,
+          users: prev.users.map((u) =>
+            String(u.id) === String(user.id)
+              ? { ...u, status: updatedStatus }
+              : u
+          ),
+        };
+      });
+
+      setSearchResult((prev) => {
+        if (!prev?.users) return prev;
+        return {
+          ...prev,
+          users: prev.users.map((u) =>
+            String(u.id) === String(user.id)
+              ? { ...u, status: updatedStatus }
+              : u
+          ),
+        };
+      });
+
+      toast.success(
+        `User ${updatedStatus === "active" ? "enabled" : "disabled"} successfully`
+      );
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Failed to update status";
+      toast.error(msg);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [emailKey]: false }));
     }
-
-    const updatedStatus =
-      data?.status === true || String(data?.status).toLowerCase() === "true"
-        ? "active"
-        : "inactive";
-
-    setUsersData((prev) =>
-      prev.map((u) =>
-        String(u.id) === String(user.id)
-          ? { ...u, status: updatedStatus }
-          : u
-      )
-    );
-
-    setDefaultData((prev) => {
-      if (!prev?.users) return prev;
-      return {
-        ...prev,
-        users: prev.users.map((u) =>
-          String(u.id) === String(user.id)
-            ? { ...u, status: updatedStatus }
-            : u
-        ),
-      };
-    });
-
-    setSearchResult((prev) => {
-      if (!prev?.users) return prev;
-      return {
-        ...prev,
-        users: prev.users.map((u) =>
-          String(u.id) === String(user.id)
-            ? { ...u, status: updatedStatus }
-            : u
-        ),
-      };
-    });
-
-    toast.success(
-      `User ${updatedStatus === "active" ? "enabled" : "disabled"} successfully`
-    );
-  } catch (error) {
-    const msg =
-      error instanceof Error ? error.message : "Failed to update status";
-    toast.error(msg);
-  } finally {
-    setActionLoading((prev) => ({ ...prev, [emailKey]: false }));
-  }
-};
+  };
 
   const handleDeleteAdmin = async (email: string) => {
     const confirmed = window.confirm(
@@ -410,9 +507,8 @@ const summaryCards = [
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${
-              localStorage.getItem("superadmin_token") ?? ""
-            }`,
+            Authorization: `Bearer ${localStorage.getItem("superadmin_token") ?? ""
+              }`,
           },
           body: JSON.stringify({ email: email.trim() }),
         }
@@ -487,9 +583,8 @@ const summaryCards = [
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2">
                 <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    userStatus === "active" ? "bg-green-500" : "bg-red-500"
-                  }`}
+                  className={`inline-block h-2 w-2 rounded-full ${userStatus === "active" ? "bg-green-500" : "bg-red-500"
+                    }`}
                 />
                 <span className="capitalize">{userStatus}</span>
               </div>
@@ -498,17 +593,15 @@ const summaryCards = [
                 type="button"
                 onClick={() => handleToggleStatus(user)}
                 disabled={isBusy}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                  userStatus === "active" ? "bg-emerald-500" : "bg-slate-300"
-                } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${userStatus === "active" ? "bg-emerald-500" : "bg-slate-300"
+                  } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
                 title={
                   userStatus === "active" ? "Disable admin" : "Enable admin"
                 }
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    userStatus === "active" ? "translate-x-6" : "translate-x-1"
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${userStatus === "active" ? "translate-x-6" : "translate-x-1"
+                    }`}
                 />
               </button>
             </div>
@@ -531,9 +624,8 @@ const summaryCards = [
                 type="button"
                 onClick={() => handleDeleteAdmin(user.email)}
                 disabled={isBusy}
-                className={`inline-flex items-center justify-center px-3 py-2 rounded-md border border-red-200 bg-red-50 text-red-600 shadow-sm hover:bg-red-100 ${
-                  isBusy ? "opacity-60 cursor-not-allowed" : ""
-                }`}
+                className={`inline-flex items-center justify-center px-3 py-2 rounded-md border border-red-200 bg-red-50 text-red-600 shadow-sm hover:bg-red-100 ${isBusy ? "opacity-60 cursor-not-allowed" : ""
+                  }`}
                 title="Delete admin"
               >
                 <Trash2 size={16} />
@@ -589,6 +681,15 @@ const summaryCards = [
                     >
                       Change Password
                     </button>
+
+                    <button
+                      onClick={handleFormulaUpdate}
+                      disabled={formulaUpdating}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {formulaUpdating ? "Updating Formula..." : "Formula Update"}
+                    </button>
+
                     <button
                       onClick={handleLogout}
                       className="w-full text-left px-4 py-3 hover:bg-slate-50"
@@ -658,24 +759,24 @@ const summaryCards = [
 
       <div className="space-y-4 mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-  {summaryCards.map((card) => (
-    <SummaryMetricCardLarge
-      key={card.title}
-      title={card.title}
-      value={card.value.toLocaleString()}
-      className={`bg-white border border-t-4 ${card.accent}`}
-      comparisons={[
-        {
-          label: "Summary",
-          valueText: card.subText,
-          deltaText: "-",
-          deltaClassName: "text-gray-400",
-        },
-      ]}
-      valueClassName="text-[#414042]"
-    />
-  ))}
-</div>
+          {summaryCards.map((card) => (
+            <SummaryMetricCardLarge
+              key={card.title}
+              title={card.title}
+              value={card.value.toLocaleString()}
+              className={`bg-white border border-t-4 ${card.accent}`}
+              comparisons={[
+                {
+                  label: "Summary",
+                  valueText: card.subText,
+                  deltaText: "-",
+                  deltaClassName: "text-gray-400",
+                },
+              ]}
+              valueClassName="text-[#414042]"
+            />
+          ))}
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-t-xl border border-b-0 border-slate-200 bg-white px-4 py-3">
           <h2 className="text-sm sm:text-base font-semibold text-[#5EA68E]">
