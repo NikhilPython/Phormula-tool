@@ -401,9 +401,10 @@ def get_user_data():
 
     is_member = payload.get("is_member") is True
     member_id = payload.get("member_id")
-    marketplace_ids = payload.get("marketplace_ids")
-    modules = payload.get("modules")
-    countries = payload.get("countries")
+    marketplace_ids = payload.get("marketplace_ids") or []
+    modules = payload.get("modules") or []
+    countries = payload.get("countries") or []
+    country_access = payload.get("country_access") or {}
     token_email = payload.get("email")
 
     member_name = None
@@ -418,6 +419,12 @@ def get_user_data():
         if m:
             member_name = getattr(m, "member_name", None)
             member_role = getattr(m, "role", None)
+
+            # Always use latest DB access for members
+            marketplace_ids = m.marketplace_ids or []
+            countries = m.countries or []
+            modules = m.modules or []
+            country_access = m.country_access or {}
 
     arow = amazon_user.query.filter_by(user_id=int(user_id)).first()
 
@@ -474,9 +481,10 @@ def get_user_data():
         "owner_email": user.email,
         "member_email": token_email if is_member else None,
 
-        "countries": countries_list,
-        "marketplace_ids": marketplace_ids_list,
+        "countries": countries if is_member else countries_list,
+        "marketplace_ids": marketplace_ids if is_member else marketplace_ids_list,
         "modules": modules,
+        "country_access": country_access,
        
 
         "amazon_user_exists": user.amazon_user_exists,
@@ -504,9 +512,12 @@ def get_user_data():
                 "email": getattr(m, "email", None),
                 "role": getattr(m, "role", None),
                 "is_active": getattr(m, "is_active", None),
-                "modules": getattr(m, "modules", None),
-                "countries": getattr(m, "countries", None),
-                "marketplace_ids": getattr(m, "marketplace_ids", None),
+
+                "countries": m.countries or [],
+                "marketplace_ids": m.marketplace_ids or [],
+                "modules": m.modules or [],
+                "country_access": m.country_access or {},
+
                 "created_at": getattr(m, "created_at", None),
                 "updated_at": getattr(m, "updated_at", None),
             }

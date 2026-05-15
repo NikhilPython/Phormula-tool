@@ -177,7 +177,15 @@ export default function EditMemberModal({
       ["US", "UK", "CA", "DE"].includes(firstCountry) ? firstCountry : ""
     );
 
-    setModules(Array.isArray(member?.modules) ? member.modules : []);
+    const access = member?.country_access || {};
+    const modulesForCountry =
+      access[firstCountry] && Array.isArray(access[firstCountry])
+        ? access[firstCountry]
+        : Array.isArray(member?.modules)
+          ? member.modules
+          : [];
+
+    setModules(modulesForCountry);
     setRole((member?.role as RoleOption) || "MARKETING");
 
     setLoading(false);
@@ -196,12 +204,18 @@ export default function EditMemberModal({
 
     if (!member?.id) return setError("Member is missing");
     if (!country) return setError("Country is required");
-    if (modules.length === 0) return setError("Please select at least one Section Access");
+    if (modules.length === 0) {
+      return setError("Please select at least one Section Access");
+    }
+
+    const country_access = {
+      [country]: modules,
+    };
 
     const payload = {
       member_id: member.id,
       marketplace_ids,
-      modules,
+      country_access,
       role,
     };
 

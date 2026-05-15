@@ -61,6 +61,7 @@ class Member(db.Model):
     countries = Column(JSON, nullable=True)
     modules = Column(JSON, nullable=True)
     token_name = Column(String(80), unique=True, nullable=False, index=True)
+    country_access = db.Column(db.JSON, nullable=True, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
     # ✅ NEW (for secure reset single-use)
     password_changed_at = Column(DateTime, nullable=True)

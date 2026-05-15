@@ -111,19 +111,17 @@ function SectionAccessGrid({
             key={opt}
             type="button"
             onClick={() => toggle(opt)}
-            className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-              checked
+            className={`w-full rounded-2xl border px-4 py-4 text-left transition ${checked
                 ? "border-[#86E0B8] bg-[#EAF7F1]"
                 : "border-gray-200 bg-white hover:bg-gray-50"
-            }`}
+              }`}
           >
             <div className="flex items-start gap-3">
               <div
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${
-                  checked
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${checked
                     ? "border-[#10B981] bg-[#10B981] text-white"
                     : "border-gray-300 bg-white text-transparent"
-                }`}
+                  }`}
               >
                 ✓
               </div>
@@ -227,11 +225,16 @@ export default function AddMemberModal({
       return;
     }
 
+    const country_access = {
+      [country]: modules,
+    };
+
     const payload = {
       member_name: name.trim(),
       email: email.trim().toLowerCase(),
       marketplaces,
-      modules,
+      modules, // optional: keep for backward compatibility
+      country_access,
       role,
     };
 

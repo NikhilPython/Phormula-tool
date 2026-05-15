@@ -159,13 +159,16 @@ def member_login():
             "member_name": getattr(member, "member_name", None),
             "member_role": getattr(member, "role", None),
 
+            # old fields
             "modules": member.modules or [],
             "marketplaces": member.marketplace_ids or [],
             "countries": member.countries or [],
 
+            # new correct access field
+            "country_access": member.country_access or {},
+
             "exp": datetime.utcnow() + timedelta(hours=24),
         }
-
         token = jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm="HS256")
 
         return jsonify({
@@ -184,6 +187,7 @@ def member_login():
             "modules": member.modules or [],
             "marketplaces": member.marketplace_ids or [],
             "countries": member.countries or [],
+            "country_access": member.country_access or {},
         }), 200
 
     except Exception as e:

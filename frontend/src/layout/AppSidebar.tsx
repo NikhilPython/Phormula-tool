@@ -101,8 +101,22 @@ const AppSidebar: React.FC = () => {
 
   const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
 
-  const allowedModules: string[] =
-    authUser?.modules || tokenPayload?.modules || [];
+  const countryAccess: Record<string, string[]> =
+    authUser?.country_access || tokenPayload?.country_access || {};
+
+  const currentCountry = String(routeParams?.countryName || "global").toUpperCase();
+
+  const allowedModulesForCurrentCountry = React.useMemo(() => {
+    if (!isMember) return [];
+
+    if (currentCountry === "GLOBAL") {
+      return Array.from(
+        new Set(Object.values(countryAccess).flat())
+      );
+    }
+
+    return countryAccess[currentCountry] || [];
+  }, [isMember, currentCountry, countryAccess]);
 
   const { data: user } = useGetUserDataQuery(undefined, {
     skip: !token || isMember,
@@ -178,6 +192,22 @@ const AppSidebar: React.FC = () => {
     return opts;
   }, [connectedPlatforms, routeParams?.countryName, lastNonGlobalPlatform]);
 
+  const allowedCountriesForMember = React.useMemo(() => {
+    return Object.keys(countryAccess).map((country) => country.toLowerCase());
+  }, [countryAccess]);
+
+  const filteredRegionOptions = React.useMemo(() => {
+    if (!isMember) return regionOptions;
+
+    return regionOptions.filter((option) => {
+      if (!option.value.startsWith("amazon-")) return false;
+
+      const country = option.value.replace("amazon-", "").toLowerCase();
+
+      return allowedCountriesForMember.includes(country);
+    });
+  }, [isMember, regionOptions, allowedCountriesForMember]);
+
   // ===== Selected platform =====
   const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
     if (isPreviewMode) return "global";
@@ -247,20 +277,48 @@ const AppSidebar: React.FC = () => {
     }
 
     const country = routeParams?.countryName as string | undefined;
-    if (country) {
-      if (country === "global") {
-        setSelectedPlatform("global");
-        setPlatformCtx("global" as PlatformId);
-        localStorage.setItem("selectedPlatform", "global");
-      } else {
-        const platform = `amazon-${country}` as PlatformId;
-        setSelectedPlatform(platform);
-        setPlatformCtx(platform);
-        localStorage.setItem("selectedPlatform", platform);
+
+    if (!country) return;
+
+    if (country === "global") {
+      if (isMember && filteredRegionOptions.length > 0) {
+        const firstAllowedPlatform = filteredRegionOptions[0].value as PlatformId;
+        setSelectedPlatform(firstAllowedPlatform);
+        setPlatformCtx(firstAllowedPlatform);
+        localStorage.setItem("selectedPlatform", firstAllowedPlatform);
+        return;
       }
+
+      setSelectedPlatform("global");
+      setPlatformCtx("global" as PlatformId);
+      localStorage.setItem("selectedPlatform", "global");
       return;
     }
-  }, [routeParams?.countryName, isPreviewMode, setPlatformCtx]);
+
+    const platform = `amazon-${country}` as PlatformId;
+
+    if (isMember) {
+      const isAllowed = filteredRegionOptions.some((option) => option.value === platform);
+
+      if (!isAllowed && filteredRegionOptions.length > 0) {
+        const firstAllowedPlatform = filteredRegionOptions[0].value as PlatformId;
+        setSelectedPlatform(firstAllowedPlatform);
+        setPlatformCtx(firstAllowedPlatform);
+        localStorage.setItem("selectedPlatform", firstAllowedPlatform);
+        return;
+      }
+    }
+
+    setSelectedPlatform(platform);
+    setPlatformCtx(platform);
+    localStorage.setItem("selectedPlatform", platform);
+  }, [
+    routeParams?.countryName,
+    isPreviewMode,
+    setPlatformCtx,
+    isMember,
+    filteredRegionOptions,
+  ]);
 
   const monthNames = [
     "january",
@@ -316,7 +374,112 @@ const AppSidebar: React.FC = () => {
     year: (routeParams?.year as string) || initialPeriod.year,
   };
 
+  useEffect(() => {
+    if (!isMember) return;
+    if (!filteredRegionOptions.length) return;
 
+    const currentCountry = String(routeParams?.countryName || "").toLowerCase();
+
+    if (!currentCountry || currentCountry === "global") return;
+
+    const isAllowedCountry = allowedCountriesForMember.includes(currentCountry);
+
+    if (isAllowedCountry) return;
+
+    const firstAllowedCountry = filteredRegionOptions[0].value.replace("amazon-", "");
+    const segments = pathname.split("/").filter(Boolean);
+
+    const ranged = (routeParams?.ranged as string) || currentParams.ranged;
+    const month = (routeParams?.month as string) || currentParams.month;
+    const year = (routeParams?.year as string) || currentParams.year;
+
+    let redirectPath: string | null = null;
+
+    switch (segments[0]) {
+      case "live-dashboard":
+        redirectPath = `/live-dashboard/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "pnl-dashboard":
+        redirectPath = `/pnl-dashboard/${ranged}/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "live-business-insight":
+        redirectPath = `/live-business-insight/${ranged}/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "ai-insight":
+        redirectPath = `/ai-insight/${ranged}/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "chatbot":
+        redirectPath = `/chatbot/${ranged}/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "inventory-forecast":
+        redirectPath = `/inventory-forecast/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "pnlforecast":
+        redirectPath = `/pnlforecast/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "inventory-reconciliation":
+        redirectPath = `/inventory-reconciliation/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "currentInventory":
+        redirectPath = `/currentInventory/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "purchase-order":
+        redirectPath = `/purchase-order/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "cashflow":
+        redirectPath = `/cashflow/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "expense-reconciliation":
+        redirectPath = `/expense-reconciliation/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "fba":
+        redirectPath = `/fba/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "inputCost":
+        redirectPath = `/inputCost/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "objectives-targets":
+        redirectPath = `/objectives-targets/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
+      case "skuwiseprofit": {
+        const productname = segments[1] ?? "Classic";
+        redirectPath = `/skuwiseprofit/${productname}/${firstAllowedCountry}/${month}/${year}`;
+        break;
+      }
+    }
+
+    if (redirectPath && redirectPath !== pathname) {
+      router.replace(redirectPath);
+    }
+  }, [
+    isMember,
+    filteredRegionOptions,
+    allowedCountriesForMember,
+    routeParams?.countryName,
+    routeParams?.ranged,
+    routeParams?.month,
+    routeParams?.year,
+    pathname,
+    router,
+    currentParams.ranged,
+    currentParams.month,
+    currentParams.year,
+  ]);
 
   const monthToNumber = (monthStr: string) => {
     const idx = monthNames.indexOf(monthStr.toLowerCase());
@@ -847,12 +1010,15 @@ const AppSidebar: React.FC = () => {
 
   // ✅ filtered sections for member
   const visibleSections = React.useMemo(() => {
-    if (!isMember) return sections; // client sees all
+    if (!isMember) return sections;
+
     return sections.filter((s) => {
       const moduleKey = SECTION_TO_MODULE[s.key];
-      return moduleKey ? allowedModules.includes(moduleKey) : false;
+      return moduleKey
+        ? allowedModulesForCurrentCountry.includes(moduleKey)
+        : false;
     });
-  }, [isMember, allowedModules, sections]);
+  }, [isMember, allowedModulesForCurrentCountry, sections]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     "live-dashboard": true,
@@ -890,8 +1056,8 @@ const AppSidebar: React.FC = () => {
   const showText = isExpanded || isMobileOpen;
 
   const safeSelectedPlatform =
-    regionOptions.find((o) => o.value === selectedPlatform)?.value ??
-    regionOptions[0]?.value ??
+    filteredRegionOptions.find((o) => o.value === selectedPlatform)?.value ??
+    filteredRegionOptions[0]?.value ??
     "global";
 
   return (
@@ -952,14 +1118,14 @@ const AppSidebar: React.FC = () => {
       </div>
 
       {/* Platform Select */}
-      {showText && regionOptions.length > 0 && (
+      {showText && filteredRegionOptions.length > 0 && (
         <RegionSelect
           label="Platform"
           selectedCountry={safeSelectedPlatform}
-          options={regionOptions}
+          options={filteredRegionOptions}
           onChange={onRegionChange}
           className={`mb-2 rounded bg-transparent text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#5EA68E]
-       py-1 ${textMain}`}
+ py-1 ${textMain}`}
         />
       )}
 

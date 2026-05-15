@@ -147,6 +147,55 @@ def _validate_modules(modules):
         return False, invalid
     return True, []
 
+def _normalize_country_access(val):
+    """
+    Expected:
+    {
+      "UK": ["LIVE_DASHBOARD"],
+      "US": ["FINANCE_DASHBOARDS"]
+    }
+    """
+    if not isinstance(val, dict):
+        return {}
+
+    normalized = {}
+
+    for country, modules in val.items():
+        country_key = str(country).strip().upper()
+        module_list = _normalize_list(modules)
+
+        if not country_key or not module_list:
+            continue
+
+        normalized[country_key] = module_list
+
+    return normalized
+
+
+def _validate_country_access(country_access):
+    invalid_countries = []
+    invalid_modules = []
+
+    allowed_countries = set(ALLOWED_MARKETPLACES.values())
+
+    for country, modules in country_access.items():
+        if country not in allowed_countries:
+            invalid_countries.append(country)
+
+        for module in modules:
+            if module not in ALLOWED_MODULES:
+                invalid_modules.append(module)
+
+    return invalid_countries, invalid_modules
+
+
+def _flatten_modules_from_country_access(country_access):
+    return sorted({
+        module
+        for modules in country_access.values()
+        for module in modules
+    })
+
 def _email_exists_globally(email: str):
     """
     Check whether email already exists in any auth/account table:
@@ -174,145 +223,6 @@ def _email_exists_globally(email: str):
 # ==========================================================
 # Email
 # ==========================================================
-
-# def send_member_invite_email(member_name, email, password, token_name, countries, marketplaces, modules, role):
-#     """
-#     Invite email with role + access summary.
-#     """
-#     msg = Message(
-#         subject="Welcome to Phormula — Your Member Account Access",
-#         sender=("Phormula Care Team", "care@phormula.io"),
-#         recipients=[email],
-#     )
-
-#     login_url = "http://localhost:3000/signin"
-
-#     countries_str = ", ".join(countries) if countries else "-"
-#     marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
-#     role_str = role or "-"
-
-#     module_labels = {
-#         "LIVE_DASHBOARD": "Live Dashboard",
-#         "FINANCE_DASHBOARDS": "Finance Dashboards",
-#         "BUSINESS_INTELLIGENCE": "Business Intelligence",
-#         "INVENTORY_PLANNING": "Inventory Planning",
-#     }
-#     modules_pretty = ", ".join([module_labels.get(m, m) for m in modules]) if modules else "-"
-
-#     year = datetime.utcnow().year
-#     greet = f"Welcome, {member_name}!" if member_name else "Welcome!"
-
-#     msg.html = f"""
-# <!DOCTYPE html>
-# <html lang="en">
-# <head>
-#   <meta charset="UTF-8" />
-#   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-#   <title>Welcome to Phormula</title>
-# </head>
-# <body style="margin:0; padding:0; background:#f5f7fb; font-family:Arial, Helvetica, sans-serif;">
-#   <div style="max-width:640px; margin:0 auto; padding:24px;">
-#     <div style="background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 20px rgba(16,24,40,0.08); border:1px solid #e6eaf2;">
-#       <div style="padding:22px 24px; background:linear-gradient(135deg, #37455F 0%, #5EA68E 100%);">
-#         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-#           <div style="color:#ffffff;">
-#             <div style="font-size:18px; font-weight:700; letter-spacing:0.2px;">Phormula</div>
-#             <div style="font-size:13px; opacity:0.9;">Your member account has been created</div>
-#           </div>
-#           <div style="color:#ffffff; font-size:12px; opacity:0.85;">
-#             {datetime.utcnow().strftime("%b %d, %Y")}
-#           </div>
-#         </div>
-#       </div>
-
-#       <div style="padding:24px;">
-#         <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">{greet}</h2>
-#         <p style="margin:0 0 14px; color:#475467; font-size:14px; line-height:1.6;">
-#           An administrator has added you as a <b>Member</b> in Phormula. Below are your login details and the access you’ve been granted.
-#         </p>
-
-#         <div style="background:#f8fafc; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
-#           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
-#             Your Login Credentials
-#           </div>
-
-#           <div style="display:flex; flex-wrap:wrap; gap:10px;">
-#             <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
-#               <div style="color:#667085; font-size:12px; margin-bottom:4px;">Email</div>
-#               <div style="color:#101828; font-size:13px; font-weight:600; word-break:break-all;">{email}</div>
-#             </div>
-
-#             <div style="flex:1; min-width:220px; background:#ffffff; border:1px solid #e6eaf2; border-radius:10px; padding:12px;">
-#               <div style="color:#667085; font-size:12px; margin-bottom:4px;">Temporary Password</div>
-#               <div style="color:#101828; font-size:13px; font-weight:600;">{password}</div>
-#             </div>
-#           </div>
-
-#           <div style="margin-top:10px; color:#667085; font-size:12px; line-height:1.5;">
-#             <b>Security tip:</b> Please change your password after your first login.
-#           </div>
-#         </div>
-
-#         <div style="background:#ffffff; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
-#           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
-#             Your Access
-#           </div>
-
-#           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-#             <tr>
-#               <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Role</td>
-#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{role_str}</td>
-#             </tr>
-#             <tr style="border-top:1px solid #eef2f7;">
-#               <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Countries</td>
-#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{countries_str}</td>
-#             </tr>
-#             <tr style="border-top:1px solid #eef2f7;">
-#               <td style="padding:10px 0; color:#667085; font-size:12px;">Marketplaces</td>
-#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600; word-break:break-word;">
-#                 {marketplaces_str}
-#               </td>
-#             </tr>
-#             <tr style="border-top:1px solid #eef2f7;">
-#               <td style="padding:10px 0; color:#667085; font-size:12px;">Modules</td>
-#               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">
-#                 {modules_pretty}
-#               </td>
-#             </tr>
-#           </table>
-#         </div>
-
-#         <div style="text-align:center; margin:22px 0 6px;">
-#           <a href="{login_url}"
-#              style="display:inline-block; background:#37455F; color:#F8EDCF; text-decoration:none; padding:12px 22px;
-#                     border-radius:12px; font-size:14px; font-weight:700; box-shadow:0 6px 14px rgba(55,69,95,0.18);">
-#             Login to Phormula
-#           </a>
-#         </div>
-
-#         <div style="text-align:center; color:#667085; font-size:12px; margin-top:10px;">
-#           If the button doesn’t work, copy and paste this link:<br/>
-#           <span style="color:#344054; word-break:break-all;">{login_url}</span>
-#         </div>
-
-#         <div style="margin-top:18px; padding-top:14px; border-top:1px solid #eef2f7; color:#667085; font-size:12px; line-height:1.6;">
-#           If you did not expect this email, please contact support at
-#           <a href="mailto:care@phormula.io" style="color:#5EA68E; text-decoration:none; font-weight:700;">care@phormula.io</a>.
-#           <br/>
-#           Token reference: <span style="color:#344054; font-weight:700;">{token_name}</span>
-#         </div>
-#       </div>
-#     </div>
-
-#     <div style="text-align:center; color:#98a2b3; font-size:12px; margin-top:14px;">
-#       © {year} Phormula. All rights reserved.
-#     </div>
-#   </div>
-# </body>
-# </html>
-#     """
-#     mail.send(msg)
-
 def send_member_invite_email(member_name, email, password, token_name, countries, marketplaces, modules, role):
     """
     Invite email with role + access summary.
@@ -777,8 +687,8 @@ def add_member():
         member_name = (data.get("member_name") or "").strip()
         email = (data.get("email") or "").strip().lower()
         role = _normalize_role(data.get("role")) or DEFAULT_ROLE
+        country_access = _normalize_country_access(data.get("country_access"))
         marketplaces = _normalize_list(data.get("marketplaces"))
-        modules = _normalize_list(data.get("modules")) or list(DEFAULT_MODULES)
 
         # Auto-generate temporary password
         temp_password = _generate_temp_password(10)
@@ -786,8 +696,11 @@ def add_member():
         if not member_name:
             return _error("member_name is required", 400)
 
-        if not email or not marketplaces:
-            return _error("email and marketplaces are required", 400)
+        if not email:
+            return _error("email is required", 400)
+
+        if not country_access:
+            return _error("country_access is required", 400)
 
         if "@" not in email or "." not in email:
             return _error("Invalid email", 400)
@@ -807,27 +720,26 @@ def add_member():
                 allowed_roles=sorted(list(ALLOWED_ROLES)),
             )
 
-        ok, invalid_mps = _validate_marketplaces(marketplaces)
-        if not ok:
+        invalid_countries, invalid_modules = _validate_country_access(country_access)
+
+        if invalid_countries:
             return _error(
-                "Invalid marketplace IDs",
+                "Invalid countries",
                 400,
-                invalid_marketplaces=invalid_mps,
-                allowed_marketplaces=list(ALLOWED_MARKETPLACES.keys()),
+                invalid_countries=invalid_countries,
+                allowed_countries=sorted(list(set(ALLOWED_MARKETPLACES.values()))),
             )
 
-        countries = _derive_countries_from_marketplaces(marketplaces)
-        if not countries:
-            return _error("Could not derive countries from marketplaces", 400)
-
-        ok, invalid_modules = _validate_modules(modules)
-        if not ok:
+        if invalid_modules:
             return _error(
                 "Invalid modules",
                 400,
                 invalid_modules=invalid_modules,
                 allowed_modules=sorted(list(ALLOWED_MODULES)),
             )
+
+        countries = list(country_access.keys())
+        modules = _flatten_modules_from_country_access(country_access)
 
         token_name = f"m{owner_user_id}_{'_'.join([c.lower() for c in countries])}_{_random_token(10)}"
 
@@ -837,9 +749,15 @@ def add_member():
             email=email,
             password=generate_password_hash(temp_password),
             role=role,
+
+            # keep old fields for display/backward compatibility
             marketplace_ids=marketplaces,
             countries=countries,
             modules=modules,
+
+            # new actual permission source
+            country_access=country_access,
+
             token_name=token_name,
             is_verified=True,
         )
@@ -876,6 +794,7 @@ def add_member():
             "countries": countries,
             "marketplaces": marketplaces,
             "modules": modules,
+            "country_access": country_access,
             "email_sent": email_sent,
             "email_message": email_message,
         }), 201
@@ -944,6 +863,7 @@ def update_member_access():
             return _error("member_id or email is required", 400)
 
         q = Member.query.filter_by(owner_user_id=int(owner_user_id))
+
         if member_id:
             q = q.filter_by(id=int(member_id))
         else:
@@ -953,41 +873,12 @@ def update_member_access():
         if not member:
             return _error("Member not found for this owner", 404)
 
-        if "marketplace_ids" in data:
-            marketplace_ids = _normalize_list(data.get("marketplace_ids"))
-            if not marketplace_ids:
-                return _error("marketplace_ids cannot be empty", 400)
-
-            ok, invalid_mps = _validate_marketplaces(marketplace_ids)
-            if not ok:
-                return _error(
-                    "Invalid marketplace IDs",
-                    400,
-                    invalid_marketplaces=invalid_mps,
-                    allowed_marketplaces=list(ALLOWED_MARKETPLACES.keys()),
-                )
-
-            member.marketplace_ids = marketplace_ids
-            member.countries = _derive_countries_from_marketplaces(marketplace_ids)
-
-        if "modules" in data:
-            modules = _normalize_list(data.get("modules"))
-            if not modules:
-                return _error("modules cannot be empty", 400)
-
-            ok, invalid_modules = _validate_modules(modules)
-            if not ok:
-                return _error(
-                    "Invalid modules",
-                    400,
-                    invalid_modules=invalid_modules,
-                    allowed_modules=sorted(list(ALLOWED_MODULES)),
-                )
-
-            member.modules = modules
-
+        # ----------------------------------------------------------
+        # Role update
+        # ----------------------------------------------------------
         if "role" in data:
             role = _normalize_role(data.get("role")) or DEFAULT_ROLE
+
             if role not in ALLOWED_ROLES:
                 return _error(
                     "Invalid role",
@@ -995,10 +886,108 @@ def update_member_access():
                     invalid_role=role,
                     allowed_roles=sorted(list(ALLOWED_ROLES)),
                 )
+
             member.role = role
 
+        # ----------------------------------------------------------
+        # Verification update
+        # ----------------------------------------------------------
         if "is_verified" in data:
             member.is_verified = bool(data.get("is_verified"))
+
+        # ----------------------------------------------------------
+        # Main source of truth: country_access
+        # ----------------------------------------------------------
+        if "country_access" in data:
+            country_access = _normalize_country_access(data.get("country_access"))
+
+            if not country_access:
+                return _error("country_access cannot be empty", 400)
+
+            invalid_countries, invalid_modules = _validate_country_access(country_access)
+
+            if invalid_countries:
+                return _error(
+                    "Invalid countries",
+                    400,
+                    invalid_countries=invalid_countries,
+                    allowed_countries=sorted(list(set(ALLOWED_MARKETPLACES.values()))),
+                )
+
+            if invalid_modules:
+                return _error(
+                    "Invalid modules",
+                    400,
+                    invalid_modules=invalid_modules,
+                    allowed_modules=sorted(list(ALLOWED_MODULES)),
+                )
+
+            countries = list(country_access.keys())
+            modules = _flatten_modules_from_country_access(country_access)
+
+            country_to_marketplace = {
+                country: marketplace
+                for marketplace, country in ALLOWED_MARKETPLACES.items()
+            }
+
+            marketplace_ids = [
+                country_to_marketplace[country]
+                for country in countries
+                if country in country_to_marketplace
+            ]
+
+            member.country_access = country_access
+            member.countries = countries
+            member.modules = modules
+            member.marketplace_ids = marketplace_ids
+
+        # ----------------------------------------------------------
+        # Backward compatibility only:
+        # If old frontend sends marketplace_ids/modules without
+        # country_access, still allow it.
+        # ----------------------------------------------------------
+        else:
+            if "marketplace_ids" in data:
+                marketplace_ids = _normalize_list(data.get("marketplace_ids"))
+
+                if not marketplace_ids:
+                    return _error("marketplace_ids cannot be empty", 400)
+
+                ok, invalid_mps = _validate_marketplaces(marketplace_ids)
+                if not ok:
+                    return _error(
+                        "Invalid marketplace IDs",
+                        400,
+                        invalid_marketplaces=invalid_mps,
+                        allowed_marketplaces=list(ALLOWED_MARKETPLACES.keys()),
+                    )
+
+                member.marketplace_ids = marketplace_ids
+                member.countries = _derive_countries_from_marketplaces(marketplace_ids)
+
+            if "modules" in data:
+                modules = _normalize_list(data.get("modules"))
+
+                if not modules:
+                    return _error("modules cannot be empty", 400)
+
+                ok, invalid_modules = _validate_modules(modules)
+                if not ok:
+                    return _error(
+                        "Invalid modules",
+                        400,
+                        invalid_modules=invalid_modules,
+                        allowed_modules=sorted(list(ALLOWED_MODULES)),
+                    )
+
+                member.modules = modules
+
+                # If old frontend is used, build country_access from countries + modules
+                if member.countries:
+                    member.country_access = {
+                        str(country).upper(): modules
+                        for country in member.countries
+                    }
 
         if hasattr(member, "updated_at"):
             member.updated_at = datetime.utcnow()
@@ -1012,9 +1001,10 @@ def update_member_access():
             "member_name": member.member_name,
             "email": member.email,
             "role": member.role,
-            "marketplace_ids": member.marketplace_ids,
-            "countries": member.countries,
-            "modules": member.modules,
+            "marketplace_ids": member.marketplace_ids or [],
+            "countries": member.countries or [],
+            "modules": member.modules or [],
+            "country_access": member.country_access or {},
             "token_name": member.token_name,
         }), 200
 
