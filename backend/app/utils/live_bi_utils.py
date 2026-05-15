@@ -383,6 +383,93 @@ def fetch_first_seen_sku_date(user_id: int, country: str) -> dict:
 
     return first_seen
 
+def last_n_month_periods(end_year, end_month, n=6):
+    """
+    Returns set like {'2026-04', '2026-03', ...}
+    ending at end_year/end_month inclusive.
+    """
+    y, m = int(end_year), int(end_month)
+    periods = set()
+
+    for _ in range(n):
+        periods.add(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+
+    return periods
+
+
+def marketplace_id_for_country(country_lower):
+    country_lower = str(country_lower or "").strip().lower()
+
+    if country_lower == "uk":
+        return "A1F83G8C2ARO7P"
+
+    if country_lower == "us":
+        return "ATVPDKIKX0DER"
+
+    return None
+
+
+def fetch_new_skus_from_products_open_date(country: str, sku_keys: set, ref_date: date):
+    """
+    Uses products.open_date from DATABASE_AMAZON_URL to identify new SKUs.
+
+    New SKU rule:
+    - UK marketplace_id = A1F83G8C2ARO7P
+    - US marketplace_id = ATVPDKIKX0DER
+    - open_date month must be within last 6 month buckets ending at ref_date month
+    - SKU must be present in current MTD SKUs
+    """
+    country_lower = str(country or "").strip().lower()
+    marketplace_id = marketplace_id_for_country(country_lower)
+
+    if not marketplace_id or not sku_keys:
+        return set()
+
+    last6_periods = last_n_month_periods(
+        ref_date.year,
+        ref_date.month,
+        6
+    )
+
+    q = text("""
+        SELECT sku, open_date
+        FROM products
+        WHERE marketplace_id = :marketplace_id
+          AND sku = ANY(:sku_list)
+          AND open_date IS NOT NULL
+    """)
+
+    new_skus = set()
+
+    with engine_live.connect() as conn:
+        rows = conn.execute(q, {
+            "marketplace_id": marketplace_id,
+            "sku_list": list(sku_keys),
+        }).fetchall()
+
+    for sku, open_date in rows:
+        if not sku or not open_date:
+            continue
+
+        try:
+            if hasattr(open_date, "strftime"):
+                open_period = open_date.strftime("%Y-%m")
+            else:
+                open_period = str(open_date).strip()[:7]
+
+            if open_period in last6_periods:
+                new_skus.add(str(sku).strip())
+
+        except Exception as e:
+            print(f"[WARN] Failed parsing products.open_date for sku={sku}: {e}")
+
+    return new_skus
+
+
 
 
 def normalize_sales_mix(df: pd.DataFrame, mix_col="sales_mix", digits=2):
@@ -1716,63 +1803,7 @@ Rules:
 
         return fallback[:7]
 
-# def render_live_recommended_action(
-#     *,
-#     growth_row: dict,
-#     recommendation: str,
-#     ads_recommendation: str | None = None,
-#     inventory_recommendation: str | None = None,
-#     journey_summary: list[str] | None = None,
-#     currency_symbol="£",
-#     inventory_alerts: dict | None = None,   # portfolio alerts
-#     render_portfolio_inventory: bool = False,  # control rendering
-# ) -> str:
 
-#     lines = []
-
-#     name = growth_row.get("product_name") or growth_row.get("sku")
-#     lines.append(name)
-#     lines.append("")
-
-#     # ---------- Metrics ----------
-#     lines.append(
-#         f"ASP: {fmt_metric(growth_row['asp_curr'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"Units: {fmt_metric(growth_row['quantity_curr'], growth_row['Unit Growth (%)']['value'], '', decimals=0)}"
-#     )
-#     lines.append(
-#         f"Net sales: {fmt_metric(growth_row['net_sales_curr'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"CM1 profit: {fmt_metric(growth_row['profit_curr'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
-#     )
-
-#     # ---------- Product Journey ----------
-#     if journey_summary:
-#         lines.append("")
-#         lines.append("Product Journey:")
-#         for bullet in journey_summary:
-#             lines.append(f"- {bullet}")
-
-#     # ---------- Commercial Recommendation ----------
-#     lines.append("")
-#     lines.append(f"Recommendation: {recommendation}")
-
-#     # ---------- Advertising Recommendation ----------
-#     if ads_recommendation:
-#         lines.append("")
-#         lines.append(f"Advertising: {ads_recommendation}")
-
-#     # ---------- Inventory Recommendation (SKU level) ----------
-#     if inventory_recommendation:
-#         lines.append("")
-#         lines.append(f"• Inventory action: {inventory_recommendation}")
-
-#     return "\n".join(lines)
 
 def render_live_recommended_action(
     *,
