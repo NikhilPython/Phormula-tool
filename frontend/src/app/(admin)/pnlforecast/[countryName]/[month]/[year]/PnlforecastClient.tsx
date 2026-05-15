@@ -791,7 +791,14 @@ const Pnlforecast: React.FC = () => {
       periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
       companyName,
       brandName,
-      productRows: productRows || [],
+
+      currencyLabel: currencySymbol,
+      month1Label: `P&L Forecast ${formatMonthYear(currentMonth, currentYear)}`,
+      month2Label: `P&L Forecast ${formatMonthYear(nextMonth, nextMonthYear)}`,
+      month3Label: `P&L Forecast ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+      totalLabel: "P&L Forecast for 3 months",
+
+      productRows: displayProductRows || [],
       summaryRows: summaryAsRows || [],
       chartImageBase64: dataUrl,
     });
@@ -866,7 +873,7 @@ const Pnlforecast: React.FC = () => {
 
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
-};
+  };
 
   const monthGroup = (
     id: string,

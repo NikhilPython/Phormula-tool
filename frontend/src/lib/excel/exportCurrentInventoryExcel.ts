@@ -1488,6 +1488,13 @@ export async function exportPnLForecastExcel(params: {
   companyName?: string;
   brandName?: string;
 
+  currencyLabel?: string;
+
+  month1Label?: string;
+  month2Label?: string;
+  month3Label?: string;
+  totalLabel?: string;
+
   productRows: Array<Record<string, any>>;
   summaryRows?: Array<Record<string, any>>;
 
@@ -1501,6 +1508,13 @@ export async function exportPnLForecastExcel(params: {
     periodLabel = "",
     companyName = "",
     brandName = "",
+    currencyLabel = "",
+
+    month1Label = "P&L Forecast M1",
+    month2Label = "P&L Forecast M2",
+    month3Label = "P&L Forecast M3",
+    totalLabel = "P&L Forecast for 3 months",
+
     productRows,
     summaryRows = [],
     chartImageBase64 = null,
@@ -1515,9 +1529,11 @@ export async function exportPnLForecastExcel(params: {
     const binary = atob(base64);
     const len = binary.length;
     const bytes = new Uint8Array(len);
+
     for (let i = 0; i < len; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
+
     return bytes.buffer;
   };
 
@@ -1558,156 +1574,202 @@ export async function exportPnLForecastExcel(params: {
     sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
   };
 
- const headers = [
-  "S. No.",
-  "Product Name",
-  "SKU",
+  const headerRow1 = [
+    "S. No.",
+    "Product Name",
+    "SKU",
 
-  "Units M1",
-  "Sales M1",
-  "CM1 M1",
-  "CM1 % M1",
+    month1Label,
+    "",
+    "",
+    "",
 
-  "Units M2",
-  "Sales M2",
-  "CM1 M2",
-  "CM1 % M2",
+    month2Label,
+    "",
+    "",
+    "",
 
-  "Units M3",
-  "Sales M3",
-  "CM1 M3",
-  "CM1 % M3",
+    month3Label,
+    "",
+    "",
+    "",
 
-  "Units Total",
-  "Sales Total",
-  "CM1 Total",
-  "CM1 % Total",
-];
-
-const tableRows = [
-  ...(productRows || []),
-  ...(summaryRows || []),
-].map((r, index) => {
-  const isSummaryRow = !r.sku && r.product_name !== "Total";
-
-  return [
-    isSummaryRow || r.product_name === "Total" ? "" : index + 1,
-    r.product_name ?? "",
-    r.sku ?? "",
-
-    r.forecast_1st ?? "",
-    r.Total_Sales_1st ?? "",
-    r.profit_1st ?? "",
-    r.profit_percentage_1st ?? "",
-
-    r.forecast_2nd ?? "",
-    r.Total_Sales_2nd ?? "",
-    r.profit_2nd ?? "",
-    r.profit_percentage_2nd ?? "",
-
-    r.forecast_3rd ?? "",
-    r.Total_Sales_3rd ?? "",
-    r.profit_3rd ?? "",
-    r.profit_percentage_3rd ?? "",
-
-    r.forecast_sum ?? "",
-    r.Total_Sales_sum ?? "",
-    r.profit_sum ?? "",
-    r.profit_percentage_sum ?? "",
+    totalLabel,
+    "",
+    "",
+    "",
   ];
-});
+
+  const headerRow2 = [
+    "",
+    "",
+    "",
+
+    "Units",
+    `Sales (${currencyLabel})`,
+    `CM1 (${currencyLabel})`,
+    "CM1 %",
+
+    "Units",
+    `Sales (${currencyLabel})`,
+    `CM1 (${currencyLabel})`,
+    "CM1 %",
+
+    "Units",
+    `Sales (${currencyLabel})`,
+    `CM1 (${currencyLabel})`,
+    "CM1 %",
+
+    "Units",
+    `Sales (${currencyLabel})`,
+    `CM1 (${currencyLabel})`,
+    "CM1 %",
+  ];
+
+  const headerCount = headerRow1.length;
+
+  const tableRows = [
+    ...(productRows || []),
+    ...(summaryRows || []),
+  ].map((r, index) => {
+    const isSummaryRow = !r.sku && r.product_name !== "Total";
+
+    return [
+      isSummaryRow || r.product_name === "Total" ? "" : index + 1,
+      r.product_name ?? "",
+      r.sku ?? "",
+
+      r.forecast_1st ?? "",
+      r.Total_Sales_1st ?? "",
+      r.profit_1st ?? "",
+      r.profit_percentage_1st ?? "",
+
+      r.forecast_2nd ?? "",
+      r.Total_Sales_2nd ?? "",
+      r.profit_2nd ?? "",
+      r.profit_percentage_2nd ?? "",
+
+      r.forecast_3rd ?? "",
+      r.Total_Sales_3rd ?? "",
+      r.profit_3rd ?? "",
+      r.profit_percentage_3rd ?? "",
+
+      r.forecast_sum ?? "",
+      r.Total_Sales_sum ?? "",
+      r.profit_sum ?? "",
+      r.profit_percentage_sum ?? "",
+    ];
+  });
 
   /* =========================
      Sheet 1: P&L Forecast Table
   ========================= */
   const ws1 = workbook.addWorksheet("P&L Forecast", {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
   });
 
-  const headerCount = headers.length;
   applyExcelHeader(ws1, headerCount);
 
   const tableStartRow = 7;
 
-  ws1.getRow(tableStartRow).values = headers;
-  ws1.getRow(tableStartRow).height = 18;
+  ws1.getRow(tableStartRow).values = headerRow1;
+  ws1.getRow(tableStartRow + 1).values = headerRow2;
 
-  ws1.getRow(tableStartRow).eachCell((cell) => {
-    cell.alignment = { vertical: "middle", horizontal: "center" };
-    cell.fill = whiteFill;
-    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
-    cell.border = thinGrayBorder;
+  ws1.mergeCells(tableStartRow, 1, tableStartRow + 1, 1);
+  ws1.mergeCells(tableStartRow, 2, tableStartRow + 1, 2);
+  ws1.mergeCells(tableStartRow, 3, tableStartRow + 1, 3);
+
+  ws1.mergeCells(tableStartRow, 4, tableStartRow, 7);
+  ws1.mergeCells(tableStartRow, 8, tableStartRow, 11);
+  ws1.mergeCells(tableStartRow, 12, tableStartRow, 15);
+  ws1.mergeCells(tableStartRow, 16, tableStartRow, 19);
+
+  [tableStartRow, tableStartRow + 1].forEach((rowNumber) => {
+    const row = ws1.getRow(rowNumber);
+    row.height = 20;
+
+    for (let c = 1; c <= headerCount; c++) {
+      const cell = row.getCell(c);
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: "center",
+        wrapText: true,
+      };
+      cell.fill = whiteFill;
+      cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+      cell.border = thinGrayBorder;
+    }
   });
 
   tableRows.forEach((row, idx) => {
-    const excelRow = ws1.getRow(tableStartRow + 1 + idx);
+    const excelRow = ws1.getRow(tableStartRow + 2 + idx);
     excelRow.values = row;
 
-    const isTotalRow = String(row[0]).trim().toLowerCase() === "total";
+    const isTotalRow = String(row[1] ?? "").trim().toLowerCase() === "total";
 
-  excelRow.eachCell((cell, colNumber) => {
-  const isNumberValue = typeof cell.value === "number";
-  const numeric =
-    typeof cell.value === "string" &&
-    cell.value !== "" &&
-    !isNaN(Number(cell.value));
+    excelRow.eachCell((cell, colNumber) => {
+      const isNumberValue = typeof cell.value === "number";
+      const numeric =
+        typeof cell.value === "string" &&
+        cell.value !== "" &&
+        !isNaN(Number(cell.value));
 
-  if (isNumberValue || numeric) {
-    cell.value = Number(cell.value);
+      if (isNumberValue || numeric) {
+        cell.value = Number(cell.value);
 
-    const isPercentColumn = [7, 11, 15, 19].includes(colNumber);
-    const isUnitOrSerialColumn = [1, 4, 8, 12, 16].includes(colNumber);
+        const isPercentColumn = [7, 11, 15, 19].includes(colNumber);
+        const isUnitOrSerialColumn = [1, 4, 8, 12, 16].includes(colNumber);
 
-    if (isPercentColumn) {
-      cell.numFmt = "0.00%";
-      cell.value = Number(cell.value) / 100;
-    } else if (isUnitOrSerialColumn) {
-      cell.numFmt = "0";
-    } else {
-      cell.numFmt = "#,##0.00";
-    }
-  }
+        if (isPercentColumn) {
+          cell.numFmt = "0.00%";
+          cell.value = Number(cell.value) / 100;
+        } else if (isUnitOrSerialColumn) {
+          cell.numFmt = "0";
+        } else {
+          cell.numFmt = "#,##0.00";
+        }
+      }
 
-  cell.alignment = {
-    vertical: "middle",
-    horizontal: colNumber === 2 ? "left" : "center",
-  };
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: colNumber === 2 ? "left" : "center",
+      };
 
-  cell.fill = isTotalRow ? lightGrayFill : whiteFill;
-  cell.font = {
-    bold: isTotalRow,
-    size: 11,
-    color: { argb: "FF000000" },
-  };
-  cell.border = thinGrayBorder;
-});
+      cell.fill = isTotalRow ? lightGrayFill : whiteFill;
+      cell.font = {
+        bold: isTotalRow,
+        size: 11,
+        color: { argb: "FF000000" },
+      };
+      cell.border = thinGrayBorder;
+    });
   });
 
-ws1.columns = [
-  { width: 8 },
-  { width: 28 },
-  { width: 18 },
+  ws1.columns = [
+    { width: 8 },
+    { width: 28 },
+    { width: 18 },
 
-  { width: 12 },
-  { width: 14 },
-  { width: 14 },
-  { width: 12 },
+    { width: 12 },
+    { width: 14 },
+    { width: 14 },
+    { width: 12 },
 
-  { width: 12 },
-  { width: 14 },
-  { width: 14 },
-  { width: 12 },
+    { width: 12 },
+    { width: 14 },
+    { width: 14 },
+    { width: 12 },
 
-  { width: 12 },
-  { width: 14 },
-  { width: 14 },
-  { width: 12 },
+    { width: 12 },
+    { width: 14 },
+    { width: 14 },
+    { width: 12 },
 
-  { width: 12 },
-  { width: 16 },
-  { width: 16 },
-  { width: 12 },
-];
+    { width: 12 },
+    { width: 16 },
+    { width: 16 },
+    { width: 12 },
+  ];
 
   /* =========================
      Sheet 2: P&L Chart
@@ -2399,4 +2461,313 @@ export async function exportSkuInformationExcel(params: {
     }),
     filename
   );
+}
+
+
+
+
+
+
+
+
+
+/* =========================
+   SKU Analysis MTD export - tabs
+========================= */
+export function exportSkuAnalysisMtdExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  countryName: string;
+  titleCountry: string;
+  platformLabel?: string;
+
+  periodLabel: string;
+  companyName: string;
+  brandName: string;
+  homeCurrencyCode?: string;
+
+  month2Label: string;
+
+  categorizedGrowth: {
+    all_skus?: any[];
+    top_80_skus?: any[];
+    new_or_reviving_skus?: any[];
+    other_skus?: any[];
+  };
+}) {
+  const {
+    filename,
+    titleLine,
+    countryName,
+    titleCountry,
+    platformLabel = "Phormula",
+    periodLabel,
+    companyName,
+    brandName,
+    homeCurrencyCode,
+    month2Label,
+    categorizedGrowth,
+  } = params;
+
+  const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
+
+  const tabs = [
+    {
+      sheetName: "All SKUs",
+      rows:
+        categorizedGrowth.all_skus?.length
+          ? categorizedGrowth.all_skus
+          : [
+              ...(categorizedGrowth.top_80_skus || []),
+              ...(categorizedGrowth.new_or_reviving_skus || []),
+              ...(categorizedGrowth.other_skus || []),
+            ],
+    },
+    {
+      sheetName: "Top 80 SKUs",
+      rows: categorizedGrowth.top_80_skus || [],
+    },
+    {
+      sheetName: "New Reviving SKUs",
+      rows: categorizedGrowth.new_or_reviving_skus || [],
+    },
+    {
+      sheetName: "Other SKUs",
+      rows: categorizedGrowth.other_skus || [],
+    },
+  ];
+
+  const headers = [
+    "S.No.",
+    "Product Name",
+    `Sales Mix (${month2Label || "Current"})`,
+    "Sales Mix Change (%)",
+    "Unit Growth (%)",
+    "ASP Growth (%)",
+    "Net Sales Growth (%)",
+    "CM1 Profit Impact (%)",
+    "CM1 Profit Per Unit (%)",
+  ];
+
+  const headerCount = headers.length;
+  const ANCHOR_COL_1_BASED = headerCount;
+
+  const topExtraLines = [
+    `Country : ${titleCountry}`,
+    `Platform : ${platformLabel}`,
+    `Currency : ${currencySymbol}`,
+    `Period : ${periodLabel}`,
+  ];
+
+  const getGrowthValue = (row: any, key: string) => {
+    const value = row?.[key];
+
+    if (value && typeof value === "object") {
+      const n = toNumberLoose(value.value);
+      return n ?? 0;
+    }
+
+    return toNumberLoose(value) ?? 0;
+  };
+
+  const getGrowthCategory = (row: any, key: string) => {
+    const value = row?.[key];
+
+    if (value && typeof value === "object") {
+      return String(value.category || "").toLowerCase();
+    }
+
+    const n = toNumberLoose(value) ?? 0;
+    if (n > 0) return "high growth";
+    if (n < 0) return "negative growth";
+    return "low growth";
+  };
+
+  const getSalesMix = (row: any) => {
+    return (
+      toNumberLoose(row?.["Sales Mix (Month2)"]) ??
+      toNumberLoose(row?.sales_mix_month2) ??
+      toNumberLoose(row?.sales_mix) ??
+      0
+    );
+  };
+
+  const computeTotalRow = (rows: any[]) => {
+    const cleanRows = (rows || []).filter((r) => {
+      const name = String(r?.product_name || "").trim().toLowerCase();
+      return name && name !== "total" && !name.includes("total");
+    });
+
+    const sum = (key: string) =>
+      cleanRows.reduce((acc, r) => acc + (toNumberLoose(r?.[key]) ?? 0), 0);
+
+    const qtyOld = sum("total_quantity_month1");
+    const qtyNew = sum("total_quantity_month2");
+
+    const nsOld = sum("net_sales_month1");
+    const nsNew = sum("net_sales_month2");
+
+    const profitOld = sum("profit_month1");
+    const profitNew = sum("profit_month2");
+
+    const aspOld = qtyOld ? nsOld / qtyOld : 0;
+    const aspNew = qtyNew ? nsNew / qtyNew : 0;
+
+    const ppuOld = qtyOld ? profitOld / qtyOld : 0;
+    const ppuNew = qtyNew ? profitNew / qtyNew : 0;
+
+    const pct = (oldVal: number, newVal: number) =>
+      oldVal ? ((newVal - oldVal) / Math.abs(oldVal)) * 100 : 0;
+
+    return {
+      product_name: "Total",
+      "__isTotal": true,
+      "__salesMix": 100,
+      "__salesMixChange": 0,
+      "__unitGrowth": pct(qtyOld, qtyNew),
+      "__aspGrowth": pct(aspOld, aspNew),
+      "__netSalesGrowth": pct(nsOld, nsNew),
+      "__cm1ProfitImpact": pct(profitOld, profitNew),
+      "__profitPerUnit": pct(ppuOld, ppuNew),
+    };
+  };
+
+  const buildSheetRows = (rows: any[]) => {
+    const cleanRows = (rows || []).filter((r) => {
+      const name = String(r?.product_name || "").trim().toLowerCase();
+      return name && name !== "total" && !name.includes("total");
+    });
+
+    const body = cleanRows.map((row, index) => [
+      index + 1,
+      row?.product_name || "",
+      getSalesMix(row),
+      getGrowthValue(row, "Sales Mix Change"),
+      getGrowthValue(row, "Unit Growth"),
+      getGrowthValue(row, "ASP Growth"),
+      getGrowthValue(row, "Net Sales Growth"),
+      getGrowthValue(row, "CM1 Profit Impact"),
+      getGrowthValue(row, "Profit Per Unit"),
+    ]);
+
+    const total = computeTotalRow(cleanRows);
+
+    body.push([
+      "",
+      "Total",
+      total.__salesMix,
+      total.__salesMixChange,
+      total.__unitGrowth,
+      total.__aspGrowth,
+      total.__netSalesGrowth,
+      total.__cm1ProfitImpact,
+      total.__profitPerUnit,
+    ]);
+
+    return body;
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  tabs.forEach((tab) => {
+    const topAoA = buildTopAoA({
+      headerCount,
+      title: `${titleLine} - ${tab.sheetName}`,
+      companyName,
+      brandName,
+      anchorCol1Based: ANCHOR_COL_1_BASED,
+      extraLines: topExtraLines,
+    });
+
+    const headerRowIndex = topAoA.length;
+    const bodyAoA = buildSheetRows(tab.rows);
+
+    const sheetAoA = [...topAoA, headers, ...bodyAoA];
+    const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+    ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+
+    ws["!cols"] = [
+      { wch: 8 },
+      { wch: 32 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 24 },
+    ];
+
+    applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
+
+    // Header row style
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+      if (!ws[addr]) continue;
+
+    ws[addr].s = {
+  ...(ws[addr].s || {}),
+  font: { bold: true, sz: 11, color: { rgb: "000000" } },
+  fill: undefined,
+  alignment: { horizontal: "center", vertical: "center" },
+};
+    }
+
+    const startBodyRow = headerRowIndex + 1;
+    const endBodyRow = startBodyRow + bodyAoA.length - 1;
+
+    for (let r = startBodyRow; r <= endBodyRow; r++) {
+      const isTotalRow = r === endBodyRow;
+
+      for (let c = 0; c < headerCount; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (!cell) continue;
+
+        cell.s = {
+          ...(cell.s || {}),
+          alignment: {
+            horizontal: c === 1 ? "left" : "center",
+            vertical: "center",
+          },
+          border: {
+            top: { style: "thin", color: { rgb: "D9E1E8" } },
+            bottom: { style: "thin", color: { rgb: "D9E1E8" } },
+            left: { style: "thin", color: { rgb: "D9E1E8" } },
+            right: { style: "thin", color: { rgb: "D9E1E8" } },
+          },
+          font: {
+            ...(cell.s?.font || {}),
+            bold: isTotalRow,
+            sz: 11,
+          },
+fill: undefined,
+        };
+
+        // Percent formatting for all metric columns from Sales Mix onward
+        if (c >= 2 && isNumber(cell.v)) {
+          cell.v = cell.v / 100;
+          cell.z = "0.00%";
+        }
+
+        // Growth color styling
+      if (c >= 3 && isNumber(cell.v)) {
+  cell.s = {
+    ...(cell.s || {}),
+    font: {
+      ...(cell.s?.font || {}),
+      bold: isTotalRow || c >= 3,
+      color: { rgb: "000000" },
+    },
+  };
+}
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(tab.sheetName));
+  });
+
+  XLSX.writeFile(wb, filename);
 }

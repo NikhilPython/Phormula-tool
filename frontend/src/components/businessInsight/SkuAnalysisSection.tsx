@@ -15,6 +15,8 @@ import { FaThumbsUp, FaThumbsDown } from "react-icons/fa";
 
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 import { AnimatePresence, motion } from "framer-motion";
+import { exportSkuAnalysisMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 export type TabKey =
     | "top_80_skus"
@@ -85,31 +87,6 @@ type TableRow = Row & {
     __isOthers?: boolean;
 };
 
-// type Props = {
-//     categorizedGrowth: CategorizedGrowth;
-//     month1: string;
-//     year1: string;
-//     month2: string;
-//     year2: string;
-//     month2Label: string;
-//     skuInsights: Record<string, SkuInsight>;
-//     loadingInsight: boolean;
-//     // analyzeSkus: () => void;
-//     analyzeSkus: (
-//         e?: React.MouseEvent<HTMLButtonElement> | React.FormEvent
-//     ) => void;
-//     exportToExcel: (rows: SkuItem[], filename?: string) => void;
-//     getAllSkusForExport: () => SkuItem[];
-//     getAbbr: (m: string | number) => string;
-//     getInsightForItem: (item: SkuItem) => [string, SkuInsight] | null;
-//     setSelectedSku: (sku: string | null) => void;
-//     setModalOpen: (open: boolean) => void;
-//     setFbType: (t: "like" | "dislike" | null) => void;
-//     setFbText: (v: string) => void;
-//     setFbSuccess: (v: boolean) => void;
-//     isPreviewMode: boolean;
-// };
-
 type Props = {
     categorizedGrowth: CategorizedGrowth;
     month1: string;
@@ -119,10 +96,19 @@ type Props = {
     month2Label: string;
     countryName?: string;
     isGlobalData: () => boolean;
+
+    // old single-sheet export can stay for fallback, but we won't use it for the new button
     exportToExcel: (rows: SkuItem[], filename?: string) => void;
     getAllSkusForExport: () => SkuItem[];
+
     getAbbr: (m: string | number) => string;
     isPreviewMode: boolean;
+
+    // optional header values for Excel helper header block
+    companyName?: string;
+    brandName?: string;
+    homeCurrencyCode?: string;
+    platformLabel?: string;
 };
 
 
@@ -185,6 +171,8 @@ const SkuAnalysisSection: React.FC<Props> = ({
     getAllSkusForExport,
     getAbbr,
     isPreviewMode,
+    homeCurrencyCode = "",
+    platformLabel = "Phormula",
 }) => {
     const [activeTab, setActiveTab] = useState<TabKey>("all_skus");
     const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(false);
@@ -284,6 +272,47 @@ const SkuAnalysisSection: React.FC<Props> = ({
         ],
         []
     );
+
+    const { data: userData } = useGetUserDataQuery();
+    const companyName =
+        (userData as any)?.companyName ||
+        (userData as any)?.company_name ||
+        (userData as any)?.company ||
+        "";
+
+    const brandName =
+        (userData as any)?.brandName ||
+        (userData as any)?.brand_name 
+        "";
+
+   
+    const handleDownloadSkuAnalysisTabsExcel = () => {
+        if (isPreviewMode) return;
+
+        const titleCountry =
+            String(countryName || "").toLowerCase() === "global"
+                ? "Global"
+                : String(countryName || "").toUpperCase();
+
+        const periodLabel = `${getAbbr(month2)}'${String(year2).slice(2)}`;
+
+        exportSkuAnalysisMtdExcel({
+            filename: `SKU-Analysis-MTD-${titleCountry}-${periodLabel}.xlsx`,
+
+            titleLine: `${titleCountry} - SKU Analysis MTD - ${periodLabel}`,
+            countryName: String(countryName || ""),
+            titleCountry,
+            platformLabel,
+
+            periodLabel,
+            companyName,
+            brandName,
+            homeCurrencyCode,
+
+            month2Label: month2Label || periodLabel,
+            categorizedGrowth,
+        });
+    };
 
     const currentTabData = useMemo(() => {
         const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
@@ -647,12 +676,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                             <DownloadIconButton
                                 disabled={isPreviewMode}
-                                onClick={() => {
-                                    const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
-                                        2
-                                    )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                                    exportToExcel(getAllSkusForExport(), file);
-                                }}
+                                onClick={handleDownloadSkuAnalysisTabsExcel}
                                 className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                             />
                         </div>
@@ -718,12 +742,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                             <DownloadIconButton
                                 disabled={isPreviewMode}
-                                onClick={() => {
-                                    const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
-                                        2
-                                    )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                                    exportToExcel(getAllSkusForExport(), file);
-                                }}
+                                onClick={handleDownloadSkuAnalysisTabsExcel}
                                 className="shrink-0 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                             />
                         </div>

@@ -2253,7 +2253,7 @@ export default function DashboardPage() {
                 year: invMonthYear.year,
                 XLSX,
             });
-          
+
             setInvRows(rows);
             setInventoryAlerts(alerts);
         } catch (e: any) {
@@ -2590,7 +2590,7 @@ export default function DashboardPage() {
 
             const url = `${FIN_MTD_TX_ENDPOINT}?${params.toString()}`;
 
-         
+
             const res = await fetch(url, {
                 method: "GET",
                 headers: {
@@ -6177,7 +6177,7 @@ export default function DashboardPage() {
 
     const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
     const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
- 
+
     const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
 
     const globalBottomCards = useMemo(() => {
@@ -6719,110 +6719,6 @@ export default function DashboardPage() {
     ]);
 
 
-    const handleDownloadPlProductwiseMtd = useCallback(() => {
-        try {
-            const rows = (monthlySkuwiseRowsDisplay || []).filter((r) => {
-                const sku = String(r.sku || "").toUpperCase();
-                const pn = String((r as any).product_name || "").toLowerCase();
-                const isOthers = (r as any).isOthers === true;
-                return !isOthers && !(sku === "OTHERS" && pn === "others");
-            });
-
-            if (!rows.length) return;
-
-            const periodLabel = formattedMonthYear;
-            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
-            const companyName =
-                (userData as any)?.companyName ||
-                (userData as any)?.company_name ||
-                (userData as any)?.company ||
-                "";
-
-            const dataRows = monthlySkuwiseRows.map((r) => ({
-                "S.No": r.isTotal ? "" : r.sno ?? "",
-                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
-                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                "Ad Type": r.isOthers || r.isTotal ? "-" : (r.ad_type || "-"),
-                "Net Units Sold": Number(r.quantity || 0),
-                "ASP": Number(r.asp || 0),
-                "Net Sales": Number(r.net_sales || 0),
-                "COGS": Number(r.cogs || 0),
-                "Selling Fees": Number(r.selling_fees || 0),
-                "FBA Fees": Number(r.fba_fees || 0),
-                "Ads Spend": Number(r.ads_spend || 0),
-
-                // add this
-                "ACOS %": Number(r.acos || 0),
-
-                "Tax": Number(r.tax || 0),
-                "Credits": Number(r.credits || 0),
-                "Tax & Credits": Number(r.tax_and_credits || 0),
-                "CM1 Profit": Number(r.profit || 0),
-                "CM1 Profit %": Number(r.cm1_profit_per || 0),
-                "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-                "CM2 Profit": Number(r.cm2_profit || 0),
-                "CM2 Profit %": Number(r.cm2_profit_per || 0),
-                "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-            }));
-
-            const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
-                ...(countryName === "us" || countryName === "global"
-                    ? [
-                        {
-                            label: "Shipment Charges (-)",
-                            value: Number((plSummaryTotals as any)?.shipment_charges ?? 0),
-                            bold: true,
-                        },
-                    ]
-                    : []),
-
-                { label: "Cost of Advertisement", value: "", bold: true },
-                { label: "Visibility - Ads (-)", value: "", indent: 1 },
-                { label: "Visibility - Deals, Vouchers and Reviews (-)", value: "", indent: 1 },
-                { label: "Other Transactions", value: "", bold: true },
-                { label: "Other Platform Fees (-)", value: "", indent: 1 },
-                { label: "Inventory Storage Fees (-)", value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
-                { label: "Misc. Transactions (+)", value: "", indent: 1 },
-                { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
-                { label: "CM2 Profit/Loss", value: Number((plSummaryTotals as any)?.cm2_profit ?? 0), bold: true },
-                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true },
-                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
-                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
-                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true },
-                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
-            ];
-
-            exportPnLProductwiseBreakdownMtdExcel({
-                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
-                titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
-                countryName,
-                titleCountry,
-                platformLabel: "Phormula",
-                periodLabel,
-                companyName,
-                brandName: String(brandName || ""),
-                homeCurrencyCode: profileHomeCurrency,
-                dataRows,
-                summaryRows,
-            });
-        } catch (err) {
-            console.error("Error exporting P&L Productwise Breakdown MTD", err);
-        }
-    }, [
-        monthlySkuwiseRows,
-        formattedMonthYear,
-        countryName,
-        plSummaryTotals,
-        costOfAdsForSummary,
-        cm2MarginPctForSummary,
-        tacosFromDisplayedCardsForSummary,
-        reimbursementForSummary,
-        reimbursementVsCm2PctForSummary,
-        reimbursementVsSalesPctForSummary,
-        userData,
-        brandName,
-        profileHomeCurrency,
-    ]);
 
     const rangeCompletedPct = useMemo(() => {
         if (!selectedStartDay || !selectedEndDay) return 0;
@@ -8129,6 +8025,163 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const finalMonthlySkuwiseRowsForTable = shouldShowDummyUi
         ? dummyMonthlySkuwiseRowsForTable
         : monthlySkuwiseRowsForTable;
+
+
+    const handleDownloadPlProductwiseMtd = useCallback(() => {
+        try {
+            // ✅ Use the SAME rows that are shown in frontend table
+            const rowsToExport = (finalMonthlySkuwiseRowsForTable || []).filter((r) => {
+                const sku = String(r.sku || "").toUpperCase();
+                const pn = String((r as any).product_name || "").toLowerCase();
+
+                // keep Total and Others because frontend table shows them
+                return sku || pn || r.isTotal || r.isOthers;
+            });
+
+            if (!rowsToExport.length) return;
+
+            const periodLabel = formattedMonthYear;
+            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
+
+            const companyName =
+                (userData as any)?.companyName ||
+                (userData as any)?.company_name ||
+                (userData as any)?.company ||
+                "";
+
+            const n = (v: any) => Number(v ?? 0) || 0;
+
+            const totalRow: any =
+                rowsToExport.find((r: any) => r?.isTotal) ||
+                rowsToExport.find((r: any) => String(r?.sku || "").toUpperCase() === "GRAND_TOTAL") ||
+                rowsToExport.find((r: any) => String(r?.product_name || "").toLowerCase() === "total") ||
+                {};
+
+            const dataRows = rowsToExport.map((r: any) => ({
+                "S.No": r.isTotal ? "" : r.sno ?? "",
+                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                // "Ad Type": r.isOthers || r.isTotal ? "-" : formatAdType(r.ad_type || "-"),
+
+                "Net Units Sold": n(r.quantity),
+                "ASP": n(r.asp),
+                "Net Sales": n(r.net_sales),
+                "COGS": n(r.cogs),
+
+                "Selling Fees": n(r.selling_fees),
+                "FBA Fees": n(r.fba_fees),
+
+                "Ads Spend": n(r.ads_spend),
+                "ACOS %": n(r.acos),
+
+                "Tax": n(r.tax),
+                "Credits": n(r.credits),
+                "Tax & Credits": n(r.tax_and_credits),
+
+                "CM1 Profit": n(r.profit),
+                "CM1 Profit %": n(r.cm1_profit_per),
+                "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+
+                "CM2 Profit": n(r.cm2_profit),
+                "CM2 Profit %": n(r.cm2_profit_per),
+                "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+            }));
+
+            // ✅ Pull summary values from the same frontend/grand-total data first,
+            // then fallback to plSummaryTotals.
+            const visibilityAds =
+                n(totalRow?.product_spend) ||
+                n((plSummaryTotals as any)?.visible_ads);
+
+            const dealsVouchers =
+                n(totalRow?.dealsvouchar_ads) ||
+                n((plSummaryTotals as any)?.dealsvouchar_ads);
+
+            const otherPlatformFees =
+                n(totalRow?.platformfeenew) ||
+                n(totalRow?.platform_fee) ||
+                n((plSummaryTotals as any)?.platform_fee);
+
+            const inventoryStorageFees =
+                n(totalRow?.platform_fee_inventory_storage) ||
+                n((plSummaryTotals as any)?.platform_fee_inventory_storage);
+
+            const miscTransactions =
+                n(totalRow?.other) ||
+                n((plSummaryTotals as any)?.misc_transaction);
+
+            const lostInventory =
+                n(totalRow?.lost_total) ||
+                n((plSummaryTotals as any)?.lost_total) ||
+                n((plSummaryTotals as any)?.reimbursement_lost_inventory_amount);
+
+            const shipmentCharges =
+                n((plSummaryTotals as any)?.shipment_charges);
+
+            const cm2ProfitLoss =
+                n(totalRow?.total_cm2_profit) ||
+                n(totalRow?.cm2_profit) ||
+                n((plSummaryTotals as any)?.cm2_profit);
+
+            const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
+                { label: "Cost of Advertisement", value: "", bold: true },
+                { label: "Visibility - Ads (-)", value: visibilityAds, indent: 1 },
+                { label: "Visibility - Deals, Vouchers and Reviews (-)", value: dealsVouchers, indent: 1 },
+
+                { label: "Other Transactions", value: "", bold: true },
+                { label: "Other Platform Fees (-)", value: otherPlatformFees, indent: 1 },
+                { label: "Inventory Storage Fees (-)", value: inventoryStorageFees, indent: 1 },
+                { label: "Misc. Transactions (+)", value: miscTransactions, indent: 1 },
+                { label: "Reimbursement for lost Inventory (+)", value: lostInventory, indent: 1 },
+
+                ...(countryName === "us" || countryName === "global"
+                    ? [
+                        {
+                            label: "Shipment Charges (-)",
+                            value: shipmentCharges,
+                            bold: true
+                        },
+                    ]
+                    : []),
+
+                { label: "CM2 Profit/Loss", value: cm2ProfitLoss, bold: true },
+                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
+                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
+            ];
+
+            exportPnLProductwiseBreakdownMtdExcel({
+                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
+                titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
+                countryName,
+                titleCountry,
+                platformLabel: "Phormula",
+                periodLabel,
+                companyName,
+                brandName: String(brandName || ""),
+                homeCurrencyCode: profileHomeCurrency,
+                dataRows,
+                summaryRows,
+            });
+        } catch (err) {
+            console.error("Error exporting P&L Productwise Breakdown MTD", err);
+        }
+    }, [
+        finalMonthlySkuwiseRowsForTable,
+        formattedMonthYear,
+        countryName,
+        plSummaryTotals,
+        cm2MarginPctForSummary,
+        tacosFromDisplayedCardsForSummary,
+        reimbursementForSummary,
+        reimbursementVsCm2PctForSummary,
+        reimbursementVsSalesPctForSummary,
+        userData,
+        brandName,
+        profileHomeCurrency,
+    ]);
 
 
     const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {

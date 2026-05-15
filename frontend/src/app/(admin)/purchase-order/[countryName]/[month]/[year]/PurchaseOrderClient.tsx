@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import UploadLocalInvModal from '@/components/Modal/UploadLocalInvModal';
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
-import DownloadIconButton from '@/components/ui/button/DownloadButton';
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { exportPurchaseOrderExcel } from '@/lib/excel/exportCurrentInventoryExcel';
@@ -500,48 +500,6 @@ export default function PurchaseOrderPage({
       : fetchDispatchFile(month, year));
   }, [month, year, isGlobalRoute, fetchDispatchFile, fetchGlobalDispatchFile]);
 
-  const handleExportToExcel = useCallback(() => {
-    const exportRows = skuData.map((row, index) => {
-      const isTotalRow =
-        String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
-
-      const formatted: Record<string, any> = {
-        'S. No.': isTotalRow ? '' : row['S. No.'] ?? index + 1,
-      };
-
-      displayedColumns.forEach((col) => {
-        if (col === 'Sno.') return;
-
-        let value = row[col];
-
-        if (isTotalRow && col === 'Cost per Unit (in INR)') {
-          value = '';
-        }
-
-        formatted[col] = value ?? '';
-      });
-
-      return formatted;
-    });
-
-    const titleCountry =
-      countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase();
-
-    void exportPurchaseOrderExcel({
-      filename: isGlobalRoute
-        ? `Global_PO_Report_${month}_${year}.xlsx`
-        : `PO_Report_${countryName}_${month}_${year}.xlsx`,
-      titleLine: `Amazon ${titleCountry} - PO Report - ${month} ${year}`,
-      titleCountry,
-      platformLabel: 'Phormula',
-      periodLabel: `${month} ${year}`,
-      companyName,
-      brandName,
-      sheetName: isGlobalRoute ? 'Global PO Data' : 'PO Data',
-      dataRows: exportRows,
-    });
-  }, [skuData, displayedColumns, isGlobalRoute, month, year, countryName, companyName, brandName]);
-
 
   const handleRedirectToForecast = () => {
     router.push(`/inventory-forecast/${countryName}/${month}/${year}`);
@@ -559,42 +517,6 @@ export default function PurchaseOrderPage({
     }
   };
 
-  // const tableData = useMemo(() => {
-  //   if (!skuData.length) return [];
-
-  //   const signRow: Row = {};
-  //   displayedColumns.forEach((col) => {
-  //     signRow[col] = signRowMap[col] || '';
-  //   });
-  //   signRow.__isSignRow = true;
-
-  //   const formattedRows = skuData.map((row, index) => {
-  //     const output: Row = {};
-
-  //     displayedColumns.forEach((col) => {
-  //       let value = col === 'Sno.' ? row[col] ?? index + 1 : row[col];
-
-  //       if (typeof value === 'number') {
-  //         value = value.toLocaleString('en-IN', {
-  //           minimumFractionDigits: 0,
-  //           maximumFractionDigits: 2,
-  //         });
-  //       }
-
-  //       output[col] = value ?? '';
-  //     });
-
-  //     const isTotalRow =
-  //       String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
-
-  //     output.__isTotalRow = isTotalRow;
-  //     return output;
-  //   });
-
-  //   return [signRow, ...formattedRows];
-  // }, [skuData, displayedColumns, signRowMap]);
-
-
   const normalCountryDispatchKey = useMemo(() => {
     const country = countryName.toLowerCase();
 
@@ -604,6 +526,107 @@ export default function PurchaseOrderPage({
 
     return `Dispatches ${countryName.toUpperCase()}`;
   }, [countryName]);
+
+  const handleExportToExcel = useCallback(() => {
+    if (!skuData.length || noData || loading) return;
+
+    const isTotalProductRow = (row: Row) =>
+      String(row["Product Name"] ?? "").trim().toLowerCase() === "total";
+
+    const sourceRows = [...skuData];
+
+    const totalRow = sourceRows.find((row) => isTotalProductRow(row));
+
+    const sortedRows = sourceRows
+      .filter((row) => !isTotalProductRow(row))
+      .sort((a, b) => {
+        const valA = isGlobalRoute
+          ? toNumber(a["Total Dispatches"])
+          : toNumber(a[normalCountryDispatchKey]);
+
+        const valB = isGlobalRoute
+          ? toNumber(b["Total Dispatches"])
+          : toNumber(b[normalCountryDispatchKey]);
+
+        return valB - valA;
+      });
+
+    let rowsForExport: Row[] = [];
+
+    if (sortedRows.length <= 9) {
+      rowsForExport = [...sortedRows];
+    } else {
+      const firstNine = sortedRows.slice(0, 9);
+      const remainingRows = sortedRows.slice(9);
+      const othersRow = buildOthersPoRow(remainingRows, displayedColumns);
+
+      rowsForExport = [...firstNine, othersRow];
+    }
+
+    if (totalRow) {
+      rowsForExport.push(totalRow);
+    }
+
+    const exportRows = rowsForExport.map((row, index) => {
+      const isTotalRow =
+        String(row["Product Name"] ?? "").trim().toLowerCase() === "total";
+
+      const formatted: Record<string, any> = {};
+
+      displayedColumns.forEach((col) => {
+        if (col === "S. No.") {
+          formatted[col] = isTotalRow ? "" : index + 1;
+          return;
+        }
+
+        if (col === "Dispatch") {
+          formatted[col] = row.Dispatch ?? row[normalCountryDispatchKey] ?? 0;
+          return;
+        }
+
+        if (isTotalRow && col === "Cost per Unit (in INR)") {
+          formatted[col] = "";
+          return;
+        }
+
+        formatted[col] = row[col] ?? "";
+      });
+
+      return formatted;
+    });
+
+    const titleCountry =
+      countryName?.toLowerCase() === "global"
+        ? "Global"
+        : countryName?.toUpperCase();
+
+    void exportPurchaseOrderExcel({
+      filename: isGlobalRoute
+        ? `Global_PO_Report_${month}_${year}.xlsx`
+        : `PO_Report_${countryName}_${month}_${year}.xlsx`,
+      titleLine: `Amazon ${titleCountry} - PO Report - ${month} ${year}`,
+      titleCountry,
+      platformLabel: "Phormula",
+      periodLabel: `${month} ${year}`,
+      companyName,
+      brandName,
+      sheetName: isGlobalRoute ? "Global PO Data" : "PO Data",
+      dataRows: exportRows,
+    });
+  }, [
+    skuData,
+    noData,
+    loading,
+    displayedColumns,
+    isGlobalRoute,
+    normalCountryDispatchKey,
+    month,
+    year,
+    countryName,
+    companyName,
+    brandName,
+  ]);
+
 
   const tableData = useMemo(() => {
     if (!skuData.length) return []

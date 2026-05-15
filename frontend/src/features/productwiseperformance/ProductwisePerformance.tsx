@@ -1066,18 +1066,22 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         const norm = normalizeCountryKey(country);
         const rows = Array.isArray(rawArray) ? rawArray : [];
 
-        if (norm === "global") return false;
+        const hasData = rows.some(
+          (m: MonthDatum) =>
+            m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
+        );
 
-        if (isPreviewMode) {
-          return (
-            connectedSet.has(norm) &&
-            rows.some(
-              (m: MonthDatum) =>
-                m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
-            )
-          );
+        // ✅ Show GLOBAL card only on global page
+        if (norm === "global") {
+          return isGlobalPage && hasData;
         }
 
+        // ✅ Preview: only show connected countries with data
+        if (isPreviewMode) {
+          return connectedSet.has(norm) && hasData;
+        }
+
+        // ✅ Normal: show connected country cards like UK / US / CA
         return connectedSet.has(norm);
       })
       .map(([country, rawArray]) => {
@@ -1100,8 +1104,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           monthsWithSales.length > 0 ? totalSales / monthsWithSales.length : 0;
 
         const avgSellingPrice = totalUnits > 0 ? totalSales / totalUnits : 0;
-        const avgMonthlyProfit =
-          monthly.length > 0 ? totalProfit / monthly.length : 0;
 
         const maxSalesMonth =
           monthly.length > 0
@@ -1117,6 +1119,13 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             )
             : { month: "", net_sales: 0, quantity: 0, profit: 0 };
 
+        const maxProfitMonth =
+          monthly.length > 0
+            ? monthly.reduce((max, m) =>
+              m.profit > max.profit ? m : max
+            )
+            : { month: "", net_sales: 0, quantity: 0, profit: 0 };
+
         const isConnected =
           normKey === "global" || connectedSet.has(normKey);
 
@@ -1129,14 +1138,19 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             gross_margin_avg,
             avgSales,
             avgSellingPrice,
-            avgMonthlyProfit,
             maxSalesMonth,
             maxUnitsMonth,
+            maxProfitMonth,
           },
           isConnected,
         };
       });
-  }, [data, connectedCountries, isPreviewMode]);
+  }, [
+    data,
+    connectedCountries,
+    isPreviewMode,
+    isGlobalPage,
+  ]);
 
   const orderedCards = useMemo(() => {
     if (!cards.length) return [];
@@ -1182,8 +1196,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         bestSalesValue: card.stats.maxSalesMonth?.net_sales ?? 0,
         bestUnitsMonth: card.stats.maxUnitsMonth?.month || "",
         bestUnitsValue: card.stats.maxUnitsMonth?.quantity ?? 0,
-        bestProfitMonth: card.stats.maxSalesMonth?.month || "",
-        bestProfitValue: card.stats.maxSalesMonth?.profit ?? 0,
+        bestProfitMonth: card.stats.maxProfitMonth?.month || "",
+        bestProfitValue: card.stats.maxProfitMonth?.profit ?? 0,
       };
     });
   }, [visibleCountryCards]);

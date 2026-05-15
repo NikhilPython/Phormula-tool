@@ -239,15 +239,21 @@ const CountryCard: React.FC<CountryCardProps> = ({
               borderTopColor: getCountryColor(colorKey),
             }}
           >
-
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
               Profit
             </p>
+
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
-              {formatMonthYear(stats.maxSalesMonth.month, selectedYear || "")}
+              {formatMonthYear(
+                stats.maxProfitMonth?.month || stats.maxSalesMonth.month,
+                selectedYear || ""
+              )}
             </p>
+
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
-              {formatAmount(stats.maxSalesMonth.profit)}
+              {formatAmount(
+                stats.maxProfitMonth?.profit ?? stats.maxSalesMonth.profit
+              )}
             </p>
           </div>
         </div>

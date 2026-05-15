@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/modal'
 import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable'
-import DownloadIconButton from '@/components/ui/button/DownloadButton'
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
 import { exportDispatchExcel } from "@/lib/excel/exportCurrentInventoryExcel";
@@ -469,17 +469,19 @@ export default function DispatchPage({
   const displayedColumns = [...DISPLAYED_COLUMNS]
 
   function handleExportToExcel() {
+    if (!skuData.length || noData || loading) return;
+
     const exportRows = skuData.map((row, index) => {
       const formattedRow: Record<string, string | number> = {
         'S. No.': isTotalRow(row) ? '' : index + 1,
-      }
+      };
 
       displayedColumns.forEach((col) => {
-        if (col === 'S. No.') return
+        if (col === 'S. No.') return;
 
         if (col === 'SKU' && isTotalRow(row)) {
-          formattedRow['SKU'] = ''
-          return
+          formattedRow['SKU'] = '';
+          return;
         }
 
         if (
@@ -491,36 +493,62 @@ export default function DispatchPage({
             'Inventory Coverage Ratio Before Dispatch',
           ].includes(col)
         ) {
-          formattedRow[col] = calculateColumnTotal(col)
-          return
+          formattedRow[col] =
+            col === 'Inventory Coverage Ratio Before Dispatch'
+              ? calculateTotalCoverageRatio()
+              : calculateColumnTotal(col);
+          return;
         }
 
         if (isTotalRow(row) && col === 'Product Name') {
-          formattedRow[col] = 'Total'
-          return
+          formattedRow[col] = 'Total';
+          return;
         }
 
-        const v = row[col]
+        const v = row[col];
         formattedRow[col] =
-          typeof v === 'number' || typeof v === 'string' ? v : ''
-      })
+          typeof v === 'number' || typeof v === 'string' ? v : '';
+      });
 
-      return formattedRow
-    })
+      return formattedRow;
+    });
 
     void exportDispatchExcel({
       filename: `Dispatch Report ${monthdp}-${yeardp}.xlsx`,
       titleLine: `Amazon ${countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()
         } - Dispatch Report - ${monthdp} ${yeardp}`,
       titleCountry:
-        countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase(),
+        countryName?.toLowerCase() === 'global'
+          ? 'Global'
+          : countryName?.toUpperCase(),
       platformLabel: 'Phormula',
       periodLabel: `${monthdp} ${yeardp}`,
       companyName,
       brandName,
       dataRows: exportRows,
-    })
+    });
   }
+
+  useEffect(() => {
+  const handleDownload = () => {
+    handleExportToExcel();
+  };
+
+  window.addEventListener('dispatch-report-download', handleDownload);
+
+  return () => {
+    window.removeEventListener('dispatch-report-download', handleDownload);
+  };
+}, [
+  skuData,
+  noData,
+  loading,
+  monthdp,
+  yeardp,
+  countryName,
+  companyName,
+  brandName,
+]);
 
   const tableRows = useMemo(() => {
     const totalRow = skuData.find((row) => isTotalRow(row))

@@ -79,7 +79,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   year,
   data,
   isDemoMode = false,
-  platformLabel = "Amazon",
+  platformLabel = "Phormula",
   externalErrorMessage = null,
 }) => {
   const { data: userData } = useGetUserDataQuery();
