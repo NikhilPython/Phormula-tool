@@ -15,7 +15,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -2158,32 +2158,59 @@ def live_mtd_vs_previous():
         prev_keys = {r.get(key_column) for r in prev_data_aligned if r.get(key_column)}
         curr_keys = {r.get(key_column) for r in curr_data if r.get(key_column)}
 
+  
         # ---------------------------
-        # NEW / REVIVING (AGE-BASED)
+        # NEW / REVIVING SPLIT
         # ---------------------------
 
-        # 1) First-seen date per SKU
-        first_seen_map = fetch_first_seen_sku_date(user_id, country)
+        if country == "global":
+            # Keep global behavior safe and table/history-based.
+            # Global uses product_name as key_column in the global branch.
+            first_seen_map = fetch_first_seen_sku_date(user_id, country)
 
-        # 2) Cutoff = 6 months before current period start
-        six_months_cutoff = curr_start - relativedelta(months=6)
+            six_months_cutoff = curr_start - relativedelta(months=6)
 
-        # 3) New / Reviving = launched within last 6 months
-        new_reviving_keys = {
-            sku
-            for sku in curr_keys
-            if first_seen_map.get(sku) and first_seen_map[sku] >= six_months_cutoff
-        }
+            new_sku_keys = {
+                sku
+                for sku in curr_keys
+                if first_seen_map.get(sku) and first_seen_map[sku] >= six_months_cutoff
+            }
 
-        # safety: always treat current SKUs without history as new
-        new_reviving_keys |= {
-            sku for sku in curr_keys if sku not in first_seen_map
-        }
+            new_sku_keys |= {
+                sku for sku in curr_keys if sku not in first_seen_map
+            }
 
-        new_reviving = [
+            reviving_keys = (curr_keys - prev_keys) - new_sku_keys
+
+        else:
+            # For UK / US, use products.open_date from DATABASE_AMAZON_URL.
+            new_sku_keys = fetch_new_skus_from_products_open_date(
+                country=country,
+                sku_keys=curr_keys,
+                ref_date=curr_start,
+            )
+
+            # Reviving = present in current, absent in previous,
+            # but not already classified as new.
+            reviving_keys = (curr_keys - prev_keys) - new_sku_keys
+
+
+        # Internal combined key set only for dedupe from Top 80 / Other.
+        new_reviving_keys = new_sku_keys | reviving_keys
+
+        new_skus = [
             r for r in growth_data
-            if r.get(key_column) in new_reviving_keys
+            if r.get(key_column) in new_sku_keys
         ]
+
+        reviving_skus = [
+            r for r in growth_data
+            if r.get(key_column) in reviving_keys
+        ]
+
+        # Optional compatibility inside backend only.
+        # Do not return this as JSON if frontend wants separated buckets.
+        new_reviving = new_skus + reviving_skus
 
         # ---------------------------
         # TOP 80 / OTHER
@@ -2226,7 +2253,8 @@ def live_mtd_vs_previous():
         # ---------------------------
         top_keys = {r.get(key_column) for r in top_80_skus}
         other_keys = {r.get(key_column) for r in other_skus}
-        new_keys = {r.get(key_column) for r in new_reviving}
+        new_keys = {r.get(key_column) for r in new_skus}
+        reviving_keys_for_total = {r.get(key_column) for r in reviving_skus}
 
         prev_top = [r for r in prev_data_aligned if r.get(key_column) in top_keys]
         curr_top = [r for r in curr_data if r.get(key_column) in top_keys]
@@ -2237,16 +2265,51 @@ def live_mtd_vs_previous():
         prev_new = [r for r in prev_data_aligned if r.get(key_column) in new_keys]
         curr_new = [r for r in curr_data if r.get(key_column) in new_keys]
 
+        prev_reviving = [
+            r for r in prev_data_aligned
+            if r.get(key_column) in reviving_keys_for_total
+        ]
+
+        curr_reviving = [
+            r for r in curr_data
+            if r.get(key_column) in reviving_keys_for_total
+        ]
+
         top_80_total_row = build_segment_total_row(
-            prev_top, curr_top, key=key_column, label="Total"
+            prev_top,
+            curr_top,
+            key=key_column,
+            label="Total"
         )
+
         other_total_row = (
-            build_segment_total_row(prev_other, curr_other, key=key_column, label="Total")
+            build_segment_total_row(
+                prev_other,
+                curr_other,
+                key=key_column,
+                label="Total"
+            )
             if other_skus else None
         )
-        new_reviving_total_row = (
-            build_segment_total_row(prev_new, curr_new, key=key_column, label="Total")
-            if new_reviving else None
+
+        new_skus_total_row = (
+            build_segment_total_row(
+                prev_new,
+                curr_new,
+                key=key_column,
+                label="Total"
+            )
+            if new_skus else None
+        )
+
+        reviving_skus_total_row = (
+            build_segment_total_row(
+                prev_reviving,
+                curr_reviving,
+                key=key_column,
+                label="Total"
+            )
+            if reviving_skus else None
         )
 
         # =========================================================
@@ -2754,7 +2817,7 @@ def live_mtd_vs_previous():
         insights = {}
 
         if generate_ai_insights:
-            skus_for_ai = top_80_skus + new_reviving + other_skus
+            skus_for_ai = top_80_skus + new_skus + reviving_skus + other_skus
 
             # month2 = current MTD month in YYYY-MM format
             month2 = f"{curr_start.year}-{curr_start.month:02d}"
@@ -2882,10 +2945,13 @@ def live_mtd_vs_previous():
             "aligned_totals": aligned_totals_payload,
             "categorized_growth": {
                 "top_80_skus": top_80_skus,
-                "top_80_total": top_80_total_row,
-                "new_or_reviving_skus": new_reviving,
-                "new_or_reviving_total": new_reviving_total_row,
+                "new_skus": new_skus,
+                "reviving_skus": reviving_skus,
                 "other_skus": other_skus,
+
+                "top_80_total": top_80_total_row,
+                "new_skus_total": new_skus_total_row,
+                "reviving_skus_total": reviving_skus_total_row,
                 "other_total": other_total_row,
             },
             "cm1_profit_pie": cm1_profit_pie,
