@@ -366,16 +366,30 @@ export default function InputCostPage({ params }: Params) {
   type InputCostTab = 'sku-info' | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('sku-info');
 
-  const isColumnEmpty = (data: SkuRow[], columnName: string) => {
-    return data.every((row) => {
-      const value = row[columnName];
+  const isEmptyCellValue = (value: any) => {
+    if (value === null || value === undefined) return true;
+
+    if (typeof value === 'number') {
+      return Number.isNaN(value);
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
       return (
-        value === null ||
-        value === undefined ||
-        value === '' ||
-        (typeof value === 'string' && value.trim() === '')
+        normalized === '' ||
+        normalized === 'nan' ||
+        normalized === 'none' ||
+        normalized === 'null' ||
+        normalized === 'undefined' ||
+        normalized === '-'
       );
-    });
+    }
+
+    return false;
+  };
+
+  const isColumnEmpty = (data: SkuRow[], columnName: string) => {
+    return data.every((row) => isEmptyCellValue(row[columnName]));
   };
 
   // Remove local_stock and in_transit_units from SKU tab
@@ -388,10 +402,12 @@ export default function InputCostPage({ params }: Params) {
 
     if (countryName === 'global') {
       const potentialSkuColumns = ['sku_uk', 'sku_us', 'sku_canada'];
+
       skuColumns = potentialSkuColumns.filter((col) => !isColumnEmpty(data, col));
-      skuColumns.forEach((skuCol) => {
+
+      grossMarginColumns = skuColumns.map((skuCol) => {
         const c = skuCol.replace('sku_', '');
-        grossMarginColumns.push(`gross_margin_${c}`);
+        return `gross_margin_${c}`;
       });
     } else {
       const skuColumn = `sku_${countryName}`;
@@ -1106,9 +1122,9 @@ export default function InputCostPage({ params }: Params) {
         id: `${row.product_name}-${index}`,
         s_no: row.s_no ?? index + 1,
         product_name: row.product_name ?? '—',
-        sku_uk: row.sku_uk ?? '—',
-        sku_us: row.sku_us ?? '—',
-        sku_canada: row.sku_canada ?? '—',
+        sku_uk: isEmptyCellValue(row.sku_uk) ? '—' : row.sku_uk,
+        sku_us: isEmptyCellValue(row.sku_us) ? '—' : row.sku_us,
+        sku_canada: isEmptyCellValue(row.sku_canada) ? '—' : row.sku_canada,
         asin: row.asin ?? '—',
         product_barcode: row.product_barcode ?? '—',
         month_year: getMonthYearDisplay(row),
@@ -1119,7 +1135,7 @@ export default function InputCostPage({ params }: Params) {
         if (col.startsWith('gross_margin_')) {
           item[col] = '';
         } else if (col in row) {
-          item[col] = row[col] ?? '—';
+          item[col] = isEmptyCellValue(row[col]) ? '—' : row[col];
         }
       });
 
@@ -1322,9 +1338,9 @@ export default function InputCostPage({ params }: Params) {
     );
   };
 
-const handleConnectAmazonPreview = () => {
+  const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
-};
+  };
 
   const handleWarehouseDownload = async () => {
     if (!warehouseData || warehouseData.length === 0) {
@@ -1344,7 +1360,7 @@ const handleConnectAmazonPreview = () => {
           exportRow.month =
             row[col].charAt(0).toUpperCase() + row[col].slice(1).toLowerCase();
         } else {
-          exportRow[col] = row[col] ?? '';
+          exportRow[col] = isEmptyCellValue(row[col]) ? '' : row[col];
         }
       });
 
@@ -1388,20 +1404,20 @@ const handleConnectAmazonPreview = () => {
                 : countryName?.toUpperCase()}
             </span> */}
             <PageBreadcrumb
-                            variant="page"
-                            align="left"
-                            textSize="2xl"
-                            pageTitle={
-                              <div className="flex flex-wrap items-baseline gap-2">
-                                <span className="text-[#414042] font-bold">
-                                 Input Cost – Amazon
-                                </span>
-                                <span className="text-green-500 font-bold">
-                                  {countryName?.toUpperCase()}
-                                </span>
-                              </div>
-                            }
-                          />
+              variant="page"
+              align="left"
+              textSize="2xl"
+              pageTitle={
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-[#414042] font-bold">
+                    Input Cost – Amazon
+                  </span>
+                  <span className="text-green-500 font-bold">
+                    {countryName?.toUpperCase()}
+                  </span>
+                </div>
+              }
+            />
           </div>
 
           <div className="mt-3">

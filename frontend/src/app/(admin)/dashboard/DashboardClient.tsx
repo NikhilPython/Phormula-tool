@@ -1664,6 +1664,39 @@ export default function DashboardPage() {
     //     return ist.getDate(); // 1..31
     // };
 
+
+    const globalMtdCountryOptions = useMemo(() => {
+        const connected = new Set(
+            (amazonConnections || [])
+                .map((c: any) => String(c?.country || "").toLowerCase())
+                .filter(Boolean)
+        );
+
+        const options: { value: "uk" | "us"; label: string }[] = [];
+
+        if (connected.has("uk")) {
+            options.push({ value: "uk", label: "UK" });
+        }
+
+        if (connected.has("us")) {
+            options.push({ value: "us", label: "US" });
+        }
+
+        return options;
+    }, [amazonConnections]);
+
+    useEffect(() => {
+        if (!globalMtdCountryOptions.length) return;
+
+        const selectedStillAvailable = globalMtdCountryOptions.some(
+            (option) => option.value === globalMtdCountry
+        );
+
+        if (!selectedStillAvailable) {
+            setGlobalMtdCountry(globalMtdCountryOptions[0].value);
+        }
+    }, [globalMtdCountryOptions, globalMtdCountry]);
+
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
     const [prevTargetSummaries, setPrevTargetSummaries] = useState<{
@@ -9284,13 +9317,10 @@ ${pageLoading
                                             </div>
 
                                             {/* RIGHT: TOGGLE (only for global) */}
-                                            {platform === "global" && (
+                                            {platform === "global" && globalMtdCountryOptions.length > 1 && (
                                                 <SegmentedToggle<"uk" | "us">
                                                     value={globalMtdCountry}
-                                                    options={[
-                                                        { value: "uk", label: "UK" },
-                                                        { value: "us", label: "US" },
-                                                    ]}
+                                                    options={globalMtdCountryOptions}
                                                     onChange={setGlobalMtdCountry}
                                                     compact
                                                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
@@ -9326,7 +9356,9 @@ ${pageLoading
 
                                         {platform === "global" ? (
                                             <div className="space-y-4">
-                                                {renderCountryMtdCards(globalMtdCountry)}
+                                                {globalMtdCountryOptions.length > 0
+                                                    ? renderCountryMtdCards(globalMtdCountry)
+                                                    : null}
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
