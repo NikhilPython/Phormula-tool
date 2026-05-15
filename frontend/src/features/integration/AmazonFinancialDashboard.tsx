@@ -1040,9 +1040,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   const [busy, setBusy] = useState(false);
 
-  const TOTAL_FETCH_SECONDS = 15 * 60;
+  // const TOTAL_FETCH_SECONDS = 15 * 60;
 
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(24);
 
   // 6-step progress tracking
   const [currentStep, setCurrentStep] = useState<number>(0); // 0 = not started, 1-6 = active step
@@ -1071,13 +1072,52 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     fail: 0,
   });
 
+  const getEstimatedFetchSeconds = (period: number | null) => {
+    switch (period) {
+      case 1:
+        return 12 * 60; 
+      case 3:
+        return 15 * 60; 
+      case 6:
+        return 20 * 60; 
+      case 12:
+        return 25 * 60; 
+      case 24:
+        return 30 * 60; 
+      default:
+        return 15 * 60;
+    }
+  };
+
+  // useEffect(() => {
+  //   if (!busy) {
+  //     setRemainingSeconds(null);
+  //     return;
+  //   }
+
+  //   setRemainingSeconds(TOTAL_FETCH_SECONDS);
+
+  //   const interval = setInterval(() => {
+  //     setRemainingSeconds((prev) => {
+  //       if (!prev || prev <= 1) {
+  //         clearInterval(interval);
+  //         return 0;
+  //       }
+  //       return prev - 1;
+  //     });
+  //   }, 1000);
+
+  //   return () => clearInterval(interval);
+  // }, [busy]);
+
   useEffect(() => {
     if (!busy) {
       setRemainingSeconds(null);
       return;
     }
 
-    setRemainingSeconds(TOTAL_FETCH_SECONDS);
+    const estimatedSeconds = getEstimatedFetchSeconds(selectedPeriod);
+    setRemainingSeconds(estimatedSeconds);
 
     const interval = setInterval(() => {
       setRemainingSeconds((prev) => {
@@ -1090,7 +1130,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [busy]);
+  }, [busy, selectedPeriod]);
 
   const markStepComplete = (step: number) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
@@ -1106,7 +1146,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     });
   };
 
-  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(24);
+
 
   const wrap = async (fn: () => Promise<void>) => {
     try {
