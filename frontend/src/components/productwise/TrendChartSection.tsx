@@ -71,7 +71,6 @@ interface TrendChartSectionProps {
   insightsLoading?: boolean;
   isPreviewMode?: boolean;
 
-  // ✅ NEW props coming from ProductwisePerformance
   exportMeta?: ExportMeta;
   exportCountryCards?: ExportCountryCard[];
 }

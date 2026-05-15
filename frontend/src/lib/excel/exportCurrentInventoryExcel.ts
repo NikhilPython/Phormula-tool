@@ -321,6 +321,202 @@ export function exportCurrentInventoryExcel(params: {
   XLSX.writeFile(wb, filename);
 }
 
+export async function exportGlobalCurrentInventoryExcel(params: {
+  filename: string;
+
+  titleLine?: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+  homeCurrencyCode?: string;
+
+  ukRows: Record<string, any>[];
+  usRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine = "Amazon Global - Current Inventory",
+    platformLabel = "Phormula",
+    periodLabel,
+    companyName,
+    brandName,
+    homeCurrencyCode,
+    ukRows,
+    usRows,
+  } = params;
+
+  if (!ukRows?.length && !usRows?.length) return;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = companyName || "Skinelements";
+  workbook.created = new Date();
+
+  const headers = [
+    "S.No.",
+    "Product Name",
+    "SKU",
+    "MTD Sales",
+    "Sales Last 30 Days",
+    "Sales Rank",
+    "Current Inventory",
+    "Inventory 180+ Days",
+    "Estimated Storage Cost",
+    "Inventory Coverage Ratio",
+    "Inventory Alerts",
+  ];
+
+  const thinGrayBorder = {
+    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+  };
+
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  const lightGrayFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFEFEFEF" },
+  };
+
+  const addInventorySheet = (
+    sheetName: string,
+    rows: Record<string, any>[],
+    countryLabel: "UK" | "US"
+  ) => {
+    if (!rows?.length) return;
+
+    const ws = workbook.addWorksheet(safeSheetName(sheetName), {
+      views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+    });
+
+    const headerCount = headers.length;
+
+    const currencySymbol = getCurrencySymbol({
+  countryName: "global",
+  homeCurrencyCode: homeCurrencyCode || "USD",
+});
+
+    ws.mergeCells(1, 1, 1, headerCount);
+    ws.getCell(1, 1).value = `${titleLine} - ${countryLabel}`;
+    ws.getCell(1, 1).font = { bold: false, size: 11 };
+    ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+    ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+    ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+    ws.getCell(2, headerCount).value = brandName || "";
+    ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+    ws.getCell(2, headerCount).font = { bold: true };
+
+    ws.getCell(3, 1).value = `Country : ${countryLabel}`;
+    ws.getCell(4, 1).value = `Platform : ${platformLabel}`;
+    ws.getCell(5, 1).value = `Currency : ${currencySymbol}`;
+    ws.getCell(6, 1).value = `Period : ${periodLabel}`;
+
+    const headerRowNumber = 8;
+    const headerRow = ws.getRow(headerRowNumber);
+
+    headers.forEach((header, index) => {
+      const cell = headerRow.getCell(index + 1);
+      cell.value = header;
+      cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+      cell.fill = whiteFill;
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = thinGrayBorder;
+    });
+
+    headerRow.height = 20;
+
+    const startDataRow = headerRowNumber + 1;
+
+    rows.forEach((row, rowIndex) => {
+      const excelRow = ws.getRow(startDataRow + rowIndex);
+      const isTotal =
+        String(row["Product Name"] ?? "").trim().toLowerCase() === "total";
+
+      headers.forEach((header, colIndex) => {
+        const cell = excelRow.getCell(colIndex + 1);
+        const value = row[header];
+
+        const n = toNumberLoose(value);
+
+        if (n !== null && header !== "SKU" && header !== "Inventory Alerts") {
+          cell.value = n;
+
+          if (
+            [
+              "S.No.",
+              "MTD Sales",
+              "Sales Last 30 Days",
+              "Sales Rank",
+              "Current Inventory",
+              "Inventory 180+ Days",
+            ].includes(header)
+          ) {
+            cell.numFmt = "#,##0";
+          } else {
+            cell.numFmt = "#,##0.00";
+          }
+        } else {
+          cell.value = value ?? "";
+        }
+
+        cell.alignment = {
+          horizontal: header === "Product Name" ? "left" : "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+
+        cell.fill = isTotal ? lightGrayFill : whiteFill;
+        cell.font = {
+          bold: isTotal,
+          size: 11,
+          color: { argb: "FF000000" },
+        };
+        cell.border = thinGrayBorder;
+      });
+    });
+
+    ws.columns = [
+      { width: 8 },
+      { width: 28 },
+      { width: 18 },
+      { width: 14 },
+      { width: 18 },
+      { width: 14 },
+      { width: 18 },
+      { width: 18 },
+      { width: 22 },
+      { width: 22 },
+      { width: 30 },
+    ];
+  };
+
+  addInventorySheet("UK Current Inventory", ukRows, "UK");
+  addInventorySheet("US Current Inventory", usRows, "US");
+
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  saveAs(
+    new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
+
 /* =========================
    P&L Productwise Breakdown MTD export
 ========================= */
@@ -998,18 +1194,52 @@ export async function exportProductwiseTrendsExcel(params: {
     writeTile(ws1, r, startCol + 4, "CM1 Profit %", cc.cm1ProfitPct / 100, pctFmt);
     r += 3;
 
-    // Best performance header
-    ws1.mergeCells(r, startCol, r, startCol + SECTION_WIDTH - 1);
-    const bp = ws1.getCell(r, startCol);
-    bp.value = "Best Performance";
-    bp.font = { bold: true, size: 11 };
-    bp.alignment = { horizontal: "left", vertical: "middle" };
-    r += 1;
+// Best performance header
+const bestMonth =
+  cc.bestSalesMonth ||
+  cc.bestUnitsMonth ||
+  cc.bestProfitMonth ||
+  "";
 
-    // Best performance tiles
-    writeTile(ws1, r, startCol + 0, "Sales", `${cc.bestSalesMonth}  ${currencyLabel}${cc.bestSalesValue}`, undefined);
-    writeTile(ws1, r, startCol + 2, "Units", `${cc.bestUnitsMonth}  ${cc.bestUnitsValue}`, undefined);
-    writeTile(ws1, r, startCol + 4, "Profit", `${cc.bestProfitMonth}  ${currencyLabel}${cc.bestProfitValue}`, undefined);
+ws1.mergeCells(r, startCol, r, startCol + SECTION_WIDTH - 1);
+
+const bp = ws1.getCell(r, startCol);
+bp.value = bestMonth
+  ? `Best Performance (${bestMonth})`
+  : "Best Performance";
+
+bp.font = { bold: true, size: 11 };
+bp.alignment = { horizontal: "left", vertical: "middle" };
+
+r += 1;
+
+// Best performance metric titles
+writeTile(
+  ws1,
+  r,
+  startCol + 0,
+  "Sales",
+  cc.bestSalesValue,
+  moneyFmt2
+);
+
+writeTile(
+  ws1,
+  r,
+  startCol + 2,
+  "Units",
+  cc.bestUnitsValue,
+  unitsFmt0
+);
+
+writeTile(
+  ws1,
+  r,
+  startCol + 4,
+  "Profit",
+  cc.bestProfitValue,
+  moneyFmt2
+);
 
     // return next row cursor after this section
     return topRow + 11;
@@ -1052,22 +1282,50 @@ export async function exportProductwiseTrendsExcel(params: {
   if (countryCards?.length) {
     ws1.views = [{ state: "frozen", xSplit: 0, ySplit: tableHeaderRowNumber }];
 
-    for (let i = 0; i < countryCards.length; i += 2) {
-      const left = countryCards[i];
-      const right = countryCards[i + 1];
+   const isGlobalExport =
+  String(titleCountry || "").trim().toLowerCase() === "global";
 
-      // Left section = A..F (startCol = 1)
-      const nextLeft = writeCountrySection(left, rowCursorCards, 1);
+if (isGlobalExport) {
+  const globalCards = countryCards.filter((cc: any) =>
+    String(cc.countryLabel || cc.countryKey || "")
+      .trim()
+      .toLowerCase()
+      .startsWith("global")
+  );
 
-      // Right section = H..M (startCol = 8) because G is spacer
-      let nextRight = rowCursorCards;
-      if (right) {
-        nextRight = writeCountrySection(right, rowCursorCards, 8);
-      }
+  const countryWiseCards = countryCards.filter((cc: any) => {
+    const label = String(cc.countryLabel || cc.countryKey || "")
+      .trim()
+      .toLowerCase();
 
-      // move down after the taller one
-      rowCursorCards = Math.max(nextLeft, nextRight) + 2;
+    return !label.startsWith("global");
+  });
+
+  // 1. GLOBAL block first
+  globalCards.forEach((cc: any) => {
+    rowCursorCards = writeCountrySection(cc, rowCursorCards, 1) + 2;
+  });
+
+  // 2. Country-wise blocks below GLOBAL
+  countryWiseCards.forEach((cc: any) => {
+    rowCursorCards = writeCountrySection(cc, rowCursorCards, 1) + 2;
+  });
+} else {
+  // Existing layout for non-global export
+  for (let i = 0; i < countryCards.length; i += 2) {
+    const left = countryCards[i];
+    const right = countryCards[i + 1];
+
+    const nextLeft = writeCountrySection(left, rowCursorCards, 1);
+
+    let nextRight = rowCursorCards;
+    if (right) {
+      nextRight = writeCountrySection(right, rowCursorCards, 8);
     }
+
+    rowCursorCards = Math.max(nextLeft, nextRight) + 2;
+  }
+}
   }
   // 2) else fallback to table export (your existing logic)
   else if (table?.headers?.length && table?.rows?.length) {
