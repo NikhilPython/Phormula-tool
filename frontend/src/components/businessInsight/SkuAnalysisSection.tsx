@@ -908,14 +908,14 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                                                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                                                 <div className="text-xs text-slate-500">Primary Focus</div>
-                                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
                                                                     {objectiveObj?.growth_intent || "balanced"}
                                                                 </div>
                                                             </div>
 
                                                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                                                 <div className="text-xs text-slate-500">Profit Strategy</div>
-                                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
                                                                     {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
                                                                         "protect growth"}
                                                                 </div>
@@ -923,7 +923,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                                                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                                                 <div className="text-xs text-slate-500">Inventory Dilution</div>
-                                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
                                                                     {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
                                                                 </div>
                                                             </div>
