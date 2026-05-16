@@ -169,11 +169,11 @@ export default function SalesTargetStatsCard({
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
 
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
-        {activeRegion !== "Global" && (
+        {value !== "Global" && (
           <button
             type="button"
             onClick={() => {
-              const country = activeRegion.toLowerCase();
+              const country = value.toLowerCase();
               const month = monthName.toLowerCase();
               const fullYear = String(year);
 
