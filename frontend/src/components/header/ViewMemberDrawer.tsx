@@ -9,22 +9,18 @@ const ALL_MODULES = [
   "INVENTORY_PLANNING",
 ];
 
-const MODULE_META: Record<string, { title: string; subtitle: string }> = {
+const MODULE_META: Record<string, { title: string; }> = {
   LIVE_DASHBOARD: {
     title: "Live Dashboard",
-    subtitle: "MTD Sales, AI Insights, P&L Breakdown, Current Inventory",
   },
   FINANCE_DASHBOARDS: {
     title: "Finance Dashboards",
-    subtitle: "Financial Dashboard, P&L Breakdown, Cash Flow, SKU wise Profit, AI Insights",
   },
   BUSINESS_INTELLIGENCE: {
     title: "Business Intelligence",
-    subtitle: "AI Insights, Inventory Forecast, Dispatch Planning, Purchase Order, P&L Forecast",
   },
   INVENTORY_PLANNING: {
     title: "Inventory Planning",
-    subtitle: "Input Cost, Inventory Reconciliation, Expense Reconciliation",
   },
 };
 
@@ -111,8 +107,8 @@ export default function ViewMemberDrawer({
   const countryDisplay =
     countries.length > 0
       ? countries
-          .map((country) => COUNTRY_LABELS[country] || country)
-          .join(", ")
+        .map((country) => COUNTRY_LABELS[country] || country)
+        .join(", ")
       : Array.isArray(member?.countries)
         ? member.countries.join(", ")
         : member?.country || "—";
@@ -169,10 +165,10 @@ export default function ViewMemberDrawer({
               value={
                 createdAt
                   ? createdAt.toLocaleDateString("en-GB", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
                   : "—"
               }
             />
@@ -209,7 +205,7 @@ export default function ViewMemberDrawer({
                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           {COUNTRY_LABELS[country] || country}
                         </div>
-                        <div className="text-xs text-gray-500">{country}</div>
+                        {/* <div className="text-xs text-gray-500">{country}</div> */}
                       </div>
 
                       <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-600 dark:border-gray-800 dark:bg-white/5 dark:text-gray-300">
@@ -217,36 +213,29 @@ export default function ViewMemberDrawer({
                       </span>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {modules.map((mod) => {
                         const meta = MODULE_META[mod] || {
                           title: formatLabel(mod),
-                          subtitle: "",
                         };
 
                         return (
                           <div
                             key={`${country}-${mod}`}
-                            className={`rounded-xl border px-3 py-3 ${
-                              MODULE_COLORS[mod] ||
+                            className={`rounded-xl border px-3 py-3 ${MODULE_COLORS[mod] ||
                               "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-800 dark:bg-white/5 dark:text-gray-300"
-                            }`}
+                              }`}
                           >
                             <div className="flex items-start gap-3">
-                              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-current text-xs">
+                              {/* <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-current text-xs">
                                 ✓
-                              </div>
+                              </div> */}
 
                               <div className="min-w-0">
                                 <div className="text-sm font-semibold">
                                   {meta.title}
                                 </div>
 
-                                {meta.subtitle ? (
-                                  <div className="mt-0.5 text-xs opacity-80">
-                                    {meta.subtitle}
-                                  </div>
-                                ) : null}
                               </div>
                             </div>
                           </div>
