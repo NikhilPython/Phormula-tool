@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -11,6 +12,16 @@ const MODULE_OPTIONS = [
 
 const ROLE_OPTIONS = ["MARKETING", "ACCOUNTANT", "INVENTORY"] as const;
 type RoleOption = (typeof ROLE_OPTIONS)[number];
+
+type UserDataResponse = {
+  owner_email?: string;
+  marketplace_ids?: string[];
+  marketplaces?: string[];
+  connected_marketplaces?: string[];
+  countries?: string[];
+  connected_countries?: string[];
+  integrated_countries?: string[];
+};
 
 const COUNTRY_OPTIONS = [
   { label: "United States", value: "US" },
@@ -26,123 +37,40 @@ const COUNTRY_TO_MARKETPLACES: Record<string, string[]> = {
   DE: ["A1PA6795UKMFR9"],
 };
 
-function ChipsMultiSelect({
-  options,
-  value,
-  onChange,
-  placeholder = "Select the section you want to give access of",
-}: {
-  options: string[];
-  value: string[];
-  onChange: (next: string[]) => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
+const formatLabel = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const toggle = (opt: string) => {
-    if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
-    else onChange([...value, opt]);
-  };
+const normalizeCountryAccess = (member: any): Record<string, string[]> => {
+  const rawAccess = member?.country_access;
 
-  const remove = (opt: string) => onChange(value.filter((v) => v !== opt));
+  if (rawAccess && typeof rawAccess === "object" && !Array.isArray(rawAccess)) {
+    return Object.fromEntries(
+      Object.entries(rawAccess)
+        .map(([country, modules]) => [
+          String(country).toUpperCase(),
+          Array.isArray(modules) ? modules.map(String) : [],
+        ])
+        .filter(([, modules]) => modules.length > 0)
+    );
+  }
 
-  const formatLabel = (text: string) =>
-    text
-      .toLowerCase()
-      .replaceAll("_", " ")
-      .replace(/\b\w/g, (l) => l.toUpperCase());
+  const countries = Array.isArray(member?.countries)
+    ? member.countries.map((country: any) => String(country).toUpperCase())
+    : [];
 
-  return (
-    <div className="relative">
-      <div
-        className="min-h-[40px] w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 flex flex-wrap gap-2 items-center cursor-pointer"
-        onClick={() => setOpen((p) => !p)}
-      >
-        {value.length === 0 ? (
-          <span className="text-gray-400 text-sm">{placeholder}</span>
-        ) : (
-          value.map((v) => (
-            <span
-              key={formatLabel(v)}
-              className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium
-  transition-all duration-150 hover:shadow-sm"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {formatLabel(v)}
-              <button
-                type="button"
-                className="text-charcoal-500 hover:text-gray-800 dark:hover:text-white"
-                onClick={() => remove(v)}
-                aria-label={`Remove ${v}`}
-              >
-                ✕
-              </button>
-            </span>
-          ))
-        )}
-      </div>
+  const modules = Array.isArray(member?.modules)
+    ? member.modules.map(String)
+    : [];
 
-      {open && (
-        <div
-          className="absolute z-[999999] mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark shadow-theme-lg p-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="max-h-52 overflow-auto">
-            {options.map((opt) => {
-              const checked = value.includes(opt);
-              return (
-                // <button
-                //   type="button"
-                //   key={opt}
-                //   onClick={() => toggle(opt)}
-                //   className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 text-left"
-                // >
-                //   <span className="text-sm text-gray-700 dark:text-gray-200">
-                //     {opt}
-                //   </span>
-                //   <span className="text-sm">{checked ? "✅" : ""}</span>
-                // </button>
-                <button
-                  type="button"
-                  key={opt}
-                  onClick={() => toggle(opt)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
-    `}
-                >
-                  <span
-                    className={`text-xs capitalize font-medium px-2 py-1 rounded-full border `}
-                  >
-                    {formatLabel(opt)}
-                  </span>
+  if (countries.length === 0 || modules.length === 0) {
+    return {};
+  }
 
-                  <div
-                    className={`w-4 h-4 flex items-center justify-center rounded border 
-      ${checked
-                        ? "bg-green-500 border-green-500 text-white"
-                        : "border-gray-300"}
-    `}
-                  >
-                    {checked && <span className="text-[10px]">✓</span>}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 flex justify-end">
-            <button
-              type="button"
-              className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-              onClick={() => setOpen(false)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+  return Object.fromEntries(countries.map((country: string) => [country, modules]));
+};
 
 export default function EditMemberModal({
   isOpen,
@@ -157,72 +85,189 @@ export default function EditMemberModal({
   member: any | null;
   onSuccess?: () => void;
 }) {
-  const [country, setCountry] = useState<string>("");
-  const [modules, setModules] = useState<string[]>([]);
+  const [countryAccess, setCountryAccess] = useState<Record<string, string[]>>(
+    {}
+  );
   const [role, setRole] = useState<RoleOption>("MARKETING");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
 
-  // Prefill on open/member change
+  const { data: userData } = useGetUserDataQuery();
+  const typedUserData = userData as UserDataResponse | undefined;
+
+  const integratedMarketplaces = useMemo(() => {
+    return [
+      ...(Array.isArray(typedUserData?.marketplace_ids)
+        ? typedUserData.marketplace_ids
+        : []),
+      ...(Array.isArray(typedUserData?.marketplaces)
+        ? typedUserData.marketplaces
+        : []),
+      ...(Array.isArray(typedUserData?.connected_marketplaces)
+        ? typedUserData.connected_marketplaces
+        : []),
+    ].map(String);
+  }, [typedUserData]);
+
+  const integratedCountries = useMemo(() => {
+    const countriesFromApi = [
+      ...(Array.isArray(typedUserData?.countries) ? typedUserData.countries : []),
+      ...(Array.isArray(typedUserData?.connected_countries)
+        ? typedUserData.connected_countries
+        : []),
+      ...(Array.isArray(typedUserData?.integrated_countries)
+        ? typedUserData.integrated_countries
+        : []),
+    ].map((country) => String(country).toUpperCase());
+
+    const countriesFromMarketplaces = COUNTRY_OPTIONS.filter((country) => {
+      const countryMarketplaces = COUNTRY_TO_MARKETPLACES[country.value] || [];
+
+      return countryMarketplaces.some((marketplaceId) =>
+        integratedMarketplaces.includes(marketplaceId)
+      );
+    }).map((country) => country.value);
+
+    return Array.from(
+      new Set([...countriesFromApi, ...countriesFromMarketplaces])
+    );
+  }, [typedUserData, integratedMarketplaces]);
+
+  const availableCountryOptions = useMemo(() => {
+    return COUNTRY_OPTIONS.filter((country) =>
+      integratedCountries.includes(country.value)
+    );
+  }, [integratedCountries]);
+
   useEffect(() => {
     if (!isOpen || !member) return;
 
-    const firstCountry =
-      Array.isArray(member?.countries) && member.countries.length > 0
-        ? String(member.countries[0]).toUpperCase()
-        : "";
-
-    // if backend stores "India" etc, map accordingly; otherwise keep empty
-    setCountry(
-      ["US", "UK", "CA", "DE"].includes(firstCountry) ? firstCountry : ""
-    );
-
-    const access = member?.country_access || {};
-    const modulesForCountry =
-      access[firstCountry] && Array.isArray(access[firstCountry])
-        ? access[firstCountry]
-        : Array.isArray(member?.modules)
-          ? member.modules
-          : [];
-
-    setModules(modulesForCountry);
+    setCountryAccess(normalizeCountryAccess(member));
     setRole((member?.role as RoleOption) || "MARKETING");
-
     setLoading(false);
     setError("");
   }, [isOpen, member]);
 
-  const marketplace_ids = useMemo(() => {
-    return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
-  }, [country]);
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setCountryAccess((prev) => {
+      const allowedCountryCodes = new Set(
+        availableCountryOptions.map((country) => country.value)
+      );
+
+      return Object.fromEntries(
+        Object.entries(prev).filter(([countryCode]) =>
+          allowedCountryCodes.has(countryCode)
+        )
+      );
+    });
+  }, [isOpen, availableCountryOptions]);
+
+  const selectedCountries = useMemo(
+    () => Object.keys(countryAccess),
+    [countryAccess]
+  );
+
+  const selectedModules = useMemo(
+    () => Array.from(new Set(Object.values(countryAccess).flat())),
+    [countryAccess]
+  );
+
+  const selectedMarketplaces = useMemo(() => {
+    return selectedCountries.flatMap(
+      (countryCode) => COUNTRY_TO_MARKETPLACES[countryCode] || []
+    );
+  }, [selectedCountries]);
+
+  const hasCountryAccess = selectedCountries.length > 0;
+
+  const hasModuleAccess = Object.values(countryAccess).some(
+    (modules) => modules.length > 0
+  );
 
   const canSubmit =
-    !!member?.id && marketplace_ids.length > 0 && modules.length > 0 && !loading;
+    !!member?.id &&
+    availableCountryOptions.length > 0 &&
+    hasCountryAccess &&
+    hasModuleAccess &&
+    !loading;
+
+  const toggleCountry = (countryCode: string) => {
+    setCountryAccess((prev) => {
+      const next = { ...prev };
+
+      if (next[countryCode]) {
+        delete next[countryCode];
+      } else {
+        next[countryCode] = [];
+      }
+
+      return next;
+    });
+  };
+
+  const toggleCountryModule = (countryCode: string, module: string) => {
+    setCountryAccess((prev) => {
+      const currentModules = prev[countryCode] || [];
+
+      const nextModules = currentModules.includes(module)
+        ? currentModules.filter((m) => m !== module)
+        : [...currentModules, module];
+
+      return {
+        ...prev,
+        [countryCode]: nextModules,
+      };
+    });
+  };
 
   const handleSave = async () => {
     setError("");
 
-    if (!member?.id) return setError("Member is missing");
-    if (!country) return setError("Country is required");
-    if (modules.length === 0) {
-      return setError("Please select at least one Section Access");
+    if (!member?.id) {
+      setError("Member is missing");
+      return;
     }
 
-    const country_access = {
-      [country]: modules,
-    };
+    if (availableCountryOptions.length === 0) {
+      setError("No connected countries found. Please connect a marketplace first.");
+      return;
+    }
+
+    if (!hasCountryAccess) {
+      setError("Please select at least one country");
+      return;
+    }
+
+    if (!hasModuleAccess) {
+      setError("Please select at least one section for at least one country");
+      return;
+    }
+
+    const cleanedCountryAccess = Object.fromEntries(
+      Object.entries(countryAccess).filter(([, modules]) => modules.length > 0)
+    );
+
+    if (Object.keys(cleanedCountryAccess).length === 0) {
+      setError("Please select at least one section for at least one country");
+      return;
+    }
 
     const payload = {
       member_id: member.id,
-      marketplace_ids,
-      country_access,
+      marketplace_ids: selectedMarketplaces,
+      modules: selectedModules,
+      country_access: cleanedCountryAccess,
       role,
     };
 
     try {
       setLoading(true);
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
+
       const res = await fetch(`${baseUrl}/update_member_access`, {
         method: "PUT",
         headers: {
@@ -233,6 +278,7 @@ export default function EditMemberModal({
       });
 
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         setError(data?.error || data?.message || "Failed to update member");
         return;
@@ -240,8 +286,8 @@ export default function EditMemberModal({
 
       onClose();
       onSuccess?.();
-    } catch (e: any) {
-      setError(e?.message || "Something went wrong");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -255,16 +301,16 @@ export default function EditMemberModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[720px] rounded-2xl bg-white dark:bg-gray-dark shadow-theme-lg border border-gray-200 dark:border-gray-800"
+        className="w-full max-w-[980px] rounded-2xl bg-white dark:bg-gray-dark shadow-theme-lg border border-gray-200 dark:border-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6">
+        <div className="max-h-[90vh] overflow-y-auto p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Name (read-only) */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Name
               </label>
+
               <input
                 disabled
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-white/5 px-3 py-2 text-sm cursor-not-allowed"
@@ -272,11 +318,11 @@ export default function EditMemberModal({
               />
             </div>
 
-            {/* Email (read-only) */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Email Address
               </label>
+
               <input
                 disabled
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-white/5 px-3 py-2 text-sm cursor-not-allowed"
@@ -284,36 +330,11 @@ export default function EditMemberModal({
               />
             </div>
 
-            {/* Country */}
-            <div>
-              <label className="text-sm text-gray-700 dark:text-gray-200">
-                Country *
-              </label>
-              <select
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                <option value="">Select Country</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-
-              {country && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Marketplace IDs: {marketplace_ids.join(", ")}
-                </p>
-              )}
-            </div>
-
-            {/* Role */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Role
               </label>
+
               <select
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
                 value={role}
@@ -321,24 +342,112 @@ export default function EditMemberModal({
               >
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {formatLabel(r)}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Section Access */}
             <div className="md:col-span-2">
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Section Access *
+                Country & Section Access{" "}
+                <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <ChipsMultiSelect
-                  options={MODULE_OPTIONS}
-                  value={modules}
-                  onChange={setModules}
-                />
-              </div>
+
+              {availableCountryOptions.length === 0 ? (
+                <div className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-3 text-sm text-yellow-800">
+                  No connected countries found. Please connect/integrate a
+                  marketplace before editing this member.
+                </div>
+              ) : (
+                <div className="mt-2 overflow-x-auto rounded-2xl border border-gray-200">
+                  <div className="min-w-[760px]">
+                    <div className="grid grid-cols-[180px_repeat(4,minmax(140px,1fr))] bg-gray-50 text-xs font-semibold text-gray-600">
+                      <div className="border-r border-gray-200 px-3 py-3">
+                        Country
+                      </div>
+
+                      {MODULE_OPTIONS.map((module) => (
+                        <div
+                          key={module}
+                          className="border-r border-gray-200 px-3 py-3 text-center last:border-r-0"
+                        >
+                          {formatLabel(module)}
+                        </div>
+                      ))}
+                    </div>
+
+                    {availableCountryOptions.map((countryOption) => {
+                      const countryCode = countryOption.value;
+                      const enabled = !!countryAccess[countryCode];
+                      const selectedModulesForCountry =
+                        countryAccess[countryCode] || [];
+
+                      return (
+                        <div
+                          key={countryCode}
+                          className="grid grid-cols-[180px_repeat(4,minmax(140px,1fr))] border-t border-gray-200 bg-white text-sm"
+                        >
+                          <div className="flex items-center gap-2 border-r border-gray-200 px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={() => toggleCountry(countryCode)}
+                              className="h-4 w-4"
+                            />
+
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                {countryOption.label}
+                              </div>
+
+                              <div className="text-[11px] text-gray-500">
+                                {COUNTRY_TO_MARKETPLACES[countryCode]?.join(
+                                  ", "
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {MODULE_OPTIONS.map((module) => {
+                            const checked =
+                              selectedModulesForCountry.includes(module);
+
+                            return (
+                              <div
+                                key={`${countryCode}-${module}`}
+                                className="flex items-center justify-center border-r border-gray-200 px-3 py-3 last:border-r-0"
+                              >
+                                <button
+                                  type="button"
+                                  disabled={!enabled}
+                                  onClick={() =>
+                                    toggleCountryModule(countryCode, module)
+                                  }
+                                  className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs transition ${
+                                    checked
+                                      ? "border-[#10B981] bg-[#10B981] text-white"
+                                      : enabled
+                                        ? "border-gray-300 bg-white text-transparent hover:bg-gray-50"
+                                        : "cursor-not-allowed border-gray-200 bg-gray-100 text-transparent opacity-60"
+                                  }`}
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-2 text-xs text-gray-500">
+                Select one or more connected countries, then choose exactly
+                which sections this member can access.
+              </p>
 
               <div className="mt-3 rounded-lg bg-yellow-50 dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
                 ℹ️ Update permissions and role. Name/Email are locked.

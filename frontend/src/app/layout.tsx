@@ -5,12 +5,25 @@
 // import { ThemeProvider } from "@/context/ThemeContext";
 // import Providers from "./providers";
 // import { Toaster } from "sonner";
+// import { PlatformProvider } from "@/components/context/PlatformContext";
+// import { Metadata } from "next";
+
+// export const metadata: Metadata = {
+//   title: {
+//     default: "Phormula",
+//     template: "%s | Phormula",
+//   },
+//   description: "Phormula dashboard",
+//   icons: {
+//     icon: "/favicon.ico",
+//   },
+// };
 
 // // 🆕 Replace Outfit with Lato
 // const lato = Lato({
 //   subsets: ["latin"],
-//   weight: ["300", "400", "700", "900"], 
-//   variable: "--font-lato",              
+//   weight: ["300", "400", "700", "900"],
+//   variable: "--font-lato",
 // });
 
 // export default function RootLayout({
@@ -20,10 +33,12 @@
 // }>) {
 //   return (
 //     <html lang="en" className={lato.variable}>
-//       <body className={`font-sans dark:bg-gray-900`}>
+//       <body className="font-sans dark:bg-gray-900">
 //         <Providers>
 //           <ThemeProvider>
-//             <SidebarProvider>{children}</SidebarProvider>
+//             <SidebarProvider>
+//               <PlatformProvider>{children}</PlatformProvider>
+//             </SidebarProvider>
 //           </ThemeProvider>
 //         </Providers>
 
@@ -48,15 +63,6 @@
 
 
 
-
-
-
-
-
-
-
-
-
 import "./globals.css";
 import { Lato } from "next/font/google";
 
@@ -65,6 +71,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import Providers from "./providers";
 import { Toaster } from "sonner";
 import { PlatformProvider } from "@/components/context/PlatformContext";
+import MemberRouteGuard from "@/components/auth/MemberRouteGuard";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -78,7 +85,6 @@ export const metadata: Metadata = {
   },
 };
 
-// 🆕 Replace Outfit with Lato
 const lato = Lato({
   subsets: ["latin"],
   weight: ["300", "400", "700", "900"],
@@ -96,7 +102,9 @@ export default function RootLayout({
         <Providers>
           <ThemeProvider>
             <SidebarProvider>
-              <PlatformProvider>{children}</PlatformProvider>
+              <PlatformProvider>
+                <MemberRouteGuard>{children}</MemberRouteGuard>
+              </PlatformProvider>
             </SidebarProvider>
           </ThemeProvider>
         </Providers>

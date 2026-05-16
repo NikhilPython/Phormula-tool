@@ -21,6 +21,12 @@ type RoleOption = (typeof ROLE_OPTIONS)[number]["value"];
 
 type UserDataResponse = {
   owner_email?: string;
+  marketplace_ids?: string[];
+  marketplaces?: string[];
+  connected_marketplaces?: string[];
+  countries?: string[];
+  connected_countries?: string[];
+  integrated_countries?: string[];
 };
 
 type AddMemberErrorResponse = {
@@ -50,100 +56,6 @@ const formatLabel = (value: string) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-function SectionAccessGrid({
-  options,
-  value,
-  onChange,
-}: {
-  options: string[];
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const toggle = (opt: string) => {
-    if (value.includes(opt)) {
-      onChange(value.filter((v) => v !== opt));
-    } else {
-      onChange([...value, opt]);
-    }
-  };
-
-  const getModuleMeta = (opt: string) => {
-    switch (opt) {
-      case "LIVE_DASHBOARD":
-        return {
-          title: "Live Dashboard",
-          subtitle: "MTD Sales, AI Insights, P&L Breakdown, Current Inventory",
-        };
-      case "FINANCE_DASHBOARDS":
-        return {
-          title: "Finance Dashboards",
-          subtitle:
-            "Financial Dashboard, P&L Breakdown, Cash Flow, SKU wise Profit, AI Insights",
-        };
-      case "BUSINESS_INTELLIGENCE":
-        return {
-          title: "Business Intelligence",
-          subtitle:
-            "AI Insights, Inventory Forecast, Dispatch Planing, Purchase Order , P&L Forecast",
-        };
-      case "INVENTORY_PLANNING":
-        return {
-          title: "Inventory Planning",
-          subtitle:
-            "Input Cost, Inventory Reconciliation, Expenses Reconciliation",
-        };
-      default:
-        return {
-          title: formatLabel(opt),
-          subtitle: "",
-        };
-    }
-  };
-
-  return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      {options.map((opt) => {
-        const checked = value.includes(opt);
-        const meta = getModuleMeta(opt);
-
-        return (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => toggle(opt)}
-            className={`w-full rounded-2xl border px-4 py-4 text-left transition ${checked
-                ? "border-[#86E0B8] bg-[#EAF7F1]"
-                : "border-gray-200 bg-white hover:bg-gray-50"
-              }`}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${checked
-                    ? "border-[#10B981] bg-[#10B981] text-white"
-                    : "border-gray-300 bg-white text-transparent"
-                  }`}
-              >
-                ✓
-              </div>
-
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-900">
-                  {meta.title}
-                </div>
-                {meta.subtitle && (
-                  <div className="mt-0.5 text-xs text-gray-500">
-                    {meta.subtitle}
-                  </div>
-                )}
-              </div>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function AddMemberModal({
   isOpen,
   onClose,
@@ -157,24 +69,69 @@ export default function AddMemberModal({
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [country, setCountry] = useState<string>("");
-  const [modules, setModules] = useState<string[]>([]);
+  const [countryAccess, setCountryAccess] = useState<Record<string, string[]>>(
+    {}
+  );
   const [role, setRole] = useState<RoleOption>("MARKETING");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
 
   const { data: userData } = useGetUserDataQuery();
-  const ownerEmail = (
-    (userData as UserDataResponse | undefined)?.owner_email ?? ""
-  ).toLowerCase();
+
+  const typedUserData = userData as UserDataResponse | undefined;
+
+  const ownerEmail = (typedUserData?.owner_email ?? "").toLowerCase();
+
+  const integratedMarketplaces = useMemo(() => {
+    return [
+      ...(Array.isArray(typedUserData?.marketplace_ids)
+        ? typedUserData.marketplace_ids
+        : []),
+      ...(Array.isArray(typedUserData?.marketplaces)
+        ? typedUserData.marketplaces
+        : []),
+      ...(Array.isArray(typedUserData?.connected_marketplaces)
+        ? typedUserData.connected_marketplaces
+        : []),
+    ].map(String);
+  }, [typedUserData]);
+
+  const integratedCountries = useMemo(() => {
+    const countriesFromApi = [
+      ...(Array.isArray(typedUserData?.countries) ? typedUserData.countries : []),
+      ...(Array.isArray(typedUserData?.connected_countries)
+        ? typedUserData.connected_countries
+        : []),
+      ...(Array.isArray(typedUserData?.integrated_countries)
+        ? typedUserData.integrated_countries
+        : []),
+    ].map(String);
+
+    const countriesFromMarketplaces = COUNTRY_OPTIONS.filter((country) => {
+      const countryMarketplaces = COUNTRY_TO_MARKETPLACES[country.value] || [];
+
+      return countryMarketplaces.some((marketplaceId) =>
+        integratedMarketplaces.includes(marketplaceId)
+      );
+    }).map((country) => country.value);
+
+    return Array.from(
+      new Set([...countriesFromApi, ...countriesFromMarketplaces])
+    );
+  }, [typedUserData, integratedMarketplaces]);
+
+  const availableCountryOptions = useMemo(() => {
+    return COUNTRY_OPTIONS.filter((country) =>
+      integratedCountries.includes(country.value)
+    );
+  }, [integratedCountries]);
 
   useEffect(() => {
     if (!isOpen) {
       setName("");
       setEmail("");
-      setCountry("");
-      setModules([]);
+      setCountryAccess({});
       setRole("MARKETING");
       setLoading(false);
       setError("");
@@ -182,19 +139,83 @@ export default function AddMemberModal({
     }
   }, [isOpen]);
 
-  const marketplaces = useMemo(() => {
-    return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
-  }, [country]);
+  useEffect(() => {
+    setCountryAccess((prev) => {
+      const allowedCountryCodes = new Set(
+        availableCountryOptions.map((country) => country.value)
+      );
+
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([countryCode]) =>
+          allowedCountryCodes.has(countryCode)
+        )
+      );
+
+      return next;
+    });
+  }, [availableCountryOptions]);
+
+  const selectedCountries = useMemo(
+    () => Object.keys(countryAccess),
+    [countryAccess]
+  );
+
+  const selectedModules = useMemo(
+    () => Array.from(new Set(Object.values(countryAccess).flat())),
+    [countryAccess]
+  );
+
+  const selectedMarketplaces = useMemo(() => {
+    return selectedCountries.flatMap(
+      (countryCode) => COUNTRY_TO_MARKETPLACES[countryCode] || []
+    );
+  }, [selectedCountries]);
+
+  const hasCountryAccess = selectedCountries.length > 0;
+
+  const hasModuleAccess = Object.values(countryAccess).some(
+    (modules) => modules.length > 0
+  );
 
   const isSelfAdd = ownerEmail && email.trim().toLowerCase() === ownerEmail;
 
   const canSubmit =
     !!name.trim() &&
     !!email.trim() &&
-    marketplaces.length > 0 &&
-    modules.length > 0 &&
+    availableCountryOptions.length > 0 &&
+    hasCountryAccess &&
+    hasModuleAccess &&
     !loading &&
     !isSelfAdd;
+
+  const toggleCountry = (countryCode: string) => {
+    setCountryAccess((prev) => {
+      const next = { ...prev };
+
+      if (next[countryCode]) {
+        delete next[countryCode];
+      } else {
+        next[countryCode] = [];
+      }
+
+      return next;
+    });
+  };
+
+  const toggleCountryModule = (countryCode: string, module: string) => {
+    setCountryAccess((prev) => {
+      const currentModules = prev[countryCode] || [];
+
+      const nextModules = currentModules.includes(module)
+        ? currentModules.filter((m) => m !== module)
+        : [...currentModules, module];
+
+      return {
+        ...prev,
+        [countryCode]: nextModules,
+      };
+    });
+  };
 
   const handleSave = async () => {
     setSuccess("");
@@ -215,26 +236,36 @@ export default function AddMemberModal({
       return;
     }
 
-    if (!country) {
-      setError("Country is required");
+    if (availableCountryOptions.length === 0) {
+      setError("No connected countries found. Please connect a marketplace first.");
       return;
     }
 
-    if (modules.length === 0) {
-      setError("Please select at least one Section Access");
+    if (!hasCountryAccess) {
+      setError("Please select at least one country");
       return;
     }
 
-    const country_access = {
-      [country]: modules,
-    };
+    if (!hasModuleAccess) {
+      setError("Please select at least one section for at least one country");
+      return;
+    }
+
+    const cleanedCountryAccess = Object.fromEntries(
+      Object.entries(countryAccess).filter(([, modules]) => modules.length > 0)
+    );
+
+    if (Object.keys(cleanedCountryAccess).length === 0) {
+      setError("Please select at least one section for at least one country");
+      return;
+    }
 
     const payload = {
       member_name: name.trim(),
       email: email.trim().toLowerCase(),
-      marketplaces,
-      modules, // optional: keep for backward compatibility
-      country_access,
+      marketplaces: selectedMarketplaces,
+      modules: selectedModules,
+      country_access: cleanedCountryAccess,
       role,
     };
 
@@ -286,15 +317,16 @@ export default function AddMemberModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[720px] rounded-2xl border border-gray-200 bg-white shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
+        className="w-full max-w-[980px] rounded-2xl border border-gray-200 bg-white shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6">
+        <div className="max-h-[90vh] overflow-y-auto p-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Name <span className="text-red-500">*</span>
               </label>
+
               <input
                 className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 placeholder="Member Name"
@@ -307,12 +339,14 @@ export default function AddMemberModal({
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Email Address <span className="text-red-500">*</span>
               </label>
+
               <input
                 className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 placeholder="member1@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
+
               {ownerEmail && email.trim().toLowerCase() === ownerEmail && (
                 <p className="mt-1 text-xs text-red-600">
                   You cannot add yourself as a member.
@@ -322,32 +356,9 @@ export default function AddMemberModal({
 
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Country <span className="text-red-500">*</span>
-              </label>
-              <select
-                className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                <option value="">Select Country</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-
-              {country && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Marketplaces: {marketplaces.join(", ")}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-700 dark:text-gray-200">
                 Role
               </label>
+
               <select
                 className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
                 value={role}
@@ -363,16 +374,104 @@ export default function AddMemberModal({
 
             <div className="md:col-span-2">
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Section Access <span className="text-red-500">*</span>
+                Country & Section Access{" "}
+                <span className="text-red-500">*</span>
               </label>
 
-              <div className="mt-2">
-                <SectionAccessGrid
-                  options={MODULE_OPTIONS}
-                  value={modules}
-                  onChange={setModules}
-                />
-              </div>
+              {availableCountryOptions.length === 0 ? (
+                <div className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-3 text-sm text-yellow-800">
+                  No connected countries found. Please connect/integrate a
+                  marketplace before adding a team member.
+                </div>
+              ) : (
+                <div className="mt-2 overflow-x-auto rounded-2xl border border-gray-200">
+                  <div className="min-w-[760px]">
+                    <div className="grid grid-cols-[180px_repeat(4,minmax(140px,1fr))] bg-gray-50 text-xs font-semibold text-gray-600">
+                      <div className="border-r border-gray-200 px-3 py-3">
+                        Country
+                      </div>
+
+                      {MODULE_OPTIONS.map((module) => (
+                        <div
+                          key={module}
+                          className="border-r border-gray-200 px-3 py-3 text-center last:border-r-0"
+                        >
+                          {formatLabel(module)}
+                        </div>
+                      ))}
+                    </div>
+
+                    {availableCountryOptions.map((countryOption) => {
+                      const countryCode = countryOption.value;
+                      const enabled = !!countryAccess[countryCode];
+                      const selectedModulesForCountry =
+                        countryAccess[countryCode] || [];
+
+                      return (
+                        <div
+                          key={countryCode}
+                          className="grid grid-cols-[180px_repeat(4,minmax(140px,1fr))] border-t border-gray-200 bg-white text-sm"
+                        >
+                          <div className="flex items-center gap-2 border-r border-gray-200 px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={() => toggleCountry(countryCode)}
+                              className="h-4 w-4"
+                            />
+
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                {countryOption.label}
+                              </div>
+
+                              <div className="text-[11px] text-gray-500">
+                                {COUNTRY_TO_MARKETPLACES[countryCode]?.join(
+                                  ", "
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {MODULE_OPTIONS.map((module) => {
+                            const checked =
+                              selectedModulesForCountry.includes(module);
+
+                            return (
+                              <div
+                                key={`${countryCode}-${module}`}
+                                className="flex items-center justify-center border-r border-gray-200 px-3 py-3 last:border-r-0"
+                              >
+                                <button
+                                  type="button"
+                                  disabled={!enabled}
+                                  onClick={() =>
+                                    toggleCountryModule(countryCode, module)
+                                  }
+                                  className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs transition ${
+                                    checked
+                                      ? "border-[#10B981] bg-[#10B981] text-white"
+                                      : enabled
+                                        ? "border-gray-300 bg-white text-transparent hover:bg-gray-50"
+                                        : "cursor-not-allowed border-gray-200 bg-gray-100 text-transparent opacity-60"
+                                  }`}
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-2 text-xs text-gray-500">
+                Select one or more connected countries, then choose exactly
+                which sections each country can access.
+              </p>
             </div>
           </div>
 
@@ -386,6 +485,7 @@ export default function AddMemberModal({
 
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-yellow-100 bg-[#FDD36F4D] px-3 py-2 text-xs text-gray-700 dark:border-gray-800 dark:bg-white/5 dark:text-gray-200">
             <IoInformationCircleOutline className="text-charcoal-500 flex-shrink-0 text-base" />
+
             <span>
               Members can only view the sections you grant access to. A
               temporary password will be auto-generated and sent to the member

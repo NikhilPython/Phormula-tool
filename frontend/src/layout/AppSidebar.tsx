@@ -101,8 +101,34 @@ const AppSidebar: React.FC = () => {
 
   const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
 
-  const countryAccess: Record<string, string[]> =
-    authUser?.country_access || tokenPayload?.country_access || {};
+  const { data: userData } = useGetUserDataQuery(undefined, {
+    skip: !token,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+
+  const countryAccess: Record<string, string[]> = React.useMemo(() => {
+    const freshAccess = (userData as any)?.country_access;
+    const authAccess = authUser?.country_access;
+    const tokenAccess = tokenPayload?.country_access;
+
+    const rawAccess =
+      freshAccess && typeof freshAccess === "object"
+        ? freshAccess
+        : authAccess && typeof authAccess === "object"
+          ? authAccess
+          : tokenAccess && typeof tokenAccess === "object"
+            ? tokenAccess
+            : {};
+
+    return Object.fromEntries(
+      Object.entries(rawAccess).map(([country, modules]) => [
+        String(country).toUpperCase(),
+        Array.isArray(modules) ? modules.map(String) : [],
+      ])
+    );
+  }, [userData, authUser?.country_access, tokenPayload?.country_access]);
 
   const currentCountry = String(routeParams?.countryName || "global").toUpperCase();
 
@@ -118,9 +144,11 @@ const AppSidebar: React.FC = () => {
     return countryAccess[currentCountry] || [];
   }, [isMember, currentCountry, countryAccess]);
 
-  const { data: user } = useGetUserDataQuery(undefined, {
-    skip: !token || isMember,
-  });
+  // const { data: user } = useGetUserDataQuery(undefined, {
+  //   skip: !token || isMember,
+  // });
+
+  const user = userData;
 
   const isPreviewMode = routeParams?.month === "NA" && routeParams?.year === "NA";
 
@@ -688,6 +716,42 @@ const AppSidebar: React.FC = () => {
     return json;
   };
 
+  const getTopRouteForMemberCountry = React.useCallback(
+    (countryName: string) => {
+      const countryCode = countryName.toUpperCase();
+      const allowedModules = countryAccess[countryCode] || [];
+
+      const ranged = currentParams.ranged;
+      const month = currentParams.month;
+      const year = currentParams.year;
+
+      /**
+       * This order matches the sidebar section order:
+       * 1. Live Dashboard
+       * 2. Financial Metrics
+       * 3. Business Intelligence
+       * 4. Inventory Planning
+       */
+      if (allowedModules.includes("LIVE_DASHBOARD")) {
+        return `/live-dashboard/${countryName}/${month}/${year}#live-sales`;
+      }
+
+      if (allowedModules.includes("FINANCE_DASHBOARDS")) {
+        return `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}#finance-dashboard`;
+      }
+
+      if (allowedModules.includes("BUSINESS_INTELLIGENCE")) {
+        return `/ai-insight/${ranged}/${countryName}/${month}/${year}`;
+      }
+
+      if (allowedModules.includes("INVENTORY_PLANNING")) {
+        return `/inputCost/${countryName}/${month}/${year}`;
+      }
+
+      return null;
+    },
+    [countryAccess, currentParams.ranged, currentParams.month, currentParams.year]
+  );
 
   const onRegionChange = (val: string) => {
     const platform = val as PlatformId;
@@ -720,6 +784,17 @@ const AppSidebar: React.FC = () => {
     }
 
     const newCountryName = platformToCountryName(platform);
+
+    if (isMember) {
+      const topRoute = getTopRouteForMemberCountry(newCountryName);
+
+      if (topRoute) {
+        router.push(topRoute);
+      }
+
+      return;
+    }
+    
     const segments = pathname.split("/").filter(Boolean);
     const params: any = routeParams;
 

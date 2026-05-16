@@ -220,6 +220,10 @@ export default function ProfileClient() {
       const name = String(m?.member_name || "-");
       const email = String(m?.email || "-");
       const countries = Array.isArray(m?.countries) ? m.countries : [];
+      const countryAccess = m?.country_access && typeof m.country_access === "object"
+        ? m.country_access
+        : {};
+
       const modules = Array.isArray(m?.modules) ? m.modules : [];
       const createdAt = m?.created_at ? new Date(m.created_at) : null;
       const formatRole = (role: string) => {
@@ -243,36 +247,70 @@ export default function ProfileClient() {
 
         email: <span className="text-gray-500">{email}</span>,
 
-        country: <span className="text-slate-700">{countries?.[0] || "-"}</span>,
+        country: (
+          <div className="flex flex-wrap items-center justify-center gap-1">
+            {countries.length > 0 ? (
+              countries.map((country: string) => (
+                <span
+                  key={country}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-700"
+                >
+                  {country}
+                </span>
+              ))
+            ) : (
+              <span className="text-slate-700">-</span>
+            )}
+          </div>
+        ),
 
         role: <span className="text-slate-700">{role}</span>,
 
         sectionAccess: (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {showModules.map((mod: string) => (
-              // <span
-              //   key={mod}
-              //   className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
-              // >
-              //   {mod
-              //     .replaceAll("_", " ")
-              //     .replace(/\b\w/g, (l) => l.toUpperCase())}
-              // </span>
-              <span
-                key={mod}
-                className={`rounded-full px-2 py-1 text-[10px] border ${moduleColors[mod] || moduleColors.DEFAULT
-                  }`}
-              >
-                {mod
-                  .replaceAll("_", " ")
-                  .replace(/\b\w/g, (l) => l.toUpperCase())}
-              </span>
-            ))}
+          <div className="flex flex-col items-center gap-1">
+            {Object.keys(countryAccess).length > 0 ? (
+              Object.entries(countryAccess).slice(0, 2).map(([country, mods]) => (
+                <div
+                  key={country}
+                  className="flex flex-wrap items-center justify-center gap-1"
+                >
+                  <span className="text-[10px] font-semibold text-gray-600">
+                    {country}:
+                  </span>
 
-            {extraCount > 0 && (
-              <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-600">
-                +{extraCount}
-              </span>
+                  {(Array.isArray(mods) ? mods : []).slice(0, 2).map((mod: string) => (
+                    <span
+                      key={`${country}-${mod}`}
+                      className={`rounded-full px-2 py-1 text-[10px] border ${moduleColors[mod] || moduleColors.DEFAULT
+                        }`}
+                    >
+                      {mod
+                        .replaceAll("_", " ")
+                        .replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </span>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {showModules.map((mod: string) => (
+                  <span
+                    key={mod}
+                    className={`rounded-full px-2 py-1 text-[10px] border ${moduleColors[mod] || moduleColors.DEFAULT
+                      }`}
+                  >
+                    {mod
+                      .replaceAll("_", " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase())}
+                  </span>
+                ))}
+
+                {extraCount > 0 && (
+                  <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-600">
+                    +{extraCount}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ),

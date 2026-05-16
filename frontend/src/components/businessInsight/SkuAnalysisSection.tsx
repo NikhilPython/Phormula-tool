@@ -665,7 +665,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
         }
 
         if (activeTab === "reviving_skus") {
-            return "No reviving SKU was identified in the last 6 months.";
+            return "No reviving SKU was identified.";
         }
 
         return "No data found.";

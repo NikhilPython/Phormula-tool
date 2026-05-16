@@ -8267,19 +8267,87 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
-        // ✅ Countrywise: use live_mtd_bi categorized_growth directly
-        if (platform !== "global") {
-            const growthRows =
-                liveBiPayload?.categorized_growth?.new_or_reviving_skus || [];
+        const isInvalidPieRow = (name: string, sku?: string) => {
+            const n = String(name || "").trim().toLowerCase();
+            const s = String(sku || "").trim().toUpperCase();
 
-            const rows: Cm1PieSlice[] = growthRows
-                .map((r: any) => {
-                    const name = normalizeProductDisplayName(
-                        r?.product_name || r?.sku || "Unknown"
+            return (
+                !n ||
+                n === "unknown" ||
+                n === "total" ||
+                n === "grand total" ||
+                s === "TOTAL" ||
+                s === "GRAND_TOTAL"
+            );
+        };
+
+        const withPct = (rows: Cm1PieSlice[]) => {
+            const total = rows.reduce((sum, r) => sum + Math.abs(Number(r.value || 0)), 0);
+
+            if (!total) return [];
+
+            return rows
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .map((r) => ({
+                    ...r,
+                    pct: (Math.abs(Number(r.value || 0)) / total) * 100,
+                }));
+        };
+
+        // ✅ Countrywise: use the actual countrywise MTD response shape.
+        // Your countrywise response has:
+        // - data.skuwise_items[] for current profit
+        // - data.previous_period.sku_metrics[] for previous profit
+        if (platform !== "global") {
+            const currentRows = Array.isArray((data as any)?.skuwise_items)
+                ? (data as any).skuwise_items
+                : finalMonthlySkuwiseRowsForTable || [];
+
+            const previousRows = Array.isArray((data as any)?.previous_period?.sku_metrics)
+                ? (data as any).previous_period.sku_metrics
+                : [];
+
+            const prevProfitByName = new Map<string, number>();
+            const prevProfitBySku = new Map<string, number>();
+
+            previousRows.forEach((row: any) => {
+                const rawName = String(row?.product_name || row?.sku || "").trim();
+                const sku = String(row?.sku || "").trim().toUpperCase();
+
+                if (isInvalidPieRow(rawName, sku)) return;
+
+                const profit = Number(row?.profit ?? row?.cm1_profit ?? 0);
+
+                if (rawName) {
+                    prevProfitByName.set(
+                        normalizePieName(normalizeProductDisplayName(rawName)),
+                        profit
+                    );
+                }
+
+                if (sku) {
+                    prevProfitBySku.set(sku, profit);
+                }
+            });
+
+            const rows: Cm1PieSlice[] = currentRows
+                .map((row: any) => {
+                    const rawName = String(row?.product_name || row?.sku || "Unknown").trim();
+                    const sku = String(row?.sku || "").trim().toUpperCase();
+
+                    const name = normalizeProductDisplayName(rawName);
+
+                    const value = Number(
+                        row?.profit ??
+                        row?.cm1_profit ??
+                        row?.profit_curr ??
+                        0
                     );
 
-                    const value = Number(r?.profit_curr ?? 0);
-                    const prevValue = Number(r?.profit_prev ?? 0);
+                    const prevValue =
+                        prevProfitBySku.get(sku) ??
+                        prevProfitByName.get(normalizePieName(name)) ??
+                        Number(row?.profit_prev ?? 0);
 
                     return {
                         name,
@@ -8290,26 +8358,16 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     };
                 })
                 .filter((r: Cm1PieSlice) => {
-                    const n = r.name.toLowerCase();
                     return (
-                        n !== "total" &&
-                        n !== "grand total" &&
-                        n !== "unknown" &&
-                        (r.value !== 0 || r.prevValue !== 0)
+                        !isInvalidPieRow(r.name) &&
+                        (Number(r.value || 0) !== 0 || Number(r.prevValue || 0) !== 0)
                     );
                 });
 
-            const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
-
-            return rows
-                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-                .map((r) => ({
-                    ...r,
-                    pct: (Math.abs(r.value) / total) * 100,
-                }));
+            return withPct(rows);
         }
 
-        // ✅ Global: keep existing SKU-wise global previous map logic
+        // ✅ Global: keep your existing SKU-wise global previous map logic unchanged.
         const prevProfitByName = buildPreviousProfitMap("profit");
 
         const rows: Cm1PieSlice[] = (finalMonthlySkuwiseRowsForTable || [])
@@ -8329,19 +8387,17 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     deltaPct: safeDeltaPct(value, prevValue),
                 };
             })
-            .filter((r) => r.value !== 0 || r.prevValue !== 0);
+            .filter((r: Cm1PieSlice) => {
+                return (
+                    !isInvalidPieRow(r.name) &&
+                    (Number(r.value || 0) !== 0 || Number(r.prevValue || 0) !== 0)
+                );
+            });
 
-        const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
-
-        return rows
-            .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-            .map((r) => ({
-                ...r,
-                pct: (Math.abs(r.value) / total) * 100,
-            }));
+        return withPct(rows);
     }, [
         platform,
-        liveBiPayload,
+        data,
         finalMonthlySkuwiseRowsForTable,
         buildPreviousProfitMap,
     ]);
