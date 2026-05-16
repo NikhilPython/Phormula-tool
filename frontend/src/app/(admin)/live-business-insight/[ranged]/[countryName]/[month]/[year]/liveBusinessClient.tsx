@@ -112,10 +112,22 @@ interface SkuItem {
 
 interface CategorizedGrowth {
   top_80_skus: SkuItem[];
+
+  // keep combined for existing export/chart/backward compatibility
   new_or_reviving_skus: SkuItem[];
+
+  // new separated groups from backend
+  new_skus: SkuItem[];
+  reviving_skus: SkuItem[];
+
   other_skus: SkuItem[];
+
   top_80_total?: SkuItem | null;
   new_or_reviving_total?: SkuItem | null;
+
+  new_skus_total?: SkuItem | number | null;
+  reviving_skus_total?: SkuItem | number | null;
+
   other_total?: SkuItem | null;
   all_skus_total?: SkuItem | null;
 }
@@ -467,20 +479,20 @@ export default function LiveBusinessClient({
     };
   }, [convertToDisplayCurrency, formatDisplayAmount, sourceCurrency]);
 
-  const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>(
-    {
-      top_80_skus: [],
-      new_or_reviving_skus: [],
-      other_skus: [],
-      top_80_total: null,
-      new_or_reviving_total: null,
-      other_total: null,
-      all_skus_total: null,
-    }
-  );
+  const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
+    top_80_skus: [],
+    new_or_reviving_skus: [],
+    new_skus: [],
+    reviving_skus: [],
+    other_skus: [],
 
-
-
+    top_80_total: null,
+    new_or_reviving_total: null,
+    new_skus_total: null,
+    reviving_skus_total: null,
+    other_total: null,
+    all_skus_total: null,
+  });
 
   const getCurrencySymbolForExcel = () => {
     return currencyCodeToSymbol(displayCurrency);
@@ -499,15 +511,21 @@ export default function LiveBusinessClient({
     return `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${yy}`; // Jan'26
   }, [month, year]);
 
-  const [activeTab, setActiveTab] = useState<
-    'all_skus' | 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus'
-  >('all_skus');
+  type TabKey =
+    | "all_skus"
+    | "top_80_skus"
+    | "new_skus"
+    | "reviving_skus"
+    | "other_skus";
+
+  const [activeTab, setActiveTab] = useState<TabKey>("all_skus");
 
   const tabOptions = useMemo(
     () => [
       { value: "all_skus" as const, label: "All SKUs" },
       { value: "top_80_skus" as const, label: "Top 80% SKUs" },
-      { value: "new_or_reviving_skus" as const, label: "New/Reviving SKUs" },
+      { value: "new_skus" as const, label: "New SKUs" },
+      { value: "reviving_skus" as const, label: "Reviving SKUs" },
       { value: "other_skus" as const, label: "Other SKUs" },
     ],
     []
@@ -842,37 +860,34 @@ export default function LiveBusinessClient({
     };
   };
 
-
-
-
-  type TabKey =
-    | 'top_80_skus'
-    | 'new_or_reviving_skus'
-    | 'other_skus'
-    | 'all_skus';
-
   const getTabRows = (tab: TabKey): SkuItem[] => {
-    if (tab === 'all_skus') return getAllSkusForExport();
-    return categorizedGrowth[tab];
+    if (tab === "all_skus") return getAllSkusForExport();
+    if (tab === "new_skus") return categorizedGrowth.new_skus || [];
+    if (tab === "reviving_skus") return categorizedGrowth.reviving_skus || [];
+    return categorizedGrowth[tab] || [];
   };
 
   const getTabLabel = (key: TabKey): string =>
-    key === 'top_80_skus'
-      ? 'Top 80% SKUs'
-      : key === 'new_or_reviving_skus'
-        ? 'New/Reviving SKUs'
-        : key === 'other_skus'
-          ? 'Other SKUs'
-          : 'All SKUs';
+    key === "top_80_skus"
+      ? "Top 80% SKUs"
+      : key === "new_skus"
+        ? "New SKUs"
+        : key === "reviving_skus"
+          ? "Reviving SKUs"
+          : key === "other_skus"
+            ? "Other SKUs"
+            : "All SKUs";
 
   const getTabNumberForFeedback = (key: TabKey): number =>
-    key === 'top_80_skus'
+    key === "top_80_skus"
       ? 1
-      : key === 'new_or_reviving_skus'
+      : key === "new_skus"
         ? 2
-        : key === 'other_skus'
+        : key === "reviving_skus"
           ? 3
-          : 4;
+          : key === "other_skus"
+            ? 4
+            : 5;
 
   // =========================
   // Persistence helpers
@@ -930,22 +945,46 @@ export default function LiveBusinessClient({
     const empty: CategorizedGrowth = {
       top_80_skus: [],
       new_or_reviving_skus: [],
+      new_skus: [],
+      reviving_skus: [],
       other_skus: [],
+
       top_80_total: null,
       new_or_reviving_total: null,
+      new_skus_total: null,
+      reviving_skus_total: null,
       other_total: null,
       all_skus_total: null,
     };
 
     if (!raw) return empty;
 
+    const newSkus = (raw.new_skus || []).map(mapRow);
+    const revivingSkus = (raw.reviving_skus || []).map(mapRow);
+
+    const combinedNewReviving =
+      raw.new_or_reviving_skus?.length
+        ? raw.new_or_reviving_skus.map(mapRow)
+        : [...newSkus, ...revivingSkus];
+
     return {
       top_80_skus: (raw.top_80_skus || []).map(mapRow),
-      new_or_reviving_skus: (raw.new_or_reviving_skus || []).map(mapRow),
+
+      // combined key remains for export/old logic
+      new_or_reviving_skus: combinedNewReviving,
+
+      // separated table tabs
+      new_skus: newSkus,
+      reviving_skus: revivingSkus,
+
       other_skus: (raw.other_skus || []).map(mapRow),
 
       top_80_total: raw.top_80_total ? mapRow(raw.top_80_total) : null,
       new_or_reviving_total: raw.new_or_reviving_total ? mapRow(raw.new_or_reviving_total) : null,
+
+      new_skus_total: raw.new_skus_total ?? null,
+      reviving_skus_total: raw.reviving_skus_total ?? null,
+
       other_total: raw.other_total ? mapRow(raw.other_total) : null,
       all_skus_total: raw.all_skus_total ? mapRow(raw.all_skus_total) : null,
     };
@@ -986,11 +1025,17 @@ export default function LiveBusinessClient({
   const normalizeGlobalCategorizedGrowth = (raw?: any): CategorizedGrowth => {
     return normalizeCategorizedGrowth({
       top_80_skus: raw?.top_80_skus || raw?.top_80_products || [],
+
+      new_skus: raw?.new_skus || [],
+      reviving_skus: raw?.reviving_skus || [],
       new_or_reviving_skus: raw?.new_or_reviving_skus || [],
+
       other_skus: raw?.other_skus || raw?.other_products || [],
 
       top_80_total: raw?.top_80_total || null,
       new_or_reviving_total: raw?.new_or_reviving_total || null,
+      new_skus_total: raw?.new_skus_total ?? null,
+      reviving_skus_total: raw?.reviving_skus_total ?? null,
       other_total: raw?.other_total || null,
       all_skus_total: raw?.all_skus_total || null,
     });
@@ -2624,7 +2669,8 @@ export default function LiveBusinessClient({
 
   const getAllSkusForExport = (): SkuItem[] => [
     ...(categorizedGrowth.top_80_skus || []),
-    ...(categorizedGrowth.new_or_reviving_skus || []),
+    ...(categorizedGrowth.new_skus || []),
+    ...(categorizedGrowth.reviving_skus || []),
     ...(categorizedGrowth.other_skus || []),
   ];
 
@@ -2633,12 +2679,11 @@ export default function LiveBusinessClient({
   const allSkuRows = categorizedGrowth
     ? [
       ...cleanSkuRows(categorizedGrowth.top_80_skus || []),
-      ...cleanSkuRows(categorizedGrowth.new_or_reviving_skus || []),
+      ...cleanSkuRows(categorizedGrowth.new_skus || []),
+      ...cleanSkuRows(categorizedGrowth.reviving_skus || []),
       ...cleanSkuRows(categorizedGrowth.other_skus || []),
     ]
     : [];
-
-
 
   const [showAllSkus, setShowAllSkus] = useState(false);
 
@@ -2655,17 +2700,20 @@ export default function LiveBusinessClient({
 
   const hasAnySkus =
     categorizedGrowth.top_80_skus.length > 0 ||
-    categorizedGrowth.new_or_reviving_skus.length > 0 ||
+    categorizedGrowth.new_skus.length > 0 ||
+    categorizedGrowth.reviving_skus.length > 0 ||
     categorizedGrowth.other_skus.length > 0;
 
   const segmentTotal =
-    activeTab === 'all_skus'
+    activeTab === "all_skus"
       ? categorizedGrowth.all_skus_total
-      : activeTab === 'top_80_skus'
+      : activeTab === "top_80_skus"
         ? categorizedGrowth.top_80_total
-        : activeTab === 'new_or_reviving_skus'
-          ? categorizedGrowth.new_or_reviving_total
-          : categorizedGrowth.other_total;
+        : activeTab === "new_skus"
+          ? categorizedGrowth.new_skus_total
+          : activeTab === "reviving_skus"
+            ? categorizedGrowth.reviving_skus_total
+            : categorizedGrowth.other_total;
 
   const manualTotalsForAll = (() => {
     if (activeTab !== 'all_skus' || !currentTabData.length) {
@@ -2748,7 +2796,10 @@ export default function LiveBusinessClient({
   })();
 
   const manualTotalsForNewRev = (() => {
-    if (activeTab !== 'new_or_reviving_skus' || !currentTabData.length) {
+    const isNewOrRevivingTab =
+      activeTab === "new_skus" || activeTab === "reviving_skus";
+
+    if (!isNewOrRevivingTab || !currentTabData.length) {
       return {
         salesMix: 0,
         quantity: 0,
@@ -2953,7 +3004,7 @@ export default function LiveBusinessClient({
   };
 
   const columns: ColumnDef<BIGridRow>[] = useMemo(() => {
-    const isNewRev = activeTab === 'new_or_reviving_skus';
+    const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
     const showAI = Object.keys(skuInsights).length > 0;
 
     const SNO_WIDTH = '70px';
@@ -3037,7 +3088,7 @@ export default function LiveBusinessClient({
 
 
   const tableData: BIGridRow[] = useMemo(() => {
-    const isNewRev = activeTab === 'new_or_reviving_skus';
+    const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
     const showAI = Object.keys(skuInsights).length > 0;
 
     const totalNetSalesMonth1 = allSkuRows.reduce(
@@ -3075,8 +3126,6 @@ export default function LiveBusinessClient({
         : 0;
 
     const rows: BIGridRow[] = (rowsToRender || []).map((item, idx) => {
-
-
       const mixVal =
         (item as any)['Sales Mix (Month2)'] ??
         (item as any).sales_mix_month2 ??
@@ -3093,17 +3142,40 @@ export default function LiveBusinessClient({
           ? `${((rowProfit / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
           : "0.00%";
 
+      const itemAny = item as any;
+
       return {
         sNo: <CenterCell value={idx + 1} />,
         product: capitalizeWords(item.product_name || item.sku || 'N/A'),
         salesMix: <CenterCell value={salesMix} />,
         profitMix: <CenterCell value={profitMix} />,
-        unit: isNewRev ? renderNewRevGrowthOrDash(item['Unit Growth']) : renderGrowthOrNA(item['Unit Growth']),
-        asp: isNewRev ? renderNewRevGrowthOrDash(item['ASP Growth']) : renderGrowthOrNA(item['ASP Growth']),
-        sales: isNewRev ? renderNewRevGrowthOrDash(item['Sales Growth']) : renderGrowthOrNA(item['Sales Growth']),
-        ...(isNewRev ? {} : { mixChange: renderGrowthOrNA(item['Sales Mix Change']) }),
-        unitProfit: isNewRev ? renderNewRevGrowthOrDash(item['Profit Per Unit']) : renderGrowthOrNA(item['Profit Per Unit']),
-        profit: isNewRev ? renderNewRevGrowthOrDash(item['CM1 Profit Impact']) : renderGrowthOrNA(item['CM1 Profit Impact']),
+
+        unit: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["Unit Growth"])
+          : renderGrowthOrNA(itemAny["Unit Growth"]),
+
+        asp: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["ASP Growth"])
+          : renderGrowthOrNA(itemAny["ASP Growth"]),
+
+        sales: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["Sales Growth"])
+          : renderGrowthOrNA(itemAny["Sales Growth"]),
+
+        ...(isNewRev
+          ? {}
+          : {
+            mixChange: renderGrowthOrNA(itemAny["Sales Mix Change"]),
+          }),
+
+        unitProfit: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["Profit Per Unit"])
+          : renderGrowthOrNA(itemAny["Profit Per Unit"]),
+
+        profit: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["CM1 Profit Impact"])
+          : renderGrowthOrNA(itemAny["CM1 Profit Impact"]),
+
         ...(showAI ? { ai: buildAiCell(item) } : {}),
       };
     });
@@ -3202,6 +3274,15 @@ export default function LiveBusinessClient({
       });
 
     }
+
+    const isNewOrRevivingTab =
+      activeTab === "new_skus" || activeTab === "reviving_skus";
+
+    if (isNewOrRevivingTab && rows.length === 0) {
+      return [];
+    }
+
+
     const pct = (prev: number, curr: number) => {
       if (!prev || prev === 0 || curr == null) return null;
       return ((curr - prev) / prev) * 100;
@@ -3265,11 +3346,9 @@ export default function LiveBusinessClient({
         : '0.00%'
       : segmentTotal && (segmentTotal as any)['Sales Mix (Month2)'] != null
         ? `${Number((segmentTotal as any)['Sales Mix (Month2)']).toFixed(2)}%`
-        : activeTab === 'new_or_reviving_skus'
+        : activeTab === "new_skus" || activeTab === "reviving_skus"
           ? `${manualTotalsForNewRev.salesMix.toFixed(2)}%`
-          : 'N/A';
-
-
+          : "N/A";
 
     const totalRow: BIGridRow = {
       __isTotal: true,
@@ -3334,14 +3413,14 @@ export default function LiveBusinessClient({
             profit: renderGrowthOrNA(asGrowth(profitGrowthPct)),
           };
         })()
-        : activeTab !== "new_or_reviving_skus"
+        : activeTab !== "new_skus" && activeTab !== "reviving_skus"
           ? {
-            unit: renderGrowthOrNA(segmentTotal?.["Unit Growth"]),
-            asp: renderGrowthOrNA(segmentTotal?.["ASP Growth"]),
-            sales: renderGrowthOrNA(segmentTotal?.["Sales Growth"]),
-            mixChange: renderGrowthOrNA(segmentTotal?.["Sales Mix Change"]),
-            unitProfit: renderGrowthOrNA(segmentTotal?.["Profit Per Unit"]),
-            profit: renderGrowthOrNA(segmentTotal?.["CM1 Profit Impact"]),
+            unit: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Unit Growth"]),
+            asp: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["ASP Growth"]),
+            sales: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Sales Growth"]),
+            mixChange: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Sales Mix Change"]),
+            unitProfit: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Profit Per Unit"]),
+            profit: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["CM1 Profit Impact"]),
           }
           : {
             unit: "-",
@@ -4072,6 +4151,17 @@ export default function LiveBusinessClient({
     );
   };
 
+  const getSkuEmptyMessage = () => {
+    if (activeTab === "new_skus") {
+      return "No new SKU has been launched within the last 6 months.";
+    }
+
+    if (activeTab === "reviving_skus") {
+      return "No reviving SKU was identified in the last 6 months.";
+    }
+
+    return "No data found.";
+  };
 
   return (
     <>
@@ -4464,7 +4554,7 @@ export default function LiveBusinessClient({
                       onClick={analyzeSkus}
                       disabled={
                         loadingInsight ||
-                        !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                        !["top_80_skus", "new_skus", "reviving_skus", "other_skus"].some(
                           (k) =>
                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                         )
@@ -4557,11 +4647,13 @@ export default function LiveBusinessClient({
                     columns={columns}
                     data={tableData}
                     stickyHeader
-                    scrollY
-                    // maxHeight="60vh"
-                    paginate={false} // ✅ total row always visible at bottom
-                    className="rounded-xl"
-                    tableClassName="w-full"
+                    zebra
+                    paginate
+                    pageSize={10}
+                    maxHeight="60vh"
+                    loading={false}
+                    headerMaxWidth={140}
+                    emptyMessage={getSkuEmptyMessage()}
                     rowClassName={rowClassNameForDataTable}
                   />
                 </div>

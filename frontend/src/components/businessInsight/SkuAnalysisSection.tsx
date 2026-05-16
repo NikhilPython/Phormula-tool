@@ -661,7 +661,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
     const getSkuEmptyMessage = () => {
         if (activeTab === "new_skus") {
-            return "No new SKU had been launched within the last 6 months.";
+            return "No new SKU has been launched within the last 6 months.";
         }
 
         if (activeTab === "reviving_skus") {
