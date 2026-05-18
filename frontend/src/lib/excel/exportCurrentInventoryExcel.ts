@@ -686,16 +686,39 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     }
   }
 
-  // Force all numeric cells to 2 decimals (default)
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-      if (isNumber(cell.v)) cell.z = "#,##0.00";
-    }
+// Force all numeric cells to 2 decimals (default)
+const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+for (let r = range.s.r; r <= range.e.r; r++) {
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = ws[addr];
+    if (!cell) continue;
+    if (isNumber(cell.v)) cell.z = "#,##0.00";
   }
+}
+
+// ✅ Add % symbol for percentage columns in main product table
+const PERCENT_TABLE_HEADERS = new Set([
+  "ACOS %",
+  "CM1 Profit %",
+  "CM2 Profit %",
+]);
+
+for (let c = 0; c < headerCount; c++) {
+  const header = String(headers[c] || "").trim();
+
+  if (!PERCENT_TABLE_HEADERS.has(header)) continue;
+
+  for (let r = headerRowIndex + 1; r <= totalRowIndex; r++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = ws[addr];
+
+    if (!cell || !isNumber(cell.v)) continue;
+
+    cell.z = '0.00"%"';
+  }
+}
+
 
   // ✅ Bold only selected summary rows (parents / key rows)
   for (const r of boldSummaryRowIndices) {
