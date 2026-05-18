@@ -157,6 +157,11 @@ type GrandTotalSkuwiseRow = Partial<MonthlySkuwiseRow> & {
     total_cm2_profit?: number;
     total_cm2_margins?: number;
     profit_percentage?: number;
+    shipment_fees?: number;
+    current_net_reimbursement?: number;
+    reimbursement_vs_sales?: number;
+    reimbursement_vs_cm2_margins?: number;
+    marketplace_fees?: number;
 };
 
 type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
@@ -1867,7 +1872,7 @@ export default function DashboardPage() {
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthToNumber(monthName.toLowerCase());
-            const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+            const include = country === "UK" || country === "US" ? ["SP", "SD", "SB"] : ["SP"];
 
             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
                 method: "POST",
@@ -5066,9 +5071,15 @@ export default function DashboardPage() {
     }, [monthlySkuwiseRows, platform]);
 
     const grandTotalRowDisplay = useMemo(() => {
-        return monthlySkuwiseRowsDisplay.find(
-            (item: any) =>
-                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
+        return (
+            monthlySkuwiseRowsDisplay.find((item: any) => item.sku === "GRAND_TOTAL") ??
+            monthlySkuwiseRowsDisplay.find((item: any) => item.isTotal) ??
+            monthlySkuwiseRowsDisplay.find((item: any) =>
+                ["grand total", "total"].includes(
+                    String(item.product_name || "").trim().toLowerCase()
+                )
+            ) ??
+            null
         );
     }, [monthlySkuwiseRowsDisplay]);
 
@@ -5081,12 +5092,173 @@ export default function DashboardPage() {
     const grandTotalRowRaw = useMemo<GrandTotalSkuwiseRow | null>(() => {
         return (
             monthlySkuwiseRows.find((item: any) => item.sku === "GRAND_TOTAL") ??
-            monthlySkuwiseRows.find((item: any) => item.product_name === "Grand Total") ??
+            monthlySkuwiseRows.find((item: any) => item.isTotal) ??
+            monthlySkuwiseRows.find((item: any) =>
+                ["grand total", "total"].includes(
+                    String(item.product_name || "").trim().toLowerCase()
+                )
+            ) ??
             null
         );
     }, [monthlySkuwiseRows]);
 
-    // 👇 ADD THIS HERE
+    const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
+        return computePlSummaryTotals(data, monthlySkuwiseRows, platform);
+    }, [data, monthlySkuwiseRows, platform]);
+
+
+
+    // ===================== SKUWISE API FIELD MAPPING =====================
+    // These replace the old frontend-calculated variables.
+    // Source: backend skuwise_items / skuwise_items_global grand total row.
+
+    const rawAdsSpend = toNumber(
+        grandTotalRowRaw?.ads_spend ??
+        grandTotalRowRaw?.total_ads ??
+        grandTotalRowRaw?.advertising_total ??
+        grandTotalRowRaw?.advertising_fees ??
+        plSummaryTotals?.advertising_total ??
+        0
+    );
+
+    const rawSponsoredProductsSpend = toNumber(
+        grandTotalRowRaw?.product_spend ??
+        plSummaryTotals?.visible_ads ??
+        0
+    );
+
+    const rawSponsoredBrandSpend = toNumber(
+        grandTotalRowRaw?.brand_spend ??
+        0
+    );
+
+    const rawDealVouchers = toNumber(
+        grandTotalRowRaw?.dealsvouchar_ads ??
+        plSummaryTotals?.dealsvouchar_ads ??
+        0
+    );
+
+    const rawPlatformFee = toNumber(
+        grandTotalRowRaw?.platform_fee ??
+        grandTotalRowRaw?.platformfeenew ??
+        plSummaryTotals?.platform_fee ??
+        0
+    );
+
+    const rawOtherPlatformFee = toNumber(
+        grandTotalRowRaw?.platformfeenew ??
+        grandTotalRowRaw?.platform_fee ??
+        plSummaryTotals?.platform_fee ??
+        0
+    );
+
+    const rawInventoryStorageFees = toNumber(
+        grandTotalRowRaw?.platform_fee_inventory_storage ??
+        plSummaryTotals?.platform_fee_inventory_storage ??
+        0
+    );
+
+    const rawLostInventoryTotal = toNumber(
+        grandTotalRowRaw?.lost_total ??
+        plSummaryTotals?.lost_total ??
+        plSummaryTotals?.reimbursement_lost_inventory_amount ??
+        0
+    );
+
+    const rawProfit = toNumber(
+        grandTotalRowRaw?.profit ??
+        plSummaryTotals?.profit ??
+        0
+    );
+
+    // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
+    const rawCostOfAds = Math.abs(rawSponsoredBrandSpend - rawDealVouchers);
+
+    // Prefer backend total ad value first.
+    // Fallback to ads_spend + costOfAds if total_ads is missing.
+    const rawAdsSpendTotal = Math.abs(
+        toNumber(
+            grandTotalRowRaw?.total_ads ??
+            grandTotalRowRaw?.advertising_total ??
+            grandTotalRowRaw?.advertising_fees ??
+            plSummaryTotals?.advertising_total ??
+            0
+        ) || (rawAdsSpend + rawCostOfAds)
+    );
+
+    // Prefer backend CM2 first.
+    // Fallback to old formula only if backend CM2 is missing.
+    const rawCm2Profit =
+        toNumber(
+            grandTotalRowRaw?.total_cm2_profit ??
+            grandTotalRowRaw?.cm2_profit ??
+            plSummaryTotals?.cm2_profit ??
+            0
+        ) || (rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee));
+
+    const rawCm2Margins = toNumber(
+        grandTotalRowRaw?.total_cm2_margins ??
+        grandTotalRowRaw?.cm2_profit_per ??
+        plSummaryTotals?.cm2_margins ??
+        0
+    );
+
+    const adsSpendTotal =
+        platform === "global"
+            ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
+            : rawAdsSpendTotal;
+
+    const costOfAds =
+        platform === "global"
+            ? convertToDisplayCurrency(rawCostOfAds, amazonDataCurrency)
+            : rawCostOfAds;
+
+    const cm2Profit =
+        platform === "global"
+            ? convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency)
+            : rawCm2Profit;
+
+    const cm2Margins = rawCm2Margins;
+
+    const platformFee =
+        platform === "global"
+            ? convertToDisplayCurrency(Math.abs(rawPlatformFee), amazonDataCurrency)
+            : Math.abs(rawPlatformFee);
+
+    const sponsoredProductsSpend =
+        platform === "global"
+            ? convertToDisplayCurrency(rawSponsoredProductsSpend, amazonDataCurrency)
+            : rawSponsoredProductsSpend;
+
+    const sponsoredBrandSpend =
+        platform === "global"
+            ? convertToDisplayCurrency(rawSponsoredBrandSpend, amazonDataCurrency)
+            : rawSponsoredBrandSpend;
+
+    const dealVoucher =
+        platform === "global"
+            ? convertToDisplayCurrency(rawDealVouchers, amazonDataCurrency)
+            : rawDealVouchers;
+
+    // Alias because your file uses both names.
+    const dealVouchers = dealVoucher;
+
+    const inventoryStorageFees =
+        platform === "global"
+            ? convertToDisplayCurrency(rawInventoryStorageFees, amazonDataCurrency)
+            : rawInventoryStorageFees;
+
+    const lost_inventory_total =
+        platform === "global"
+            ? convertToDisplayCurrency(rawLostInventoryTotal, amazonDataCurrency)
+            : rawLostInventoryTotal;
+
+    const otherPlatformFee =
+        platform === "global"
+            ? convertToDisplayCurrency(rawOtherPlatformFee, amazonDataCurrency)
+            : rawOtherPlatformFee;
+
+
     const amazonPl = () => {
         const sourceCurrency = amazonDataCurrency;
 
@@ -5322,95 +5494,6 @@ export default function DashboardPage() {
     }, [monthlySkuwiseRowsDisplay]);
 
 
-    const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
-        return computePlSummaryTotals(data, monthlySkuwiseRows, platform)
-    }, [data, monthlySkuwiseRowsDisplay]);
-
-    // const globalMtdCardData = useMemo(() => {
-    //     const globalRows =
-    //         platform === "global" && Array.isArray(data?.skuwise_items_global)
-    //             ? data.skuwise_items_global
-    //             : Array.isArray(data?.skuwise_items)
-    //                 ? data.skuwise_items
-    //                 : monthlySkuwiseRows || [];
-
-    //     const globalGrand = getGrandTotalRow(globalRows) as GrandTotalSkuwiseRow;
-
-    //     const globalTotals = data?.totals || {};
-    //     const globalDerived = data?.derived_totals || {};
-    //     const globalPrevTotals = data?.previous_period?.totals || {};
-
-    //     return {
-    //         // direct backend grand-total values
-    //         units: toNumber(
-    //             globalGrand.quantity ??
-    //             globalTotals.quantity
-    //         ),
-    //         prevUnits: toNumber(globalPrevTotals.quantity),
-
-    //         grossSales: toNumber(
-    //             globalGrand.gross_sales ??
-    //             globalTotals.gross_sales
-    //         ),
-    //         prevGrossSales: toNumber(globalPrevTotals.gross_sales),
-
-    //         netSales: toNumber(
-    //             globalGrand.net_sales ??
-    //             globalDerived.net_sales ??
-    //             plSummaryTotals.net_sales
-    //         ),
-    //         prevNetSales: toNumber(globalPrevTotals.net_sales),
-
-    //         asp: toNumber(
-    //             globalGrand.asp ??
-    //             globalDerived.asp
-    //         ),
-    //         prevAsp: toNumber(globalPrevTotals.asp),
-
-    //         ads: toNumber(
-    //             globalGrand.total_ads ??
-    //             plSummaryTotals.advertising_total
-    //         ),
-    //         prevAds: toNumber(globalPrevTotals.advertising_fees),
-
-    //         tacos: toNumber(
-    //             globalGrand.tacos_total_advertising_cost_of_sale ??
-    //             plSummaryTotals.acos
-    //         ),
-    //         prevTacos: toNumber(
-    //             globalPrevTotals.tacos_total_advertising_cost_of_sale ??
-    //             globalPrevTotals.acos
-    //         ),
-
-    //         cm2Profit: toNumber(
-    //             globalGrand.total_cm2_profit ??
-    //             plSummaryTotals.cm2_profit
-    //         ),
-    //         prevCm2Profit: toNumber(
-    //             globalPrevTotals.total_cm2_profit ??
-    //             globalPrevTotals.cm2_profit
-    //         ),
-
-    //         cm2Pct: toNumber(
-    //             globalGrand.total_cm2_margins ??
-    //             plSummaryTotals.cm2_margins
-    //         ),
-    //         prevCm2Pct: toNumber(
-    //             globalPrevTotals.total_cm2_margins ??
-    //             globalPrevTotals.cm2_profit_per ??
-    //             globalPrevTotals.profit_percentage
-    //         ),
-    //     };
-    // }, [
-    //     platform,
-    //     data,
-    //     monthlySkuwiseRows,
-    //     plSummaryTotals.net_sales,
-    //     plSummaryTotals.advertising_total,
-    //     plSummaryTotals.acos,
-    //     plSummaryTotals.cm2_profit,
-    //     plSummaryTotals.cm2_margins,
-    // ]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -6061,19 +6144,6 @@ export default function DashboardPage() {
         inrToUsd,
     ]);
 
-
-
-    // const tacosPctForSummary = useMemo(() => {
-    //     if (globalUseBi) {
-    //         if (!globalCm2Ready) return 0;
-    //         const ads = biAlignedTotals?.total_current_advertising ?? 0;
-    //         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-    //         return sales > 0 ? (ads / sales) * 100 : 0;
-    //     }
-
-    //     return globalCurrRoasPct;
-    // }, [globalUseBi, globalCm2Ready, biAlignedTotals, globalCurrRoasPct]);
-
     const costOfAdsForSummary = useMemo(() => {
         if (useBiForAmazonCards) {
             if (!cm2Ready) return 0;
@@ -6221,37 +6291,28 @@ export default function DashboardPage() {
     const stats_lastMonthTotalHome = targetData.lastMonthTotalUSD;
     const stats_targetHome = targetData.targetUSD;
 
-    const grandTotalRow = data?.skuwise_items?.find(
-        (item: any) =>
-            item.product_name === "Grand Total" ||
-            item.sku === "GRAND_TOTAL"
-    );
+    // const grandTotalRow = data?.skuwise_items?.find(
+    //     (item: any) =>
+    //         item.product_name === "Grand Total" ||
+    //         item.sku === "GRAND_TOTAL"
+    // );
 
-    const row = grandTotalRowRaw;
+    // const row = grandTotalRowRaw;
 
-    const rawAdsSpend = toNumber(row?.ads_spend ?? 0);
-    const rawBrandSpend = toNumber(row?.brand_spend ?? 0);
-    const rawDealVouchers = toNumber(row?.dealsvouchar_ads ?? 0);
-    const rawPlatformFee = toNumber(row?.platform_fee ?? 0);
-    const rawProfit = toNumber(row?.profit ?? 0);
+    // const rawAdsSpend = toNumber(row?.ads_spend ?? 0);
+    // const rawBrandSpend = toNumber(row?.brand_spend ?? 0);
+    // const rawDealVouchers = toNumber(row?.dealsvouchar_ads ?? 0);
+    // const rawPlatformFee = toNumber(row?.platform_fee ?? 0);
+    // const rawProfit = toNumber(row?.profit ?? 0);
 
-    const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
-    const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
+    // const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
+    // const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
 
-    const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
+    // const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
 
     const globalBottomCards = useMemo(() => {
-
-
-        const currentCostOfAds =
-            platform === "global"
-                ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
-                : rawAdsSpendTotal;
-
-        const currentCm2Profit =
-            platform === "global"
-                ? convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency)
-                : rawCm2Profit;
+        const currentCostOfAds = costOfAds;
+        const currentCm2Profit = cm2Profit;
 
         const salesBase =
             platform === "global"
@@ -6268,12 +6329,12 @@ export default function DashboardPage() {
             currentCm2Pct,
         };
     }, [
-        grandTotalRowRaw,
+        costOfAds,
+        cm2Profit,
         platform,
-        amazonDataCurrency,
-        convertToDisplayCurrency,
         globalCurrNetSalesDisp,
         uk.netSalesGBP,
+        convertToDisplayCurrency,
     ]);
 
     const tacosPctForSummary = useMemo(() => {
@@ -6282,46 +6343,14 @@ export default function DashboardPage() {
                 ? globalCurrNetSalesDisp
                 : convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP");
 
-        const adsBase =
-            platform === "global"
-                ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
-                : rawAdsSpendTotal;
-
-        return salesBase > 0 ? (adsBase / salesBase) * 100 : 0;
+        return salesBase > 0 ? (adsSpendTotal / salesBase) * 100 : 0;
     }, [
         platform,
-        rawAdsSpendTotal,
+        adsSpendTotal,
         globalCurrNetSalesDisp,
         uk.netSalesGBP,
         convertToDisplayCurrency,
-        amazonDataCurrency,
     ]);
-
-
-    const ads_spend = grandTotalRowDisplay?.ads_spend ?? 0;
-    const sponsoredProductsSpend = grandTotalRowDisplay?.product_spend ?? 0;
-    const sponsoredBrandSpend = grandTotalRowDisplay?.brand_spend ?? 0;
-    const inventoryStorageFees = grandTotalRowDisplay?.platform_fee_inventory_storage ?? 0;
-    const lost_inventory_total = grandTotalRowDisplay?.lost_total ?? 0;
-    const otherPlatformFee = grandTotalRowDisplay?.platformfeenew ?? 0;
-    // const platformFee = grandTotalRowDisplay?.platform_fee ?? 0;
-    const dealVouchers = grandTotalRowDisplay?.dealsvouchar_ads ?? 0;
-
-    const costOfAds = Math.abs(toNumber(sponsoredBrandSpend - dealVouchers));
-    const adsSpendTotal = Math.abs(toNumber(ads_spend + costOfAds));
-    const cm2Profit =
-        toNumber(grandTotalRowDisplay?.profit) -
-        adsSpendTotal -
-        Math.abs(toNumber(grandTotalRowDisplay?.platform_fee));
-
-
-    const grossProfit = toNumber(grandTotalRowDisplay?.profit); // or contribution margin before ads
-
-    const platformFee = Math.abs(toNumber(grandTotalRowDisplay?.platform_fee));
-    const ads = adsSpendTotal;
-
-    // const cm2Profit = grossProfit - platformFee - ads;
-
 
     const buildDashboardCachePayload = useCallback(() => {
         return {
@@ -8089,13 +8118,16 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const handleDownloadPlProductwiseMtd = useCallback(() => {
         try {
-            // ✅ Use the SAME rows that are shown in frontend table
-            const rowsToExport = (finalMonthlySkuwiseRowsForTable || []).filter((r) => {
-                const sku = String(r.sku || "").toUpperCase();
-                const pn = String((r as any).product_name || "").toLowerCase();
 
-                // keep Total and Others because frontend table shows them
-                return sku || pn || r.isTotal || r.isOthers;
+            const rowsToExport = (monthlySkuwiseRowsDisplay || []).filter((r: any) => {
+                const sku = String(r?.sku || "").trim().toUpperCase();
+                const pn = String(r?.product_name || "").trim().toLowerCase();
+
+                // remove grouped/summary "Others"
+                if (r?.isOthers || sku === "OTHERS" || pn === "others") return false;
+
+                // keep real items and total row
+                return sku || pn || r?.isTotal;
             });
 
             if (!rowsToExport.length) return;
@@ -8147,11 +8179,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
             }));
 
-            // ✅ Pull summary values from the same frontend/grand-total data first,
-            // then fallback to plSummaryTotals.
             const visibilityAds =
-                n(totalRow?.product_spend) ||
-                n((plSummaryTotals as any)?.visible_ads);
+                n(totalRow?.brand_spend); // Visibility - Ads (-)
 
             const dealsVouchers =
                 n(totalRow?.dealsvouchar_ads) ||
@@ -8166,9 +8195,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 n(totalRow?.platform_fee_inventory_storage) ||
                 n((plSummaryTotals as any)?.platform_fee_inventory_storage);
 
-            const miscTransactions =
-                n(totalRow?.other) ||
-                n((plSummaryTotals as any)?.misc_transaction);
+            const miscTransactions = "";
 
             const lostInventory =
                 n(totalRow?.lost_total) ||
@@ -8229,7 +8256,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             console.error("Error exporting P&L Productwise Breakdown MTD", err);
         }
     }, [
-        finalMonthlySkuwiseRowsForTable,
+        monthlySkuwiseRowsDisplay,
         formattedMonthYear,
         countryName,
         plSummaryTotals,
@@ -10132,23 +10159,16 @@ ${pageLoading
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
                                                 }
-                                                // CM1 %
                                                 if (colKey === "cm1_profit_per") {
                                                     const v = Number(row.cm1_profit_per ?? 0);
                                                     return `${formatAdsNumber(Math.abs(v))}%`;
                                                 }
 
-                                                // CM1 per unit (no %)
                                                 if (colKey === "cm1_profit_per_unit") {
                                                     const v = Number(row.cm1_profit_per_unit ?? 0);
                                                     return formatAdsNumber(Math.abs(v));
                                                 }
 
-                                                // if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
-                                                //     const v = Number((row as any)[colKey] ?? 0);
-                                                //     return formatAdsNumber(Number.isFinite(v) ? v : 0);
-                                                // }
-                                                // CM2 %
                                                 if (colKey === "cm2_profit_per") {
                                                     const v = Number(row.cm2_profit_per ?? 0);
                                                     return `${formatAdsNumber(v)}%`;
@@ -10267,13 +10287,13 @@ ${pageLoading
                                                     {
                                                         id: "cm2_profit",
                                                         label: "CM2 Profit/Loss",
-                                                        endValue: Number(
-                                                            (
+                                                        endValue: Math.round(
+                                                            Number(
                                                                 platform === "global"
                                                                     ? plSummaryTotals.cm2_profit
                                                                     : cm2Profit
-                                                            ).toFixed(2)
-                                                        )
+                                                            ) || 0
+                                                        ).toLocaleString(),
                                                     },
                                                     {
                                                         id: "cm2_margins",
