@@ -720,6 +720,9 @@ export default function ObjectivesPageClient({
   const { data, isLoading, isError } = useGetUserDataQuery();
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
+  const isMember = Boolean((data as any)?.is_member);
+  const canEditBusinessOverview = !!data && !isMember;
+
   const connected = useConnectedPlatforms();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1003,6 +1006,8 @@ export default function ObjectivesPageClient({
 
 
   const startBusinessSummaryEdit = () => {
+    if (isMember) return;
+
     setObjectiveDraft(objective);
     setIsBusinessSummaryEditMode(true);
   };
@@ -1013,6 +1018,8 @@ export default function ObjectivesPageClient({
   };
 
   const startStrategicEdit = () => {
+    if (isMember) return;
+
     setObjectiveDraft(objective);
 
     const currentTarget = Number(
@@ -1869,41 +1876,43 @@ export default function ObjectivesPageClient({
             <InfoCard
               title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
               action={
-                !isBusinessSummaryEditMode ? (
-                  <button
-                    type="button"
-                    onClick={startBusinessSummaryEdit}
-                    disabled={isPreviewMode}
-                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Enable business summary edit mode"
-                    title="Edit business summary"
-                  >
-                    <FiEdit className="text-lg" />
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Button
+                canEditBusinessOverview ? (
+                  !isBusinessSummaryEditMode ? (
+                    <button
                       type="button"
-                      onClick={handleBusinessSummarySave}
-                      size="icon"
-                      title="Save"
-                      disabled={isGeneratingSummary || isSaving}
+                      onClick={startBusinessSummaryEdit}
+                      disabled={isPreviewMode}
+                      className="inline-flex h-9 w-9 items-center justify-center text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label="Enable business summary edit mode"
+                      title="Edit business summary"
                     >
-                      <FiCheck />
-                    </Button>
+                      <FiEdit className="text-lg" />
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleBusinessSummarySave}
+                        size="icon"
+                        title="Save"
+                        disabled={isGeneratingSummary || isSaving}
+                      >
+                        <FiCheck />
+                      </Button>
 
-                    <Button
-                      type="button"
-                      onClick={cancelBusinessSummaryEdit}
-                      size="icon"
-                      variant="outline"
-                      title="Cancel"
-                      disabled={isGeneratingSummary || isSaving}
-                    >
-                      <FiX />
-                    </Button>
-                  </div>
-                )
+                      <Button
+                        type="button"
+                        onClick={cancelBusinessSummaryEdit}
+                        size="icon"
+                        variant="outline"
+                        title="Cancel"
+                        disabled={isGeneratingSummary || isSaving}
+                      >
+                        <FiX />
+                      </Button>
+                    </div>
+                  )
+                ) : null
               }
             >
               <>
@@ -2176,25 +2185,29 @@ export default function ObjectivesPageClient({
                 />
               }
               action={
-                !isStrategicEditMode ? (
-                  <button
-                    onClick={startStrategicEdit}
-                    className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    type="button"
-                    disabled={isPreviewMode}
-                  >
-                    <FiEdit className="text-lg" />
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                      <FiCheck />
-                    </Button>
-                    <Button size="icon" variant="outline" onClick={cancelStrategicEdit}>
-                      <FiX />
-                    </Button>
-                  </div>
-                )
+                canEditBusinessOverview ? (
+                  !isStrategicEditMode ? (
+                    <button
+                      onClick={startStrategicEdit}
+                      className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
+                      disabled={isPreviewMode}
+                      aria-label="Edit strategic objectives"
+                      title="Edit strategic objectives"
+                    >
+                      <FiEdit className="text-lg" />
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Button size="icon" onClick={handleStrategicObjectivesSave}>
+                        <FiCheck />
+                      </Button>
+                      <Button size="icon" variant="outline" onClick={cancelStrategicEdit}>
+                        <FiX />
+                      </Button>
+                    </div>
+                  )
+                ) : null
               }
             >
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
