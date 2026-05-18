@@ -342,7 +342,7 @@ export default function AddMemberModal({
 
               <input
                 className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-dark"
-                placeholder="member1@company.com"
+                placeholder="member@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -425,11 +425,11 @@ export default function AddMemberModal({
                                 {countryOption.label}
                               </div>
 
-                              <div className="text-[11px] text-gray-500">
+                              {/* <div className="text-[11px] text-gray-500">
                                 {COUNTRY_TO_MARKETPLACES[countryCode]?.join(
                                   ", "
                                 )}
-                              </div>
+                              </div> */}
                             </div>
                           </div>
 
@@ -450,7 +450,7 @@ export default function AddMemberModal({
                                   }
                                   className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs transition ${
                                     checked
-                                      ? "border-[#10B981] bg-[#10B981] text-white"
+                                      ? "border-green-500 bg-green-500 text-white"
                                       : enabled
                                         ? "border-gray-300 bg-white text-transparent hover:bg-gray-50"
                                         : "cursor-not-allowed border-gray-200 bg-gray-100 text-transparent opacity-60"
@@ -506,7 +506,7 @@ export default function AddMemberModal({
               type="button"
               onClick={handleSave}
               disabled={!canSubmit}
-              className="rounded-lg bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-blue-700 px-4 py-2 text-sm text-yellow-200 hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Saving..." : "Save Info"}
             </button>

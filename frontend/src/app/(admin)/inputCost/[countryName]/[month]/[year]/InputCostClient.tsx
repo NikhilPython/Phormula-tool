@@ -1217,14 +1217,16 @@ export default function InputCostPage({ params }: Params) {
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
-    if (col === 's_no') return 'S.No.';   // ✅ ADD THIS
-
+    if (col === 's_no') return 'S.No.';
     if (col === 'product_name') return 'Product Name';
 
     if (col === 'sku_uk' || col === 'sku_us' || col === 'sku_canada') {
-      return countryName === 'global'
-        ? col.replace('sku_', 'SKU ').toUpperCase()
-        : 'SKU';
+      if (countryName === 'global') {
+        const c = col.replace('sku_', '').toUpperCase();
+        return `SKU (${c})`;
+      }
+
+      return 'SKU';
     }
 
     const formatted = col
@@ -1237,7 +1239,14 @@ export default function InputCostPage({ params }: Params) {
   // 5) Optional: make Product Name column a bit wider
   const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
     const filteredWarehouseColumns = warehouseColumns.filter((col) => {
-      if (countryName === 'uk' && col === 'sku_us') return false;
+      // Global should show all country SKU columns
+      if (countryName === 'global') return true;
+
+      // For country-wise pages, show only that country's SKU column
+      if (col.startsWith('sku_')) {
+        return col === `sku_${countryName}`;
+      }
+
       return true;
     });
 
@@ -1249,7 +1258,7 @@ export default function InputCostPage({ params }: Params) {
           ? '70px'
           : col === 'product_name'
             ? '220px'
-            : col === 'sku_us' || col === 'sku_uk'
+            : col === 'sku_us' || col === 'sku_uk' || col === 'sku_canada'
               ? '120px'
               : col === 'local_stock' || col === 'in_transit_units'
                 ? '150px'
@@ -1265,7 +1274,7 @@ export default function InputCostPage({ params }: Params) {
         }
 
         return value === null || value === undefined || value === '' ? '—' : String(value);
-      }
+      },
     }));
   }, [warehouseColumns, countryName]);
 

@@ -1658,12 +1658,56 @@ export default function DashboardPage() {
     const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
     const chartRef = React.useRef<HTMLDivElement | null>(null);
     const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
+
+    const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
+    const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
+    const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
+
+    const forcedRegion: RegionKey = useMemo(() => {
+        switch (platform) {
+            case "amazon-uk":
+                return "UK";
+            case "amazon-us":
+                return "US";
+            case "amazon-ca":
+                return "CA";
+            default:
+                return "Global";
+        }
+    }, [platform]);
+
+
+
+    const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
+    const activeDateRegion = graphRegionToUse;
+
     // const getDayOfMonthIST = () => {
     //     const now = new Date();
     //     const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     //     return ist.getDate(); // 1..31
     // };
 
+
+    const isUsAmazonConnected = useMemo(() => {
+        return (amazonConnections || []).some(
+            (connection: any) =>
+                String(connection?.country || "").toLowerCase() === "us"
+        );
+    }, [amazonConnections]);
+
+    const lastUpdatedTimeText = useMemo(() => {
+        if (!dbUpdatedAt) return "";
+
+        // US priority ONLY on Global page
+        if (platform === "global" && isUsAmazonConnected) {
+            return formatUSTime12hr(dbUpdatedAt);
+        }
+
+        // Existing logic remains as-is for all other pages
+        return activeDateRegion === "US"
+            ? formatUSTime12hr(dbUpdatedAt)
+            : formatUKTime12hr(dbUpdatedAt);
+    }, [dbUpdatedAt, platform, isUsAmazonConnected, activeDateRegion]);
 
     const globalMtdCountryOptions = useMemo(() => {
         const connected = new Set(
@@ -1706,22 +1750,8 @@ export default function DashboardPage() {
         global?: any;
     }>({});
 
-    const forcedRegion: RegionKey = useMemo(() => {
-        switch (platform) {
-            case "amazon-uk":
-                return "UK";
-            case "amazon-us":
-                return "US";
-            case "amazon-ca":
-                return "CA";
-            default:
-                return "Global";
-        }
-    }, [platform]);
 
 
-    const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
-    const activeDateRegion = graphRegionToUse;
 
     const fetchMonthlySp = useCallback(async (silent = false) => {
         if (isMonthYearNA) {
@@ -3741,9 +3771,6 @@ export default function DashboardPage() {
         };
     };
 
-    const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
-    const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
-    const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
@@ -9132,13 +9159,12 @@ ${pageLoading
                         >
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
-                        {/* )} */}
                         {dbUpdatedAt && (
+                            // <div className="text-xs text-slate-500">
+                            //     Last Updated at {lastUpdatedTimeText}
+                            // </div>
                             <span className="text-sm text-gray-500">
-                                Last Updated at{" "}
-                                {activeDateRegion === "US"
-                                    ? formatUSTime12hr(dbUpdatedAt)
-                                    : formatUKTime12hr(dbUpdatedAt)}
+                                Last Updated at {lastUpdatedTimeText}
                             </span>
                         )}
                     </div>

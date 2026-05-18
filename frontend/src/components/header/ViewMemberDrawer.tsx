@@ -278,7 +278,7 @@ export default function ViewMemberDrawer({
 function SectionTitle({ title }: { title: string }) {
   return (
     <div>
-      <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
         {title}
       </div>
       <div className="mt-2 h-px bg-gray-200 dark:bg-gray-800" />

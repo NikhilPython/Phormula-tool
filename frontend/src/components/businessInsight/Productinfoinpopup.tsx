@@ -542,8 +542,19 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   const allLabels = trimmedJourneyData.labels;
 
-  const formatCountry = (c: string) =>
-    c ? c.charAt(0).toUpperCase() + c.slice(1).toLowerCase() : "";
+const formatCountry = (c: string) => {
+  const upperCaseCountries = ["uk", "us", "ca"];
+
+  if (!c) return "";
+
+  const normalized = c.toLowerCase();
+
+  if (upperCaseCountries.includes(normalized)) {
+    return normalized.toUpperCase();
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
 
   const chartJSData = useMemo(() => {
     const labels = allLabels;

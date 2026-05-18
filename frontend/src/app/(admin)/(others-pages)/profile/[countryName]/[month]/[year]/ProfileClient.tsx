@@ -40,6 +40,8 @@ export default function ProfileClient() {
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
   const [ownerName, setOwnerName] = React.useState("");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [memberToDelete, setMemberToDelete] = React.useState<any | null>(null);
 
   const params = useParams();
   const router = useRouter();
@@ -103,8 +105,43 @@ export default function ProfileClient() {
     });
   }, [members, search]);
 
-  const handleDelete = async (member: any) => {
-    if (!confirm("Are you sure you want to delete this member?")) return;
+  // const handleDelete = async (member: any) => {
+  //   if (!confirm("Are you sure you want to delete this member?")) return;
+
+  //   try {
+  //     setActionLoading(true);
+
+  //     const res = await fetch(
+  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/delete_member`,
+  //       {
+  //         method: "DELETE",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify({
+  //           member_id: member.id,
+  //         }),
+  //       }
+  //     );
+
+  //     if (!res.ok) throw new Error("Delete failed");
+
+  //     fetchMembers();
+  //   } catch (err) {
+  //     alert("Failed to delete member");
+  //   } finally {
+  //     setActionLoading(false);
+  //   }
+  // };
+
+  const openDeleteDialog = React.useCallback((member: any) => {
+    setMemberToDelete(member);
+    setIsDeleteDialogOpen(true);
+  }, []);
+
+  const handleDelete = async () => {
+    if (!memberToDelete) return;
 
     try {
       setActionLoading(true);
@@ -118,13 +155,16 @@ export default function ProfileClient() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            member_id: member.id,
+            member_id: memberToDelete.id,
           }),
         }
       );
 
-      if (!res.ok) throw new Error("Delete failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Delete failed");
 
+      setIsDeleteDialogOpen(false);
+      setMemberToDelete(null);
       fetchMembers();
     } catch (err) {
       alert("Failed to delete member");
@@ -352,17 +392,17 @@ export default function ProfileClient() {
             </button>
 
             <button
-              onClick={() => handleDelete(m)}
+              onClick={() => openDeleteDialog(m)}
               className="p-1.5 rounded-md border border-gray-200 text-xs "
               type="button"
             >
-              < MdOutlineDeleteOutline size={17} />
+              <MdOutlineDeleteOutline size={17} />
             </button>
           </div>
         ),
       };
     });
-  }, [filteredMembers]);
+  }, [filteredMembers, openDeleteDialog]);
 
   return (
     <div>
@@ -444,6 +484,7 @@ export default function ProfileClient() {
               {/* Add Member Button */}
               <Button
                 variant="primary"
+                className="text-yellow-200"
                 size="sm"
                 onClick={() => setIsAddMemberOpen(true)}
               >
@@ -496,6 +537,62 @@ export default function ProfileClient() {
               token={token}
               onSuccess={fetchMembers}
             />
+            {isDeleteDialogOpen && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+                {/* Backdrop */}
+                <div
+                  className="absolute inset-0 bg-black/40"
+                  onClick={() => {
+                    if (!actionLoading) {
+                      setIsDeleteDialogOpen(false);
+                      setMemberToDelete(null);
+                    }
+                  }}
+                />
+
+                {/* Dialog */}
+                <div className="relative z-10 w-[92%] max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#B75A5A4D] text-[#B75A5A]">
+                    <MdOutlineDeleteOutline size={24} />
+                  </div>
+
+                  <h3 className="text-center text-lg font-semibold text-slate-900">
+                    Delete Team Member?
+                  </h3>
+
+                  <p className="mt-2 text-center text-sm text-gray-500">
+                    Are you sure you want to delete{" "}
+                    <span className="font-semibold text-slate-700">
+                      {memberToDelete?.member_name || "this member"}
+                    </span>
+                    ? This action cannot be undone.
+                  </p>
+
+                  <div className="mt-6 flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => {
+                        setIsDeleteDialogOpen(false);
+                        setMemberToDelete(null);
+                      }}
+                      className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={handleDelete}
+                      className="rounded-md bg-[#B75A5A] px-4 py-2 text-sm font-medium text-white hover:[#B75A5A4D] disabled:opacity-60"
+                    >
+                      {actionLoading ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

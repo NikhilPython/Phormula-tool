@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
+import { IoInformationCircleOutline } from "react-icons/io5";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -401,11 +402,11 @@ export default function EditMemberModal({
                                 {countryOption.label}
                               </div>
 
-                              <div className="text-[11px] text-gray-500">
+                              {/* <div className="text-[11px] text-gray-500">
                                 {COUNTRY_TO_MARKETPLACES[countryCode]?.join(
                                   ", "
                                 )}
-                              </div>
+                              </div> */}
                             </div>
                           </div>
 
@@ -424,13 +425,12 @@ export default function EditMemberModal({
                                   onClick={() =>
                                     toggleCountryModule(countryCode, module)
                                   }
-                                  className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs transition ${
-                                    checked
-                                      ? "border-[#10B981] bg-[#10B981] text-white"
+                                  className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs transition ${checked
+                                      ? "border-green-500 bg-green-500 text-white"
                                       : enabled
                                         ? "border-gray-300 bg-white text-transparent hover:bg-gray-50"
                                         : "cursor-not-allowed border-gray-200 bg-gray-100 text-transparent opacity-60"
-                                  }`}
+                                    }`}
                                 >
                                   ✓
                                 </button>
@@ -449,8 +449,10 @@ export default function EditMemberModal({
                 which sections this member can access.
               </p>
 
-              <div className="mt-3 rounded-lg bg-yellow-50 dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
-                ℹ️ Update permissions and role. Name/Email are locked.
+             
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-yellow-100 bg-[#FDD36F4D] px-3 py-2 text-xs text-gray-700 dark:border-gray-800 dark:bg-white/5 dark:text-gray-200">
+                <IoInformationCircleOutline className="text-charcoal-500 flex-shrink-0 text-base" />
+                Update permissions and role. Name/Email are locked.
               </div>
             </div>
           </div>
@@ -470,7 +472,7 @@ export default function EditMemberModal({
               type="button"
               onClick={handleSave}
               disabled={!canSubmit}
-              className="rounded-lg px-4 py-2 text-sm bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+              className="rounded-lg px-4 py-2 text-sm bg-blue-700 text-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
             >
               {loading ? "Saving..." : "Save Changes"}
             </button>
