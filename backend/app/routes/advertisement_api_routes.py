@@ -1021,7 +1021,50 @@ def monthly_sp_sd_to_db():
         # ---- Grand Total row ----
         total_impr = int(out["impressions"].sum())
         total_clicks = int(out["clicks"].sum())
-        total_spend = float(out["spend"].sum())
+
+        # Do not change product_spend/display_spend logic
+        total_product_spend = float(out["product_spend"].sum())
+        total_display_spend = float(out["display_spend"].sum())
+
+        # Fix only brand_spend total from SB keyword table
+        total_brand_spend = 0.0
+
+        if "SB" in include:
+            try:
+                sb_latest_end = _latest_end_date_for_month(
+                    amazon_sponsored_brands_keywords,
+                    user_id,
+                    country,
+                    first_day,
+                    last_day,
+                )
+
+                sb_q = db.session.query(
+                    func.coalesce(func.sum(amazon_sponsored_brands_keywords.spend), 0.0)
+                ).filter(
+                    amazon_sponsored_brands_keywords.user_id == user_id,
+                    amazon_sponsored_brands_keywords.country == country,
+                    amazon_sponsored_brands_keywords.start_date >= first_day,
+                    amazon_sponsored_brands_keywords.start_date <= last_day,
+                )
+
+                if sb_latest_end and hasattr(amazon_sponsored_brands_keywords, "end_date"):
+                    sb_q = sb_q.filter(
+                        amazon_sponsored_brands_keywords.end_date == sb_latest_end
+                    )
+
+                total_brand_spend = round(float(sb_q.scalar() or 0.0), 2)
+
+            except Exception as e:
+                print("[WARN] SB brand_spend total fetch failed:", e)
+                total_brand_spend = round(float(out["brand_spend"].sum()), 2)
+
+        # Total spend should include same product/display values + fixed brand value
+        total_spend = round(
+            total_product_spend + total_display_spend + total_brand_spend,
+            2,
+        )
+
         total_sales_amt = float(out["sale_amount"].sum())
         total_orders = float(g["orders"].sum())
         total_units = float(out["sale_units"].sum())
@@ -1038,10 +1081,10 @@ def monthly_sp_sd_to_db():
             "cpc": _safe_div(total_spend, total_clicks),
             "spend": total_spend,
 
-            # ✅ totals for new columns
-            "product_spend": float(out["product_spend"].sum()),
-            "display_spend": float(out["display_spend"].sum()),
-            "brand_spend": float(out["brand_spend"].sum()),
+            # ✅ product/display unchanged, only brand fixed
+            "product_spend": total_product_spend,
+            "display_spend": total_display_spend,
+            "brand_spend": total_brand_spend,
 
             "sale_units": total_units,
             "sale_amount": total_sales_amt,

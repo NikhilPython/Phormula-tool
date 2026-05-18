@@ -3012,18 +3012,12 @@ def live_mtd_vs_previous():
 
         user_email = str(user_email).strip() if user_email else None
 
-        print("[EMAIL DEBUG] user_id:", user_id)
-        print("[EMAIL DEBUG] country:", country)
-        print("[EMAIL DEBUG] user_email:", user_email)
 
         if user_email:
             cache_key = (user_id, country)
 
             already_in_cache = cache_key in _SENT_EMAIL_CACHE
             recently_sent = has_recent_bi_email(user_id, country, hours=24)
-
-            print("[EMAIL DEBUG] already_in_cache:", already_in_cache)
-            print("[EMAIL DEBUG] recently_sent:", recently_sent)
 
             if not already_in_cache and not recently_sent:
                 try:
