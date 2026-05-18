@@ -19,8 +19,7 @@ export const buildSkuWorksheetFromModel = (
     formats,
   } = model;
 
-  // ❌ columns to REMOVE from Excel (this is what Dropdowns does)
-  const EXCEL_EXCLUDED_COLUMNS = new Set(["amazon_fee", "other_transactions"]);
+const EXCEL_EXCLUDED_COLUMNS = new Set<string>([]);
 
   // ✅ final columns used ONLY for excel
   const columns = originalColumns.filter(
@@ -39,13 +38,16 @@ export const buildSkuWorksheetFromModel = (
       ? "net_taxes"
       : columns[columns.length - 1];
 
-  const fmtFor = (key: string) => {
-    const t = formats?.[key];
-    if (t === "int") return "#,##0";
-    if (t === "money") return "#,##0.00";
-    if (t === "percent") return "0.00%";
-    return undefined;
-  };
+const fmtFor = (key: string) => {
+  const t = formats?.[key];
+
+  if (key === "sno") return "#,##0";
+
+  if (t === "int") return "#,##0";
+  if (t === "money") return "#,##0.00";
+  if (t === "percent") return "0.00%";
+  return undefined;
+};
 
   const boldWholeRow = (rowNumber: number) => {
     const r = ws.getRow(rowNumber);
@@ -107,13 +109,245 @@ export const buildSkuWorksheetFromModel = (
    * ✅ Don't calculate row index. Use returned row numbers.
    */
 
-  // ---- header row
-  const headerExcelRow = ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
-  boldWholeRow(headerExcelRow.number);
+type HeaderMeta = {
+  group?: string;
+  subHeader: string;
+};
 
-  // ---- sign row
-  const signExcelRow = ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
-  italicWholeRow(signExcelRow.number);
+const HEADER_META: Record<string, HeaderMeta> = {
+  sno: {
+    subHeader: "S.No",
+  },
+  product_name: {
+    subHeader: "Product Name",
+  },
+  sku: {
+    subHeader: "SKU",
+  },
+
+  units_sold: {
+    group: "Net Units Sold",
+    subHeader: "Units Sold",
+  },
+  return_units: {
+    group: "Net Units Sold",
+    subHeader: "Return",
+  },
+  net_units_sold: {
+    group: "Net Units Sold",
+    subHeader: "Total",
+  },
+
+  asp: {
+    subHeader: "ASP",
+  },
+
+  product_sales: {
+    group: "Net Sales",
+    subHeader: "Gross Sales",
+  },
+  refund_sales: {
+    group: "Net Sales",
+    subHeader: "Sales - Refund",
+  },
+  tex_and_credits: {
+    group: "Net Sales",
+    subHeader: "Taxes and Credits",
+  },
+  net_sales: {
+    group: "Net Sales",
+    subHeader: "Total",
+  },
+
+  promotional_rebates: {
+    group: "Promotions",
+    subHeader: "Promotions",
+  },
+  promotional_rebates_percentage: {
+    group: "Promotions",
+    subHeader: "Promotions %",
+  },
+
+  cost_of_unit_sold: {
+    subHeader: "COGS",
+  },
+
+  selling_fees: {
+    group: "Marketplace Fees",
+    subHeader: "Selling Fees",
+  },
+  fba_fees: {
+    group: "Marketplace Fees",
+    subHeader: "FBA Fees",
+  },
+  amazon_fee: {
+    group: "Marketplace Fees",
+    subHeader: "Total",
+  },
+
+  net_taxes: {
+    group: "Other Transactions",
+    subHeader: "Net Taxes",
+  },
+  net_credits: {
+    group: "Other Transactions",
+    subHeader: "Net Credits",
+  },
+  misc_transaction: {
+    group: "Other Transactions",
+    subHeader: "Misc. Transactions",
+  },
+  other_transactions: {
+    group: "Other Transactions",
+    subHeader: "Total",
+  },
+
+  profit: {
+    group: "CM1 Profit",
+    subHeader: "Total",
+  },
+  unit_wise_profitability: {
+    group: "CM1 Profit",
+    subHeader: "Per Unit",
+  },
+  profit_percentage: {
+    group: "CM1 Profit",
+    subHeader: "%",
+  },
+};
+
+const groupHeaderValues = columns.map((k) => {
+  const meta = HEADER_META[k];
+  if (!meta) return headerRow?.[k] ?? k;
+  return meta.group || meta.subHeader;
+});
+
+const subHeaderValues = columns.map((k) => {
+  const meta = HEADER_META[k];
+  if (!meta) return "";
+  return meta.group ? meta.subHeader : "";
+});
+
+const signValues = columns.map((k) => signRow?.[k] ?? "");
+
+const groupHeaderExcelRow = ws.addRow(groupHeaderValues);
+const subHeaderExcelRow = ws.addRow(subHeaderValues);
+const signExcelRow = ws.addRow(signValues);
+
+const groupHeaderRowNo = groupHeaderExcelRow.number;
+const subHeaderRowNo = subHeaderExcelRow.number;
+const signRowNo = signExcelRow.number;
+
+// Merge grouped headers.
+let c = 1;
+while (c <= columns.length) {
+  const key = columns[c - 1];
+  const group = HEADER_META[key]?.group;
+
+  if (!group) {
+    ws.mergeCells(groupHeaderRowNo, c, subHeaderRowNo, c);
+    c++;
+    continue;
+  }
+
+  let end = c;
+  while (
+    end + 1 <= columns.length &&
+    HEADER_META[columns[end]]?.group === group
+  ) {
+    end++;
+  }
+
+  if (end > c) {
+    ws.mergeCells(groupHeaderRowNo, c, groupHeaderRowNo, end);
+  }
+
+  c = end + 1;
+}
+
+// Black and white header styling only.
+for (const rowNo of [groupHeaderRowNo, subHeaderRowNo, signRowNo]) {
+  const row = ws.getRow(rowNo);
+
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.font = {
+      bold: rowNo !== signRowNo,
+      color: { argb: "FF000000" },
+      size: rowNo === groupHeaderRowNo ? 11 : 10,
+    };
+
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFFFFFFF" },
+    };
+
+cell.alignment = {
+  horizontal: "center",
+  vertical: "middle",
+  wrapText: false,
+  shrinkToFit: false,
+};
+
+    cell.border = {
+      top: { style: "thin", color: { argb: "FF000000" } },
+      left: { style: "thin", color: { argb: "FF000000" } },
+      bottom: { style: "thin", color: { argb: "FF000000" } },
+      right: { style: "thin", color: { argb: "FF000000" } },
+    };
+  });
+}
+
+ws.getRow(groupHeaderRowNo).height = 22;
+ws.getRow(subHeaderRowNo).height = 22;
+ws.getRow(signRowNo).height = 18;
+
+columns.forEach((key, index) => {
+  const col = ws.getColumn(index + 1);
+
+  const label =
+    HEADER_META[key]?.subHeader ||
+    HEADER_META[key]?.group ||
+    headerRow?.[key] ||
+    key;
+
+  const minWidthByKey: Record<string, number> = {
+    sno: 8,
+    product_name: 24,
+    sku: 18,
+
+    units_sold: 14,
+    return_units: 12,
+    net_units_sold: 12,
+
+    asp: 10,
+
+    product_sales: 14,
+    refund_sales: 16,
+    tex_and_credits: 18,
+    net_sales: 14,
+
+    promotional_rebates: 16,
+    promotional_rebates_percentage: 18,
+
+    cost_of_unit_sold: 12,
+
+    selling_fees: 16,
+    fba_fees: 14,
+    amazon_fee: 14,
+
+    net_taxes: 14,
+    net_credits: 14,
+    misc_transaction: 20,
+    other_transactions: 14,
+
+    profit: 14,
+    unit_wise_profitability: 14,
+    profit_percentage: 10,
+  };
+
+  col.width = minWidthByKey[key] || Math.max(String(label).length + 4, 12);
+});
 
   /**
    * ===== TABLE BODY =====

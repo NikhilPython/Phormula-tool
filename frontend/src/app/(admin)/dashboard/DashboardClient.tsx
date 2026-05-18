@@ -120,7 +120,7 @@ type MonthlySkuwiseRow = {
 
     net_taxes?: number;
     other_transactions?: number;
-
+    misc_transaction?: number;
     cogs: number;
     fba_fees: number;
     selling_fees: number;
@@ -135,6 +135,7 @@ type MonthlySkuwiseRow = {
     cm2_profit_per: number;
     cm2_profit_per_unit: number;
     profit: number;
+
     platform_fee?: number;
     platform_fee_inventory_storage?: number;
     lost_total?: number;
@@ -143,6 +144,19 @@ type MonthlySkuwiseRow = {
     brand_spend?: number;
     dealsvouchar_ads?: number;
     platformfeenew?: number;
+
+    // ✅ add these grand total fields
+    total_cm2_profit?: number;
+    total_cm2_margins?: number;
+    tacos_total_advertising_cost_of_sale?: number;
+    current_net_reimbursement?: number;
+    reimbursement_vs_sales?: number;
+    reimbursement_vs_cm2_margins?: number;
+    shipment_fees?: number;
+    total_ads?: number;
+    advertising_fees?: number;
+    amazon_fees?: number;
+
     isTotal?: boolean;
     isOthers?: boolean;
 };
@@ -196,6 +210,7 @@ type ProductwiseMoneyKey =
     | "platform_fee_inventory_storage"
     | "lost_total"
     | "other"
+    | "misc_transaction"
     | "product_spend"
     | "brand_spend"
     | "dealsvouchar_ads"
@@ -464,6 +479,7 @@ const SIGNED_KEYS = new Set<string>([
     "cm2_margins",
     "rembursment_vs_cm2_margins",
     "reimbursement_vs_sales",
+    "misc_transaction",
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
@@ -565,6 +581,14 @@ function getGrandTotalRow(rows: any[] = []) {
 function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
     const grand = getGrandTotalRow(rows);
 
+    const sumMiscTransaction = rows
+        .filter((r) => {
+            const sku = String(r?.sku || "").toUpperCase();
+            const name = String(r?.product_name || "").toLowerCase();
+            return sku !== "GRAND_TOTAL" && name !== "grand total" && !r?.isTotal;
+        })
+        .reduce((sum, r) => sum + toNumber(r?.misc_transaction), 0);
+
     return {
         advertising_total: toNumber(grand?.total_ads),
         visible_ads: toNumber(grand?.product_spend),
@@ -574,7 +598,7 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
         platform_fee: toNumber(grand?.platformfeenew ?? grand?.platform_fee),
         inventory_storage_fees: toNumber(grand?.platform_fee_inventory_storage),
         platform_fee_inventory_storage: toNumber(grand?.platform_fee_inventory_storage),
-        misc_transaction: toNumber(grand?.other),
+        misc_transaction: toNumber(grand?.misc_transaction) || sumMiscTransaction,
 
         reimbursement_lost_inventory_amount: toNumber(grand?.lost_total),
         reimbursement_lost_inventory_units: 0,
@@ -8195,7 +8219,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 n(totalRow?.platform_fee_inventory_storage) ||
                 n((plSummaryTotals as any)?.platform_fee_inventory_storage);
 
-            const miscTransactions = "";
+            const miscTransactions =
+                n(totalRow?.misc_transaction) ||
+                n(grandTotalRowRaw?.misc_transaction) ||
+                n(grandTotalRowDisplay?.misc_transaction) ||
+                n((plSummaryTotals as any)?.misc_transaction);
 
             const lostInventory =
                 n(totalRow?.lost_total) ||
@@ -8206,9 +8234,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 n((plSummaryTotals as any)?.shipment_charges);
 
             const cm2ProfitLoss =
-                n(totalRow?.total_cm2_profit) ||
-                n(totalRow?.cm2_profit) ||
-                n((plSummaryTotals as any)?.cm2_profit);
+                n(grandTotalRowRaw?.total_cm2_profit) ||
+                n(grandTotalRowDisplay?.total_cm2_profit) ||
+                n((plSummaryTotals as any)?.cm2_profit) ||
+                n(grandTotalRowRaw?.cm2_profit) ||
+                n(grandTotalRowDisplay?.cm2_profit);
 
             const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 { label: "Cost of Advertisement", value: "", bold: true },
@@ -8218,7 +8248,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 { label: "Other Transactions", value: "", bold: true },
                 { label: "Other Platform Fees (-)", value: otherPlatformFees, indent: 1 },
                 { label: "Inventory Storage Fees (-)", value: inventoryStorageFees, indent: 1 },
-                { label: "Misc. Transactions (+)", value: miscTransactions, indent: 1 },
+                {
+                    label: "Misc. Transactions (+)",
+                    value: formatSummaryValue(plSummaryTotals.misc_transaction, "misc_transaction"),
+                    indent: 1
+                },
                 { label: "Reimbursement for lost Inventory (+)", value: lostInventory, indent: 1 },
 
                 ...(countryName === "us" || countryName === "global"
@@ -10250,7 +10284,10 @@ ${pageLoading
                                                             {
                                                                 id: "other_misc",
                                                                 label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-                                                                midValue: "-",
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.misc_transaction,
+                                                                    "misc_transaction"
+                                                                ),
                                                             },
                                                             {
                                                                 id: "other_3",
@@ -10289,10 +10326,13 @@ ${pageLoading
                                                         label: "CM2 Profit/Loss",
                                                         endValue: Math.round(
                                                             Number(
-                                                                platform === "global"
-                                                                    ? plSummaryTotals.cm2_profit
-                                                                    : cm2Profit
-                                                            ) || 0
+                                                                grandTotalRowRaw?.total_cm2_profit ??
+                                                                grandTotalRowDisplay?.total_cm2_profit ??
+                                                                plSummaryTotals.cm2_profit ??
+                                                                grandTotalRowRaw?.cm2_profit ??
+                                                                cm2Profit ??
+                                                                0
+                                                            )
                                                         ).toLocaleString(),
                                                     },
                                                     {

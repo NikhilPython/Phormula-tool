@@ -557,6 +557,95 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   const headers = Object.keys(dataRows[0] || {});
   const headerCount = headers.length || 1;
 
+  const COLUMN_META: Record<
+  string,
+  { group?: string; subHeader?: string; sign?: "(+)" | "(-)" }
+> = {
+  "S.No": { subHeader: "S.No" },
+  "Product Name": { subHeader: "Product Name" },
+  "Net Units Sold": { subHeader: "Net Units Sold" },
+  "ASP": { subHeader: "ASP" },
+
+  "Net Sales": { subHeader: "Net Sales", sign: "(+)" },
+  "COGS": { subHeader: "COGS", sign: "(-)" },
+
+  "Selling Fees": {
+    group: "Marketplace Fees",
+    subHeader: "Selling Fees",
+    sign: "(-)",
+  },
+  "FBA Fees": {
+    group: "Marketplace Fees",
+    subHeader: "FBA Fees",
+    sign: "(-)",
+  },
+  "Marketplace Fees": {
+    group: "Marketplace Fees",
+    subHeader: "Total",
+    sign: "(-)",
+  },
+
+  "Tax": {
+    group: "Other Transactions",
+    subHeader: "Net Taxes",
+    sign: "(-)",
+  },
+  "Credits": {
+    group: "Other Transactions",
+    subHeader: "Net Credits",
+    sign: "(+)",
+  },
+  "Tax & Credits": {
+    group: "Other Transactions",
+    subHeader: "Total",
+    sign: "(+)",
+  },
+
+  "CM1 Profit Per Unit": {
+    group: "CM1 Profit",
+    subHeader: "Per Unit",
+  },
+  "CM1 Profit %": {
+    group: "CM1 Profit",
+    subHeader: "%",
+  },
+  "CM1 Profit": {
+    group: "CM1 Profit",
+    subHeader: "Total",
+  },
+
+  "Ads Spend": {
+    subHeader: "Ads Spend",
+    sign: "(-)",
+  },
+  "ACOS %": {
+    subHeader: "ACoS %",
+  },
+
+  "CM2 Profit Per Unit": {
+    group: "CM2 Profit",
+    subHeader: "Per Unit",
+  },
+  "CM2 Profit %": {
+    group: "CM2 Profit",
+    subHeader: "%",
+  },
+  "CM2 Profit": {
+    group: "CM2 Profit",
+    subHeader: "Total",
+  },
+};
+
+const groupHeaderRow = headers.map(
+  (h) => COLUMN_META[h]?.group || COLUMN_META[h]?.subHeader || h
+);
+
+const subHeaderRow = headers.map((h) =>
+  COLUMN_META[h]?.group ? COLUMN_META[h]?.subHeader || h : ""
+);
+
+const signRow = headers.map((h) => COLUMN_META[h]?.sign || "");
+
   // Anchor brand above "CM1 Profit" (fallback: last column)
   const cm1ProfitCol0 = headers.indexOf("CM1 Profit");
   const ANCHOR_COL_1_BASED = cm1ProfitCol0 >= 0 ? cm1ProfitCol0 + 1 : headerCount;
@@ -579,7 +668,11 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     extraLines: topExtraLines,
   });
 
-  const headerRowIndex = topAoA.length;
+  const groupHeaderRowIndex = topAoA.length;
+const subHeaderRowIndex = topAoA.length + 1;
+const signRowIndex = topAoA.length + 2;
+const firstDataRowIndex = topAoA.length + 3;
+
   const bodyAoA = dataRows.map((r) => headers.map((h) => (r as any)[h] ?? ""));
 
   // Summary: label under "Product Name", value under "CM1 Profit"
@@ -646,17 +739,61 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 
       // we'll style these later
       const aoaRowIndexInSheet =
-        topAoA.length + 1 + bodyAoA.length + (summaryAoA.length - 1); // 0-based AOA -> we use same index later
+      firstDataRowIndex + bodyAoA.length + (summaryAoA.length - 1);
       if (isPercentRow) percentSummaryRowIndices.push(aoaRowIndexInSheet);
       if (s?.bold) boldSummaryRowIndices.push(aoaRowIndexInSheet);
     });
   }
 
-  const sheetAoA = [...topAoA, headers, ...bodyAoA, ...summaryAoA];
+const sheetAoA = [
+  ...topAoA,
+  groupHeaderRow,
+  subHeaderRow,
+  signRow,
+  ...bodyAoA,
+  ...summaryAoA,
+];
   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
 
+  const merges: XLSX.Range[] = [];
+
+let c = 0;
+while (c < headers.length) {
+  const header = headers[c];
+  const group = COLUMN_META[header]?.group;
+
+  if (!group) {
+    merges.push({
+      s: { r: groupHeaderRowIndex, c },
+      e: { r: subHeaderRowIndex, c },
+    });
+    c++;
+    continue;
+  }
+
+  let end = c;
+
+  while (
+    end + 1 < headers.length &&
+    COLUMN_META[headers[end + 1]]?.group === group
+  ) {
+    end++;
+  }
+
+  if (end > c) {
+    merges.push({
+      s: { r: groupHeaderRowIndex, c },
+      e: { r: groupHeaderRowIndex, c: end },
+    });
+  }
+
+  c = end + 1;
+}
+
+ws["!merges"] = [...(ws["!merges"] || []), ...merges];
+
   // Freeze under table header
-  ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+ ws["!freeze"] = { xSplit: 0, ySplit: firstDataRowIndex };
 
   // Auto widths
   ws["!cols"] = headers.map((h) => ({
@@ -665,20 +802,43 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 
   applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
-  // Bold table header row
+const headerFill = { fgColor: { rgb: "FFFFFF" } };
+
+for (const r of [groupHeaderRowIndex, subHeaderRowIndex, signRowIndex]) {
   for (let c = 0; c < headerCount; c++) {
-    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
-    if (ws[addr]) {
-      ws[addr].s = {
-        ...(ws[addr].s || {}),
-        font: { bold: true, sz: 11 },
-        alignment: { horizontal: "center", vertical: "center" },
-      };
-    }
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) continue;
+
+    ws[addr].s = {
+      ...(ws[addr].s || {}),
+      font: {
+        bold: true,
+        sz: r === groupHeaderRowIndex ? 11 : 10,
+        color: { rgb: "000000" },
+      },
+      fill: headerFill,
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+    };
   }
+}
+
+ws["!rows"] = ws["!rows"] || [];
+ws["!rows"][groupHeaderRowIndex] = { hpt: 28 };
+ws["!rows"][subHeaderRowIndex] = { hpt: 34 };
+ws["!rows"][signRowIndex] = { hpt: 22 };
 
   // Bold total row (last data row)
-  const totalRowIndex = headerRowIndex + 1 + bodyAoA.length - 1;
+const totalRowIndex = firstDataRowIndex + bodyAoA.length - 1;
   for (let c = 0; c < headerCount; c++) {
     const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c });
     if (ws[addr]) {
@@ -709,7 +869,7 @@ for (let c = 0; c < headerCount; c++) {
 
   if (!PERCENT_TABLE_HEADERS.has(header)) continue;
 
-  for (let r = headerRowIndex + 1; r <= totalRowIndex; r++) {
+for (let r = firstDataRowIndex; r <= totalRowIndex; r++) {
     const addr = XLSX.utils.encode_cell({ r, c });
     const cell = ws[addr];
 
@@ -2755,6 +2915,319 @@ export async function exportSkuInformationExcel(params: {
 /* =========================
    SKU Analysis MTD export - tabs
 ========================= */
+// export function exportSkuAnalysisMtdExcel(params: {
+//   filename: string;
+//   titleLine: string;
+
+//   countryName: string;
+//   titleCountry: string;
+//   platformLabel?: string;
+
+//   periodLabel: string;
+//   companyName: string;
+//   brandName: string;
+//   homeCurrencyCode?: string;
+
+//   month2Label: string;
+
+//   categorizedGrowth: {
+//     all_skus?: any[];
+//     top_80_skus?: any[];
+//     new_or_reviving_skus?: any[];
+//     other_skus?: any[];
+//   };
+// }) {
+//   const {
+//     filename,
+//     titleLine,
+//     countryName,
+//     titleCountry,
+//     platformLabel = "Phormula",
+//     periodLabel,
+//     companyName,
+//     brandName,
+//     homeCurrencyCode,
+//     month2Label,
+//     categorizedGrowth,
+//   } = params;
+
+//   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
+
+//   const tabs = [
+//     {
+//       sheetName: "All SKUs",
+//       rows:
+//         categorizedGrowth.all_skus?.length
+//           ? categorizedGrowth.all_skus
+//           : [
+//               ...(categorizedGrowth.top_80_skus || []),
+//               ...(categorizedGrowth.new_or_reviving_skus || []),
+//               ...(categorizedGrowth.other_skus || []),
+//             ],
+//     },
+//     {
+//       sheetName: "Top 80 SKUs",
+//       rows: categorizedGrowth.top_80_skus || [],
+//     },
+//     {
+//       sheetName: "New Reviving SKUs",
+//       rows: categorizedGrowth.new_or_reviving_skus || [],
+//     },
+//     {
+//       sheetName: "Other SKUs",
+//       rows: categorizedGrowth.other_skus || [],
+//     },
+//   ];
+
+//   const headers = [
+//     "S.No.",
+//     "Product Name",
+//     `Sales Mix (${month2Label || "Current"})`,
+//     "Sales Mix Change (%)",
+//     "Unit Growth (%)",
+//     "ASP Growth (%)",
+//     "Net Sales Growth (%)",
+//     "CM1 Profit Impact (%)",
+//     "CM1 Profit Per Unit (%)",
+//   ];
+
+//   const headerCount = headers.length;
+//   const ANCHOR_COL_1_BASED = headerCount;
+
+//   const topExtraLines = [
+//     `Country : ${titleCountry}`,
+//     `Platform : ${platformLabel}`,
+//     `Currency : ${currencySymbol}`,
+//     `Period : ${periodLabel}`,
+//   ];
+
+//   const getGrowthValue = (row: any, key: string) => {
+//     const value = row?.[key];
+
+//     if (value && typeof value === "object") {
+//       const n = toNumberLoose(value.value);
+//       return n ?? 0;
+//     }
+
+//     return toNumberLoose(value) ?? 0;
+//   };
+
+//   const getGrowthCategory = (row: any, key: string) => {
+//     const value = row?.[key];
+
+//     if (value && typeof value === "object") {
+//       return String(value.category || "").toLowerCase();
+//     }
+
+//     const n = toNumberLoose(value) ?? 0;
+//     if (n > 0) return "high growth";
+//     if (n < 0) return "negative growth";
+//     return "low growth";
+//   };
+
+//   const getSalesMix = (row: any) => {
+//     return (
+//       toNumberLoose(row?.["Sales Mix (Month2)"]) ??
+//       toNumberLoose(row?.sales_mix_month2) ??
+//       toNumberLoose(row?.sales_mix) ??
+//       0
+//     );
+//   };
+
+//   const computeTotalRow = (rows: any[]) => {
+//     const cleanRows = (rows || []).filter((r) => {
+//       const name = String(r?.product_name || "").trim().toLowerCase();
+//       return name && name !== "total" && !name.includes("total");
+//     });
+
+//     const sum = (key: string) =>
+//       cleanRows.reduce((acc, r) => acc + (toNumberLoose(r?.[key]) ?? 0), 0);
+
+//     const qtyOld = sum("total_quantity_month1");
+//     const qtyNew = sum("total_quantity_month2");
+
+//     const nsOld = sum("net_sales_month1");
+//     const nsNew = sum("net_sales_month2");
+
+//     const profitOld = sum("profit_month1");
+//     const profitNew = sum("profit_month2");
+
+//     const aspOld = qtyOld ? nsOld / qtyOld : 0;
+//     const aspNew = qtyNew ? nsNew / qtyNew : 0;
+
+//     const ppuOld = qtyOld ? profitOld / qtyOld : 0;
+//     const ppuNew = qtyNew ? profitNew / qtyNew : 0;
+
+//     const pct = (oldVal: number, newVal: number) =>
+//       oldVal ? ((newVal - oldVal) / Math.abs(oldVal)) * 100 : 0;
+
+//     return {
+//       product_name: "Total",
+//       "__isTotal": true,
+//       "__salesMix": 100,
+//       "__salesMixChange": 0,
+//       "__unitGrowth": pct(qtyOld, qtyNew),
+//       "__aspGrowth": pct(aspOld, aspNew),
+//       "__netSalesGrowth": pct(nsOld, nsNew),
+//       "__cm1ProfitImpact": pct(profitOld, profitNew),
+//       "__profitPerUnit": pct(ppuOld, ppuNew),
+//     };
+//   };
+
+//   const buildSheetRows = (rows: any[]) => {
+//     const cleanRows = (rows || []).filter((r) => {
+//       const name = String(r?.product_name || "").trim().toLowerCase();
+//       return name && name !== "total" && !name.includes("total");
+//     });
+
+//     const body = cleanRows.map((row, index) => [
+//       index + 1,
+//       row?.product_name || "",
+//       getSalesMix(row),
+//       getGrowthValue(row, "Sales Mix Change"),
+//       getGrowthValue(row, "Unit Growth"),
+//       getGrowthValue(row, "ASP Growth"),
+//       getGrowthValue(row, "Net Sales Growth"),
+//       getGrowthValue(row, "CM1 Profit Impact"),
+//       getGrowthValue(row, "Profit Per Unit"),
+//     ]);
+
+//     const total = computeTotalRow(cleanRows);
+
+//     body.push([
+//       "",
+//       "Total",
+//       total.__salesMix,
+//       total.__salesMixChange,
+//       total.__unitGrowth,
+//       total.__aspGrowth,
+//       total.__netSalesGrowth,
+//       total.__cm1ProfitImpact,
+//       total.__profitPerUnit,
+//     ]);
+
+//     return body;
+//   };
+
+//   const wb = XLSX.utils.book_new();
+
+//   tabs.forEach((tab) => {
+//     const topAoA = buildTopAoA({
+//       headerCount,
+//       title: `${titleLine} - ${tab.sheetName}`,
+//       companyName,
+//       brandName,
+//       anchorCol1Based: ANCHOR_COL_1_BASED,
+//       extraLines: topExtraLines,
+//     });
+
+//     const headerRowIndex = topAoA.length;
+//     const bodyAoA = buildSheetRows(tab.rows);
+
+//     const sheetAoA = [...topAoA, headers, ...bodyAoA];
+//     const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+//     ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+
+//     ws["!cols"] = [
+//       { wch: 8 },
+//       { wch: 32 },
+//       { wch: 20 },
+//       { wch: 22 },
+//       { wch: 18 },
+//       { wch: 18 },
+//       { wch: 20 },
+//       { wch: 22 },
+//       { wch: 24 },
+//     ];
+
+//     applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
+
+//     // Header row style
+//     for (let c = 0; c < headerCount; c++) {
+//       const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+//       if (!ws[addr]) continue;
+
+//     ws[addr].s = {
+//   ...(ws[addr].s || {}),
+//   font: { bold: true, sz: 11, color: { rgb: "000000" } },
+//   fill: undefined,
+//   alignment: { horizontal: "center", vertical: "center" },
+// };
+//     }
+
+//     const startBodyRow = headerRowIndex + 1;
+//     const endBodyRow = startBodyRow + bodyAoA.length - 1;
+
+//     for (let r = startBodyRow; r <= endBodyRow; r++) {
+//       const isTotalRow = r === endBodyRow;
+
+//       for (let c = 0; c < headerCount; c++) {
+//         const addr = XLSX.utils.encode_cell({ r, c });
+//         const cell = ws[addr];
+//         if (!cell) continue;
+
+//         cell.s = {
+//           ...(cell.s || {}),
+//           alignment: {
+//             horizontal: c === 1 ? "left" : "center",
+//             vertical: "center",
+//           },
+//           border: {
+//             top: { style: "thin", color: { rgb: "D9E1E8" } },
+//             bottom: { style: "thin", color: { rgb: "D9E1E8" } },
+//             left: { style: "thin", color: { rgb: "D9E1E8" } },
+//             right: { style: "thin", color: { rgb: "D9E1E8" } },
+//           },
+//           font: {
+//             ...(cell.s?.font || {}),
+//             bold: isTotalRow,
+//             sz: 11,
+//           },
+// fill: undefined,
+//         };
+
+//         // Percent formatting for all metric columns from Sales Mix onward
+//         if (c >= 2 && isNumber(cell.v)) {
+//           cell.v = cell.v / 100;
+//           cell.z = "0.00%";
+//         }
+
+//         // Growth color styling
+//       if (c >= 3 && isNumber(cell.v)) {
+//   cell.s = {
+//     ...(cell.s || {}),
+//     font: {
+//       ...(cell.s?.font || {}),
+//       bold: isTotalRow || c >= 3,
+//       color: { rgb: "000000" },
+//     },
+//   };
+// }
+//       }
+//     }
+
+//     XLSX.utils.book_append_sheet(wb, ws, safeSheetName(tab.sheetName));
+//   });
+
+//   XLSX.writeFile(wb, filename);
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================
+   SKU Analysis MTD export - black & white
+========================= */
 export function exportSkuAnalysisMtdExcel(params: {
   filename: string;
   titleLine: string;
@@ -2773,6 +3246,8 @@ export function exportSkuAnalysisMtdExcel(params: {
   categorizedGrowth: {
     all_skus?: any[];
     top_80_skus?: any[];
+    new_skus?: any[];
+    reviving_skus?: any[];
     new_or_reviving_skus?: any[];
     other_skus?: any[];
   };
@@ -2782,7 +3257,7 @@ export function exportSkuAnalysisMtdExcel(params: {
     titleLine,
     countryName,
     titleCountry,
-    platformLabel = "Phormula",
+    platformLabel = "Amazon",
     periodLabel,
     companyName,
     brandName,
@@ -2793,25 +3268,32 @@ export function exportSkuAnalysisMtdExcel(params: {
 
   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
 
+  const allSkuRows =
+    categorizedGrowth.all_skus?.length
+      ? categorizedGrowth.all_skus
+      : [
+          ...(categorizedGrowth.top_80_skus || []),
+          ...(categorizedGrowth.new_skus || []),
+          ...(categorizedGrowth.reviving_skus || []),
+          ...(categorizedGrowth.other_skus || []),
+        ];
+
   const tabs = [
     {
       sheetName: "All SKUs",
-      rows:
-        categorizedGrowth.all_skus?.length
-          ? categorizedGrowth.all_skus
-          : [
-              ...(categorizedGrowth.top_80_skus || []),
-              ...(categorizedGrowth.new_or_reviving_skus || []),
-              ...(categorizedGrowth.other_skus || []),
-            ],
+      rows: allSkuRows,
     },
     {
       sheetName: "Top 80 SKUs",
       rows: categorizedGrowth.top_80_skus || [],
     },
     {
-      sheetName: "New Reviving SKUs",
-      rows: categorizedGrowth.new_or_reviving_skus || [],
+      sheetName: "New SKUs",
+      rows: categorizedGrowth.new_skus || [],
+    },
+    {
+      sheetName: "Reviving SKUs",
+      rows: categorizedGrowth.reviving_skus || [],
     },
     {
       sheetName: "Other SKUs",
@@ -2819,16 +3301,19 @@ export function exportSkuAnalysisMtdExcel(params: {
     },
   ];
 
+  const currentMonth = month2Label || "Current";
+
   const headers = [
     "S.No.",
     "Product Name",
-    `Sales Mix (${month2Label || "Current"})`,
+    `Sales Mix (${currentMonth})`,
+    `Profit Mix (${currentMonth})`,
     "Sales Mix Change (%)",
     "Unit Growth (%)",
     "ASP Growth (%)",
     "Net Sales Growth (%)",
-    "CM1 Profit Impact (%)",
     "CM1 Profit Per Unit (%)",
+    "CM1 Profit Impact (%)",
   ];
 
   const headerCount = headers.length;
@@ -2841,110 +3326,149 @@ export function exportSkuAnalysisMtdExcel(params: {
     `Period : ${periodLabel}`,
   ];
 
-  const getGrowthValue = (row: any, key: string) => {
-    const value = row?.[key];
+  const isTotalLikeRow = (row: any) => {
+    const name = String(row?.product_name || row?.["Product Name"] || "")
+      .trim()
+      .toLowerCase();
 
+    return name === "total" || name === "grand total" || name.includes("total");
+  };
+
+  const cleanRows = (rows: any[] = []) =>
+    rows.filter((row) => {
+      const name = String(row?.product_name || row?.["Product Name"] || "").trim();
+      return name && !isTotalLikeRow(row);
+    });
+
+  const getNumber = (value: any): number => {
     if (value && typeof value === "object") {
-      const n = toNumberLoose(value.value);
-      return n ?? 0;
+      return toNumberLoose(value.value) ?? 0;
     }
 
     return toNumberLoose(value) ?? 0;
   };
 
-  const getGrowthCategory = (row: any, key: string) => {
-    const value = row?.[key];
+  const getGrowthValue = (row: any, keys: string[]) => {
+    for (const key of keys) {
+      const value = row?.[key];
 
-    if (value && typeof value === "object") {
-      return String(value.category || "").toLowerCase();
+      if (value !== undefined && value !== null && value !== "") {
+        return getNumber(value);
+      }
     }
 
-    const n = toNumberLoose(value) ?? 0;
-    if (n > 0) return "high growth";
-    if (n < 0) return "negative growth";
-    return "low growth";
+    return 0;
   };
 
   const getSalesMix = (row: any) => {
-    return (
-      toNumberLoose(row?.["Sales Mix (Month2)"]) ??
-      toNumberLoose(row?.sales_mix_month2) ??
-      toNumberLoose(row?.sales_mix) ??
-      0
-    );
-  };
-
-  const computeTotalRow = (rows: any[]) => {
-    const cleanRows = (rows || []).filter((r) => {
-      const name = String(r?.product_name || "").trim().toLowerCase();
-      return name && name !== "total" && !name.includes("total");
-    });
-
-    const sum = (key: string) =>
-      cleanRows.reduce((acc, r) => acc + (toNumberLoose(r?.[key]) ?? 0), 0);
-
-    const qtyOld = sum("total_quantity_month1");
-    const qtyNew = sum("total_quantity_month2");
-
-    const nsOld = sum("net_sales_month1");
-    const nsNew = sum("net_sales_month2");
-
-    const profitOld = sum("profit_month1");
-    const profitNew = sum("profit_month2");
-
-    const aspOld = qtyOld ? nsOld / qtyOld : 0;
-    const aspNew = qtyNew ? nsNew / qtyNew : 0;
-
-    const ppuOld = qtyOld ? profitOld / qtyOld : 0;
-    const ppuNew = qtyNew ? profitNew / qtyNew : 0;
-
-    const pct = (oldVal: number, newVal: number) =>
-      oldVal ? ((newVal - oldVal) / Math.abs(oldVal)) * 100 : 0;
-
-    return {
-      product_name: "Total",
-      "__isTotal": true,
-      "__salesMix": 100,
-      "__salesMixChange": 0,
-      "__unitGrowth": pct(qtyOld, qtyNew),
-      "__aspGrowth": pct(aspOld, aspNew),
-      "__netSalesGrowth": pct(nsOld, nsNew),
-      "__cm1ProfitImpact": pct(profitOld, profitNew),
-      "__profitPerUnit": pct(ppuOld, ppuNew),
-    };
-  };
-
-  const buildSheetRows = (rows: any[]) => {
-    const cleanRows = (rows || []).filter((r) => {
-      const name = String(r?.product_name || "").trim().toLowerCase();
-      return name && name !== "total" && !name.includes("total");
-    });
-
-    const body = cleanRows.map((row, index) => [
-      index + 1,
-      row?.product_name || "",
-      getSalesMix(row),
-      getGrowthValue(row, "Sales Mix Change"),
-      getGrowthValue(row, "Unit Growth"),
-      getGrowthValue(row, "ASP Growth"),
-      getGrowthValue(row, "Net Sales Growth"),
-      getGrowthValue(row, "CM1 Profit Impact"),
-      getGrowthValue(row, "Profit Per Unit"),
+    return getGrowthValue(row, [
+      "Sales Mix (Month2)",
+      "sales_mix_month2",
+      "sales_mix_curr",
+      "sales_mix",
     ]);
+  };
 
-    const total = computeTotalRow(cleanRows);
+  const getProfit = (row: any) => {
+    return getGrowthValue(row, [
+      "profit_month2",
+      "profit_curr",
+      "profit",
+      "CM1 Profit",
+    ]);
+  };
 
-    body.push([
+  const getQtyPrev = (row: any) =>
+    getGrowthValue(row, ["quantity_month1", "quantity_prev"]);
+
+  const getQtyCurr = (row: any) =>
+    getGrowthValue(row, ["quantity_month2", "quantity_curr", "quantity"]);
+
+  const getNetSalesPrev = (row: any) =>
+    getGrowthValue(row, ["net_sales_month1", "net_sales_prev"]);
+
+  const getNetSalesCurr = (row: any) =>
+    getGrowthValue(row, ["net_sales_month2", "net_sales_curr", "net_sales"]);
+
+  const getProfitPrev = (row: any) =>
+    getGrowthValue(row, ["profit_month1", "profit_prev"]);
+
+  const getProfitCurr = (row: any) =>
+    getGrowthValue(row, ["profit_month2", "profit_curr", "profit"]);
+
+  const pct = (oldVal: number, newVal: number) =>
+    oldVal ? ((newVal - oldVal) / Math.abs(oldVal)) * 100 : 0;
+
+  const computeProfitMixDenominator = (rows: any[]) => {
+    return cleanRows(rows).reduce((sum, row) => sum + getProfit(row), 0);
+  };
+
+  const computeTotalRow = (rows: any[], profitMixDenom: number) => {
+    const cleaned = cleanRows(rows);
+
+    const qtyPrev = cleaned.reduce((sum, row) => sum + getQtyPrev(row), 0);
+    const qtyCurr = cleaned.reduce((sum, row) => sum + getQtyCurr(row), 0);
+
+    const netSalesPrev = cleaned.reduce((sum, row) => sum + getNetSalesPrev(row), 0);
+    const netSalesCurr = cleaned.reduce((sum, row) => sum + getNetSalesCurr(row), 0);
+
+    const profitPrev = cleaned.reduce((sum, row) => sum + getProfitPrev(row), 0);
+    const profitCurr = cleaned.reduce((sum, row) => sum + getProfitCurr(row), 0);
+
+    const aspPrev = qtyPrev ? netSalesPrev / qtyPrev : 0;
+    const aspCurr = qtyCurr ? netSalesCurr / qtyCurr : 0;
+
+    const unitProfitPrev = qtyPrev ? profitPrev / qtyPrev : 0;
+    const unitProfitCurr = qtyCurr ? profitCurr / qtyCurr : 0;
+
+    const sectionProfit = cleaned.reduce((sum, row) => sum + getProfit(row), 0);
+
+    return [
       "",
       "Total",
-      total.__salesMix,
-      total.__salesMixChange,
-      total.__unitGrowth,
-      total.__aspGrowth,
-      total.__netSalesGrowth,
-      total.__cm1ProfitImpact,
-      total.__profitPerUnit,
-    ]);
+      100,
+      profitMixDenom ? (sectionProfit / profitMixDenom) * 100 : 0,
+      0,
+      pct(qtyPrev, qtyCurr),
+      pct(aspPrev, aspCurr),
+      pct(netSalesPrev, netSalesCurr),
+      pct(unitProfitPrev, unitProfitCurr),
+      pct(profitPrev, profitCurr),
+    ];
+  };
+
+  const buildSheetRows = (rows: any[], profitMixDenom: number) => {
+    const cleaned = cleanRows(rows);
+
+    const body = cleaned.map((row, index) => {
+      const profit = getProfit(row);
+
+      return [
+        index + 1,
+        row?.product_name || row?.["Product Name"] || row?.sku || "",
+        getSalesMix(row),
+        profitMixDenom ? (profit / profitMixDenom) * 100 : 0,
+        getGrowthValue(row, ["Sales Mix Change", "Sales Mix Change (%)"]),
+        getGrowthValue(row, ["Unit Growth", "Unit Growth (%)"]),
+        getGrowthValue(row, ["ASP Growth", "ASP Growth (%)"]),
+        getGrowthValue(row, [
+          "Sales Growth",
+          "Net Sales Growth",
+          "Net Sales Growth (%)",
+        ]),
+        getGrowthValue(row, [
+          "Profit Per Unit",
+          "Profit Per Unit (%)",
+          "CM1 Profit Per Unit (%)",
+        ]),
+        getGrowthValue(row, [
+          "CM1 Profit Impact",
+          "CM1 Profit Impact (%)",
+        ]),
+      ];
+    });
+
+    body.push(computeTotalRow(cleaned, profitMixDenom));
 
     return body;
   };
@@ -2952,6 +3476,15 @@ export function exportSkuAnalysisMtdExcel(params: {
   const wb = XLSX.utils.book_new();
 
   tabs.forEach((tab) => {
+    const rows = cleanRows(tab.rows);
+
+    if (!rows.length) return;
+
+    const profitMixDenom =
+      tab.sheetName === "All SKUs"
+        ? computeProfitMixDenominator(allSkuRows)
+        : computeProfitMixDenominator(allSkuRows);
+
     const topAoA = buildTopAoA({
       headerCount,
       title: `${titleLine} - ${tab.sheetName}`,
@@ -2962,9 +3495,9 @@ export function exportSkuAnalysisMtdExcel(params: {
     });
 
     const headerRowIndex = topAoA.length;
-    const bodyAoA = buildSheetRows(tab.rows);
-
+    const bodyAoA = buildSheetRows(rows, profitMixDenom);
     const sheetAoA = [...topAoA, headers, ...bodyAoA];
+
     const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
 
     ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
@@ -2973,27 +3506,40 @@ export function exportSkuAnalysisMtdExcel(params: {
       { wch: 8 },
       { wch: 32 },
       { wch: 20 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 18 },
       { wch: 20 },
       { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 26 },
       { wch: 24 },
     ];
 
     applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
-    // Header row style
+    // Header row: black & white only
     for (let c = 0; c < headerCount; c++) {
       const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
       if (!ws[addr]) continue;
 
-    ws[addr].s = {
-  ...(ws[addr].s || {}),
-  font: { bold: true, sz: 11, color: { rgb: "000000" } },
-  fill: undefined,
-  alignment: { horizontal: "center", vertical: "center" },
-};
+      ws[addr].s = {
+        ...(ws[addr].s || {}),
+        font: { bold: true, sz: 11, color: { rgb: "000000" } },
+        fill: {
+          fgColor: { rgb: "FFFFFF" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: {
+          top: { style: "thin", color: { rgb: "BFBFBF" } },
+          bottom: { style: "thin", color: { rgb: "BFBFBF" } },
+          left: { style: "thin", color: { rgb: "BFBFBF" } },
+          right: { style: "thin", color: { rgb: "BFBFBF" } },
+        },
+      };
     }
 
     const startBodyRow = headerRowIndex + 1;
@@ -3009,41 +3555,33 @@ export function exportSkuAnalysisMtdExcel(params: {
 
         cell.s = {
           ...(cell.s || {}),
-          alignment: {
-            horizontal: c === 1 ? "left" : "center",
-            vertical: "center",
-          },
-          border: {
-            top: { style: "thin", color: { rgb: "D9E1E8" } },
-            bottom: { style: "thin", color: { rgb: "D9E1E8" } },
-            left: { style: "thin", color: { rgb: "D9E1E8" } },
-            right: { style: "thin", color: { rgb: "D9E1E8" } },
-          },
           font: {
             ...(cell.s?.font || {}),
             bold: isTotalRow,
             sz: 11,
+            color: { rgb: "000000" },
           },
-fill: undefined,
+          fill: {
+            fgColor: { rgb: isTotalRow ? "EFEFEF" : "FFFFFF" },
+          },
+          alignment: {
+            horizontal: c === 1 ? "left" : "center",
+            vertical: "center",
+            wrapText: true,
+          },
+          border: {
+            top: { style: "thin", color: { rgb: "BFBFBF" } },
+            bottom: { style: "thin", color: { rgb: "BFBFBF" } },
+            left: { style: "thin", color: { rgb: "BFBFBF" } },
+            right: { style: "thin", color: { rgb: "BFBFBF" } },
+          },
         };
 
         // Percent formatting for all metric columns from Sales Mix onward
         if (c >= 2 && isNumber(cell.v)) {
-          cell.v = cell.v / 100;
+          cell.v = Number(cell.v) / 100;
           cell.z = "0.00%";
         }
-
-        // Growth color styling
-      if (c >= 3 && isNumber(cell.v)) {
-  cell.s = {
-    ...(cell.s || {}),
-    font: {
-      ...(cell.s?.font || {}),
-      bold: isTotalRow || c >= 3,
-      color: { rgb: "000000" },
-    },
-  };
-}
       }
     }
 
