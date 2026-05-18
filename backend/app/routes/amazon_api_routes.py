@@ -2398,6 +2398,7 @@ def finances_mtd_transactions():
     platform_fee_inventory_storage_total = 0.0
     dealsvouchar_ads_total = 0.0
     lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
+    misc_transaction_df = pd.DataFrame(columns=["sku", "misc_transaction"])
 
     if not df_all.empty:
         for col, default in [
@@ -2493,6 +2494,51 @@ def finances_mtd_transactions():
             .fillna(0.0)
             .abs()
         )
+        # ---------------- MISC TRANSACTION ----------------
+        df_all["desc_norm"] = df_all["description"].fillna("").astype(str).str.strip()
+        df_all["type_norm"] = df_all["type"].fillna("").astype(str).str.strip()
+
+        EXCLUDE_DESCRIPTIONS = {
+            "Cost of Advertising", "Coupon Redemption Fee", "Deals", "Lightning Deal",
+            "ProductAdsPayment", "CouponPerformanceEvent", "CouponParticipationEvent",
+            "SellerDealComplete", "FBA Return Fee", "FBA Long-Term Storage Fee",
+            "FBA storage fee", "Subscription", "FBADisposal", "FBAStorageBilling",
+            "FBALongTermStorageBilling", "Order Payment", "REVERSAL_REIMBURSEMENT",
+            "WAREHOUSE_LOST", "WAREHOUSE_DAMAGE", "MISSING_FROM_INBOUND",
+            "Refund", "Disbursement", "DebtPayment", "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling", "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK", "SellerPoweredCoupon", "VineCharge",
+            "DealParticipationEvent", "DealPerformanceEvent"
+        }
+
+        EXCLUDE_TYPES = {"Transfer", "Refund"}
+
+        leftout_mask = (
+            (~df_all["desc_norm"].isin(EXCLUDE_DESCRIPTIONS))
+            & (~df_all["type_norm"].isin(EXCLUDE_TYPES))
+        )
+
+        tmp_misc = df_all.loc[
+            leftout_mask
+            & df_all["sku"].notna()
+            & (df_all["sku"].astype(str).str.strip() != "")
+            & (df_all["sku"].astype(str).str.strip() != "0"),
+            ["sku", "total"]
+        ].copy()
+
+        tmp_misc["sku"] = tmp_misc["sku"].fillna("").astype(str).str.strip()
+        tmp_misc["total"] = pd.to_numeric(tmp_misc["total"], errors="coerce").fillna(0.0)
+
+        misc_transaction_df = (
+            tmp_misc.groupby("sku", as_index=False)["total"]
+            .sum()
+            .rename(columns={"total": "misc_transaction"})
+        )
+
+        misc_transaction_df["misc_transaction"] = pd.to_numeric(
+            misc_transaction_df["misc_transaction"],
+            errors="coerce"
+        ).fillna(0.0)
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
@@ -2583,6 +2629,18 @@ def finances_mtd_transactions():
         if "lost_total" not in df_sku.columns:
             df_sku["lost_total"] = 0.0
         df_sku["lost_total"] = pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0)
+
+        # merge misc_transaction
+        if misc_transaction_df is not None and not misc_transaction_df.empty:
+            df_sku = df_sku.merge(misc_transaction_df, on="sku", how="left")
+
+        if "misc_transaction" not in df_sku.columns:
+            df_sku["misc_transaction"] = 0.0
+
+        df_sku["misc_transaction"] = pd.to_numeric(
+            df_sku["misc_transaction"],
+            errors="coerce"
+        ).fillna(0.0)
 
         # finance derived
         if "product_sales" not in df_sku.columns:
@@ -2765,6 +2823,7 @@ def finances_mtd_transactions():
             pd.to_numeric(df_sku["platform_fee_inventory_storage"], errors="coerce").fillna(0.0).abs()
             + pd.to_numeric(df_sku["platformfeenew"], errors="coerce").fillna(0.0).abs()
             - pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).abs()
+            - pd.to_numeric(df_sku["misc_transaction"], errors="coerce").fillna(0.0).abs()
         )
 
         # profit and cm2
@@ -2848,6 +2907,10 @@ def finances_mtd_transactions():
             float(pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).abs().sum())
             if "lost_total" in df_sku.columns else 0.0
         )
+        total_row["misc_transaction"] = (
+            float(pd.to_numeric(df_sku["misc_transaction"], errors="coerce").fillna(0.0).abs().sum())
+            if "misc_transaction" in df_sku.columns else 0.0
+        )
 
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
@@ -2915,7 +2978,8 @@ def finances_mtd_transactions():
         total_row["platform_fee"] = round(
             abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
             + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-            - abs(float(total_row.get("lost_total", 0.0) or 0.0)),
+            - abs(float(total_row.get("lost_total", 0.0) or 0.0))
+            - abs(float(total_row.get("misc_transaction", 0.0) or 0.0)),
             2,
         )
 
@@ -3061,7 +3125,10 @@ def finances_mtd_transactions():
     # ---------------- Excel response ----------------
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
-        df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit", "gross_sales"], fill_value=0.0)
+        df = df.reindex(
+            columns=MTD_COLUMNS + ["cogs", "profit", "gross_sales", "misc_transaction"],
+            fill_value=0.0
+        )
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
