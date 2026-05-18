@@ -2486,7 +2486,13 @@ def finances_mtd_transactions():
             .sum()
             .rename(columns={"total": "lost_total"})
         )
-        lost_total_df["lost_total"] = pd.to_numeric(lost_total_df["lost_total"], errors="coerce").fillna(0.0)
+
+        # Store lost_total as positive value
+        lost_total_df["lost_total"] = (
+            pd.to_numeric(lost_total_df["lost_total"], errors="coerce")
+            .fillna(0.0)
+            .abs()
+        )
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
@@ -2838,7 +2844,10 @@ def finances_mtd_transactions():
         for c in sum_cols:
             total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
 
-        total_row["lost_total"] = float(pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).sum()) if "lost_total" in df_sku.columns else 0.0
+        total_row["lost_total"] = (
+            float(pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).abs().sum())
+            if "lost_total" in df_sku.columns else 0.0
+        )
 
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
@@ -2950,9 +2959,12 @@ def finances_mtd_transactions():
             + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
         )
 
+        # Correct CM2:
+        # CM2 = CM1 Profit - Total Ads - Platform Fee
         total_cm2_profit = (
             float(total_row.get("profit", 0.0) or 0.0)
-            - float(total_row.get("ads_spend", 0.0) or 0.0)
+            - float(product_ads_total + cost_ads_total)
+            - float(total_row.get("platform_fee", 0.0) or 0.0)
         )
 
         total_cm2_margins = (

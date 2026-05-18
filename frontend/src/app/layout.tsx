@@ -64,7 +64,7 @@
 
 
 import "./globals.css";
-import { Lato } from "next/font/google";
+import { Lato, Geist } from "next/font/google";
 
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -73,6 +73,9 @@ import { Toaster } from "sonner";
 import { PlatformProvider } from "@/components/context/PlatformContext";
 import MemberRouteGuard from "@/components/auth/MemberRouteGuard";
 import { Metadata } from "next";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: {
@@ -97,7 +100,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={lato.variable}>
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className="font-sans dark:bg-gray-900">
         <Providers>
           <ThemeProvider>
