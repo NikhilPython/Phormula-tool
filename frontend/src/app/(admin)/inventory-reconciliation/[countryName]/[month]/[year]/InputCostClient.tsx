@@ -545,6 +545,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const breakupPieRef = useRef<InventoryPieCardHandle | null>(null);
   const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
 
+  // ✅ Always-mounted hidden chart refs for Excel export
+  const exportBreakupPieRef = useRef<InventoryPieCardHandle | null>(null);
+  const exportAgeingPieRef = useRef<InventoryPieCardHandle | null>(null);
+
   const monthParam = normalizeMonth(decodeURIComponent(monthRaw ?? ""));
   const yearParam = normalizeYear(decodeURIComponent(yearRaw ?? ""));
   const [pieBase64, setPieBase64] = useState<string | null>(null);
@@ -779,11 +783,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
   };
 
-  async function fetchInventoryLostCompensation() {
+  async function fetchInventoryLostCompensation(): Promise<AnyRow[]> {
     if (!hasValidPeriod) {
       setLostCompRows([]);
       setLostCompLoading(false);
-      return;
+      return DUMMY_LOST_COMP_ROWS;
     }
 
     setLostCompLoading(true);
@@ -814,56 +818,72 @@ export default function InventoryReconciliationPage({ params }: Params) {
         throw new Error(json?.error || "Failed to fetch inventory lost compensation");
       }
 
-      setLostCompRows(() => {
-        let rows: AnyRow[] = Array.isArray(json?.data) ? (json.data as AnyRow[]) : [];
+      let rows: AnyRow[] = Array.isArray(json?.data) ? (json.data as AnyRow[]) : [];
 
-        rows = rows.filter((r: AnyRow) => {
-          const name = String(r?.product_name || "").toUpperCase();
-          const sku = String(r?.msku || "").toUpperCase();
-          return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
-        });
-
-        if (!rows.length) return [];
-
-        const total = rows.reduce(
-          (acc: AnyRow, r: AnyRow) => {
-            acc.lost_units += Number(r?.lost_units || 0);
-            acc.damaged_units += Number(r?.damaged_units || 0);
-            acc.total_lost_units += Number(r?.total_lost_units || 0);
-            acc.compensation_units += Number(r?.compensation_units || 0);
-            acc.compensation_value += Number(r?.compensation_value || 0);
-            acc.compensation_reimbursement_amount += Number(r?.compensation_reimbursement_amount || 0);
-            acc.settlement_loss_event_units += Number(r?.settlement_loss_event_units || 0);
-            acc.settlement_loss_event_amount += Number(r?.settlement_loss_event_amount || 0);
-            acc.loss_value += Number(r?.loss_value || 0);
-            acc.net_units += Number(r?.net_units || 0);
-            acc.net_value += Number(r?.net_value || 0);
-            return acc;
-          },
-          {
-            product_name: "Total",
-            msku: "-",
-            __isTotal: true,
-            lost_units: 0,
-            damaged_units: 0,
-            total_lost_units: 0,
-            compensation_units: 0,
-            compensation_value: 0,
-            compensation_reimbursement_amount: 0,
-            settlement_loss_event_units: 0,
-            settlement_loss_event_amount: 0,
-            loss_value: 0,
-            net_units: 0,
-            net_value: 0,
-          } as AnyRow
-        );
-
-        return [...rows, total];
+      rows = rows.filter((r: AnyRow) => {
+        const name = String(r?.product_name || "").toUpperCase();
+        const sku = String(r?.msku || "").toUpperCase();
+        return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
       });
+
+      if (!rows.length) {
+        setLostCompRows([]);
+        setLostCompLoaded(true);
+        return [];
+      }
+
+      const total = rows.reduce(
+        (acc: AnyRow, r: AnyRow) => {
+          acc.lost_units += Number(r?.lost_units || 0);
+          acc.damaged_units += Number(r?.damaged_units || 0);
+          acc.total_lost_units += Number(r?.total_lost_units || 0);
+          acc.compensation_units += Number(r?.compensation_units || 0);
+          acc.compensation_value += Number(r?.compensation_value || 0);
+          acc.compensation_reimbursement_amount += Number(
+            r?.compensation_reimbursement_amount || 0
+          );
+          acc.settlement_loss_event_units += Number(
+            r?.settlement_loss_event_units || 0
+          );
+          acc.settlement_loss_event_amount += Number(
+            r?.settlement_loss_event_amount || 0
+          );
+          acc.loss_value += Number(r?.loss_value || 0);
+          acc.net_units += Number(r?.net_units || 0);
+          acc.net_value += Number(r?.net_value || 0);
+          return acc;
+        },
+        {
+          product_name: "Total",
+          msku: "-",
+          __isTotal: true,
+          lost_units: 0,
+          damaged_units: 0,
+          total_lost_units: 0,
+          compensation_units: 0,
+          compensation_value: 0,
+          compensation_reimbursement_amount: 0,
+          settlement_loss_event_units: 0,
+          settlement_loss_event_amount: 0,
+          loss_value: 0,
+          net_units: 0,
+          net_value: 0,
+        } as AnyRow
+      );
+
+      const finalRows = [...rows, total];
+
+      setLostCompRows(finalRows);
+      setLostCompLoaded(true);
+
+      return finalRows;
     } catch (e: any) {
       console.error(e);
       setLostCompRows([]);
       handlePageError(e?.message || "Failed to fetch inventory lost compensation", e);
+
+      // ✅ No data means no Lost vs Compensation tab in Excel
+      return [];
     } finally {
       setLostCompLoading(false);
     }
@@ -2196,280 +2216,335 @@ export default function InventoryReconciliationPage({ params }: Params) {
     });
   }, [effectiveLostCompRows]);
 
+  const buildLostCompExportRowsFromRows = useCallback((sourceRows: AnyRow[]) => {
+    if (!sourceRows?.length) return [];
+
+    const exportRows = sourceRows;
+    let serial = 0;
+
+    return exportRows.map((row) => {
+      const isTotal = !!row?.__isTotal;
+
+      return {
+        "S. No.": isTotal ? "" : String(++serial),
+        "Product Name": formatCell(row?.product_name),
+        "SKU": formatCell(row?.msku),
+        "Lost Units": formatCell(row?.lost_units),
+        "Damaged Units": formatCell(row?.damaged_units),
+        "Compensation Units": formatCell(row?.compensation_units),
+        "Remaining Compensation Units": formatCell(row?.net_units),
+        "Total Lost Units": formatCell(row?.total_lost_units),
+        "Compensation Value Amount": formatCell(row?.compensation_value),
+        "Remaining Compensation Amount": formatCell(row?.settlement_loss_event_amount),
+        "Total Compensation Value": formatCell(row?.net_value),
+        __isTotal: isTotal,
+      };
+    });
+  }, []);
+
   const handleDownloadXLSX = async () => {
     const dataRows = buildReconExportDataRows();
     if (!dataRows.length) return;
 
-    // ✅ ensure lost/comp data is available before export
-    let lostRows = lostCompRows;
+    // ✅ Always fetch fresh Lost vs Compensation rows for current filters.
+    // This avoids exporting stale rows from a previous month/quarter/year.
+    let lostRowsForExport: AnyRow[] = [];
 
-    if (!lostRows || lostRows.length === 0) {
-      try {
-        await fetchInventoryLostCompensation(); // fetch fresh data
-        lostRows = buildLostCompExportRows().map(r => r); // force fresh build
-      } catch (e) {
-        console.error("Lost vs Compensation fetch failed", e);
-        lostRows = [];
-      }
-    }
-
-    const periodLabel =
-      range === "monthly"
-        ? formatPeriodLabel(selectedMonth, selectedYear)
-        : range === "quarterly"
-          ? formatQuarterLabel(selectedQuarter, selectedYear)
-          : selectedYear;
-
-    const breakupChartBase64 = breakupPieRef.current?.getExportImage() || null;
-    const ageingChartBase64 = ageingPieRef.current?.getExportImage() || null;
-
-    const filenameBase = buildReconFilename(range, {
-      month: selectedMonth,
-      quarter: selectedQuarter,
-      year: selectedYear,
-    });
-
-    await exportInventoryReconExcel({
-      filename: `${filenameBase}.xlsx`,
-      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-      countryName,
-      titleCountry: countryName?.toUpperCase(),
-      platformLabel: "Phormula",
-      periodLabel,
-      companyName,
-      brandName,
-      dataRows,
-      lostCompRows: lostRows.length ? buildLostCompExportRows() : [],
-      breakupChartBase64,
-      ageingChartBase64,
-    });
-  };
-
-  const handleConnectAmazonPreview = () => {
-    router.push(`/profile/${countryName}/NA/NA`);
-  };
-
-  if (pageLoading) {
-    return (
-      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-        <Loader transparent />
-      </div>
-    );
+    try {
+      lostRowsForExport = await fetchInventoryLostCompensation();
+    } catch (e) {
+      console.error("Lost vs Compensation fetch failed", e);
+      lostRowsForExport = [];
   }
 
+  const periodLabel =
+    range === "monthly"
+      ? formatPeriodLabel(selectedMonth, selectedYear)
+      : range === "quarterly"
+        ? formatQuarterLabel(selectedQuarter, selectedYear)
+        : selectedYear;
+
+  // ✅ Give hidden export charts time to render before image capture
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  const breakupChartBase64 =
+    exportBreakupPieRef.current?.getExportImage() ||
+    breakupPieRef.current?.getExportImage() ||
+    null;
+
+  const ageingChartBase64 =
+    exportAgeingPieRef.current?.getExportImage() ||
+    ageingPieRef.current?.getExportImage() ||
+    null;
+
+  const filenameBase = buildReconFilename(range, {
+    month: selectedMonth,
+    quarter: selectedQuarter,
+    year: selectedYear,
+  });
+
+  await exportInventoryReconExcel({
+    filename: `${filenameBase}.xlsx`,
+    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+    countryName,
+    titleCountry: countryName?.toUpperCase(),
+    platformLabel: "Phormula",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+
+    // ✅ Always pass rows, so exporter always creates Lost vs Compensation sheet
+    lostCompRows: buildLostCompExportRowsFromRows(lostRowsForExport),
+
+    breakupChartBase64,
+    ageingChartBase64,
+  });
+};
+
+const handleConnectAmazonPreview = () => {
+  router.push(`/profile/${countryName}/NA/NA`);
+};
+
+if (pageLoading) {
   return (
-    <div className="w-full">
+    <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+      <Loader transparent />
+    </div>
+  );
+}
 
-      <div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7]">
-        <div className="flex flex-col">
-          {/* Row 1: title left, filters right */}
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            {/* Left title block */}
-            <div className="flex flex-col">
-              <PageBreadcrumb
-                variant="page"
-                align="left"
-                textSize="2xl"
-                pageTitle={
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[#414042] font-bold">
-                      Inventory Reconciliation - Amazon
-                    </span>
-                    <span className="text-[#60a68e] font-bold">
-                      {countryName?.toUpperCase()}
-                    </span>
-                  </div>
-                }
-              />
-            </div>
+return (
+  <div className="w-full">
 
-            {/* Right filters */}
-            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-              <PeriodFiltersTable
-                range={range}
-                selectedMonth={selectedMonth}
-                selectedQuarter={selectedQuarter}
-                selectedYear={selectedYear}
-                yearOptions={yearOptions}
-                onRangeChange={(v) => setRange(v)}
-                onMonthChange={(v) => {
-                  const raw = String(v ?? "").trim();
-                  const parts = raw.split(/\s+/).filter(Boolean);
-                  const monthPart = parts[0] ?? raw;
-                  const yearPart = parts.find((p) => /^\d{4}$/.test(p));
-
-                  setSelectedMonth(normalizeMonth(monthPart));
-                  if (yearPart) setSelectedYear(normalizeYear(yearPart));
-                }}
-                onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
-                onYearChange={(v) => setSelectedYear(String(v))}
-                allowedRanges={["monthly", "quarterly", "yearly"]}
-              />
-
-              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
-            </div>
-          </div>
-
-          {/* Row 2: toggle only */}
-          <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
-              max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
-            <SegmentedToggle
-              value={activeView}
-              options={viewOptions}
-              onChange={(val) => setActiveView(val as InventoryViewTab)}
-              className="mt-2 w-full"
-              compact
-              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+    <div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7]">
+      <div className="flex flex-col">
+        {/* Row 1: title left, filters right */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          {/* Left title block */}
+          <div className="flex flex-col">
+            <PageBreadcrumb
+              variant="page"
+              align="left"
+              textSize="2xl"
+              pageTitle={
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-[#414042] font-bold">
+                    Inventory Reconciliation - Amazon
+                  </span>
+                  <span className="text-[#60a68e] font-bold">
+                    {countryName?.toUpperCase()}
+                  </span>
+                </div>
+              }
             />
           </div>
+
+          {/* Right filters */}
+          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+            <PeriodFiltersTable
+              range={range}
+              selectedMonth={selectedMonth}
+              selectedQuarter={selectedQuarter}
+              selectedYear={selectedYear}
+              yearOptions={yearOptions}
+              onRangeChange={(v) => setRange(v)}
+              onMonthChange={(v) => {
+                const raw = String(v ?? "").trim();
+                const parts = raw.split(/\s+/).filter(Boolean);
+                const monthPart = parts[0] ?? raw;
+                const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+
+                setSelectedMonth(normalizeMonth(monthPart));
+                if (yearPart) setSelectedYear(normalizeYear(yearPart));
+              }}
+              onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
+              onYearChange={(v) => setSelectedYear(String(v))}
+              allowedRanges={["monthly", "quarterly", "yearly"]}
+            />
+
+            <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
+          </div>
+        </div>
+
+        {/* Row 2: toggle only */}
+        <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+              max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
+          <SegmentedToggle
+            value={activeView}
+            options={viewOptions}
+            onChange={(val) => setActiveView(val as InventoryViewTab)}
+            className="mt-2 w-full"
+            compact
+            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+          />
+        </div>
+      </div>
+    </div>
+
+    <PreviewLockedSection
+      enabled={isNA}
+      title="Preview Mode"
+      description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+      buttonText="Complete Setup"
+      onAction={handleConnectAmazonPreview}
+    >
+      <div
+        aria-hidden="true"
+        className="fixed left-[-10000px] top-0 h-[760px] w-[760px] pointer-events-none"
+      >
+        <div className="h-[360px] w-[720px] bg-white">
+          <InventoryPieCard
+            ref={exportBreakupPieRef}
+            title="Inventory Breakup"
+            data={breakupPie}
+            loading={false}
+            height={320}
+            emptyText={isNA ? "" : "No data available"}
+          />
+        </div>
+
+        <div className="mt-8 h-[360px] w-[720px] bg-white">
+          <InventoryPieCard
+            ref={exportAgeingPieRef}
+            title="Current Inventory Ageing"
+            data={ageingPie}
+            loading={false}
+            height={320}
+            emptyText={isNA ? "" : "No data available"}
+          />
         </div>
       </div>
 
-      <PreviewLockedSection
-        enabled={isNA}
-        title="Preview Mode"
-        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
-        buttonText="Complete Setup"
-        onAction={handleConnectAmazonPreview}
-      >
-        {/* ✅ Pie charts row */}
-        {activeView === "charts" && (
-          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <InventoryPieCard
-              ref={breakupPieRef}
-              title="Inventory Breakup"
-              data={breakupPie}
-              loading={pieLoading}
-              height={320}
-              emptyText={isNA ? "" : "No data available"}
-            />
+      {/* ✅ Pie charts row */}
+      {activeView === "charts" && (
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <InventoryPieCard
+            ref={breakupPieRef}
+            title="Inventory Breakup"
+            data={breakupPie}
+            loading={pieLoading}
+            height={320}
+            emptyText={isNA ? "" : "No data available"}
+          />
 
-            <InventoryPieCard
-              ref={ageingPieRef}
-              title="Current Inventory Ageing"
-              data={ageingPie}
-              loading={pieLoading}
-              height={320}
-              emptyText={isNA ? "" : "No data available"}
-            />
-          </div>
-        )}
-
-        {/* Table */}
-        {activeView === "table" && (
-          <div
-            className={[
-              "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-              "overflow-x-auto",
-              "[-webkit-overflow-scrolling:touch]",
-            ].join(" ")}
-          >
-            {fetching || !hasLoadedOnce ? (
-              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-                <Loader transparent />
-              </div>
-            ) : effectiveRows.length === 0 ? (
-              <div className="p-6 text-sm text-neutral-600">No data available</div>
-            ) : (
-              <GroupedCollapsibleTable
-                rows={effectiveRows}
-                getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-                leftCols={leftCols}
-                groups={groups}
-                singleCols={singleCols}
-                getValue={getValue}
-                getRowClassName={getRowClassName}
-                onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-                tableClassName={
-                  anyExpanded
-                    ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                    : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                }
-                headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                showSignRowInBody
-                getSignForCol={getSignForCol}
-              />
-            )}
-          </div>
-        )}
-        {/* <div className="mt-4" id="inventory-pie-export">
-
-        <InventoryTopProductsPie
-          key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-          rows={pieRows}
-          title="Inventory Breakup"
-          exportTick={exportTick} // ✅ NEW
-          onExportBase64Ready={(b64) => setPieBase64(b64)}
-        />
-      </div> */}
-
-        {activeView === "extra" && (
-          <div className="mt-5">
-            {lostCompLoading ? (
-              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-                <Loader transparent />
-              </div>
-            ) : (
-              <DataTable<Record<string, React.ReactNode>>
-                columns={lostCompTableColumns}
-                data={lostCompTableData}
-                loading={false}
-                paginate={false}
-                stickyHeader
-                scrollY={false}
-                maxHeight="auto"
-                emptyMessage="No data available"
-                tableClassName="text-xs 2xl:text-sm"
-                className="rounded-lg"
-                rowClassName={(row) =>
-                  (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
-                }
-              />
-            )}
-          </div>
-        )}
-      </PreviewLockedSection>
-
-      {/* Multi-country modal (kept) */}
-      {showMultiuseCountry && (
-        <div
-          onClick={() => setShowMultiuseCountry(false)}
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative flex h-[30vh] w-full max-w-lg flex-col items-center justify-center overflow-y-auto rounded-lg bg-white p-4 shadow-lg"
-          >
-            <button
-              onClick={() => setShowMultiuseCountry(false)}
-              className="absolute right-3 top-2 text-2xl leading-none text-neutral-600 hover:text-neutral-900"
-              aria-label="Close"
-              type="button"
-            >
-              &times;
-            </button>
-
-            <SkuMultiuseCountryUpload
-              onClose={function (): void {
-                throw new Error('Function not implemented.');
-              }}
-              onComplete={function (): void {
-                throw new Error('Function not implemented.');
-              }}
-            />
-          </div>
+          <InventoryPieCard
+            ref={ageingPieRef}
+            title="Current Inventory Ageing"
+            data={ageingPie}
+            loading={pieLoading}
+            height={320}
+            emptyText={isNA ? "" : "No data available"}
+          />
         </div>
       )}
 
-      {!suppressModalErrors && showModal && modalMessage ? (
-        <Modalmsg
-          show={showModal}
-          message={modalMessage}
-          onClose={() => setShowModal(false)}
-          onCancel={() => setShowModal(false)}
-        />
-      ) : null}
-    </div>
-  );
+      {/* Table */}
+      {activeView === "table" && (
+        <div
+          className={[
+            "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+            "overflow-x-auto",
+            "[-webkit-overflow-scrolling:touch]",
+          ].join(" ")}
+        >
+          {fetching || !hasLoadedOnce ? (
+            <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+              <Loader transparent />
+            </div>
+          ) : effectiveRows.length === 0 ? (
+            <div className="p-6 text-sm text-neutral-600">No data available</div>
+          ) : (
+            <GroupedCollapsibleTable
+              rows={effectiveRows}
+              getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+              leftCols={leftCols}
+              groups={groups}
+              singleCols={singleCols}
+              getValue={getValue}
+              getRowClassName={getRowClassName}
+              onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+              tableClassName={
+                anyExpanded
+                  ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                  : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+              }
+              headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+              headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+              showSignRowInBody
+              getSignForCol={getSignForCol}
+            />
+          )}
+        </div>
+      )}
+
+      {activeView === "extra" && (
+        <div className="mt-5">
+          {lostCompLoading ? (
+            <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+              <Loader transparent />
+            </div>
+          ) : (
+            <DataTable<Record<string, React.ReactNode>>
+              columns={lostCompTableColumns}
+              data={lostCompTableData}
+              loading={false}
+              paginate={false}
+              stickyHeader
+              scrollY={false}
+              maxHeight="auto"
+              emptyMessage="No data available"
+              tableClassName="text-xs 2xl:text-sm"
+              className="rounded-lg"
+              rowClassName={(row) =>
+                (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
+              }
+            />
+          )}
+        </div>
+      )}
+    </PreviewLockedSection>
+
+    {/* Multi-country modal (kept) */}
+    {showMultiuseCountry && (
+      <div
+        onClick={() => setShowMultiuseCountry(false)}
+        className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative flex h-[30vh] w-full max-w-lg flex-col items-center justify-center overflow-y-auto rounded-lg bg-white p-4 shadow-lg"
+        >
+          <button
+            onClick={() => setShowMultiuseCountry(false)}
+            className="absolute right-3 top-2 text-2xl leading-none text-neutral-600 hover:text-neutral-900"
+            aria-label="Close"
+            type="button"
+          >
+            &times;
+          </button>
+
+          <SkuMultiuseCountryUpload
+            onClose={function (): void {
+              throw new Error('Function not implemented.');
+            }}
+            onComplete={function (): void {
+              throw new Error('Function not implemented.');
+            }}
+          />
+        </div>
+      </div>
+    )}
+
+    {!suppressModalErrors && showModal && modalMessage ? (
+      <Modalmsg
+        show={showModal}
+        message={modalMessage}
+        onClose={() => setShowModal(false)}
+        onCancel={() => setShowModal(false)}
+      />
+    ) : null}
+  </div>
+);
 }
