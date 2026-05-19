@@ -2029,9 +2029,17 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     other_transactions_total = float(total_row.get("platform_fee", 0.0) or 0.0)
+    shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
     total_cm2_profit = float(total_row.get("cm2_profit", 0.0) or 0.0)
+
+    total_cm2_profit = (
+        float(total_row.get("profit", 0.0) or 0.0)
+        - float(product_ads_total + cost_ads_total)
+        - other_transactions_total
+        - shipment_charges_total
+    )
 
     total_row["cm2_profit"] = round(total_cm2_profit, 2)
     total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
@@ -3078,17 +3086,19 @@ def finances_mtd_transactions():
             + abs(float(total_row.get("display_spend", 0.0) or 0.0))
         )
 
-        other_transactions_total = (
-            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-        )
+        # Other Transactions / Platform Fee should always be treated as a cost
+        other_transactions_total = abs(float(total_row.get("platform_fee", 0.0) or 0.0))
+
+        # Shipment Charges should also reduce CM2
+        shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
 
         # Correct CM2:
-        # CM2 = CM1 Profit - Total Ads - Platform Fee
+        # CM2 = CM1 Profit - Total Ads - Other Transactions - Shipment Charges
         total_cm2_profit = (
             float(total_row.get("profit", 0.0) or 0.0)
             - float(product_ads_total + cost_ads_total)
-            - float(total_row.get("platform_fee", 0.0) or 0.0)
+            - other_transactions_total
+            - shipment_charges_total
         )
 
         total_cm2_margins = (
