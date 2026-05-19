@@ -2029,9 +2029,17 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     other_transactions_total = float(total_row.get("platform_fee", 0.0) or 0.0)
+    shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
     total_cm2_profit = float(total_row.get("cm2_profit", 0.0) or 0.0)
+
+    total_cm2_profit = (
+        float(total_row.get("profit", 0.0) or 0.0)
+        - float(product_ads_total + cost_ads_total)
+        - other_transactions_total
+        - shipment_charges_total
+    )
 
     total_row["cm2_profit"] = round(total_cm2_profit, 2)
     total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
@@ -2399,6 +2407,7 @@ def finances_mtd_transactions():
     dealsvouchar_ads_total = 0.0
     lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
     misc_transaction_df = pd.DataFrame(columns=["sku", "misc_transaction"])
+    misc_transaction_total = 0.0
 
     if not df_all.empty:
         for col, default in [
@@ -2495,39 +2504,101 @@ def finances_mtd_transactions():
             .abs()
         )
         # ---------------- MISC TRANSACTION ----------------
-        df_all["desc_norm"] = df_all["description"].fillna("").astype(str).str.strip()
+
+        def _norm_key(x):
+            return re.sub(r"\s+", " ", str(x or "").strip()).casefold()
+
+        df_all["sku"] = df_all["sku"].fillna("").astype(str).str.strip()
+        df_all["description"] = df_all["description"].fillna("").astype(str).str.strip()
+        df_all["total"] = pd.to_numeric(df_all["total"], errors="coerce").fillna(0.0)
+
+        # Some rows may have transaction type in transaction_type instead of type
+        if "type" not in df_all.columns:
+            df_all["type"] = ""
+
         df_all["type_norm"] = df_all["type"].fillna("").astype(str).str.strip()
 
+        if "transaction_type" in df_all.columns:
+            df_all["type_norm"] = df_all["type_norm"].where(
+                df_all["type_norm"] != "",
+                df_all["transaction_type"].fillna("").astype(str).str.strip()
+            )
+
+        df_all["desc_key"] = df_all["description"].map(_norm_key)
+        df_all["type_key"] = df_all["type_norm"].map(_norm_key)
+
         EXCLUDE_DESCRIPTIONS = {
-            "Cost of Advertising", "Coupon Redemption Fee", "Deals", "Lightning Deal",
-            "ProductAdsPayment", "CouponPerformanceEvent", "CouponParticipationEvent",
-            "SellerDealComplete", "FBA Return Fee", "FBA Long-Term Storage Fee",
-            "FBA storage fee", "Subscription", "FBADisposal", "FBAStorageBilling",
-            "FBALongTermStorageBilling", "Order Payment", "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST", "WAREHOUSE_DAMAGE", "MISSING_FROM_INBOUND",
-            "Refund", "Disbursement", "DebtPayment", "INCORRECT_FEES_NON_ITEMIZED",
-            "StorageReservationBilling", "MISSING_FROM_INBOUND_CLAWBACK",
-            "COMPENSATED_CLAWBACK", "SellerPoweredCoupon", "VineCharge",
-            "DealParticipationEvent", "DealPerformanceEvent"
+            # Advertising / deals
+            "Cost of Advertising",
+            "Coupon Redemption Fee",
+            "Deals",
+            "Lightning Deal",
+            "ProductAdsPayment",
+            "CouponPerformanceEvent",
+            "CouponParticipationEvent",
+            "SellerDealComplete",
+            "VineCharge",
+            "SellerPoweredCoupon",
+            "DealParticipationEvent",
+            "DealPerformanceEvent",
+
+            # Platform / storage / shipment buckets
+            "FBA Return Fee",
+            "FBA Long-Term Storage Fee",
+            "FBA storage fee",
+            "FBADisposal",
+            "FBAStorageBilling",
+            "FBALongTermStorageBilling",
+            "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling",
+            "Subscription",
+            "FBAInboundConvenience",
+
+            # Normal payment / refund / transfer buckets
+            "Order Payment",
+            "Refund",
+            "Disbursement",
+            "DebtPayment",
+
+            # Lost / reimbursement bucket
+            "REVERSAL_REIMBURSEMENT",
+            "WAREHOUSE_LOST",
+            "WAREHOUSE_DAMAGE",
+            "MISSING_FROM_INBOUND",
+            "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK",
         }
 
-        EXCLUDE_TYPES = {"Transfer", "Refund"}
+        EXCLUDE_TYPES = {
+            "Transfer",
+            "Refund",
+        }
+
+        exclude_desc_keys = {_norm_key(x) for x in EXCLUDE_DESCRIPTIONS}
+        exclude_type_keys = {_norm_key(x) for x in EXCLUDE_TYPES}
 
         leftout_mask = (
-            (~df_all["desc_norm"].isin(EXCLUDE_DESCRIPTIONS))
-            & (~df_all["type_norm"].isin(EXCLUDE_TYPES))
+            ~df_all["desc_key"].isin(exclude_desc_keys)
+            & ~df_all["type_key"].isin(exclude_type_keys)
         )
 
+        # Logic 1: GRAND_TOTAL misc_transaction
+        # Includes rows with SKU and rows without SKU
+        misc_transaction_total = abs(
+            pd.to_numeric(df_all.loc[leftout_mask, "total"], errors="coerce")
+            .fillna(0.0)
+            .sum()
+        )
+
+        # Logic 2: SKU-wise misc_transaction
+        # Only rows with SKU can be merged into df_sku
         tmp_misc = df_all.loc[
             leftout_mask
             & df_all["sku"].notna()
-            & (df_all["sku"].astype(str).str.strip() != "")
-            & (df_all["sku"].astype(str).str.strip() != "0"),
+            & (df_all["sku"] != "")
+            & (df_all["sku"] != "0"),
             ["sku", "total"]
         ].copy()
-
-        tmp_misc["sku"] = tmp_misc["sku"].fillna("").astype(str).str.strip()
-        tmp_misc["total"] = pd.to_numeric(tmp_misc["total"], errors="coerce").fillna(0.0)
 
         misc_transaction_df = (
             tmp_misc.groupby("sku", as_index=False)["total"]
@@ -2907,10 +2978,7 @@ def finances_mtd_transactions():
             float(pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0).abs().sum())
             if "lost_total" in df_sku.columns else 0.0
         )
-        total_row["misc_transaction"] = (
-            float(pd.to_numeric(df_sku["misc_transaction"], errors="coerce").fillna(0.0).abs().sum())
-            if "misc_transaction" in df_sku.columns else 0.0
-        )
+        total_row["misc_transaction"] = round(float(misc_transaction_total or 0.0), 2)
 
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
@@ -3018,17 +3086,19 @@ def finances_mtd_transactions():
             + abs(float(total_row.get("display_spend", 0.0) or 0.0))
         )
 
-        other_transactions_total = (
-            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-        )
+        # Other Transactions / Platform Fee should always be treated as a cost
+        other_transactions_total = abs(float(total_row.get("platform_fee", 0.0) or 0.0))
+
+        # Shipment Charges should also reduce CM2
+        shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
 
         # Correct CM2:
-        # CM2 = CM1 Profit - Total Ads - Platform Fee
+        # CM2 = CM1 Profit - Total Ads - Other Transactions - Shipment Charges
         total_cm2_profit = (
             float(total_row.get("profit", 0.0) or 0.0)
             - float(product_ads_total + cost_ads_total)
-            - float(total_row.get("platform_fee", 0.0) or 0.0)
+            - other_transactions_total
+            - shipment_charges_total
         )
 
         total_cm2_margins = (

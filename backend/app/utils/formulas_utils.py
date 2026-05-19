@@ -639,7 +639,6 @@ def uk_platform_fee(
         "INCORRECT_FEES_NON_ITEMIZED",
         "StorageReservationBilling",
         "MISSING_FROM_INBOUND_CLAWBACK",
-        "COMPENSATED_CLAWBACK",
     ),
     desc_col: str = "description",
     amount_col: str = "total",

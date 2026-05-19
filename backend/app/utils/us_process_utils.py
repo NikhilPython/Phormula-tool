@@ -534,7 +534,6 @@ def process_skuwise_us_data(user_id, country, month, year):
             "FBALongTermStorageBilling",
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
-            "COMPENSATED_CLAWBACK",
         ]))
 
         misc_transaction_total = abs(
@@ -1592,7 +1591,6 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "FBALongTermStorageBilling",
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
-            "COMPENSATED_CLAWBACK",
         ]))
 
         misc_transaction_total = abs(
@@ -2212,7 +2210,6 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "FBALongTermStorageBilling",
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
-            "COMPENSATED_CLAWBACK",
         ]))
 
         misc_transaction_total = abs(
