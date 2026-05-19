@@ -10,7 +10,7 @@ import DownloadIconButton from "../ui/button/DownloadIconButton";
 // import { saveAs } from "file-saver";
 // import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import {
-  exportPnLProductwiseBreakdownMtdExcel,
+  exportCurrentInventoryExcel,
   exportGlobalCurrentInventoryExcel,
 } from "@/lib/excel/exportCurrentInventoryExcel";
 import SegmentedToggle from "../ui/SegmentedToggle";
@@ -968,7 +968,7 @@ export default function CurrentInventorySection({
 
     if (!exportDataRows.length) return;
 
-    exportPnLProductwiseBreakdownMtdExcel({
+    exportCurrentInventoryExcel({
       filename: `Current-Inventory_${displayRegion}_${monthName}_${year}.xlsx`,
       titleLine: `Amazon ${displayRegion} - Current Inventory - ${periodLabel}`,
       countryName: displayRegion.toLowerCase(),

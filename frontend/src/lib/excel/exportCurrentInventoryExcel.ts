@@ -224,6 +224,13 @@ export function exportCurrentInventoryExcel(params: {
 
   const ANCHOR_COL_1_BASED = headerCount;
 
+  const tableBorder = {
+  top: { style: "thin", color: { rgb: "000000" } },
+  bottom: { style: "thin", color: { rgb: "000000" } },
+  left: { style: "thin", color: { rgb: "000000" } },
+  right: { style: "thin", color: { rgb: "000000" } },
+};
+
   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
 
   const topExtraLines = [
@@ -266,9 +273,9 @@ export function exportCurrentInventoryExcel(params: {
     if (h === "Sales Last 30 Days") return { wch: 18 };
     if (h === "Sales Rank") return { wch: 14 };
     if (h === "Current Inventory") return { wch: 18 };
-    if (h === "Inventory 180+ Days") return { wch: 18 };
-    if (h === "Estimated Storage Cost") return { wch: 20 };
-    if (h === "Inventory Coverage Ratio") return { wch: 18 };
+    if (h === "Inventory 180+ Days") return { wch: 20 };
+    if (h === "Estimated Storage Cost") return { wch: 26 };
+    if (h === "Inventory Coverage Ratio") return { wch: 24 };
     if (h === "Inventory Alerts") return { wch: 24 };
     return { wch: Math.min(Math.max(String(h).length + 2, 12), 28) };
   });
@@ -279,46 +286,102 @@ export function exportCurrentInventoryExcel(params: {
     const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
     if (!ws[addr]) continue;
 
+  ws[addr].s = {
+  ...(ws[addr].s || {}),
+  font: { bold: true, sz: 11 },
+  alignment: {
+    horizontal: "center",
+    vertical: "center",
+    wrapText: true,
+  },
+  border: tableBorder,
+};
+  }
+
+ const INTEGER_COLUMNS = new Set([
+  "S.No.",
+  "MTD Sales",
+  "Sales Last 30 Days",
+  "Sales Rank",
+  "Current Inventory",
+  "Inventory 180+ Days",
+]);
+
+const DECIMAL_COLUMNS = new Set([
+  "Estimated Storage Cost",
+  "Inventory Coverage Ratio",
+]);
+
+const toExcelNumber = (value: any) => {
+  if (value === null || value === undefined || value === "") return null;
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const cleaned = String(value)
+    .replace(/,/g, "")
+    .trim();
+
+  if (cleaned === "" || cleaned === "-") return null;
+
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+};
+
+const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+
+for (let r = headerRowIndex + 1; r <= range.e.r; r++) {
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = ws[addr];
+
+    if (!cell) continue;
+
+    const header = headers[c];
+    const n = toExcelNumber(cell.v);
+
+    if (n === null) continue;
+
+    if (INTEGER_COLUMNS.has(header)) {
+      cell.v = Math.trunc(n);
+      cell.t = "n";
+      cell.z = "#,##0";
+    } else if (DECIMAL_COLUMNS.has(header)) {
+      cell.v = n;
+      cell.t = "n";
+      cell.z = "#,##0.00";
+    }
+  }
+}
+
+// Add borders + center alignment to full table: header + body rows
+const tableStartRow = headerRowIndex;
+const tableEndRow = range.e.r;
+
+for (let r = tableStartRow; r <= tableEndRow; r++) {
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+
+    if (!ws[addr]) {
+      ws[addr] = { t: "s", v: "" };
+    }
+
     ws[addr].s = {
       ...(ws[addr].s || {}),
-      font: { bold: true, sz: 11 },
       alignment: {
         horizontal: "center",
         vertical: "center",
-        wrapText: false,
+        wrapText: true,
       },
+      border: tableBorder,
     };
   }
+}
 
-  const INTEGER_COLUMNS = new Set([
-    "MTD Sales",
-    "Sales Last 30 Days",
-    "Current Inventory",
-    "Inventory 180+ Days",
-  ]);
-
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-
-      const header = headers[c];
-
-      if (!isNumber(cell.v)) continue;
-
-      if (INTEGER_COLUMNS.has(header)) {
-        cell.z = "#,##0";
-      } else {
-        cell.z = "#,##0.00";
-      }
-    }
-  }
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
-  XLSX.writeFile(wb, filename);
+const wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
+XLSX.writeFile(wb, filename);
 }
 
 export async function exportGlobalCurrentInventoryExcel(params: {
@@ -367,12 +430,12 @@ export async function exportGlobalCurrentInventoryExcel(params: {
     "Inventory Alerts",
   ];
 
-  const thinGrayBorder = {
-    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-  };
+const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
 
   const whiteFill = {
     type: "pattern" as const,
@@ -434,10 +497,10 @@ export async function exportGlobalCurrentInventoryExcel(params: {
         vertical: "middle",
         wrapText: true,
       };
-      cell.border = thinGrayBorder;
+      cell.border = tableBorder;
     });
 
-    headerRow.height = 20;
+    headerRow.height = 32;
 
     const startDataRow = headerRowNumber + 1;
 
@@ -473,35 +536,36 @@ export async function exportGlobalCurrentInventoryExcel(params: {
           cell.value = value ?? "";
         }
 
-        cell.alignment = {
-          horizontal: header === "Product Name" ? "left" : "center",
-          vertical: "middle",
-          wrapText: true,
-        };
+       cell.alignment = {
+  horizontal: "center",
+  vertical: "middle",
+  wrapText: true,
+  shrinkToFit: false,
+};
 
-        cell.fill = isTotal ? lightGrayFill : whiteFill;
+        cell.fill = whiteFill;
         cell.font = {
           bold: isTotal,
           size: 11,
           color: { argb: "FF000000" },
         };
-        cell.border = thinGrayBorder;
+       cell.border = tableBorder;
       });
     });
 
     ws.columns = [
-      { width: 8 },
-      { width: 28 },
-      { width: 18 },
-      { width: 14 },
-      { width: 18 },
-      { width: 14 },
-      { width: 18 },
-      { width: 18 },
-      { width: 22 },
-      { width: 22 },
-      { width: 30 },
-    ];
+  { width: 8 },   // S.No.
+  { width: 28 },  // Product Name
+  { width: 18 },  // SKU
+  { width: 14 },  // MTD Sales
+  { width: 18 },  // Sales Last 30 Days
+  { width: 14 },  // Sales Rank
+  { width: 18 },  // Current Inventory
+  { width: 20 },  // Inventory 180+ Days
+  { width: 26 },  // Estimated Storage Cost
+  { width: 24 },  // Inventory Coverage Ratio
+  { width: 30 },  // Inventory Alerts
+];
   };
 
   addInventorySheet("UK Current Inventory", ukRows, "UK");
