@@ -1075,15 +1075,15 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
   const getEstimatedFetchSeconds = (period: number | null) => {
     switch (period) {
       case 1:
-        return 12 * 60; 
+        return 12 * 60;
       case 3:
-        return 15 * 60; 
+        return 15 * 60;
       case 6:
-        return 20 * 60; 
+        return 20 * 60;
       case 12:
-        return 25 * 60; 
+        return 25 * 60;
       case 24:
-        return 30 * 60; 
+        return 30 * 60;
       default:
         return 15 * 60;
     }
@@ -1286,6 +1286,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setStep(7, "Live Data", 100, "Live BI data ready");
       markStepComplete(7);
 
+
       // Step 8: Inventory Forecast + Purchase Order
       const latestMonthSlug = fullMonthNames[mNum - 1].toLowerCase();
 
@@ -1304,15 +1305,18 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         redirectYear = forecastResult.redirectYear;
 
         markStepComplete(8);
-      } else {
-        setStep(8, "Inventory Forecast", 100, "Skipped (requires ≥ 6 months data)");
-        markStepComplete(8);
       }
 
-      // Step 9: Plotting Graph
-      setStep(9, "Plotting Graph", 0, "Preparing charts...");
+      // Plotting Graph
+      const plottingGraphStep = selectedPeriod && selectedPeriod >= 6 ? 9 : 8;
+
+      setStep(plottingGraphStep, "Plotting Graph", 0, "Preparing charts...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      markStepComplete(9);
+
+      setStep(plottingGraphStep, "Plotting Graph", 100, "Charts ready");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      markStepComplete(plottingGraphStep);
 
       await new Promise((r) => setTimeout(r, 600));
 
@@ -1320,7 +1324,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       updateLatestFetchedPeriod(monthSlug, String(y));
 
       setMessage(
-        `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast and purchase order generated successfully.`
+        selectedPeriod && selectedPeriod >= 6
+          ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast and purchase order generated successfully.`
+          : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.`
       );
 
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
@@ -1499,26 +1505,27 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         redirectYear = forecastResult.redirectYear;
 
         markStepComplete(8);
-      } else {
-        setStep(
-          8,
-          "Inventory Forecast",
-          100,
-          "Skipped (requires ≥ 6 months data)"
-        );
-        markStepComplete(8);
       }
 
-      // Step 9: Plotting Graph
-      setStep(9, "Plotting Graph", 0, "Preparing charts...");
+      // Plotting Graph
+      const plottingGraphStep = selectedPeriod && selectedPeriod >= 6 ? 9 : 8;
+
+      setStep(plottingGraphStep, "Plotting Graph", 0, "Preparing charts...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      markStepComplete(9);
+
+      setStep(plottingGraphStep, "Plotting Graph", 100, "Charts ready");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      markStepComplete(plottingGraphStep);
 
       await new Promise((r) => setTimeout(r, 600));
 
       setMessage(
-        `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
-        }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y}-${two(last.mNum)}.`
+        selectedPeriod && selectedPeriod >= 6
+          ? `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
+          }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y}-${two(last.mNum)}.`
+          : `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
+          }, ok ${ok}, failed ${fail}. Dashboard graphs are ready.`
       );
 
       localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
@@ -1680,12 +1687,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     return periodFeatureMap[selectedPeriod] ?? null;
   }, [selectedPeriod]);
 
-  const shouldHidePlottingGraph =
-    selectedPeriod === 1 || selectedPeriod === 3;
-
-  const visibleSteps = shouldHidePlottingGraph
-    ? steps.filter((s) => s.label !== "Plotting Graph")
-    : steps;
+  const visibleSteps = steps;
 
   return (
     <div className="w-full">
@@ -2075,7 +2077,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
                   {/* Right */}
                   <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">
-                    Step {Math.min(currentStep, visibleSteps.length)} of {visibleSteps.length}
+                    Step {Math.max(
+                      visibleSteps.findIndex((s) => s.num === currentStep) + 1,
+                      1
+                    )} of {visibleSteps.length}
                   </span>
                 </div>
               </div>
