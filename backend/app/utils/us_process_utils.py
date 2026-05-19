@@ -495,33 +495,104 @@ def process_skuwise_us_data(user_id, country, month, year):
         if not lost_total_df.empty:
             lost_total_df["lost_total"] = pd.to_numeric(lost_total_df["lost_total"], errors="coerce").fillna(0)
 
+        # ---------- misc transaction: SKU-wise + blank-SKU total ----------
+
+        def _norm_misc_key(x):
+            return re.sub(r"\s+", " ", str(x or "").strip()).casefold()
+
+        df["sku"] = df["sku"].fillna("").astype(str).str.strip()
+        df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+
+        df["desc_key"] = df["desc_norm"].map(_norm_misc_key)
+        df["type_key"] = df["type_norm"].map(_norm_misc_key)
+        df["total"] = pd.to_numeric(df.get("total", 0), errors="coerce").fillna(0.0)
+
         EXCLUDE_DESCRIPTIONS = {
-            "Cost of Advertising", "Coupon Redemption Fee", "Deals", "Lightning Deal",
-            "ProductAdsPayment", "CouponPerformanceEvent", "CouponParticipationEvent",
-            "SellerDealComplete", "FBA Return Fee", "FBA Long-Term Storage Fee",
-            "FBA storage fee", "Subscription", "FBADisposal", "FBAStorageBilling",
-            "FBALongTermStorageBilling", "Order Payment", "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST", "WAREHOUSE_DAMAGE", "MISSING_FROM_INBOUND",
-            "Refund", "Disbursement", "DebtPayment", "INCORRECT_FEES_NON_ITEMIZED",
-            "StorageReservationBilling", "MISSING_FROM_INBOUND_CLAWBACK",
-            "COMPENSATED_CLAWBACK", "SellerPoweredCoupon", "VineCharge",
-            "DealParticipationEvent", "DealPerformanceEvent"
+            # Advertising / deals
+            "Cost of Advertising",
+            "Coupon Redemption Fee",
+            "Deals",
+            "Lightning Deal",
+            "ProductAdsPayment",
+            "CouponPerformanceEvent",
+            "CouponParticipationEvent",
+            "SellerDealComplete",
+            "VineCharge",
+            "SellerPoweredCoupon",
+            "DealParticipationEvent",
+            "DealPerformanceEvent",
+
+            # Platform / storage / shipment buckets
+            "FBA Return Fee",
+            "FBA Long-Term Storage Fee",
+            "FBA storage fee",
+            "FBADisposal",
+            "FBAStorageBilling",
+            "FBALongTermStorageBilling",
+            "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling",
+            "Subscription",
+            "FBAInboundConvenience",
+
+            # Normal payment / refund / transfer buckets
+            "Order Payment",
+            "Refund",
+            "Disbursement",
+            "DebtPayment",
+
+            # Lost / reimbursement bucket
+            "REVERSAL_REIMBURSEMENT",
+            "WAREHOUSE_LOST",
+            "WAREHOUSE_DAMAGE",
+            "MISSING_FROM_INBOUND",
+            "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK",
         }
-        EXCLUDE_TYPES = {"Transfer", "Refund"}
+
+        EXCLUDE_TYPES = {
+            "Transfer",
+            "Refund",
+        }
+
+        exclude_desc_keys = {_norm_misc_key(x) for x in EXCLUDE_DESCRIPTIONS}
+        exclude_type_keys = {_norm_misc_key(x) for x in EXCLUDE_TYPES}
 
         leftout_mask = (
-            (~df["desc_norm"].isin(EXCLUDE_DESCRIPTIONS)) 
-            & (~df["type"].isin(EXCLUDE_TYPES))
+            ~df["desc_key"].isin(exclude_desc_keys)
+            & ~df["type_key"].isin(exclude_type_keys)
         )
 
+        # Logic 1: TOTAL misc_transaction
+        # Includes rows with SKU and rows without SKU.
+        misc_transaction_total = abs(
+            pd.to_numeric(df.loc[leftout_mask, "total"], errors="coerce")
+            .fillna(0.0)
+            .sum()
+        )
+
+        # Logic 2: SKU-wise misc_transaction
+        # Only rows with SKU can merge into SKU table.
+        tmp_misc = df.loc[
+            leftout_mask
+            & df["sku"].notna()
+            & (df["sku"] != "")
+            & (df["sku"] != "0")
+            & (df["sku"].str.lower() != "none"),
+            ["sku", "total"]
+        ].copy()
+
         misc_transaction_df = (
-            df.loc[leftout_mask & df["sku"].notna() & (df["sku"] != "") & (df["sku"] != "0")]
-            .groupby("sku", as_index=False)["total"]
+            tmp_misc.groupby("sku", as_index=False)["total"]
             .sum()
             .rename(columns={"total": "misc_transaction"})
         )
-        if not misc_transaction_df.empty:
-            misc_transaction_df["misc_transaction"] = pd.to_numeric(misc_transaction_df["misc_transaction"], errors="coerce").fillna(0.0)
+
+        misc_transaction_df["misc_transaction"] = pd.to_numeric(
+            misc_transaction_df["misc_transaction"],
+            errors="coerce"
+        ).fillna(0.0).abs()
+
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
 
@@ -536,12 +607,6 @@ def process_skuwise_us_data(user_id, country, month, year):
             "StorageReservationBilling",
         ]))
 
-        misc_transaction_total = abs(
-            pd.to_numeric(
-                misc_transaction_df.get("misc_transaction", pd.Series(dtype=float)),
-                errors="coerce"
-            ).fillna(0).sum()
-        )
 
         lost_total_amount = abs(
             pd.to_numeric(
@@ -722,7 +787,12 @@ def process_skuwise_us_data(user_id, country, month, year):
             sku_grouped[col] = pd.to_numeric(sku_grouped.get(col, 0), errors="coerce").fillna(0.0)
 
         sku_grouped["advertising_total"] = sku_grouped["visible_ads"].abs() + sku_grouped["dealsvouchar_ads"].abs()
-        sku_grouped["platform_fee"] = sku_grouped["platformfeenew"].abs() + sku_grouped["platform_fee_inventory_storage"].abs()
+        sku_grouped["platform_fee"] = (
+            sku_grouped["platformfeenew"].abs()
+            + sku_grouped["platform_fee_inventory_storage"].abs()
+            - pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0.0).abs()
+            - pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0.0).abs()
+        )
         sku_grouped["reimbursement_vs_sales"] = np.where(
             sku_grouped["Net Sales"] != 0,
             (sku_grouped["rembursement_fee"] / sku_grouped["Net Sales"]) * 100,
