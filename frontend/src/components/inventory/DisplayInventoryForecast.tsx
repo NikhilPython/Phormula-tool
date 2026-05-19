@@ -218,7 +218,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       parsed[2] || addMonths(month, year, 2),
     ];
   }, [forecast3, month, year]);
-  
+
   const tableRows = useMemo(() => {
     if (!hasRenderableData) return [];
 
@@ -296,6 +296,61 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           f3: 0,
         }
         : r),
+    }));
+  }, [forecastData, last3SoldOldestFirst, forecast3, demoMode, hasRenderableData]);
+
+  const excelTableRows = useMemo(() => {
+    if (!hasRenderableData) return [];
+
+    const rows = forecastData
+      .filter((r) => r && r.sku && r.sku !== 'Total')
+      .map((r) => {
+        const sold1 = Number(r[last3SoldOldestFirst[0]]) || 0;
+        const sold2 = Number(r[last3SoldOldestFirst[1]]) || 0;
+        const sold3 = Number(r[last3SoldOldestFirst[2]]) || 0;
+        const f1 = Number(r[forecast3[0]]) || 0;
+        const f2 = Number(r[forecast3[1]]) || 0;
+        const f3 = Number(r[forecast3[2]]) || 0;
+
+        const totalUnits = sold1 + sold2 + sold3 + f1 + f2 + f3;
+
+        return {
+          product: r['Product Name'] ?? '',
+          sku: r['sku'] ?? '',
+          sold1,
+          sold2,
+          sold3,
+          f1,
+          f2,
+          f3,
+          totalUnits,
+        };
+      })
+      .sort((a, b) => b.totalUnits - a.totalUnits);
+
+    return rows.map((r, idx) => ({
+      sNo: idx + 1,
+      ...(demoMode
+        ? {
+          product: r.product,
+          sku: r.sku,
+          sold1: 0,
+          sold2: 0,
+          sold3: 0,
+          f1: 0,
+          f2: 0,
+          f3: 0,
+        }
+        : {
+          product: r.product,
+          sku: r.sku,
+          sold1: r.sold1,
+          sold2: r.sold2,
+          sold3: r.sold3,
+          f1: r.f1,
+          f2: r.f2,
+          f3: r.f3,
+        }),
     }));
   }, [forecastData, last3SoldOldestFirst, forecast3, demoMode, hasRenderableData]);
 
@@ -583,7 +638,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       year,
       soldLabels,
       forecastLabels,
-      tableRows,
+      tableRows: excelTableRows,
       totalsRow,
       chartImageBase64: dataUrl,
       titleLine: `Amazon ${countryName.toUpperCase()} - Inventory Forecast - ${exportPeriodLabel}`,
@@ -656,7 +711,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               <PageBreadcrumb
                 pageTitle={
                   <>
-                    Forecasted Data 
+                    Forecasted Data
                     {/* {monthRange && (
                       <span className="text-green-500">
                        {countryName.toUpperCase()} 

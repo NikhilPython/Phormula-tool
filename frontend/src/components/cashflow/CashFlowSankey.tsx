@@ -283,25 +283,113 @@ const CashFlowSankey: React.FC<Props> = ({
 
   /* ---------- SANKEY ---------- */
 
+  const sankeyColorMap = {
+    units: "#FDD36F",
+    grossSales: "#75BBDA",         // was orange, now blue
+    netSales: "#ED9F50",           // was blue, now orange
+    promotionalDiscount: "#B8C78C",
+    marketplaceFees: "#B75A5A",
+    others: "#3A8EA4",
+    cashGenerated: "#7B9A6D",
+    netReimbursement: "#C49466",
+  };
+
   const rows = isPreviewSankey
     ? [
-      { name: "Gross Sales", value: 1, barColor: "#75BBDA" },
-      { name: "Fees & Costs", value: 1, barColor: "#ED9F50" },
-
-      { name: "FBA Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Selling  Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Ads Cost", value: 1, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Cash Generated", value: 1, barColor: "#7B9A6D" },
+      {
+        name: "Gross Sales",
+        value: 1,
+        barColor: sankeyColorMap.grossSales,
+      },
+      {
+        name: "Fees & Costs",
+        value: 1,
+        barColor: sankeyColorMap.marketplaceFees,
+      },
+      {
+        name: "FBA Fees",
+        value: 2,
+        sign: "-",
+        barColor: sankeyColorMap.marketplaceFees,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Selling Fees",
+        value: 2,
+        sign: "-",
+        barColor: sankeyColorMap.marketplaceFees,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Ads Cost",
+        value: 1,
+        sign: "-",
+        barColor: sankeyColorMap.netReimbursement,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Cash Generated",
+        value: 1,
+        barColor: sankeyColorMap.cashGenerated,
+      },
     ]
     : [
-      { name: "Gross Sales", value: data.gross_sales || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
-      { name: "Tax and Credit", value: data.taxncredit || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
-      { name: "Discount", value: data.promotional_rebates || 0, sign: "-", barColor: "#ED9F50", signColor: "#D32F2F" },
-      { name: "FBA Fees", value: data.fba_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Selling  Fees", value: data.selling_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Ads Cost", value: data.advertising_total || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Other", value: data.otherwplatform || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-      { name: "Cash Generated", value: data.cashflow || 0, sign: "+", barColor: "#7B9A6D", signColor: "#2E7D32" },
+      {
+        name: "Gross Sales",
+        value: data.gross_sales || 0,
+        sign: "+",
+        barColor: sankeyColorMap.grossSales,
+        signColor: "#2E7D32",
+      },
+      {
+        name: "Tax and Credit",
+        value: data.taxncredit || 0,
+        sign: "+",
+        barColor: sankeyColorMap.netSales,
+        signColor: "#2E7D32",
+      },
+      {
+        name: "Discount",
+        value: data.promotional_rebates || 0,
+        sign: "-",
+        barColor: sankeyColorMap.promotionalDiscount,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "FBA Fees",
+        value: data.fba_fees || 0,
+        sign: "-",
+        barColor: sankeyColorMap.marketplaceFees,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Selling Fees",
+        value: data.selling_fees || 0,
+        sign: "-",
+        barColor: sankeyColorMap.marketplaceFees,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Ads Cost",
+        value: data.advertising_total || 0,
+        sign: "-",
+        barColor: sankeyColorMap.netReimbursement,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Other",
+        value: data.otherwplatform || 0,
+        sign: "-",
+        barColor: sankeyColorMap.others,
+        signColor: "#D32F2F",
+      },
+      {
+        name: "Cash Generated",
+        value: data.cashflow || 0,
+        sign: "+",
+        barColor: sankeyColorMap.cashGenerated,
+        signColor: "#2E7D32",
+      },
     ];
 
   const hasPrevious =
@@ -314,7 +402,10 @@ const CashFlowSankey: React.FC<Props> = ({
     tooltip: {
       formatter: (p: any) => {
         if (p.name === "Summary") return "";
-        return `${p.name}<br/>${formatCurrencyWithSign(Number(p.value || 0))}`;
+
+        return `${p.name}<br/>${formatCurrencyRoundedWithSign(
+          Number(p.value || 0)
+        )}`;
       },
     },
     series: [
@@ -366,7 +457,7 @@ const CashFlowSankey: React.FC<Props> = ({
               `{label|${row.name}}` +
               (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
               `{amount|${formatted}}` +
-              `${!isMobile && !isXL && !isLaptop ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
+              `${!isMobile && !isXL && !isLaptop ? `{pct|(${pct.toFixed(2)}%)}` : ""}`
             );
           },
           rich: {
@@ -446,7 +537,7 @@ const CashFlowSankey: React.FC<Props> = ({
               formatInteger(c.value)
             ) : c.isDiscount ? (
               <>
-                {formatCurrencyWithSign(-(Math.abs(c.value || 0)))}
+                {formatCurrencyRoundedWithSign(-(Math.abs(c.value || 0)))}
                 <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                   (
                   {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
@@ -471,7 +562,7 @@ const CashFlowSankey: React.FC<Props> = ({
             : c.label === "Units"
               ? formatInteger(c.prev)
               : c.isDiscount
-                ? formatCurrencyWithSign(-(Math.abs(c.prev || 0)))
+                ? formatCurrencyRoundedWithSign(-(Math.abs(c.prev || 0)))
                 : `${c.isCurrency ? formatCurrencyByLabel(c.label, c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
                   ? ` (${formatCurrencyRoundedWithSign(
                     Number(getPerUnitValue(c.prev, previous_summary?.quantity_total))

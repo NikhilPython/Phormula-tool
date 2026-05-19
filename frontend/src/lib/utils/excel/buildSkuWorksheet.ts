@@ -63,6 +63,22 @@ const fmtFor = (key: string) => {
     });
   };
 
+  const tableBorder: Partial<ExcelJS.Borders> = {
+  top: { style: "thin", color: { argb: "FF000000" } },
+  left: { style: "thin", color: { argb: "FF000000" } },
+  bottom: { style: "thin", color: { argb: "FF000000" } },
+  right: { style: "thin", color: { argb: "FF000000" } },
+};
+
+const addBorderToRow = (rowNumber: number) => {
+  const row = ws.getRow(rowNumber);
+
+  for (let col = 1; col <= columns.length; col++) {
+    const cell = row.getCell(col);
+    cell.border = tableBorder;
+  }
+};
+
   const capitalizeWords = (value: string) =>
     String(value || "")
       .toLowerCase()
@@ -352,15 +368,18 @@ columns.forEach((key, index) => {
   /**
    * ===== TABLE BODY =====
    */
-  for (const r of rows || []) {
-    const excelRow = ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+for (const r of rows || []) {
+  const excelRow = ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
 
-    // ✅ Bold Total / Others rows (based on product_name)
-    const name = String((r as any)?.[labelKey] ?? "").trim().toLowerCase();
-    if (name === "total" || name === "others" || name === "grand total") {
-      boldWholeRow(excelRow.number);
-    }
+  // ✅ Add border to every product table row
+  addBorderToRow(excelRow.number);
+
+  // ✅ Bold Total / Others rows (based on product_name)
+  const name = String((r as any)?.[labelKey] ?? "").trim().toLowerCase();
+  if (name === "total" || name === "others" || name === "grand total") {
+    boldWholeRow(excelRow.number);
   }
+}
 
   // spacer
   ws.addRow([""]);

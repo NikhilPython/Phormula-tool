@@ -56,11 +56,21 @@ const getCurrencySymbol = (country: string): string => {
 };
 
 const formatNumber = (val: any): string => {
-  if (val === null || val === undefined || val === '' || isNaN(Number(val))) return 'N/A';
-  return Math.abs(Number(val)).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  if (val === null || val === undefined || val === '' || isNaN(Number(val))) {
+    return 'N/A';
+  }
+
+  return Math.abs(Math.round(Number(val))).toLocaleString(undefined, {
+    maximumFractionDigits: 0,
   });
+};
+
+const roundNumber = (val: any): number => {
+  if (val === null || val === undefined || val === '' || isNaN(Number(val))) {
+    return 0;
+  }
+
+  return Math.round(Number(val));
 };
 
 const formatPercent = (val: any): string => {
@@ -71,8 +81,14 @@ const formatPercent = (val: any): string => {
 const formatCellValue = (key: string, value: any): string => {
   if (value === null || value === undefined || value === '') return '';
 
-  const rawKeys = ['forecast_sum', 'forecast_1st', 'forecast_2nd', 'forecast_3rd'];
-  if (rawKeys.includes(key)) return value;
+  const unitsKeys = [
+    'forecast_sum',
+    'forecast_1st',
+    'forecast_2nd',
+    'forecast_3rd',
+  ];
+
+  if (unitsKeys.includes(key)) return formatNumber(value);
 
   const percentKeys = [
     'profit_percentage_sum',
@@ -80,6 +96,7 @@ const formatCellValue = (key: string, value: any): string => {
     'profit_percentage_2nd',
     'profit_percentage_3rd',
   ];
+
   if (percentKeys.includes(key)) return formatPercent(value);
 
   const formattedKeys = [
@@ -92,9 +109,12 @@ const formatCellValue = (key: string, value: any): string => {
     'profit_2nd',
     'profit_3rd',
   ];
+
   if (formattedKeys.includes(key)) return formatNumber(value);
 
-  return typeof value === 'number' || !isNaN(Number(value)) ? formatNumber(value) : value;
+  return typeof value === 'number' || !isNaN(Number(value))
+    ? formatNumber(value)
+    : value;
 };
 
 const formatMonthYear = (monthName: string, yearVal: number | string) => {
@@ -476,12 +496,12 @@ const Pnlforecast: React.FC = () => {
             if (result.data && result.totals) {
               previousMonths.push({
                 month: `${monthName} ${yearValue}`,
-                SALES: result.totals.net_sales_total || 0,
-                COGS: result.totals.cost_of_unit_sold_total || 0,
-                'AMAZON EXPENSE': result.totals.amazon_fee_total || 0,
-                'CM1 PROFIT': result.totals.profit_total || 0,
-                'ADVERTISING COSTS': result.totals.advertising_total || 0,
-                'CM2 PROFIT': result.totals.cm2_profit_total || 0,
+                SALES: roundNumber(result.totals.net_sales_total),
+                COGS: roundNumber(result.totals.cost_of_unit_sold_total),
+                'AMAZON EXPENSE': roundNumber(result.totals.amazon_fee_total),
+                'CM1 PROFIT': roundNumber(result.totals.profit_total),
+                'ADVERTISING COSTS': roundNumber(result.totals.advertising_total),
+                'CM2 PROFIT': roundNumber(result.totals.cm2_profit_total),
                 isHistorical: true,
               });
             }
@@ -522,28 +542,28 @@ const Pnlforecast: React.FC = () => {
     const forecastChartData: ChartDataItem[] = [
       {
         month: `${currentMonth} ${currentYear}`,
-        SALES: totalRow.Total_Sales_1st || 0,
-        'ADVERTISING COSTS': getMetricValue('advertising_total1'),
-        'CM1 PROFIT': totalRow.profit_1st || 0,
-        'CM2 PROFIT': getMetricValue('cm2profit1'),
+        SALES: roundNumber(totalRow.Total_Sales_1st),
+        'ADVERTISING COSTS': roundNumber(getMetricValue('advertising_total1')),
+        'CM1 PROFIT': roundNumber(totalRow.profit_1st),
+        'CM2 PROFIT': roundNumber(getMetricValue('cm2profit1')),
         isForecast: false,
       },
       {
         month: `${nextMonth} ${nextMonthYear}`,
-        SALES: totalRow.Total_Sales_2nd || 0,
-        'ADVERTISING COSTS': getMetricValue('advertising_total2'),
-        'CM1 PROFIT': totalRow.profit_2nd || 0,
-        'CM2 PROFIT': getMetricValue('cm2profit2'),
+        SALES: roundNumber(totalRow.Total_Sales_2nd),
+        'ADVERTISING COSTS': roundNumber(getMetricValue('advertising_total2')),
+        'CM1 PROFIT': roundNumber(totalRow.profit_2nd),
+        'CM2 PROFIT': roundNumber(getMetricValue('cm2profit2')),
         isForecast: true,
       },
       {
         month: `${nextToNextMonth} ${nextToNextMonthYear}`,
-        SALES: totalRow.Total_Sales_3rd || 0,
-        COGS: Math.abs(cogs3),
-        'AMAZON EXPENSE': Math.abs(getMetricValue('Platform_Fees3')),
-        'ADVERTISING COSTS': getMetricValue('advertising_total3'),
-        'CM1 PROFIT': totalRow.profit_3rd || 0,
-        'CM2 PROFIT': getMetricValue('cm2profit3'),
+        SALES: roundNumber(totalRow.Total_Sales_3rd),
+        COGS: roundNumber(Math.abs(cogs3)),
+        'AMAZON EXPENSE': roundNumber(Math.abs(getMetricValue('Platform_Fees3'))),
+        'ADVERTISING COSTS': roundNumber(getMetricValue('advertising_total3')),
+        'CM1 PROFIT': roundNumber(totalRow.profit_3rd),
+        'CM2 PROFIT': roundNumber(getMetricValue('cm2profit3')),
         isForecast: true,
       },
     ];
@@ -780,6 +800,8 @@ const Pnlforecast: React.FC = () => {
     } catch { }
   };
 
+
+
   const handleDownload = async () => {
     const dataUrl = getChartPngWithWhiteBg();
 
@@ -798,7 +820,7 @@ const Pnlforecast: React.FC = () => {
       month3Label: `P&L Forecast ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
       totalLabel: "P&L Forecast for 3 months",
 
-      productRows: displayProductRows || [],
+      productRows: excelProductRows || [],
       summaryRows: summaryAsRows || [],
       chartImageBase64: dataUrl,
     });
@@ -1081,6 +1103,16 @@ const Pnlforecast: React.FC = () => {
     ...r,
     sku: r.sku === 'Total' ? '' : r.sku,
   }));
+
+  const excelProductRows = React.useMemo(() => {
+    const rows = normalizedProductRows || [];
+
+    const totalRow = rows.find((row) => isPnlTotalRow(row)) || null;
+
+    const nonTotalRows = rows.filter((row) => !isPnlTotalRow(row));
+
+    return totalRow ? [...nonTotalRows, totalRow] : nonTotalRows;
+  }, [normalizedProductRows]);
 
   const displayProductRows = React.useMemo(() => {
     const rows = normalizedProductRows || [];

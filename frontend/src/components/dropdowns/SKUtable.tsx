@@ -713,33 +713,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
       // keep actual sign for selected fields
       const n = PRESERVE_SIGN_KEYS.has(key) ? raw : Math.abs(raw);
 
-      if (INT_KEYS.has(key)) return n;
+      if (INT_KEYS.has(key)) {
+        return Math.trunc(n).toLocaleString();
+      }
 
-      // 🎯 Keys you want rounded (Net Sales section)
       const ROUND_KEYS = new Set([
-        // Net Sales
         "product_sales",
         "refund_sales",
         "tex_and_credits",
         "net_sales",
-
-        // Promotions & COGS
         "promotional_rebates",
         "cost_of_unit_sold",
-
-        // Marketplace Fees
         "selling_fees",
         "fba_fees",
         "amazon_fee",
-
-        // Other Transactions
         "net_taxes",
         "net_credits",
         "other_transactions",
-
-        // ✅ CM1 Profit section
         "profit",
-
         "advertising_total",
         "visible_ads",
         "dealsvouchar_ads",
@@ -748,7 +739,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "shipment_charges",
         "net_reimbursement",
         "cm2_profit",
-        "lost_total"
+        "lost_total",
       ]);
 
       let formatted;

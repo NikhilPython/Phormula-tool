@@ -715,10 +715,10 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
         tooltip: {
           callbacks: {
             label: function (context: any) {
-              const value = context.parsed.y ?? 0;
-              return `${context.dataset.label}: ${currencySymbol}${Number(value).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
+              const value = Math.round(Number(context.parsed.y ?? 0));
+
+              return `${context.dataset.label}: ${currencySymbol}${value.toLocaleString(undefined, {
+                maximumFractionDigits: 0,
               })}`;
             },
             title: function (context: any) {
@@ -758,9 +758,11 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
               size: 12,
             },
             callback: function (tickValue: string | number) {
-              return typeof tickValue === 'number'
-                ? tickValue.toLocaleString()
-                : tickValue;
+              const value = Math.round(Number(tickValue || 0));
+
+              return value.toLocaleString(undefined, {
+                maximumFractionDigits: 0,
+              });
             },
           },
           border: {

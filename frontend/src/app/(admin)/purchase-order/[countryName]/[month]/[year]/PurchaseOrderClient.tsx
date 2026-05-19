@@ -551,17 +551,8 @@ export default function PurchaseOrderPage({
         return valB - valA;
       });
 
-    let rowsForExport: Row[] = [];
-
-    if (sortedRows.length <= 9) {
-      rowsForExport = [...sortedRows];
-    } else {
-      const firstNine = sortedRows.slice(0, 9);
-      const remainingRows = sortedRows.slice(9);
-      const othersRow = buildOthersPoRow(remainingRows, displayedColumns);
-
-      rowsForExport = [...firstNine, othersRow];
-    }
+    // Excel export: all product rows, no Others grouping
+    const rowsForExport: Row[] = [...sortedRows];
 
     if (totalRow) {
       rowsForExport.push(totalRow);
@@ -626,8 +617,7 @@ export default function PurchaseOrderPage({
     companyName,
     brandName,
   ]);
-
-
+  
   const tableData = useMemo(() => {
     if (!skuData.length) return []
 

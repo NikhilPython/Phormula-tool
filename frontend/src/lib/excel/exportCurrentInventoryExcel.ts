@@ -846,14 +846,24 @@ const totalRowIndex = firstDataRowIndex + bodyAoA.length - 1;
     }
   }
 
-// Force all numeric cells to 2 decimals (default)
+// Force numeric cells formatting
 const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+const netUnitsSoldCol = headers.indexOf("Net Units Sold");
+const serialNoCol = headers.indexOf("S.No");
+
 for (let r = range.s.r; r <= range.e.r; r++) {
   for (let c = range.s.c; c <= range.e.c; c++) {
     const addr = XLSX.utils.encode_cell({ r, c });
     const cell = ws[addr];
+
     if (!cell) continue;
-    if (isNumber(cell.v)) cell.z = "#,##0.00";
+    if (!isNumber(cell.v)) continue;
+
+if (c === netUnitsSoldCol || c === serialNoCol) {
+      cell.z = "#,##0";
+    } else {
+      cell.z = "#,##0.00";
+    }
   }
 }
 
@@ -879,6 +889,29 @@ for (let r = firstDataRowIndex; r <= totalRowIndex; r++) {
   }
 }
 
+
+const tableBorder = {
+  top: { style: "thin", color: { rgb: "000000" } },
+  bottom: { style: "thin", color: { rgb: "000000" } },
+  left: { style: "thin", color: { rgb: "000000" } },
+  right: { style: "thin", color: { rgb: "000000" } },
+};
+
+// Border only the main product table: headers + body rows
+for (let r = groupHeaderRowIndex; r <= totalRowIndex; r++) {
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+
+    if (!ws[addr]) {
+      ws[addr] = { t: "s", v: "" };
+    }
+
+    ws[addr].s = {
+      ...(ws[addr].s || {}),
+      border: tableBorder,
+    };
+  }
+}
 
   // ✅ Bold only selected summary rows (parents / key rows)
   for (const r of boldSummaryRowIndices) {
@@ -959,6 +992,7 @@ export async function exportInventoryReconExcel(params: {
   const snoCol0 = headers.findIndex((h) =>
     String(h).toLowerCase().includes("s. no")
   );
+
   const productNameCol0 = headers.findIndex((h) =>
     String(h).toLowerCase().includes("product name")
   );
@@ -967,17 +1001,113 @@ export async function exportInventoryReconExcel(params: {
   wb.creator = "Skinelements";
   wb.created = new Date();
 
+  const tableBorder = {
+    top: { style: "thin" as const, color: { argb: "FF000000" } },
+    bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+    left: { style: "thin" as const, color: { argb: "FF000000" } },
+    right: { style: "thin" as const, color: { argb: "FF000000" } },
+  };
+
+const whiteFill = {
+  type: "pattern" as const,
+  pattern: "solid" as const,
+  fgColor: { argb: "FFFFFFFF" },
+};
+
+const totalFill = whiteFill;
+
+  type HeaderMeta = {
+    raw: string;
+    group: string;
+    subHeader: string;
+    isGrouped: boolean;
+  };
+
+  const parseHeaderMeta = (header: string): HeaderMeta => {
+    const value = String(header || "");
+    const separator = " - ";
+    const index = value.indexOf(separator);
+
+    if (index > -1) {
+      return {
+        raw: value,
+        group: value.slice(0, index).trim(),
+        subHeader: value.slice(index + separator.length).trim(),
+        isGrouped: true,
+      };
+    }
+
+    return {
+      raw: value,
+      group: value,
+      subHeader: "",
+      isGrouped: false,
+    };
+  };
+
+  const headerMeta = headers.map(parseHeaderMeta);
+
+  const getSignForExportHeader = (header: string) => {
+    const h = String(header || "").toLowerCase();
+
+    if (!h.startsWith("other items - ")) return "";
+
+    if (h.includes(" - total")) return "";
+    if (h.includes(" - found")) return "(-)";
+
+    return "(+)";
+  };
+
+const getSignFontColor = (sign: string) => {
+  if (sign === "(+)") return "FF008000";
+  if (sign === "(-)") return "FFFF0000";
+  return "FF000000";
+};
+
+ const styleHeaderCell = (cell: any) => {
+  cell.font = {
+    bold: true,
+    size: 11,
+    color: { argb: "FF000000" },
+  };
+  cell.fill = whiteFill;
+  cell.alignment = {
+    horizontal: "center",
+    vertical: "middle",
+    wrapText: true,
+  };
+  cell.border = tableBorder;
+};
+
+ const styleSignCell = (cell: any, sign: string) => {
+  cell.font = {
+    bold: true,
+    size: 11,
+    color: { argb: "FF000000" },
+  };
+  cell.fill = whiteFill;
+  cell.alignment = {
+    horizontal: "center",
+    vertical: "middle",
+    wrapText: false,
+  };
+  cell.border = tableBorder;
+};
+
   /* =========================
      Sheet 1: Inventory Recon
   ========================= */
   const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
   });
 
   ws1.mergeCells(1, 1, 1, headerCount);
   ws1.getCell(1, 1).value = titleLine || "";
   ws1.getCell(1, 1).font = { bold: false };
-  ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+  ws1.getCell(1, 1).alignment = {
+    horizontal: "left",
+    vertical: "middle",
+  };
 
   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws1.getCell(2, 1).alignment = { horizontal: "left" };
@@ -990,25 +1120,69 @@ export async function exportInventoryReconExcel(params: {
   ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
   ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
 
-  const headerRowNumber = 7;
-  const headerRow = ws1.getRow(headerRowNumber);
+  const groupHeaderRowNumber = 7;
+  const subHeaderRowNumber = 8;
+  const signRowNumber = 9;
 
-  headers.forEach((h, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 11 };
-    cell.alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: false,
-    };
-  });
-  headerRow.height = 18;
+  const groupHeaderRow = ws1.getRow(groupHeaderRowNumber);
+  const subHeaderRow = ws1.getRow(subHeaderRowNumber);
+  const signRow = ws1.getRow(signRowNumber);
 
-  const startDataRow = headerRowNumber + 1;
+  groupHeaderRow.height = 30;
+  subHeaderRow.height = 42;
+  signRow.height = 22;
+
+  for (let c = 1; c <= headerCount; c++) {
+    const meta = headerMeta[c - 1];
+    const sign = getSignForExportHeader(meta.raw);
+
+    const groupCell = groupHeaderRow.getCell(c);
+    const subCell = subHeaderRow.getCell(c);
+    const signCell = signRow.getCell(c);
+
+    groupCell.value = meta.group;
+    subCell.value = meta.isGrouped ? meta.subHeader : "";
+    signCell.value = sign;
+
+    styleHeaderCell(groupCell);
+    styleHeaderCell(subCell);
+    styleSignCell(signCell, sign);
+  }
+
+  // Merge headers to match UI grouped header/sub-header layout
+  let c = 1;
+
+  while (c <= headerCount) {
+    const meta = headerMeta[c - 1];
+
+    if (!meta.isGrouped) {
+      ws1.mergeCells(groupHeaderRowNumber, c, subHeaderRowNumber, c);
+      c++;
+      continue;
+    }
+
+    let end = c;
+
+    while (
+      end + 1 <= headerCount &&
+      headerMeta[end]?.isGrouped &&
+      headerMeta[end]?.group === meta.group
+    ) {
+      end++;
+    }
+
+    if (end > c) {
+      ws1.mergeCells(groupHeaderRowNumber, c, groupHeaderRowNumber, end);
+    }
+
+    c = end + 1;
+  }
+
+  const startDataRow = signRowNumber + 1;
 
   dataRows.forEach((r, idx) => {
     const row = ws1.getRow(startDataRow + idx);
+
     headers.forEach((h, c0) => {
       const cell = row.getCell(c0 + 1);
       const v = r?.[h] ?? "";
@@ -1016,30 +1190,57 @@ export async function exportInventoryReconExcel(params: {
       if (c0 === snoCol0) {
         cell.value = v === null || v === undefined ? "" : String(v);
         cell.numFmt = "@";
-        cell.alignment = { horizontal: "center" };
-        return;
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+      } else {
+        const n = toNumberLoose(v);
+
+        if (n !== null) {
+          cell.value = Math.trunc(n);
+          cell.numFmt = "#,##0";
+          cell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+          };
+        } else {
+          cell.value = v;
+          cell.alignment = {
+            horizontal: c0 === productNameCol0 ? "left" : "center",
+            vertical: "middle",
+          };
+        }
       }
 
-      const n = toNumberLoose(v);
-      if (n !== null) {
-        cell.value = Math.trunc(n);
-        cell.numFmt = "#,##0";
-        cell.alignment = { horizontal: "center" };
-      } else {
-        cell.value = v;
-        cell.alignment = { horizontal: "center" };
-      }
+      cell.font = {
+        size: 11,
+        color: { argb: "FF000000" },
+      };
+      cell.fill = whiteFill;
+      cell.border = tableBorder;
     });
   });
 
-  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
+  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: signRowNumber }];
 
-  ws1.columns = headers.map((h) => ({
-    width: Math.min(Math.max(String(h).length + 2, 12), 55),
-  }));
+  ws1.columns = headers.map((h) => {
+    const meta = parseHeaderMeta(h);
+    const label = meta.subHeader || meta.group || String(h);
+
+    if (label.toLowerCase().includes("product name")) return { width: 18 };
+    if (label.toLowerCase() === "sku") return { width: 16 };
+    if (label.toLowerCase().includes("inventory coverage")) return { width: 18 };
+    if (label.toLowerCase().includes("transit")) return { width: 16 };
+
+    return {
+      width: Math.min(Math.max(String(label).length + 3, 11), 22),
+    };
+  });
 
   if (productNameCol0 >= 0) {
     const totalCandidates = new Set(["total", "grand total"]);
+
     for (let i = 0; i < dataRows.length; i++) {
       const rowNum = startDataRow + i;
       const cellVal = String(
@@ -1050,9 +1251,19 @@ export async function exportInventoryReconExcel(params: {
 
       if (totalCandidates.has(cellVal)) {
         const row = ws1.getRow(rowNum);
-        row.eachCell((cell) => {
-          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-        });
+
+        for (let col = 1; col <= headerCount; col++) {
+          const cell = row.getCell(col);
+
+          cell.font = {
+            ...(cell.font || {}),
+            bold: true,
+            size: 11,
+            color: { argb: "FF000000" },
+          };
+          cell.fill = totalFill;
+          cell.border = tableBorder;
+        }
       }
     }
   }
@@ -1061,12 +1272,16 @@ export async function exportInventoryReconExcel(params: {
      Sheet 2: Lost vs Compensation
   ========================= */
   if (lostCompRows?.length) {
-    const lostHeaders = Object.keys(lostCompRows[0] || {}).filter((h) => h !== "__isTotal");
+    const lostHeaders = Object.keys(lostCompRows[0] || {}).filter(
+      (h) => h !== "__isTotal"
+    );
+
     const lostHeaderCount = lostHeaders.length || 1;
 
     const productNameCol0Lost = lostHeaders.findIndex((h) =>
       String(h).toLowerCase().includes("product name")
     );
+
     const snoCol0Lost = lostHeaders.findIndex((h) =>
       String(h).toLowerCase().includes("s. no")
     );
@@ -1078,7 +1293,10 @@ export async function exportInventoryReconExcel(params: {
     wsLost.mergeCells(1, 1, 1, lostHeaderCount);
     wsLost.getCell(1, 1).value = `${titleLine} - Lost vs Compensation`;
     wsLost.getCell(1, 1).font = { bold: false };
-    wsLost.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+    wsLost.getCell(1, 1).alignment = {
+      horizontal: "left",
+      vertical: "middle",
+    };
 
     wsLost.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
     wsLost.getCell(2, 1).alignment = { horizontal: "left" };
@@ -1096,14 +1314,23 @@ export async function exportInventoryReconExcel(params: {
 
     lostHeaders.forEach((h, i) => {
       const cell = lostHeaderRow.getCell(i + 1);
+
       cell.value = h;
-      cell.font = { bold: true, size: 11 };
+      cell.font = {
+        bold: true,
+        size: 11,
+        color: { argb: "FF000000" },
+      };
+      cell.fill = whiteFill;
       cell.alignment = {
         horizontal: "center",
         vertical: "middle",
         wrapText: false,
       };
+      cell.border = tableBorder;
     });
+
+    lostHeaderRow.height = 18;
 
     const lostStartDataRow = lostHeaderRowNumber + 1;
 
@@ -1117,19 +1344,35 @@ export async function exportInventoryReconExcel(params: {
         if (c0 === snoCol0Lost) {
           cell.value = v === null || v === undefined ? "" : String(v);
           cell.numFmt = "@";
-          cell.alignment = { horizontal: "center" };
-          return;
+          cell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+          };
+        } else {
+          const n = toNumberLoose(v);
+
+          if (n !== null) {
+            cell.value = Math.trunc(n);
+            cell.numFmt = "#,##0";
+            cell.alignment = {
+              horizontal: "center",
+              vertical: "middle",
+            };
+          } else {
+            cell.value = v;
+            cell.alignment = {
+              horizontal: c0 === productNameCol0Lost ? "left" : "center",
+              vertical: "middle",
+            };
+          }
         }
 
-        const n = toNumberLoose(v);
-        if (n !== null) {
-          cell.value = n;
-          cell.numFmt = "#,##0";
-          cell.alignment = { horizontal: "center" };
-        } else {
-          cell.value = v;
-          cell.alignment = { horizontal: "center" };
-        }
+        cell.font = {
+          size: 11,
+          color: { argb: "FF000000" },
+        };
+        cell.fill = whiteFill;
+        cell.border = tableBorder;
       });
     });
 
@@ -1139,6 +1382,7 @@ export async function exportInventoryReconExcel(params: {
 
     if (productNameCol0Lost >= 0) {
       const totalCandidates = new Set(["total", "grand total"]);
+
       for (let i = 0; i < lostCompRows.length; i++) {
         const rowNum = lostStartDataRow + i;
         const cellVal = String(
@@ -1149,25 +1393,37 @@ export async function exportInventoryReconExcel(params: {
 
         if (totalCandidates.has(cellVal)) {
           const row = wsLost.getRow(rowNum);
-          row.eachCell((cell) => {
-            cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-          });
+
+          for (let col = 1; col <= lostHeaderCount; col++) {
+            const cell = row.getCell(col);
+
+            cell.font = {
+              ...(cell.font || {}),
+              bold: true,
+              size: 11,
+              color: { argb: "FF000000" },
+            };
+            cell.fill = totalFill;
+            cell.border = tableBorder;
+          }
         }
       }
     }
   }
 
   /* =========================
-   Sheet 3: Inventory Charts
-========================= */
+     Sheet 3: Inventory Charts
+  ========================= */
   const ws2 = wb.addWorksheet(safeSheetName("Inventory Charts"));
 
   ws2.getCell("A1").value = titleLine || "";
   ws2.getCell("A1").font = { bold: false };
+
   ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
   ws2.getCell("N2").value = `${brandName || ""}`;
   ws2.getCell("N2").alignment = { horizontal: "right" };
   ws2.getCell("N2").font = { bold: true };
+
   ws2.getCell("A3").value = `Country : ${titleCountry}`;
   ws2.getCell("A4").value = `Platform : ${platformLabel}`;
   ws2.getCell("A5").value = `Period : ${periodLabel}`;
@@ -1183,6 +1439,7 @@ export async function exportInventoryReconExcel(params: {
   ) => {
     ws2.getCell(`A${rowCursor}`).value = label;
     ws2.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
+
     rowCursor += 1;
 
     if (!img) {
@@ -1207,13 +1464,13 @@ export async function exportInventoryReconExcel(params: {
   };
 
   addImageBlock("Inventory Breakup", breakupImg);
+
   rowCursor += 2;
+
   addImageBlock("Inventory Ageing", ageingImg);
 
-  /* =========================
-     Save
-  ========================= */
   const buf = await wb.xlsx.writeBuffer();
+
   saveAs(
     new Blob([buf], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1221,7 +1478,6 @@ export async function exportInventoryReconExcel(params: {
     filename
   );
 }
-
 
 export async function exportProductwiseTrendsExcel(params: {
   filename: string;
@@ -1719,12 +1975,12 @@ export async function exportInventoryForecastViewExcel(params: {
     return bytes.buffer;
   };
 
-  const thinGrayBorder = {
-    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-  };
+const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
 
   const lightGrayFill = {
     type: "pattern" as const,
@@ -1836,7 +2092,7 @@ export async function exportInventoryForecastViewExcel(params: {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     cell.fill = whiteFill;
     cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
-    cell.border = thinGrayBorder;
+cell.border = tableBorder;
   });
 
   // Row 2: light gray month row
@@ -1844,7 +2100,7 @@ export async function exportInventoryForecastViewExcel(params: {
     cell.alignment = { vertical: "middle", horizontal: "center" };
     cell.fill = whiteFill;
     cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
-    cell.border = thinGrayBorder;
+cell.border = tableBorder;
   });
 
   // Body rows
@@ -1858,7 +2114,7 @@ export async function exportInventoryForecastViewExcel(params: {
       };
       cell.fill = whiteFill;
       cell.font = { size: 11, color: { argb: "FF000000" } };
-      cell.border = thinGrayBorder;
+      cell.border = tableBorder;
     });
   }
 
@@ -1871,7 +2127,7 @@ export async function exportInventoryForecastViewExcel(params: {
     };
     cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
     cell.fill = whiteFill;
-    cell.border = thinGrayBorder;
+  cell.border = tableBorder;
   });
 
   // Column widths
@@ -1916,6 +2172,422 @@ export async function exportInventoryForecastViewExcel(params: {
   });
 
   saveAs(blob, filename);
+}
+
+
+export async function exportDispatchExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  const snoCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("sno")
+  );
+
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
+
+  const skuCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase() === "sku" || String(h).toLowerCase() === "sku."
+  );
+
+  const tableBorder = {
+    top: { style: "thin" as const, color: { argb: "FF000000" } },
+    bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+    left: { style: "thin" as const, color: { argb: "FF000000" } },
+    right: { style: "thin" as const, color: { argb: "FF000000" } },
+  };
+
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  const totalFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFEFEFEF" },
+  };
+
+  const ws = wb.addWorksheet(safeSheetName("Dispatch"), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  // Header block
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).font = { bold: false };
+  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(2, headerCount).font = { bold: true };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+
+    cell.value = h;
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    cell.fill = whiteFill;
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+    cell.border = tableBorder;
+  });
+
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws.getRow(startDataRow + idx);
+
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h] ?? "";
+
+      if (c0 === snoCol0) {
+        cell.value = v === null || v === undefined ? "" : String(v);
+        cell.numFmt = "@";
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+      } else {
+        const n = toNumberLoose(v);
+
+        if (n !== null) {
+          cell.value = Math.trunc(n);
+          cell.numFmt = "#,##0";
+          cell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+          };
+        } else {
+          cell.value = v;
+          cell.alignment = {
+            horizontal: c0 === productNameCol0 ? "left" : "center",
+            vertical: "middle",
+          };
+        }
+      }
+
+      cell.font = { size: 11, color: { argb: "FF000000" } };
+      cell.fill = whiteFill;
+      cell.border = tableBorder;
+    });
+  });
+
+  ws.columns = headers.map((h, idx) => {
+    const lower = String(h).toLowerCase();
+    let width = Math.min(Math.max(String(h).length + 2, 12), 40);
+
+    if (idx === productNameCol0) width = 28;
+    if (idx === skuCol0) width = 18;
+    if (lower.includes("coverage")) width = 26;
+    if (lower.includes("dispatch")) width = 18;
+
+    return { width };
+  });
+
+  // Bold + fill total row
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowNum = startDataRow + i;
+      const cellVal = String(
+        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (totalCandidates.has(cellVal)) {
+        const row = ws.getRow(rowNum);
+
+        for (let c = 1; c <= headerCount; c++) {
+          const cell = row.getCell(c);
+
+          cell.font = {
+            ...(cell.font || {}),
+            bold: true,
+            size: 11,
+            color: { argb: "FF000000" },
+          };
+          cell.fill = whiteFill;
+          cell.border = tableBorder;
+        }
+      }
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
+
+export async function exportPurchaseOrderExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  sheetName?: string;
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    sheetName = "PO Data",
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  const snoCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("sno")
+  );
+
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
+
+  const tableBorder = {
+    top: { style: "thin" as const, color: { argb: "FF000000" } },
+    bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+    left: { style: "thin" as const, color: { argb: "FF000000" } },
+    right: { style: "thin" as const, color: { argb: "FF000000" } },
+  };
+
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  const totalFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFEFEFEF" },
+  };
+
+  const ws = wb.addWorksheet(safeSheetName(sheetName), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
+
+  ws.mergeCells(1, 1, 1, headerCount);
+  ws.getCell(1, 1).value = titleLine || "";
+  ws.getCell(1, 1).font = { bold: false };
+  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(2, headerCount).font = { bold: true };
+
+  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+
+    cell.value = h;
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    cell.fill = whiteFill;
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+    cell.border = tableBorder;
+  });
+
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws.getRow(startDataRow + idx);
+
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h] ?? "";
+
+      if (c0 === snoCol0) {
+        cell.value = v === null || v === undefined ? "" : String(v);
+        cell.numFmt = "@";
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+      } else {
+        const n = toNumberLoose(v);
+
+        if (n !== null) {
+          const headerLower = String(h).toLowerCase();
+
+          cell.value = n;
+
+          if (
+            headerLower.includes("cost per unit") ||
+            headerLower.includes("po cost") ||
+            headerLower.includes("price") ||
+            headerLower.includes("amount")
+          ) {
+            cell.numFmt = "#,##0.00";
+          } else {
+            cell.numFmt = "#,##0";
+          }
+
+          cell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+          };
+        } else {
+          cell.value = v;
+          cell.alignment = {
+            horizontal: c0 === productNameCol0 ? "left" : "center",
+            vertical: "middle",
+          };
+        }
+      }
+
+      cell.font = { size: 11, color: { argb: "FF000000" } };
+      cell.fill = whiteFill;
+      cell.border = tableBorder;
+    });
+  });
+
+  ws.columns = headers.map((h, idx) => {
+    const lower = String(h).toLowerCase();
+
+    if (idx === productNameCol0) return { width: 28 };
+    if (lower.includes("dispatch")) return { width: 18 };
+    if (lower.includes("inventory")) return { width: 24 };
+    if (lower.includes("cost per unit")) return { width: 22 };
+    if (lower.includes("po cost")) return { width: 18 };
+    if (lower.includes("already raised")) return { width: 18 };
+    if (lower.includes("to be raised")) return { width: 18 };
+
+    const maxContentLength = Math.max(
+      String(h).length,
+      ...dataRows.map((row) => String(row[h] ?? "").length)
+    );
+
+    return {
+      width: Math.min(Math.max(maxContentLength + 4, 14), 40),
+    };
+  });
+
+  // Bold + fill total row
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowNum = startDataRow + i;
+      const cellVal = String(
+        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (totalCandidates.has(cellVal)) {
+        const row = ws.getRow(rowNum);
+
+        for (let c = 1; c <= headerCount; c++) {
+          const cell = row.getCell(c);
+
+          cell.font = {
+            ...(cell.font || {}),
+            bold: true,
+            size: 11,
+            color: { argb: "FF000000" },
+          };
+          cell.fill = whiteFill;
+          cell.border = tableBorder;
+        }
+      }
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
 }
 
 export async function exportPnLForecastExcel(params: {
@@ -1978,12 +2650,12 @@ export async function exportPnLForecastExcel(params: {
     return bytes.buffer;
   };
 
-  const thinGrayBorder = {
-    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
-  };
+const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
 
   const whiteFill = {
     type: "pattern" as const,
@@ -2138,7 +2810,7 @@ export async function exportPnLForecastExcel(params: {
       };
       cell.fill = whiteFill;
       cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
-      cell.border = thinGrayBorder;
+      cell.border = tableBorder;
     }
   });
 
@@ -2176,13 +2848,13 @@ export async function exportPnLForecastExcel(params: {
         horizontal: colNumber === 2 ? "left" : "center",
       };
 
-      cell.fill = isTotalRow ? lightGrayFill : whiteFill;
+      cell.fill = whiteFill;
       cell.font = {
         bold: isTotalRow,
         size: 11,
         color: { argb: "FF000000" },
       };
-      cell.border = thinGrayBorder;
+     cell.border = tableBorder;
     });
   });
 
@@ -2243,342 +2915,6 @@ export async function exportPnLForecastExcel(params: {
   saveAs(blob, filename);
 }
 
-export async function exportDispatchExcel(params: {
-  filename: string;
-  titleLine: string;
-
-  titleCountry: string;
-  platformLabel?: string;
-  periodLabel: string;
-
-  companyName: string;
-  brandName: string;
-
-  dataRows: Record<string, any>[];
-}) {
-  const {
-    filename,
-    titleLine,
-    titleCountry,
-    platformLabel = "Amazon",
-    periodLabel,
-    companyName,
-    brandName,
-    dataRows,
-  } = params;
-
-  if (!dataRows?.length) return;
-
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Skinelements";
-  wb.created = new Date();
-
-  const headers = Object.keys(dataRows[0] || {});
-  const headerCount = headers.length || 1;
-
-  const snoCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase().includes("sno")
-  );
-  const productNameCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase().includes("product name")
-  );
-  const skuCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase() === "sku" || String(h).toLowerCase() === "sku."
-  );
-
-  const ws = wb.addWorksheet(safeSheetName("Dispatch"), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
-  });
-
-  // Header block same as your other Excel helpers
-  ws.mergeCells(1, 1, 1, headerCount);
-  ws.getCell(1, 1).value = titleLine || "";
-  ws.getCell(1, 1).font = { bold: false };
-  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
-
-  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
-  ws.getCell(2, 1).alignment = { horizontal: "left" };
-
-  ws.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws.getCell(2, headerCount).font = { bold: true };
-
-  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
-
-  const headerRowNumber = 7;
-  const headerRow = ws.getRow(headerRowNumber);
-
-  headers.forEach((h, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 11 };
-    cell.alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: false,
-    };
-  });
-  headerRow.height = 18;
-
-  const startDataRow = headerRowNumber + 1;
-
-  dataRows.forEach((r, idx) => {
-    const row = ws.getRow(startDataRow + idx);
-
-    headers.forEach((h, c0) => {
-      const cell = row.getCell(c0 + 1);
-      const v = r?.[h] ?? "";
-
-      if (c0 === snoCol0) {
-        cell.value = v === null || v === undefined ? "" : String(v);
-        cell.numFmt = "@";
-        cell.alignment = { horizontal: "center" };
-        return;
-      }
-
-      const n = toNumberLoose(v);
-      if (n !== null) {
-        cell.value = Math.trunc(n);
-        cell.numFmt = "#,##0";
-        cell.alignment = { horizontal: "center" };
-      } else {
-        cell.value = v;
-        cell.alignment = {
-          horizontal: c0 === productNameCol0 ? "left" : "center",
-        };
-      }
-    });
-  });
-
-  ws.columns = headers.map((h, idx) => {
-    const lower = String(h).toLowerCase();
-    let width = Math.min(Math.max(String(h).length + 2, 12), 40);
-
-    if (idx === productNameCol0) width = 28;
-    if (idx === skuCol0) width = 18;
-    if (lower.includes("coverage")) width = 26;
-    if (lower.includes("dispatch")) width = 18;
-
-    return { width };
-  });
-
-  // Bold total row
-  if (productNameCol0 >= 0) {
-    const totalCandidates = new Set(["total", "grand total"]);
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowNum = startDataRow + i;
-      const cellVal = String(
-        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
-      )
-        .trim()
-        .toLowerCase();
-
-      if (totalCandidates.has(cellVal)) {
-        const row = ws.getRow(rowNum);
-        row.eachCell((cell) => {
-          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-        });
-      }
-    }
-  }
-
-  const buf = await wb.xlsx.writeBuffer();
-  saveAs(
-    new Blob([buf], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }),
-    filename
-  );
-}
-
-
-
-
-
-
-
-
-
-export async function exportPurchaseOrderExcel(params: {
-  filename: string;
-  titleLine: string;
-
-  titleCountry: string;
-  platformLabel?: string;
-  periodLabel: string;
-
-  companyName: string;
-  brandName: string;
-
-  sheetName?: string;
-  dataRows: Record<string, any>[];
-}) {
-  const {
-    filename,
-    titleLine,
-    titleCountry,
-    platformLabel = "Amazon",
-    periodLabel,
-    companyName,
-    brandName,
-    sheetName = "PO Data",
-    dataRows,
-  } = params;
-
-  if (!dataRows?.length) return;
-
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Skinelements";
-  wb.created = new Date();
-
-  const headers = Object.keys(dataRows[0] || {});
-  const headerCount = headers.length || 1;
-
-  const snoCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase().includes("sno")
-  );
-  const productNameCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase().includes("product name")
-  );
-
-  const ws = wb.addWorksheet(safeSheetName(sheetName), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
-  });
-
-  ws.mergeCells(1, 1, 1, headerCount);
-  ws.getCell(1, 1).value = titleLine || "";
-  ws.getCell(1, 1).font = { bold: false };
-  ws.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
-
-  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
-  ws.getCell(2, 1).alignment = { horizontal: "left" };
-
-  ws.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws.getCell(2, headerCount).font = { bold: true };
-
-  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
-
-  const headerRowNumber = 7;
-  const headerRow = ws.getRow(headerRowNumber);
-
-  headers.forEach((h, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 11 };
-    cell.alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: false,
-    };
-  });
-  headerRow.height = 18;
-
-  const startDataRow = headerRowNumber + 1;
-
-  dataRows.forEach((r, idx) => {
-    const row = ws.getRow(startDataRow + idx);
-
-    headers.forEach((h, c0) => {
-      const cell = row.getCell(c0 + 1);
-      const v = r?.[h] ?? "";
-
-      if (c0 === snoCol0) {
-        cell.value = v === null || v === undefined ? "" : String(v);
-        cell.numFmt = "@";
-        cell.alignment = { horizontal: "center" };
-        return;
-      }
-
-      const n = toNumberLoose(v);
-
-
-      if (n !== null) {
-        const headerLower = String(h).toLowerCase();
-
-        cell.value = n;
-
-        // decimal columns
-        if (
-          headerLower.includes("cost per unit") ||
-          headerLower.includes("po cost") ||
-          headerLower.includes("price") ||
-          headerLower.includes("amount")
-        ) {
-          cell.numFmt = "#,##0.00";
-        } else {
-          // unit columns
-          cell.numFmt = "#,##0";
-        }
-
-        cell.alignment = { horizontal: "center" };
-      } else {
-        cell.value = v;
-        cell.alignment = {
-          horizontal: c0 === productNameCol0 ? "left" : "center",
-        };
-      }
-    });
-  });
-
-  ws.columns = headers.map((h, idx) => {
-    const lower = String(h).toLowerCase();
-
-    if (idx === productNameCol0) return { width: 28 };
-    if (lower.includes("dispatch")) return { width: 18 };
-    if (lower.includes("inventory")) return { width: 24 };
-    if (lower.includes("cost per unit")) return { width: 22 };
-    if (lower.includes("po cost")) return { width: 18 };
-    if (lower.includes("already raised")) return { width: 18 };
-    if (lower.includes("to be raised")) return { width: 18 };
-
-    const maxContentLength = Math.max(
-      String(h).length,
-      ...dataRows.map((row) => String(row[h] ?? "").length)
-    );
-
-    return {
-      width: Math.min(Math.max(maxContentLength + 4, 14), 40),
-    };
-  });
-
-  if (productNameCol0 >= 0) {
-    const totalCandidates = new Set(["total", "grand total"]);
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowNum = startDataRow + i;
-      const cellVal = String(
-        ws.getCell(rowNum, productNameCol0 + 1).value ?? ""
-      )
-        .trim()
-        .toLowerCase();
-
-      if (totalCandidates.has(cellVal)) {
-        const row = ws.getRow(rowNum);
-        row.eachCell((cell) => {
-          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-        });
-      }
-    }
-  }
-
-  const buf = await wb.xlsx.writeBuffer();
-  saveAs(
-    new Blob([buf], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }),
-    filename
-  );
-}
-
-
-
-
-
-
 
 const normalizeCountryLabel = (countryName: string) => {
   const c = (countryName || "").toLowerCase();
@@ -2614,15 +2950,6 @@ const formatGrossMarginHeader = (countryName: string, grossKey: string) => {
 
   return `Gross Margin (%) ${suffix}`;
 };
-
-
-
-
-
-
-
-
-
 
 export async function exportWarehouseDataExcel(params: {
   filename: string;
@@ -2678,6 +3005,19 @@ export async function exportWarehouseDataExcel(params: {
   const headers = orderedHeaders.length ? orderedHeaders : inputHeaders;
   const headerCount = headers.length || 1;
 
+  const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
+
+const whiteFill = {
+  type: "pattern" as const,
+  pattern: "solid" as const,
+  fgColor: { argb: "FFFFFFFF" },
+};
+
   ws.mergeCells(1, 1, 1, headerCount);
   ws.getCell(1, 1).value = titleLine || "";
   ws.getCell(1, 1).font = { bold: false };
@@ -2723,50 +3063,58 @@ export async function exportWarehouseDataExcel(params: {
     }
   });
 
-  displayHeaders.forEach((h, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = h;
-    cell.font = { bold: true, size: 11 };
-    cell.alignment = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: false,
-    };
-  });
+displayHeaders.forEach((h, i) => {
+  const cell = headerRow.getCell(i + 1);
+
+  cell.value = h;
+  cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+  cell.fill = whiteFill;
+  cell.alignment = {
+    horizontal: "center",
+    vertical: "middle",
+    wrapText: false,
+  };
+  cell.border = tableBorder;
+});
+
   headerRow.height = 18;
 
   const startDataRow = headerRowNumber + 1;
 
-  dataRows.forEach((r, idx) => {
-    const row = ws.getRow(startDataRow + idx);
+dataRows.forEach((r, idx) => {
+  const row = ws.getRow(startDataRow + idx);
 
-    headers.forEach((h, c0) => {
-      const cell = row.getCell(c0 + 1);
-      const v = r?.[h];
+  headers.forEach((h, c0) => {
+    const cell = row.getCell(c0 + 1);
+    const v = r?.[h];
 
-      if (h === "s_no") {
-        cell.value = v ?? idx + 1;
-        cell.alignment = { horizontal: "center" };
-        return;
-      }
+    if (h === "s_no") {
+      cell.value = v ?? idx + 1;
+      cell.numFmt = "#,##0";
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+    } else if (h === "product_name") {
+      cell.value = v ?? "";
+      cell.alignment = {
+        horizontal: "left",
+        vertical: "middle",
+      };
+    } else if (h === "month") {
+      const monthVal =
+        typeof v === "string" && v.length
+          ? v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+          : v ?? "";
 
-      if (h === "product_name") {
-        cell.value = v ?? "";
-        cell.alignment = { horizontal: "left" };
-        return;
-      }
-
-      if (h === "month") {
-        const monthVal =
-          typeof v === "string" && v.length
-            ? v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
-            : v ?? "";
-        cell.value = monthVal;
-        cell.alignment = { horizontal: "center" };
-        return;
-      }
-
+      cell.value = monthVal;
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+    } else {
       const n = toNumberLoose(v);
+
       if (n !== null && !String(h).includes("sku")) {
         cell.value = Number.isInteger(n) ? n : n;
         cell.numFmt = Number.isInteger(n) ? "#,##0" : "#,##0.00";
@@ -2775,10 +3123,16 @@ export async function exportWarehouseDataExcel(params: {
       }
 
       cell.alignment = {
-        horizontal: h === "product_name" ? "left" : "center",
+        horizontal: "center",
+        vertical: "middle",
       };
-    });
+    }
+
+    cell.font = { size: 11, color: { argb: "FF000000" } };
+    cell.fill = whiteFill;
+    cell.border = tableBorder;
   });
+});
 
   ws.columns = headers.map((h) => {
     if (h === "s_no") return { width: 10 };
@@ -2799,15 +3153,6 @@ export async function exportWarehouseDataExcel(params: {
     filename
   );
 }
-
-
-
-
-
-
-
-
-
 
 
 export async function exportSkuInformationExcel(params: {
@@ -2849,6 +3194,19 @@ export async function exportSkuInformationExcel(params: {
   const headers = Object.keys(dataRows[0] || {});
   const headerCount = headers.length || 1;
 
+  const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
+
+const whiteFill = {
+  type: "pattern" as const,
+  pattern: "solid" as const,
+  fgColor: { argb: "FFFFFFFF" },
+};
+
   // Header section
   ws.mergeCells(1, 1, 1, headerCount);
   ws.getCell(1, 1).value = titleLine || "";
@@ -2866,30 +3224,50 @@ export async function exportSkuInformationExcel(params: {
   const headerRowNumber = 7;
   const headerRow = ws.getRow(headerRowNumber);
 
-  headers.forEach((h, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = h
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+headers.forEach((h, i) => {
+  const cell = headerRow.getCell(i + 1);
 
-    cell.font = { bold: true };
-    cell.alignment = { horizontal: "center" };
-  });
+  cell.value = h
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+  cell.fill = whiteFill;
+  cell.alignment = {
+    horizontal: "center",
+    vertical: "middle",
+  };
+  cell.border = tableBorder;
+});
 
   // Data
   const startRow = headerRowNumber + 1;
 
   dataRows.forEach((row, idx) => {
-    const excelRow = ws.getRow(startRow + idx);
+  const excelRow = ws.getRow(startRow + idx);
 
-    headers.forEach((h, colIdx) => {
-      const cell = excelRow.getCell(colIdx + 1);
-      cell.value = row[h] ?? "";
-      cell.alignment = {
-        horizontal: h === "product_name" ? "left" : "center",
-      };
-    });
+  headers.forEach((h, colIdx) => {
+    const cell = excelRow.getCell(colIdx + 1);
+    const value = row[h] ?? "";
+
+    const n = toNumberLoose(value);
+
+    if (n !== null && h !== "product_name" && !String(h).includes("sku")) {
+      cell.value = n;
+      cell.numFmt = Number.isInteger(n) ? "#,##0" : "#,##0.00";
+    } else {
+      cell.value = value;
+    }
+
+    cell.font = { size: 11, color: { argb: "FF000000" } };
+    cell.fill = whiteFill;
+    cell.alignment = {
+      horizontal: h === "product_name" ? "left" : "center",
+      vertical: "middle",
+    };
+    cell.border = tableBorder;
   });
+});
 
   ws.columns = headers.map((h) => ({
     width: Math.min(Math.max(h.length + 2, 14), 30),
@@ -2903,327 +3281,6 @@ export async function exportSkuInformationExcel(params: {
     filename
   );
 }
-
-
-
-
-
-
-
-
-
-/* =========================
-   SKU Analysis MTD export - tabs
-========================= */
-// export function exportSkuAnalysisMtdExcel(params: {
-//   filename: string;
-//   titleLine: string;
-
-//   countryName: string;
-//   titleCountry: string;
-//   platformLabel?: string;
-
-//   periodLabel: string;
-//   companyName: string;
-//   brandName: string;
-//   homeCurrencyCode?: string;
-
-//   month2Label: string;
-
-//   categorizedGrowth: {
-//     all_skus?: any[];
-//     top_80_skus?: any[];
-//     new_or_reviving_skus?: any[];
-//     other_skus?: any[];
-//   };
-// }) {
-//   const {
-//     filename,
-//     titleLine,
-//     countryName,
-//     titleCountry,
-//     platformLabel = "Phormula",
-//     periodLabel,
-//     companyName,
-//     brandName,
-//     homeCurrencyCode,
-//     month2Label,
-//     categorizedGrowth,
-//   } = params;
-
-//   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
-
-//   const tabs = [
-//     {
-//       sheetName: "All SKUs",
-//       rows:
-//         categorizedGrowth.all_skus?.length
-//           ? categorizedGrowth.all_skus
-//           : [
-//               ...(categorizedGrowth.top_80_skus || []),
-//               ...(categorizedGrowth.new_or_reviving_skus || []),
-//               ...(categorizedGrowth.other_skus || []),
-//             ],
-//     },
-//     {
-//       sheetName: "Top 80 SKUs",
-//       rows: categorizedGrowth.top_80_skus || [],
-//     },
-//     {
-//       sheetName: "New Reviving SKUs",
-//       rows: categorizedGrowth.new_or_reviving_skus || [],
-//     },
-//     {
-//       sheetName: "Other SKUs",
-//       rows: categorizedGrowth.other_skus || [],
-//     },
-//   ];
-
-//   const headers = [
-//     "S.No.",
-//     "Product Name",
-//     `Sales Mix (${month2Label || "Current"})`,
-//     "Sales Mix Change (%)",
-//     "Unit Growth (%)",
-//     "ASP Growth (%)",
-//     "Net Sales Growth (%)",
-//     "CM1 Profit Impact (%)",
-//     "CM1 Profit Per Unit (%)",
-//   ];
-
-//   const headerCount = headers.length;
-//   const ANCHOR_COL_1_BASED = headerCount;
-
-//   const topExtraLines = [
-//     `Country : ${titleCountry}`,
-//     `Platform : ${platformLabel}`,
-//     `Currency : ${currencySymbol}`,
-//     `Period : ${periodLabel}`,
-//   ];
-
-//   const getGrowthValue = (row: any, key: string) => {
-//     const value = row?.[key];
-
-//     if (value && typeof value === "object") {
-//       const n = toNumberLoose(value.value);
-//       return n ?? 0;
-//     }
-
-//     return toNumberLoose(value) ?? 0;
-//   };
-
-//   const getGrowthCategory = (row: any, key: string) => {
-//     const value = row?.[key];
-
-//     if (value && typeof value === "object") {
-//       return String(value.category || "").toLowerCase();
-//     }
-
-//     const n = toNumberLoose(value) ?? 0;
-//     if (n > 0) return "high growth";
-//     if (n < 0) return "negative growth";
-//     return "low growth";
-//   };
-
-//   const getSalesMix = (row: any) => {
-//     return (
-//       toNumberLoose(row?.["Sales Mix (Month2)"]) ??
-//       toNumberLoose(row?.sales_mix_month2) ??
-//       toNumberLoose(row?.sales_mix) ??
-//       0
-//     );
-//   };
-
-//   const computeTotalRow = (rows: any[]) => {
-//     const cleanRows = (rows || []).filter((r) => {
-//       const name = String(r?.product_name || "").trim().toLowerCase();
-//       return name && name !== "total" && !name.includes("total");
-//     });
-
-//     const sum = (key: string) =>
-//       cleanRows.reduce((acc, r) => acc + (toNumberLoose(r?.[key]) ?? 0), 0);
-
-//     const qtyOld = sum("total_quantity_month1");
-//     const qtyNew = sum("total_quantity_month2");
-
-//     const nsOld = sum("net_sales_month1");
-//     const nsNew = sum("net_sales_month2");
-
-//     const profitOld = sum("profit_month1");
-//     const profitNew = sum("profit_month2");
-
-//     const aspOld = qtyOld ? nsOld / qtyOld : 0;
-//     const aspNew = qtyNew ? nsNew / qtyNew : 0;
-
-//     const ppuOld = qtyOld ? profitOld / qtyOld : 0;
-//     const ppuNew = qtyNew ? profitNew / qtyNew : 0;
-
-//     const pct = (oldVal: number, newVal: number) =>
-//       oldVal ? ((newVal - oldVal) / Math.abs(oldVal)) * 100 : 0;
-
-//     return {
-//       product_name: "Total",
-//       "__isTotal": true,
-//       "__salesMix": 100,
-//       "__salesMixChange": 0,
-//       "__unitGrowth": pct(qtyOld, qtyNew),
-//       "__aspGrowth": pct(aspOld, aspNew),
-//       "__netSalesGrowth": pct(nsOld, nsNew),
-//       "__cm1ProfitImpact": pct(profitOld, profitNew),
-//       "__profitPerUnit": pct(ppuOld, ppuNew),
-//     };
-//   };
-
-//   const buildSheetRows = (rows: any[]) => {
-//     const cleanRows = (rows || []).filter((r) => {
-//       const name = String(r?.product_name || "").trim().toLowerCase();
-//       return name && name !== "total" && !name.includes("total");
-//     });
-
-//     const body = cleanRows.map((row, index) => [
-//       index + 1,
-//       row?.product_name || "",
-//       getSalesMix(row),
-//       getGrowthValue(row, "Sales Mix Change"),
-//       getGrowthValue(row, "Unit Growth"),
-//       getGrowthValue(row, "ASP Growth"),
-//       getGrowthValue(row, "Net Sales Growth"),
-//       getGrowthValue(row, "CM1 Profit Impact"),
-//       getGrowthValue(row, "Profit Per Unit"),
-//     ]);
-
-//     const total = computeTotalRow(cleanRows);
-
-//     body.push([
-//       "",
-//       "Total",
-//       total.__salesMix,
-//       total.__salesMixChange,
-//       total.__unitGrowth,
-//       total.__aspGrowth,
-//       total.__netSalesGrowth,
-//       total.__cm1ProfitImpact,
-//       total.__profitPerUnit,
-//     ]);
-
-//     return body;
-//   };
-
-//   const wb = XLSX.utils.book_new();
-
-//   tabs.forEach((tab) => {
-//     const topAoA = buildTopAoA({
-//       headerCount,
-//       title: `${titleLine} - ${tab.sheetName}`,
-//       companyName,
-//       brandName,
-//       anchorCol1Based: ANCHOR_COL_1_BASED,
-//       extraLines: topExtraLines,
-//     });
-
-//     const headerRowIndex = topAoA.length;
-//     const bodyAoA = buildSheetRows(tab.rows);
-
-//     const sheetAoA = [...topAoA, headers, ...bodyAoA];
-//     const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
-
-//     ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
-
-//     ws["!cols"] = [
-//       { wch: 8 },
-//       { wch: 32 },
-//       { wch: 20 },
-//       { wch: 22 },
-//       { wch: 18 },
-//       { wch: 18 },
-//       { wch: 20 },
-//       { wch: 22 },
-//       { wch: 24 },
-//     ];
-
-//     applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
-
-//     // Header row style
-//     for (let c = 0; c < headerCount; c++) {
-//       const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
-//       if (!ws[addr]) continue;
-
-//     ws[addr].s = {
-//   ...(ws[addr].s || {}),
-//   font: { bold: true, sz: 11, color: { rgb: "000000" } },
-//   fill: undefined,
-//   alignment: { horizontal: "center", vertical: "center" },
-// };
-//     }
-
-//     const startBodyRow = headerRowIndex + 1;
-//     const endBodyRow = startBodyRow + bodyAoA.length - 1;
-
-//     for (let r = startBodyRow; r <= endBodyRow; r++) {
-//       const isTotalRow = r === endBodyRow;
-
-//       for (let c = 0; c < headerCount; c++) {
-//         const addr = XLSX.utils.encode_cell({ r, c });
-//         const cell = ws[addr];
-//         if (!cell) continue;
-
-//         cell.s = {
-//           ...(cell.s || {}),
-//           alignment: {
-//             horizontal: c === 1 ? "left" : "center",
-//             vertical: "center",
-//           },
-//           border: {
-//             top: { style: "thin", color: { rgb: "D9E1E8" } },
-//             bottom: { style: "thin", color: { rgb: "D9E1E8" } },
-//             left: { style: "thin", color: { rgb: "D9E1E8" } },
-//             right: { style: "thin", color: { rgb: "D9E1E8" } },
-//           },
-//           font: {
-//             ...(cell.s?.font || {}),
-//             bold: isTotalRow,
-//             sz: 11,
-//           },
-// fill: undefined,
-//         };
-
-//         // Percent formatting for all metric columns from Sales Mix onward
-//         if (c >= 2 && isNumber(cell.v)) {
-//           cell.v = cell.v / 100;
-//           cell.z = "0.00%";
-//         }
-
-//         // Growth color styling
-//       if (c >= 3 && isNumber(cell.v)) {
-//   cell.s = {
-//     ...(cell.s || {}),
-//     font: {
-//       ...(cell.s?.font || {}),
-//       bold: isTotalRow || c >= 3,
-//       color: { rgb: "000000" },
-//     },
-//   };
-// }
-//       }
-//     }
-
-//     XLSX.utils.book_append_sheet(wb, ws, safeSheetName(tab.sheetName));
-//   });
-
-//   XLSX.writeFile(wb, filename);
-// }
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* =========================
    SKU Analysis MTD export - black & white
@@ -3517,6 +3574,25 @@ export function exportSkuAnalysisMtdExcel(params: {
 
     applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
+const tableBorder = {
+  top: { style: "thin" as const, color: { argb: "FF000000" } },
+  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+  left: { style: "thin" as const, color: { argb: "FF000000" } },
+  right: { style: "thin" as const, color: { argb: "FF000000" } },
+};
+
+const whiteFill = {
+  type: "pattern" as const,
+  pattern: "solid" as const,
+  fgColor: { argb: "FFFFFFFF" },
+};
+
+const totalFill = {
+  type: "pattern" as const,
+  pattern: "solid" as const,
+  fgColor: { argb: "FFEFEFEF" },
+};
+
     // Header row: black & white only
     for (let c = 0; c < headerCount; c++) {
       const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
@@ -3533,12 +3609,7 @@ export function exportSkuAnalysisMtdExcel(params: {
           vertical: "center",
           wrapText: true,
         },
-        border: {
-          top: { style: "thin", color: { rgb: "BFBFBF" } },
-          bottom: { style: "thin", color: { rgb: "BFBFBF" } },
-          left: { style: "thin", color: { rgb: "BFBFBF" } },
-          right: { style: "thin", color: { rgb: "BFBFBF" } },
-        },
+border: tableBorder,
       };
     }
 
@@ -3562,19 +3633,14 @@ export function exportSkuAnalysisMtdExcel(params: {
             color: { rgb: "000000" },
           },
           fill: {
-            fgColor: { rgb: isTotalRow ? "EFEFEF" : "FFFFFF" },
+            fgColor: { rgb: "FFFFFF" },
           },
           alignment: {
             horizontal: c === 1 ? "left" : "center",
             vertical: "center",
             wrapText: true,
           },
-          border: {
-            top: { style: "thin", color: { rgb: "BFBFBF" } },
-            bottom: { style: "thin", color: { rgb: "BFBFBF" } },
-            left: { style: "thin", color: { rgb: "BFBFBF" } },
-            right: { style: "thin", color: { rgb: "BFBFBF" } },
-          },
+        border: tableBorder,
         };
 
         // Percent formatting for all metric columns from Sales Mix onward

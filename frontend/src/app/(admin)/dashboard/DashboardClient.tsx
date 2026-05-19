@@ -482,6 +482,12 @@ const SIGNED_KEYS = new Set<string>([
     "misc_transaction",
 ]);
 
+const ROUNDED_SUMMARY_KEYS = new Set<string>([
+    "misc_transaction",
+    "lost_total",
+    "net_reimbursement",
+]);
+
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     const netSales = toNumber(source?.Net_Sales ?? source?.net_sales);
 
@@ -644,6 +650,12 @@ const formatSummaryValue = (value: unknown, key: string) => {
     const n = SIGNED_KEYS.has(key) ? raw : Math.abs(raw);
 
     if (INT_KEYS.has(key)) return String(Math.trunc(n));
+
+    // ✅ rounded summary rows without decimals
+    if (ROUNDED_SUMMARY_KEYS.has(key)) {
+        const rounded = Math.round(Math.abs(n)).toLocaleString();
+        return n < 0 ? `-${rounded}` : rounded;
+    }
 
     const formatted = Math.abs(n).toLocaleString(undefined, {
         minimumFractionDigits: 2,
@@ -1344,13 +1356,78 @@ export default function DashboardPage() {
         }
     }, [router]);
 
+    const getTimeZoneAbbr = (date: Date, timeZone: string) => {
+        const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            timeZoneName: "short",
+        }).formatToParts(date);
+
+        const abbr = parts.find((p) => p.type === "timeZoneName")?.value || "";
+
+        // If browser gives PDT/BST/EDT, use it
+        if (abbr && !abbr.startsWith("GMT")) return abbr;
+
+        // Fallback when browser returns GMT-7 / GMT+1
+        const month = Number(
+            new Intl.DateTimeFormat("en-US", {
+                timeZone,
+                month: "numeric",
+            }).format(date)
+        );
+
+        if (timeZone === "America/Los_Angeles") {
+            return month >= 3 && month <= 11 ? "PDT" : "PST";
+        }
+
+        if (timeZone === "Europe/London") {
+            return month >= 3 && month <= 10 ? "BST" : "GMT";
+        }
+
+        if (timeZone === "America/Toronto") {
+            return month >= 3 && month <= 11 ? "EDT" : "EST";
+        }
+
+        return abbr;
+    };
+
+    const formatLastUpdatedDateTime = (
+        timestamp: string | number | Date | null | undefined,
+        timeZone: string
+    ) => {
+        if (!timestamp) return "";
+
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return "";
+
+        const parts = new Intl.DateTimeFormat("en-GB", {
+            timeZone,
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+        }).formatToParts(date);
+
+        const get = (type: Intl.DateTimeFormatPartTypes) =>
+            parts.find((p) => p.type === type)?.value || "";
+
+        const day = get("day");
+        const month = get("month");
+        const year = get("year");
+        const hour = get("hour");
+        const minute = get("minute");
+        const dayPeriod = get("dayPeriod").toUpperCase();
+        const timeZoneName = getTimeZoneAbbr(date, timeZone);
+
+        return `${day} ${month} ${year}, ${hour}:${minute} ${dayPeriod} ${timeZoneName}`;
+    };
+
     const formatUKTime12hr = (
         timestamp: string | number | Date | null | undefined
     ) => {
         if (timestamp == null) return "";
 
-        // If backend already sends UK local time as plain string,
-        // do NOT create a Date and do NOT apply timezone conversion.
         if (typeof timestamp === "string") {
             const match = timestamp.match(
                 /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/
@@ -1358,21 +1435,37 @@ export default function DashboardPage() {
 
             if (!match) return "";
 
-            const hour24 = Number(match[4]);
-            const minute = match[5];
+            const [, year, month, day, hour, minute] = match;
 
+            const date = new Date(
+                Number(year),
+                Number(month) - 1,
+                Number(day),
+                Number(hour),
+                Number(minute)
+            );
+
+            const dateText = new Intl.DateTimeFormat("en-GB", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+            }).format(date);
+
+            const hour24 = Number(hour);
             const hour12 = hour24 % 12 || 12;
             const ampm = hour24 >= 12 ? "PM" : "AM";
 
-            return `${hour12}:${minute} ${ampm} BST`;
+            return `${dateText}, ${hour12}:${minute} ${ampm} BST`;
         }
 
-        // Fallback only if you actually receive a real Date/UTC timestamp
         const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
         if (Number.isNaN(date.getTime())) return "";
 
         return new Intl.DateTimeFormat("en-GB", {
             timeZone: "Europe/London",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
@@ -1389,9 +1482,13 @@ export default function DashboardPage() {
         if (!timestamp) return "";
 
         const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return "";
 
         return new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/Los_Angeles", // or LA if needed
+            timeZone: "America/Los_Angeles",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
@@ -1727,15 +1824,15 @@ export default function DashboardPage() {
     const lastUpdatedTimeText = useMemo(() => {
         if (!dbUpdatedAt) return "";
 
-        // US priority ONLY on Global page
         if (platform === "global" && isUsAmazonConnected) {
-            return formatUSTime12hr(dbUpdatedAt);
+            return formatLastUpdatedDateTime(dbUpdatedAt, "America/Los_Angeles");
         }
 
-        // Existing logic remains as-is for all other pages
         return activeDateRegion === "US"
-            ? formatUSTime12hr(dbUpdatedAt)
-            : formatUKTime12hr(dbUpdatedAt);
+            ? formatLastUpdatedDateTime(dbUpdatedAt, "America/Los_Angeles")
+            : activeDateRegion === "CA"
+                ? formatLastUpdatedDateTime(dbUpdatedAt, "America/Toronto")
+                : formatLastUpdatedDateTime(dbUpdatedAt, "Europe/London");
     }, [dbUpdatedAt, platform, isUsAmazonConnected, activeDateRegion]);
 
     const globalMtdCountryOptions = useMemo(() => {
@@ -10184,7 +10281,8 @@ ${pageLoading
                                                 }
                                                 if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
 
-                                                if (colKey === "quantity") return row.quantity;
+                                                if (colKey === "quantity")
+                                                    return Math.round(Number(row.quantity || 0)).toLocaleString();
 
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
                                                 if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
@@ -10255,7 +10353,7 @@ ${pageLoading
                                                             {
                                                                 id: "ads_1",
                                                                 label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
+                                                                midValue: formatSummaryRounded(sponsoredBrandSpend),
                                                             },
                                                             {
                                                                 id: "ads_3",
@@ -10348,9 +10446,12 @@ ${pageLoading
                                                     },
 
                                                     {
-                                                        id: "net_reimb",
+                                                        id: "net_reimbursement",
                                                         label: "Net Reimbursement",
-                                                        endValue: Number(reimbursementForSummary.toFixed(2))
+                                                        endValue: formatSummaryValue(
+                                                            plSummaryTotals.net_reimbursement,
+                                                            "net_reimbursement"
+                                                        ),
                                                     },
                                                     {
                                                         id: "rv_cm2",

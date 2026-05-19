@@ -1357,10 +1357,20 @@ export default function InputCostPage({ params }: Params) {
       return;
     }
 
+    const exportWarehouseColumns = warehouseColumns.filter((col) => {
+      if (countryName === 'global') return true;
+
+      if (col.startsWith('sku_')) {
+        return col === `sku_${countryName}`;
+      }
+
+      return true;
+    });
+
     const exportData = warehouseData.map((row, index) => {
       const exportRow: Record<string, any> = {};
 
-      warehouseColumns.forEach((col) => {
+      exportWarehouseColumns.forEach((col) => {
         if (col === 's_no') {
           exportRow.s_no = row.s_no ?? index + 1;
         } else if (col === 'product_name') {
