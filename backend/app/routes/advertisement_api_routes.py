@@ -732,8 +732,16 @@ def monthly_sp_sd_to_db():
         year = int(payload.get("year") or 0)
         country = str(payload.get("country") or "").upper().strip()
 
+        country_aliases = [country]
+        if country in ("UK", "GB"):
+            country_aliases = ["UK", "GB"]
+
         include = payload.get("include") or ["SP", "SD", "SB"]
         include = {str(x).upper().strip() for x in include}
+
+        # Force SB for UK/US monthly ads, even if frontend sends only SP + SD
+        if country in ("UK", "GB", "US"):
+            include.add("SB")
 
         if not (1 <= month <= 12):
             return jsonify({"error": "month must be 1..12"}), 400
@@ -875,15 +883,28 @@ def monthly_sp_sd_to_db():
         # =========================
         if "SB" in include:
             sb_latest_end = None
+
             try:
-                sb_latest_end = _latest_end_date_for_month(
-                    amazon_sponsored_brands_keywords, user_id, country, first_day, last_day
+                sb_latest_end = (
+                    db.session.query(func.max(amazon_sponsored_brands_keywords.end_date))
+                    .filter(
+                        amazon_sponsored_brands_keywords.user_id == user_id,
+                        func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
+                        amazon_sponsored_brands_keywords.start_date >= first_day,
+                        amazon_sponsored_brands_keywords.start_date <= last_day,
+                    )
+                    .scalar()
                 )
             except Exception:
                 sb_latest_end = None
 
-            q = amazon_sponsored_brands_keywords.query
-            q = _apply_filters_if_exist(q, amazon_sponsored_brands_keywords)
+            q = amazon_sponsored_brands_keywords.query.filter(
+                amazon_sponsored_brands_keywords.user_id == user_id,
+                func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
+                amazon_sponsored_brands_keywords.start_date >= first_day,
+                amazon_sponsored_brands_keywords.start_date <= last_day,
+            )
+
             if sb_latest_end and hasattr(amazon_sponsored_brands_keywords, "end_date"):
                 q = q.filter(amazon_sponsored_brands_keywords.end_date == sb_latest_end)
 
@@ -1019,31 +1040,28 @@ def monthly_sp_sd_to_db():
         ]
 
         # ---- Grand Total row ----
-        total_impr = int(out["impressions"].sum())
-        total_clicks = int(out["clicks"].sum())
 
-        # Do not change product_spend/display_spend logic
-        total_product_spend = float(out["product_spend"].sum())
-        total_display_spend = float(out["display_spend"].sum())
-
-        # Fix only brand_spend total from SB keyword table
-        total_brand_spend = 0.0
+        # 1) Get raw SB spend safely from DB
+        raw_sb_brand_spend = 0.0
 
         if "SB" in include:
             try:
-                sb_latest_end = _latest_end_date_for_month(
-                    amazon_sponsored_brands_keywords,
-                    user_id,
-                    country,
-                    first_day,
-                    last_day,
+                sb_latest_end = (
+                    db.session.query(func.max(amazon_sponsored_brands_keywords.end_date))
+                    .filter(
+                        amazon_sponsored_brands_keywords.user_id == user_id,
+                        func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
+                        amazon_sponsored_brands_keywords.start_date >= first_day,
+                        amazon_sponsored_brands_keywords.start_date <= last_day,
+                    )
+                    .scalar()
                 )
 
                 sb_q = db.session.query(
                     func.coalesce(func.sum(amazon_sponsored_brands_keywords.spend), 0.0)
                 ).filter(
                     amazon_sponsored_brands_keywords.user_id == user_id,
-                    amazon_sponsored_brands_keywords.country == country,
+                    func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
                     amazon_sponsored_brands_keywords.start_date >= first_day,
                     amazon_sponsored_brands_keywords.start_date <= last_day,
                 )
@@ -1053,21 +1071,85 @@ def monthly_sp_sd_to_db():
                         amazon_sponsored_brands_keywords.end_date == sb_latest_end
                     )
 
-                total_brand_spend = round(float(sb_q.scalar() or 0.0), 2)
+                raw_sb_brand_spend = round(float(sb_q.scalar() or 0.0), 2)
 
             except Exception as e:
                 print("[WARN] SB brand_spend total fetch failed:", e)
-                total_brand_spend = round(float(out["brand_spend"].sum()), 2)
+                raw_sb_brand_spend = 0.0
 
-        # Total spend should include same product/display values + fixed brand value
+
+        # 2) Check if SB spend already exists in out rows
+        existing_out_brand_spend = (
+            float(pd.to_numeric(out["brand_spend"], errors="coerce").fillna(0.0).sum())
+            if "brand_spend" in out.columns
+            else 0.0
+        )
+
+        # 3) If some SB spend is missing from out, add the missing amount as a row
+        if raw_sb_brand_spend > 0 and abs(existing_out_brand_spend - raw_sb_brand_spend) > 0.01:
+            missing_brand_spend = raw_sb_brand_spend - existing_out_brand_spend
+
+            sb_manual_row = {
+                "sno": len(out) + 1,
+                "products": "Sponsored Brands",
+                "asin": None,
+                "ad_type": "sponsored_brands",
+                "match_type": None,
+
+                "impressions": 0,
+                "clicks": 0,
+                "ctr": 0.0,
+                "cpc": 0.0,
+
+                "spend": missing_brand_spend,
+                "product_spend": 0.0,
+                "display_spend": 0.0,
+                "brand_spend": missing_brand_spend,
+
+                "sale_units": 0.0,
+                "sale_amount": 0.0,
+                "advertised_unit_sale": 0.0,
+                "other_unit_sale": 0.0,
+                "new_to_brand_sales": 0.0,
+
+                "conversion_rate": 0.0,
+                "roas": 0.0,
+                "acos": 0.0,
+            }
+
+            out = pd.concat([out, pd.DataFrame([sb_manual_row])], ignore_index=True)
+
+
+        # 4) Recalculate totals after possible SB manual row
+        total_impr = int(pd.to_numeric(out["impressions"], errors="coerce").fillna(0).sum())
+        total_clicks = int(pd.to_numeric(out["clicks"], errors="coerce").fillna(0).sum())
+
+        total_product_spend = float(
+            pd.to_numeric(out["product_spend"], errors="coerce").fillna(0.0).sum()
+        )
+
+        total_display_spend = float(
+            pd.to_numeric(out["display_spend"], errors="coerce").fillna(0.0).sum()
+        )
+
+        total_brand_spend = float(
+            pd.to_numeric(out["brand_spend"], errors="coerce").fillna(0.0).sum()
+        )
+
         total_spend = round(
             total_product_spend + total_display_spend + total_brand_spend,
             2,
         )
 
-        total_sales_amt = float(out["sale_amount"].sum())
-        total_orders = float(g["orders"].sum())
-        total_units = float(out["sale_units"].sum())
+        total_sales_amt = float(
+            pd.to_numeric(out["sale_amount"], errors="coerce").fillna(0.0).sum()
+        )
+
+        total_orders = float(g["orders"].sum()) if "orders" in g.columns else 0.0
+
+        total_units = float(
+            pd.to_numeric(out["sale_units"], errors="coerce").fillna(0.0).sum()
+        )
 
         total_row = {
             "sno": None,
