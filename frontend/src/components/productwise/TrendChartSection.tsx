@@ -599,8 +599,8 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
             style={{ width: "100%", height: "100%" }}
           />
         ) : (
-          <p className="flex h-full items-center justify-center">
-            No chart data available.
+          <p className="flex h-full text-sm text-gray-400 items-center justify-center">
+            No data available.
           </p>
         )}
       </div>

@@ -24,6 +24,7 @@ type PerformanceTrendPayload = {
   x: Array<string | number>;
   xType: "day" | "month" | "year" | string;
   series: PerformanceTrendSeries[];
+  message?: string;
 };
 
 type PerformanceTrendChartProps = {
@@ -770,7 +771,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     }
 
     if (!props.data?.series?.length) {
-      return buildFallbackTrend(props.range);
+      return { xAxis: [], series: [] };
     }
 
     const mappedData = mapBackendTrendToSeries(props.data);
@@ -779,7 +780,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     const hasUsableSeries = mappedData.series.length > 0;
 
     if (!hasUsableXAxis || !hasUsableSeries) {
-      return buildFallbackTrend(props.range);
+      return { xAxis: [], series: [] };
     }
 
     return mappedData;

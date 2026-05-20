@@ -308,7 +308,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     if (!embedded) return;
 
     setSelectedProductName(
-      isPreviewMode ? (initialProductName || "Demo Product") : (initialProductName || "")
+      isPreviewMode ? (initialProductName || "Demo Product") : initialProductName
     );
     setSelectedSku(null);
     setSkuInsights({});
@@ -324,16 +324,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     isPreviewMode,
   ]);
 
-
-
   const productname = isPreviewMode
     ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
     : embedded
-      ? selectedProductName
+      ? selectedProductName || ""
       : initialProductName || urlProductName || "";
-
-
-
+      
   const countryName = embedded ? countryNameProp : routeCountryName;
 
   const authToken =

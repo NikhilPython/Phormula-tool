@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Bargraph from "./BarGraph";
 import GraphPage from "./GraphPage";
 import CircleChart from "./CircleChart";
@@ -2687,9 +2687,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const aiRequestIdRef = useRef(0);
 
+  // const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
+  // const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
+  // const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
+
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
+
+  const lastSkuExportPayloadSignatureRef = useRef<string>("");
+
+  const handleSkuExportPayloadChange = useCallback((payload: SkuExportPayload | null) => {
+    if (!payload) {
+      if (lastSkuExportPayloadSignatureRef.current !== "") {
+        lastSkuExportPayloadSignatureRef.current = "";
+        setSkuExportPayload(null);
+      }
+      return;
+    }
+
+    let signature = "";
+
+    try {
+      signature = JSON.stringify(payload);
+    } catch {
+      signature = String(Date.now());
+    }
+
+    if (signature === lastSkuExportPayloadSignatureRef.current) return;
+
+    lastSkuExportPayloadSignatureRef.current = signature;
+    setSkuExportPayload(payload);
+  }, []);
+
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
+
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
@@ -2845,14 +2876,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     total_amazon_fee: 0,
   };
 
-  const displayData: Summary =
-    isDemoMode
-      ? DEMO_SUMMARY
-      : allDropdownsSelected && uploadsData?.summary
-        ? uploadsData.summary
-        : zeroData;
+  const zeroComparisons: SummaryComparisons = {
+    lastMonth: zeroData,
+    lastQuarter: zeroData,
+    lastYear: zeroData,
+  };
 
-        
+  const displayData: Summary = isDemoMode
+    ? DEMO_SUMMARY
+    : uploadsData?.summary ?? zeroData;
+
+  const displayComparisons: SummaryComparisons = isDemoMode
+    ? DEMO_SUMMARY_COMPARISONS
+    : uploadsData?.summaryComparisons ?? zeroComparisons;
+
+
   // range: "monthly" | "quarterly" | "yearly"
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
     setRange(v);
@@ -3036,7 +3074,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         // This is not a red error. It just means selected period has no data.
         setSkuRowsError(null);
 
-        setUploadsData(null);
+        setUploadsData({
+          summary: zeroData,
+          summaryComparisons: zeroComparisons,
+        });
         setBargraphUploads([]);
         setBargraphLoading(false);
 
@@ -3089,11 +3130,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       if (!normalizedCurrentRows.length) {
         setSkuRows([]);
         setSkuNoDataFound(true);
-
-        // This should show empty table, not red error.
         setSkuRowsError(null);
 
-        setUploadsData(data);
+        setUploadsData({
+          summary: zeroData,
+          summaryComparisons: data?.summaryComparisons ?? zeroComparisons,
+          current_data: [],
+          previous_data: finalRaw?.previous_data ?? [],
+        });
+
         setBargraphUploads([]);
         setBargraphLoading(false);
         return;
@@ -3963,64 +4008,112 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   useEffect(() => {
     if (isDemoMode) return;
     if (!countryName) return;
-    if (range === "" || !selectedYear) return;
+
+    const safeRange: RangeType =
+      activeTab === "skuwiseProfit" && range === "monthly"
+        ? "yearly"
+        : range;
+
+    if (safeRange === "" || !selectedYear) return;
+
+    const ready =
+      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (safeRange === "yearly" && !!selectedYear);
+
+    if (!ready) return;
 
     fetchUploadHistory(
-      range,
-      selectedMonth,
-      selectedQuarter || "",
+      safeRange,
+      safeRange === "monthly" ? selectedMonth : "",
+      safeRange === "quarterly" ? selectedQuarter || "" : "",
       selectedYear,
       countryName
     );
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey, isDemoMode]);
+  }, [
+    activeTab,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    fetchCurrencyKey,
+    isDemoMode,
+  ]);
 
   useEffect(() => {
     if (isDemoMode) return;
 
-    if (!countryName || !range || !selectedYear) {
+    const safeRange: RangeType =
+      activeTab === "skuwiseProfit" && range === "monthly"
+        ? "yearly"
+        : range;
+
+    if (!countryName || !safeRange || !selectedYear) {
       setAiPanel(null);
       return;
     }
 
     const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (safeRange === "yearly" && !!selectedYear);
 
     if (!ready) {
       setAiPanel(null);
       return;
     }
 
-    fetchAiSummary(range);
+    fetchAiSummary(safeRange);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, isDemoMode]);
-
+  }, [
+    activeTab,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    isDemoMode,
+  ]);
 
   useEffect(() => {
     if (isDemoMode) return;
 
-    if (!range || !selectedYear) {
+    const safeRange: RangeType =
+      activeTab === "skuwiseProfit" && range === "monthly"
+        ? "yearly"
+        : range;
+
+    if (!safeRange || !selectedYear) {
       setPerformanceTrend(null);
       return;
     }
 
     const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (safeRange === "yearly" && !!selectedYear);
 
     if (!ready) {
       setPerformanceTrend(null);
       return;
     }
 
-    fetchPerformanceTrendFromHistory(range);
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric, isDemoMode]);
-
-
+    fetchPerformanceTrendFromHistory(safeRange);
+  }, [
+    activeTab,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    homeCurrency,
+    performanceTrendMetric,
+    isDemoMode,
+  ]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -4081,12 +4174,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (!range || !selectedYear || !countryName) return;
+    const safeRange: RangeType =
+      activeTab === "skuwiseProfit" && range === "monthly"
+        ? "yearly"
+        : range;
+
+    if (!safeRange || !selectedYear || !countryName) return;
 
     const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (safeRange === "yearly" && !!selectedYear);
 
     if (!ready) {
       setGraphPageUploads([]);
@@ -4101,8 +4199,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-        // Monthly: one point from /skutableprofit
-        if (range === "monthly") {
+        if (safeRange === "monthly") {
           const rows = await fetchMonthlySkuRowsForGraph(
             selectedMonth,
             selectedYear,
@@ -4115,8 +4212,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           return;
         }
 
-        // Quarterly: three monthly points from /skutableprofit
-        if (range === "quarterly" && selectedQuarter) {
+        if (safeRange === "quarterly" && selectedQuarter) {
           const months = quarterToMonths[selectedQuarter];
 
           const rowsNested = await Promise.all(
@@ -4135,8 +4231,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           return;
         }
 
-        // Yearly: twelve monthly points from /skutableprofit
-        if (range === "yearly") {
+        if (safeRange === "yearly") {
           const rowsNested = await Promise.all(
             allMonths.map((m) =>
               fetchMonthlySkuRowsForGraph(
@@ -4161,6 +4256,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     fetchGraphPageUploadsFromSku();
   }, [
+    activeTab,
     range,
     selectedMonth,
     selectedQuarter,
@@ -4171,9 +4267,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ]);
 
   useEffect(() => {
-    if (activeTab === "skuwiseProfit" && range === "monthly") {
-      handleRangeChange("yearly");
-    }
+    if (activeTab !== "skuwiseProfit") return;
+    if (range !== "monthly") return;
+
+    setRange("yearly");
+    setSelectedMonth("");
+    setSelectedQuarter("");
   }, [activeTab, range]);
 
   const normalizeRowsForParent = (data: any[]): TableRow[] => {
@@ -4568,6 +4667,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             if (tabsDisabled?.[t]) return;
 
             setActiveTab(t);
+
+            if (t === "skuwiseProfit" && range === "monthly") {
+              setRange("yearly");
+              setSelectedMonth("");
+              setSelectedQuarter("");
+              setUploadsData({
+                summary: zeroData,
+                summaryComparisons: zeroComparisons,
+              });
+              setSkuRows([]);
+              setSkuNoDataFound(false);
+              setSkuRowsError(null);
+            }
+
             syncTabToHash(t);
           }}
           className="w-full"
@@ -4587,17 +4700,26 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           <div className="flex flex-col gap-5 w-full mt-4">
             {/* Summary Cards */}
-            {uploadsData?.summary &&
+            {allDropdownsSelected &&
+
               (() => {
                 const summary = displayData;
                 const netSales = summary.total_sales;
-                const rawComparisons =
-                  (uploadsData as any).summaryComparisons ??
-                  (uploadsData as any).summary_comparisons;
+                // const rawComparisons =
+                //   (uploadsData as any).summaryComparisons ??
+                //   (uploadsData as any).summary_comparisons;
 
-                const comparisons: SummaryComparisons | undefined = rawComparisons
-                  ? (rawComparisons as SummaryComparisons)
-                  : undefined;
+                // const comparisons: SummaryComparisons | undefined = rawComparisons
+                //   ? (rawComparisons as SummaryComparisons)
+                //   : undefined;
+
+                const rawComparisons =
+                  (uploadsData as any)?.summaryComparisons ??
+                  (uploadsData as any)?.summary_comparisons ??
+                  displayComparisons ??
+                  zeroComparisons;
+
+                const comparisons: SummaryComparisons = rawComparisons as SummaryComparisons;
 
                 const formatMoney = (
                   val: number,
@@ -5634,7 +5756,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   brand_name: userData?.brand_name,
                   company_name: userData?.company_name,
                 }}
-                onExportPayloadChange={setSkuExportPayload}
+             onExportPayloadChange={handleSkuExportPayloadChange}
                 hideDownloadButton
                 disableInternalFade={shouldShowPreviewData}
               />
@@ -5652,31 +5774,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )}
 
           {/* {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-
-            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-              <ProductwisePerformance
-                key={[
-                  initialCountryName,
-                  range,
-                  selectedMonth,
-                  selectedQuarter,
-                  selectedYear,
-                  defaultTopProductName,
-                  isDemoMode ? "demo" : "live",
-                ].join("-")}
-                embedded
-                countryNameProp={isDemoMode ? "global" : initialCountryName}
-                rangeProp={range as "monthly" | "quarterly" | "yearly"}
-                selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
-                selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
-                selectedYearProp={isDemoMode ? "NA" as any : selectedYear ? Number(selectedYear) : ""}
-                initialProductName={defaultTopProductName || "Demo Product A"}
-              />
-            </div>
-
-          )} */}
-
-          {activeTab === "skuwiseProfit" && allDropdownsSelected && (
             <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
               {(() => {
                 const productWiseRange =
@@ -5711,7 +5808,70 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 );
               })()}
             </div>
-          )}
+          )} */}
+
+          {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+  <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+    {(() => {
+      const productWiseRange =
+        range === "quarterly" ? "quarterly" : "yearly";
+
+      const hasRealSkuRowsForProductWise =
+        !isDemoMode &&
+        !skuNoDataFound &&
+        Array.isArray(skuRows) &&
+        skuRows.some((row: any) => {
+          const productName = String(row?.product_name || "").trim().toLowerCase();
+          const sku = String(row?.sku || "").trim().toLowerCase();
+
+          const isTotalRow = productName === "total" || sku === "total";
+          if (isTotalRow) return false;
+
+          return (
+            toNum(row?.net_sales) !== 0 ||
+            toNum(row?.total_quantity) !== 0 ||
+            toNum(row?.quantity) !== 0 ||
+            toNum(row?.profit) !== 0 ||
+            toNum(row?.cm2_profit) !== 0
+          );
+        });
+
+      const productWiseInitialProductName = isDemoMode
+        ? defaultTopProductName || "Demo Product A"
+        : hasRealSkuRowsForProductWise
+          ? defaultTopProductName
+          : "";
+
+      return (
+        <ProductwisePerformance
+          key={[
+            initialCountryName,
+            productWiseRange,
+            selectedQuarter,
+            selectedYear,
+            productWiseInitialProductName || "no-product",
+            isDemoMode ? "demo" : "live",
+          ].join("-")}
+          embedded
+          countryNameProp={isDemoMode ? "global" : initialCountryName}
+          rangeProp={productWiseRange}
+          selectedMonthProp={isDemoMode ? "NA" : ""}
+          selectedQuarterProp={
+            isDemoMode
+              ? ""
+              : productWiseRange === "quarterly"
+                ? selectedQuarter
+                : ""
+          }
+          selectedYearProp={
+            isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+          }
+          initialProductName={productWiseInitialProductName}
+        />
+      );
+    })()}
+  </div>
+)}
 
           {activeTab === "cashFlow" && allDropdownsSelected && (
 

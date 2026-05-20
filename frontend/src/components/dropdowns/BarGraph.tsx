@@ -556,44 +556,41 @@ const Bargraph: React.FC<BargraphProps> = ({
     onNoDataChange?.(!loading && !isPreviewMode && allValuesZero);
   }, [onNoDataChange, allValuesZero, loading, isPreviewMode]);
 
-  // if (isPreviewMode && !loading) {
-  //   return <div className="w-full h-full min-h-0" />;
-  // }
-
-  // if (allValuesZero && !loading) {
-  //   return (
-  //     <div className="flex h-full items-center justify-center text-gray-400 text-sm">
-  //       No data available
-  //     </div>
-  //   );
-  // }
+  const shouldShowNoData =
+    !loading &&
+    !isPreviewMode &&
+    (
+      allValuesZero ||
+      !chartData.datasets.length ||
+      !data.length
+    );
 
   return (
     <div className="relative w-full h-full min-h-0">
-      <div
-        className={`h-full min-h-0 `}
-      >
-        {!hideDownloadButton && (
+      <div className="h-full min-h-0">
+        {!hideDownloadButton && !shouldShowNoData && (
           <div className="flex justify-end mb-2">
             <DownloadIconButton onClick={exportToExcel} />
           </div>
         )}
 
-        <div className="w-full h-full min-h-0">
+        <div className="w-full h-full min-h-[260px]">
           {loading ? (
-            <div className="flex h-full items-center justify-center">
+            <div className="flex h-full min-h-[260px] items-center justify-center">
               <Loader fullscreen transparent />
             </div>
+          ) : shouldShowNoData ? (
+            <div className="flex h-full min-h-[260px] items-center justify-center text-sm text-gray-400">
+              No data available
+            </div>
           ) : (
-            chartData.datasets.length > 0 && (
-              <Bar
-                ref={(instance) => {
-                  chartRef.current = (instance as any) ?? null;
-                }}
-                data={chartData}
-                options={chartOptions}
-              />
-            )
+            <Bar
+              ref={(instance) => {
+                chartRef.current = (instance as any) ?? null;
+              }}
+              data={chartData}
+              options={chartOptions}
+            />
           )}
         </div>
       </div>
