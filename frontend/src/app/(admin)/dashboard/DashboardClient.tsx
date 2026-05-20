@@ -1836,6 +1836,14 @@ export default function DashboardPage() {
     }, [dbUpdatedAt, platform, isUsAmazonConnected, activeDateRegion]);
 
     const globalMtdCountryOptions = useMemo(() => {
+        // ✅ Preview / dummy mode should still show UK/US toggle + cards
+        if (shouldShowDummyUi) {
+            return [
+                { value: "uk" as const, label: "UK" },
+                { value: "us" as const, label: "US" },
+            ];
+        }
+
         const connected = new Set(
             (amazonConnections || [])
                 .map((c: any) => String(c?.country || "").toLowerCase())
@@ -1853,7 +1861,7 @@ export default function DashboardPage() {
         }
 
         return options;
-    }, [amazonConnections]);
+    }, [amazonConnections, shouldShowDummyUi]);
 
     useEffect(() => {
         if (!globalMtdCountryOptions.length) return;
@@ -9596,9 +9604,7 @@ ${pageLoading
 
                                         {platform === "global" ? (
                                             <div className="space-y-4">
-                                                {globalMtdCountryOptions.length > 0
-                                                    ? renderCountryMtdCards(globalMtdCountry)
-                                                    : null}
+                                                {renderCountryMtdCards(globalMtdCountry)}
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
