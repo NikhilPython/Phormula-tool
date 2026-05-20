@@ -2439,56 +2439,57 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     Q4: "quarter4",
   };
 
+  const buildParentSkuUrl = (
+    rangeType: RangeType,
+    monthVal: string,
+    quarterVal: string,
+    yearVal: string,
+    countryVal: string
+  ) => {
+    const isGlobal = countryVal.toLowerCase() === "global";
 
-
-
-  const buildParentSkuUrl = () => {
-    if (range === "monthly") {
-      const skuwiseFileName =
-        initialCountryName.toLowerCase() === "global"
-          ? `skuwisemonthly_${userid}_${initialCountryName}_${(selectedMonth || "").toLowerCase()}${selectedYear}_table`
-          : `skuwisemonthly_${userid}_${initialCountryName.toLowerCase()}_${(selectedMonth || "").toLowerCase()}${selectedYear}`;
-
+    if (rangeType === "monthly") {
       const url = new URL(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit`
       );
 
-      url.searchParams.set("country", initialCountryName);
-      url.searchParams.set("month", (selectedMonth || "").toLowerCase());
-      url.searchParams.set("year", String(selectedYear));
+      url.searchParams.set("country", countryVal);
+      url.searchParams.set("month", monthVal.toLowerCase());
+      url.searchParams.set("year", String(yearVal));
 
-      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
-        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      if (isGlobal && homeCurrency) {
+        url.searchParams.set("homeCurrency", homeCurrency);
       }
 
       return url.toString();
     }
 
-    if (range === "quarterly") {
-      const backendQuarter = quarterMapping[selectedQuarter] || "";
+    if (rangeType === "quarterly") {
+      const backendQuarter = quarterMapping[quarterVal] || "";
 
       const url = new URL(
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`
       );
 
       url.searchParams.set("quarter", backendQuarter);
-      url.searchParams.set("country", initialCountryName);
-      url.searchParams.set("year", String(selectedYear));
+      url.searchParams.set("country", countryVal);
+      url.searchParams.set("year", String(yearVal));
       url.searchParams.set("userid", String(userid));
 
-      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
-        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      if (isGlobal && homeCurrency) {
+        url.searchParams.set("homeCurrency", homeCurrency);
       }
 
       return url.toString();
     }
 
     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
-    url.searchParams.set("country", initialCountryName);
-    url.searchParams.set("year", String(selectedYear));
 
-    if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
-      url.searchParams.set("homeCurrency", globalHomeCurrency);
+    url.searchParams.set("country", countryVal);
+    url.searchParams.set("year", String(yearVal));
+
+    if (isGlobal && homeCurrency) {
+      url.searchParams.set("homeCurrency", homeCurrency);
     }
 
     return url.toString();
@@ -2540,6 +2541,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     isDemoMode ? DEMO_SKU_ROWS : []
   );
 
+  const [skuRowsLoading, setSkuRowsLoading] = useState(false);
+  const [skuRowsError, setSkuRowsError] = useState<string | null>(null);
+  const [skuNoDataFound, setSkuNoDataFound] = useState(false);
+
+  const shouldShowPreviewData =
+    isDemoMode ||
+    !allDropdownsSelected;
+
+  const displaySkuRows = shouldShowPreviewData ? DEMO_SKU_ROWS : skuRows;
+  const displaySkuLoading = shouldShowPreviewData ? false : skuRowsLoading;
+  const displaySkuError = shouldShowPreviewData ? null : skuRowsError;
+  const displaySkuNoDataFound = shouldShowPreviewData ? false : skuNoDataFound;
 
   const [showAmazonFetchSuccess, setShowAmazonFetchSuccess] = useState(false);
   const [showAmazonAdsConnect, setShowAmazonAdsConnect] = useState(false);
@@ -2647,7 +2660,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const nameToSkuMap = useMemo(() => {
     const map: Record<string, string> = {};
 
-    for (const r of skuRows || []) {
+    for (const r of displaySkuRows || []) {
       const name = normalizeKey(String((r as any).product_name ?? ""));
       const sku = String((r as any).sku ?? "").trim();
 
@@ -2655,7 +2668,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
 
     return map;
-  }, [skuRows]);
+  }, [displaySkuRows]);
 
 
 
@@ -2758,7 +2771,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
+  const { topData, bottomData } = useMemo(
+    () => computeTopBottom5(displaySkuRows),
+    [displaySkuRows]
+  );
 
   const defaultTopProductName = useMemo(() => {
     const first = topData?.rows?.[0];
@@ -2836,6 +2852,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         ? uploadsData.summary
         : zeroData;
 
+        
   // range: "monthly" | "quarterly" | "yearly"
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
     setRange(v);
@@ -2875,12 +2892,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
 
-    const skuwiseFileName = isGlobal
-      ? `skuwisemonthly_${userid}_${countryVal}_${monthVal.toLowerCase()}${yearVal}_table`
-      : `skuwisemonthly_${userid}_${countryVal.toLowerCase()}_${monthVal.toLowerCase()}${yearVal}`;
-
     const url = new URL(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit`
     );
 
     url.searchParams.set("country", countryVal);
@@ -2981,28 +2994,31 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ) => {
     if (isDemoMode) {
       setLoading(false);
+      setSkuRowsLoading(false);
+      setSkuRowsError(null);
+      setSkuNoDataFound(false);
+
       setUploadsData(DEMO_UPLOAD_HISTORY);
+      setSkuRows(DEMO_SKU_ROWS);
       return;
     }
+
     if (!rangeType || !yearVal) return;
 
     setLoading(true);
+    setSkuRowsLoading(true);
+    setSkuRowsError(null);
+    setSkuNoDataFound(false);
+
     try {
       const token =
         typeof window !== "undefined"
           ? localStorage.getItem("jwtToken")
           : null;
 
-      const url = new URL(buildParentSkuUrl());
-      url.searchParams.set("range", rangeType);
-      url.searchParams.set("month", monthVal);
-      url.searchParams.set("quarter", quarterVal);
-      url.searchParams.set("year", yearVal);
-      url.searchParams.set("country", country);
-
-      if (country.toLowerCase() === "global" && homeCurrency) {
-        url.searchParams.set("homeCurrency", homeCurrency);
-      }
+      const url = new URL(
+        buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country)
+      );
 
       const res = await fetch(url.toString(), {
         method: "GET",
@@ -3013,6 +3029,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error(`API Error: ${err?.error ?? res.statusText}`);
+
+        setSkuRows([]);
+        setSkuNoDataFound(true);
+
+        // This is not a red error. It just means selected period has no data.
+        setSkuRowsError(null);
+
+        setUploadsData(null);
+        setBargraphUploads([]);
+        setBargraphLoading(false);
+
         return;
       }
 
@@ -3055,10 +3082,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         country
       );
 
-      const normalizedCurrentRows = normalizeRowsForParent(finalRaw?.current_data ?? []);
+      const normalizedCurrentRows = normalizeRowsForParent(
+        finalRaw?.current_data ?? finalRaw?.data ?? []
+      );
+
+      if (!normalizedCurrentRows.length) {
+        setSkuRows([]);
+        setSkuNoDataFound(true);
+
+        // This should show empty table, not red error.
+        setSkuRowsError(null);
+
+        setUploadsData(data);
+        setBargraphUploads([]);
+        setBargraphLoading(false);
+        return;
+      }
 
       setUploadsData(data);
       setSkuRows(normalizedCurrentRows);
+      setSkuNoDataFound(false);
+      setSkuRowsError(null);
 
       // Make P&L BarGraph use the same /skutableprofit data as cards
       setBargraphUploads(buildUploadRowFromSkuRows(normalizedCurrentRows));
@@ -3075,11 +3119,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           markFetched(yearVal);
         }
       }
-
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching data: ", error);
+
+      setSkuRows([]);
+      setSkuNoDataFound(true);
+      setSkuRowsError(error?.message || "Error fetching SKU data");
+      setUploadsData(null);
+      setBargraphUploads([]);
     } finally {
       setLoading(false);
+      setSkuRowsLoading(false);
     }
   };
 
@@ -4005,91 +4055,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   }, [showNoDataOverlay]);
 
-
-  // useEffect(() => {
-  //   if (isDemoMode) {
-  //     setBargraphUploads(DEMO_UPLOADS);
-  //     setBargraphUserMeta({
-  //       company_name: "Demo Company",
-  //       brand_name: "Demo Brand",
-  //     });
-  //     setBargraphLoading(false);
-  //     return;
-  //   }
-  //   if (!range || !selectedYear) return;
-
-  //   const ready =
-  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-  //     (range === "yearly" && !!selectedYear);
-
-  //   if (!ready) {
-  //     setBargraphUploads([]);
-  //     return;
-  //   }
-
-  //   const fetchBargraphData = async () => {
-  //     setBargraphLoading(true);
-
-  //     try {
-  //       const token =
-  //         typeof window !== "undefined"
-  //           ? localStorage.getItem("jwtToken")
-  //           : null;
-
-  //       const timeline =
-  //         range === "monthly"
-  //           ? monthNameToNumber(selectedMonth)
-  //           : range === "quarterly"
-  //             ? selectedQuarter
-  //             : "ALL";
-
-  //       const url = new URL(
-  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
-  //       );
-
-  //       url.searchParams.set("country", countryName);
-  //       url.searchParams.set("period", range);
-  //       url.searchParams.set("timeline", String(timeline));
-  //       url.searchParams.set("year", String(selectedYear));
-
-  //       if (countryName.toLowerCase() === "global" && homeCurrency) {
-  //         url.searchParams.set("homeCurrency", homeCurrency);
-  //       }
-
-  //       const res = await fetch(url.toString(), {
-  //         method: "GET",
-  //         headers: token ? { Authorization: `Bearer ${token}` } : {},
-  //         cache: "no-store",
-  //       });
-
-  //       if (!res.ok) {
-  //         setBargraphUploads([]);
-  //         return;
-  //       }
-
-  //       const data = await res.json();
-
-  //       setBargraphUploads(data.uploads ?? []);
-  //       setBargraphUserMeta(data.userMeta ?? null);
-  //     } catch (err) {
-  //       setBargraphUploads([]);
-  //     } finally {
-  //       setBargraphLoading(false);
-  //     }
-  //   };
-
-  //   fetchBargraphData();
-  // }, [
-  //   range,
-  //   selectedMonth,
-  //   selectedQuarter,
-  //   selectedYear,
-  //   countryName,
-  //   homeCurrency,
-  //   isDemoMode,
-  // ]);
-
   useEffect(() => {
     if (isDemoMode) {
       setBargraphUploads(DEMO_UPLOADS);
@@ -4101,8 +4066,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    // BarGraph data is now set inside fetchUploadHistory()
-    // from /skutableprofit, so do not fetch /upload_history here.
     setBargraphLoading(false);
   }, [isDemoMode]);
 
@@ -4414,23 +4377,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     countryVal: string,
     token: string | null
   ): Promise<UploadRow[]> => {
-    const isGlobal = countryVal.toLowerCase() === "global";
-
-    const skuwiseFileName = isGlobal
-      ? `skuwisemonthly_${userid}_${countryVal}_${monthVal.toLowerCase()}${yearVal}_table`
-      : `skuwisemonthly_${userid}_${countryVal.toLowerCase()}_${monthVal.toLowerCase()}${yearVal}`;
-
-    const url = new URL(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
-    );
-
-    url.searchParams.set("country", countryVal);
-    url.searchParams.set("month", monthVal.toLowerCase());
-    url.searchParams.set("year", String(yearVal));
-
-    if (isGlobal && homeCurrency) {
-      url.searchParams.set("homeCurrency", homeCurrency);
-    }
+    const url = buildMonthlySkuUrl(monthVal, yearVal, countryVal);
 
     const res = await fetch(url.toString(), {
       method: "GET",
@@ -5679,15 +5626,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 year={isDemoMode ? "NA" : selectedYear}
                 countryName={isDemoMode ? "global" : initialCountryName}
                 homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                rows={displaySkuRows}
+                loading={displaySkuLoading}
+                error={displaySkuError}
+                noDataFound={displaySkuNoDataFound}
+                userMeta={{
+                  brand_name: userData?.brand_name,
+                  company_name: userData?.company_name,
+                }}
                 onExportPayloadChange={setSkuExportPayload}
-                onRowsChange={setSkuRows}
+                hideDownloadButton
+                disableInternalFade={shouldShowPreviewData}
               />
 
-              {skuRows.length > 0 && (
+              {!displaySkuNoDataFound && displaySkuRows.length > 0 && (
                 <SkuTopBottomTables
                   topData={topData}
                   bottomData={bottomData}
                   currencySymbol={currencySymbol}
+                  previewMode={shouldShowPreviewData}
                 />
               )}
             </div>

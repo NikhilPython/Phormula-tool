@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { jwtDecode } from "jwt-decode";
+// import { jwtDecode } from "jwt-decode";
 import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
 import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
@@ -46,10 +46,19 @@ type SKUtableProps = {
   year: string | number;
   countryName: string;
   homeCurrency?: string;
+
+  rows: TableRow[];
+  loading?: boolean;
+  error?: string | null;
+  noDataFound?: boolean;
+  userMeta?: {
+    brand_name?: string;
+    company_name?: string;
+  } | null;
+
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
-  onRowsChange?: (rows: TableRow[]) => void;
   disableInternalFade?: boolean;
 };
 
@@ -156,10 +165,10 @@ type Totals = {
   net_reimbursement: number;
 };
 
-type JwtPayload = {
-  user_id?: string | number;
-  [k: string]: unknown;
-};
+// type JwtPayload = {
+//   user_id?: string | number;
+//   [k: string]: unknown;
+// };
 
 /* ---------- Helpers ---------- */
 
@@ -356,43 +365,22 @@ const SKUtable: React.FC<SKUtableProps> = ({
   year,
   countryName,
   homeCurrency,
+
+  rows,
+  loading = false,
+  error = null,
+  noDataFound = false,
+  userMeta = null,
+
   onExportPayloadChange,
   hideDownloadButton = false,
   onDownload,
-  onRowsChange,
   disableInternalFade = false,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showModal2, setShowModal2] = useState(false);
   const [mainColCount, setMainColCount] = useState(0);
-  const [noDataFound, setNoDataFound] = useState(false);
-  const [tableData, setTableData] = useState<TableRow[]>([]);
-  const [totals, setTotals] = useState<Totals>({
-    advertising_total: 0,
-    visible_ads: 0,
-    dealsvouchar_ads: 0,
-    other_transactions: 0,
-    platform_fee: 0,
-    inventory_storage_fees: 0,
-    misc_transaction: 0,
-    reimbursement_lost_inventory_amount: 0,
-    reimbursement_lost_inventory_units: 0,
-    shipment_charges: 0,
-    reimbursement_vs_sales: 0,
-    cm2_profit: 0,
-    cm2_margins: 0,
-    acos: 0,
-    rembursment_vs_cm2_margins: 0,
-    profit: 0,
-    net_sales: 0,
-    lost_total: 0,
-    net_reimbursement: 0,
-  });
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [userData, setUserData] = useState<{ brand_name?: string; company_name?: string } | null>(null);
   const [summaryCollapsed, setSummaryCollapsed] = useState({
     ads: true,
     other: true,
@@ -404,15 +392,23 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
+  const tableData = rows || [];
+
+  const totals = useMemo(() => {
+    return computeTotalsFromLastRow(tableData);
+  }, [tableData]);
+
+  const userData = userMeta;
+
   const isPreviewMode =
     String(month).toUpperCase() === "NA" ||
     String(year).toUpperCase() === "NA";
 
   // Token (memo once)
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("jwtToken");
-  }, []);
+  // const token = useMemo(() => {
+  //   if (typeof window === "undefined") return null;
+  //   return localStorage.getItem("jwtToken");
+  // }, []);
 
   // Persist homeCurrency for global
   const [persistedHomeCurrency, setPersistedHomeCurrency] = useState<string>(() => {
@@ -437,15 +433,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ? getCurrencySymbol(effectiveHomeCurrency || "usd")
     : getCurrencySymbol(countryName || "");
 
-  const userid = useMemo(() => {
-    if (!token) return "";
-    try {
-      const decoded = jwtDecode<JwtPayload>(token);
-      return decoded?.user_id ?? "";
-    } catch {
-      return "";
-    }
-  }, [token]);
+  // const userid = useMemo(() => {
+  //   if (!token) return "";
+  //   try {
+  //     const decoded = jwtDecode<JwtPayload>(token);
+  //     return decoded?.user_id ?? "";
+  //   } catch {
+  //     return "";
+  //   }
+  // }, [token]);
 
   const getDisplayProductNameFromRow = useCallback((row: TableRow): string => {
     if (!isMissingName(row.product_name)) return String(row.product_name);
@@ -985,137 +981,137 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : `SKU-wise Profitability-Year'${yearShort}`;
 
   // Dummy table data
-  const previewTableData: TableRow[] = useMemo(
-    () => [
-      {
-        product_name: "Dummy Product 1",
-        sku: "SKU-A",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-      {
-        product_name: "Dummy Product 2",
-        sku: "SKU-B",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-      {
-        product_name: "Dummy Product 3",
-        sku: "SKU-C",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-      {
-        product_name: "Dummy Product 4",
-        sku: "SKU-D",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-      {
-        product_name: "Dummy Product 5",
-        sku: "SKU-E",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-      {
-        product_name: "Total",
-        sku: "-",
-        units_sold: 0,
-        return_units: 0,
-        net_units_sold: 0,
-        asp: 0,
-        product_sales: 0,
-        refund_sales: 0,
-        net_sales: 0,
-        cost_of_unit_sold: 0,
-        selling_fees: 0,
-        fba_fees: 0,
-        amazon_fee: 0,
-        net_credits: 0,
-        net_taxes: 0,
-        other_transactions: 0,
-        profit: 0,
-        profit_percentage: 0,
-        unit_wise_profitability: 0,
-      },
-    ],
-    []
-  );
+  // const previewTableData: TableRow[] = useMemo(
+  //   () => [
+  //     {
+  //       product_name: "Dummy Product 1",
+  //       sku: "SKU-A",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //     {
+  //       product_name: "Dummy Product 2",
+  //       sku: "SKU-B",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //     {
+  //       product_name: "Dummy Product 3",
+  //       sku: "SKU-C",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //     {
+  //       product_name: "Dummy Product 4",
+  //       sku: "SKU-D",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //     {
+  //       product_name: "Dummy Product 5",
+  //       sku: "SKU-E",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //     {
+  //       product_name: "Total",
+  //       sku: "-",
+  //       units_sold: 0,
+  //       return_units: 0,
+  //       net_units_sold: 0,
+  //       asp: 0,
+  //       product_sales: 0,
+  //       refund_sales: 0,
+  //       net_sales: 0,
+  //       cost_of_unit_sold: 0,
+  //       selling_fees: 0,
+  //       fba_fees: 0,
+  //       amazon_fee: 0,
+  //       net_credits: 0,
+  //       net_taxes: 0,
+  //       other_transactions: 0,
+  //       profit: 0,
+  //       profit_percentage: 0,
+  //       unit_wise_profitability: 0,
+  //     },
+  //   ],
+  //   []
+  // );
 
   const CustomModal: React.FC<React.PropsWithChildren<{ onClose: () => void }>> = ({ onClose, children }) => {
     return (
@@ -1131,100 +1127,109 @@ const SKUtable: React.FC<SKUtableProps> = ({
   };
 
   /* --------- Fetch user data --------- */
-  useEffect(() => {
-    if (!token) {
-      setError("No token found. Please log in.");
-      return;
-    }
+  // useEffect(() => {
+  //   if (!token) {
+  //     setError("No token found. Please log in.");
+  //     return;
+  //   }
 
-    const ac = new AbortController();
+  //   const ac = new AbortController();
 
-    (async () => {
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-          signal: ac.signal,
-        });
+  //   (async () => {
+  //     try {
+  //       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
+  //         method: "GET",
+  //         headers: { Authorization: `Bearer ${token}` },
+  //         cache: "no-store",
+  //         signal: ac.signal,
+  //       });
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setError(data?.error || "Something went wrong.");
-          return;
-        }
+  //       if (!res.ok) {
+  //         const data = await res.json().catch(() => ({}));
+  //         setError(data?.error || "Something went wrong.");
+  //         return;
+  //       }
 
-        const data = (await res.json()) as { brand_name?: string; company_name?: string };
-        setUserData(data);
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        setError("Error fetching user data");
-      }
-    })();
+  //       const data = (await res.json()) as { brand_name?: string; company_name?: string };
+  //       setUserData(data);
+  //     } catch (e: any) {
+  //       if (e?.name === "AbortError") return;
+  //       setError("Error fetching user data");
+  //     }
+  //   })();
 
-    return () => ac.abort();
-  }, [token]);
+  //   return () => ac.abort();
+  // }, [token]);
 
   // Quarter mapping
-  const quarterMapping: Record<string, string> = useMemo(
-    () => ({ Q1: "quarter1", Q2: "quarter2", Q3: "quarter3", Q4: "quarter4" }),
-    []
-  );
+  // const quarterMapping: Record<string, string> = useMemo(
+  //   () => ({ Q1: "quarter1", Q2: "quarter2", Q3: "quarter3", Q4: "quarter4" }),
+  //   []
+  // );
 
-  const buildSkuUrl = useCallback(() => {
-    if (range === "monthly") {
-      const skuwiseFileName =
-        countryName.toLowerCase() === "global"
-          ? `skuwisemonthly_${userid}_${countryName}_${(month || "").toLowerCase()}${year}_table`
-          : `skuwisemonthly_${userid}_${countryName.toLowerCase()}_${(month || "").toLowerCase()}${year}`;
+  // const buildSkuUrl = useCallback(() => {
+  //   if (range === "monthly") {
+  //     const skuwiseFileName =
+  //       countryName.toLowerCase() === "global"
+  //         ? `skuwisemonthly_${userid}_${countryName}_${(month || "").toLowerCase()}${year}_table`
+  //         : `skuwisemonthly_${userid}_${countryName.toLowerCase()}_${(month || "").toLowerCase()}${year}`;
 
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`);
-      url.searchParams.set("country", countryName);
-      url.searchParams.set("month", (month || "").toLowerCase());
-      url.searchParams.set("year", String(year));
+  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`);
+  //     url.searchParams.set("country", countryName);
+  //     url.searchParams.set("month", (month || "").toLowerCase());
+  //     url.searchParams.set("year", String(year));
 
-      if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-      return url.toString();
-    }
+  //     if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
+  //     return url.toString();
+  //   }
 
-    if (range === "quarterly") {
-      const backendQuarter = quarterMapping[quarter] || "";
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`);
-      url.searchParams.set("quarter", backendQuarter);
-      url.searchParams.set("country", countryName);
-      url.searchParams.set("year", String(year));
-      url.searchParams.set("userid", String(userid));
+  //   if (range === "quarterly") {
+  //     const backendQuarter = quarterMapping[quarter] || "";
+  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`);
+  //     url.searchParams.set("quarter", backendQuarter);
+  //     url.searchParams.set("country", countryName);
+  //     url.searchParams.set("year", String(year));
+  //     url.searchParams.set("userid", String(userid));
 
-      if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-      return url.toString();
-    }
+  //     if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
+  //     return url.toString();
+  //   }
 
-    // yearly
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
-    url.searchParams.set("country", countryName);
-    url.searchParams.set("year", String(year));
+  //   // yearly
+  //   const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
+  //   url.searchParams.set("country", countryName);
+  //   url.searchParams.set("year", String(year));
 
-    if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-    return url.toString();
-  }, [
-    range,
-    countryName,
-    userid,
-    month,
-    year,
-    quarter,
-    quarterMapping,
-    isGlobalPage,
-    effectiveHomeCurrency,
-  ]);
+  //   if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
+  //   return url.toString();
+  // }, [
+  //   range,
+  //   countryName,
+  //   userid,
+  //   month,
+  //   year,
+  //   quarter,
+  //   quarterMapping,
+  //   isGlobalPage,
+  //   effectiveHomeCurrency,
+  // ]);
 
-  /* --------- Fetch table data (AbortController to prevent race) --------- */
   // useEffect(() => {
   //   if (!countryName) return;
 
   //   const ac = new AbortController();
 
   //   (async () => {
+  //     if (isPreviewMode) {
+  //       setLoading(false);
+  //       setError(null);
+  //       setNoDataFound(false);
+  //       setTableData(previewTableData);
+  //       setTotals(computeTotalsFromLastRow(previewTableData));
+  //       onRowsChange?.(previewTableData);
+  //       return;
+  //     }
+
   //     setLoading(true);
   //     setError(null);
 
@@ -1244,22 +1249,29 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //         return;
   //       }
 
-  //       const data = (await res.json()) as unknown;
+  //       const raw = (await res.json()) as any;
 
-  //       if (!Array.isArray(data) || data.length === 0) {
+  //       const rows =
+  //         Array.isArray(raw)
+  //           ? raw
+  //           : Array.isArray(raw.current_data)
+  //             ? raw.current_data
+  //             : Array.isArray(raw.data)
+  //               ? raw.data
+  //               : [];
+
+  //       if (rows.length === 0) {
   //         setNoDataFound(true);
   //         setTableData([]);
   //         return;
   //       }
 
-  //       const normalized = normalizeRows(data);
+  //       const normalized = normalizeRows(rows);
+
   //       setTableData(normalized);
   //       setTotals(computeTotalsFromLastRow(normalized));
   //       setNoDataFound(false);
-
-  //       // ✅ NEW: expose rows to parent
   //       onRowsChange?.(normalized);
-
   //     } catch (e: any) {
   //       if (e?.name === "AbortError") return;
   //       setNoDataFound(true);
@@ -1270,77 +1282,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //   })();
 
   //   return () => ac.abort();
-  // }, [countryName, buildSkuUrl, token, dummyTableData]);
-
-  useEffect(() => {
-    if (!countryName) return;
-
-    const ac = new AbortController();
-
-    (async () => {
-      if (isPreviewMode) {
-        setLoading(false);
-        setError(null);
-        setNoDataFound(false);
-        setTableData(previewTableData);
-        setTotals(computeTotalsFromLastRow(previewTableData));
-        onRowsChange?.(previewTableData);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const url = buildSkuUrl();
-
-        const res = await fetch(url, {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-          signal: ac.signal,
-        });
-
-        if (!res.ok) {
-          setNoDataFound(true);
-          setTableData([]);
-          return;
-        }
-
-        const raw = (await res.json()) as any;
-
-        const rows =
-          Array.isArray(raw)
-            ? raw
-            : Array.isArray(raw.current_data)
-              ? raw.current_data
-              : Array.isArray(raw.data)
-                ? raw.data
-                : [];
-
-        if (rows.length === 0) {
-          setNoDataFound(true);
-          setTableData([]);
-          return;
-        }
-
-        const normalized = normalizeRows(rows);
-
-        setTableData(normalized);
-        setTotals(computeTotalsFromLastRow(normalized));
-        setNoDataFound(false);
-        onRowsChange?.(normalized);
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        setNoDataFound(true);
-        setTableData([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-
-    return () => ac.abort();
-  }, [countryName, buildSkuUrl, token, isPreviewMode, previewTableData, onRowsChange]);
+  // }, [countryName, buildSkuUrl, token, isPreviewMode, previewTableData, onRowsChange]);
 
   useEffect(() => {
     if (!tableData || tableData.length === 0) return;
@@ -1355,8 +1297,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
       periodLabel,
       range,
       countryName,
-
-      // ✅ NEW: parent will export EXACTLY what UI uses
       sheetModel: buildSkuSheetModel(),
     });
   }, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
@@ -1477,7 +1417,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
             <div className="min-w-full">
               <GroupedCollapsibleTable<TableRow>
-                rows={isPreviewMode ? displayRows : noDataFound ? [] : displayRows}
+                rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
@@ -1675,7 +1615,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   valueCols: 2,
                 }}
               />
-              {!isPreviewMode && noDataFound && (
+              {noDataFound && (
                 <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
                   No Data Available for selected period
                 </div>

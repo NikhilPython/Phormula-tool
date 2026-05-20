@@ -903,13 +903,98 @@ def resolve_country(country, currency):
     # 3. Default (no special logic)
     return country
 
-@product_bp.route('/skutableprofit/<string:skuwise_file_name>', methods=['GET'])
-def skutableprofit(skuwise_file_name):
+# @product_bp.route('/skutableprofit/<string:skuwise_file_name>', methods=['GET'])
+# def skutableprofit(skuwise_file_name):
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     try:
+#         engine = user_engine
+
+#         country_param = request.args.get('country', '')
+#         currency_param = (request.args.get('homeCurrency') or '').lower()
+
+#         country = resolve_country(country_param, currency_param)
+#         month = (request.args.get('month') or '').strip().lower()
+#         year = (request.args.get('year') or '').strip()
+
+#         # Current table name
+#         if country and month and year:
+#             table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+#         else:
+#             table_name = skuwise_file_name
+
+#         metadata = MetaData(schema='public')
+
+#         def _fetch_as_dicts(tbl_name):
+#             user_specific_table = Table(tbl_name, metadata, autoload_with=engine)
+#             with engine.connect() as conn:
+#                 results = conn.execute(
+#                     select(*user_specific_table.columns)
+#                 ).mappings().all()
+
+#             return [_normalize_sku_row(dict(row)) for row in results]
+
+#         try:
+#             current_data = _fetch_as_dicts(table_name)
+#         except Exception:
+#             if table_name != skuwise_file_name:
+#                 try:
+#                     table_name = skuwise_file_name
+#                     current_data = _fetch_as_dicts(table_name)
+#                 except Exception:
+#                     return jsonify({
+#                         'error': f"Table '{table_name}' or '{skuwise_file_name}' not found for user {user_id}"
+#                     }), 404
+#             else:
+#                 return jsonify({
+#                     'error': f"Table '{table_name}' not found for user {user_id}"
+#                 }), 404
+
+#         previous_table_name = None
+#         previous_data = []
+
+#         if country and month and year:
+#             prev_month, prev_year = get_previous_month(month, year)
+
+#             if prev_month and prev_year:
+#                 previous_table_name = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}".lower()
+
+#                 try:
+#                     previous_data = _fetch_as_dicts(previous_table_name)
+#                 except Exception:
+#                     previous_data = []
+
+#         return jsonify({
+#             "current_table_name": table_name,
+#             "current_data": current_data,
+#             "previous_table_name": previous_table_name,
+#             "previous_data": previous_data
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({
+#             'error': 'An unexpected error occurred',
+#             'message': str(e)
+#         }), 500
+    
+@product_bp.route('/skutableprofit', methods=['GET'])
+def skutableprofit():
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
@@ -927,16 +1012,18 @@ def skutableprofit(skuwise_file_name):
         month = (request.args.get('month') or '').strip().lower()
         year = (request.args.get('year') or '').strip()
 
-        # Current table name
-        if country and month and year:
-            table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
-        else:
-            table_name = skuwise_file_name
+        if not country or not month or not year:
+            return jsonify({
+                'error': 'country, month, and year are required'
+            }), 400
+
+        table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
 
         metadata = MetaData(schema='public')
 
         def _fetch_as_dicts(tbl_name):
             user_specific_table = Table(tbl_name, metadata, autoload_with=engine)
+
             with engine.connect() as conn:
                 results = conn.execute(
                     select(*user_specific_table.columns)
@@ -947,32 +1034,22 @@ def skutableprofit(skuwise_file_name):
         try:
             current_data = _fetch_as_dicts(table_name)
         except Exception:
-            if table_name != skuwise_file_name:
-                try:
-                    table_name = skuwise_file_name
-                    current_data = _fetch_as_dicts(table_name)
-                except Exception:
-                    return jsonify({
-                        'error': f"Table '{table_name}' or '{skuwise_file_name}' not found for user {user_id}"
-                    }), 404
-            else:
-                return jsonify({
-                    'error': f"Table '{table_name}' not found for user {user_id}"
-                }), 404
+            return jsonify({
+                'error': f"Table '{table_name}' not found for user {user_id}"
+            }), 404
 
         previous_table_name = None
         previous_data = []
 
-        if country and month and year:
-            prev_month, prev_year = get_previous_month(month, year)
+        prev_month, prev_year = get_previous_month(month, year)
 
-            if prev_month and prev_year:
-                previous_table_name = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}".lower()
+        if prev_month and prev_year:
+            previous_table_name = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}".lower()
 
-                try:
-                    previous_data = _fetch_as_dicts(previous_table_name)
-                except Exception:
-                    previous_data = []
+            try:
+                previous_data = _fetch_as_dicts(previous_table_name)
+            except Exception:
+                previous_data = []
 
         return jsonify({
             "current_table_name": table_name,
@@ -986,8 +1063,6 @@ def skutableprofit(skuwise_file_name):
             'error': 'An unexpected error occurred',
             'message': str(e)
         }), 500
-    
-
 
 
 @product_bp.route('/get_table_data/<string:file_name>', methods=['GET'])

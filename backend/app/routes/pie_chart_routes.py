@@ -484,10 +484,73 @@ def generate_pie_chart():
         df = None
         used_table = None
 
+        # ---------------- Fetch current data ----------------
+        df = None
+        used_table = None
+
+        rt = (range_type or "").strip().lower()
+        month_str = str(month or "").strip().lower()
+        year_str = str(year or "").strip()
+
+        is_monthly_request = (
+            rt == "monthly"
+            or (month_str and year_str and not quarter and not is_quarter_format(month_str))
+        )
+
         if table_type == 'auto':
-            df, used_table = _fetch_best_table_auto(user_id, country, month, year, quarter, range_type)
+            # ✅ IMPORTANT:
+            # If user explicitly passes month + year, do not use "best available" fallback.
+            # Fetch only the exact monthly table for that month/year.
+            if is_monthly_request:
+                if not month_str or not year_str:
+                    return jsonify({
+                        "error": "month and year are required for monthly pie chart"
+                    }), 400
+
+                # If frontend sends month number like "4", convert to "april"
+                if month_str.isdigit():
+                    month_str = datetime(2000, int(month_str), 1).strftime("%B").lower()
+
+                table_name = f"skuwisemonthly_{user_id}_{country}_{month_str}{year_str}".lower()
+
+                df = fetch_data_from_table(table_name)
+
+                if df is not None and not df.empty:
+                    used_table = table_name
+                else:
+                    return jsonify({
+                        "error": "No data available for selected month and year",
+                        "table_checked": table_name,
+                        "parameters": {
+                            "user_id": user_id,
+                            "country": country,
+                            "month": month_str,
+                            "year": year_str,
+                            "range_type": range_type
+                        }
+                    }), 404
+
+            else:
+                # Keep existing auto behavior for quarterly/yearly
+                df, used_table = _fetch_best_table_auto(
+                    user_id,
+                    country,
+                    month,
+                    year,
+                    quarter,
+                    range_type
+                )
+
         else:
-            table_names = get_table_name_by_type(user_id, country, table_type, month, year, quarter)
+            table_names = get_table_name_by_type(
+                user_id,
+                country,
+                table_type,
+                month,
+                year,
+                quarter
+            )
+
             if not table_names:
                 return jsonify({'error': 'Invalid parameters for specified table type'}), 400
 

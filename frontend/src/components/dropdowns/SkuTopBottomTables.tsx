@@ -22,12 +22,76 @@ type TopBottomData = {
 };
 
 type Props = {
-  topData: TopBottomData;
-  bottomData: TopBottomData;
+  topData?: TopBottomData | null;
+  bottomData?: TopBottomData | null;
   currencySymbol: string;
+  previewMode?: boolean;
 };
 
-const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymbol }) => {
+const EMPTY_TOTALS = {
+  profit: "0.00",
+  profitMix: "0.00",
+  salesMix: "0.00",
+  avg_cm1: "0.00",
+};
+
+const DEMO_TOP_BOTTOM_DATA: TopBottomData = {
+  rows: [
+    {
+      product_name: "Dummy Product 1",
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      cm1_per_unit: "0.00",
+    },
+    {
+      product_name: "Dummy Product 2",
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      cm1_per_unit: "0.00",
+    },
+    {
+      product_name: "Dummy Product 3",
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      cm1_per_unit: "0.00",
+    },
+    {
+      product_name: "Dummy Product 4",
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      cm1_per_unit: "0.00",
+    },
+    {
+      product_name: "Dummy Product 5",
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      cm1_per_unit: "0.00",
+    },
+  ],
+  totals: EMPTY_TOTALS,
+};
+
+const SkuTopBottomTables: React.FC<Props> = ({
+  topData,
+  bottomData,
+  currencySymbol,
+  previewMode = false,
+}) => {
+  const safeTopData =
+    previewMode || !topData?.rows?.length
+      ? DEMO_TOP_BOTTOM_DATA
+      : topData;
+
+  const safeBottomData =
+    previewMode || !bottomData?.rows?.length
+      ? DEMO_TOP_BOTTOM_DATA
+      : bottomData;
+
   const formatRoundedValue = (value: string) => {
     const numberValue = Number(String(value).replace(/[^0-9.-]/g, ""));
 
@@ -39,7 +103,11 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+  <div
+  className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 ${
+    previewMode ? "opacity-45 pointer-events-none select-none" : ""
+  }`}
+>
       <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
         {/* Top 5 */}
         <div className="flex-1 min-w-0">
@@ -70,7 +138,7 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
               </thead>
 
               <tbody>
-                {topData.rows.map((item, index) => (
+                {safeTopData.rows.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
                       <span
@@ -100,16 +168,16 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
                     <strong>Total</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{formatRoundedValue(topData.totals.profit)}</strong>
+                    <strong>{formatRoundedValue(safeTopData.totals.profit)}</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{topData.totals.profitMix}%</strong>
+                    <strong>{safeTopData.totals.profitMix}%</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{topData.totals.salesMix}%</strong>
+                    <strong>{safeTopData.totals.salesMix}%</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{topData.totals.avg_cm1}</strong>
+                    <strong>{safeTopData.totals.avg_cm1}</strong>
                   </td>
                 </tr>
               </tbody>
@@ -146,7 +214,7 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
               </thead>
 
               <tbody>
-                {bottomData.rows.map((item, index) => (
+                {safeBottomData.rows.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
                       <span
@@ -176,16 +244,16 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
                     <strong>Total</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                     <strong>{formatRoundedValue(bottomData.totals.profit)}</strong>
+                    <strong>{formatRoundedValue(safeBottomData.totals.profit)}</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{bottomData.totals.profitMix}%</strong>
+                    <strong>{safeBottomData.totals.profitMix}%</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{bottomData.totals.salesMix}%</strong>
+                    <strong>{safeBottomData.totals.salesMix}%</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                    <strong>{bottomData.totals.avg_cm1}</strong>
+                    <strong>{safeBottomData.totals.avg_cm1}</strong>
                   </td>
                 </tr>
               </tbody>

@@ -1477,6 +1477,150 @@ def check_file_upload_status():
 ################################################################################################################
 # Revised upload_history with performance trend logic integrated donot delete this comment
 
+# @upload_bp.route('/upload_history', methods=['GET'])
+# def upload_history():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     # ✅ read optional params (existing)
+#     country_param = (request.args.get('country') or "").strip().lower()
+#     home_currency = (request.args.get('homeCurrency') or "").strip().lower()
+
+#     # (Optional) If you want "latest" logic stable
+#     uploads = (
+#         UploadHistory.query
+#         .filter_by(user_id=user_id)
+#         .order_by(UploadHistory.year.desc(), UploadHistory.month.desc())
+#         .all()
+#     )
+
+#     month_names = {
+#         1: 'january', 2: 'february', 3: 'march', 4: 'april',
+#         5: 'may', 6: 'june', 7: 'july', 8: 'august',
+#         9: 'september', 10: 'october', 11: 'november', 12: 'december'
+#     }
+
+#     response = []
+
+#     for upload in uploads:
+#         upload_country = (upload.country or "").strip().lower()
+
+#         # ✅ IMPORTANT FIX:
+#         # When requesting GLOBAL history:
+#         # - if homeCurrency is provided => only return global_<currency>
+#         # - else => only return base global
+#         if country_param == "global":
+#             if upload_country not in ["uk", "us"]:
+#                 continue
+
+#         # ✅ Optional: if FE passes specific country, filter by it
+#         elif country_param:
+#             if upload_country != country_param:
+#                 continue
+
+#         # Convert numeric month to month name for display
+#         month_name = month_names.get(upload.month, str(upload.month))
+#         table_name = f"user_{upload_country}_{month_name}{upload.year}_data"
+
+#         response.append({
+#             'month': month_name,
+#             'month_num': upload.month,
+#             'year': upload.year,
+#             'country': upload_country,
+#             'file_name': table_name,
+
+#             'total_sales': upload.total_sales,
+#             'total_product_sales': upload.total_product_sales,
+#             'total_profit': upload.total_profit,
+#             'total_expense': upload.total_expense,
+#             'total_fba_fees': upload.total_fba_fees,
+
+#             'platform_fee': upload.platform_fee,
+#             'rembursement_fee': upload.rembursement_fee,
+
+#             'expense_chart_img': upload.expense_chart_img,
+#             'sales_chart_img': upload.sales_chart_img,
+#             'qtd_pie_chart': upload.qtd_pie_chart,
+#             'ytd_pie_chart': upload.ytd_pie_chart,
+
+#             'total_cous': upload.total_cous,
+#             'total_amazon_fee': upload.total_amazon_fee,
+#             'profit_chart_img': upload.profit_chart_img,
+
+#             'cm2_profit': upload.cm2_profit,
+#             'cm2_margins': upload.cm2_margins,
+#             'acos': upload.acos,
+
+#             'rembursment_vs_cm2_margins': upload.rembursment_vs_cm2_margins,
+#             'advertising_total': upload.advertising_total,
+#             'reimbursement_vs_sales': upload.reimbursement_vs_sales,
+#             'taxncredit': upload.taxncredit,
+#             'unit_sold': upload.unit_sold,
+
+#             'otherwplatform': upload.platform_fee,
+#         })
+
+#     # ---------------- PERFORMANCE TREND (moved here, down below) ----------------
+#     # Make sure you have:
+#     # from utils.performance_trend import get_performance_trend
+
+#     period = (request.args.get("period") or "monthly").strip().lower()
+#     timeline = (request.args.get("timeline") or "ALL").strip().upper()
+#     year = request.args.get("year", type=int)
+
+#     metric = (request.args.get("metric", "net_sales") or "net_sales").strip().lower()
+#     if metric not in ("net_sales", "units"):
+#         metric = "net_sales"
+
+#     # Use requested country if provided, else infer from first upload, else default "uk"
+#     trend_country = country_param if country_param else (response[0]["country"] if response else "uk")
+#     trend_country = trend_country.strip().lower()
+
+#     # ✅ If FE doesn't send year, infer from filtered history (latest year available)
+#     if year is None:
+#         year = max((u["year"] for u in response), default=None)
+
+#     # ✅ Your original summary logic required monthly timeline 1..12.
+#     # If FE sends ALL for monthly, normalize it to "12" (last 12 months style)
+#     if period == "monthly" and timeline == "ALL":
+#         timeline = "12"
+
+#     performance_trend = None
+#     try:
+#         if year is not None:
+#             performance_trend = get_performance_trend(
+#                 user_id=user_id,
+#                 country=trend_country,
+#                 period=period,
+#                 timeline=timeline,
+#                 year=year,
+#             )
+#     except Exception as e:
+#         # Keep upload_history usable even if trend fails
+#         import traceback
+#         print("Unexpected error computing performance_trend in /upload_history:", e)
+#         print(traceback.format_exc())
+
+#     return jsonify({
+#         'uploads': response,
+#         'performance_trend': performance_trend,
+#         'performance_trend_metric': metric,
+#         'trend_country': trend_country,
+#         'trend_period': period,
+#         'trend_timeline': timeline,
+#         'trend_year': year,
+#     }), 200
+
+
 @upload_bp.route('/upload_history', methods=['GET'])
 def upload_history():
     auth_header = request.headers.get('Authorization')
@@ -1509,6 +1653,45 @@ def upload_history():
         9: 'september', 10: 'october', 11: 'november', 12: 'december'
     }
 
+    month_name_to_number = {
+        'january': 1, 'jan': 1,
+        'february': 2, 'feb': 2,
+        'march': 3, 'mar': 3,
+        'april': 4, 'apr': 4,
+        'may': 5,
+        'june': 6, 'jun': 6,
+        'july': 7, 'jul': 7,
+        'august': 8, 'aug': 8,
+        'september': 9, 'sep': 9, 'sept': 9,
+        'october': 10, 'oct': 10,
+        'november': 11, 'nov': 11,
+        'december': 12, 'dec': 12,
+    }
+
+    def normalize_month_number(value):
+        if value is None:
+            return None
+
+        value_str = str(value).strip().lower()
+        if not value_str:
+            return None
+
+        if value_str.isdigit():
+            month_num = int(value_str)
+            if 1 <= month_num <= 12:
+                return month_num
+            return None
+
+        return month_name_to_number.get(value_str)
+
+    def empty_performance_trend(message="No data available for selected period"):
+        return {
+            "x": [],
+            "xType": period,
+            "series": [],
+            "message": message,
+        }
+
     response = []
 
     for upload in uploads:
@@ -1516,8 +1699,7 @@ def upload_history():
 
         # ✅ IMPORTANT FIX:
         # When requesting GLOBAL history:
-        # - if homeCurrency is provided => only return global_<currency>
-        # - else => only return base global
+        # - this route combines UK + US history for global trend/pages
         if country_param == "global":
             if upload_country not in ["uk", "us"]:
                 continue
@@ -1569,12 +1751,12 @@ def upload_history():
             'otherwplatform': upload.platform_fee,
         })
 
-    # ---------------- PERFORMANCE TREND (moved here, down below) ----------------
+    # ---------------- PERFORMANCE TREND ----------------
     # Make sure you have:
     # from utils.performance_trend import get_performance_trend
 
     period = (request.args.get("period") or "monthly").strip().lower()
-    timeline = (request.args.get("timeline") or "ALL").strip().upper()
+    timeline = (request.args.get("timeline") or "ALL").strip()
     year = request.args.get("year", type=int)
 
     metric = (request.args.get("metric", "net_sales") or "net_sales").strip().lower()
@@ -1589,26 +1771,115 @@ def upload_history():
     if year is None:
         year = max((u["year"] for u in response), default=None)
 
-    # ✅ Your original summary logic required monthly timeline 1..12.
-    # If FE sends ALL for monthly, normalize it to "12" (last 12 months style)
-    if period == "monthly" and timeline == "ALL":
-        timeline = "12"
-
     performance_trend = None
+
     try:
-        if year is not None:
-            performance_trend = get_performance_trend(
-                user_id=user_id,
-                country=trend_country,
-                period=period,
-                timeline=timeline,
-                year=year,
+        if year is None:
+            performance_trend = empty_performance_trend("No year available for selected filters")
+
+        elif period == "monthly":
+            # ✅ Strict monthly behavior:
+            # Do NOT convert ALL to 12.
+            # Monthly trend must receive a real selected month.
+            requested_month_num = normalize_month_number(timeline)
+
+            if requested_month_num is None:
+                performance_trend = empty_performance_trend(
+                    "Valid monthly timeline is required. Pass timeline as month number or month name, for example April = 4."
+                )
+            else:
+                timeline = str(requested_month_num)
+
+                has_requested_month = any(
+                    int(row.get("year", 0)) == int(year)
+                    and int(row.get("month_num", 0)) == int(requested_month_num)
+                    for row in response
+                )
+
+                if not has_requested_month:
+                    performance_trend = empty_performance_trend(
+                        f"No data available for {month_names.get(requested_month_num, requested_month_num)} {year}"
+                    )
+                else:
+                    performance_trend = get_performance_trend(
+                        user_id=user_id,
+                        country=trend_country,
+                        period=period,
+                        timeline=timeline,
+                        year=year,
+                    )
+
+        elif period == "quarterly":
+            timeline = str(timeline).strip().upper()
+
+            quarter_months = {
+                "Q1": [1, 2, 3],
+                "Q2": [4, 5, 6],
+                "Q3": [7, 8, 9],
+                "Q4": [10, 11, 12],
+            }
+
+            requested_quarter_months = quarter_months.get(timeline)
+
+            if not requested_quarter_months:
+                performance_trend = empty_performance_trend(
+                    "Valid quarterly timeline is required. Pass timeline as Q1, Q2, Q3, or Q4."
+                )
+            else:
+                has_requested_quarter = any(
+                    int(row.get("year", 0)) == int(year)
+                    and int(row.get("month_num", 0)) in requested_quarter_months
+                    for row in response
+                )
+
+                if not has_requested_quarter:
+                    performance_trend = empty_performance_trend(
+                        f"No data available for {timeline} {year}"
+                    )
+                else:
+                    performance_trend = get_performance_trend(
+                        user_id=user_id,
+                        country=trend_country,
+                        period=period,
+                        timeline=timeline,
+                        year=year,
+                    )
+
+        elif period == "yearly":
+            timeline = "ALL"
+
+            has_requested_year = any(
+                int(row.get("year", 0)) == int(year)
+                for row in response
             )
+
+            if not has_requested_year:
+                performance_trend = empty_performance_trend(
+                    f"No data available for {year}"
+                )
+            else:
+                performance_trend = get_performance_trend(
+                    user_id=user_id,
+                    country=trend_country,
+                    period=period,
+                    timeline=timeline,
+                    year=year,
+                )
+
+        else:
+            performance_trend = empty_performance_trend(
+                "Invalid period. Use monthly, quarterly, or yearly."
+            )
+
     except Exception as e:
         # Keep upload_history usable even if trend fails
         import traceback
         print("Unexpected error computing performance_trend in /upload_history:", e)
         print(traceback.format_exc())
+
+        performance_trend = empty_performance_trend(
+            "Unexpected error while computing performance trend"
+        )
 
     return jsonify({
         'uploads': response,
@@ -1619,7 +1890,6 @@ def upload_history():
         'trend_timeline': timeline,
         'trend_year': year,
     }), 200
-
 
 ####################################################################################################################
 
