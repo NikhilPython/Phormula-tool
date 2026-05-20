@@ -2737,7 +2737,7 @@ export default function LiveBusinessClient({
     const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
     const showAI = Object.keys(skuInsights).length > 0;
 
-    const SNO_WIDTH = '70px';
+    const SNO_WIDTH = '65px';
     const COMMON_WIDTH = '160px';
 
     const cols: ColumnDef<BIGridRow>[] = [
