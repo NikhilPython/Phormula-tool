@@ -207,7 +207,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   };
 
   const formatPercent = (value: number) => {
-    return `${Number(value || 0).toFixed(1)}%`;
+    return `${Number(value || 0).toFixed(2)}%`;
   };
 
   const monthShort = (d: Date) =>
