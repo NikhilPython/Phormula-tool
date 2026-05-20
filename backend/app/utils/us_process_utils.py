@@ -502,7 +502,13 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         df["sku"] = df["sku"].fillna("").astype(str).str.strip()
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
-        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+        df["type_norm"] = (
+            df.get("type", pd.Series("", index=df.index))
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
 
         df["desc_key"] = df["desc_norm"].map(_norm_misc_key)
         df["type_key"] = df["type_norm"].map(_norm_misc_key)
@@ -669,10 +675,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
 
         # ---------- sales / tax / credits ----------
-        sku_grouped["Net Sales"] = (
-            pd.to_numeric(sku_grouped.get("product_sales", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("promotional_rebates", 0), errors="coerce").fillna(0)
-        )
+        sku_grouped["Net Sales"] = 0
         sku_grouped["rembursement_fee"] = 0
         sku_grouped["shipment_fees"] = 0
         sku_grouped["visible_ads"] = 0
@@ -721,15 +724,47 @@ def process_skuwise_us_data(user_id, country, month, year):
             + pd.to_numeric(sku_grouped.get("shipping_credits", 0), errors="coerce").fillna(0)
         )
 
-        sku_grouped["refund_sales"] = (
-            df[df["type_norm"] == "refund"]
-            .groupby("sku")["product_sales"]
-            .sum()
-            .abs()
-            .reindex(sku_grouped["sku"])
-            .fillna(0)
-            .values
+        # ---------- refund sales ----------
+        refund_sales_df = (
+            df.loc[
+                (df["type_norm"] == "refund")
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.strip().str.lower() != "none"),
+                ["sku", "product_sales"]
+            ]
+            .copy()
         )
+
+        refund_sales_df["sku"] = refund_sales_df["sku"].astype(str).str.strip()
+
+        refund_sales_df["product_sales"] = pd.to_numeric(
+            refund_sales_df["product_sales"],
+            errors="coerce"
+        ).fillna(0)
+
+        refund_sales_df = (
+            refund_sales_df
+            .groupby("sku", as_index=False)["product_sales"]
+            .sum()
+            .rename(columns={"product_sales": "refund_sales"})
+        )
+
+        refund_sales_df["refund_sales"] = refund_sales_df["refund_sales"].abs()
+
+        sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            refund_sales_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["refund_sales"] = pd.to_numeric(
+            sku_grouped["refund_sales"],
+            errors="coerce"
+        ).fillna(0)
 
         sku_grouped["gross_sales"] = (
             pd.to_numeric(sku_grouped.get("product_sales", 0), errors="coerce").fillna(0)
@@ -742,6 +777,11 @@ def process_skuwise_us_data(user_id, country, month, year):
             + pd.to_numeric(sku_grouped.get("gift_wrap_credits", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
+        )
+        sku_grouped["Net Sales"] = (
+            pd.to_numeric(sku_grouped["gross_sales"], errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped["refund_sales"], errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped["tex_and_credits"], errors="coerce").fillna(0)
         )
         sku_grouped["other_transaction_fees"] = (
             pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
@@ -758,12 +798,11 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["cost_of_unit_sold"] = sku_grouped["price_in_gbp"] * sku_grouped["total_quantity"]
 
         sku_grouped["profit"] = (
-            abs(sku_grouped["Net Sales"])
-            + abs(sku_grouped["Net Credits"])
-            - abs(sku_grouped["Net Taxes"])
-            - abs(sku_grouped["amazon_fee"])
-            - abs(sku_grouped["cost_of_unit_sold"])
-            - abs(sku_grouped["promotional_rebates"])
+            pd.to_numeric(sku_grouped["Net Sales"], errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped["cost_of_unit_sold"], errors="coerce").fillna(0).abs()
+            - pd.to_numeric(sku_grouped["amazon_fee"], errors="coerce").fillna(0).abs()
+            - pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
+            + pd.to_numeric(sku_grouped["Net Credits"], errors="coerce").fillna(0)
         )
 
         sku_grouped["profit%"] = (sku_grouped["profit"] / sku_grouped["Net Sales"]) * 100
@@ -1622,7 +1661,13 @@ def process_us_yearly_skuwise_data(user_id, country, year):
 
         df["sku"] = df["sku"].fillna("").astype(str).str.strip()
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
-        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+        df["type_norm"] = (
+            df.get("type", pd.Series("", index=df.index))
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
 
         df["desc_key"] = df["desc_norm"].map(_norm_misc_key)
         df["type_key"] = df["type_norm"].map(_norm_misc_key)
@@ -1785,22 +1830,9 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["selling_fees"] = safe_series(sku_grouped, "selling_fees")
         sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
 
-        sku_grouped["Net Sales"] = (
-            safe_series(sku_grouped, "product_sales")
-            + safe_series(sku_grouped, "promotional_rebates")
-        )
-        # ✅ SKU-wise ASP
-        sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
-            0
-        )
-        # ✅ SKU-wise promotional rebate %
-        sku_grouped["promotional_rebates_percentage"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
-            0
-        )
+        sku_grouped["Net Sales"] = 0
+        sku_grouped["asp"] = 0
+        sku_grouped["promotional_rebates_percentage"] = 0
 
         sku_grouped["rembursement_fee"] = 0
         sku_grouped["shipment_fees"] = 0
@@ -1846,15 +1878,47 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             + safe_series(sku_grouped, "shipping_credits")
         )
 
-        sku_grouped["refund_sales"] = (
-            df[df["type_norm"] == "refund"]
-            .groupby("sku")["product_sales"]
-            .sum()
-            .abs()
-            .reindex(sku_grouped["sku"])
-            .fillna(0)
-            .values
+        # ---------- refund sales ----------
+        refund_sales_df = (
+            df.loc[
+                (df["type_norm"] == "refund")
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.strip().str.lower() != "none"),
+                ["sku", "product_sales"]
+            ]
+            .copy()
         )
+
+        refund_sales_df["sku"] = refund_sales_df["sku"].astype(str).str.strip()
+
+        refund_sales_df["product_sales"] = pd.to_numeric(
+            refund_sales_df["product_sales"],
+            errors="coerce"
+        ).fillna(0)
+
+        refund_sales_df = (
+            refund_sales_df
+            .groupby("sku", as_index=False)["product_sales"]
+            .sum()
+            .rename(columns={"product_sales": "refund_sales"})
+        )
+
+        refund_sales_df["refund_sales"] = refund_sales_df["refund_sales"].abs()
+
+        sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            refund_sales_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["refund_sales"] = pd.to_numeric(
+            sku_grouped["refund_sales"],
+            errors="coerce"
+        ).fillna(0)
 
         sku_grouped["gross_sales"] = (
             safe_series(sku_grouped, "product_sales")
@@ -1867,6 +1931,28 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             + safe_series(sku_grouped, "gift_wrap_credits")
             + safe_series(sku_grouped, "giftwrap_credits_tax")
             + safe_series(sku_grouped, "promotional_rebates_tax")
+        )
+        sku_grouped["Net Sales"] = (
+            safe_series(sku_grouped, "gross_sales")
+            - safe_series(sku_grouped, "refund_sales")
+            - safe_series(sku_grouped, "tex_and_credits")
+        )
+        sku_grouped["asp"] = np.where(
+            sku_grouped["quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            0
+        )
+        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+
+        sku_grouped["promotional_rebates_percentage"] = np.where(
+            sku_grouped["Net Sales"] != 0,
+            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
+            0
+        )
+        sku_grouped["promotional_rebates_percentage"] = (
+            sku_grouped["promotional_rebates_percentage"]
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
         )
 
         sku_grouped["other_transaction_fees"] = (
@@ -1884,12 +1970,11 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["cost_of_unit_sold"] = sku_grouped["price_in_gbp"] * sku_grouped["total_quantity"]
 
         sku_grouped["profit"] = (
-            sku_grouped["Net Sales"].abs()
-            + sku_grouped["net_credits"].abs()
-            - sku_grouped["net_taxes"].abs()
-            - sku_grouped["amazon_fee"].abs()
-            - sku_grouped["cost_of_unit_sold"].abs()
-            - (sku_grouped["promotional_rebates"]).abs()
+            safe_series(sku_grouped, "Net Sales")
+            - safe_series(sku_grouped, "cost_of_unit_sold").abs()
+            - safe_series(sku_grouped, "amazon_fee").abs()
+            - safe_series(sku_grouped, "net_taxes").abs()
+            + safe_series(sku_grouped, "net_credits")
         )
 
         sku_grouped["profit_percentage"] = np.where(
@@ -2308,7 +2393,13 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
         df["sku"] = df["sku"].fillna("").astype(str).str.strip()
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
-        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+        df["type_norm"] = (
+            df.get("type", pd.Series("", index=df.index))
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
 
         df["desc_key"] = df["desc_norm"].map(_norm_misc_key)
         df["type_key"] = df["type_norm"].map(_norm_misc_key)
@@ -2469,22 +2560,9 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped["selling_fees"] = safe_series(sku_grouped, "selling_fees")
         sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
 
-        sku_grouped["Net Sales"] = (
-            safe_series(sku_grouped, "product_sales")
-            + safe_series(sku_grouped, "promotional_rebates")
-        )
-        # ✅ SKU-wise ASP
-        sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
-            0
-        )
-        # ✅ SKU-wise promotional rebate %
-        sku_grouped["promotional_rebates_percentage"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
-            0
-        )
+        sku_grouped["Net Sales"] = 0
+        sku_grouped["asp"] = 0
+        sku_grouped["promotional_rebates_percentage"] = 0
 
         sku_grouped["rembursement_fee"] = 0
         sku_grouped["shipment_fees"] = 0
@@ -2530,15 +2608,47 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             + safe_series(sku_grouped, "shipping_credits")
         )
 
-        sku_grouped["refund_sales"] = (
-            df[df["type_norm"] == "refund"]
-            .groupby("sku")["product_sales"]
-            .sum()
-            .abs()
-            .reindex(sku_grouped["sku"])
-            .fillna(0)
-            .values
+        # ---------- refund sales ----------
+        refund_sales_df = (
+            df.loc[
+                (df["type_norm"] == "refund")
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.strip().str.lower() != "none"),
+                ["sku", "product_sales"]
+            ]
+            .copy()
         )
+
+        refund_sales_df["sku"] = refund_sales_df["sku"].astype(str).str.strip()
+
+        refund_sales_df["product_sales"] = pd.to_numeric(
+            refund_sales_df["product_sales"],
+            errors="coerce"
+        ).fillna(0)
+
+        refund_sales_df = (
+            refund_sales_df
+            .groupby("sku", as_index=False)["product_sales"]
+            .sum()
+            .rename(columns={"product_sales": "refund_sales"})
+        )
+
+        refund_sales_df["refund_sales"] = refund_sales_df["refund_sales"].abs()
+
+        sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            refund_sales_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["refund_sales"] = pd.to_numeric(
+            sku_grouped["refund_sales"],
+            errors="coerce"
+        ).fillna(0)
 
         sku_grouped["gross_sales"] = (
             safe_series(sku_grouped, "product_sales")
@@ -2551,6 +2661,29 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             + safe_series(sku_grouped, "gift_wrap_credits")
             + safe_series(sku_grouped, "giftwrap_credits_tax")
             + safe_series(sku_grouped, "promotional_rebates_tax")
+        )
+
+        sku_grouped["Net Sales"] = (
+            safe_series(sku_grouped, "gross_sales")
+            - safe_series(sku_grouped, "refund_sales")
+            - safe_series(sku_grouped, "tex_and_credits")
+        )
+        sku_grouped["asp"] = np.where(
+            sku_grouped["quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            0
+        )
+        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+
+        sku_grouped["promotional_rebates_percentage"] = np.where(
+            sku_grouped["Net Sales"] != 0,
+            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
+            0
+        )
+        sku_grouped["promotional_rebates_percentage"] = (
+            sku_grouped["promotional_rebates_percentage"]
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
         )
 
         sku_grouped["other_transaction_fees"] = (
@@ -2568,12 +2701,11 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped["cost_of_unit_sold"] = sku_grouped["price_in_gbp"] * sku_grouped["total_quantity"]
 
         sku_grouped["profit"] = (
-            sku_grouped["Net Sales"].abs()
-            + sku_grouped["net_credits"].abs()
-            - sku_grouped["net_taxes"].abs()
-            - sku_grouped["amazon_fee"].abs()
-            - sku_grouped["cost_of_unit_sold"].abs()
-            - sku_grouped["promotional_rebates"].abs()
+            safe_series(sku_grouped, "Net Sales")
+            - safe_series(sku_grouped, "cost_of_unit_sold").abs()
+            - safe_series(sku_grouped, "amazon_fee").abs()
+            - safe_series(sku_grouped, "net_taxes").abs()
+            + safe_series(sku_grouped, "net_credits")
         )
 
         sku_grouped["profit_percentage"] = np.where(
