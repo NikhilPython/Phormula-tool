@@ -3748,7 +3748,7 @@ export default function LiveBusinessClient({
 
         <div
           className={[
-            "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4",
+            "w-full rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4",
             getInventoryAccentClass(normalizedCountry),
           ].join(" ")}
         >
@@ -3758,13 +3758,13 @@ export default function LiveBusinessClient({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
+          <div className="grid w-full grid-cols-1 md:grid-cols-2 gap-2 p-3">
             {rows.map((item, idx) => (
               <div
                 key={idx}
                 className={[
                   "flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2",
-                  item.fullWidth ? "md:col-span-1" : "",
+                  item.fullWidth ? "md:col-span-2 justify-start" : "",
                 ].join(" ")}
               >
                 <span className="text-sm font-medium text-slate-700">
@@ -3856,26 +3856,39 @@ export default function LiveBusinessClient({
 
     if (!hasInventory) return null;
 
+    const hasUkInventory = Object.values(inventory.uk).some(Boolean);
+    const hasUsInventory = Object.values(inventory.us).some(Boolean);
+    const visibleCountryCount = Number(hasUkInventory) + Number(hasUsInventory);
+
     return (
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+      <div className="w-full space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <div className="flex items-center gap-2">
           <span className="text-base 2xl:text-2xl font-bold text-slate-800">
             Inventory Insights
           </span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <InventoryCountryCard
-            title="UK Inventory"
-            items={inventory.uk}
-            accentClass={getInventoryAccentClass("uk")}
-          />
+        <div
+          className={[
+            "grid grid-cols-1 gap-4",
+            visibleCountryCount > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1",
+          ].join(" ")}
+        >
+          {hasUkInventory && (
+            <InventoryCountryCard
+              title="UK Inventory"
+              items={inventory.uk}
+              accentClass={getInventoryAccentClass("uk")}
+            />
+          )}
 
-          <InventoryCountryCard
-            title="US Inventory"
-            items={inventory.us}
-            accentClass={getInventoryAccentClass("us")}
-          />
+          {hasUsInventory && (
+            <InventoryCountryCard
+              title="US Inventory"
+              items={inventory.us}
+              accentClass={getInventoryAccentClass("us")}
+            />
+          )}
         </div>
       </div>
     );

@@ -1656,126 +1656,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
           </div>
         )}
 
-        {/* Inventory Section */}
-        {/* Inventory Section */}
-        {/* {!hasNoAiData && inventoryBullets.length > 0 && (
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-                Inventory Insights
-              </span>
-            </div>
 
-            {(() => {
-              const parseInventoryLine = (line: string) => {
-                const raw = String(line || "").trim();
-                const colonIdx = raw.indexOf(":");
-
-                const left = colonIdx > -1 ? raw.slice(0, colonIdx).trim() : raw;
-                const right = colonIdx > -1 ? raw.slice(colonIdx + 1).trim() : "";
-
-                const country = /^UK\b/i.test(raw)
-                  ? "UK"
-                  : /^US\b/i.test(raw)
-                    ? "US"
-                    : "Other";
-
-                const cleanLabel = left
-                  .replace(/^UK\s+/i, "")
-                  .replace(/^US\s+/i, "")
-                  .trim();
-
-                return {
-                  country,
-                  label: cleanLabel,
-                  value: right,
-                };
-              };
-
-              const grouped = inventoryBullets.reduce(
-                (acc, line) => {
-                  const item = parseInventoryLine(line);
-
-                  if (item.country === "UK") acc.uk.push(item);
-                  else if (item.country === "US") acc.us.push(item);
-                  else acc.other.push(item);
-
-                  return acc;
-                },
-                {
-                  uk: [] as ReturnType<typeof parseInventoryLine>[],
-                  us: [] as ReturnType<typeof parseInventoryLine>[],
-                  other: [] as ReturnType<typeof parseInventoryLine>[],
-                }
-              );
-
-              const CountryInventoryCard = ({
-                title,
-                items,
-                accentClass,
-              }: {
-                title: string;
-                items: ReturnType<typeof parseInventoryLine>[];
-                accentClass: string;
-              }) => {
-                if (!items.length) return null;
-
-                return (
-                  <div className={`rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}>
-                    <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-                      <div className="text-sm font-bold text-slate-800">
-                        {title}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 p-3">
-                      {items.map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex items-start justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
-                        >
-                          <span className="text-sm font-medium text-slate-700 capitalize">
-                            {item.label}
-                          </span>
-
-                          {item.value ? (
-                            <span className="text-sm font-bold text-[#414042] text-right">
-                              {item.value}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              };
-
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <CountryInventoryCard
-                    title="UK Inventory"
-                    items={grouped.uk}
-                    accentClass="border-l-4 border-l-[#5EA68E]"
-                  />
-
-                  <CountryInventoryCard
-                    title="US Inventory"
-                    items={grouped.us}
-                    accentClass="border-l-4 border-l-[#37455F]"
-                  />
-
-                  {grouped.other.length > 0 && (
-                    <CountryInventoryCard
-                      title="Other Inventory"
-                      items={grouped.other}
-                      accentClass="border-l-4 border-l-slate-400"
-                    />
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )} */}
 
         {/* Inventory Section */}
         {!hasNoAiData && inventoryBullets.length > 0 && (
@@ -1850,7 +1731,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
                 return (
                   <div
-                    className={`rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}
+                    className={`w-full rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}
                   >
                     <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
                       <div className="text-sm font-bold text-slate-800">
@@ -1915,21 +1796,37 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 }
               );
 
+              const hasUkInventory = grouped.uk.length > 0;
+              const hasUsInventory = grouped.us.length > 0;
+              const hasOtherInventory = grouped.other.length > 0;
+
+              const visibleCountryCount =
+                Number(hasUkInventory) + Number(hasUsInventory);
+
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <CountryInventoryCard
-                    title="UK Inventory"
-                    items={grouped.uk}
-                    accentClass="border-l-4 border-l-[#7B9A6D]"
-                  />
+                <div
+                  className={[
+                    "grid grid-cols-1 gap-4",
+                    visibleCountryCount > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1",
+                  ].join(" ")}
+                >
+                  {hasUkInventory && (
+                    <CountryInventoryCard
+                      title="UK Inventory"
+                      items={grouped.uk}
+                      accentClass="border-l-4 border-l-[#7B9A6D]"
+                    />
+                  )}
 
-                  <CountryInventoryCard
-                    title="US Inventory"
-                    items={grouped.us}
-                    accentClass="border-l-4 border-l-[#3A8EA4]"
-                  />
+                  {hasUsInventory && (
+                    <CountryInventoryCard
+                      title="US Inventory"
+                      items={grouped.us}
+                      accentClass="border-l-4 border-l-[#3A8EA4]"
+                    />
+                  )}
 
-                  {grouped.other.length > 0 && (
+                  {hasOtherInventory && (
                     <CountryInventoryCard
                       title="Other Inventory"
                       items={grouped.other}
@@ -4522,7 +4419,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return (
       // <Loader fullscreen transparent />
       <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
-        <Loader backgroundClass="bg-transparent" />
+        <Loader backgroundClass="bg-white/40" />
       </div>
     );
   }
@@ -5756,7 +5653,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   brand_name: userData?.brand_name,
                   company_name: userData?.company_name,
                 }}
-             onExportPayloadChange={handleSkuExportPayloadChange}
+                onExportPayloadChange={handleSkuExportPayloadChange}
                 hideDownloadButton
                 disableInternalFade={shouldShowPreviewData}
               />
@@ -5811,67 +5708,67 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )} */}
 
           {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-  <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-    {(() => {
-      const productWiseRange =
-        range === "quarterly" ? "quarterly" : "yearly";
+            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+              {(() => {
+                const productWiseRange =
+                  range === "quarterly" ? "quarterly" : "yearly";
 
-      const hasRealSkuRowsForProductWise =
-        !isDemoMode &&
-        !skuNoDataFound &&
-        Array.isArray(skuRows) &&
-        skuRows.some((row: any) => {
-          const productName = String(row?.product_name || "").trim().toLowerCase();
-          const sku = String(row?.sku || "").trim().toLowerCase();
+                const hasRealSkuRowsForProductWise =
+                  !isDemoMode &&
+                  !skuNoDataFound &&
+                  Array.isArray(skuRows) &&
+                  skuRows.some((row: any) => {
+                    const productName = String(row?.product_name || "").trim().toLowerCase();
+                    const sku = String(row?.sku || "").trim().toLowerCase();
 
-          const isTotalRow = productName === "total" || sku === "total";
-          if (isTotalRow) return false;
+                    const isTotalRow = productName === "total" || sku === "total";
+                    if (isTotalRow) return false;
 
-          return (
-            toNum(row?.net_sales) !== 0 ||
-            toNum(row?.total_quantity) !== 0 ||
-            toNum(row?.quantity) !== 0 ||
-            toNum(row?.profit) !== 0 ||
-            toNum(row?.cm2_profit) !== 0
-          );
-        });
+                    return (
+                      toNum(row?.net_sales) !== 0 ||
+                      toNum(row?.total_quantity) !== 0 ||
+                      toNum(row?.quantity) !== 0 ||
+                      toNum(row?.profit) !== 0 ||
+                      toNum(row?.cm2_profit) !== 0
+                    );
+                  });
 
-      const productWiseInitialProductName = isDemoMode
-        ? defaultTopProductName || "Demo Product A"
-        : hasRealSkuRowsForProductWise
-          ? defaultTopProductName
-          : "";
+                const productWiseInitialProductName = isDemoMode
+                  ? defaultTopProductName || "Demo Product A"
+                  : hasRealSkuRowsForProductWise
+                    ? defaultTopProductName
+                    : "";
 
-      return (
-        <ProductwisePerformance
-          key={[
-            initialCountryName,
-            productWiseRange,
-            selectedQuarter,
-            selectedYear,
-            productWiseInitialProductName || "no-product",
-            isDemoMode ? "demo" : "live",
-          ].join("-")}
-          embedded
-          countryNameProp={isDemoMode ? "global" : initialCountryName}
-          rangeProp={productWiseRange}
-          selectedMonthProp={isDemoMode ? "NA" : ""}
-          selectedQuarterProp={
-            isDemoMode
-              ? ""
-              : productWiseRange === "quarterly"
-                ? selectedQuarter
-                : ""
-          }
-          selectedYearProp={
-            isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
-          }
-          initialProductName={productWiseInitialProductName}
-        />
-      );
-    })()}
-  </div>
-)}
+                return (
+                  <ProductwisePerformance
+                    key={[
+                      initialCountryName,
+                      productWiseRange,
+                      selectedQuarter,
+                      selectedYear,
+                      productWiseInitialProductName || "no-product",
+                      isDemoMode ? "demo" : "live",
+                    ].join("-")}
+                    embedded
+                    countryNameProp={isDemoMode ? "global" : initialCountryName}
+                    rangeProp={productWiseRange}
+                    selectedMonthProp={isDemoMode ? "NA" : ""}
+                    selectedQuarterProp={
+                      isDemoMode
+                        ? ""
+                        : productWiseRange === "quarterly"
+                          ? selectedQuarter
+                          : ""
+                    }
+                    selectedYearProp={
+                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+                    }
+                    initialProductName={productWiseInitialProductName}
+                  />
+                );
+              })()}
+            </div>
+          )}
 
           {activeTab === "cashFlow" && allDropdownsSelected && (
 
