@@ -434,6 +434,14 @@ def _fetch_best_table_auto(user_id, country, month=None, year=None, quarter=None
 
     return None, None
 
+def build_skuwise_table_name(user_id, country, month, year):
+    month = str(month).strip().lower()
+    year = str(year).strip()
+
+    if country == "global":
+        return f"skuwisemonthly_{user_id}_global_{month}{year}_table".lower()
+
+    return f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
 
 @pie_chart_bp.route('/pie-chart', methods=['GET', 'POST'])
 def generate_pie_chart():
@@ -511,7 +519,7 @@ def generate_pie_chart():
                 if month_str.isdigit():
                     month_str = datetime(2000, int(month_str), 1).strftime("%B").lower()
 
-                table_name = f"skuwisemonthly_{user_id}_{country}_{month_str}{year_str}".lower()
+                table_name = build_skuwise_table_name(user_id, country, month_str, year_str)
 
                 df = fetch_data_from_table(table_name)
 

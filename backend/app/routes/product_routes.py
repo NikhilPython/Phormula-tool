@@ -986,7 +986,16 @@ def resolve_country(country, currency):
 #             'error': 'An unexpected error occurred',
 #             'message': str(e)
 #         }), 500
-    
+
+def build_skuwise_table_name(user_id, country, month, year):
+    month = month.strip().lower()
+    year = str(year).strip()
+
+    if country == "global":
+        return f"skuwisemonthly_{user_id}_global_{month}{year}_table".lower()
+
+    return f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+
 @product_bp.route('/skutableprofit', methods=['GET'])
 def skutableprofit():
     auth_header = request.headers.get('Authorization')
@@ -1017,7 +1026,7 @@ def skutableprofit():
                 'error': 'country, month, and year are required'
             }), 400
 
-        table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+        table_name = build_skuwise_table_name(user_id, country, month, year)
 
         metadata = MetaData(schema='public')
 
@@ -1044,7 +1053,7 @@ def skutableprofit():
         prev_month, prev_year = get_previous_month(month, year)
 
         if prev_month and prev_year:
-            previous_table_name = f"skuwisemonthly_{user_id}_{country}_{prev_month}{prev_year}".lower()
+            previous_table_name = build_skuwise_table_name(user_id, country, prev_month, prev_year)
 
             try:
                 previous_data = _fetch_as_dicts(previous_table_name)
