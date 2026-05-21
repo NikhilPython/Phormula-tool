@@ -818,7 +818,10 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     }
   }, [props.metric]);
 
-  const loading = props.loading ?? false;
+  const loading =
+    props.loading === true ||
+    (!isPreviewMode && props.data == null && !props.error);
+    
   const error = props.error ?? null;
 
   const mapped = useMemo(() => {
@@ -901,7 +904,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && (
           <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
-            <div className="text-sm text-gray-500">Loading chart...</div>
+            <div className="text-sm text-gray-500">Loading Chart data</div>
           </div>
         )}
 
