@@ -1736,11 +1736,11 @@ def render_month_end_summary(
         )
 
         lines.append(
-            f"• Net sales: {fmt_value_with_pct(s.get('net_sales'), is_currency=True)}"
+            f"• Net sales: {fmt_value_with_pct(s.get('net_sales'), is_currency=True, decimals=0)}"
         )
 
         lines.append(
-            f"• CM1 profit: {fmt_value_with_pct(s.get('profit'), is_currency=True)}"
+            f"• CM1 profit: {fmt_value_with_pct(s.get('profit'), is_currency=True, decimals=0)}"
         )
 
         lines.append(

@@ -1837,17 +1837,13 @@ def render_live_recommended_action(
 
     # ---------- Metrics ----------
     lines.append(
-        f"ASP: {fmt_metric(growth_row['asp_curr'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
-    )
+        f"ASP: {fmt_metric(growth_row['asp_curr'], growth_row['ASP Growth (%)']['value'], currency_symbol)}")
     lines.append(
-        f"Units: {fmt_metric(growth_row['quantity_curr'], growth_row['Unit Growth (%)']['value'], '', decimals=0)}"
-    )
+        f"Units: {fmt_metric(growth_row['quantity_curr'], growth_row['Unit Growth (%)']['value'], '', decimals=0)}")
     lines.append(
-        f"Net sales: {fmt_metric(growth_row['net_sales_curr'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
-    )
+        f"Net sales: {fmt_metric(growth_row['net_sales_curr'], growth_row['Net Sales Growth (%)']['value'], currency_symbol, decimals=0)}")
     lines.append(
-        f"CM1 profit: {fmt_metric(growth_row['profit_curr'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
-    )
+        f"CM1 profit: {fmt_metric(growth_row['profit_curr'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol, decimals=0)}")
     lines.append(
         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
     )
