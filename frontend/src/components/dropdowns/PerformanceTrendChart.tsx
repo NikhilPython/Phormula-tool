@@ -233,6 +233,48 @@ const getValueForX = (
   return typeof v === "number" ? v : null;
 };
 
+const QUARTER_START_MONTH_IDX: Record<number, number> = {
+  1: 0,  // Q1 starts Jan
+  2: 3,  // Q2 starts Apr
+  3: 6,  // Q3 starts Jul
+  4: 9,  // Q4 starts Oct
+};
+
+const normalizeMonthKeyToIdx = (key: string): number | null => {
+  const s = String(key || "").trim().toLowerCase();
+
+  // Supports "May", "may", "May 2025"
+  const short = s.slice(0, 3);
+  if (MONTH_ABBR_TO_IDX[short] != null) return MONTH_ABBR_TO_IDX[short];
+
+  // Supports "5" or "05"
+  const asNum = Number(s);
+  if (!Number.isNaN(asNum) && asNum >= 1 && asNum <= 12) {
+    return asNum - 1;
+  }
+
+  return null;
+};
+
+const getQuarterRelativeMonth = (
+  quarterLabel: string,
+  monthKey: string
+): string | null => {
+  const parsedQuarter = parseQuarterLabel(quarterLabel);
+  if (!parsedQuarter) return null;
+
+  const monthIdx = normalizeMonthKeyToIdx(monthKey);
+  if (monthIdx == null) return null;
+
+  const quarterStartIdx = QUARTER_START_MONTH_IDX[parsedQuarter.q];
+  const relativeMonth = monthIdx - quarterStartIdx + 1;
+
+  if (relativeMonth < 1 || relativeMonth > 3) return null;
+
+  return String(relativeMonth);
+};
+
+
 const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: string[]; series: GenericSeries[] } => {
   const xType = String(trend.xType || "").toLowerCase();
   const kind: SeriesKind = xType === "day" ? "daily" : "monthly";
@@ -246,17 +288,31 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
       const bucket = (s.net_sales || s.units || {}) as TrendBucket;
       const keys = sortKeysForX(Object.keys(bucket));
 
-      const points: GenericPoint[] = outXAxis.map((pos, idx) => {
-        const k = keys[idx];
-        const ns = s.net_sales as any;
-        const un = s.units as any;
+      const ns = s.net_sales as any;
+      const un = s.units as any;
 
-        return {
-          x: pos,
+      const pointsByPosition = new Map<string, GenericPoint>();
+
+      keys.forEach((k, idx) => {
+        const relativePos = getQuarterRelativeMonth(s.label, k) ?? String(idx + 1);
+
+        pointsByPosition.set(relativePos, {
+          x: relativePos,
           net_sales: typeof ns?.[k] === "number" ? ns[k] : null,
           units: typeof un?.[k] === "number" ? un[k] : null,
           monthLabel: k ?? null,
-        } as any;
+        });
+      });
+
+      const points: GenericPoint[] = outXAxis.map((pos) => {
+        return (
+          pointsByPosition.get(pos) ?? {
+            x: pos,
+            net_sales: null,
+            units: null,
+            monthLabel: null,
+          }
+        );
       });
 
       return { name: s.label, kind, points };
@@ -762,7 +818,10 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     }
   }, [props.metric]);
 
-  const loading = props.loading ?? false;
+  const loading =
+    props.loading === true ||
+    (!isPreviewMode && props.data == null && !props.error);
+    
   const error = props.error ?? null;
 
   const mapped = useMemo(() => {
@@ -845,7 +904,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && (
           <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
-            <div className="text-sm text-gray-500">Loading chart...</div>
+            <div className="text-sm text-gray-500">Loading Chart data</div>
           </div>
         )}
 

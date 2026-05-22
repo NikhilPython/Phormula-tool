@@ -596,9 +596,9 @@ export default function AmazonAdsConnect({
     ];
 
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 20,
-        2: 35,
-        3: 15,
+        1: 200,
+        2: 200,
+        3: 200,
     };
 
 

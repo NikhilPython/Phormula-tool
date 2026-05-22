@@ -141,11 +141,42 @@ const isPnlTotalRow = (row: RowData) =>
   String(row?.product_name || '').trim().toLowerCase() === 'total' ||
   String(row?.sku || '').trim().toLowerCase() === 'total';
 
-const buildOthersPnlRow = (rows: RowData[]): RowData => {
+const PNL_PERCENT_KEYS = [
+  'profit_percentage_1st',
+  'profit_percentage_2nd',
+  'profit_percentage_3rd',
+  'profit_percentage_sum',
+];
+
+const recomputePnlPercentages = (row: RowData): RowData => {
+  const next = { ...row };
+
+  const percentagePairs = [
+    ['Total_Sales_1st', 'profit_1st', 'profit_percentage_1st'],
+    ['Total_Sales_2nd', 'profit_2nd', 'profit_percentage_2nd'],
+    ['Total_Sales_3rd', 'profit_3rd', 'profit_percentage_3rd'],
+    ['Total_Sales_sum', 'profit_sum', 'profit_percentage_sum'],
+  ];
+
+  percentagePairs.forEach(([salesKey, profitKey, percentageKey]) => {
+    const sales = toNumber(next[salesKey]);
+    const profit = toNumber(next[profitKey]);
+
+    next[percentageKey] = sales !== 0 ? (profit / sales) * 100 : 0;
+  });
+
+  return next;
+};
+
+const buildAggregatePnlRow = (
+  rows: RowData[],
+  productName: string
+): RowData => {
   const nonSummableKeys = new Set([
     'sku',
     'product_name',
     'sr_no',
+    ...PNL_PERCENT_KEYS,
   ]);
 
   const numericKeys = Array.from(
@@ -155,6 +186,7 @@ const buildOthersPnlRow = (rows: RowData[]): RowData => {
           if (nonSummableKeys.has(key)) return false;
 
           const value = row[key];
+
           return (
             value !== null &&
             value !== undefined &&
@@ -166,16 +198,20 @@ const buildOthersPnlRow = (rows: RowData[]): RowData => {
     )
   );
 
-  const othersRow: RowData = {
-    product_name: 'Others',
-    sku: '',
+  const aggregateRow: RowData = {
+    product_name: productName,
+    sku: productName === 'Total' ? 'Total' : '',
   };
 
   numericKeys.forEach((key) => {
-    othersRow[key] = rows.reduce((sum, row) => sum + toNumber(row[key]), 0);
+    aggregateRow[key] = rows.reduce((sum, row) => sum + toNumber(row[key]), 0);
   });
 
-  return othersRow;
+  return recomputePnlPercentages(aggregateRow);
+};
+
+const buildOthersPnlRow = (rows: RowData[]): RowData => {
+  return buildAggregatePnlRow(rows, 'Others');
 };
 
 const Pnlforecast: React.FC = () => {
@@ -1099,10 +1135,22 @@ const Pnlforecast: React.FC = () => {
     profit_percentage_sum: '',
   }));
 
-  const normalizedProductRows = productRows?.map((r) => ({
-    ...r,
-    sku: r.sku === 'Total' ? '' : r.sku,
-  }));
+  const normalizedProductRows = React.useMemo(() => {
+    const rows = productRows || [];
+
+    const nonTotalRows = rows
+      .filter((row) => !isPnlTotalRow(row))
+      .map((row) => recomputePnlPercentages(row));
+
+    const totalRow =
+      nonTotalRows.length > 0
+        ? buildAggregatePnlRow(nonTotalRows, 'Total')
+        : null;
+
+    return totalRow
+      ? [...nonTotalRows, { ...totalRow, sku: '' }]
+      : nonTotalRows;
+  }, [productRows]);
 
   const excelProductRows = React.useMemo(() => {
     const rows = normalizedProductRows || [];
