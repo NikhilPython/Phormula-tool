@@ -12,7 +12,7 @@ from sqlalchemy.engine import Engine
 from config import Config
 
 
-_COUNTRY_RE = re.compile(r"^[a-z]{2}$")
+_COUNTRY_RE = re.compile(r"^[a-z]{2}$|^global$")
 
 MONTH_NAME_TO_NUM = {
     "january": 1,
@@ -101,8 +101,13 @@ def validate_user_id(user_id: int) -> None:
 
 def normalize_country(country: str) -> str:
     country = (country or "").strip().lower()
+
+    if country == "global":
+        return "global"
+
     if not _COUNTRY_RE.match(country):
         raise ValueError("invalid country")
+
     return country
 
 
@@ -129,6 +134,10 @@ def resolve_nse_table_name(user_id: int, country: str, month: int | str, year: i
     country = normalize_country(country)
     month_num = normalize_month(month)
     mk = MonthKey(year=year, month=month_num)
+
+    if country == "global":
+        return f"skuwisemonthly_{user_id}_global_{mk.table_suffix}_table"
+
     return f"nse_{user_id}_{country}_{mk.table_suffix}"
 
 
@@ -163,6 +172,11 @@ def fetch_nse_month_df(
 
     if df.empty:
         raise ValueError(f"no data found in table {table_name}")
+
+    if country.lower() == "global":
+        missing_cols = {"sku", "product_name"} - set(df.columns)
+        if missing_cols:
+            raise ValueError(f"global table missing required columns: {missing_cols}")
 
     # ✅ Fix: make only these fee columns absolute
     for col in ["platform_fee", "platform_fee_inventory_storage"]:
@@ -363,6 +377,15 @@ SKU_ADDITIVE_METRICS = {
 
     # -------- SHIPPING --------
     "shipment_charges": MetricDef("shipment_charges", "shipment_charges", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    "shipment_fees": MetricDef(
+        "shipment_fees", "shipment_fees", "sku_additive", "money", "sku",
+        True, True, True, True, True, True, True
+    ),
+    "rembursement_fee": MetricDef(
+        "rembursement_fee", "rembursement_fee", "sku_additive", "money", "sku",
+        True, True, True, True, True, True, True
+    ),
 }
 
 TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {

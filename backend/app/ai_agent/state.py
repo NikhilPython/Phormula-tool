@@ -34,6 +34,7 @@ AnswerShape = Literal[
     "extreme",
     "multi_month",
     "multi_dimensional",
+    "multi_country",
 ]
 
 SubjectScope = Literal["business", "product", "products", "metric"]
@@ -46,6 +47,8 @@ class AgentState(TypedDict, total=False):
     user_id: int
     country: str
     conversation_id: str
+    target_countries: Optional[List[str]]
+
     user_query: str
     chat_history: List[Dict[str, Any]]
 
