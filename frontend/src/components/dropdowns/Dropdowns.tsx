@@ -4241,9 +4241,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         profit: toNum(row.profit),
         profit_percentage: toNum(row.profit_percentage),
         unit_wise_profitability: toNum(row.unit_wise_profitability),
-
         cm2_profit: toNum(row.cm2_profit),
-        cm2_margins: toNum(row.cm2_margins),
+
+        // ✅ Backend global total row sends this as cm2_profit_percentage
+        cm2_profit_percentage: toNum(
+          row.cm2_profit_percentage ??
+          row.cm2_margins ??
+          row.cm2_profit_percent ??
+          row.cm2_profit_percentage_value
+        ),
+
+        // ✅ SKUtable summary uses cm2_margins
+        cm2_margins: toNum(
+          row.cm2_margins ??
+          row.cm2_profit_percentage ??
+          row.cm2_profit_percent ??
+          row.cm2_profit_percentage_value
+        ),
+
         acos: toNum(row.acos),
 
         profit_mix: toNum(row.profit_mix),
