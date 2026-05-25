@@ -17,6 +17,7 @@ from app.routes.amazon_sales_api_routes import _normalize_sku_row
 from app.utils.token_utils import get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
+from decimal import Decimal
 
 
 
@@ -162,6 +163,159 @@ def resolve_country(country, currency):
     # 3. Default (no special logic)
     return country
 
+
+def get_month_tokens_present_for_year(conn, user_id, country, year):
+    """
+    Finds monthly table month tokens for current selected year.
+
+    Example table:
+    skuwisemonthly_1_uk_may2026
+
+    Returns:
+    ["jan", "feb", "mar", ...]
+    """
+
+    prefix = f"skuwisemonthly_{user_id}_{country}_"
+
+    valid_months = {
+        "jan": 1,
+        "january": 1,
+        "feb": 2,
+        "february": 2,
+        "mar": 3,
+        "march": 3,
+        "apr": 4,
+        "april": 4,
+        "may": 5,
+        "jun": 6,
+        "june": 6,
+        "jul": 7,
+        "july": 7,
+        "aug": 8,
+        "august": 8,
+        "sep": 9,
+        "sept": 9,
+        "september": 9,
+        "oct": 10,
+        "october": 10,
+        "nov": 11,
+        "november": 11,
+        "dec": 12,
+        "december": 12,
+    }
+
+    query = text("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name LIKE :pattern
+    """)
+
+    rows = conn.execute(query, {
+        "pattern": f"{prefix}%{year}"
+    }).mappings().all()
+
+    month_tokens = []
+
+    for row in rows:
+        table_name = row["table_name"]
+
+        if not table_name.startswith(prefix):
+            continue
+
+        middle = table_name[len(prefix):]
+
+        # Example:
+        # table_name = skuwisemonthly_1_uk_may2026
+        # middle = may2026
+        if not middle.endswith(str(year)):
+            continue
+
+        month_token = middle[:-len(str(year))].lower()
+
+        if month_token in valid_months:
+            month_tokens.append(month_token)
+
+    return sorted(set(month_tokens), key=lambda month: valid_months[month])
+
+
+def aggregate_monthly_sku_rows(rows):
+    """
+    Aggregates monthly rows while preserving the same JSON structure.
+
+    Logic:
+    - Numeric columns are summed.
+    - Non-numeric columns are treated as grouping keys.
+    """
+
+    grouped = {}
+
+    for row in rows:
+        normalized_row = _normalize_sku_row(dict(row))
+
+        numeric_cols = []
+        key_cols = []
+
+        for col, value in normalized_row.items():
+            if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+                numeric_cols.append(col)
+            else:
+                key_cols.append(col)
+
+        key = tuple((col, normalized_row.get(col)) for col in key_cols)
+
+        if key not in grouped:
+            grouped[key] = dict(normalized_row)
+        else:
+            for col in numeric_cols:
+                current_value = grouped[key].get(col) or 0
+                new_value = normalized_row.get(col) or 0
+                grouped[key][col] = current_value + new_value
+
+    return list(grouped.values())
+
+
+def get_previous_year_monthly_aggregated_data(conn, engine, metadata, user_id, country, year):
+    previous_year = get_previous_year(year)
+
+    current_year_month_tokens = get_month_tokens_present_for_year(
+        conn=conn,
+        user_id=user_id,
+        country=country,
+        year=year
+    )
+
+    all_previous_month_rows = []
+    used_previous_tables = []
+
+    for month_token in current_year_month_tokens:
+        previous_monthly_table_name = (
+            f"skuwisemonthly_{user_id}_{country}_{month_token}{previous_year}"
+        )
+
+        try:
+            previous_monthly_table = Table(
+                previous_monthly_table_name,
+                metadata,
+                autoload_with=engine
+            )
+
+            monthly_results = conn.execute(
+                select(*previous_monthly_table.columns)
+            ).mappings().all()
+
+            all_previous_month_rows.extend(monthly_results)
+            used_previous_tables.append(previous_monthly_table_name)
+
+        except Exception:
+            # If a previous year monthly table is missing, skip it
+            continue
+
+    previous_data = aggregate_monthly_sku_rows(all_previous_month_rows)
+
+    return previous_data, used_previous_tables
+
+
 @product_bp.route('/YearlySKU', methods=['GET'])
 def YearlySKU():
     country = (request.args.get('country') or '').lower()
@@ -205,18 +359,23 @@ def YearlySKU():
         current_data = [_normalize_sku_row(dict(row)) for row in results]
 
         previous_year = get_previous_year(year)
-        previous_table_name = f"skuwiseyearly_{user_id}_{country}_{previous_year}_table"
+        previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
         previous_data = []
 
         try:
-            previous_table = Table(previous_table_name, metadata, autoload_with=engine)
-
             with engine.connect() as conn:
-                prev_results = conn.execute(select(*previous_table.columns)).mappings().all()
+                previous_data, used_previous_tables = get_previous_year_monthly_aggregated_data(
+                    conn=conn,
+                    engine=engine,
+                    metadata=metadata,
+                    user_id=user_id,
+                    country=country,
+                    year=year
+                )
 
-            previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
         except Exception:
             previous_data = []
+            used_previous_tables = []
 
         return jsonify({
             "current_table_name": table_name,
@@ -229,8 +388,78 @@ def YearlySKU():
         return jsonify({'error': 'Error accessing the database'}), 500
     except Exception as e:
         return jsonify({'error': 'An error occurred while fetching table data'}), 500
- 
-    
+
+
+
+
+# @product_bp.route('/YearlySKU', methods=['GET'])
+# def YearlySKU():
+#     country = (request.args.get('country') or '').lower()
+#     country_param = request.args.get('country', '').lower()
+#     currency_param = (request.args.get('homeCurrency') or '').lower()
+
+#     country = resolve_country(country_param, currency_param)
+
+#     year = (request.args.get('year') or '').strip()
+
+#     # Validate the query parameters
+#     if not country or not year:
+#         return jsonify({'error': 'Country and year are required'}), 400
+
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     try:
+#         engine = user_engine
+#         metadata = MetaData(schema='public')  # align with other routes
+#         table_name = f"skuwiseyearly_{user_id}_{country}_{year}_table"
+
+#         try:
+#             user_specific_table = Table(table_name, metadata, autoload_with=engine)
+#         except Exception:
+#             return jsonify({'error': f"Table '{table_name}' not found for user {user_id}"}), 404
+
+#         with engine.connect() as conn:
+#             results = conn.execute(select(*user_specific_table.columns)).mappings().all()
+
+#         # 🔒 Normalize all rows so the UI gets true numbers, not strings
+#         current_data = [_normalize_sku_row(dict(row)) for row in results]
+
+#         previous_year = get_previous_year(year)
+#         previous_table_name = f"skuwiseyearly_{user_id}_{country}_{previous_year}_table"
+#         previous_data = []
+
+#         try:
+#             previous_table = Table(previous_table_name, metadata, autoload_with=engine)
+
+#             with engine.connect() as conn:
+#                 prev_results = conn.execute(select(*previous_table.columns)).mappings().all()
+
+#             previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+#         except Exception:
+#             previous_data = []
+
+#         return jsonify({
+#             "current_table_name": table_name,
+#             "current_data": current_data,
+#             "previous_table_name": previous_table_name,
+#             "previous_data": previous_data
+#         }), 200
+
+#     except SQLAlchemyError as e:
+#         return jsonify({'error': 'Error accessing the database'}), 500
+#     except Exception as e:
+#         return jsonify({'error': 'An error occurred while fetching table data'}), 500
+
 def resolve_country(country, currency):
     country = (country or "").lower()
     currency = (currency or "").lower()   # '' if missing
