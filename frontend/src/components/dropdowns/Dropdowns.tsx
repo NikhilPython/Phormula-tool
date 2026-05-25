@@ -182,27 +182,14 @@ type FetchedPeriods = Record<string, string[]>;
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
 
-  const currentYear = String(new Date().getFullYear());
-
   try {
     const raw = localStorage.getItem("fetchedPeriods");
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw) as FetchedPeriods;
-
-    // keep only current year data
-    if (parsed[currentYear]) {
-      return { [currentYear]: parsed[currentYear] };
-    }
-
-    // stale years like 2025 -> clear storage
-    localStorage.removeItem("fetchedPeriods");
-    return {};
+    return raw ? (JSON.parse(raw) as FetchedPeriods) : {};
   } catch {
-    localStorage.removeItem("fetchedPeriods");
     return {};
   }
 };
+
 
 const writeFetchedPeriods = (fp: FetchedPeriods) => {
   if (typeof window === "undefined") return;
@@ -251,20 +238,18 @@ const writeFetchedPeriods = (fp: FetchedPeriods) => {
 const markFetched = (year: string, month?: string) => {
   if (typeof window === "undefined") return;
 
-  const currentYear = String(new Date().getFullYear());
   const y = String(year).trim();
   const m = month ? month.toLowerCase() : "";
 
-  // do not store stale years like 2025
-  if (y !== currentYear) return;
+  const fp = readFetchedPeriods();
 
-  const fp: FetchedPeriods = { [currentYear]: [] };
+  if (!fp[y]) fp[y] = [];
 
-  if (m && !fp[currentYear].includes(m)) {
-    fp[currentYear].push(m);
+  if (m && !fp[y].includes(m)) {
+    fp[y].push(m);
   }
 
-  fp[currentYear] = fp[currentYear]
+  fp[y] = fp[y]
     .filter(Boolean)
     .sort((a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99));
 
@@ -273,14 +258,12 @@ const markFetched = (year: string, month?: string) => {
   if (m) {
     localStorage.setItem(
       "latestFetchedPeriod",
-      JSON.stringify({ year: currentYear, month: m })
+      JSON.stringify({ year: y, month: m })
     );
   }
 };
 
 const computeDefaultYearlyYear = () => {
-  const currentYear = String(new Date().getFullYear());
-
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem("latestFetchedPeriod");
@@ -289,20 +272,16 @@ const computeDefaultYearlyYear = () => {
         const parsed = JSON.parse(raw);
         const savedYear = String(parsed?.year || "").trim();
 
-        // only use saved year if it is current year
-        if (savedYear === currentYear) {
-          return currentYear;
-        }
-
-        // stale year like 2025 -> remove it
-        localStorage.removeItem("latestFetchedPeriod");
+        if (savedYear) return savedYear;
       }
     } catch {
-      localStorage.removeItem("latestFetchedPeriod");
+      // ignore bad localStorage
     }
   }
 
-  return currentYear;
+  const now = new Date();
+  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return String(latestCompleted.getFullYear());
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
@@ -2600,7 +2579,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
   const aiRequestIdRef = useRef(0);
-const uploadHistoryRequestIdRef = useRef(0);
+  const uploadHistoryRequestIdRef = useRef(0);
 
   // const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   // const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -2938,191 +2917,191 @@ const uploadHistoryRequestIdRef = useRef(0);
     };
   };
 
-const fetchUploadHistory = async (
-  rangeType: RangeType,
-  monthVal: string,
-  quarterVal: string,
-  yearVal: string,
-  country: string
-) => {
-  if (isDemoMode) {
-    setLoading(false);
-    setSkuRowsLoading(false);
-    setBargraphLoading(false);
-    setSkuRowsError(null);
-    setSkuNoDataFound(false);
-
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    setSkuRows(DEMO_SKU_ROWS);
-    setBargraphUploads(DEMO_UPLOADS);
-    return;
-  }
-
-  if (!rangeType || !yearVal) return;
-
-  // Point 3: every request gets its own id
-  const requestId = ++uploadHistoryRequestIdRef.current;
-
-  // Point 4: start all loaders together
-  setLoading(true);
-  setSkuRowsLoading(true);
-  setBargraphLoading(true);
-  setSkuRowsError(null);
-  setSkuNoDataFound(false);
-
-  try {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
-
-    const url = new URL(
-      buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country)
-    );
-
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
-
-    // If another request started after this one, ignore this response
-    if (requestId !== uploadHistoryRequestIdRef.current) return;
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-
-      if (requestId !== uploadHistoryRequestIdRef.current) return;
-
-      console.error(`API Error: ${err?.error ?? res.statusText}`);
-
-      setSkuRows([]);
-      setSkuNoDataFound(true);
+  const fetchUploadHistory = async (
+    rangeType: RangeType,
+    monthVal: string,
+    quarterVal: string,
+    yearVal: string,
+    country: string
+  ) => {
+    if (isDemoMode) {
+      setLoading(false);
+      setSkuRowsLoading(false);
+      setBargraphLoading(false);
       setSkuRowsError(null);
+      setSkuNoDataFound(false);
 
-      setUploadsData({
-        summary: zeroData,
-        summaryComparisons: zeroComparisons,
-      });
-
-      setBargraphUploads([]);
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      setSkuRows(DEMO_SKU_ROWS);
+      setBargraphUploads(DEMO_UPLOADS);
       return;
     }
 
-    const raw = await res.json();
+    if (!rangeType || !yearVal) return;
 
-    if (requestId !== uploadHistoryRequestIdRef.current) return;
+    // Point 3: every request gets its own id
+    const requestId = ++uploadHistoryRequestIdRef.current;
 
-    let finalRaw = raw;
+    // Point 4: start all loaders together
+    setLoading(true);
+    setSkuRowsLoading(true);
+    setBargraphLoading(true);
+    setSkuRowsError(null);
+    setSkuNoDataFound(false);
 
-    if (
-      rangeType === "monthly" &&
-      country.toLowerCase() === "global" &&
-      (!Array.isArray(raw?.previous_data) || raw.previous_data.length === 0)
-    ) {
-      const { prevMonth, prevYear } = getPreviousMonthYear(monthVal, yearVal);
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
 
-      const prevUrl = buildMonthlySkuUrl(prevMonth, prevYear, country);
+      const url = new URL(
+        buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country)
+      );
 
-      const prevRes = await fetch(prevUrl.toString(), {
+      const res = await fetch(url.toString(), {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         cache: "no-store",
       });
 
+      // If another request started after this one, ignore this response
       if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-      if (prevRes.ok) {
-        const prevRaw = await prevRes.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
 
         if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-        finalRaw = {
-          ...raw,
-          previous_data: prevRaw?.current_data ?? prevRaw?.data ?? [],
-          previous_table_name: prevRaw?.current_table_name,
-        };
+        console.error(`API Error: ${err?.error ?? res.statusText}`);
+
+        setSkuRows([]);
+        setSkuNoDataFound(true);
+        setSkuRowsError(null);
+
+        setUploadsData({
+          summary: zeroData,
+          summaryComparisons: zeroComparisons,
+        });
+
+        setBargraphUploads([]);
+        return;
       }
-    }
 
-    const data = buildUploadHistoryFromSkuApi(
-      finalRaw,
-      rangeType,
-      monthVal,
-      quarterVal,
-      yearVal,
-      country
-    );
+      const raw = await res.json();
 
-    const normalizedCurrentRows = normalizeRowsForParent(
-      finalRaw?.current_data ?? finalRaw?.data ?? []
-    );
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-    if (requestId !== uploadHistoryRequestIdRef.current) return;
+      let finalRaw = raw;
 
-    if (!normalizedCurrentRows.length) {
-      setSkuRows([]);
-      setSkuNoDataFound(true);
-      setSkuRowsError(null);
+      if (
+        rangeType === "monthly" &&
+        country.toLowerCase() === "global" &&
+        (!Array.isArray(raw?.previous_data) || raw.previous_data.length === 0)
+      ) {
+        const { prevMonth, prevYear } = getPreviousMonthYear(monthVal, yearVal);
 
-      setUploadsData({
-        summary: zeroData,
-        summaryComparisons: data?.summaryComparisons ?? zeroComparisons,
-        current_data: [],
-        previous_data: finalRaw?.previous_data ?? [],
-      });
+        const prevUrl = buildMonthlySkuUrl(prevMonth, prevYear, country);
 
-      setBargraphUploads([]);
-      return;
-    }
+        const prevRes = await fetch(prevUrl.toString(), {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
 
-    setUploadsData(data);
-    setSkuRows(normalizedCurrentRows);
-    setSkuNoDataFound(false);
-    setSkuRowsError(null);
+        if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-    setBargraphUploads(
-      buildUploadRowFromSkuRows(normalizedCurrentRows, {
+        if (prevRes.ok) {
+          const prevRaw = await prevRes.json();
+
+          if (requestId !== uploadHistoryRequestIdRef.current) return;
+
+          finalRaw = {
+            ...raw,
+            previous_data: prevRaw?.current_data ?? prevRaw?.data ?? [],
+            previous_table_name: prevRaw?.current_table_name,
+          };
+        }
+      }
+
+      const data = buildUploadHistoryFromSkuApi(
+        finalRaw,
         rangeType,
         monthVal,
         quarterVal,
         yearVal,
-        countryVal: country,
-      })
-    );
+        country
+      );
 
-    if (data?.summary) {
-      if (rangeType === "monthly" && yearVal && monthVal) {
-        markFetched(yearVal, monthVal);
+      const normalizedCurrentRows = normalizeRowsForParent(
+        finalRaw?.current_data ?? finalRaw?.data ?? []
+      );
+
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
+
+      if (!normalizedCurrentRows.length) {
+        setSkuRows([]);
+        setSkuNoDataFound(true);
+        setSkuRowsError(null);
+
+        setUploadsData({
+          summary: zeroData,
+          summaryComparisons: data?.summaryComparisons ?? zeroComparisons,
+          current_data: [],
+          previous_data: finalRaw?.previous_data ?? [],
+        });
+
+        setBargraphUploads([]);
+        return;
       }
 
-      if (rangeType === "quarterly" && yearVal) {
-        markFetched(yearVal);
-      }
+      setUploadsData(data);
+      setSkuRows(normalizedCurrentRows);
+      setSkuNoDataFound(false);
+      setSkuRowsError(null);
 
-      if (rangeType === "yearly" && yearVal) {
-        markFetched(yearVal);
+      setBargraphUploads(
+        buildUploadRowFromSkuRows(normalizedCurrentRows, {
+          rangeType,
+          monthVal,
+          quarterVal,
+          yearVal,
+          countryVal: country,
+        })
+      );
+
+      if (data?.summary) {
+        if (rangeType === "monthly" && yearVal && monthVal) {
+          markFetched(yearVal, monthVal);
+        }
+
+        if (rangeType === "quarterly" && yearVal) {
+          markFetched(yearVal);
+        }
+
+        if (rangeType === "yearly" && yearVal) {
+          markFetched(yearVal);
+        }
+      }
+    } catch (error: any) {
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
+
+      console.error("Error fetching data: ", error);
+
+      setSkuRows([]);
+      setSkuNoDataFound(true);
+      setSkuRowsError(error?.message || "Error fetching SKU data");
+      setUploadsData(null);
+      setBargraphUploads([]);
+    } finally {
+      // Only the newest request is allowed to stop loaders
+      if (requestId === uploadHistoryRequestIdRef.current) {
+        setLoading(false);
+        setSkuRowsLoading(false);
+        setBargraphLoading(false);
       }
     }
-  } catch (error: any) {
-    if (requestId !== uploadHistoryRequestIdRef.current) return;
-
-    console.error("Error fetching data: ", error);
-
-    setSkuRows([]);
-    setSkuNoDataFound(true);
-    setSkuRowsError(error?.message || "Error fetching SKU data");
-    setUploadsData(null);
-    setBargraphUploads([]);
-  } finally {
-    // Only the newest request is allowed to stop loaders
-    if (requestId === uploadHistoryRequestIdRef.current) {
-      setLoading(false);
-      setSkuRowsLoading(false);
-      setBargraphLoading(false);
-    }
-  }
-};
+  };
 
   const formatMoneyValue = (value: any, currency = "$") => {
     const n = toNum(value);
