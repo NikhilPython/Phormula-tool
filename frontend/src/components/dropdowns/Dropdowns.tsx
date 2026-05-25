@@ -1541,6 +1541,19 @@ const formatSummaryPeriod = (text?: string) => {
   return `(${formatPart(leftRaw)} vs ${formatPart(rightRaw)})`;
 };
 
+const splitSummaryIntoBulletPoints = (lines: string[]) => {
+  return lines
+    .flatMap((line) =>
+      String(line || "")
+        .trim()
+        // Split only after sentence-ending punctuation followed by a new sentence.
+        // This avoids breaking decimals like 2.16 or 167.65.
+        .split(/(?<=[.!?])\s+(?=[A-Z])/g)
+    )
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   loading,
   error,
@@ -1574,6 +1587,10 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
   const narrativeInsights = summaryBullets.filter((l) => !l.includes(":"));
 
+  const summaryBulletPoints = splitSummaryIntoBulletPoints(
+    narrativeInsights.slice(1)
+  );
+
   const drawerPeriodText =
     narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
 
@@ -1599,12 +1616,12 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     </span>
                   </h2>
 
-                  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                    {narrativeInsights.slice(1).map((line, i) => (
-                      <p key={i}>{line}</p>
+                  <ul className="list-disc pl-5 text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                    {summaryBulletPoints.map((line, i) => (
+                      <li key={i}>{line}</li>
                     ))}
-                  </div>
-
+                  </ul>
+                  
                   {portfolioRecommendation ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="text-xs font-semibold text-slate-700 mb-1">
