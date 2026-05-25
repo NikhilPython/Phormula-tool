@@ -603,7 +603,7 @@ export default function LiveBusinessClient({
 
   const splitIntoPoints = (para: string) =>
     (para || "")
-      .split(/(?<=\.)\s+/)   // sentence split
+      .split(/(?<=[.!?])\s+(?=[A-Z])/g)
       .map((s) => s.trim())
       .filter(Boolean);
 
@@ -3949,9 +3949,11 @@ export default function LiveBusinessClient({
                         />
 
                         {summaryText && (
-                          <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1">
-                            {summaryText}
-                          </div>
+                          <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
+                            {splitIntoPoints(summaryText).map((point, index) => (
+                              <li key={index}>{point}</li>
+                            ))}
+                          </ul>
                         )}
 
                         {portfolioRecommendation && (

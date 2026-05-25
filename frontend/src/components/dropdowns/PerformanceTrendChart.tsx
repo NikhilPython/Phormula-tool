@@ -369,199 +369,277 @@ const LiveLineChart: React.FC<{
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
   onExportApiReady?: (api: TrendChartExportApi | null) => void;
-}> = ({ xAxisData, series, metric, currencySymbol, selectedStartDay, selectedEndDay, onExportApiReady }) => {
-  const echartsInstanceRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const isDaily = series[0]?.kind === "daily";
+  // ✅ add these
+  range?: "monthly" | "quarterly" | "yearly" | "";
+  year?: string;
+  isExpanded?: boolean;
+}> = ({
+  xAxisData,
+  series,
+  metric,
+  currencySymbol,
+  selectedStartDay,
+  selectedEndDay,
+  onExportApiReady,
 
-  const isQuarterCompare = useMemo(() => {
-    return (
-      !isDaily &&
-      xAxisData.length === 3 &&
-      xAxisData.every((x) => ["1", "2", "3"].includes(String(x)))
+  // ✅ add these
+  range,
+  year,
+  isExpanded,
+}) => {
+    const echartsInstanceRef = useRef<any>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    const isDaily = series[0]?.kind === "daily";
+
+    const isQuarterCompare = useMemo(() => {
+      return (
+        !isDaily &&
+        xAxisData.length === 3 &&
+        xAxisData.every((x) => ["1", "2", "3"].includes(String(x)))
+      );
+    }, [isDaily, xAxisData]);
+
+    useEffect(() => {
+      if (!onExportApiReady) return;
+
+      const api: TrendChartExportApi = {
+        title: "Performance Trend",
+        getChartBase64: () => {
+          try {
+            const inst = echartsInstanceRef.current;
+            if (!inst) return null;
+            return inst.getDataURL({
+              type: "png",
+              pixelRatio: 2,
+              backgroundColor: "#FFFFFF",
+            });
+          } catch {
+            return null;
+          }
+        },
+      };
+
+      onExportApiReady(api);
+      return () => onExportApiReady(null);
+    }, [onExportApiReady]);
+
+    const isNumericAxis = useMemo(
+      () => xAxisData.length > 0 && xAxisData.every((x) => !isNaN(Number(x))),
+      [xAxisData]
     );
-  }, [isDaily, xAxisData]);
 
-  useEffect(() => {
-    if (!onExportApiReady) return;
+    const hasZeroBasedDays = useMemo(
+      () => isDaily && isNumericAxis && xAxisData.some((x) => Number(x) === 0),
+      [isDaily, isNumericAxis, xAxisData]
+    );
 
-    const api: TrendChartExportApi = {
-      title: "Performance Trend",
-      getChartBase64: () => {
-        try {
-          const inst = echartsInstanceRef.current;
-          if (!inst) return null;
-          return inst.getDataURL({
-            type: "png",
-            pixelRatio: 2,
-            backgroundColor: "#FFFFFF",
-          });
-        } catch {
-          return null;
+    const displayDayShift = hasZeroBasedDays ? 1 : 0;
+
+    const maxDisplayDay = useMemo(() => {
+      if (!isDaily) return null;
+
+      const lens = series
+        .map((s) => s.monthLen)
+        .filter((n): n is number => typeof n === "number" && !isNaN(n));
+
+      if (lens.length) return Math.max(...lens);
+
+      const nums = xAxisData.map((x) => Number(x)).filter((n) => !isNaN(n));
+      if (!nums.length) return null;
+      return Math.max(...nums) + displayDayShift;
+    }, [isDaily, series, xAxisData, displayDayShift]);
+
+    const renderXAxis = useMemo(() => {
+      if (!isDaily || maxDisplayDay == null) return xAxisData;
+
+      return xAxisData.filter((x) => {
+        const n = Number(x);
+        if (isNaN(n)) return true;
+        return n + displayDayShift <= maxDisplayDay;
+      });
+    }, [xAxisData, isDaily, maxDisplayDay, displayDayShift]);
+
+    const rangeActive = isDaily && selectedStartDay != null && selectedEndDay != null;
+    const startDay = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
+    const endDay = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
+
+    const filteredXAxis = useMemo(() => {
+      if (!rangeActive || startDay == null || endDay == null) return renderXAxis;
+
+      const keep = new Set(
+        Array.from({ length: endDay - startDay + 1 }, (_, i) => {
+          const uiDay = startDay + i;
+          const backendDay = uiDay - displayDayShift;
+          return String(backendDay);
+        })
+      );
+
+      return renderXAxis.filter((x) => keep.has(String(x)));
+    }, [rangeActive, startDay, endDay, renderXAxis, displayDayShift]);
+
+    // ✅ MONTH VIEW FIX (your screenshot):
+    // If month axis has only one month (e.g., ["Jan"]), expand axis to Jan..Dec
+    // and fill missing months with 0 so a line drops to 0 and continues flat.
+    const isMonthAbbrAxis = useMemo(() => {
+      if (isDaily || isQuarterCompare) return false;
+      if (filteredXAxis.length === 0) return false;
+      return filteredXAxis.every((m) => MONTH_ABBR_TO_IDX[String(m).toLowerCase()] != null);
+    }, [isDaily, isQuarterCompare, filteredXAxis]);
+
+    const selectedYearNum = Number(year);
+    const currentCalendarYear = new Date().getFullYear();
+
+    const latestCurrentYearMonthIdx = useMemo(() => {
+      if (!isMonthAbbrAxis) return null;
+      if (range !== "yearly") return null;
+      if (!selectedYearNum) return null;
+      if (selectedYearNum !== currentCalendarYear) return null;
+
+      const currentSeries =
+        series.find((s) => s.name === String(selectedYearNum)) ??
+        series.find((s) => {
+          const parsed = parseLabelKey(s.name);
+          return parsed?.key === selectedYearNum * 100;
+        });
+
+      if (!currentSeries) return null;
+
+      let maxIdx = -1;
+
+      currentSeries.points.forEach((pt) => {
+        const monthIdx = MONTH_ABBR_TO_IDX[String(pt.x).toLowerCase()];
+        if (monthIdx == null) return;
+
+        const hasData =
+          (pt.net_sales !== null && pt.net_sales !== undefined) ||
+          (pt.units !== null && pt.units !== undefined);
+
+        if (hasData) {
+          maxIdx = Math.max(maxIdx, monthIdx);
         }
-      },
-    };
+      });
 
-    onExportApiReady(api);
-    return () => onExportApiReady(null);
-  }, [onExportApiReady]);
+      return maxIdx >= 0 ? maxIdx : null;
+    }, [
+      isMonthAbbrAxis,
+      range,
+      selectedYearNum,
+      currentCalendarYear,
+      series,
+    ]);
 
-  const isNumericAxis = useMemo(
-    () => xAxisData.length > 0 && xAxisData.every((x) => !isNaN(Number(x))),
-    [xAxisData]
-  );
+    // const fullYearXAxis = useMemo(() => {
+    //   if (!isMonthAbbrAxis) return filteredXAxis;
 
-  const hasZeroBasedDays = useMemo(
-    () => isDaily && isNumericAxis && xAxisData.some((x) => Number(x) === 0),
-    [isDaily, isNumericAxis, xAxisData]
-  );
+    //   // ✅ Collapsed ongoing year:
+    //   // If current year has data till Apr, show Jan-Apr only.
+    //   if (latestCurrentYearMonthIdx != null) {
+    //     return FULL_MONTHS.slice(0, latestCurrentYearMonthIdx + 1);
+    //   }
 
-  const displayDayShift = hasZeroBasedDays ? 1 : 0;
+    //   // ✅ Expanded view or past year:
+    //   // Keep existing behavior: Jan-Dec.
+    //   return FULL_MONTHS;
+    // }, [isMonthAbbrAxis, filteredXAxis, latestCurrentYearMonthIdx]);
 
-  const maxDisplayDay = useMemo(() => {
-    if (!isDaily) return null;
+    const fullYearXAxis = useMemo(() => {
+      if (!isMonthAbbrAxis) return filteredXAxis;
 
-    const lens = series
-      .map((s) => s.monthLen)
-      .filter((n): n is number => typeof n === "number" && !isNaN(n));
+      if (!isExpanded && latestCurrentYearMonthIdx != null) {
+        return FULL_MONTHS.slice(0, latestCurrentYearMonthIdx + 1);
+      }
 
-    if (lens.length) return Math.max(...lens);
+      return FULL_MONTHS;
+    }, [isMonthAbbrAxis, filteredXAxis, latestCurrentYearMonthIdx, isExpanded]);
 
-    const nums = xAxisData.map((x) => Number(x)).filter((n) => !isNaN(n));
-    if (!nums.length) return null;
-    return Math.max(...nums) + displayDayShift;
-  }, [isDaily, series, xAxisData, displayDayShift]);
+    // Fallback single-point fix for non-month cases (daily / numeric / etc.)
+    const PAD_X = "__single_point_pad__";
+    const isPadX = (x: any) => String(x) === PAD_X;
 
-  const renderXAxis = useMemo(() => {
-    if (!isDaily || maxDisplayDay == null) return xAxisData;
+    const effectiveXAxis = useMemo(() => {
+      // Month-abbr case handled by fullYearXAxis (no pad needed)
+      if (isMonthAbbrAxis) return fullYearXAxis;
 
-    return xAxisData.filter((x) => {
-      const n = Number(x);
-      if (isNaN(n)) return true;
-      return n + displayDayShift <= maxDisplayDay;
-    });
-  }, [xAxisData, isDaily, maxDisplayDay, displayDayShift]);
+      // Otherwise, if only 1 category, add a hidden pad so ECharts renders a segment/point
+      if (filteredXAxis.length === 1) return [filteredXAxis[0], PAD_X];
+      return filteredXAxis;
+    }, [isMonthAbbrAxis, fullYearXAxis, filteredXAxis]);
 
-  const rangeActive = isDaily && selectedStartDay != null && selectedEndDay != null;
-  const startDay = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
-  const endDay = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
+    const yAxisName =
+      metric === "net_sales" ? (currencySymbol ? `(${currencySymbol})` : "Sales") : "Units (in nos.)";
 
-  const filteredXAxis = useMemo(() => {
-    if (!rangeActive || startDay == null || endDay == null) return renderXAxis;
+    const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
 
-    const keep = new Set(
-      Array.from({ length: endDay - startDay + 1 }, (_, i) => {
-        const uiDay = startDay + i;
-        const backendDay = uiDay - displayDayShift;
-        return String(backendDay);
-      })
-    );
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
 
-    return renderXAxis.filter((x) => keep.has(String(x)));
-  }, [rangeActive, startDay, endDay, renderXAxis, displayDayShift]);
+      const ro = new ResizeObserver(() => {
+        try {
+          echartsInstanceRef.current?.resize();
+        } catch { }
+      });
 
-  // ✅ MONTH VIEW FIX (your screenshot):
-  // If month axis has only one month (e.g., ["Jan"]), expand axis to Jan..Dec
-  // and fill missing months with 0 so a line drops to 0 and continues flat.
-  const isMonthAbbrAxis = useMemo(() => {
-    if (isDaily || isQuarterCompare) return false;
-    if (filteredXAxis.length === 0) return false;
-    return filteredXAxis.every((m) => MONTH_ABBR_TO_IDX[String(m).toLowerCase()] != null);
-  }, [isDaily, isQuarterCompare, filteredXAxis]);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
 
-  const fullYearXAxis = useMemo(() => {
-    if (!isMonthAbbrAxis) return filteredXAxis;
-    // Always show Jan..Dec like your other charts
-    return FULL_MONTHS;
-  }, [isMonthAbbrAxis, filteredXAxis]);
+    const option = {
+      tooltip: {
+        trigger: "axis",
+        textStyle: { fontSize: 12, color: "#414042" },
+        formatter: (params: any) => {
+          let rawX = params?.[0]?.axisValue ?? "";
+          if (isPadX(rawX)) rawX = effectiveXAxis[0];
 
-  // Fallback single-point fix for non-month cases (daily / numeric / etc.)
-  const PAD_X = "__single_point_pad__";
-  const isPadX = (x: any) => String(x) === PAD_X;
+          const header = isQuarterCompare
+            ? `Month ${rawX}`
+            : isDaily && isNumericAxis && !isNaN(Number(rawX))
+              ? `Day ${Number(rawX) + displayDayShift}`
+              : String(rawX);
 
-  const effectiveXAxis = useMemo(() => {
-    // Month-abbr case handled by fullYearXAxis (no pad needed)
-    if (isMonthAbbrAxis) return fullYearXAxis;
+          const lines = (params || [])
+            .filter((p: any) => !isPadX(p?.axisValue))
+            .map((p: any) => {
+              const valObj = p?.data;
 
-    // Otherwise, if only 1 category, add a hidden pad so ECharts renders a segment/point
-    if (filteredXAxis.length === 1) return [filteredXAxis[0], PAD_X];
-    return filteredXAxis;
-  }, [isMonthAbbrAxis, fullYearXAxis, filteredXAxis]);
+              const value =
+                valObj == null
+                  ? null
+                  : typeof valObj === "object" && "value" in valObj
+                    ? valObj.value
+                    : valObj;
 
-  const yAxisName =
-    metric === "net_sales" ? (currencySymbol ? `(${currencySymbol})` : "Sales") : "Units (in nos.)";
+              const monthLabel =
+                typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
 
-  const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
+              const fmtNumber = (n: number) =>
+                Math.round(n).toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                });
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+              const displayValue =
+                value == null
+                  ? "-"
+                  : metric === "net_sales"
+                    ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
+                    : `${Number(value).toLocaleString()}`;
 
-    const ro = new ResizeObserver(() => {
-      try {
-        echartsInstanceRef.current?.resize();
-      } catch { }
-    });
+              const suffix =
+                isQuarterCompare && monthLabel ? ` <span style="color:#6B7280;">(${monthLabel})</span>` : "";
 
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const option = {
-    tooltip: {
-      trigger: "axis",
-      textStyle: { fontSize: 12, color: "#414042" },
-      formatter: (params: any) => {
-        let rawX = params?.[0]?.axisValue ?? "";
-        if (isPadX(rawX)) rawX = effectiveXAxis[0];
-
-        const header = isQuarterCompare
-          ? `Month ${rawX}`
-          : isDaily && isNumericAxis && !isNaN(Number(rawX))
-            ? `Day ${Number(rawX) + displayDayShift}`
-            : String(rawX);
-
-        const lines = (params || [])
-          .filter((p: any) => !isPadX(p?.axisValue))
-          .map((p: any) => {
-            const valObj = p?.data;
-
-            const value =
-              valObj == null
-                ? null
-                : typeof valObj === "object" && "value" in valObj
-                  ? valObj.value
-                  : valObj;
-
-            const monthLabel =
-              typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
-
-            const fmtNumber = (n: number) =>
-              Math.round(n).toLocaleString(undefined, {
-                maximumFractionDigits: 0,
-              });
-
-            const displayValue =
-              value == null
-                ? "-"
-                : metric === "net_sales"
-                  ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
-                  : `${Number(value).toLocaleString()}`;
-
-            const suffix =
-              isQuarterCompare && monthLabel ? ` <span style="color:#6B7280;">(${monthLabel})</span>` : "";
-
-            return `
+              return `
               <div style="font-size:12px; line-height:1.4; color:#44042;">
                 <span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${p.color};border-radius:0;"></span>
                 <span>${p.seriesName}${suffix}: </span>
                 <span style="color:#414042;">${displayValue}</span>
               </div>
             `;
-          });
+            });
 
-        return `
+          return `
           <div style="font-size:12px; color:#414042;">
             <div style="font-weight:600; margin-bottom:4px; color:#1414042;">
               ${header}
@@ -569,192 +647,226 @@ const LiveLineChart: React.FC<{
             ${lines.join("")}
           </div>
         `;
-      },
-    },
-
-    legend: {
-      top: 10,
-      left: "left",
-      orient: "horizontal",
-      icon: "rect",
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 14,
-      textStyle: {
-        fontSize: 12,
-        color: "#6B7280",
-        padding: [0, 6, 0, 6],
-      },
-      data: series.map((s) => s.name),
-    },
-
-    grid: { left: 46, right: 16, top: 62, bottom: 44 },
-
-    xAxis: {
-      type: "category",
-      data: effectiveXAxis,
-      boundaryGap: false,
-      nameLocation: "middle",
-      nameGap: 25,
-      axisLine: {
-        lineStyle: {
-          color: "#D1D5DB",
-          width: 1,
         },
       },
-      axisTick: {
-        lineStyle: {
-          color: "#D1D5DB",
+
+      legend: {
+        top: 10,
+        left: "left",
+        orient: "horizontal",
+        icon: "rect",
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 14,
+        textStyle: {
+          fontSize: 12,
+          color: "#6B7280",
+          padding: [0, 6, 0, 6],
+        },
+        data: series.map((s) => s.name),
+      },
+
+      grid: { left: 46, right: 16, top: 62, bottom: 44 },
+
+      xAxis: {
+        type: "category",
+        data: effectiveXAxis,
+        boundaryGap: false,
+        nameLocation: "middle",
+        nameGap: 25,
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
+        },
+        axisTick: {
+          lineStyle: {
+            color: "#D1D5DB",
+          },
+        },
+        axisLabel: {
+          color: "#6B7280",
+          formatter: (value: string) => {
+            if (isPadX(value)) return "";
+
+            if (isQuarterCompare) return `Month ${value}`;
+
+            if (!isDaily || !isNumericAxis) return String(value);
+            const n = Number(value);
+            return isNaN(n) ? String(value) : String(n + displayDayShift);
+          },
         },
       },
-      axisLabel: {
-        color: "#6B7280",
-        formatter: (value: string) => {
-          if (isPadX(value)) return "";
 
-          if (isQuarterCompare) return `Month ${value}`;
-
-          if (!isDaily || !isNumericAxis) return String(value);
-          const n = Number(value);
-          return isNaN(n) ? String(value) : String(n + displayDayShift);
+      yAxis: {
+        type: "value",
+        name: yAxisName,
+        nameLocation: "middle",
+        nameGap: 8,
+        nameTextStyle: {
+          color: "#6B7280",
+          padding: [0, 0, 0, 0],
+        },
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
+        },
+        axisLabel: {
+          margin: 2,
+          color: "#6B7280",
+        },
+        splitLine: {
+          lineStyle: {
+            color: "#E5E7EB",
+          },
         },
       },
-    },
 
-    yAxis: {
-      type: "value",
-      name: yAxisName,
-      nameLocation: "middle",
-      nameGap: 8,
-      nameTextStyle: {
-        color: "#6B7280",
-        padding: [0, 0, 0, 0],
-      },
-      axisLine: {
-        lineStyle: {
-          color: "#D1D5DB",
-          width: 1,
-        },
-      },
-      axisLabel: {
-        margin: 2,
-        color: "#6B7280",
-      },
-      splitLine: {
-        lineStyle: {
-          color: "#E5E7EB",
-        },
-      },
-    },
+      series: series.map((ser) => {
+        const lineColor = colorMap[ser.name] ?? GREY;
 
-    series: series.map((ser) => {
-      const lineColor = colorMap[ser.name] ?? GREY;
+        const realPointCount = ser.points.filter((pt) => {
+          const v = metric === "units" ? pt.units : pt.net_sales;
+          return typeof v === "number" && !isNaN(v);
+        }).length;
 
-      const realPointCount = ser.points.filter((pt) => {
-        const v = metric === "units" ? pt.units : pt.net_sales;
-        return typeof v === "number" && !isNaN(v);
-      }).length;
+        const mapByX = new Map(ser.points.map((p) => [p.x, p] as const));
 
-      const mapByX = new Map(ser.points.map((p) => [p.x, p] as const));
+        // For month-abbr full-year axis:
+        // - fill missing months with 0 (not null) so the line continues flat at 0.
+        // This produces exactly the behavior in your screenshot (Jan value -> Feb 0 -> flat).
+        const aligned = effectiveXAxis.map((x) => {
+          if (isPadX(x)) return mapByX.get(effectiveXAxis[0]);
+          return mapByX.get(x);
+        });
 
-      // For month-abbr full-year axis:
-      // - fill missing months with 0 (not null) so the line continues flat at 0.
-      // This produces exactly the behavior in your screenshot (Jan value -> Feb 0 -> flat).
-      const aligned = effectiveXAxis.map((x) => {
-        if (isPadX(x)) return mapByX.get(effectiveXAxis[0]);
-        return mapByX.get(x);
-      });
+        return {
+          name: ser.name,
+          type: "line",
+          smooth: true,
 
-      return {
-        name: ser.name,
-        type: "line",
-        smooth: true,
+          // Keep symbols hidden normally, but show if truly only one real point AND we're not in full-year fill mode.
+          // showSymbol: !isMonthAbbrAxis && realPointCount <= 1,
+          // symbolSize: !isMonthAbbrAxis && realPointCount <= 1 ? 6 : 0,
 
-        // Keep symbols hidden normally, but show if truly only one real point AND we're not in full-year fill mode.
-        // showSymbol: !isMonthAbbrAxis && realPointCount <= 1,
-        // symbolSize: !isMonthAbbrAxis && realPointCount <= 1 ? 6 : 0,
+          // ✅ show points (you can keep conditional logic if you want)
+          showSymbol: true,
+          symbol: "circle",
+          // ✅ thicker/larger points (radius-like)
+          // Try 8–12 depending on your preference
+          symbolSize: 7,
 
-        // ✅ show points (you can keep conditional logic if you want)
-        showSymbol: true,
-        symbol: "circle",
-        // ✅ thicker/larger points (radius-like)
-        // Try 8–12 depending on your preference
-        symbolSize: 7,
+          emphasis: {
+            scale: true, // disable default scaling animation
+            itemStyle: {
+              color: lineColor,
+            },
+            symbolSize: 11, // 👈 bigger circle on hover
+          },
 
-        emphasis: {
-          scale: true, // disable default scaling animation
+
+          connectNulls: false,
+          lineStyle: { color: lineColor, width: 2 },
           itemStyle: {
             color: lineColor,
+            borderWidth: 0,
           },
-          symbolSize: 11, // 👈 bigger circle on hover
-        },
 
+          data: aligned.map((p, idx) => {
+            const xRaw = effectiveXAxis[idx];
 
-        connectNulls: false,
-        lineStyle: { color: lineColor, width: 2 },
-        itemStyle: {
-          color: lineColor,
-          borderWidth: 0,
-        },
-
-        data: aligned.map((p, idx) => {
-          const xRaw = effectiveXAxis[idx];
-
-          // pad category: duplicate first value
-          if (isPadX(xRaw)) {
-            const vPad = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
-            if (p && (p as any).monthLabel != null) {
-              return vPad == null ? null : { value: vPad, monthLabel: (p as any).monthLabel };
+            // pad category: duplicate first value
+            if (isPadX(xRaw)) {
+              const vPad = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+              if (p && (p as any).monthLabel != null) {
+                return vPad == null ? null : { value: vPad, monthLabel: (p as any).monthLabel };
+              }
+              return vPad;
             }
-            return vPad;
-          }
 
-          // Month-abbr axis (Jan..Dec): fill missing months with 0
-          if (isMonthAbbrAxis) {
+            // Month-abbr axis (Jan..Dec): fill missing months with 0
+            if (isMonthAbbrAxis) {
+              const monthIdx = MONTH_ABBR_TO_IDX[String(xRaw).toLowerCase()];
+              const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+
+              const isCurrentOngoingYearSeries =
+                range === "yearly" &&
+                selectedYearNum === currentCalendarYear &&
+                ser.name === String(selectedYearNum);
+
+              const isFutureMonthForCurrentYear =
+                isCurrentOngoingYearSeries &&
+                latestCurrentYearMonthIdx != null &&
+                monthIdx != null &&
+                monthIdx > latestCurrentYearMonthIdx;
+
+              if (isFutureMonthForCurrentYear) {
+                // Collapsed view: do not render future current-year months
+                if (!isExpanded) {
+                  return null;
+                }
+
+                // Expanded view:
+                // show only ONE grounding point right after the last real month.
+                // Example: data till Apr => May = 0, Jun-Dec = null
+                const isFirstFutureMonth =
+                  latestCurrentYearMonthIdx != null &&
+                  monthIdx === latestCurrentYearMonthIdx + 1;
+
+                return isFirstFutureMonth ? 0 : null;
+              }
+
+              // ✅ For previous year, keep Jan-Dec comparison as-is.
+              // ✅ For current year only up to available month, keep real value.
+              // ✅ For missing historical months, keep old 0-fill behavior.
+              const vFilled = v == null ? 0 : v;
+
+              if (p && (p as any).monthLabel != null) {
+                return { value: vFilled, monthLabel: (p as any).monthLabel };
+              }
+
+              return vFilled;
+            }
+
+            // Daily clipping
+            const uiDay =
+              isDaily && isNumericAxis && !isNaN(Number(xRaw)) ? Number(xRaw) + displayDayShift : null;
+
+            if (isDaily && uiDay != null && ser.monthLen != null && uiDay > ser.monthLen) {
+              return null;
+            }
+
             const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
-            const vFilled = v == null ? 0 : v; // ✅ key change
+
             if (p && (p as any).monthLabel != null) {
-              return { value: vFilled, monthLabel: (p as any).monthLabel };
+              return v == null ? null : { value: v, monthLabel: (p as any).monthLabel };
             }
-            return vFilled;
-          }
 
-          // Daily clipping
-          const uiDay =
-            isDaily && isNumericAxis && !isNaN(Number(xRaw)) ? Number(xRaw) + displayDayShift : null;
+            return v;
+          }),
+        };
+      }),
+    };
 
-          if (isDaily && uiDay != null && ser.monthLen != null && uiDay > ser.monthLen) {
-            return null;
-          }
-
-          const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
-
-          if (p && (p as any).monthLabel != null) {
-            return v == null ? null : { value: v, monthLabel: (p as any).monthLabel };
-          }
-
-          return v;
-        }),
-      };
-    }),
+    return (
+      <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
+        <ReactECharts
+          option={option}
+          style={{ width: "100%", height: "100%" }}
+          opts={{ renderer: "canvas" }}
+          onChartReady={(instance) => {
+            echartsInstanceRef.current = instance;
+            try {
+              instance.resize();
+            } catch { }
+          }}
+        />
+      </div>
+    );
   };
-
-  return (
-    <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
-      <ReactECharts
-        option={option}
-        style={{ width: "100%", height: "100%" }}
-        opts={{ renderer: "canvas" }}
-        onChartReady={(instance) => {
-          echartsInstanceRef.current = instance;
-          try {
-            instance.resize();
-          } catch { }
-        }}
-      />
-    </div>
-  );
-};
 
 const buildFallbackTrend = (
   range?: "monthly" | "quarterly" | "yearly" | ""
@@ -821,7 +933,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   const loading =
     props.loading === true ||
     (!isPreviewMode && props.data == null && !props.error);
-    
+
   const error = props.error ?? null;
 
   const mapped = useMemo(() => {
@@ -923,6 +1035,11 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
             selectedStartDay={props.selectedStartDay}
             selectedEndDay={props.selectedEndDay}
             onExportApiReady={props.onExportApiReady}
+
+            // ✅ add these
+            range={props.range}
+            year={props.year}
+            isExpanded={props.isExpanded}
           />
         )}
 
