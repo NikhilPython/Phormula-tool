@@ -941,6 +941,136 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
 
     return out
 
+def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregates monthly total rows into one synthetic total row.
+
+    Used only for yearly partial-period comparison:
+    Jan-Apr current year vs Jan-Apr previous year.
+
+    Additive metrics are summed.
+    Non-additive metrics are recalculated.
+    """
+
+    if df_total_rows.empty:
+        return pd.DataFrame()
+
+    df = df_total_rows.copy()
+
+    for col in MOVEMENT_COLUMNS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    row = {"sku": "total"}
+
+    # Sum additive metrics
+    for col in METRIC_COLUMNS:
+        if col in df.columns:
+            row[col] = float(df[col].sum())
+
+    total_units = row.get("total_quantity", 0)
+    net_sales = row.get("net_sales", 0)
+    cm1_profit = row.get("profit", 0)
+    cm2_profit = row.get("cm2_profit", 0)
+    advertising = row.get("advertising_total", 0)
+
+    # Recalculate non-additive metrics
+    row["asp"] = round(net_sales / total_units, 2) if total_units else None
+
+    row["unit_wise_profitability"] = (
+        round(cm1_profit / total_units, 2) if total_units else None
+    )
+
+    row["profit_percentage"] = (
+        round((cm1_profit / net_sales) * 100, 2) if net_sales else None
+    )
+
+    row["cm2_profit_percentage"] = (
+        round((cm2_profit / net_sales) * 100, 2) if net_sales else None
+    )
+
+    row["acos"] = (
+        round((advertising / net_sales) * 100, 2) if net_sales else None
+    )
+
+    return pd.DataFrame([row])
+
+def aggregate_monthly_tables_for_yearly_comparison_generic(
+    *,
+    user_id: int,
+    year: int,
+    fetch_monthly_func,
+) -> dict:
+    """
+    Finds monthly tables available in selected year,
+    then aggregates those same months for selected year and previous year.
+
+    Example:
+    If selected year has Jan-Apr data,
+    compare Jan-Apr selected year vs Jan-Apr previous year.
+    """
+
+    available_months = []
+
+    current_detail_frames = []
+    current_total_frames = []
+
+    prev_detail_frames = []
+    prev_total_frames = []
+
+    for m in range(1, 13):
+        df_cur = fetch_monthly_func(
+            user_id=user_id,
+            timeline=str(m),
+            year=year,
+        )
+
+        if df_cur.empty:
+            continue
+
+        available_months.append(m)
+
+        cur_detail, cur_total = _split_total_row(df_cur)
+
+        if not cur_detail.empty:
+            current_detail_frames.append(cur_detail)
+
+        if not cur_total.empty:
+            current_total_frames.append(cur_total)
+
+        df_prev = fetch_monthly_func(
+            user_id=user_id,
+            timeline=str(m),
+            year=year - 1,
+        )
+
+        prev_detail, prev_total = _split_total_row(df_prev)
+
+        if not prev_detail.empty:
+            prev_detail_frames.append(prev_detail)
+
+        if not prev_total.empty:
+            prev_total_frames.append(prev_total)
+
+    def concat_or_empty(frames):
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    current_detail_all = concat_or_empty(current_detail_frames)
+    current_total_all = concat_or_empty(current_total_frames)
+
+    prev_detail_all = concat_or_empty(prev_detail_frames)
+    prev_total_all = concat_or_empty(prev_total_frames)
+
+    return {
+        "available_months": available_months,
+        "df_current_detail": current_detail_all,
+        "df_current_total": aggregate_total_rows_for_partial_year(current_total_all),
+        "df_prev_detail": prev_detail_all,
+        "df_prev_total": aggregate_total_rows_for_partial_year(prev_total_all),
+        "sku_current": compute_sku_precalc(current_detail_all),
+        "sku_prev": compute_sku_precalc(prev_detail_all),
+    }
+
 def fetch_inventory_aged_by_user(user_id: int, country: str | None = None) -> pd.DataFrame:
     currency = None
 
@@ -2072,26 +2202,86 @@ def get_or_create_summary(
     # ============================================================
     # PREVIOUS PERIOD
     # ============================================================
-    (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
-    df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
-    df_prev_detail, df_prev_total = _split_total_row(df_prev)
+    # (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
+    # df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+    # df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
+    # period_absolute_changes = {}
+    # period_pct_changes = None
+
+    # if not df_current_total.empty and not df_prev_total.empty:
+    #     period_absolute_changes = compute_period_absolute_changes(
+    #         df_current_total,
+    #         df_prev_total
+    #     )
+
+    #     period_pct_changes = compute_period_pct_changes(
+    #         df_current_total,
+    #         df_prev_total
+    #     )
+
+    # sku_prev = compute_sku_precalc(df_prev_detail)
+    # sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
+    # ============================================================
+    # PREVIOUS PERIOD / YEARLY PARTIAL-YEAR COMPARISON
+    # ============================================================
     period_absolute_changes = {}
     period_pct_changes = None
+    comparison_months = []
 
-    if not df_current_total.empty and not df_prev_total.empty:
+    if period == "yearly":
+        yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+            user_id=user_id,
+            year=year,
+            fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
+                user_id=user_id,
+                country=country,
+                period="monthly",
+                timeline=timeline,
+                year=year,
+            ),
+        )
+
+        comparison_months = yearly_compare["available_months"]
+
+        df_current_total_for_comparison = yearly_compare["df_current_total"]
+        df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+        sku_current_for_comparison = yearly_compare["sku_current"]
+        sku_prev = yearly_compare["sku_prev"]
+
+    else:
+        (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
+
+        df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+        df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+        df_current_total_for_comparison = df_current_total
+        df_prev_total_for_comparison = df_prev_total
+
+        sku_current_for_comparison = sku_current
+        sku_prev = compute_sku_precalc(df_prev_detail)
+
+    if (
+        not df_current_total_for_comparison.empty
+        and not df_prev_total_for_comparison.empty
+    ):
         period_absolute_changes = compute_period_absolute_changes(
-            df_current_total,
-            df_prev_total
+            df_current_total_for_comparison,
+            df_prev_total_for_comparison,
         )
 
         period_pct_changes = compute_period_pct_changes(
-            df_current_total,
-            df_prev_total
+            df_current_total_for_comparison,
+            df_prev_total_for_comparison,
         )
 
-    sku_prev = compute_sku_precalc(df_prev_detail)
-    sku_mom = compare_sku_metrics(sku_current, sku_prev)
+    sku_mom = compare_sku_metrics(
+        sku_current_for_comparison,
+        sku_prev,
+    )
+
 
     remaining_agg = build_remaining_skus_aggregate(
     sku_current=sku_current,
@@ -2154,6 +2344,13 @@ def get_or_create_summary(
             "scope": scope,
              # ✅ ADD THIS LINE
             "portfolio_time_series": rolling_series,
+            "yearly_comparison_months": comparison_months if period == "yearly" else None,
+            "yearly_comparison_basis": (
+                f"Compared only months {comparison_months} of {year} "
+                f"vs same months of {year - 1}"
+                if period == "yearly"
+                else None
+            ),
         }
 
         analysis_raw = run_prompt_1_analysis(ai_payload)
@@ -2481,6 +2678,156 @@ def build_mapped_product_journeys(
 
     return mapped_products
 
+# def build_global_numeric_metrics(
+#     *,
+#     user_id: int,
+#     period: str,
+#     timeline: str,
+#     year: int
+# ) -> dict:
+#     """
+#     Builds selected-period and previous-period GLOBAL metrics
+#     from the actual global table:
+
+#     skuwisemonthly_{user_id}_global_{month}{year}_table
+#     """
+
+#     df_current = fetch_global_precalc_table(
+#         user_id=user_id,
+#         period=period,
+#         timeline=timeline,
+#         year=year,
+#     )
+
+#     df_current_detail, df_current_total = _split_total_row(df_current)
+
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(
+#         period,
+#         timeline,
+#         year,
+#     )
+
+#     df_prev = fetch_global_precalc_table(
+#         user_id=user_id,
+#         period=p_period,
+#         timeline=p_timeline,
+#         year=p_year,
+#     )
+
+#     df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#     if df_current.empty:
+#         return {
+#             "available": False,
+#             "source": "global_table",
+#             "reason": "No selected-period global table found",
+#             "selected_period": {
+#                 "period": period,
+#                 "timeline": timeline,
+#                 "year": year,
+#                 "period_label": period_label(period, timeline, year),
+#             },
+#             "previous_period": {
+#                 "period": p_period,
+#                 "timeline": p_timeline,
+#                 "year": p_year,
+#                 "period_label": period_label(p_period, p_timeline, p_year),
+#             },
+#             "portfolio": {},
+#             "sku_current": {},
+#             "sku_mom": {},
+#               # ✅ add these
+#             "focus_skus": [],
+#             "remaining_agg": {},
+#             "products": {},
+#         }
+
+#     current_values = {
+#         "units": _total_value(df_current_total, "total_quantity"),
+#         "net_sales": _total_value(df_current_total, "net_sales"),
+#         "asp": _total_value(df_current_total, "asp"),
+#         "cm1_profit": _total_value(df_current_total, "profit"),
+#         "cm1_profit_per_unit": _total_value(df_current_total, "unit_wise_profitability"),
+#         "cm2_profit": _total_value(df_current_total, "cm2_profit"),
+#         "advertising": _total_value(df_current_total, "advertising_total"),
+#         "storage_fees": _total_value(df_current_total, "platform_fee_inventory_storage"),
+#         "acos": _total_value(df_current_total, "acos"),
+#     }
+
+#     previous_values = {
+#         "units": _total_value(df_prev_total, "total_quantity"),
+#         "net_sales": _total_value(df_prev_total, "net_sales"),
+#         "asp": _total_value(df_prev_total, "asp"),
+#         "cm1_profit": _total_value(df_prev_total, "profit"),
+#         "cm1_profit_per_unit": _total_value(df_prev_total, "unit_wise_profitability"),
+#         "cm2_profit": _total_value(df_prev_total, "cm2_profit"),
+#         "advertising": _total_value(df_prev_total, "advertising_total"),
+#         "storage_fees": _total_value(df_prev_total, "platform_fee_inventory_storage"),
+#         "acos": _total_value(df_prev_total, "acos"),
+#     }
+
+#     absolute_changes = {}
+#     pct_changes = {}
+
+#     if not df_current_total.empty and not df_prev_total.empty:
+#         absolute_changes = compute_period_absolute_changes(
+#             df_current_total,
+#             df_prev_total,
+#         )
+
+#         pct_changes = compute_period_pct_changes(
+#             df_current_total,
+#             df_prev_total,
+#         )
+
+#     global_sku_current = compute_sku_precalc(df_current_detail)
+#     global_sku_prev = compute_sku_precalc(df_prev_detail)
+
+#     global_sku_mom = compare_sku_metrics(
+#         global_sku_current,
+#         global_sku_prev,
+#     )
+#     global_focus_skus = select_focus_skus_by_sales_mix(global_sku_current)
+
+#     global_remaining_agg = build_remaining_skus_aggregate(
+#         sku_current=global_sku_current,
+#         sku_prev=global_sku_prev,
+#         focus_skus=global_focus_skus,
+#     )
+
+#     return {
+#         "available": True,
+#         "source": "global_table",
+#         "selected_period": {
+#             "period": period,
+#             "timeline": timeline,
+#             "year": year,
+#             "period_label": period_label(period, timeline, year),
+#         },
+#         "previous_period": {
+#             "period": p_period,
+#             "timeline": p_timeline,
+#             "year": p_year,
+#             "period_label": period_label(p_period, p_timeline, p_year),
+#         },
+#         "portfolio": {
+#             "current_values": current_values,
+#             "previous_values": previous_values,
+#             "absolute_changes": absolute_changes,
+#             "pct_changes": pct_changes,
+#         },
+
+#         # ✅ frontend metrics from skuwisemonthly_{user_id}_global_{mn}{year}_table
+#         "sku_current": global_sku_current,
+#         "sku_mom": global_sku_mom,
+#         # ✅ ADD THESE
+#         "focus_skus": global_focus_skus,
+#         "remaining_agg": global_remaining_agg,
+
+#         # optional backwards compatibility
+#         "products": global_sku_mom,
+#     }
+
 def build_global_numeric_metrics(
     *,
     user_id: int,
@@ -2490,9 +2837,11 @@ def build_global_numeric_metrics(
 ) -> dict:
     """
     Builds selected-period and previous-period GLOBAL metrics
-    from the actual global table:
+    from the actual global table.
 
-    skuwisemonthly_{user_id}_global_{month}{year}_table
+    For yearly:
+    - Do NOT compare full yearly table vs previous full yearly table.
+    - Compare available monthly tables in selected year vs same months previous year.
     """
 
     df_current = fetch_global_precalc_table(
@@ -2539,61 +2888,106 @@ def build_global_numeric_metrics(
             "portfolio": {},
             "sku_current": {},
             "sku_mom": {},
-              # ✅ add these
             "focus_skus": [],
             "remaining_agg": {},
             "products": {},
+            "comparison_months": [],
         }
 
+    # ============================================================
+    # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
+    # ============================================================
+    comparison_months = []
+
+    if period == "yearly":
+        yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+            user_id=user_id,
+            year=year,
+            fetch_monthly_func=lambda user_id, timeline, year: fetch_global_precalc_table(
+                user_id=user_id,
+                period="monthly",
+                timeline=timeline,
+                year=year,
+            ),
+        )
+
+        comparison_months = yearly_compare["available_months"]
+
+        df_current_total_for_comparison = yearly_compare["df_current_total"]
+        df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+        global_sku_current_for_comparison = yearly_compare["sku_current"]
+        global_sku_prev = yearly_compare["sku_prev"]
+
+    else:
+        df_current_total_for_comparison = df_current_total
+        df_prev_total_for_comparison = df_prev_total
+
+        global_sku_current_for_comparison = compute_sku_precalc(df_current_detail)
+        global_sku_prev = compute_sku_precalc(df_prev_detail)
+
+    # ============================================================
+    # CURRENT / PREVIOUS VALUES
+    # For yearly, these now come from monthly partial-year aggregation.
+    # ============================================================
     current_values = {
-        "units": _total_value(df_current_total, "total_quantity"),
-        "net_sales": _total_value(df_current_total, "net_sales"),
-        "asp": _total_value(df_current_total, "asp"),
-        "cm1_profit": _total_value(df_current_total, "profit"),
-        "cm1_profit_per_unit": _total_value(df_current_total, "unit_wise_profitability"),
-        "cm2_profit": _total_value(df_current_total, "cm2_profit"),
-        "advertising": _total_value(df_current_total, "advertising_total"),
-        "storage_fees": _total_value(df_current_total, "platform_fee_inventory_storage"),
-        "acos": _total_value(df_current_total, "acos"),
+        "units": _total_value(df_current_total_for_comparison, "total_quantity"),
+        "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
+        "asp": _total_value(df_current_total_for_comparison, "asp"),
+        "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
+        "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
+        "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
+        "advertising": _total_value(df_current_total_for_comparison, "advertising_total"),
+        "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
+        "acos": _total_value(df_current_total_for_comparison, "acos"),
     }
 
     previous_values = {
-        "units": _total_value(df_prev_total, "total_quantity"),
-        "net_sales": _total_value(df_prev_total, "net_sales"),
-        "asp": _total_value(df_prev_total, "asp"),
-        "cm1_profit": _total_value(df_prev_total, "profit"),
-        "cm1_profit_per_unit": _total_value(df_prev_total, "unit_wise_profitability"),
-        "cm2_profit": _total_value(df_prev_total, "cm2_profit"),
-        "advertising": _total_value(df_prev_total, "advertising_total"),
-        "storage_fees": _total_value(df_prev_total, "platform_fee_inventory_storage"),
-        "acos": _total_value(df_prev_total, "acos"),
+        "units": _total_value(df_prev_total_for_comparison, "total_quantity"),
+        "net_sales": _total_value(df_prev_total_for_comparison, "net_sales"),
+        "asp": _total_value(df_prev_total_for_comparison, "asp"),
+        "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
+        "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
+        "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
+        "advertising": _total_value(df_prev_total_for_comparison, "advertising_total"),
+        "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
+        "acos": _total_value(df_prev_total_for_comparison, "acos"),
     }
 
     absolute_changes = {}
     pct_changes = {}
 
-    if not df_current_total.empty and not df_prev_total.empty:
+    if (
+        not df_current_total_for_comparison.empty
+        and not df_prev_total_for_comparison.empty
+    ):
         absolute_changes = compute_period_absolute_changes(
-            df_current_total,
-            df_prev_total,
+            df_current_total_for_comparison,
+            df_prev_total_for_comparison,
         )
 
         pct_changes = compute_period_pct_changes(
-            df_current_total,
-            df_prev_total,
+            df_current_total_for_comparison,
+            df_prev_total_for_comparison,
         )
 
+    # ============================================================
+    # SKU METRICS
+    # For yearly, sku_mom is actually partial-year YoY:
+    # available months current year vs same months previous year.
+    # ============================================================
     global_sku_current = compute_sku_precalc(df_current_detail)
-    global_sku_prev = compute_sku_precalc(df_prev_detail)
 
     global_sku_mom = compare_sku_metrics(
-        global_sku_current,
+        global_sku_current_for_comparison,
         global_sku_prev,
     )
+
+    # Keep focus SKUs based on selected-period global table
     global_focus_skus = select_focus_skus_by_sales_mix(global_sku_current)
 
     global_remaining_agg = build_remaining_skus_aggregate(
-        sku_current=global_sku_current,
+        sku_current=global_sku_current_for_comparison,
         sku_prev=global_sku_prev,
         focus_skus=global_focus_skus,
     )
@@ -2613,6 +3007,13 @@ def build_global_numeric_metrics(
             "year": p_year,
             "period_label": period_label(p_period, p_timeline, p_year),
         },
+        "comparison_months": comparison_months,
+        "comparison_basis": (
+            f"Compared months {comparison_months} of {year} "
+            f"vs same months of {year - 1}"
+            if period == "yearly"
+            else None
+        ),
         "portfolio": {
             "current_values": current_values,
             "previous_values": previous_values,
@@ -2620,17 +3021,156 @@ def build_global_numeric_metrics(
             "pct_changes": pct_changes,
         },
 
-        # ✅ frontend metrics from skuwisemonthly_{user_id}_global_{mn}{year}_table
+        # Frontend metrics from selected-period global table
         "sku_current": global_sku_current,
+
+        # Comparison metrics
         "sku_mom": global_sku_mom,
-        # ✅ ADD THESE
+
         "focus_skus": global_focus_skus,
         "remaining_agg": global_remaining_agg,
 
-        # optional backwards compatibility
+        # Optional backwards compatibility
         "products": global_sku_mom,
     }
 
+
+
+# def build_country_usd_numeric_metrics(
+#     *,
+#     user_id: int,
+#     period: str,
+#     timeline: str,
+#     year: int,
+#     available_countries: list[str] | None = None,
+# ) -> dict:
+#     """
+#     Builds USD-normalized US and UK selected-period vs previous-period metrics.
+
+#     Sources:
+#     skuwisemonthly_{user_id}_us_usd_{month}{year}
+#     skuwisemonthly_{user_id}_uk_usd_{month}{year}
+#     """
+
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(
+#         period,
+#         timeline,
+#         year,
+#     )
+
+#     def country_metrics(country: str) -> dict:
+#         df_current = fetch_country_usd_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period=period,
+#             timeline=timeline,
+#             year=year,
+#         )
+
+#         df_current_detail, df_current_total = _split_total_row(df_current)
+
+#         df_prev = fetch_country_usd_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period=p_period,
+#             timeline=p_timeline,
+#             year=p_year,
+#         )
+
+#         df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#         if df_current.empty:
+#             return {
+#                 "available": False,
+#                 "country": country,
+#                 "currency": "USD",
+#                 "reason": f"No selected-period USD table found for {country}",
+#                 "portfolio": {},
+#                 "products": {},
+#             }
+
+#         current_values = {
+#             "units": _total_value(df_current_total, "total_quantity"),
+#             "net_sales": _total_value(df_current_total, "net_sales"),
+#             "asp": _total_value(df_current_total, "asp"),
+#             "cm1_profit": _total_value(df_current_total, "profit"),
+#             "cm1_profit_per_unit": _total_value(df_current_total, "unit_wise_profitability"),
+#             "cm2_profit": _total_value(df_current_total, "cm2_profit"),
+#             "advertising": _total_value(df_current_total, "advertising_total"),
+#             "storage_fees": _total_value(df_current_total, "platform_fee_inventory_storage"),
+#             "acos": _total_value(df_current_total, "acos"),
+#         }
+
+#         previous_values = {
+#             "units": _total_value(df_prev_total, "total_quantity"),
+#             "net_sales": _total_value(df_prev_total, "net_sales"),
+#             "asp": _total_value(df_prev_total, "asp"),
+#             "cm1_profit": _total_value(df_prev_total, "profit"),
+#             "cm1_profit_per_unit": _total_value(df_prev_total, "unit_wise_profitability"),
+#             "cm2_profit": _total_value(df_prev_total, "cm2_profit"),
+#             "advertising": _total_value(df_prev_total, "advertising_total"),
+#             "storage_fees": _total_value(df_prev_total, "platform_fee_inventory_storage"),
+#             "acos": _total_value(df_prev_total, "acos"),
+#         }
+
+#         absolute_changes = {}
+#         pct_changes = {}
+
+#         if not df_current_total.empty and not df_prev_total.empty:
+#             absolute_changes = compute_period_absolute_changes(
+#                 df_current_total,
+#                 df_prev_total,
+#             )
+
+#             pct_changes = compute_period_pct_changes(
+#                 df_current_total,
+#                 df_prev_total,
+#             )
+
+#         sku_current = compute_sku_precalc(df_current_detail)
+#         sku_prev = compute_sku_precalc(df_prev_detail)
+
+#         sku_mom = compare_sku_metrics(
+#             sku_current,
+#             sku_prev,
+#         )
+
+#         return {
+#             "available": True,
+#             "country": country,
+#             "currency": "USD",
+#             "portfolio": {
+#                 "current_values": current_values,
+#                 "previous_values": previous_values,
+#                 "absolute_changes": absolute_changes,
+#                 "pct_changes": pct_changes,
+#             },
+#             "products": sku_mom,
+#         }
+
+#     available_countries = available_countries or SUPPORTED_GLOBAL_COUNTRIES
+
+#     result = {
+#         "currency": "USD",
+#         "currency_note": "Country values are USD-normalized where available.",
+#         "selected_period": {
+#             "period": period,
+#             "timeline": timeline,
+#             "year": year,
+#             "period_label": period_label(period, timeline, year),
+#         },
+#         "previous_period": {
+#             "period": p_period,
+#             "timeline": p_timeline,
+#             "year": p_year,
+#             "period_label": period_label(p_period, p_timeline, p_year),
+#         },
+#     }
+
+#     for country in available_countries:
+#         result[country] = country_metrics(country)
+
+#     return result
 
 def build_country_usd_numeric_metrics(
     *,
@@ -2646,6 +3186,11 @@ def build_country_usd_numeric_metrics(
     Sources:
     skuwisemonthly_{user_id}_us_usd_{month}{year}
     skuwisemonthly_{user_id}_uk_usd_{month}{year}
+
+    For yearly:
+    - Do NOT compare full yearly USD table vs previous full yearly USD table.
+    - Compare available monthly USD tables in selected year
+      vs the same months from previous year.
     """
 
     (p_period, p_timeline, p_year), _ = resolve_comparison(
@@ -2683,51 +3228,89 @@ def build_country_usd_numeric_metrics(
                 "reason": f"No selected-period USD table found for {country}",
                 "portfolio": {},
                 "products": {},
+                "comparison_months": [],
             }
 
+        # ============================================================
+        # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
+        # ============================================================
+        comparison_months = []
+
+        if period == "yearly":
+            yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+                user_id=user_id,
+                year=year,
+                fetch_monthly_func=lambda user_id, timeline, year: fetch_country_usd_precalc_table(
+                    user_id=user_id,
+                    country=country,
+                    period="monthly",
+                    timeline=timeline,
+                    year=year,
+                ),
+            )
+
+            comparison_months = yearly_compare["available_months"]
+
+            df_current_total_for_comparison = yearly_compare["df_current_total"]
+            df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+            sku_current_for_comparison = yearly_compare["sku_current"]
+            sku_prev = yearly_compare["sku_prev"]
+
+        else:
+            df_current_total_for_comparison = df_current_total
+            df_prev_total_for_comparison = df_prev_total
+
+            sku_current_for_comparison = compute_sku_precalc(df_current_detail)
+            sku_prev = compute_sku_precalc(df_prev_detail)
+
+        # ============================================================
+        # CURRENT / PREVIOUS VALUES
+        # For yearly, these now use partial-year monthly aggregation.
+        # ============================================================
         current_values = {
-            "units": _total_value(df_current_total, "total_quantity"),
-            "net_sales": _total_value(df_current_total, "net_sales"),
-            "asp": _total_value(df_current_total, "asp"),
-            "cm1_profit": _total_value(df_current_total, "profit"),
-            "cm1_profit_per_unit": _total_value(df_current_total, "unit_wise_profitability"),
-            "cm2_profit": _total_value(df_current_total, "cm2_profit"),
-            "advertising": _total_value(df_current_total, "advertising_total"),
-            "storage_fees": _total_value(df_current_total, "platform_fee_inventory_storage"),
-            "acos": _total_value(df_current_total, "acos"),
+            "units": _total_value(df_current_total_for_comparison, "total_quantity"),
+            "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
+            "asp": _total_value(df_current_total_for_comparison, "asp"),
+            "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
+            "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
+            "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
+            "advertising": _total_value(df_current_total_for_comparison, "advertising_total"),
+            "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
+            "acos": _total_value(df_current_total_for_comparison, "acos"),
         }
 
         previous_values = {
-            "units": _total_value(df_prev_total, "total_quantity"),
-            "net_sales": _total_value(df_prev_total, "net_sales"),
-            "asp": _total_value(df_prev_total, "asp"),
-            "cm1_profit": _total_value(df_prev_total, "profit"),
-            "cm1_profit_per_unit": _total_value(df_prev_total, "unit_wise_profitability"),
-            "cm2_profit": _total_value(df_prev_total, "cm2_profit"),
-            "advertising": _total_value(df_prev_total, "advertising_total"),
-            "storage_fees": _total_value(df_prev_total, "platform_fee_inventory_storage"),
-            "acos": _total_value(df_prev_total, "acos"),
+            "units": _total_value(df_prev_total_for_comparison, "total_quantity"),
+            "net_sales": _total_value(df_prev_total_for_comparison, "net_sales"),
+            "asp": _total_value(df_prev_total_for_comparison, "asp"),
+            "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
+            "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
+            "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
+            "advertising": _total_value(df_prev_total_for_comparison, "advertising_total"),
+            "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
+            "acos": _total_value(df_prev_total_for_comparison, "acos"),
         }
 
         absolute_changes = {}
         pct_changes = {}
 
-        if not df_current_total.empty and not df_prev_total.empty:
+        if (
+            not df_current_total_for_comparison.empty
+            and not df_prev_total_for_comparison.empty
+        ):
             absolute_changes = compute_period_absolute_changes(
-                df_current_total,
-                df_prev_total,
+                df_current_total_for_comparison,
+                df_prev_total_for_comparison,
             )
 
             pct_changes = compute_period_pct_changes(
-                df_current_total,
-                df_prev_total,
+                df_current_total_for_comparison,
+                df_prev_total_for_comparison,
             )
 
-        sku_current = compute_sku_precalc(df_current_detail)
-        sku_prev = compute_sku_precalc(df_prev_detail)
-
         sku_mom = compare_sku_metrics(
-            sku_current,
+            sku_current_for_comparison,
             sku_prev,
         )
 
@@ -2735,6 +3318,13 @@ def build_country_usd_numeric_metrics(
             "available": True,
             "country": country,
             "currency": "USD",
+            "comparison_months": comparison_months,
+            "comparison_basis": (
+                f"Compared months {comparison_months} of {year} "
+                f"vs same months of {year - 1}"
+                if period == "yearly"
+                else None
+            ),
             "portfolio": {
                 "current_values": current_values,
                 "previous_values": previous_values,
@@ -2767,6 +3357,7 @@ def build_country_usd_numeric_metrics(
         result[country] = country_metrics(country)
 
     return result
+
 
 def key_metrics_by_product_name(metrics_by_sku: dict) -> dict:
     """
