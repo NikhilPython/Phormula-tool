@@ -671,8 +671,21 @@ def process_skuwise_us_data(user_id, country, month, year):
             - sku_grouped["return_quantity"]
         ).astype(int)
 
-        sku_grouped["selling_fees"] = pd.to_numeric(sku_grouped["selling_fees"], errors="coerce").fillna(0)
-        sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
+        sku_grouped["selling_fees"] = pd.to_numeric(
+            sku_grouped["selling_fees"],
+            errors="coerce"
+        ).fillna(0)
+
+        sku_grouped["refund_selling_fees"] = pd.to_numeric(
+            sku_grouped.get("refund_selling_fees", 0),
+            errors="coerce"
+        ).fillna(0)
+
+        # keep selling_fees as cost/fee, same sign style as fba_fees
+        sku_grouped["selling_fees"] = -(
+            sku_grouped["selling_fees"].abs()
+            + sku_grouped["refund_selling_fees"].abs()
+        )
 
         # ---------- sales / tax / credits ----------
         sku_grouped["Net Sales"] = 0
@@ -687,17 +700,13 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["acos"] = 0
 
         sku_grouped["Net Taxes"] = (
-            pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("marketplace_facilitator_tax", 0), errors="coerce").fillna(0)
+            pd.to_numeric(sku_grouped.get("marketplace_facilitator_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("shipping_credits_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(
-                sku_grouped.get("other_transaction_fees", pd.Series(0, index=sku_grouped.index)),
-                errors="coerce"
-            ).fillna(0)
         )
-        sku_grouped["Net Taxes"] = sku_grouped["Net Taxes"].apply(lambda x: 0 if abs(x) < 1e-10 else x)
+
+        sku_grouped["Net Taxes"] = sku_grouped["Net Taxes"].apply(
+            lambda x: 0 if abs(x) < 1e-10 else x
+        )
 
         credit_keywords = [
             "FBA Inventory Reimbursement - Customer Return",
@@ -767,8 +776,14 @@ def process_skuwise_us_data(user_id, country, month, year):
         ).fillna(0)
 
         sku_grouped["gross_sales"] = (
-            pd.to_numeric(sku_grouped.get("product_sales", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
+            pd.to_numeric(sku_grouped["product_sales"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["shipping_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0.0)
         )
 
         sku_grouped["tex_and_credits"] = (
@@ -801,7 +816,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             pd.to_numeric(sku_grouped["Net Sales"], errors="coerce").fillna(0)
             - pd.to_numeric(sku_grouped["cost_of_unit_sold"], errors="coerce").fillna(0).abs()
             - pd.to_numeric(sku_grouped["amazon_fee"], errors="coerce").fillna(0).abs()
-            - pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
+            # - pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
             + pd.to_numeric(sku_grouped["Net Credits"], errors="coerce").fillna(0)
         )
 
@@ -1302,6 +1317,11 @@ def process_skuwise_us_data(user_id, country, month, year):
             "profit%": "profit_percentage",
             "shipment_charges": "shipment_charges"
         })
+        # Final safety: selling_fees must always be negative before DB/export
+        sku_grouped["selling_fees"] = -pd.to_numeric(
+            sku_grouped["selling_fees"],
+            errors="coerce"
+        ).fillna(0).abs()
         # Full detailed NSE dataframe for nse_{user_id}_{country}_{month}{year}
         df_nse_full = sku_grouped.copy()
         
@@ -1845,14 +1865,13 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["acos"] = 0
 
         sku_grouped["net_taxes"] = (
-            safe_series(sku_grouped, "product_sales_tax")
-            + safe_series(sku_grouped, "marketplace_facilitator_tax")
+            safe_series(sku_grouped, "marketplace_facilitator_tax")
             + safe_series(sku_grouped, "shipping_credits_tax")
-            + safe_series(sku_grouped, "giftwrap_credits_tax")
-            + safe_series(sku_grouped, "promotional_rebates_tax")
-            + safe_series(sku_grouped, "other_transaction_fees")
         )
-        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(lambda x: 0 if abs(x) < 1e-10 else x)
+
+        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(
+            lambda x: 0 if abs(x) < 1e-10 else x
+        )
 
         credit_keywords = [
             "FBA Inventory Reimbursement - Customer Return",
@@ -1921,8 +1940,14 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         ).fillna(0)
 
         sku_grouped["gross_sales"] = (
-            safe_series(sku_grouped, "product_sales")
-            + safe_series(sku_grouped, "product_sales_tax")
+            pd.to_numeric(sku_grouped["product_sales"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["shipping_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0.0)
         )
 
         sku_grouped["tex_and_credits"] = (
@@ -1973,7 +1998,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             safe_series(sku_grouped, "Net Sales")
             - safe_series(sku_grouped, "cost_of_unit_sold").abs()
             - safe_series(sku_grouped, "amazon_fee").abs()
-            - safe_series(sku_grouped, "net_taxes").abs()
+            # - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
         )
 
@@ -2557,8 +2582,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             - sku_grouped["return_quantity"]
         ).astype(int)
 
-        sku_grouped["selling_fees"] = safe_series(sku_grouped, "selling_fees")
-        sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
+        sku_grouped["selling_fees"] = -(
+            safe_series(sku_grouped, "selling_fees").abs()
+            + safe_series(sku_grouped, "refund_selling_fees").abs()
+        )
 
         sku_grouped["Net Sales"] = 0
         sku_grouped["asp"] = 0
@@ -2575,14 +2602,13 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped["acos"] = 0
 
         sku_grouped["net_taxes"] = (
-            safe_series(sku_grouped, "product_sales_tax")
-            + safe_series(sku_grouped, "marketplace_facilitator_tax")
+            safe_series(sku_grouped, "marketplace_facilitator_tax")
             + safe_series(sku_grouped, "shipping_credits_tax")
-            + safe_series(sku_grouped, "giftwrap_credits_tax")
-            + safe_series(sku_grouped, "promotional_rebates_tax")
-            + safe_series(sku_grouped, "other_transaction_fees")
         )
-        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(lambda x: 0 if abs(x) < 1e-10 else x)
+
+        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(
+            lambda x: 0 if abs(x) < 1e-10 else x
+        )
 
         credit_keywords = [
             "FBA Inventory Reimbursement - Customer Return",
@@ -2651,8 +2677,14 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         ).fillna(0)
 
         sku_grouped["gross_sales"] = (
-            safe_series(sku_grouped, "product_sales")
-            + safe_series(sku_grouped, "product_sales_tax")
+            pd.to_numeric(sku_grouped["product_sales"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["shipping_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0.0)
         )
 
         sku_grouped["tex_and_credits"] = (
@@ -2704,7 +2736,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             safe_series(sku_grouped, "Net Sales")
             - safe_series(sku_grouped, "cost_of_unit_sold").abs()
             - safe_series(sku_grouped, "amazon_fee").abs()
-            - safe_series(sku_grouped, "net_taxes").abs()
+            # - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
         )
 
