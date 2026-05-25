@@ -657,9 +657,9 @@ export default function AmazonConnectLegacy({
             >
               <option value="eu-west-1">{REGION_LABELS["eu-west-1"]}</option>
               <option value="us-east-1">{REGION_LABELS["us-east-1"]}</option>
-              <option value="ap-southeast-1">
+              {/* <option value="ap-southeast-1">
                 {REGION_LABELS["ap-southeast-1"]}
-              </option>
+              </option> */}
             </select>
           </div>
 

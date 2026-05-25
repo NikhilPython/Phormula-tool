@@ -165,9 +165,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -1690,14 +1690,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
   const visibleSteps = steps;
 
   const splitStepLabel = (label: string) => {
-  const words = label.trim().split(/\s+/);
+    const words = label.trim().split(/\s+/);
 
-  if (words.length <= 1) {
-    return [label, "\u00A0"];
-  }
+    if (words.length <= 1) {
+      return [label, "\u00A0"];
+    }
 
-  return [words[0], words.slice(1).join(" ")];
-};
+    return [words[0], words.slice(1).join(" ")];
+  };
 
   return (
     <div className="w-full">
@@ -2005,9 +2005,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
                   return (
                     <div
-  key={step.num}
-  className="flex flex-col items-center flex-1 min-w-0 relative z-10"
->
+                      key={step.num}
+                      className="flex flex-col items-center flex-1 min-w-0 relative z-10"
+                    >
                       <div
                         className={[
                           "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
@@ -2064,38 +2064,38 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                       </span> */}
 
                       <div
-  className={[
-    "h-8 flex flex-col items-center justify-start text-center",
-    "text-[10px] sm:text-xs font-medium leading-[14px]",
-    "whitespace-normal break-normal",
-    isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
-  ].join(" ")}
->
-  {(() => {
-    const [line1, line2] = splitStepLabel(step.label);
+                        className={[
+                          "h-8 flex flex-col items-center justify-start text-center",
+                          "text-[10px] sm:text-xs font-medium leading-[14px]",
+                          "whitespace-normal break-normal",
+                          isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
+                        ].join(" ")}
+                      >
+                        {(() => {
+                          const [line1, line2] = splitStepLabel(step.label);
 
-    return (
-      <>
-        <span className="block whitespace-nowrap">{line1}</span>
-        <span className="block whitespace-nowrap">{line2}</span>
-      </>
-    );
-  })()}
-</div>
+                          return (
+                            <>
+                              <span className="block whitespace-nowrap">{line1}</span>
+                              <span className="block whitespace-nowrap">{line2}</span>
+                            </>
+                          );
+                        })()}
+                      </div>
 
-<span
-  className={[
-    "mt-1 h-5 inline-flex items-center justify-center",
-    "text-[9px] sm:text-[10px] px-2 rounded-full font-medium whitespace-nowrap",
-    isCompleted
-      ? "bg-[#E8F5F0] text-[#5EA68E]"
-      : isActive
-        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
-        : "bg-slate-100 text-slate-400",
-  ].join(" ")}
->
-  {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
-</span>
+                      <span
+                        className={[
+                          "mt-1 h-5 inline-flex items-center justify-center",
+                          "text-[9px] sm:text-[10px] px-2 rounded-full font-medium whitespace-nowrap",
+                          isCompleted
+                            ? "bg-[#E8F5F0] text-[#5EA68E]"
+                            : isActive
+                              ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+                              : "bg-slate-100 text-slate-400",
+                        ].join(" ")}
+                      >
+                        {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+                      </span>
                     </div>
                   );
                 })}

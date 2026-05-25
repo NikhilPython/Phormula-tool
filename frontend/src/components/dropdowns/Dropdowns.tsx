@@ -1215,6 +1215,16 @@ const ProductInsightsSection = ({
         {sortedBlocks.map((b, idx) => {
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
+          const sortedCardMetrics = [...(b.metrics || [])].sort((a, b) => {
+            const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+            const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+
+            const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+            const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+            return safeAIndex - safeBIndex;
+          });
+
           return (
             <motion.div
               key={idx}
@@ -1240,9 +1250,9 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-              {b.metrics?.length > 0 && (
+              {sortedCardMetrics.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
-                  {b.metrics.map((m, i) => (
+                  {sortedCardMetrics.map((m, i) => (
                     <div
                       key={i}
                       className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
@@ -5680,7 +5690,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   company_name: userData?.company_name,
                 }}
                 onExportPayloadChange={handleSkuExportPayloadChange}
-                hideDownloadButton
+                // hideDownloadButton
                 disableInternalFade={shouldShowPreviewData}
               />
 
