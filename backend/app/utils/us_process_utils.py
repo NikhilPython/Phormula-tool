@@ -700,8 +700,11 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["acos"] = 0
 
         sku_grouped["Net Taxes"] = (
-            pd.to_numeric(sku_grouped.get("marketplace_facilitator_tax", 0), errors="coerce").fillna(0)
+            pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("shipping_credits_tax", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped.get("marketplace_facilitator_tax", 0), errors="coerce").fillna(0).abs()
         )
 
         sku_grouped["Net Taxes"] = sku_grouped["Net Taxes"].apply(
@@ -730,7 +733,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["Net Credits"] = (
             sku_grouped["Net Credits"]
             + pd.to_numeric(sku_grouped.get("gift_wrap_credits", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("shipping_credits", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("postage_credits", 0), errors="coerce").fillna(0)
         )
 
         # ---------- refund sales ----------
@@ -790,8 +793,9 @@ def process_skuwise_us_data(user_id, country, month, year):
             pd.to_numeric(sku_grouped.get("product_sales_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("postage_credits", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("gift_wrap_credits", 0), errors="coerce").fillna(0)
+            + pd.to_numeric(sku_grouped.get("shipping_credits_tax", 0), errors="coerce").fillna(0)
             + pd.to_numeric(sku_grouped.get("giftwrap_credits_tax", 0), errors="coerce").fillna(0)
-            + pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped.get("promotional_rebates_tax", 0), errors="coerce").fillna(0).abs()
         )
         sku_grouped["Net Sales"] = (
             pd.to_numeric(sku_grouped["gross_sales"], errors="coerce").fillna(0)
@@ -806,7 +810,6 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped["amazon_fee"] = (
             abs(pd.to_numeric(sku_grouped.get("fba_fees", 0), errors="coerce").fillna(0))
             + abs(pd.to_numeric(sku_grouped.get("selling_fees", 0), errors="coerce").fillna(0))
-            - abs(pd.to_numeric(sku_grouped.get("other", 0), errors="coerce").fillna(0))
         )
 
         sku_grouped["price_in_gbp"] = pd.to_numeric(sku_grouped.get("price_in_gbp", 0), errors="coerce").fillna(0)
@@ -816,7 +819,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             pd.to_numeric(sku_grouped["Net Sales"], errors="coerce").fillna(0)
             - pd.to_numeric(sku_grouped["cost_of_unit_sold"], errors="coerce").fillna(0).abs()
             - pd.to_numeric(sku_grouped["amazon_fee"], errors="coerce").fillna(0).abs()
-            # - pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
+            - pd.to_numeric(sku_grouped["Net Taxes"], errors="coerce").fillna(0).abs()
             + pd.to_numeric(sku_grouped["Net Credits"], errors="coerce").fillna(0)
         )
 
