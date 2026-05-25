@@ -247,38 +247,49 @@ def get_month_tokens_present_for_year(conn, user_id, country, year):
     return sorted(set(month_tokens), key=lambda month: valid_months[month])
 
 
+
+
 def aggregate_monthly_sku_rows(rows):
-    """
-    Aggregates monthly rows while preserving the same JSON structure.
-
-    Logic:
-    - Numeric columns are summed.
-    - Non-numeric columns are treated as grouping keys.
-    """
-
     grouped = {}
+
+    preferred_key_columns = [
+        "sku",
+        "asin",
+        "msku",
+        "fnsku",
+        "product_name",
+        "product",
+        "title"
+    ]
+
 
     for row in rows:
         normalized_row = _normalize_sku_row(dict(row))
 
-        numeric_cols = []
-        key_cols = []
+        available_key_columns = [
+            col for col in preferred_key_columns
+            if col in normalized_row
+        ]
 
-        for col, value in normalized_row.items():
-            if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-                numeric_cols.append(col)
-            else:
-                key_cols.append(col)
-
-        key = tuple((col, normalized_row.get(col)) for col in key_cols)
+        if available_key_columns:
+            key = tuple(
+                (col, normalized_row.get(col))
+                for col in available_key_columns
+            )
+        else:
+            key = tuple(
+                (col, normalized_row.get(col))
+                for col, value in normalized_row.items()
+                if not isinstance(value, (int, float, Decimal)) or isinstance(value, bool)
+            )
 
         if key not in grouped:
             grouped[key] = dict(normalized_row)
         else:
-            for col in numeric_cols:
-                current_value = grouped[key].get(col) or 0
-                new_value = normalized_row.get(col) or 0
-                grouped[key][col] = current_value + new_value
+            for col, value in normalized_row.items():
+                if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+                    grouped[key][col] = (grouped[key].get(col) or 0) + (value or 0)
+
 
     return list(grouped.values())
 
