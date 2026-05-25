@@ -1039,10 +1039,13 @@ def run_upload_pipeline_from_df(
             LIMIT 1
         """)
 
+        selected_currency = "gbp" if country.lower() == "uk" else "usd"
+        conversion_country = "uk" if country.lower() == "uk" else "us"
+
         result = conn.execute(currency_query, {
             "currency": currency_value,
-            "selected_currency": "usd",   # 👈 IMPORTANT
-            "country": "us",              # 👈 IMPORTANT
+            "selected_currency": selected_currency,
+            "country": conversion_country,
             "month": month.lower(),
             "year": year
         }).fetchone()
