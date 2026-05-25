@@ -168,8 +168,11 @@ def get_month_tokens_present_for_year(conn, user_id, country, year):
     """
     Finds monthly table month tokens for current selected year.
 
-    Example table:
+    Normal country example:
     skuwisemonthly_1_uk_may2026
+
+    Global example:
+    skuwisemonthly_1_global_may2026_table
 
     Returns:
     ["jan", "feb", "mar", ...]
@@ -209,10 +212,11 @@ def get_month_tokens_present_for_year(conn, user_id, country, year):
         FROM information_schema.tables
         WHERE table_schema = 'public'
           AND table_name LIKE :pattern
+        ORDER BY table_name
     """)
 
     rows = conn.execute(query, {
-        "pattern": f"{prefix}%{year}"
+        "pattern": f"{prefix}%"
     }).mappings().all()
 
     month_tokens = []
@@ -225,9 +229,13 @@ def get_month_tokens_present_for_year(conn, user_id, country, year):
 
         middle = table_name[len(prefix):]
 
-        # Example:
-        # table_name = skuwisemonthly_1_uk_may2026
-        # middle = may2026
+        # For global:
+        # may2026_table -> may2026
+        if middle.endswith("_table"):
+            middle = middle[:-len("_table")]
+
+        # Now both formats become:
+        # may2026
         if not middle.endswith(str(year)):
             continue
 
@@ -289,9 +297,15 @@ def get_previous_year_monthly_aggregated_data(conn, engine, metadata, user_id, c
     used_previous_tables = []
 
     for month_token in current_year_month_tokens:
-        previous_monthly_table_name = (
-            f"skuwisemonthly_{user_id}_{country}_{month_token}{previous_year}"
-        )
+
+        if country == "global":
+            previous_monthly_table_name = (
+                f"skuwisemonthly_{user_id}_{country}_{month_token}{previous_year}_table"
+            )
+        else:
+            previous_monthly_table_name = (
+                f"skuwisemonthly_{user_id}_{country}_{month_token}{previous_year}"
+            )
 
         try:
             previous_monthly_table = Table(
@@ -307,8 +321,9 @@ def get_previous_year_monthly_aggregated_data(conn, engine, metadata, user_id, c
             all_previous_month_rows.extend(monthly_results)
             used_previous_tables.append(previous_monthly_table_name)
 
-        except Exception:
-            # If a previous year monthly table is missing, skip it
+        except Exception as e:
+            print("Missing previous monthly table:", previous_monthly_table_name)
+            print("Error:", str(e))
             continue
 
     previous_data = aggregate_monthly_sku_rows(all_previous_month_rows)
