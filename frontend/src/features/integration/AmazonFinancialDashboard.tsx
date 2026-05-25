@@ -1689,6 +1689,16 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   const visibleSteps = steps;
 
+  const splitStepLabel = (label: string) => {
+  const words = label.trim().split(/\s+/);
+
+  if (words.length <= 1) {
+    return [label, "\u00A0"];
+  }
+
+  return [words[0], words.slice(1).join(" ")];
+};
+
   return (
     <div className="w-full">
       <div className="rounded-xl bg-white max-h-[85vh] overflow-y-auto">
@@ -1995,9 +2005,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
                   return (
                     <div
-                      key={step.num}
-                      className="flex flex-col items-center flex-1 relative z-10 gap-2"
-                    >
+  key={step.num}
+  className="flex flex-col items-center flex-1 min-w-0 relative z-10"
+>
                       <div
                         className={[
                           "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all duration-300",
@@ -2031,7 +2041,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                         )}
                       </div>
 
-                      <p
+                      {/* <p
                         className={[
                           "text-center text-[10px] sm:text-xs font-medium leading-tight",
                           isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
@@ -2051,7 +2061,41 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                         ].join(" ")}
                       >
                         {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
-                      </span>
+                      </span> */}
+
+                      <div
+  className={[
+    "h-8 flex flex-col items-center justify-start text-center",
+    "text-[10px] sm:text-xs font-medium leading-[14px]",
+    "whitespace-normal break-normal",
+    isCompleted || isActive ? "text-[#37455F]" : "text-slate-400",
+  ].join(" ")}
+>
+  {(() => {
+    const [line1, line2] = splitStepLabel(step.label);
+
+    return (
+      <>
+        <span className="block whitespace-nowrap">{line1}</span>
+        <span className="block whitespace-nowrap">{line2}</span>
+      </>
+    );
+  })()}
+</div>
+
+<span
+  className={[
+    "mt-1 h-5 inline-flex items-center justify-center",
+    "text-[9px] sm:text-[10px] px-2 rounded-full font-medium whitespace-nowrap",
+    isCompleted
+      ? "bg-[#E8F5F0] text-[#5EA68E]"
+      : isActive
+        ? "bg-[#E8F5F0] text-[#5EA68E] animate-pulse"
+        : "bg-slate-100 text-slate-400",
+  ].join(" ")}
+>
+  {isCompleted ? "✓ Done" : isActive ? "In progress" : "Pending"}
+</span>
                     </div>
                   );
                 })}

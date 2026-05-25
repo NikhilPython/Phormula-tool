@@ -130,6 +130,9 @@ export type TableRow = {
 
   cm2_profit?: number;
   cm2_margins?: number;
+  cm2_profit_percentage?: number;
+  cm2_profit_percent?: number;
+  cm2_profit_percentage_value?: number;
   acos?: number;
   rembursment_vs_cm2_margins?: number;
 

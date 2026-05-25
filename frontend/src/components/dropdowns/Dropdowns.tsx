@@ -182,27 +182,14 @@ type FetchedPeriods = Record<string, string[]>;
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
 
-  const currentYear = String(new Date().getFullYear());
-
   try {
     const raw = localStorage.getItem("fetchedPeriods");
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw) as FetchedPeriods;
-
-    // keep only current year data
-    if (parsed[currentYear]) {
-      return { [currentYear]: parsed[currentYear] };
-    }
-
-    // stale years like 2025 -> clear storage
-    localStorage.removeItem("fetchedPeriods");
-    return {};
+    return raw ? (JSON.parse(raw) as FetchedPeriods) : {};
   } catch {
-    localStorage.removeItem("fetchedPeriods");
     return {};
   }
 };
+
 
 const writeFetchedPeriods = (fp: FetchedPeriods) => {
   if (typeof window === "undefined") return;
@@ -251,20 +238,18 @@ const writeFetchedPeriods = (fp: FetchedPeriods) => {
 const markFetched = (year: string, month?: string) => {
   if (typeof window === "undefined") return;
 
-  const currentYear = String(new Date().getFullYear());
   const y = String(year).trim();
   const m = month ? month.toLowerCase() : "";
 
-  // do not store stale years like 2025
-  if (y !== currentYear) return;
+  const fp = readFetchedPeriods();
 
-  const fp: FetchedPeriods = { [currentYear]: [] };
+  if (!fp[y]) fp[y] = [];
 
-  if (m && !fp[currentYear].includes(m)) {
-    fp[currentYear].push(m);
+  if (m && !fp[y].includes(m)) {
+    fp[y].push(m);
   }
 
-  fp[currentYear] = fp[currentYear]
+  fp[y] = fp[y]
     .filter(Boolean)
     .sort((a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99));
 
@@ -273,14 +258,12 @@ const markFetched = (year: string, month?: string) => {
   if (m) {
     localStorage.setItem(
       "latestFetchedPeriod",
-      JSON.stringify({ year: currentYear, month: m })
+      JSON.stringify({ year: y, month: m })
     );
   }
 };
 
 const computeDefaultYearlyYear = () => {
-  const currentYear = String(new Date().getFullYear());
-
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem("latestFetchedPeriod");
@@ -289,20 +272,16 @@ const computeDefaultYearlyYear = () => {
         const parsed = JSON.parse(raw);
         const savedYear = String(parsed?.year || "").trim();
 
-        // only use saved year if it is current year
-        if (savedYear === currentYear) {
-          return currentYear;
-        }
-
-        // stale year like 2025 -> remove it
-        localStorage.removeItem("latestFetchedPeriod");
+        if (savedYear) return savedYear;
       }
     } catch {
-      localStorage.removeItem("latestFetchedPeriod");
+      // ignore bad localStorage
     }
   }
 
-  return currentYear;
+  const now = new Date();
+  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return String(latestCompleted.getFullYear());
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
@@ -1621,7 +1600,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                       <li key={i}>{line}</li>
                     ))}
                   </ul>
-                  
+
                   {portfolioRecommendation ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="text-xs font-semibold text-slate-700 mb-1">
@@ -2600,6 +2579,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
   const aiRequestIdRef = useRef(0);
+  const uploadHistoryRequestIdRef = useRef(0);
 
   // const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   // const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -2947,18 +2927,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (isDemoMode) {
       setLoading(false);
       setSkuRowsLoading(false);
+      setBargraphLoading(false);
       setSkuRowsError(null);
       setSkuNoDataFound(false);
 
       setUploadsData(DEMO_UPLOAD_HISTORY);
       setSkuRows(DEMO_SKU_ROWS);
+      setBargraphUploads(DEMO_UPLOADS);
       return;
     }
 
     if (!rangeType || !yearVal) return;
 
+    // Point 3: every request gets its own id
+    const requestId = ++uploadHistoryRequestIdRef.current;
+
+    // Point 4: start all loaders together
     setLoading(true);
     setSkuRowsLoading(true);
+    setBargraphLoading(true);
     setSkuRowsError(null);
     setSkuNoDataFound(false);
 
@@ -2978,27 +2965,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         cache: "no-store",
       });
 
+      // If another request started after this one, ignore this response
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+
+        if (requestId !== uploadHistoryRequestIdRef.current) return;
+
         console.error(`API Error: ${err?.error ?? res.statusText}`);
 
         setSkuRows([]);
         setSkuNoDataFound(true);
-
-        // This is not a red error. It just means selected period has no data.
         setSkuRowsError(null);
 
         setUploadsData({
           summary: zeroData,
           summaryComparisons: zeroComparisons,
         });
-        setBargraphUploads([]);
-        setBargraphLoading(false);
 
+        setBargraphUploads([]);
         return;
       }
 
       const raw = await res.json();
+
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
 
       let finalRaw = raw;
 
@@ -3017,8 +3009,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           cache: "no-store",
         });
 
+        if (requestId !== uploadHistoryRequestIdRef.current) return;
+
         if (prevRes.ok) {
           const prevRaw = await prevRes.json();
+
+          if (requestId !== uploadHistoryRequestIdRef.current) return;
 
           finalRaw = {
             ...raw,
@@ -3041,6 +3037,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         finalRaw?.current_data ?? finalRaw?.data ?? []
       );
 
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
+
       if (!normalizedCurrentRows.length) {
         setSkuRows([]);
         setSkuNoDataFound(true);
@@ -3054,7 +3052,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         });
 
         setBargraphUploads([]);
-        setBargraphLoading(false);
         return;
       }
 
@@ -3063,22 +3060,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setSkuNoDataFound(false);
       setSkuRowsError(null);
 
-      // Make P&L BarGraph use the same /skutableprofit data as cards
-      setBargraphUploads(buildUploadRowFromSkuRows(normalizedCurrentRows));
-      setBargraphLoading(false);
+      setBargraphUploads(
+        buildUploadRowFromSkuRows(normalizedCurrentRows, {
+          rangeType,
+          monthVal,
+          quarterVal,
+          yearVal,
+          countryVal: country,
+        })
+      );
 
       if (data?.summary) {
         if (rangeType === "monthly" && yearVal && monthVal) {
           markFetched(yearVal, monthVal);
         }
+
         if (rangeType === "quarterly" && yearVal) {
           markFetched(yearVal);
         }
+
         if (rangeType === "yearly" && yearVal) {
           markFetched(yearVal);
         }
       }
     } catch (error: any) {
+      if (requestId !== uploadHistoryRequestIdRef.current) return;
+
       console.error("Error fetching data: ", error);
 
       setSkuRows([]);
@@ -3087,8 +3094,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setUploadsData(null);
       setBargraphUploads([]);
     } finally {
-      setLoading(false);
-      setSkuRowsLoading(false);
+      // Only the newest request is allowed to stop loaders
+      if (requestId === uploadHistoryRequestIdRef.current) {
+        setLoading(false);
+        setSkuRowsLoading(false);
+        setBargraphLoading(false);
+      }
     }
   };
 
@@ -3848,14 +3859,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (selectedYear) {
-      fetchUploadHistory(range, v, selectedQuarter || "", selectedYear, countryName);
-    } else {
-      setUploadsData(null);
-    }
+    setUploadsData(null);
+    setBargraphUploads([]);
   };
 
-  // quarter is "Q1" | "Q2" | "Q3" | "Q4"
   const handleQuarterChange = (v: string) => {
     const q = isQuarter(v) ? v : "";
     setSelectedQuarter(q);
@@ -3865,11 +3872,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (selectedYear && q) {
-      fetchUploadHistory(range, selectedMonth, q, selectedYear, countryName);
-    } else {
-      setUploadsData(null);
-    }
+    setUploadsData(null);
+    setBargraphUploads([]);
   };
 
   const handleYearChange = (v: string) => {
@@ -3880,15 +3884,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (
-      (range === "monthly" && selectedMonth) ||
-      (range === "quarterly" && selectedQuarter) ||
-      range === "yearly"
-    ) {
-      fetchUploadHistory(range, selectedMonth, selectedQuarter || "", v, countryName);
-    } else {
-      setUploadsData(null);
-    }
+    setUploadsData(null);
+    setBargraphUploads([]);
   };
 
   useEffect(() => {
@@ -3944,8 +3941,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       selectedYear,
       countryName
     );
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
     range,
@@ -4246,9 +4241,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         profit: toNum(row.profit),
         profit_percentage: toNum(row.profit_percentage),
         unit_wise_profitability: toNum(row.unit_wise_profitability),
-
         cm2_profit: toNum(row.cm2_profit),
-        cm2_margins: toNum(row.cm2_margins),
+
+        // ✅ Backend global total row sends this as cm2_profit_percentage
+        cm2_profit_percentage: toNum(
+          row.cm2_profit_percentage ??
+          row.cm2_margins ??
+          row.cm2_profit_percent ??
+          row.cm2_profit_percentage_value
+        ),
+
+        // ✅ SKUtable summary uses cm2_margins
+        cm2_margins: toNum(
+          row.cm2_margins ??
+          row.cm2_profit_percentage ??
+          row.cm2_profit_percent ??
+          row.cm2_profit_percentage_value
+        ),
+
         acos: toNum(row.acos),
 
         profit_mix: toNum(row.profit_mix),
@@ -4300,7 +4310,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const buildUploadRowFromSkuRows = (rows: TableRow[]): UploadRow[] => {
+  const buildUploadRowFromSkuRows = (
+    rows: TableRow[],
+    period: {
+      rangeType: RangeType;
+      monthVal: string;
+      quarterVal: string;
+      yearVal: string;
+      countryVal: string;
+    }
+  ): UploadRow[] => {
     const totalRow = getSkuTotalRow(rows);
     const summary = buildSummaryFromSkuRows(rows);
 
@@ -4312,32 +4331,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     return [
       {
-        country: initialCountryName,
-        month: selectedMonth || "",
-        year: selectedYear,
+        country: period.countryVal,
+        month:
+          period.rangeType === "monthly"
+            ? period.monthVal.toLowerCase()
+            : period.rangeType === "quarterly"
+              ? period.quarterVal
+              : "ALL",
+        year: period.yearVal,
 
-        // BarGraph: Net Sales
         total_sales: summary.total_sales,
-
-        // BarGraph: Amazon Fees
         total_amazon_fee: summary.total_amazon_fee ?? 0,
-
-        // BarGraph: COGS
         total_cous: summary.total_cous ?? 0,
-
-        // BarGraph: Ads
         advertising_total: summary.advertising_total ?? 0,
-
-        // BarGraph: Other
         otherwplatform: summary.otherwplatform ?? 0,
-
-        // BarGraph: Taxes & Credits
         taxncredit: toNum((totalRow as any)?.tex_and_credits),
-
-        // BarGraph: CM2
         cm2_profit: summary.cm2_profit,
-
-        // BarGraph: CM1
         total_profit: cm1Profit,
       },
     ];
