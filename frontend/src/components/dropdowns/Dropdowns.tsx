@@ -168,16 +168,6 @@ const monthIndexMap: Record<string, number> = {
 
 type FetchedPeriods = Record<string, string[]>;
 
-// const readFetchedPeriods = (): FetchedPeriods => {
-//   if (typeof window === "undefined") return {};
-//   try {
-//     const raw = localStorage.getItem("fetchedPeriods");
-//     return raw ? (JSON.parse(raw) as FetchedPeriods) : {};
-//   } catch {
-//     return {};
-//   }
-// };
-
 
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
@@ -263,25 +253,61 @@ const markFetched = (year: string, month?: string) => {
   }
 };
 
-const computeDefaultYearlyYear = () => {
-  if (typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("latestFetchedPeriod");
+const monthNames = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const savedYear = String(parsed?.year || "").trim();
-
-        if (savedYear) return savedYear;
-      }
-    } catch {
-      // ignore bad localStorage
-    }
-  }
-
+const getLastCompletedMonth = () => {
   const now = new Date();
-  const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return String(latestCompleted.getFullYear());
+
+  // current month - 1
+  const lastCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  return {
+    month: monthNames[lastCompleted.getMonth()],
+    year: String(lastCompleted.getFullYear()),
+    monthIndex: lastCompleted.getMonth(),
+  };
+};
+
+const getQuarterFromMonthIndex = (monthIndex: number): Quarter => {
+  if (monthIndex <= 2) return "Q1";
+  if (monthIndex <= 5) return "Q2";
+  if (monthIndex <= 8) return "Q3";
+  return "Q4";
+};
+
+const computeDefaultYearlyYear = () => {
+  return String(new Date().getFullYear());
+};
+
+const computeDefaultMonthlyPeriod = () => {
+  const lastCompleted = getLastCompletedMonth();
+
+  return {
+    month: lastCompleted.month,
+    year: lastCompleted.year,
+  };
+};
+
+const computeDefaultQuarterlyPeriod = () => {
+  const lastCompleted = getLastCompletedMonth();
+
+  return {
+    quarter: getQuarterFromMonthIndex(lastCompleted.monthIndex),
+    year: lastCompleted.year,
+  };
 };
 
 const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
@@ -2411,10 +2437,38 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ? getCurrencySymbol(homeCurrency)
       : getCurrencySymbol(countryName || "");
 
-  const [range, setRange] = useState<RangeType>("");
+  const getInitialSelectedYear = () => {
+    if (isDemoMode) return String(new Date().getFullYear());
+
+    const routeYear = String(initialYear || "").trim();
+
+    if (routeYear && routeYear.toUpperCase() !== "NA") {
+      return routeYear;
+    }
+
+    const routeRange = String(initialRanged || "").toLowerCase();
+
+    if (routeRange === "monthly") {
+      return computeDefaultMonthlyPeriod().year;
+    }
+
+    if (routeRange === "quarterly") {
+      return computeDefaultQuarterlyPeriod().year;
+    }
+
+    return computeDefaultYearlyYear();
+  };
+
+  const [range, setRange] = useState<RangeType>("yearly");
+
   const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [selectedYear, setSelectedYear] = useState<string>("");
+
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    return computeDefaultYearlyYear();
+  });
+
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
+
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
   );
@@ -2795,13 +2849,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     : uploadsData?.summaryComparisons ?? zeroComparisons;
 
 
-  // range: "monthly" | "quarterly" | "yearly"
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
     setRange(v);
-    setSelectedMonth("");
-    setSelectedQuarter("");
 
     if (isDemoMode) {
+      setSelectedMonth("");
+      setSelectedQuarter("");
       setSelectedYear(String(new Date().getFullYear()));
       setUploadsData(DEMO_UPLOAD_HISTORY);
       setAiPanel(DEMO_AI_PANEL);
@@ -2813,8 +2866,30 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    setSelectedYear(v === "yearly" ? computeDefaultYearlyYear() : "");
+    if (v === "yearly") {
+      setSelectedMonth("");
+      setSelectedQuarter("");
+      setSelectedYear(computeDefaultYearlyYear());
+    }
+
+    if (v === "monthly") {
+      const defaultMonthly = computeDefaultMonthlyPeriod();
+
+      setSelectedMonth(defaultMonthly.month);
+      setSelectedQuarter("");
+      setSelectedYear(defaultMonthly.year);
+    }
+
+    if (v === "quarterly") {
+      const defaultQuarterly = computeDefaultQuarterlyPeriod();
+
+      setSelectedMonth("");
+      setSelectedQuarter(defaultQuarterly.quarter);
+      setSelectedYear(defaultQuarterly.year);
+    }
+
     setUploadsData(null);
+    setBargraphUploads([]);
   };
 
   const getSkuTotalRow = (rows: any[] = []) =>
@@ -3047,9 +3122,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         finalRaw?.current_data ?? finalRaw?.data ?? []
       );
 
+      const normalizedPreviousRows = normalizeRowsForParent(
+        finalRaw?.previous_data ?? []
+      );
+
+      const rowsWithNetSalesDelta = attachNetSalesDeltaToRows(
+        normalizedCurrentRows,
+        normalizedPreviousRows
+      );
+
       if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-      if (!normalizedCurrentRows.length) {
+      if (!rowsWithNetSalesDelta.length) {
         setSkuRows([]);
         setSkuNoDataFound(true);
         setSkuRowsError(null);
@@ -3066,12 +3150,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       }
 
       setUploadsData(data);
-      setSkuRows(normalizedCurrentRows);
+      setSkuRows(rowsWithNetSalesDelta);
       setSkuNoDataFound(false);
       setSkuRowsError(null);
 
       setBargraphUploads(
-        buildUploadRowFromSkuRows(normalizedCurrentRows, {
+        buildUploadRowFromSkuRows(rowsWithNetSalesDelta, {
           rangeType,
           monthVal,
           quarterVal,
@@ -3952,7 +4036,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const handleYearChange = (v: string) => {
-    setSelectedYear(v);
+    setSelectedYear(String(v));
 
     if (isDemoMode) {
       setUploadsData(DEMO_UPLOAD_HISTORY);
@@ -3963,30 +4047,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setBargraphUploads([]);
   };
 
-  useEffect(() => {
-    if (isDemoMode) {
-      setRange("yearly");
-      setSelectedMonth("");
-      setSelectedQuarter("");
-      setSelectedYear(String(new Date().getFullYear()));
-      setUploadsData(DEMO_UPLOAD_HISTORY);
-      setAiPanel(DEMO_AI_PANEL);
-      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
-      setBargraphUploads(DEMO_UPLOADS);
-      setGraphPageUploads(DEMO_UPLOADS);
-      setSkuRows(DEMO_SKU_ROWS);
-      setTargetSummary(DEMO_TARGET_SUMMARY);
-      setAllDropdownsSelected(true);
-      return;
-    }
+const didApplyLandingDefault = useRef(false);
 
+useEffect(() => {
+  if (isDemoMode) {
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
+    setSelectedYear(String(new Date().getFullYear()));
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    setAiPanel(DEMO_AI_PANEL);
+    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+    setBargraphUploads(DEMO_UPLOADS);
+    setGraphPageUploads(DEMO_UPLOADS);
+    setSkuRows(DEMO_SKU_ROWS);
+    setTargetSummary(DEMO_TARGET_SUMMARY);
+    setAllDropdownsSelected(true);
+    return;
+  }
 
-    const y = computeDefaultYearlyYear();
-    setSelectedYear(y);
-  }, [isDemoMode]);
+  if (didApplyLandingDefault.current) return;
+  didApplyLandingDefault.current = true;
+
+  setRange("yearly");
+  setSelectedMonth("");
+  setSelectedQuarter("");
+  setSelectedYear(computeDefaultYearlyYear());
+}, [isDemoMode]);
 
 
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
@@ -4339,6 +4426,58 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         profit_mix: toNum(row.profit_mix),
         sales_mix: toNum(row.sales_mix),
       } as TableRow;
+    });
+  };
+
+  const normalizeProductDeltaKey = (value: unknown) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s+&-]/g, "");
+
+  const attachNetSalesDeltaToRows = (
+    currentRows: TableRow[],
+    previousRows: TableRow[]
+  ): TableRow[] => {
+    const previousMap = new Map<string, TableRow>();
+
+    previousRows.forEach((row) => {
+      const name = normalizeProductDeltaKey(row.product_name);
+      const sku = normalizeProductDeltaKey(row.sku);
+
+      if (name && name !== "total") previousMap.set(name, row);
+      if (sku && sku !== "total" && sku !== "-") previousMap.set(sku, row);
+    });
+
+    return currentRows.map((row) => {
+      const name = normalizeProductDeltaKey(row.product_name);
+      const sku = normalizeProductDeltaKey(row.sku);
+
+      const isTotal = name === "total" || sku === "total";
+
+      if (isTotal) return row;
+
+      const previousRow =
+        previousMap.get(name) ||
+        previousMap.get(sku);
+
+      const currentNetSales = toNum(row.net_sales);
+      const previousNetSales = toNum(previousRow?.net_sales);
+
+      const delta = currentNetSales - previousNetSales;
+
+      const deltaPct =
+        previousNetSales !== 0
+          ? (delta / previousNetSales) * 100
+          : null;
+
+      return {
+        ...row,
+        previous_net_sales: previousNetSales,
+        net_sales_delta: delta,
+        net_sales_delta_percentage: deltaPct,
+      };
     });
   };
 
@@ -5889,14 +6028,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
       </PreviewLockedSection>
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
-      {showNoDataOverlay && (
+      {/* {showNoDataOverlay && (
         <div
           className="fixed inset-y-0 z-[9999] flex items-center justify-center pointer-events-none"
           style={{ left: overlayBounds.left, width: overlayBounds.width || "100%" }}
         >
-          {/* keep your existing overlay card */}
+    
         </div>
-      )}
+      )} */}
 
       <Modal
         isOpen={showUploadModal}

@@ -79,6 +79,9 @@ type TopBottomRow = {
 export type TableRow = {
   product_name?: string;
   sku?: string;
+  previous_net_sales?: number;
+  net_sales_delta?: number;
+  net_sales_delta_percentage?: number;
 
   quantity?: number; // may exist from backend
   total_quantity?: number;
@@ -843,32 +846,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     [INT_KEYS]
   );
 
-  // const formatValue = useCallback(
-  //   (value: unknown, key: string) => {
-  //     if (value === undefined || value === null || value === "") return "-";
-
-  //     const raw = toNumber(value);
-  //     if (!Number.isFinite(raw)) return "-";
-
-  //     // ✅ keep negative for CM2 Profit/Loss
-  //     const n = key === "cm2_profit" ? raw : Math.abs(raw);
-
-  //     if (INT_KEYS.has(key)) return n;
-
-  //     const formatted = Math.abs(n).toLocaleString(undefined, {
-  //       minimumFractionDigits: 2,
-  //       maximumFractionDigits: 2,
-  //     });
-
-  //     // ✅ add minus sign back only when needed
-  //     const signedFormatted = n < 0 ? `-${formatted}` : formatted;
-
-  //     if (key === "profit_percentage") return `${signedFormatted}%`;
-  //     return signedFormatted;
-  //   },
-  //   [INT_KEYS]
-  // );
-
 
   // Sign row (stable sets)
   const SIGN_PLUS = useMemo(
@@ -934,9 +911,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         if (s?.text) signRow[k] = s.text;
       });
 
-      // ✅ IMPORTANT: choose rows source
-      // UI => displayRows (top9 + others + total)
-      // Excel => tableData (all SKUs + total)
       const sourceRows = opts?.allRows ? tableData : displayRows;
 
       const rowsForExcel = tableData.map((row, rowIndex) => {
@@ -1058,137 +1032,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : `SKU-wise Profitability-Year'${yearShort}`;
 
   // Dummy table data
-  // const previewTableData: TableRow[] = useMemo(
-  //   () => [
-  //     {
-  //       product_name: "Dummy Product 1",
-  //       sku: "SKU-A",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //     {
-  //       product_name: "Dummy Product 2",
-  //       sku: "SKU-B",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //     {
-  //       product_name: "Dummy Product 3",
-  //       sku: "SKU-C",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //     {
-  //       product_name: "Dummy Product 4",
-  //       sku: "SKU-D",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //     {
-  //       product_name: "Dummy Product 5",
-  //       sku: "SKU-E",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //     {
-  //       product_name: "Total",
-  //       sku: "-",
-  //       units_sold: 0,
-  //       return_units: 0,
-  //       net_units_sold: 0,
-  //       asp: 0,
-  //       product_sales: 0,
-  //       refund_sales: 0,
-  //       net_sales: 0,
-  //       cost_of_unit_sold: 0,
-  //       selling_fees: 0,
-  //       fba_fees: 0,
-  //       amazon_fee: 0,
-  //       net_credits: 0,
-  //       net_taxes: 0,
-  //       other_transactions: 0,
-  //       profit: 0,
-  //       profit_percentage: 0,
-  //       unit_wise_profitability: 0,
-  //     },
-  //   ],
-  //   []
-  // );
 
   const CustomModal: React.FC<React.PropsWithChildren<{ onClose: () => void }>> = ({ onClose, children }) => {
     return (
@@ -1204,162 +1047,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   };
 
   /* --------- Fetch user data --------- */
-  // useEffect(() => {
-  //   if (!token) {
-  //     setError("No token found. Please log in.");
-  //     return;
-  //   }
-
-  //   const ac = new AbortController();
-
-  //   (async () => {
-  //     try {
-  //       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
-  //         method: "GET",
-  //         headers: { Authorization: `Bearer ${token}` },
-  //         cache: "no-store",
-  //         signal: ac.signal,
-  //       });
-
-  //       if (!res.ok) {
-  //         const data = await res.json().catch(() => ({}));
-  //         setError(data?.error || "Something went wrong.");
-  //         return;
-  //       }
-
-  //       const data = (await res.json()) as { brand_name?: string; company_name?: string };
-  //       setUserData(data);
-  //     } catch (e: any) {
-  //       if (e?.name === "AbortError") return;
-  //       setError("Error fetching user data");
-  //     }
-  //   })();
-
-  //   return () => ac.abort();
-  // }, [token]);
-
-  // Quarter mapping
-  // const quarterMapping: Record<string, string> = useMemo(
-  //   () => ({ Q1: "quarter1", Q2: "quarter2", Q3: "quarter3", Q4: "quarter4" }),
-  //   []
-  // );
-
-  // const buildSkuUrl = useCallback(() => {
-  //   if (range === "monthly") {
-  //     const skuwiseFileName =
-  //       countryName.toLowerCase() === "global"
-  //         ? `skuwisemonthly_${userid}_${countryName}_${(month || "").toLowerCase()}${year}_table`
-  //         : `skuwisemonthly_${userid}_${countryName.toLowerCase()}_${(month || "").toLowerCase()}${year}`;
-
-  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`);
-  //     url.searchParams.set("country", countryName);
-  //     url.searchParams.set("month", (month || "").toLowerCase());
-  //     url.searchParams.set("year", String(year));
-
-  //     if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-  //     return url.toString();
-  //   }
-
-  //   if (range === "quarterly") {
-  //     const backendQuarter = quarterMapping[quarter] || "";
-  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`);
-  //     url.searchParams.set("quarter", backendQuarter);
-  //     url.searchParams.set("country", countryName);
-  //     url.searchParams.set("year", String(year));
-  //     url.searchParams.set("userid", String(userid));
-
-  //     if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-  //     return url.toString();
-  //   }
-
-  //   // yearly
-  //   const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
-  //   url.searchParams.set("country", countryName);
-  //   url.searchParams.set("year", String(year));
-
-  //   if (isGlobalPage) url.searchParams.set("homeCurrency", effectiveHomeCurrency);
-  //   return url.toString();
-  // }, [
-  //   range,
-  //   countryName,
-  //   userid,
-  //   month,
-  //   year,
-  //   quarter,
-  //   quarterMapping,
-  //   isGlobalPage,
-  //   effectiveHomeCurrency,
-  // ]);
-
-  // useEffect(() => {
-  //   if (!countryName) return;
-
-  //   const ac = new AbortController();
-
-  //   (async () => {
-  //     if (isPreviewMode) {
-  //       setLoading(false);
-  //       setError(null);
-  //       setNoDataFound(false);
-  //       setTableData(previewTableData);
-  //       setTotals(computeTotalsFromLastRow(previewTableData));
-  //       onRowsChange?.(previewTableData);
-  //       return;
-  //     }
-
-  //     setLoading(true);
-  //     setError(null);
-
-  //     try {
-  //       const url = buildSkuUrl();
-
-  //       const res = await fetch(url, {
-  //         method: "GET",
-  //         headers: token ? { Authorization: `Bearer ${token}` } : {},
-  //         cache: "no-store",
-  //         signal: ac.signal,
-  //       });
-
-  //       if (!res.ok) {
-  //         setNoDataFound(true);
-  //         setTableData([]);
-  //         return;
-  //       }
-
-  //       const raw = (await res.json()) as any;
-
-  //       const rows =
-  //         Array.isArray(raw)
-  //           ? raw
-  //           : Array.isArray(raw.current_data)
-  //             ? raw.current_data
-  //             : Array.isArray(raw.data)
-  //               ? raw.data
-  //               : [];
-
-  //       if (rows.length === 0) {
-  //         setNoDataFound(true);
-  //         setTableData([]);
-  //         return;
-  //       }
-
-  //       const normalized = normalizeRows(rows);
-
-  //       setTableData(normalized);
-  //       setTotals(computeTotalsFromLastRow(normalized));
-  //       setNoDataFound(false);
-  //       onRowsChange?.(normalized);
-  //     } catch (e: any) {
-  //       if (e?.name === "AbortError") return;
-  //       setNoDataFound(true);
-  //       setTableData([]);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   })();
-
-  //   return () => ac.abort();
-  // }, [countryName, buildSkuUrl, token, isPreviewMode, previewTableData, onRowsChange]);
 
   useEffect(() => {
     if (!tableData || tableData.length === 0) return;
@@ -1467,6 +1154,31 @@ const SKUtable: React.FC<SKUtableProps> = ({
   </div>;
   if (error) return <div className="text-red-600">Error: {error}</div>;
 
+  const renderNetSalesDelta = (row: TableRow) => {
+    if (
+      row.net_sales_delta_percentage === undefined ||
+      row.net_sales_delta_percentage === null
+    ) {
+      return null;
+    }
+
+    const rawPct = toNumber(row.net_sales_delta_percentage);
+    const isPositive = rawPct >= 0;
+
+    return (
+      <span
+        className={`shrink-0 text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+          }`}
+        title={`Previous Net Sales: ${formatValue(
+          row.previous_net_sales,
+          "net_sales"
+        )}`}
+      >
+        {isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%
+      </span>
+    );
+  };
+
   return (
     <>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
@@ -1572,13 +1284,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     // clickable products
                     if (!isTotal) {
                       return (
-                        <span
+                        <div
                           onClick={() => handleProductClick(String(displayName || ""))}
-                          className="inline-block max-w-[220px] cursor-pointer truncate align-middle text-[#60a68e] no-underline"
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 text-[#60a68e]"
                           title={String(displayName || "")}
                         >
-                          {String(displayName || "-")}
-                        </span>
+                          <span className="min-w-0 truncate">
+                            {String(displayName || "-")}
+                          </span>
+
+                          {!isOthers && renderNetSalesDelta(row)}
+                        </div>
                       );
                     }
 
