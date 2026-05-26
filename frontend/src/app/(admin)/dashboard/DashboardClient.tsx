@@ -149,6 +149,10 @@ type MonthlySkuwiseRow = {
     dealsvouchar_ads?: number;
     platformfeenew?: number;
 
+    previous_net_sales?: number;
+    net_sales_delta?: number;
+    net_sales_delta_percentage?: number | null;
+
     // ✅ add these grand total fields
     total_cm2_profit?: number;
     total_cm2_margins?: number;
@@ -1034,6 +1038,81 @@ const safeDeltaPctFromPct = (currentPct: number, previousPct: number) => {
     const p = Number(previousPct) || 0;
     if (!p) return null;
     return ((c - p) / Math.abs(p)) * 100;
+};
+
+const normalizeDeltaKey = (value: unknown) =>
+    String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/[^\w\s+&-]/g, "");
+
+const attachNetSalesDeltaToLiveRows = (
+    currentRows: MonthlySkuwiseTableRow[],
+    previousRows: any[]
+): MonthlySkuwiseTableRow[] => {
+    const previousMap = new Map<string, any>();
+
+    previousRows.forEach((row: any) => {
+        const sku = String(row?.sku || "").trim().toUpperCase();
+
+        const name = normalizeDeltaKey(
+            normalizeProductDisplayName(row?.product_name || row?.sku || "")
+        );
+
+        if (sku && sku !== "GRAND_TOTAL" && sku !== "TOTAL") {
+            previousMap.set(`sku:${sku}`, row);
+        }
+
+        if (
+            name &&
+            name !== "total" &&
+            name !== "grand total" &&
+            name !== "others"
+        ) {
+            previousMap.set(`name:${name}`, row);
+        }
+    });
+
+    return currentRows.map((row) => {
+        if (row.isTotal || row.isOthers) return row;
+
+        const sku = String(row?.sku || "").trim().toUpperCase();
+
+        const name = normalizeDeltaKey(
+            normalizeProductDisplayName(row?.product_name || row?.sku || "")
+        );
+
+        const previousRow =
+            previousMap.get(`sku:${sku}`) ||
+            previousMap.get(`name:${name}`);
+
+        if (!previousRow) {
+            return {
+                ...row,
+                previous_net_sales: 0,
+                net_sales_delta: 0,
+                net_sales_delta_percentage: null,
+            };
+        }
+
+        const currentNetSales = toNumber(row.net_sales);
+        const previousNetSales = toNumber(previousRow?.net_sales);
+
+        const delta = currentNetSales - previousNetSales;
+
+        const deltaPct =
+            previousNetSales !== 0
+                ? (delta / Math.abs(previousNetSales)) * 100
+                : null;
+
+        return {
+            ...row,
+            previous_net_sales: previousNetSales,
+            net_sales_delta: delta,
+            net_sales_delta_percentage: deltaPct,
+        };
+    });
 };
 
 const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
@@ -8355,10 +8434,38 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const finalBiPeriods = shouldShowDummyUi ? dummyBiPeriods : biPeriods;
 
-    const finalMonthlySkuwiseRowsForTable = shouldShowDummyUi
-        ? dummyMonthlySkuwiseRowsForTable
-        : monthlySkuwiseRowsForTable;
+    // const finalMonthlySkuwiseRowsForTable = shouldShowDummyUi
+    //     ? dummyMonthlySkuwiseRowsForTable
+    //     : monthlySkuwiseRowsForTable;
 
+
+    const previousSkuwiseRowsForDelta = useMemo(() => {
+        if (platform === "global") {
+            return Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
+                ? previousSkuwiseGlobalData.skuwise_items_global
+                : [];
+        }
+
+        return Array.isArray((data as any)?.previous_period?.sku_metrics)
+            ? (data as any).previous_period.sku_metrics
+            : [];
+    }, [platform, previousSkuwiseGlobalData, data]);
+
+    const finalMonthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
+        if (shouldShowDummyUi) {
+            return dummyMonthlySkuwiseRowsForTable;
+        }
+
+        return attachNetSalesDeltaToLiveRows(
+            monthlySkuwiseRowsForTable,
+            previousSkuwiseRowsForDelta
+        );
+    }, [
+        shouldShowDummyUi,
+        dummyMonthlySkuwiseRowsForTable,
+        monthlySkuwiseRowsForTable,
+        previousSkuwiseRowsForDelta,
+    ]);
 
     const handleDownloadPlProductwiseMtd = useCallback(() => {
         try {
@@ -9353,6 +9460,30 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     />
                 </div>
             </div>
+        );
+    };
+
+    const renderLiveNetSalesDelta = (row: MonthlySkuwiseTableRow) => {
+        if (
+            row.net_sales_delta_percentage === undefined ||
+            row.net_sales_delta_percentage === null
+        ) {
+            return null;
+        }
+
+        const rawPct = toNumber(row.net_sales_delta_percentage);
+        const isPositive = rawPct >= 0;
+
+        return (
+            <span
+                className={`shrink-0 text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+                    }`}
+                title={`Previous Net Sales: ${Math.round(
+                    Math.abs(toNumber(row.previous_net_sales))
+                ).toLocaleString()}`}
+            >
+                {isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%
+            </span>
         );
     };
 
@@ -10406,7 +10537,36 @@ ${pageLoading
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return row.sku || "-";
                                                 }
-                                                if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
+                                                if (colKey === "product_name") {
+                                                    if (row.isTotal) {
+                                                        return (
+                                                            <span className="inline-block w-full truncate font-semibold">
+                                                                Total
+                                                            </span>
+                                                        );
+                                                    }
+
+                                                    if (row.isOthers) {
+                                                        return (
+                                                            <span className="inline-block w-full truncate text-[#60a68e]">
+                                                                Others
+                                                            </span>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            className="flex w-full items-center justify-between gap-3 text-[#60a68e]"
+                                                            title={String(row.product_name || "")}
+                                                        >
+                                                            <span className="min-w-0 truncate">
+                                                                {row.product_name || "-"}
+                                                            </span>
+
+                                                            {renderLiveNetSalesDelta(row)}
+                                                        </div>
+                                                    );
+                                                }
 
                                                 if (colKey === "quantity")
                                                     return Math.round(Number(row.quantity || 0)).toLocaleString();
