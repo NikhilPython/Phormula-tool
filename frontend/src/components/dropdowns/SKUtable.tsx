@@ -320,51 +320,55 @@ function normalizeRows(data: any[]): TableRow[] {
   });
 }
 
+const isTotalLikeRow = (row: TableRow | any) => {
+  const productName = String(row?.product_name ?? "").trim().toLowerCase();
+  const sku = String(row?.sku ?? "").trim().toLowerCase();
 
+  return productName === "total" || sku === "total";
+};
 
-function computeTotalsFromLastRow(rows: TableRow[]): Totals {
-  const lastRow: any = rows[rows.length - 1] || {};
+function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
+  const totalRow: any =
+    rows.find(isTotalLikeRow) ||
+    rows[rows.length - 1] ||
+    {};
 
-  const platformFees = toNumber(lastRow.platformfeenew);
-  const inventoryStorageFees = toNumber(lastRow.platform_fee_inventory_storage);
+  const platformFees = toNumber(totalRow.platformfeenew);
+  const inventoryStorageFees = toNumber(totalRow.platform_fee_inventory_storage);
 
-  // const reimbursementAmount =
-  //   toNumber(lastRow.reimbursement_lost_inventory_amount) ||
-  //   toNumber(lastRow.rembursement_fee) ||
-  //   0;
+  const netReimbursement = toNumber(totalRow.rembursement_fee);
 
-  const netReimbursement = toNumber(lastRow.rembursement_fee);
-
-  const reimbursementUnits = toNumber(lastRow.reimbursement_lost_inventory_units) || 0;
+  const reimbursementUnits =
+    toNumber(totalRow.reimbursement_lost_inventory_units) || 0;
 
   const cm2MarginsValue = toNumber(
-    lastRow.cm2_margins ??
-    lastRow.cm2_profit_percentage ??
-    lastRow.cm2_profit_percent ??
-    lastRow.cm2_profit_percentage_value
+    totalRow.cm2_margins ??
+    totalRow.cm2_profit_percentage ??
+    totalRow.cm2_profit_percent ??
+    totalRow.cm2_profit_percentage_value
   );
 
   return {
-    advertising_total: toNumber(lastRow.advertising_total),
-    visible_ads: toNumber(lastRow.visible_ads),
-    dealsvouchar_ads: toNumber(lastRow.dealsvouchar_ads),
-    other_transactions: toNumber(lastRow.platform_fee),
+    advertising_total: toNumber(totalRow.advertising_total),
+    visible_ads: toNumber(totalRow.visible_ads),
+    dealsvouchar_ads: toNumber(totalRow.dealsvouchar_ads),
+    other_transactions: toNumber(totalRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
-    misc_transaction: toNumber(lastRow.misc_transaction),
+    misc_transaction: toNumber(totalRow.misc_transaction),
     reimbursement_lost_inventory_amount:
-      toNumber(lastRow.reimbursement_lost_inventory_amount) || 0,
+      toNumber(totalRow.reimbursement_lost_inventory_amount) || 0,
     reimbursement_lost_inventory_units: reimbursementUnits,
-    lost_total: toNumber(lastRow.lost_total),
-    shipment_charges: toNumber(lastRow.shipment_charges ?? lastRow.shipment_fees),
-    reimbursement_vs_sales: toNumber(lastRow.reimbursement_vs_sales),
-    cm2_profit: toNumber(lastRow.cm2_profit),
+    lost_total: toNumber(totalRow.lost_total),
+    shipment_charges: toNumber(totalRow.shipment_charges ?? totalRow.shipment_fees),
+    reimbursement_vs_sales: toNumber(totalRow.reimbursement_vs_sales),
+    cm2_profit: toNumber(totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
-    acos: toNumber(lastRow.acos),
-    rembursment_vs_cm2_margins: toNumber(lastRow.rembursment_vs_cm2_margins),
+    acos: toNumber(totalRow.acos),
+    rembursment_vs_cm2_margins: toNumber(totalRow.rembursment_vs_cm2_margins),
     net_reimbursement: netReimbursement,
-    profit: toNumber(lastRow.Profit ?? lastRow.profit),
-    net_sales: toNumber(lastRow.Net_Sales ?? lastRow.net_sales),
+    profit: toNumber(totalRow.Profit ?? totalRow.profit),
+    net_sales: toNumber(totalRow.Net_Sales ?? totalRow.net_sales),
   };
 }
 
@@ -408,9 +412,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const tableData = rows || [];
 
-  const totals = useMemo(() => {
-    return computeTotalsFromLastRow(tableData);
-  }, [tableData]);
+const totals = useMemo(() => {
+  return computeTotalsFromTotalRow(tableData);
+}, [tableData]);
 
   const userData = userMeta;
 
