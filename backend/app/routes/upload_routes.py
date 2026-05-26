@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, Table, MetaData, Column, Integer, String, 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import inspect
 import os
-import io
+import io, re
 import base64
 from io import BytesIO
 from config import Config
@@ -1157,6 +1157,308 @@ def _marketplace_to_country(store):
 def ConfirmationFeepreview():
     return jsonify({'message': 'ConfirmationFeepreview successful!'}), 200
 
+def _quote_ident(engine, name):
+    return engine.dialect.identifier_preparer.quote(name)
+
+
+def _norm_key_sql(col_sql):
+    return f"lower(trim(({col_sql})::text))"
+
+
+def _find_column(columns, candidates):
+    lookup = {c["name"].lower(): c["name"] for c in columns}
+
+    for candidate in candidates:
+        if candidate.lower() in lookup:
+            return lookup[candidate.lower()]
+
+    normalized_lookup = {
+        re.sub(r"[^a-z0-9]", "", c["name"].lower()): c["name"]
+        for c in columns
+    }
+
+    for candidate in candidates:
+        key = re.sub(r"[^a-z0-9]", "", candidate.lower())
+        if key in normalized_lookup:
+            return normalized_lookup[key]
+
+    return None
+
+
+def _infer_country_from_table(table_name):
+    t = table_name.lower()
+
+    if "_uk_" in t or t.endswith("_uk") or "_uk" in t:
+        return "uk"
+
+    if "_us_" in t or t.endswith("_us") or "_us" in t:
+        return "us"
+
+    if "_canada_" in t or t.endswith("_canada") or "_canada" in t:
+        return "canada"
+
+    if "_global_" in t or "global" in t:
+        return None
+
+    return None
+
+
+def _target_table_prefixes(user_id):
+    return [
+        f"currentinventory_{user_id}_",
+        f"nse_{user_id}_",
+        f"quarter1_{user_id}_",
+        f"quarter2_{user_id}_",
+        f"quarter3_{user_id}_",
+        f"quarter4_{user_id}_",
+        f"sku_{user_id}_",
+        f"skuwisemonthly_{user_id}_",
+        f"skuwiseyearly_{user_id}_",
+    ]
+
+
+
+def sync_uploaded_sku_to_all_user_tables(engine, user_id, sku_rows):
+    """
+    Updates ONLY sku and product_name columns in all matching user tables.
+
+    Table patterns updated:
+      currentinventory_{user_id}_
+      nse_{user_id}_
+      quarter1_{user_id}_
+      quarter2_{user_id}_
+      quarter3_{user_id}_
+      quarter4_{user_id}_
+      sku_{user_id}_
+      skuwisemonthly_{user_id}_
+      skuwiseyearly_{user_id}_
+
+    Matching logic:
+      1. If table sku matches uploaded sku, update product_name.
+      2. If table product_name matches uploaded product_name, update sku.
+      3. UK tables use sku_uk.
+      4. US tables use sku_us.
+      5. Canada tables use sku_canada.
+      6. Global tables use all available sku mappings.
+    """
+
+    inspector = inspect(engine)
+
+    all_tables = inspector.get_table_names(schema="public")
+
+    prefixes = _target_table_prefixes(user_id)
+
+    target_tables = [
+        table_name
+        for table_name in all_tables
+        if any(table_name.lower().startswith(prefix.lower()) for prefix in prefixes)
+    ]
+
+    mappings = []
+
+    for row in sku_rows:
+        product_name = row.get("product_name")
+
+        if not product_name:
+            continue
+
+        product_name = str(product_name).strip()
+
+        if product_name.lower() in ("", "nan", "none", "null", "total"):
+            continue
+
+        sku_uk = row.get("sku_uk")
+        sku_us = row.get("sku_us")
+        sku_canada = row.get("sku_canada")
+
+        if sku_uk and str(sku_uk).strip():
+            mappings.append({
+                "country": "uk",
+                "sku": str(sku_uk).strip(),
+                "product_name": product_name,
+            })
+
+        if sku_us and str(sku_us).strip():
+            mappings.append({
+                "country": "us",
+                "sku": str(sku_us).strip(),
+                "product_name": product_name,
+            })
+
+        if sku_canada and str(sku_canada).strip():
+            mappings.append({
+                "country": "canada",
+                "sku": str(sku_canada).strip(),
+                "product_name": product_name,
+            })
+
+    # remove duplicate mappings
+    unique_mappings = {}
+
+    for mapping in mappings:
+        key = (
+            mapping["country"].lower().strip(),
+            mapping["sku"].lower().strip(),
+            mapping["product_name"].lower().strip(),
+        )
+        unique_mappings[key] = mapping
+
+    mappings = list(unique_mappings.values())
+
+    if not mappings:
+        return {
+            "tables_checked": len(target_tables),
+            "tables_updated": [],
+            "message": "No valid SKU mappings found",
+        }
+
+    updated_tables = []
+
+    with engine.begin() as conn:
+        # Important with SQLAlchemy pool:
+        # temp tables can remain on reused PostgreSQL connections.
+        conn.execute(text("DROP TABLE IF EXISTS tmp_unique_product_mapping"))
+        conn.execute(text("DROP TABLE IF EXISTS tmp_uploaded_sku_mapping"))
+
+        conn.execute(text("""
+            CREATE TEMP TABLE tmp_uploaded_sku_mapping (
+                country TEXT,
+                sku TEXT,
+                product_name TEXT,
+                sku_key TEXT,
+                product_key TEXT
+            ) ON COMMIT DROP
+        """))
+
+        conn.execute(
+            text("""
+                INSERT INTO tmp_uploaded_sku_mapping
+                    (country, sku, product_name, sku_key, product_key)
+                VALUES
+                    (
+                        :country,
+                        :sku,
+                        :product_name,
+                        lower(trim(:sku)),
+                        lower(trim(:product_name))
+                    )
+            """),
+            mappings
+        )
+
+        conn.execute(text("DROP TABLE IF EXISTS tmp_unique_product_mapping"))
+
+        conn.execute(text("""
+            CREATE TEMP TABLE tmp_unique_product_mapping ON COMMIT DROP AS
+            SELECT
+                country,
+                product_key,
+                MAX(sku) AS sku,
+                COUNT(DISTINCT sku_key) AS sku_count
+            FROM tmp_uploaded_sku_mapping
+            GROUP BY country, product_key
+            HAVING COUNT(DISTINCT sku_key) = 1
+        """))
+
+        for table_name in target_tables:
+            # Skip the master SKU table because it was just uploaded/recreated.
+            if table_name.lower() == f"sku_{user_id}_data_table".lower():
+                continue
+
+            try:
+                columns = inspector.get_columns(table_name, schema="public")
+            except Exception:
+                continue
+
+            sku_col = _find_column(columns, [
+                "sku",
+                "SKU",
+                "seller_sku",
+                "seller sku",
+                "merchant_sku",
+                "merchant sku",
+            ])
+
+            product_col = _find_column(columns, [
+                "product_name",
+                "Product Name",
+                "product name",
+                "product",
+                "title",
+            ])
+
+            # Update only tables that have both sku and product_name columns.
+            if not sku_col or not product_col:
+                continue
+
+            q_table = _quote_ident(engine, table_name)
+            q_sku_col = _quote_ident(engine, sku_col)
+            q_product_col = _quote_ident(engine, product_col)
+
+            table_country = _infer_country_from_table(table_name)
+
+            params = {}
+
+            if table_country:
+                country_filter_m = "AND m.country = :country"
+                country_filter_u = "AND u.country = :country"
+                params["country"] = table_country
+            else:
+                country_filter_m = ""
+                country_filter_u = ""
+
+            # 1. Same SKU found => update product_name.
+            update_product_sql = f"""
+                UPDATE {q_table} AS t
+                SET {q_product_col} = m.product_name
+                FROM tmp_uploaded_sku_mapping AS m
+                WHERE {_norm_key_sql(f't.{q_sku_col}')} = m.sku_key
+                  {country_filter_m}
+                  AND m.product_name IS NOT NULL
+                  AND trim(m.product_name) <> ''
+                  AND (
+                        t.{q_product_col} IS NULL
+                        OR trim(t.{q_product_col}::text) IS DISTINCT FROM trim(m.product_name)
+                  )
+            """
+
+            result1 = conn.execute(text(update_product_sql), params)
+
+            # 2. Same product_name found => update SKU.
+            # This only updates if that product_name maps to exactly one SKU.
+            update_sku_sql = f"""
+                UPDATE {q_table} AS t
+                SET {q_sku_col} = u.sku
+                FROM tmp_unique_product_mapping AS u
+                WHERE {_norm_key_sql(f't.{q_product_col}')} = u.product_key
+                  {country_filter_u}
+                  AND u.sku IS NOT NULL
+                  AND trim(u.sku) <> ''
+                  AND (
+                        t.{q_sku_col} IS NULL
+                        OR trim(t.{q_sku_col}::text) IS DISTINCT FROM trim(u.sku)
+                  )
+            """
+
+            result2 = conn.execute(text(update_sku_sql), params)
+
+            affected_rows = (result1.rowcount or 0) + (result2.rowcount or 0)
+
+            if affected_rows > 0:
+                updated_tables.append({
+                    "table": table_name,
+                    "rows_changed": affected_rows,
+                })
+
+        # clean manually also, not only ON COMMIT DROP
+        conn.execute(text("DROP TABLE IF EXISTS tmp_unique_product_mapping"))
+        conn.execute(text("DROP TABLE IF EXISTS tmp_uploaded_sku_mapping"))
+
+    return {
+        "tables_checked": len(target_tables),
+        "tables_updated": updated_tables,
+    }
+
 
 
 @upload_bp.route('/multiCountry', methods=['POST'])
@@ -1197,6 +1499,7 @@ def multiCountry():
         Column('product_barcode', String(255), nullable=True),
         Column('sku_uk', String(255), nullable=True),
         Column('sku_us', String(255), nullable=True),
+        Column('sku_canada', String(255), nullable=True),
         Column('asin', String(255), nullable=True),
         Column('price', Float, nullable=True),
         Column('currency', String(255), nullable=True),
@@ -1361,13 +1664,16 @@ def multiCountry():
             country = _marketplace_to_country(amazon_store)
 
             raw_sku = _pick(row, ['sku', 'seller_sku', 'merchant_sku', 'sku_uk', 'sku_us'])
-            sku_uk = _pick(row, ['sku_uk'])
-            sku_us = _pick(row, ['sku_us'])
-            if not sku_uk and not sku_us and raw_sku:
+            sku_uk = _pick(row, ['sku_uk', 'uk_sku'])
+            sku_us = _pick(row, ['sku_us', 'us_sku'])
+            sku_canada = _pick(row, ['sku_canada', 'canada_sku', 'sku_ca', 'ca_sku'])
+            if not sku_uk and not sku_us and not sku_canada and raw_sku:
                 if country == 'UK':
                     sku_uk = str(raw_sku).strip()
                 elif country == 'US':
                     sku_us = str(raw_sku).strip()
+                elif country == 'Canada':
+                    sku_canada = str(raw_sku).strip()
 
             price_value = _pick(row, ['landing_cost', 'your_price', 'sales_price', 'price'])
             try:
@@ -1386,7 +1692,7 @@ def multiCountry():
 
             # Skip fully empty lines (include stock too)
             if not any([
-                s_no, product_name, product_barcode, asin, sku_uk, sku_us,
+                s_no, product_name, product_barcode, asin, sku_uk, sku_us, sku_canada,
                 price_value, currency, month, year, local_stock, in_transit_units
             ]):
                 continue
@@ -1398,6 +1704,7 @@ def multiCountry():
                 'product_barcode': _s(product_barcode),
                 'sku_uk': _s(sku_uk),
                 'sku_us': _s(sku_us),
+                'sku_canada': _s(sku_canada),
                 'asin': _s(asin),
                 'price': price_value,
                 'currency': _s(currency),
@@ -1410,15 +1717,30 @@ def multiCountry():
                 'year': _s(year),
             })
 
+        sync_result = None
+
         if inserts:
             session.execute(user_specific_table.insert(), inserts)
             session.commit()
-            msg = 'File uploaded and data saved successfully'
+
+            # ✅ Update ONLY sku and product_name in all user tables
+            sync_result = sync_uploaded_sku_to_all_user_tables(
+                engine=engine,
+                user_id=user_id,
+                sku_rows=inserts
+            )
+
+            msg = 'SKU file uploaded and sku/product_name synced successfully'
         else:
             msg = 'File processed, but no valid rows found to insert.'
 
         session.close()
-        return jsonify({'message': msg}), 200
+
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'sync_result': sync_result
+        }), 200
 
     except Exception as e:
         try:
