@@ -3246,13 +3246,13 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
                 or {}
             )
 
-            print("[COUNTRY SKU ACTIONS]", {
-                "country_key": country_key,
-                "key": key,
-                "sku_actions_type": type(sku_actions).__name__,
-                "sku_action_keys": list(sku_actions.keys())[:20] if isinstance(sku_actions, dict) else None,
-                "has_exact_key": key in sku_actions if isinstance(sku_actions, dict) else False,
-            })
+            # print("[COUNTRY SKU ACTIONS]", {
+            #     "country_key": country_key,
+            #     "key": key,
+            #     "sku_actions_type": type(sku_actions).__name__,
+            #     "sku_action_keys": list(sku_actions.keys())[:20] if isinstance(sku_actions, dict) else None,
+            #     "has_exact_key": key in sku_actions if isinstance(sku_actions, dict) else False,
+            # })
 
             sku_block = sku_actions.get(key) or {}
 
@@ -3285,15 +3285,15 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
                         sku_block = block
                         break
 
-            print("[COUNTRY SKU MATCH]", {
-                "country_key": country_key,
-                "requested_key": key,
-                "requested_product_name": product_name,
-                "matched": bool(sku_block),
-                "matched_sku": sku_block.get("sku") if isinstance(sku_block, dict) else None,
-                "matched_product_name": sku_block.get("product_name") if isinstance(sku_block, dict) else None,
-                "sku_block_keys": list(sku_block.keys()) if isinstance(sku_block, dict) else None,
-            })
+            # print("[COUNTRY SKU MATCH]", {
+            #     "country_key": country_key,
+            #     "requested_key": key,
+            #     "requested_product_name": product_name,
+            #     "matched": bool(sku_block),
+            #     "matched_sku": sku_block.get("sku") if isinstance(sku_block, dict) else None,
+            #     "matched_product_name": sku_block.get("product_name") if isinstance(sku_block, dict) else None,
+            #     "sku_block_keys": list(sku_block.keys()) if isinstance(sku_block, dict) else None,
+            # })
 
             recommendation = sku_block.get("recommendation")
             inventory_recommendation = sku_block.get("inventory_recommendation")
