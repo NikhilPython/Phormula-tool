@@ -494,15 +494,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
 
-    const lastRow = tableData[tableData.length - 1];
-    const lastName = String((lastRow as any)?.product_name || "")
-      .trim()
-      .toLowerCase();
+    const isTotalRow = (row: TableRow) => {
+      const name = String((row as any)?.product_name || "").trim().toLowerCase();
+      const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
-    const hasTotal = lastName === "total";
+      return name === "total" || sku === "total";
+    };
 
-    const totalRow = hasTotal ? { ...lastRow } : null;
-    const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
+    // ✅ Find Total row anywhere, not only at last index
+    const totalIndex = tableData.findIndex(isTotalRow);
+    const totalRow =
+      totalIndex >= 0 ? ({ ...tableData[totalIndex] } as TableRow) : null;
+
+    // ✅ Exclude Total from sorting
+    const productRows = tableData.filter((row) => !isTotalRow(row));
 
     const getMarketplaceFeesSortValue = (row: TableRow) => {
       return Math.abs(toNumber((row as any).amazon_fee));
@@ -587,15 +592,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
 
     if (totalRow) {
+      totalRow.product_name = "Total";
       totalRow.asp = computeAspFrom(totalRow);
     }
 
-    const out: TableRow[] = [...top9];
+    const sortedProductOutput: TableRow[] = [...top9];
 
-    if (othersRow) out.push(othersRow);
-    if (totalRow) out.push(totalRow);
+    if (othersRow) sortedProductOutput.push(othersRow);
 
-    return out;
+    // ✅ Keep Total in its original position.
+    // If Total was first, it remains first.
+    // If Total was last, it remains last.
+    if (!totalRow) return sortedProductOutput;
+
+    if (totalIndex <= 0) {
+      return [totalRow, ...sortedProductOutput];
+    }
+
+    if (totalIndex >= tableData.length - 1) {
+      return [...sortedProductOutput, totalRow];
+    }
+
+    const insertIndex = Math.min(totalIndex, sortedProductOutput.length);
+    return [
+      ...sortedProductOutput.slice(0, insertIndex),
+      totalRow,
+      ...sortedProductOutput.slice(insertIndex),
+    ];
   }, [tableData, sortOption]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
