@@ -684,7 +684,7 @@ export default function AmazonConnectLegacy({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Stock Unit <span className="text-rose-500">*</span>
+                    Stock Unit (in months)<span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -704,7 +704,7 @@ export default function AmazonConnectLegacy({
 
                 <div>
                   <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Transit Time <span className="text-rose-500">*</span>
+                    Transit Time (in months)<span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"

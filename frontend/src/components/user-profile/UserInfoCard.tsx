@@ -294,6 +294,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [isPersonalEditMode, setIsPersonalEditMode] = useState(false);
   const [isCompanyEditMode, setIsCompanyEditMode] = useState(false);
   const [isSkuUploaded, setIsSkuUploaded] = useState(false);
+  const [isSkuUploadSuccessOpen, setIsSkuUploadSuccessOpen] = useState(false);
   const [tourEnabled, setTourEnabled] = useState(false);
   const [tourStarted, setTourStarted] = useState(false);
   const [isMarkingStepsSeen, setIsMarkingStepsSeen] = useState(false);
@@ -2338,11 +2339,18 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                             onClose={skuModal.closeModal}
                             onComplete={() => {
                               setIsSkuUploaded(true);
+
                               setData((prev: any) => ({
                                 ...prev,
                                 sku_sheet_exists: true,
                               }));
+
                               skuModal.closeModal();
+                              setIsSkuUploadSuccessOpen(true);
+
+                              setTimeout(() => {
+                                setIsSkuUploadSuccessOpen(false);
+                              }, 3000);
                             }}
                           />
                         </div>
@@ -2877,6 +2885,36 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
               </Button>
             </div>
           </form>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isSkuUploadSuccessOpen}
+        onClose={() => setIsSkuUploadSuccessOpen(false)}
+        className="m-4 max-w-[420px]"
+      >
+        <div className="relative w-full rounded-2xl bg-white p-6 text-center shadow-xl dark:bg-gray-900">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-500">
+            <FiCheck size={24} />
+          </div>
+
+          <h3 className="text-lg font-semibold text-charcoal-500 dark:text-white">
+            Upload Successful
+          </h3>
+
+          <p className="mt-2 text-sm text-charcoal-500 dark:text-gray-400">
+            The file has been uploaded successfully.
+          </p>
+
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setIsSkuUploadSuccessOpen(false)}
+            >
+              OK
+            </Button>
+          </div>
         </div>
       </Modal>
     </div >

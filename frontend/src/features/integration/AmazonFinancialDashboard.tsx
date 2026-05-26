@@ -61,9 +61,31 @@ const fullMonthNames = [
   "December",
 ];
 
+
 const monthSlugOrder = fullMonthNames.map((m) => m.toLowerCase());
 const two = (n: number | string) => String(n).padStart(2, "0");
 
+function formatFetchMonth(year: number, monthNum: number) {
+  const shortMonth = fullMonthNames[monthNum - 1].slice(0, 3);
+  const shortYear = String(year).slice(-2);
+
+  return `${shortMonth}'${shortYear}`;
+}
+
+function getHistoricFetchMessage(params: {
+  year: number;
+  monthNum: number;
+  currentMonthIndex?: number;
+  totalMonths?: number;
+}) {
+  const formattedMonth = formatFetchMonth(params.year, params.monthNum);
+
+  if (params.totalMonths && params.totalMonths > 1 && params.currentMonthIndex) {
+    return `Fetching ${formattedMonth} (Month ${params.currentMonthIndex}/${params.totalMonths})`;
+  }
+
+  return `Fetching ${formattedMonth}`;
+}
 
 function updateLatestFetchedPeriod(monthSlug: string, yearStr: string) {
   if (typeof window === "undefined") return;
@@ -165,9 +187,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -1261,7 +1283,15 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       markStepComplete(5);
 
       // Step 6: Historic Data (per month, ~20 seconds)
-      setStep(6, "Historic Data", 0, `Fetching data for ${y}-${two(mNum)}...`);
+      setStep(
+        6,
+        "Historic Data",
+        0,
+        getHistoricFetchMessage({
+          year: y,
+          monthNum: mNum,
+        })
+      );
       await fetchMonthlyTransactionsExcel({
         year: y,
         month: mNum,
@@ -1455,7 +1485,17 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         const { y, mNum, mIdx } = months[i];
         const monthProgress = Math.round(((i + 1) / months.length) * 100);
 
-        setStep(6, "Historic Data", monthProgress, `Month ${i + 1}/${months.length}: ${y}-${two(mNum)}`);
+        setStep(
+          6,
+          "Historic Data",
+          monthProgress,
+          getHistoricFetchMessage({
+            year: y,
+            monthNum: mNum,
+            currentMonthIndex: i + 1,
+            totalMonths: months.length,
+          })
+        );
         setRangeProgress({ currentMonth: i + 1, totalMonths: months.length, ok, fail });
 
         try {

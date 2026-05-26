@@ -333,7 +333,7 @@ export default function SignUpForm() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <Label>
-                      Name<span className="text-error-500">*</span>
+                      Full Name<span className="text-error-500">*</span>
                     </Label>
                     <Input
                       type="text"
