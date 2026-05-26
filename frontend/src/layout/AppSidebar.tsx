@@ -3,7 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { FaChevronDown, FaTimes } from "react-icons/fa";
 import RegionSelect, { RegionOption } from "@/components/sidebar/RegionSelect";
@@ -68,6 +73,8 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const routeParams = useParams();
+  const searchParams = useSearchParams();
+
 
   const [currentHash, setCurrentHash] = useState("");
 
@@ -442,7 +449,6 @@ const AppSidebar: React.FC = () => {
     year: (routeParams?.year as string) || initialPeriod.year,
   };
 
-  // ✅ Add this useEffect here
   useEffect(() => {
     const routeMonth = routeParams?.month as string | undefined;
 
@@ -463,8 +469,11 @@ const AppSidebar: React.FC = () => {
 
     segments[monthIndex] = capitalizedMonth;
 
-    router.replace(`/${segments.join("/")}`);
-  }, [routeParams?.month, pathname, router]);
+    const queryString = searchParams.toString();
+    const nextUrl = `/${segments.join("/")}${queryString ? `?${queryString}` : ""}`;
+
+    router.replace(nextUrl, { scroll: false });
+  }, [routeParams?.month, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!isMember) return;
@@ -563,7 +572,10 @@ const AppSidebar: React.FC = () => {
     }
 
     if (redirectPath && redirectPath !== pathname) {
-      router.replace(redirectPath);
+      const queryString = searchParams.toString();
+      const nextUrl = `${redirectPath}${queryString ? `?${queryString}` : ""}`;
+
+      router.replace(nextUrl, { scroll: false });
     }
   }, [
     isMember,
@@ -573,6 +585,7 @@ const AppSidebar: React.FC = () => {
     routeParams?.ranged,
     routeParams?.month,
     routeParams?.year,
+    searchParams,
     pathname,
     router,
     currentParams.ranged,
@@ -894,7 +907,7 @@ const AppSidebar: React.FC = () => {
     let newPath: string | null = null;
 
     const ranged = (params.ranged as string) || currentParams.ranged;
-   const month = currentParams.month;
+    const month = currentParams.month;
     const year = (params.year as string) || currentParams.year;
 
     if ((params as any).countryName || segments[0] === "country") {

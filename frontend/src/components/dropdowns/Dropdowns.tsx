@@ -2315,8 +2315,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const adsCountry = useMemo<"UK" | "US" | "CA">(() => {
     const c = String(initialCountryName || "").toLowerCase();
 
-    if (c === "us") return "US";
-    if (c === "ca") return "CA";
+    if (c === "us" || c === "usa" || c === "united states") return "US";
+    if (c === "ca" || c === "canada") return "CA";
     return "UK";
   }, [initialCountryName]);
 
@@ -3780,20 +3780,76 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   //   }
   // }, [searchParams]);
 
-  useEffect(() => {
-    if (!userData) return; // wait until data is loaded
+  // useEffect(() => {
+  //   if (!userData) return; // wait until data is loaded
 
+  //   const amazonFetch = searchParams.get("amazonFetch");
+  //   const promptAmazonAds = searchParams.get("promptAmazonAds");
+
+  //   if (
+  //     amazonFetch === "success" &&
+  //     promptAmazonAds === "1" &&
+  //     !userData.amazon_ads_exists
+  //   ) {
+  //     setShowAmazonFetchSuccess(true);
+  //   }
+  // }, [searchParams, userData]);
+
+  const AMAZON_ADS_PROMPT_KEY = "pendingAmazonAdsPrompt";
+
+  const isAmazonAdsConnected = (value: unknown) => {
+    if (value === true) return true;
+    if (value === 1) return true;
+
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      return normalized === "true" || normalized === "1" || normalized === "yes";
+    }
+
+    return false;
+  };
+
+  useEffect(() => {
     const amazonFetch = searchParams.get("amazonFetch");
     const promptAmazonAds = searchParams.get("promptAmazonAds");
 
-    if (
-      amazonFetch === "success" &&
-      promptAmazonAds === "1" &&
-      !userData.amazon_ads_exists
-    ) {
+    const hasPromptInUrl =
+      amazonFetch === "success" && promptAmazonAds === "1";
+
+    if (hasPromptInUrl && typeof window !== "undefined") {
+      sessionStorage.setItem(AMAZON_ADS_PROMPT_KEY, "1");
+    }
+
+    const hasPromptInSession =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem(AMAZON_ADS_PROMPT_KEY) === "1";
+
+    if (!userData) return;
+
+    const shouldPrompt = hasPromptInUrl || hasPromptInSession;
+
+    if (!shouldPrompt) return;
+
+    const adsConnected =
+      isAmazonAdsConnected((userData as any).amazon_ads_exists) ||
+      isAmazonAdsConnected((userData as any).amazon_ads_connected) ||
+      isAmazonAdsConnected((userData as any).ads_connected) ||
+      isAmazonAdsConnected((userData as any).amazonAdsConnected);
+
+    if (!adsConnected) {
       setShowAmazonFetchSuccess(true);
+    } else {
+      sessionStorage.removeItem(AMAZON_ADS_PROMPT_KEY);
+      clearAmazonFetchQueryParams();
     }
   }, [searchParams, userData]);
+
+  useEffect(() => {
+    console.log(
+      "[Amazon Ads Prompt Debug] showAmazonFetchSuccess changed:",
+      showAmazonFetchSuccess
+    );
+  }, [showAmazonFetchSuccess]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -3826,24 +3882,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (typeof window === "undefined") return;
 
     const url = new URL(window.location.href);
+
+    console.log("[Amazon Ads Prompt Debug] clearing query params from:", url.href);
+
     url.searchParams.delete("amazonFetch");
     url.searchParams.delete("promptAmazonAds");
 
-    router.replace(url.pathname + url.search + url.hash, { scroll: false });
+    const nextUrl = url.pathname + url.search + url.hash;
+
+    console.log("[Amazon Ads Prompt Debug] router.replace to:", nextUrl);
+
+    router.replace(nextUrl, { scroll: false });
   };
 
   const handleCloseAmazonFetchSuccess = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(AMAZON_ADS_PROMPT_KEY);
+    }
+
     setShowAmazonFetchSuccess(false);
     clearAmazonFetchQueryParams();
   };
 
-  // const handleOpenAmazonAdsFromSuccess = () => {
-  //   setShowAmazonFetchSuccess(false);
-  //   clearAmazonFetchQueryParams();
-  //   setShowAmazonAdsConnect(true);
-  // };
-
   const handleOpenAmazonAdsFromSuccess = (country: "UK" | "US" | "CA") => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(AMAZON_ADS_PROMPT_KEY);
+    }
+
     setShowAmazonFetchSuccess(false);
     clearAmazonFetchQueryParams();
     setShowAmazonAdsConnect(true);
@@ -5675,10 +5740,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
             <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
               <SKUtable
-                range={range as "monthly" | "quarterly" | "yearly"}
-                month={range === "monthly" ? (isDemoMode ? "NA" : selectedMonth) : undefined}
-                quarter={range === "quarterly" ? (isDemoMode ? undefined : selectedQuarter) : undefined}
-                year={isDemoMode ? "NA" : selectedYear}
+                range={range === "yearly" ? "yearly" : range}
+                month={range === "monthly" ? selectedMonth : ""}
+                quarter={range === "quarterly" ? selectedQuarter : ""}
+                year={selectedYear}
                 countryName={isDemoMode ? "global" : initialCountryName}
                 homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                 rows={displaySkuRows}
@@ -5690,6 +5755,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   company_name: userData?.company_name,
                 }}
                 onExportPayloadChange={handleSkuExportPayloadChange}
+                metricSortMetrics={["units", "sales", "profit", "marketplace_fees"]}
                 // hideDownloadButton
                 disableInternalFade={shouldShowPreviewData}
               />
@@ -5850,11 +5916,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
       </Modal>
 
-      {/* <AmazonFetchSuccessModal
-        isOpen={showAmazonFetchSuccess}
-        onClose={handleCloseAmazonFetchSuccess}
-        onConnectAds={handleOpenAmazonAdsFromSuccess}
-      /> */}
+      {console.log("[Amazon Ads Prompt Debug] rendering modal with:", {
+        showAmazonFetchSuccess,
+        adsCountry,
+      })}
 
       <AmazonFetchSuccessModal
         isOpen={showAmazonFetchSuccess}

@@ -17,6 +17,7 @@ import type { TopBottomData } from "@/lib/pnl/topBottom";
 import Loader from "../loader/Loader";
 import MetricSortDropdown, {
   MetricSortOption,
+  MetricSortKey,
 } from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
@@ -58,7 +59,7 @@ type SKUtableProps = {
     brand_name?: string;
     company_name?: string;
   } | null;
-
+  metricSortMetrics?: MetricSortKey[];
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
@@ -384,6 +385,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   hideDownloadButton = false,
   onDownload,
   disableInternalFade = false,
+  metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -499,28 +501,70 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const totalRow = hasTotal ? { ...lastRow } : null;
     const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
 
-    const sortMap: Record<
-      MetricSortOption,
-      { key: keyof TableRow; direction: "asc" | "desc" }
-    > = {
-      units_desc: { key: "net_units_sold", direction: "desc" },
-      units_asc: { key: "net_units_sold", direction: "asc" },
-
-      sales_desc: { key: "net_sales", direction: "desc" },
-      sales_asc: { key: "net_sales", direction: "asc" },
-
-      profit_desc: { key: "profit", direction: "desc" },
-      profit_asc: { key: "profit", direction: "asc" },
-
-      marketplace_fees_desc: { key: "amazon_fee", direction: "desc" },
-      marketplace_fees_asc: { key: "amazon_fee", direction: "asc" },
+    const getMarketplaceFeesSortValue = (row: TableRow) => {
+      return Math.abs(toNumber((row as any).amazon_fee));
     };
 
-    const selectedSort = sortMap[sortOption];
+    const sortMap: Partial<
+      Record<
+        MetricSortOption,
+        {
+          getValue: (row: TableRow) => number;
+          direction: "asc" | "desc";
+        }
+      >
+    > = {
+      units_desc: {
+        getValue: (row) => toNumber(row.net_units_sold),
+        direction: "desc",
+      },
+      units_asc: {
+        getValue: (row) => toNumber(row.net_units_sold),
+        direction: "asc",
+      },
+
+      sales_desc: {
+        getValue: (row) => toNumber(row.net_sales),
+        direction: "desc",
+      },
+      sales_asc: {
+        getValue: (row) => toNumber(row.net_sales),
+        direction: "asc",
+      },
+
+      profit_desc: {
+        getValue: (row) => toNumber(row.profit),
+        direction: "desc",
+      },
+      profit_asc: {
+        getValue: (row) => toNumber(row.profit),
+        direction: "asc",
+      },
+
+      marketplace_fees_desc: {
+        getValue: getMarketplaceFeesSortValue,
+        direction: "desc",
+      },
+      marketplace_fees_asc: {
+        getValue: getMarketplaceFeesSortValue,
+        direction: "asc",
+      },
+
+      cm2_profit_desc: {
+        getValue: (row) => toNumber(row.cm2_profit),
+        direction: "desc",
+      },
+      cm2_profit_asc: {
+        getValue: (row) => toNumber(row.cm2_profit),
+        direction: "asc",
+      },
+    };
+
+    const selectedSort = sortMap[sortOption] ?? sortMap.sales_desc!;
 
     const sorted = [...productRows].sort((a, b) => {
-      const aValue = toNumber((a as any)[selectedSort.key]);
-      const bValue = toNumber((b as any)[selectedSort.key]);
+      const aValue = selectedSort.getValue(a);
+      const bValue = selectedSort.getValue(b);
 
       return selectedSort.direction === "desc"
         ? bValue - aValue
@@ -1436,6 +1480,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
             <MetricSortDropdown
               value={sortOption}
               onChange={setSortOption}
+              metrics={metricSortMetrics}
             />
 
             {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}

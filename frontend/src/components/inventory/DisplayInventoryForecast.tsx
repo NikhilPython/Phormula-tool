@@ -246,7 +246,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           totalUnits,
         };
       })
-      .sort((a, b) => b.totalUnits - a.totalUnits);
+      .sort((a, b) => b.f1 - a.f1);
 
     const first9 = baseRows.slice(0, 9);
     const remaining = baseRows.slice(9);

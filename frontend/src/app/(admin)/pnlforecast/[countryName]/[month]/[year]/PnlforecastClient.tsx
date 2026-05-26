@@ -15,6 +15,9 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { IoMdLock } from 'react-icons/io';
 import Loader from '@/components/loader/Loader';
+import MetricSortDropdown, {
+  MetricSortOption,
+} from '@/components/ui/dropdown/MetricSortDropdown';
 
 type RowData = {
   sku?: string;
@@ -267,6 +270,8 @@ const Pnlforecast: React.FC = () => {
   const [showCm1, setshowCm1] = useState<boolean>(false);
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
   const [noDataAvailable, setNoDataAvailable] = useState<boolean>(false);
+  const [forecastSortOption, setForecastSortOption] =
+    useState<MetricSortOption>('sales_desc');
 
   const DUMMY_PNL_ROWS: RowData[] = [
     {
@@ -1165,23 +1170,69 @@ const Pnlforecast: React.FC = () => {
   const displayProductRows = React.useMemo(() => {
     const rows = normalizedProductRows || [];
 
-    const totalRow =
-      rows.find((row) => isPnlTotalRow(row)) || null;
-
+    const totalRow = rows.find((row) => isPnlTotalRow(row)) || null;
     const nonTotalRows = rows.filter((row) => !isPnlTotalRow(row));
 
-    if (nonTotalRows.length <= 9) {
-      return totalRow ? [...nonTotalRows, totalRow] : nonTotalRows;
+    const sortMap: Partial<
+      Record<
+        MetricSortOption,
+        {
+          getValue: (row: RowData) => number;
+          direction: 'asc' | 'desc';
+        }
+      >
+    > = {
+      units_desc: {
+        getValue: (row) => toNumber(row.forecast_1st),
+        direction: 'desc',
+      },
+      units_asc: {
+        getValue: (row) => toNumber(row.forecast_1st),
+        direction: 'asc',
+      },
+
+      sales_desc: {
+        getValue: (row) => toNumber(row.Total_Sales_1st),
+        direction: 'desc',
+      },
+      sales_asc: {
+        getValue: (row) => toNumber(row.Total_Sales_1st),
+        direction: 'asc',
+      },
+
+      profit_desc: {
+        getValue: (row) => toNumber(row.profit_1st),
+        direction: 'desc',
+      },
+      profit_asc: {
+        getValue: (row) => toNumber(row.profit_1st),
+        direction: 'asc',
+      },
+    };
+
+    const selectedSort = sortMap[forecastSortOption] ?? sortMap.sales_desc!;
+
+    const sortedRows = [...nonTotalRows].sort((a, b) => {
+      const aValue = selectedSort.getValue(a);
+      const bValue = selectedSort.getValue(b);
+
+      return selectedSort.direction === 'desc'
+        ? bValue - aValue
+        : aValue - bValue;
+    });
+
+    if (sortedRows.length <= 9) {
+      return totalRow ? [...sortedRows, totalRow] : sortedRows;
     }
 
-    const firstNine = nonTotalRows.slice(0, 9);
-    const remainingRows = nonTotalRows.slice(9);
+    const firstNine = sortedRows.slice(0, 9);
+    const remainingRows = sortedRows.slice(9);
     const othersRow = buildOthersPnlRow(remainingRows);
 
     return totalRow
       ? [...firstNine, othersRow, totalRow]
       : [...firstNine, othersRow];
-  }, [normalizedProductRows]);
+  }, [normalizedProductRows, forecastSortOption]);
 
   const tableRows = [
     ...displayProductRows,
@@ -1269,12 +1320,20 @@ const Pnlforecast: React.FC = () => {
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-2 2xl:mt-4">
-          <PageBreadcrumb
-            pageTitle="Detailed P&L Forecast Data"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <PageBreadcrumb
+              pageTitle="Detailed P&L Forecast Data"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+
+            <MetricSortDropdown
+              value={forecastSortOption}
+              onChange={setForecastSortOption}
+              metrics={['units', 'sales', 'profit']}
+            />
+          </div>
 
           <div className="mt-4 w-full overflow-x-auto">
             <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">

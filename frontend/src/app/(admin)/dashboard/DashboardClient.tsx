@@ -59,6 +59,7 @@ import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import MetricSortDropdown, {
     MetricSortOption,
+    MetricSortKey,
 } from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
@@ -1605,6 +1606,14 @@ export default function DashboardPage() {
 
     const [plSortOption, setPlSortOption] =
         useState<MetricSortOption>("sales_desc");
+
+    const plSortMetrics: MetricSortKey[] = [
+        "units",
+        "sales",
+        "profit",
+        "marketplace_fees",
+        "cm2_profit",
+    ];
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
@@ -5573,25 +5582,49 @@ export default function DashboardPage() {
         );
 
         const getMarketplaceFees = (row: MonthlySkuwiseRow) => {
-            return (
+            const value =
                 toNumber((row as any).amazon_fees) ||
                 toNumber((row as any).marketplace_fees) ||
-                toNumber(row.fba_fees) + toNumber(row.selling_fees)
-            );
+                toNumber(row.fba_fees) + toNumber(row.selling_fees);
+
+            return Math.abs(value);
         };
 
-        const sortMap: Record<
-            MetricSortOption,
-            { getValue: (row: MonthlySkuwiseRow) => number; direction: "asc" | "desc" }
+        const sortMap: Partial<
+            Record<
+                MetricSortOption,
+                {
+                    getValue: (row: MonthlySkuwiseRow) => number;
+                    direction: "asc" | "desc";
+                }
+            >
         > = {
-            units_desc: { getValue: (row) => toNumber(row.quantity), direction: "desc" },
-            units_asc: { getValue: (row) => toNumber(row.quantity), direction: "asc" },
+            units_desc: {
+                getValue: (row) => toNumber(row.quantity),
+                direction: "desc",
+            },
+            units_asc: {
+                getValue: (row) => toNumber(row.quantity),
+                direction: "asc",
+            },
 
-            sales_desc: { getValue: (row) => toNumber(row.net_sales), direction: "desc" },
-            sales_asc: { getValue: (row) => toNumber(row.net_sales), direction: "asc" },
+            sales_desc: {
+                getValue: (row) => toNumber(row.net_sales),
+                direction: "desc",
+            },
+            sales_asc: {
+                getValue: (row) => toNumber(row.net_sales),
+                direction: "asc",
+            },
 
-            profit_desc: { getValue: (row) => toNumber(row.profit), direction: "desc" },
-            profit_asc: { getValue: (row) => toNumber(row.profit), direction: "asc" },
+            profit_desc: {
+                getValue: (row) => toNumber(row.profit),
+                direction: "desc",
+            },
+            profit_asc: {
+                getValue: (row) => toNumber(row.profit),
+                direction: "asc",
+            },
 
             marketplace_fees_desc: {
                 getValue: getMarketplaceFees,
@@ -5601,9 +5634,18 @@ export default function DashboardPage() {
                 getValue: getMarketplaceFees,
                 direction: "asc",
             },
+
+            cm2_profit_desc: {
+                getValue: (row) => toNumber(row.cm2_profit),
+                direction: "desc",
+            },
+            cm2_profit_asc: {
+                getValue: (row) => toNumber(row.cm2_profit),
+                direction: "asc",
+            },
         };
 
-        const selectedSort = sortMap[plSortOption];
+        const selectedSort = sortMap[plSortOption] ?? sortMap.sales_desc!;
 
         const sorted = [...bodyRows].sort((a, b) => {
             const aValue = selectedSort.getValue(a);
@@ -10310,6 +10352,7 @@ ${pageLoading
                                     <MetricSortDropdown
                                         value={plSortOption}
                                         onChange={setPlSortOption}
+                                        metrics={plSortMetrics}
                                     />
 
                                     <DownloadIconButton
