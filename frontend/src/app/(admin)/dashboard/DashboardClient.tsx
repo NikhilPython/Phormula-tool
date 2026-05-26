@@ -57,6 +57,9 @@ import DashboardStickyKpis from "./DashboardStickyKpis";
 import { IoMdLock } from "react-icons/io";
 import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
+import MetricSortDropdown, {
+    MetricSortOption,
+} from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -1599,6 +1602,9 @@ export default function DashboardPage() {
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
+
+    const [plSortOption, setPlSortOption] =
+        useState<MetricSortOption>("sales_desc");
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
@@ -5566,14 +5572,61 @@ export default function DashboardPage() {
             (r) => !r.isTotal && r.sku !== "GRAND_TOTAL"
         );
 
-        if (bodyRows.length <= 9) {
-            const out = [...bodyRows];
+        const getMarketplaceFees = (row: MonthlySkuwiseRow) => {
+            return (
+                toNumber((row as any).amazon_fees) ||
+                toNumber((row as any).marketplace_fees) ||
+                toNumber(row.fba_fees) + toNumber(row.selling_fees)
+            );
+        };
+
+        const sortMap: Record<
+            MetricSortOption,
+            { getValue: (row: MonthlySkuwiseRow) => number; direction: "asc" | "desc" }
+        > = {
+            units_desc: { getValue: (row) => toNumber(row.quantity), direction: "desc" },
+            units_asc: { getValue: (row) => toNumber(row.quantity), direction: "asc" },
+
+            sales_desc: { getValue: (row) => toNumber(row.net_sales), direction: "desc" },
+            sales_asc: { getValue: (row) => toNumber(row.net_sales), direction: "asc" },
+
+            profit_desc: { getValue: (row) => toNumber(row.profit), direction: "desc" },
+            profit_asc: { getValue: (row) => toNumber(row.profit), direction: "asc" },
+
+            marketplace_fees_desc: {
+                getValue: getMarketplaceFees,
+                direction: "desc",
+            },
+            marketplace_fees_asc: {
+                getValue: getMarketplaceFees,
+                direction: "asc",
+            },
+        };
+
+        const selectedSort = sortMap[plSortOption];
+
+        const sorted = [...bodyRows].sort((a, b) => {
+            const aValue = selectedSort.getValue(a);
+            const bValue = selectedSort.getValue(b);
+
+            return selectedSort.direction === "desc"
+                ? bValue - aValue
+                : aValue - bValue;
+        });
+
+        if (sorted.length <= 9) {
+            const out = [...sorted];
             if (totalRow) out.push(totalRow);
-            return out.map((r, idx) => (r.isTotal ? r : { ...r, sno: idx + 1 }));
+
+            return out.map((r, idx) =>
+                r.isTotal ? r : { ...r, sno: idx + 1 }
+            );
         }
 
-        const sorted = [...bodyRows].sort((a, b) => Math.abs(b.net_sales) - Math.abs(a.net_sales));
-        const top9 = sorted.slice(0, 9).map((r, idx) => ({ ...r, sno: idx + 1 }));
+        const top9 = sorted.slice(0, 9).map((r, idx) => ({
+            ...r,
+            sno: idx + 1,
+        }));
 
         const rest = sorted.slice(9);
 
@@ -5582,6 +5635,7 @@ export default function DashboardPage() {
 
         const othersQty = sum("quantity");
         const othersNetSales = sum("net_sales");
+
         const othersAsp =
             othersQty && Number.isFinite(othersQty) && othersQty !== 0
                 ? othersNetSales / othersQty
@@ -5593,36 +5647,55 @@ export default function DashboardPage() {
             sno: 10,
             sku: "OTHERS",
             product_name: "Others",
+
             quantity: othersQty,
             asp: othersAsp,
             net_sales: othersNetSales,
+
             cogs: sum("cogs"),
             fba_fees: sum("fba_fees"),
             selling_fees: sum("selling_fees"),
+
             tax: sum("tax"),
             credits: sum("credits"),
             tax_and_credits: sum("tax_and_credits"),
+
             cm1_profit_per: 0,
             cm1_profit_per_unit: 0,
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
+
             ads_spend: sum("ads_spend"),
-            acos: othersNetSales ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100 : 0,
+            acos: othersNetSales
+                ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100
+                : 0,
+
             cm2_profit: sum("cm2_profit"),
             profit: sum("profit"),
+
             platform_fee: sum("platform_fee"),
             platform_fee_inventory_storage: sum("platform_fee_inventory_storage"),
             lost_total: sum("lost_total"),
             other: sum("other"),
+
+            product_spend: sum("product_spend"),
+            brand_spend: sum("brand_spend"),
+            dealsvouchar_ads: sum("dealsvouchar_ads"),
+            platformfeenew: sum("platformfeenew"),
+
+            total_ads: sum("total_ads"),
+            advertising_fees: sum("advertising_fees"),
+            amazon_fees: rest.reduce((acc, r) => acc + getMarketplaceFees(r), 0),
+
             isOthers: true,
         };
 
-        const out: MonthlySkuwiseRow[] = [...top9, othersRow];
+        const out: MonthlySkuwiseTableRow[] = [...top9, othersRow];
+
         if (totalRow) out.push(totalRow);
+
         return out;
-    }, [monthlySkuwiseRowsDisplay]);
-
-
+    }, [monthlySkuwiseRowsDisplay, plSortOption]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -10234,6 +10307,11 @@ ${pageLoading
                                 )}
                                 {/* RIGHT: Download */}
                                 <div className="flex items-center gap-2">
+                                    <MetricSortDropdown
+                                        value={plSortOption}
+                                        onChange={setPlSortOption}
+                                    />
+
                                     <DownloadIconButton
                                         onClick={handleDownloadPlProductwiseMtd}
                                         aria-label="Download P&L Productwise Breakdown MTD"

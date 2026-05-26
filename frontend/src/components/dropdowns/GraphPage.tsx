@@ -165,8 +165,44 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const convertToAbbreviatedMonth = (m?: string) =>
     m ? capitalizeFirstLetter(m).slice(0, 3) : "";
 
+  const MONTH_NAME_TO_IDX: Record<string, number> = {
+    january: 0,
+    february: 1,
+    march: 2,
+    april: 3,
+    may: 4,
+    june: 5,
+    july: 6,
+    august: 7,
+    september: 8,
+    october: 9,
+    november: 10,
+    december: 11,
+  };
+
   const shortLabel = (key: MetricKey) => getMetricLabel(key, true);
   const fullLabel = (key: MetricKey) => getMetricLabel(key, false);
+
+  const selectedYearNum = Number(selectedYear);
+  const currentCalendarYear = new Date().getFullYear();
+
+  const latestAvailableMonthIdx = useMemo(() => {
+    if (range !== "yearly") return null;
+    if (!selectedYearNum || selectedYearNum !== currentCalendarYear) return null;
+
+    let maxIdx = -1;
+
+    uploads.forEach((upload) => {
+      if (Number(upload.year) !== selectedYearNum) return;
+
+      const idx = MONTH_NAME_TO_IDX[String(upload.month).toLowerCase()];
+      if (idx == null) return;
+
+      maxIdx = Math.max(maxIdx, idx);
+    });
+
+    return maxIdx >= 0 ? maxIdx : null;
+  }, [range, selectedYearNum, currentCalendarYear, uploads]);
 
   const monthlyLabels = useMemo(() => {
     if (range === "monthly" && selectedMonth && selectedYear) {
@@ -176,7 +212,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
       return getQuarterLabels(selectedYear, selectedQuarter).map((l) => l.toLowerCase());
     }
     if (range === "yearly" && selectedYear) {
-      return [
+      const yearLabels = [
         `January ${selectedYear}`,
         `February ${selectedYear}`,
         `March ${selectedYear}`,
@@ -190,9 +226,26 @@ const GraphPage: React.FC<GraphPageProps> = ({
         `November ${selectedYear}`,
         `December ${selectedYear}`,
       ].map((l) => l.toLowerCase());
+
+      // Collapsed current-year view:
+      // show only months that actually exist.
+      if (isCollapsed && latestAvailableMonthIdx != null) {
+        return yearLabels.slice(0, latestAvailableMonthIdx + 1);
+      }
+
+      // Expanded view:
+      // keep Jan-Dec axis.
+      return yearLabels;
     }
     return [] as string[];
-  }, [range, selectedMonth, selectedQuarter, selectedYear]);
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    isCollapsed,
+    latestAvailableMonthIdx,
+  ]);
 
 
 
@@ -290,7 +343,34 @@ const GraphPage: React.FC<GraphPageProps> = ({
         .map(([metric]) => ({
           metricKey: metric as MetricKey,
           label: getMetricLabel(metric as MetricKey, isCollapsed),
-          data: labels.map((l) => (isPreviewMode ? 0 : (dataToUse as any)[l]?.[metric] || 0)),
+          data: labels.map((l) => {
+            if (isPreviewMode) return 0;
+
+            const [monthName] = l.split(" ");
+            const monthIdx = MONTH_NAME_TO_IDX[String(monthName).toLowerCase()];
+
+            const isCurrentOngoingYear =
+              range === "yearly" &&
+              selectedYearNum === currentCalendarYear &&
+              latestAvailableMonthIdx != null;
+
+            const isFutureMonth =
+              isCurrentOngoingYear &&
+              monthIdx != null &&
+              monthIdx > latestAvailableMonthIdx;
+
+            if (isFutureMonth) {
+              if (isCollapsed) return null;
+
+              const isFirstFutureMonth = monthIdx === latestAvailableMonthIdx + 1;
+
+              // Expanded: only one grounding point, then stop.
+              return isFirstFutureMonth ? 0 : null;
+            }
+
+            return (dataToUse as any)[l]?.[metric] ?? 0;
+          }),
+          spanGaps: false,
           fill: false,
           borderColor: colorMap[metric] ?? "#000",
           backgroundColor: colorMap[metric] ?? "#000",
@@ -332,7 +412,10 @@ const GraphPage: React.FC<GraphPageProps> = ({
     });
   }, [rawLabels]);
 
-  const allDataPoints = datasets.flatMap((d: any) => d.data as number[]);
+  const allDataPoints = datasets
+    .flatMap((d: any) => d.data as Array<number | null>)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+
   const minValue = allDataPoints.length ? Math.min(...allDataPoints) : 0;
   const minY = minValue < 0 ? Math.floor(minValue * 1.1) : 0;
 

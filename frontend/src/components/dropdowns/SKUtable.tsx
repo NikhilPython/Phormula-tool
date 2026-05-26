@@ -15,6 +15,9 @@ import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import Loader from "../loader/Loader";
+import MetricSortDropdown, {
+  MetricSortOption,
+} from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
@@ -69,6 +72,8 @@ type TopBottomRow = {
   salesMix: string;
   cm1_per_unit: string;
 };
+
+
 
 export type TableRow = {
   product_name?: string;
@@ -388,6 +393,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ads: true,
     other: true,
   });
+  const [sortOption, setSortOption] = useState<MetricSortOption>("sales_desc");
 
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
@@ -480,22 +486,46 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return units > 0 ? sales / units : 0;
   };
 
-
-
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
 
     const lastRow = tableData[tableData.length - 1];
-    const lastName = String((lastRow as any)?.product_name || "").trim().toLowerCase();
+    const lastName = String((lastRow as any)?.product_name || "")
+      .trim()
+      .toLowerCase();
+
     const hasTotal = lastName === "total";
 
-    // take total row if present
     const totalRow = hasTotal ? { ...lastRow } : null;
     const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
 
-    const sorted = [...productRows].sort(
-      (a, b) => toNumber(b.net_sales) - toNumber(a.net_sales)
-    );
+    const sortMap: Record<
+      MetricSortOption,
+      { key: keyof TableRow; direction: "asc" | "desc" }
+    > = {
+      units_desc: { key: "net_units_sold", direction: "desc" },
+      units_asc: { key: "net_units_sold", direction: "asc" },
+
+      sales_desc: { key: "net_sales", direction: "desc" },
+      sales_asc: { key: "net_sales", direction: "asc" },
+
+      profit_desc: { key: "profit", direction: "desc" },
+      profit_asc: { key: "profit", direction: "asc" },
+
+      marketplace_fees_desc: { key: "amazon_fee", direction: "desc" },
+      marketplace_fees_asc: { key: "amazon_fee", direction: "asc" },
+    };
+
+    const selectedSort = sortMap[sortOption];
+
+    const sorted = [...productRows].sort((a, b) => {
+      const aValue = toNumber((a as any)[selectedSort.key]);
+      const bValue = toNumber((b as any)[selectedSort.key]);
+
+      return selectedSort.direction === "desc"
+        ? bValue - aValue
+        : aValue - bValue;
+    });
 
     const top9 = sorted.slice(0, 9);
     const rest = sorted.slice(9);
@@ -505,7 +535,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ? (sumRows(rest, { product_name: "Others", sku: "-" }) as TableRow)
         : null;
 
-    // ✅ compute ASP properly
     if (othersRow) {
       othersRow.asp = computeAspFrom(othersRow);
     }
@@ -515,11 +544,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
 
     const out: TableRow[] = [...top9];
+
     if (othersRow) out.push(othersRow);
     if (totalRow) out.push(totalRow);
 
     return out;
-  }, [tableData]);
+  }, [tableData, sortOption]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -1402,7 +1432,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
             <span className="text-[#5EA68E] text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold">({currencySymbol})</span>
           </div>
 
-          <div className="flex justify-center sm:justify-end">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+            <MetricSortDropdown
+              value={sortOption}
+              onChange={setSortOption}
+            />
+
             {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
           </div>
         </div>
