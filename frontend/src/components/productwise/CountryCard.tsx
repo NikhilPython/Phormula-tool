@@ -144,7 +144,13 @@ const CountryCard: React.FC<CountryCardProps> = ({
     </div>
   );
 
-
+const bestPerformanceMonth = formatMonthYear(
+  stats.maxSalesMonth?.month ||
+    stats.maxUnitsMonth?.month ||
+    stats.maxProfitMonth?.month ||
+    "",
+  selectedYear || ""
+);
 
   return (
     <div className=" rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -188,7 +194,9 @@ const CountryCard: React.FC<CountryCardProps> = ({
           />
         </div>
 
-        <p className="m-0 text-[clamp(13px,1vw,16px)] font-bold">Best Performance</p>
+<p className="m-0 text-[clamp(13px,1vw,16px)] font-bold">
+  Best Performance ({bestPerformanceMonth})
+</p>
 
         {/* Best Performance stays white with country-colored top border */}
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
@@ -205,9 +213,9 @@ const CountryCard: React.FC<CountryCardProps> = ({
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
               Sales
             </p>
-            <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
+            {/* <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatMonthYear(stats.maxSalesMonth.month, selectedYear || "")}
-            </p>
+            </p> */}
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatAmount(stats.maxSalesMonth.net_sales)}
             </p>
@@ -224,9 +232,9 @@ const CountryCard: React.FC<CountryCardProps> = ({
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
               Units
             </p>
-            <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
+            {/* <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatMonthYear(stats.maxUnitsMonth.month, selectedYear || "")}
-            </p>
+            </p> */}
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {stats.maxUnitsMonth.quantity.toLocaleString()}
             </p>
@@ -243,12 +251,12 @@ const CountryCard: React.FC<CountryCardProps> = ({
               Profit
             </p>
 
-            <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
+            {/* <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatMonthYear(
                 stats.maxProfitMonth?.month || stats.maxSalesMonth.month,
                 selectedYear || ""
               )}
-            </p>
+            </p> */}
 
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatAmount(

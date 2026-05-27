@@ -11,6 +11,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  type ChartOptions,
 } from 'chart.js';
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from "../common/PageBreadCrumb";
@@ -432,6 +433,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         borderWidth: 2,
         tension: 0.3,
         fill: false,
+
+        // ✅ Add these for better hover detection
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointHitRadius: 12,
+
         segment: {
           borderDash: (ctx: any) => {
             const idx = ctx?.p0DataIndex ?? 0;
@@ -441,8 +448,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       }))
       .filter((ds) => selectedSeries[ds.key] !== false);
   }, [top5Rows, selectedSeries, forecastStartIndex, chartLabels, demoMode, hasRenderableData]);
-
-  // const chartData = useMemo(() => ({ labels: chartLabels, datasets }), [chartLabels, datasets]);
 
   const emptyChartData = useMemo(() => ({
     labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
@@ -491,13 +496,35 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   //   []
   // );
 
-  const chartOptions = useMemo(() => ({
+  const chartOptions = useMemo<ChartOptions<"line">>(() => ({
     responsive: true,
     maintainAspectRatio: false,
     layout: { padding: { top: 0, bottom: 24 } },
 
+    interaction: {
+      intersect: false,
+      mode: "index",
+    },
+
     plugins: {
       legend: { display: false },
+
+      tooltip: {
+        enabled: true,
+        mode: "index",
+        intersect: false,
+        callbacks: {
+          title: (tooltipItems) => {
+            return tooltipItems?.[0]?.label || "";
+          },
+          label: (ctx) => {
+            const label = ctx.dataset.label || "";
+            const val = ctx.parsed?.y ?? 0;
+
+            return `${label}: ${Math.round(Number(val)).toLocaleString()}`;
+          },
+        },
+      },
     },
 
     scales: {
@@ -512,13 +539,19 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       },
       y: {
         beginAtZero: true,
-        suggestedMax: 100, // 👈 important for empty graph height
+        suggestedMax: 100,
         grid: {
           display: true,
           color: "#E5E7EB",
         },
         ticks: {
           color: "#6B7280",
+          callback: (value) => {
+            const num = Number(value);
+            return Number.isFinite(num)
+              ? Math.round(num).toLocaleString()
+              : value;
+          },
         },
         title: {
           display: true,

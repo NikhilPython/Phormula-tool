@@ -684,8 +684,12 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
         borderWidth: 2,
         tension: 0.3,
         fill: false,
+
+        // ✅ Better hover like Graph page
         pointRadius: 4,
-        pointHoverRadius: 5,
+        pointHoverRadius: 6,
+        pointHitRadius: 12,
+
         segment: {
           borderDash: (ctx: any) => {
             if (forecastStartIndex === -1) return undefined;
@@ -708,11 +712,21 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
           bottom: 10,
         },
       },
+
+      // ✅ Same hover behavior as Graph page
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+
       plugins: {
         legend: {
           display: false,
         },
         tooltip: {
+          enabled: true,
+          mode: "index",
+          intersect: false,
           callbacks: {
             label: function (context: any) {
               const value = Math.round(Number(context.parsed.y ?? 0));
@@ -725,11 +739,13 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
               const index = context[0].dataIndex;
               const label = chartData[index].month;
               const isForecast = chartData[index].isForecast;
+
               return isForecast ? `${label} (Forecast)` : label;
             },
           },
         },
       },
+
       scales: {
         x: {
           title: {

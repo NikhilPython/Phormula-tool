@@ -3865,7 +3865,7 @@ export default function LiveBusinessClient({
             <div className="text-sm font-bold text-slate-800">{title}</div>
           </div>
 
-          <div className="grid grid-cols-1 min-[1700px]:grid-cols-2 gap-2 p-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
             {rows.map((item, idx) => (
               <div
                 key={idx}
@@ -3880,6 +3880,18 @@ export default function LiveBusinessClient({
                 </span>
               </div>
             ))}
+
+            <button
+              type="button"
+              onClick={goToInventoryReconciliation}
+              className="md:col-span-2 flex min-h-[38px] items-center rounded-lg border border-amber-100 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
+            >
+              For Detailed Inventory Insights, Please Refer To The{" "}
+              <span className="ml-1 font-bold text-[#5EA68E] underline underline-offset-2">
+                Inventory Reconciliation Tab
+              </span>
+              .
+            </button>
           </div>
         </div>
       );

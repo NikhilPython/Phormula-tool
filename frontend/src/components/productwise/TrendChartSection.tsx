@@ -193,12 +193,28 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
   const processedChartOptions = useMemo(() => {
     return {
       ...chartOptions,
+
+      responsive: true,
+      maintainAspectRatio: false,
+
+      interaction: {
+        mode: "index",
+        intersect: false,
+        ...chartOptions?.interaction,
+      },
+
       plugins: {
         ...chartOptions?.plugins,
         tooltip: {
+          enabled: true,
+          mode: "index",
+          intersect: false,
           ...chartOptions?.plugins?.tooltip,
           callbacks: {
             ...chartOptions?.plugins?.tooltip?.callbacks,
+            title: (tooltipItems: any[]) => {
+              return tooltipItems?.[0]?.label || "";
+            },
             label: (context: any) => {
               const rawLabel = String(context.dataset.label || "");
               const value = Math.round(Number(context.parsed.y || 0));
@@ -222,15 +238,26 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
                     ? "Units"
                     : rawLabel;
 
-              const finalLabel = isGlobalView && countryLabel
-                ? `${countryLabel} ${metricLabel}`
-                : metricLabel;
+              const finalLabel =
+                isGlobalView && countryLabel
+                  ? `${countryLabel} ${metricLabel}`
+                  : metricLabel;
 
-              return `${finalLabel}: ${value.toLocaleString()}`;
+              const prefix =
+                activeTab === "sales_cm1"
+                  ? `${exportMeta?.currencyLabel || ""} `
+                  : "";
+
+              return `${finalLabel}: ${prefix}${value.toLocaleString()}`;
             },
           },
         },
+        legend: {
+          ...chartOptions?.plugins?.legend,
+          display: false,
+        },
       },
+
       scales: {
         ...chartOptions?.scales,
         y: {
@@ -247,7 +274,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         },
       },
     };
-  }, [chartOptions, exportMeta?.titleCountry]);
+  }, [chartOptions, exportMeta?.titleCountry, exportMeta?.currencyLabel, activeTab]);
 
   const getTitleByTab = () =>
     activeTab === "sales_cm1" ? "Net Sales + CM1 Profit Trend" : "Units Trend";
@@ -281,6 +308,9 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
           fill: false,
           borderDash: isCm1OrProfit ? [6, 6] : [],
           tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointHitRadius: 12,
         };
       });
 
@@ -305,6 +335,9 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         fill: false,
         borderDash: [6, 6],
         tension: 0.35,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointHitRadius: 12,
       }));
 
       return {

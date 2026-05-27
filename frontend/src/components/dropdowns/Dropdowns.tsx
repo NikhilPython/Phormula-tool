@@ -1590,6 +1590,29 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   targetSummary,
   currencySymbol = "$",
 }) => {
+  const router = useRouter();
+
+  const goToInventoryReconciliation = () => {
+    const routeCountry = String(countryName || "")
+      .trim()
+      .toLowerCase();
+
+    const monthForRoute =
+      range === "monthly" && selectedMonth
+        ? selectedMonth
+        : new Date().toLocaleString("en-US", { month: "long" });
+
+    const routeMonth =
+      monthForRoute.charAt(0).toUpperCase() +
+      monthForRoute.slice(1).toLowerCase();
+
+    const routeYear = String(selectedYear || new Date().getFullYear()).trim();
+
+    router.push(
+      `/inventory-reconciliation/${routeCountry}/${routeMonth}/${routeYear}`
+    );
+  };
+
   if (
     !summaryBullets.length &&
     !recommendationBullets.length &&
@@ -1599,6 +1622,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   ) {
     return null;
   }
+
 
   const narrativeInsights = summaryBullets.filter((l) => !l.includes(":"));
 
@@ -1725,6 +1749,14 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
               const parseInventoryLine = (line: string) => {
                 const raw = String(line || "").trim();
+
+                if (
+                  raw.toLowerCase().includes("for detailed inventory insights") ||
+                  raw.toLowerCase().includes("inventory reconciliation tab")
+                ) {
+                  return null;
+                }
+
                 const colonIdx = raw.indexOf(":");
 
                 const left = colonIdx > -1 ? raw.slice(0, colonIdx).trim() : raw;
@@ -1750,16 +1782,33 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 };
               };
 
+              type InventoryItem = NonNullable<ReturnType<typeof parseInventoryLine>>;
+
               const CountryInventoryCard = ({
                 title,
                 items,
                 accentClass,
               }: {
                 title: string;
-                items: ReturnType<typeof parseInventoryLine>[];
+                items: InventoryItem[];
                 accentClass: string;
               }) => {
                 if (!items.length) return null;
+
+                const getItemRank = (label: string) => {
+                  const value = label.toLowerCase();
+
+                  if (value.includes("ageing")) return 1;
+                  if (value.includes("estimated storage") || value.includes("est. storage")) return 2;
+                  if (value.includes("unfulfillable")) return 3;
+                  if (value.includes("high coverage")) return 4;
+
+                  return 99;
+                };
+
+                const orderedItems = [...items].sort(
+                  (a, b) => getItemRank(a.label) - getItemRank(b.label)
+                );
 
                 return (
                   <div
@@ -1771,8 +1820,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-2 p-3">
-                      {items.map((item, i) => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
+                      {orderedItems.map((item, i) => (
                         <div
                           key={i}
                           className="flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
@@ -1788,12 +1837,26 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                           ) : null}
                         </div>
                       ))}
+
+                      <button
+                        type="button"
+                        onClick={goToInventoryReconciliation}
+                        className="md:col-span-2 flex min-h-[38px] items-center rounded-lg border border-amber-100 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
+                      >
+                        For Detailed Inventory Insights, Please Refer To The{" "}
+                        <span className="ml-1 font-bold text-[#5EA68E] underline underline-offset-2">
+                          Inventory Reconciliation Tab
+                        </span>
+                        .
+                      </button>
                     </div>
                   </div>
                 );
               };
 
-              const parsedItems = inventoryBullets.map(parseInventoryLine);
+              const parsedItems = inventoryBullets
+                .map(parseInventoryLine)
+                .filter((item): item is InventoryItem => item !== null);
 
               // ✅ Country-wise page: render one country card only
               if (!isGlobalInventory) {
@@ -1822,9 +1885,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                   return acc;
                 },
                 {
-                  uk: [] as ReturnType<typeof parseInventoryLine>[],
-                  us: [] as ReturnType<typeof parseInventoryLine>[],
-                  other: [] as ReturnType<typeof parseInventoryLine>[],
+                  uk: [] as InventoryItem[],
+                  us: [] as InventoryItem[],
+                  other: [] as InventoryItem[],
                 }
               );
 
@@ -6053,7 +6116,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
       </Modal>
 
-    
+
 
       <AmazonFetchSuccessModal
         isOpen={showAmazonFetchSuccess}

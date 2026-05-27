@@ -15,6 +15,7 @@ import {
 } from "@/lib/excel/exportCurrentInventoryExcel";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import type { InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
+import InfoTip from "@/components/ui/InfoTip";
 
 type InventoryUiRow = {
   sno: React.ReactNode;
@@ -989,6 +990,33 @@ export default function CurrentInventorySection({
     homeCurrencyCodeForExcel,
   ]);
 
+  const INVENTORY_ALERT_CRITERIA = (
+    <div className="space-y-1">
+      <p>
+        <strong>High alert:</strong> Coverage ratio is 2 months or less.
+      </p>
+      <p>
+        <strong>Please send shipment:</strong> Coverage ratio is more than 2 months
+        and up to 5 months.
+      </p>
+      <p>
+        <strong>High inventory coverage ratio:</strong> Coverage ratio is 6 months
+        or more, and there is no long-term aged inventory.
+      </p>
+      <p>
+        <strong>High storage cost:</strong> Estimated storage cost next month is
+        greater than 100.
+      </p>
+      <p>
+        <strong>Long-term aged inventory:</strong> SKU has inventory units in aged
+        buckets above 180 days.
+      </p>
+      <p>
+        <strong>No alert:</strong> None of the above criteria are met.
+      </p>
+    </div>
+  );
+
   /* -------- Build DataTable columns -------- */
 
   const columns: ColumnDef<InventoryUiRow>[] = useMemo(() => {
@@ -1043,8 +1071,13 @@ export default function CurrentInventorySection({
       },
       {
         key: "alert",
-        header: "Inventory Alerts",
-        width: "w-32 lg:min-w-fit",
+        header: (
+          <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+            <span>Inventory Alerts</span>
+            <InfoTip text={INVENTORY_ALERT_CRITERIA} />
+          </div>
+        ),
+        width: "w-40 lg:min-w-fit",
         cellClassName: "text-center font-medium",
         headerClassName: "break-words",
       },
