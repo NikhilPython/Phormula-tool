@@ -135,7 +135,7 @@ type JwtPayload = {
   [k: string]: unknown;
 };
 
-type RangeType = "monthly" | "quarterly" | "yearly" | "";
+type RangeType = "monthly" | "quarterly" | "yearly";
 
 type Quarter = "Q1" | "Q2" | "Q3" | "Q4";
 const isQuarter = (v: string): v is Quarter =>
@@ -1346,7 +1346,7 @@ const MonthlyObjectiveStrip = ({
   targetSummary,
   currencySymbol = "$",
   countryName = "",
-  range = "",
+  range = "yearly",
 }: {
   objective?: ObjectivePayload;
   className?: string;
@@ -4047,33 +4047,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setBargraphUploads([]);
   };
 
-const didApplyLandingDefault = useRef(false);
+  const didApplyLandingDefault = useRef(false);
 
-useEffect(() => {
-  if (isDemoMode) {
+  useEffect(() => {
+    if (isDemoMode) {
+      setRange("yearly");
+      setSelectedMonth("");
+      setSelectedQuarter("");
+      setSelectedYear(String(new Date().getFullYear()));
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      setAiPanel(DEMO_AI_PANEL);
+      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+      setBargraphUploads(DEMO_UPLOADS);
+      setGraphPageUploads(DEMO_UPLOADS);
+      setSkuRows(DEMO_SKU_ROWS);
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      setAllDropdownsSelected(true);
+      return;
+    }
+
+    if (didApplyLandingDefault.current) return;
+    didApplyLandingDefault.current = true;
+
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
-    setSelectedYear(String(new Date().getFullYear()));
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    setAiPanel(DEMO_AI_PANEL);
-    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
-    setBargraphUploads(DEMO_UPLOADS);
-    setGraphPageUploads(DEMO_UPLOADS);
-    setSkuRows(DEMO_SKU_ROWS);
-    setTargetSummary(DEMO_TARGET_SUMMARY);
-    setAllDropdownsSelected(true);
-    return;
-  }
-
-  if (didApplyLandingDefault.current) return;
-  didApplyLandingDefault.current = true;
-
-  setRange("yearly");
-  setSelectedMonth("");
-  setSelectedQuarter("");
-  setSelectedYear(computeDefaultYearlyYear());
-}, [isDemoMode]);
+    setSelectedYear(computeDefaultYearlyYear());
+  }, [isDemoMode]);
 
 
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
@@ -4087,7 +4087,7 @@ useEffect(() => {
         ? "yearly"
         : range;
 
-    if (safeRange === "" || !selectedYear) return;
+    if (!selectedYear) return;
 
     const ready =
       (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
@@ -4450,7 +4450,7 @@ useEffect(() => {
       if (sku && sku !== "total" && sku !== "-") previousMap.set(sku, row);
     });
 
-    return currentRows.map((row) => {
+    return currentRows.map((row): TableRow => {
       const name = normalizeProductDeltaKey(row.product_name);
       const sku = normalizeProductDeltaKey(row.sku);
 
@@ -4458,9 +4458,7 @@ useEffect(() => {
 
       if (isTotal) return row;
 
-      const previousRow =
-        previousMap.get(name) ||
-        previousMap.get(sku);
+      const previousRow = previousMap.get(name) || previousMap.get(sku);
 
       const currentNetSales = toNum(row.net_sales);
       const previousNetSales = toNum(previousRow?.net_sales);
@@ -4470,7 +4468,7 @@ useEffect(() => {
       const deltaPct =
         previousNetSales !== 0
           ? (delta / previousNetSales) * 100
-          : null;
+          : undefined;
 
       return {
         ...row,
@@ -5879,7 +5877,7 @@ useEffect(() => {
 
             <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
               <SKUtable
-                range={range === "yearly" ? "yearly" : range}
+                range={range || "yearly"}
                 month={range === "monthly" ? selectedMonth : ""}
                 quarter={range === "quarterly" ? selectedQuarter : ""}
                 year={selectedYear}
@@ -6055,10 +6053,7 @@ useEffect(() => {
         </div>
       </Modal>
 
-      {console.log("[Amazon Ads Prompt Debug] rendering modal with:", {
-        showAmazonFetchSuccess,
-        adsCountry,
-      })}
+    
 
       <AmazonFetchSuccessModal
         isOpen={showAmazonFetchSuccess}

@@ -1349,7 +1349,7 @@ const Pnlforecast: React.FC = () => {
                   getValue={(row, key) => {
                     if (key === "sr_no") {
                       const isTotal =
-                        String(row.product_name || '').trim().toLowerCase() === 'total';
+                        String(row.product_name || "").trim().toLowerCase() === "total";
 
                       const isSummary = summaryRows.some(
                         (s) => s.label === row.product_name
@@ -1359,6 +1359,22 @@ const Pnlforecast: React.FC = () => {
 
                       const productIndex = displayProductRows.findIndex((r) => r === row);
                       return productIndex >= 0 ? productIndex + 1 : "";
+                    }
+
+                    const isReimbursementVsCm2Margins =
+                      String(row.product_name || "").trim().toLowerCase() ===
+                      "reimbursement vs cm2 margins";
+
+                    if (
+                      isReimbursementVsCm2Margins &&
+                      [
+                        "Total_Sales_1st",
+                        "Total_Sales_2nd",
+                        "Total_Sales_3rd",
+                        "Total_Sales_sum",
+                      ].includes(key)
+                    ) {
+                      return formatPercent(row[key]);
                     }
 
                     return formatCellValue(key, row[key]);

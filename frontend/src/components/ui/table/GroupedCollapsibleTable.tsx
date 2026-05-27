@@ -262,11 +262,25 @@ export default function GroupedCollapsibleTable<RowT>({
           {leftCols.map((c) => (
             <th
               key={c.key}
-              // rowSpan={2}
               rowSpan={anyGroupExpanded ? 2 : 1}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
-              {c.label}
+              <div
+                className={`flex w-full items-center gap-1 ${c.align === "center"
+                    ? "justify-center"
+                    : c.align === "right"
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+              >
+                <span>{c.label}</span>
+
+                {c.info && (
+                  <span className="flex shrink-0 items-center">
+                    {c.info}
+                  </span>
+                )}
+              </div>
             </th>
           ))}
 

@@ -20,6 +20,7 @@ import InventoryInsightsSection from "@/components/businessInsight/InventoryInsi
 import {
   exportSkuAnalysisMtdExcel
 } from "@/lib/excel/exportCurrentInventoryExcel";
+import { useRouter } from "next/navigation";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -303,7 +304,7 @@ export default function LiveBusinessClient({
   endDay,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
-
+  const router = useRouter();
 
   const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
   const [inrToUsd, setInrToUsd] = useState(INR_TO_USD_ENV);
@@ -3700,6 +3701,24 @@ export default function LiveBusinessClient({
     return "border-l-[#5EA68E]";
   };
 
+  const goToInventoryReconciliation = () => {
+    const routeCountry = String(sourceCountryName || countryName || "")
+      .trim()
+      .toLowerCase();
+
+    const routeMonth =
+      String(month || "")
+        .trim()
+        .charAt(0)
+        .toUpperCase() + String(month || "").trim().slice(1).toLowerCase();
+
+    const routeYear = String(year || "").trim();
+
+    router.push(
+      `/inventory-reconciliation/${routeCountry}/${routeMonth}/${routeYear}`
+    );
+  };
+
   const SingleCountryInventoryInsights = () => {
     const inventory = parseSingleCountryInventoryItems(portfolioInventoryBlock);
 
@@ -3767,14 +3786,30 @@ export default function LiveBusinessClient({
                   item.fullWidth ? "md:col-span-2 justify-start" : "",
                 ].join(" ")}
               >
-                <span className="text-sm font-medium text-slate-700">
-                  {item.label}
-                </span>
+                {item.fullWidth ? (
+                  <button
+                    type="button"
+                    onClick={goToInventoryReconciliation}
+                    className="text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
+                  >
+                    For Detailed Inventory Insights, Please Refer To The{" "}
+                    <span className="font-bold text-[#5EA68E] underline underline-offset-2">
+                      Inventory Reconciliation Tab
+                    </span>
+                    .
+                  </button>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-slate-700">
+                      {item.label}
+                    </span>
 
-                {item.value && (
-                  <span className="text-sm font-bold text-[#414042] text-right">
-                    {item.value}
-                  </span>
+                    {item.value && (
+                      <span className="text-sm font-bold text-[#414042] text-right">
+                        {item.value}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             ))}

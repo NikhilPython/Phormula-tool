@@ -165,7 +165,7 @@ const SkuTopBottomTables: React.FC<Props> = ({
 
                 <tr className="bg-[#EFEFEF] font-semibold">
                   <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm">
-                    <strong>Total</strong>
+                    <strong>Total/Avg.</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                     <strong>{formatRoundedValue(safeTopData.totals.profit)}</strong>
@@ -241,7 +241,7 @@ const SkuTopBottomTables: React.FC<Props> = ({
 
                 <tr className="bg-[#EFEFEF] font-semibold">
                   <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm">
-                    <strong>Total</strong>
+                    <strong>Total/Avg.</strong>
                   </td>
                   <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                     <strong>{formatRoundedValue(safeBottomData.totals.profit)}</strong>
