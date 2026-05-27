@@ -413,9 +413,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const tableData = rows || [];
 
-const totals = useMemo(() => {
-  return computeTotalsFromTotalRow(tableData);
-}, [tableData]);
+  const totals = useMemo(() => {
+    return computeTotalsFromTotalRow(tableData);
+  }, [tableData]);
 
   const userData = userMeta;
 
@@ -506,12 +506,12 @@ const totals = useMemo(() => {
       return name === "total" || sku === "total";
     };
 
-    // ✅ Find Total row anywhere, not only at last index
-    const totalIndex = tableData.findIndex(isTotalRow);
-    const totalRow =
-      totalIndex >= 0 ? ({ ...tableData[totalIndex] } as TableRow) : null;
+    // Find Total row anywhere
+    const totalRow = tableData.find(isTotalRow)
+      ? ({ ...tableData.find(isTotalRow) } as TableRow)
+      : null;
 
-    // ✅ Exclude Total from sorting
+    // Always exclude Total from sorting and Others calculation
     const productRows = tableData.filter((row) => !isTotalRow(row));
 
     const getMarketplaceFeesSortValue = (row: TableRow) => {
@@ -535,7 +535,6 @@ const totals = useMemo(() => {
         getValue: (row) => toNumber(row.net_units_sold),
         direction: "asc",
       },
-
       sales_desc: {
         getValue: (row) => toNumber(row.net_sales),
         direction: "desc",
@@ -544,7 +543,6 @@ const totals = useMemo(() => {
         getValue: (row) => toNumber(row.net_sales),
         direction: "asc",
       },
-
       profit_desc: {
         getValue: (row) => toNumber(row.profit),
         direction: "desc",
@@ -553,7 +551,6 @@ const totals = useMemo(() => {
         getValue: (row) => toNumber(row.profit),
         direction: "asc",
       },
-
       marketplace_fees_desc: {
         getValue: getMarketplaceFeesSortValue,
         direction: "desc",
@@ -562,7 +559,6 @@ const totals = useMemo(() => {
         getValue: getMarketplaceFeesSortValue,
         direction: "asc",
       },
-
       cm2_profit_desc: {
         getValue: (row) => toNumber(row.cm2_profit),
         direction: "desc",
@@ -598,46 +594,33 @@ const totals = useMemo(() => {
 
     if (totalRow) {
       totalRow.product_name = "Total";
+      totalRow.sku = "Total";
       totalRow.asp = computeAspFrom(totalRow);
     }
 
-    const sortedProductOutput: TableRow[] = [...top9];
+    const outputRows: TableRow[] = [...top9];
 
-    if (othersRow) sortedProductOutput.push(othersRow);
+    // Others must come before Total
+    if (othersRow) outputRows.push(othersRow);
 
-    // ✅ Keep Total in its original position.
-    // If Total was first, it remains first.
-    // If Total was last, it remains last.
-    if (!totalRow) return sortedProductOutput;
+    // Total must always be last, for global and country-wise pages
+    if (totalRow) outputRows.push(totalRow);
 
-    if (totalIndex <= 0) {
-      return [totalRow, ...sortedProductOutput];
-    }
-
-    if (totalIndex >= tableData.length - 1) {
-      return [...sortedProductOutput, totalRow];
-    }
-
-    const insertIndex = Math.min(totalIndex, sortedProductOutput.length);
-    return [
-      ...sortedProductOutput.slice(0, insertIndex),
-      totalRow,
-      ...sortedProductOutput.slice(insertIndex),
-    ];
+    return outputRows;
   }, [tableData, sortOption]);
 
-const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
-  () => [
-    { key: "sno", label: "S.No.", align: "center" },
-    {
-      key: "product_name",
-      label: "Product Name",
-      info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
-      align: "left",
-    },
-  ],
-  []
-);
+  const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
+    () => [
+      { key: "sno", label: "S.No.", align: "center" },
+      {
+        key: "product_name",
+        label: "Product Name",
+        info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
+        align: "left",
+      },
+    ],
+    []
+  );
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
@@ -943,9 +926,9 @@ const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
         if (s?.text) signRow[k] = s.text;
       });
 
-      const sourceRows = opts?.allRows ? tableData : displayRows;
+      const sourceRows = opts?.allRows ? displayRows : displayRows;
 
-      const rowsForExcel = tableData.map((row, rowIndex) => {
+      const rowsForExcel = sourceRows.map((row, rowIndex) => {
         const out: Record<string, string | number> = {};
 
         colKeys.forEach((key) => {
