@@ -139,7 +139,7 @@ export function NotificationProvider({
             title: productName,
             message:
               ratio !== null && ratio !== undefined
-                ? `High alert (Coverage ratio: ${Number(ratio).toFixed(2)})`
+                ? `High alert (Coverage ratio (in months): ${Number(ratio).toFixed(2)})`
                 : "High alert",
             type: "critical",
             href: `/live-dashboard/${country}/${month}/${year}#current-inventory`,
