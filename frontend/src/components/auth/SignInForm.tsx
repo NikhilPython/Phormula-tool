@@ -305,13 +305,53 @@ export default function SignInForm() {
     }
   };
 
-  const handleSuspendedAccount = () => {
+  const clearLoginSession = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("jwtToken");
     localStorage.removeItem("email");
     localStorage.removeItem("password");
+
     dispatch(setCredentials({ token: "" }));
-    dispatch(setAuthError("Your account is suspended. Please contact Admin."));
   };
+
+  const handleSuspendedAccount = () => {
+    clearLoginSession();
+    dispatch(setAuthError("Your account is disabled. Please contact Admin."));
+  };
+
+  const isAccountDisabled = (payload: any) => {
+    return (
+      payload?.status === false ||
+      payload?.user?.status === false ||
+      payload?.data?.status === false
+    );
+  };
+
+  const fetchUserDataAfterLogin = async (token: string) => {
+    const res = await fetch(`${API_BASE}/get_user_data`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(data?.message || "Failed to verify account status.");
+    }
+
+    return data;
+  };
+
+  // const handleSuspendedAccount = () => {
+  //   localStorage.removeItem("token");
+  //   localStorage.removeItem("email");
+  //   localStorage.removeItem("password");
+  //   dispatch(setCredentials({ token: "" }));
+  //   dispatch(setAuthError("Your account is suspended. Please contact Admin."));
+  // };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -371,7 +411,31 @@ export default function SignInForm() {
         return;
       }
 
+      if (loginType === "client") {
+        if (isAccountDisabled(result)) {
+          handleSuspendedAccount();
+          return;
+        }
+
+        const userData = await fetchUserDataAfterLogin(result.token);
+
+        if (isAccountDisabled(userData)) {
+          handleSuspendedAccount();
+          return;
+        }
+
+        result = {
+          ...result,
+          user: {
+            ...result?.user,
+            ...userData,
+          },
+          status: userData?.status ?? result?.status,
+        };
+      }
+
       dispatch(setCredentials({ token: result.token }));
+      localStorage.setItem("jwtToken", result.token);
 
       if (isChecked) {
         localStorage.setItem("email", cleanEmail);
@@ -382,10 +446,6 @@ export default function SignInForm() {
       }
 
       if (loginType === "client") {
-        if (result?.status === false) {
-          handleSuspendedAccount();
-          return;
-        }
 
         const connections = await fetchAmazonConnections(result.token);
         const connectedConnections = getConnectedAmazonConnections(connections);
@@ -469,8 +529,8 @@ export default function SignInForm() {
         err?.status === 403
           ? "Please verify your email first."
           : err?.data?.message ||
-            err?.error ||
-            "Login failed. Please try again.";
+          err?.error ||
+          "Login failed. Please try again.";
 
       dispatch(setAuthError(msg));
     }
@@ -500,19 +560,44 @@ export default function SignInForm() {
         throw new Error(data?.message || "No token returned from server");
       }
 
-      dispatch(setCredentials({ token: data.token }));
+      if (isAccountDisabled(data)) {
+        handleSuspendedAccount();
+        return;
+      }
 
-      const connections = await fetchAmazonConnections(data.token);
+      const userData = await fetchUserDataAfterLogin(data.token);
+
+      if (isAccountDisabled(userData)) {
+        handleSuspendedAccount();
+        return;
+      }
+
+      const verifiedData = {
+        ...data,
+        user: {
+          ...data?.user,
+          ...userData,
+        },
+        status: userData?.status ?? data?.status,
+      };
+
+      dispatch(setCredentials({ token: verifiedData.token }));
+      localStorage.setItem("jwtToken", verifiedData.token);
+
+      const connections = await fetchAmazonConnections(verifiedData.token);
       const connectedConnections = getConnectedAmazonConnections(connections);
       const hasAmazonConnection = connectedConnections.length > 0;
       const countryFromAmazon = getPrimaryCountryFromConnections(connections);
 
       const userId =
-        data?.id || data?.user_id || data?.user?.id || data?.user?.user_id;
+        verifiedData?.id ||
+        verifiedData?.user_id ||
+        verifiedData?.user?.id ||
+        verifiedData?.user?.user_id;
 
       dispatch(
         setUser({
-          ...data?.user,
+          ...verifiedData?.user,
           id: userId,
           user_id: userId,
           email,
@@ -668,7 +753,7 @@ export default function SignInForm() {
 
               {error &&
                 !(
-                  status === "loading" ||
+                  (status === "loading" && !error) ||
                   isLoggingIn ||
                   isMemberLoggingIn ||
                   isFallbacking
