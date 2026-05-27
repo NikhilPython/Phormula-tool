@@ -21,6 +21,7 @@ import MetricSortDropdown, {
 } from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
+  product_name: "Product Name. The delta represents the change compared to the previous period.",
   asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
   net_sales: "Net Sales",
   net_taxes: "Net Taxes = total taxes charged on sales minus tax adjustments/refunds (as provided by marketplace reports).",
@@ -625,14 +626,18 @@ const totals = useMemo(() => {
     ];
   }, [tableData, sortOption]);
 
-  const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
-    () => [
-      { key: "sno", label: "S.No.", align: "center" },
-      { key: "product_name", label: "Product Name", align: "left" },
-
-    ],
-    []
-  );
+const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
+  () => [
+    { key: "sno", label: "S.No.", align: "center" },
+    {
+      key: "product_name",
+      label: "Product Name",
+      info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
+      align: "left",
+    },
+  ],
+  []
+);
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
