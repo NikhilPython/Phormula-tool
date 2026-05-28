@@ -802,8 +802,28 @@ def run_upload_pipeline_from_df(
     # CLEAN/REMAP
     # ---------------------------
     df = df_raw.copy()
-    df.columns = [str(c).strip().lower() for c in df.columns]
+
+    df.columns = [
+        str(c).strip().lower().replace("-", " ").replace("_", " ")
+        for c in df.columns
+    ]
+
     df.rename(columns=COLUMN_MAPPING, inplace=True)
+
+    # Convert any remaining spaced names to snake_case for DB columns
+    df.columns = [
+        str(c).strip().lower().replace(" ", "_").replace("/", "_")
+        for c in df.columns
+    ]
+
+
+    if "product_sales_tax" not in df.columns:
+        df["product_sales_tax"] = 0.0
+
+    df["product_sales_tax"] = pd.to_numeric(
+        df["product_sales_tax"],
+        errors="coerce"
+    ).fillna(0.0)
 
     if "marketplace_withheld_tax" not in df.columns:
         df["marketplace_withheld_tax"] = 0
@@ -1063,6 +1083,12 @@ def run_upload_pipeline_from_df(
         lambda x: pd.to_numeric(x, errors="ignore") if x.dtype == "object" else x
     )
 
+    # ✅ Force selling_fees to always be negative before saving raw monthly table
+    if "selling_fees" in df.columns:
+        df["selling_fees"] = -pd.to_numeric(
+            df["selling_fees"],
+            errors="coerce"
+        ).fillna(0).abs()
 
     # consolidated
     # df_cons = df.copy()
@@ -1073,13 +1099,22 @@ def run_upload_pipeline_from_df(
     # df_cons = df_cons.reindex(columns=valid_cols)
 
     # df_cons.to_sql(consolidated_table_name, con=engine, if_exists="append", index=False)
+
     df.to_sql(table_name, con=engine, if_exists="append", index=False)
 
     df["month"] = month
     df["year"] = year
 
-    df = df.apply(lambda x: pd.to_numeric(x, errors="ignore") if x.dtype == "object" else x)
+    df = df.apply(
+        lambda x: pd.to_numeric(x, errors="ignore") if x.dtype == "object" else x
+    )
 
+    # ✅ Keep selling_fees negative after adding month/year also
+    if "selling_fees" in df.columns:
+        df["selling_fees"] = -pd.to_numeric(
+            df["selling_fees"],
+            errors="coerce"
+        ).fillna(0).abs()
     # ---------------------------
     # SAFE CURRENCY HANDLING (your block kept)
     # ---------------------------
@@ -1151,6 +1186,36 @@ def run_upload_pipeline_from_df(
 
     # apply modifications
     df_modified = apply_modifications_fatch(df_cons, country)
+
+    if "selling_fees" in df_modified.columns:
+        df_modified["selling_fees"] = -pd.to_numeric(
+            df_modified["selling_fees"],
+            errors="coerce"
+        ).fillna(0).abs()
+
+    # preserve product_sales_tax after apply_modifications_fatch
+    original_product_sales_tax = pd.to_numeric(
+        df_cons.get("product_sales_tax", 0.0),
+        errors="coerce"
+    ).fillna(0.0)
+
+    if "product_sales_tax" not in df_modified.columns:
+        df_modified["product_sales_tax"] = original_product_sales_tax
+    else:
+        df_modified["product_sales_tax"] = pd.to_numeric(
+            df_modified["product_sales_tax"],
+            errors="coerce"
+        ).fillna(0.0)
+
+        df_modified["product_sales_tax"] = df_modified["product_sales_tax"].where(
+            df_modified["product_sales_tax"] != 0,
+            original_product_sales_tax
+        )
+
+    df_modified["product_sales_tax"] = pd.to_numeric(
+        df_modified["product_sales_tax"],
+        errors="coerce"
+    ).fillna(0.0)
 
     # ✅ Ensure month/year exist in df_modified
     df_modified["month"] = month
@@ -1821,50 +1886,159 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     # NORMAL FLOW
     # =========================================================
 
-    # ------------------- PRODUCT SALES (VAT-INCLUSIVE) -------------------
-    product_sales_net = _sum_where(
-        item_leaves,
-        lambda t: (_contains_any(t, ["principal", "itemprice"]) and ("tax" not in t))
-    )
-
-    product_sales_tax = _sum_where(
-        item_leaves,
-        lambda t: ("tax" in t) and ("shipping" not in t) and (not _contains_any(t, PROMO_KEYS))
-    )
-
-    # fallback only for sales-like types
+    # ------------------- PRODUCT / SHIPPING / TAX KEYS -------------------
     sales_like_types = {"shipment", "refund", "chargebackrefund", "guaranteeclaim"}
-    if abs(product_sales_net) < eps and ttype_norm in sales_like_types:
-        product_sales_net = total_amount
 
-    product_sales = product_sales_net + product_sales_tax
+    WITHHELD_KEYS_STRONG = [
+        "marketplacewithheld", "marketplacewithheldtax",
+        "withheldtax", "taxwithheld", "withheld"
+    ]
 
-    # ------------------- ✅ SHIPPING / POSTAGE -------------------
-    shipping_credits = _sum_where(
-        item_leaves,
-        lambda t: (("shipping" in t or "shipcharge" in t or "shippingcharges" in t) and ("tax" not in t))
-    )
-    shipping_credits_tax = _sum_where(
-        item_leaves,
-        lambda t: (("shipping" in t or "shipcharge" in t or "shippingcharges" in t) and ("tax" in t))
-    )
+    FACILITATOR_KEYS_STRONG = [
+        "marketplacefacilitator", "marketplacefacilitatortax",
+        "facilitator"
+    ]
 
-    # fallback tx level
-    if abs(shipping_credits) < eps:
-        shipping_credits = _sum_where(
-            tx_leaves,
-            lambda t: (("shipping" in t or "shipcharge" in t or "shippingcharges" in t) and ("tax" not in t))
-        )
-    if abs(shipping_credits_tax) < eps:
-        shipping_credits_tax = _sum_where(
-            tx_leaves,
-            lambda t: (("shipping" in t or "shipcharge" in t or "shippingcharges" in t) and ("tax" in t))
-        )
+    SHIPPING_KEYS = [
+        "shipping",
+        "shipcharge",
+        "shippingcharge",
+        "shippingcharges",
+        "delivery",
+        "postage",
+    ]
+
+    PRODUCT_KEYS = [
+        "principal",
+        "itemprice",
+        "itempriceprincipal",
+        "baseprice",
+    ]
+
+    # ------------------- PRODUCT SALES -------------------
+    product_sales = 0.0
+    product_sales_tax = 0.0
+
+    def _accumulate_product_from_breakdowns(breakdowns):
+        nonlocal product_sales, product_sales_tax
+
+        for node, t, path in _walk_all_breakdowns_with_path(breakdowns):
+            children = node.get("breakdowns")
+            if isinstance(children, list) and children:
+                continue
+
+            amt = _amt(node)
+            if abs(amt) < 1e-12:
+                continue
+
+            path_str = "".join(path)
+
+            is_product = _contains_any(path_str, PRODUCT_KEYS)
+            is_tax = "tax" in t or "tax" in path_str
+            is_shipping = _contains_any(path_str, SHIPPING_KEYS)
+            is_promo = _contains_any(path_str, PROMO_KEYS)
+            is_withheld_or_facilitator = (
+                _contains_any(path_str, WITHHELD_KEYS_STRONG)
+                or _contains_any(path_str, FACILITATOR_KEYS_STRONG)
+            )
+
+            if not is_product:
+                continue
+
+            if is_shipping or is_promo or is_withheld_or_facilitator:
+                continue
+
+            if is_tax:
+                product_sales_tax += amt
+            else:
+                product_sales += amt
+
+    _accumulate_product_from_breakdowns(item_breakdowns)
+
+    # fallback to tx level only if item level has no product values
+    if abs(product_sales) < eps and abs(product_sales_tax) < eps:
+        _accumulate_product_from_breakdowns(tx_breakdowns)
+
+    # product tax fallback:
+    # sometimes product tax appears as Tax leaf without principal/itemprice in path
+    if abs(product_sales_tax) < eps:
+        def _accumulate_product_tax_fallback(breakdowns):
+            nonlocal product_sales_tax
+
+            for node, t, path in _walk_all_breakdowns_with_path(breakdowns):
+                children = node.get("breakdowns")
+                if isinstance(children, list) and children:
+                    continue
+
+                amt = _amt(node)
+                if abs(amt) < 1e-12:
+                    continue
+
+                path_str = "".join(path)
+
+                is_tax = "tax" in t or "tax" in path_str
+                is_shipping = _contains_any(path_str, SHIPPING_KEYS)
+                is_promo = _contains_any(path_str, PROMO_KEYS)
+                is_withheld_or_facilitator = (
+                    _contains_any(path_str, WITHHELD_KEYS_STRONG)
+                    or _contains_any(path_str, FACILITATOR_KEYS_STRONG)
+                )
+
+                if is_tax and not is_shipping and not is_promo and not is_withheld_or_facilitator:
+                    product_sales_tax += amt
+
+        _accumulate_product_tax_fallback(item_breakdowns)
+
+        if abs(product_sales_tax) < eps:
+            _accumulate_product_tax_fallback(tx_breakdowns)
+
+    # IMPORTANT:
+    # Do NOT use total_amount as product_sales.
+    # total_amount includes shipping/tax/fees and causes product_sales to become too high.
+
+    # ------------------- SHIPPING / POSTAGE -------------------
+    shipping_credits = 0.0
+    shipping_credits_tax = 0.0
+
+    def _accumulate_shipping_from_breakdowns(breakdowns):
+        nonlocal shipping_credits, shipping_credits_tax
+
+        for node, t, path in _walk_all_breakdowns_with_path(breakdowns):
+            children = node.get("breakdowns")
+            if isinstance(children, list) and children:
+                continue
+
+            amt = _amt(node)
+            if abs(amt) < 1e-12:
+                continue
+
+            path_str = "".join(path)
+
+            is_shipping = _contains_any(path_str, SHIPPING_KEYS)
+            is_tax = "tax" in t or "tax" in path_str
+            is_promo = _contains_any(path_str, PROMO_KEYS)
+            is_withheld_or_facilitator = (
+                _contains_any(path_str, WITHHELD_KEYS_STRONG)
+                or _contains_any(path_str, FACILITATOR_KEYS_STRONG)
+            )
+
+            if not is_shipping:
+                continue
+
+            if is_promo or is_withheld_or_facilitator:
+                continue
+
+            if is_tax:
+                shipping_credits_tax += amt
+            else:
+                shipping_credits += amt
+
+    _accumulate_shipping_from_breakdowns(item_breakdowns)
+    _accumulate_shipping_from_breakdowns(tx_breakdowns)
 
     postage_credits = shipping_credits + shipping_credits_tax
 
-    # remove shipping from product sales
-    product_sales = product_sales - shipping_credits - shipping_credits_tax
+    
 
     # ------------------- PROMOTIONS -------------------
     promotional_rebates = _sum_where(item_leaves, lambda t: _contains_any(t, PROMO_KEYS) and ("tax" not in t))
@@ -1877,15 +2051,7 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     fba_fees = 0.0
     other_transaction_fees = 0.0
 
-    WITHHELD_KEYS_STRONG = [
-        "marketplacewithheld", "marketplacewithheldtax",
-        "withheldtax", "taxwithheld", "withheld"
-    ]
-    FACILITATOR_KEYS_STRONG = [
-        "marketplacefacilitator", "marketplacefacilitatortax",
-        "facilitatortax", "facilitator"
-    ]
-
+    
     def _accumulate_withheld_and_facilitator(breakdowns: List[Dict[str, Any]]):
         nonlocal marketplace_withheld_tax, marketplace_facilitator_tax
 
@@ -1937,8 +2103,8 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
     # normalize signs
-    if selling_fees > 0:
-        selling_fees = -abs(selling_fees)
+    # normalize signs: selling_fees must always be negative because it is a cost
+    selling_fees = -abs(pd.to_numeric(selling_fees, errors="coerce") or 0)
     if fba_fees > 0:
         fba_fees = -abs(fba_fees)
     if marketplace_withheld_tax > 0:
