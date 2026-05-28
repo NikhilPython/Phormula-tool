@@ -19,6 +19,25 @@ def safe_num(x) -> pd.Series:
 
 
 
+def series_like(df: pd.DataFrame, value=0.0, dtype: str = "float64") -> pd.Series:
+    """Return a Series aligned to df.index. Useful for missing optional columns."""
+    return pd.Series(value, index=df.index, dtype=dtype)
+
+
+def text_series(df: pd.DataFrame, col: str, default: str = "") -> pd.Series:
+    """Safe text column accessor aligned to df.index."""
+    if col in df.columns:
+        return df[col].fillna(default).astype(str)
+    return pd.Series(default, index=df.index, dtype="object")
+
+
+def num_series(df: pd.DataFrame, col: str, default: float = 0.0) -> pd.Series:
+    """Safe numeric column accessor aligned to df.index."""
+    if col in df.columns:
+        return safe_num(df[col])
+    return pd.Series(default, index=df.index, dtype="float64")
+
+
 def norm_sku_series(s: pd.Series) -> pd.Series:
     """Normalize SKU text for consistent filtering / grouping."""
     return s.astype(str).str.strip().str.lower()
@@ -244,7 +263,7 @@ def uk_tax(
         return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
 
     df_base["sku"] = df_base["sku"].astype(str).str.strip()
-    df_base = df_base[df_base["sku"].ne("") & df_base["sku"].ne("0")]
+    df_base = df_base.loc[sku_mask(df_base)].copy()
 
     by = (
         df_base
@@ -290,12 +309,7 @@ def uk_credits(
     # ------------------------------------------------------------------
     # Normalize type column
     # ------------------------------------------------------------------
-    type_str = (
-        df.get("type", "")
-        .astype(str)
-        .str.strip()
-        .str.casefold()
-    )
+    type_str = text_series(df, "type").str.strip().str.casefold()
 
     refund_mask = type_str.str.contains("refund", na=False)
 
@@ -333,11 +347,23 @@ def uk_credits(
     if sku_col not in df.columns:
         return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
 
+    for c in parts:
+        if c not in df_non_refund.columns:
+            df_non_refund[c] = 0.0
+        if c not in df_refund.columns:
+            df_refund[c] = 0.0
+        df_non_refund[c] = safe_num(df_non_refund[c])
+        df_refund[c] = safe_num(df_refund[c])
+
+    df_non_refund = df_non_refund.loc[sku_mask(df_non_refund)].copy()
+    df_refund = df_refund.loc[sku_mask(df_refund)].copy()
+
     # Non-refund SKU credits
     non_refund_by = (
         df_non_refund
         .groupby("sku", as_index=False)[parts]
         .sum()
+        if not df_non_refund.empty else pd.DataFrame(columns=["sku", *parts])
     )
 
     # Refund SKU credits
@@ -345,6 +371,7 @@ def uk_credits(
         df_refund
         .groupby("sku", as_index=False)[parts]
         .sum()
+        if not df_refund.empty else pd.DataFrame(columns=["sku", *parts])
     )
 
     # Merge & compute net per SKU
@@ -702,8 +729,8 @@ def uk_platform_fee(
         mask = desc.str.startswith(desc_prefixes, na=False)
         from_desc = amt.where(mask, 0.0).abs()
 
-    # Explicit column
-    from_col = safe_num(w.get(explicit_col, 0.0)).abs()
+    # Explicit column; keep index aligned even when the column is missing
+    from_col = num_series(w, explicit_col).abs()
 
     # Totals use ALL rows
     total = float((from_desc + from_col).sum())
@@ -792,7 +819,7 @@ def uk_advertising(
 
     visible_ads = amt.where(visible_mask, 0.0).abs()
     dealsvouchar_ads = amt.where(deals_mask, 0.0).abs()
-    from_col = pd.to_numeric(w.get(explicit_col, 0.0), errors="coerce").fillna(0.0).abs()
+    from_col = num_series(w, explicit_col).abs()
 
     total = float((visible_ads + dealsvouchar_ads + from_col).sum())
 
@@ -802,7 +829,7 @@ def uk_advertising(
 
     w = w.copy()
     w["sku"] = w["sku"].astype(str).str.strip()
-    w = w[(w["sku"] != "") & (w["sku"] != "0")]
+    w = w.loc[sku_mask(w)]
 
     per = pd.DataFrame({
         "sku": w["sku"],
@@ -828,6 +855,178 @@ def uk_advertising(
     return total, per[["sku", "__metric__", *comps]], comps
 
 
+
+# ---------- US formulas -------------------------------------------------------
+# US has different tax / credit behavior from UK.  Do NOT alias these two to UK:
+#   - US net_taxes is normally close to zero because marketplace withheld tax offsets collected tax.
+#   - US net_credits includes inventory reimbursement rows plus customer credits.
+
+US_REIMBURSEMENT_CREDIT_KEYWORDS: tuple[str, ...] = (
+    "FBA Inventory Reimbursement - Customer Return",
+    "FBA Inventory Reimbursement - Customer Service Issue",
+    "FBA Inventory Reimbursement - General Adjustment",
+    "FBA Inventory Reimbursement - Damaged:Warehouse",
+    "FBA Inventory Reimbursement - Lost:Warehouse",
+)
+
+
+def us_sales(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    # Net sales formula stays aligned with the shared sales engine.
+    return uk_sales(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_tax(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    """
+    Amazon US Net Taxes using the SAME formula engine as UK.
+
+    This intentionally calls uk_tax() so US and UK calculate the
+    Other Transactions -> Net Taxes column from the same reusable helper.
+    """
+    return uk_tax(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+def us_credits(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    """
+    Amazon US Net Credits using the SAME formula engine as UK.
+
+    This intentionally calls uk_credits() so US and UK calculate the
+    Other Transactions -> Net Credits column from the same reusable helper.
+    """
+    return uk_credits(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+def us_gross_sales(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    return uk_gross_sales(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_tax_and_credits(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    # This is the sales-side Taxes and Credits column, not the Other Transactions
+    # net_taxes/net_credits pair. Keep it aligned with the shared net sales engine.
+    return uk_tax_and_credits(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_cogs(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    return uk_cogs(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_amazon_fee(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    return uk_amazon_fee(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_platform_fee(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    return uk_platform_fee(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_advertising(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    return uk_advertising(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+
+def us_profit(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = "us",
+    want_breakdown: Optional[bool] = None,
+    debug: bool = True,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    sales_total, sales_by, _ = us_sales(df, country=country)
+    cogs_total, cogs_by, _ = us_cogs(df, country=country)
+    fee_total, fee_by, _ = us_amazon_fee(df, country=country)
+    tax_total, tax_by, _ = us_tax(df, country=country)
+    credit_total, credit_by, _ = us_credits(df, country=country)
+
+    per = (
+        sales_by[["sku", "__metric__"]]
+        .rename(columns={"__metric__": "sales"})
+        .merge(cogs_by[["sku", "__metric__"]].rename(columns={"__metric__": "cogs"}), on="sku", how="outer")
+        .merge(fee_by[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}), on="sku", how="outer")
+        .merge(tax_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}), on="sku", how="outer")
+        .merge(credit_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}), on="sku", how="outer")
+        .fillna(0.0)
+    )
+
+    for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
+        per[c] = safe_num(per[c])
+
+    per["__metric__"] = (
+        per["sales"]
+        - per["cogs"].abs()
+        - per["amazon_fee"].abs()
+        - per["net_taxes"].abs()
+        + per["net_credits"]
+    )
+
+    comps = ["sales", "cogs", "amazon_fee", "net_taxes", "net_credits"]
+    total = float(per["__metric__"].sum())
+    return total, per[["sku", "__metric__", *comps]], comps
+
+
+def us_all(df: pd.DataFrame) -> dict:
+    return {
+        "sales": us_sales(df),
+        "gross_sales": us_gross_sales(df),
+        "tax": us_tax(df),
+        "credits": us_credits(df),
+        "tax_and_credits": us_tax_and_credits(df),
+        "cogs": us_cogs(df),
+        "amazon_fee": us_amazon_fee(df),
+        "platform_fee": us_platform_fee(df),
+        "advertising": us_advertising(df),
+        "profit": us_profit(df),
+    }
+
 # ---------- convenience -------------------------------------------------------
 def uk_all(df: pd.DataFrame) -> dict:
     return {
@@ -845,18 +1044,16 @@ def uk_all(df: pd.DataFrame) -> dict:
 
 __all__ = [
     # helpers
-    "safe_num", "norm_sku_series", "sku_mask", "agg_by",
+    "safe_num", "series_like", "text_series", "num_series",
+    "norm_sku_series", "sku_mask", "agg_by",
 
     # uk metrics
-    "uk_sales",
-    "uk_tax",
-    "uk_credits",
-    "uk_gross_sales",
-    "uk_tax_and_credits",
-    "uk_cogs",
-    "uk_amazon_fee",
-    "uk_platform_fee",
-    "uk_advertising",
-    "uk_profit",
-    "uk_all",
+    "uk_sales", "uk_tax", "uk_credits", "uk_gross_sales",
+    "uk_tax_and_credits", "uk_cogs", "uk_amazon_fee",
+    "uk_platform_fee", "uk_advertising", "uk_profit", "uk_all",
+
+    # us metrics
+    "us_sales", "us_tax", "us_credits", "us_gross_sales",
+    "us_tax_and_credits", "us_cogs", "us_amazon_fee",
+    "us_platform_fee", "us_advertising", "us_profit", "us_all",
 ]
