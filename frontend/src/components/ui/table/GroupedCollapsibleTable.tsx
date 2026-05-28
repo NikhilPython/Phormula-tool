@@ -1,30 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { FaArrowDownLong } from "react-icons/fa6";
+import { LuArrowUpDown } from "react-icons/lu";
 
 /* ---------------- Types ---------------- */
 
 export type Align = "left" | "center" | "right";
-
-// export type LeafCol<RowT> = {
-//   key: string;
-//   label: React.ReactNode;
-//   excelLabel?: string;
-//   align?: Align;
-//   width?: number | string;      // ✅ ADD
-//   tooltip?: React.ReactNode;
-//   thClassName?: string;
-//   tdClassName?: string;
-// };
-
-// export type ColGroup<RowT> = {
-//   id: string;
-//   label: React.ReactNode;
-//   headerClassName?: string;
-//   collapsedCols: LeafCol<RowT>[];
-//   expandedCols: LeafCol<RowT>[];
-// };
-
 
 export type LeafCol<RowT> = {
   key: string;
@@ -33,16 +15,18 @@ export type LeafCol<RowT> = {
   align?: Align;
   width?: number | string;
   tooltip?: React.ReactNode;
-  info?: React.ReactNode;          // ✅ ADD THIS
+  info?: React.ReactNode;
   thClassName?: string;
   tdClassName?: string;
   noWrap?: boolean;
+
+  sortable?: boolean;
 };
 
 export type ColGroup<RowT> = {
   id: string;
   label: React.ReactNode;
-  info?: React.ReactNode;          // ✅ ADD THIS
+  info?: React.ReactNode;
   headerClassName?: string;
   collapsedCols: LeafCol<RowT>[];
   expandedCols: LeafCol<RowT>[];
@@ -72,6 +56,14 @@ type Props<RowT> = {
   headerRow2ClassName?: string;
   summary?: SummaryBlock<RowT>;
 
+  getSortValue?: (row: RowT, colKey: string) => string | number | null | undefined;
+  isTotalRow?: (row: RowT) => boolean;
+  defaultSort?: {
+    key: string;
+    direction: "asc" | "desc";
+  };
+
+  onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
 };
 
 export type SummaryRow<RowT> = {
@@ -123,7 +115,11 @@ export default function GroupedCollapsibleTable<RowT>({
   tableClassName = "min-w-[800px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
-  summary
+  summary,
+  getSortValue,
+  isTotalRow,
+  defaultSort,
+  onSortChange,
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
 
@@ -147,6 +143,121 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const toggleGroup = (id: string) =>
     setCollapsed((p) => ({ ...p, [id]: !p[id] }));
+
+  type SortDirection = "asc" | "desc";
+
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: SortDirection;
+  } | null>(
+    defaultSort ?? {
+      key: "net_sales",
+      direction: "desc",
+    }
+  );
+
+  const handleSort = (colKey: string) => {
+    setSortConfig((prev) => {
+      const next =
+        prev?.key === colKey
+          ? {
+            key: colKey,
+            direction: (prev.direction === "desc" ? "asc" : "desc") as SortDirection,
+          }
+          : {
+            key: colKey,
+            direction: "asc" as const,
+          };
+
+      onSortChange?.(next);
+
+      return next;
+    });
+  };
+
+  const renderSortArrow = (colKey: string) => {
+    const isSorted = sortConfig?.key === colKey;
+
+    if (!isSorted) {
+      return (
+        <span
+          className="inline-flex shrink-0 items-center text-sm opacity-80"
+          title="Click to sort"
+        >
+          <LuArrowUpDown size={15} strokeWidth={2.25} />
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={[
+          "inline-flex shrink-0 items-center text-[10px]",
+          "transition-transform duration-300 ease-in-out",
+          sortConfig.direction === "asc" ? "rotate-180" : "rotate-0",
+        ].join(" ")}
+        title={
+          sortConfig.direction === "desc"
+            ? "Currently high to low"
+            : "Currently low to high"
+        }
+      >
+        <FaArrowDownLong size={16} />
+      </span>
+    );
+  };
+
+  const normalizeSortValue = (value: unknown) => {
+    if (value === null || value === undefined) return "";
+
+    if (typeof value === "number") return value;
+
+    const raw = String(value).trim();
+
+    // handles values like "9.52%", "£2,095", "-4", "15.89%"
+    const numeric = Number(raw.replace(/[^0-9.-]/g, ""));
+
+    if (Number.isFinite(numeric) && raw.match(/[0-9]/)) {
+      return numeric;
+    }
+
+    return raw.toLowerCase();
+  };
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig) return rows;
+
+    // When parent owns sorting through onSortChange, do not sort again here.
+    // Dashboard P&L table needs parent sorting so "Others" can be recalculated.
+    if (onSortChange) {
+      return rows;
+    }
+
+    const normalRows: RowT[] = [];
+    const pinnedRows: RowT[] = [];
+
+    rows.forEach((row) => {
+      if (isTotalRow?.(row)) pinnedRows.push(row);
+      else normalRows.push(row);
+    });
+
+    const sorted = [...normalRows].sort((a, b) => {
+      const aValue = normalizeSortValue(getSortValue?.(a, sortConfig.key));
+      const bValue = normalizeSortValue(getSortValue?.(b, sortConfig.key));
+
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
+      }
+
+      return sortConfig.direction === "asc"
+        ? String(aValue).localeCompare(String(bValue))
+        : String(bValue).localeCompare(String(aValue));
+    });
+
+    return [...sorted, ...pinnedRows];
+  }, [rows, sortConfig, getSortValue, isTotalRow, onSortChange]);
 
   /* ---------------- Maps ---------------- */
 
@@ -172,6 +283,69 @@ export default function GroupedCollapsibleTable<RowT>({
         ],
     [layout, groups, singleCols]
   );
+
+  const renderHeaderContent = (
+    col: LeafCol<RowT>,
+    options?: {
+      isExpandable?: boolean;
+      isCollapsed?: boolean;
+      onToggle?: (e: React.MouseEvent) => void;
+    }
+  ) => {
+    const onSortClick = col.sortable
+      ? (e: React.MouseEvent) => {
+        e.stopPropagation();
+        handleSort(col.key);
+      }
+      : undefined;
+
+    return (
+      <div className="flex w-full items-center justify-center">
+        <div className="inline-flex items-center justify-center gap-2 leading-tight">
+          <button
+            type="button"
+            onClick={onSortClick}
+            className={`inline-flex items-center justify-center ${col.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
+              } ${col.sortable ? "cursor-pointer select-none" : "cursor-default"}`}
+            title={col.sortable ? "Click to sort" : undefined}
+          >
+            <span className="inline-flex items-center">{col.label}</span>
+          </button>
+
+          {col.info && (
+            <span
+              className="inline-flex shrink-0 items-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {col.info}
+            </span>
+          )}
+
+          {col.sortable && (
+            <button
+              type="button"
+              onClick={onSortClick}
+              className="inline-flex shrink-0 items-center"
+              title="Click to sort"
+            >
+              {renderSortArrow(col.key)}
+            </button>
+          )}
+
+          {options?.isExpandable && (
+            <button
+              type="button"
+              onClick={options.onToggle}
+              className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+              title="Click to expand/collapse"
+            >
+              {options.isCollapsed ? "+" : "−"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   /* ---------------- Visible Columns ---------------- */
 
@@ -263,24 +437,10 @@ export default function GroupedCollapsibleTable<RowT>({
             <th
               key={c.key}
               rowSpan={anyGroupExpanded ? 2 : 1}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+                }`}
             >
-              <div
-                className={`flex w-full items-center gap-1 ${c.align === "center"
-                    ? "justify-center"
-                    : c.align === "right"
-                      ? "justify-end"
-                      : "justify-start"
-                  }`}
-              >
-                <span>{c.label}</span>
-
-                {c.info && (
-                  <span className="flex shrink-0 items-center">
-                    {c.info}
-                  </span>
-                )}
-              </div>
+              {renderHeaderContent(c)}
             </th>
           ))}
 
@@ -296,32 +456,55 @@ export default function GroupedCollapsibleTable<RowT>({
 
               const groupRowSpan = anyGroupExpanded ? (isCollapsed ? 2 : 1) : 1;
 
+              const sortCol = isCollapsed
+                ? cols.find((col) => col.sortable)
+                : null;
+
               return (
                 <th
                   key={g.id}
                   colSpan={cols.length}
                   rowSpan={groupRowSpan}
-                  onClick={() => toggleGroup(g.id)}
-                  role="button"
-                  className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
-                  title="Click to expand/collapse"
+                  className={`${thBase} text-center ${g.headerClassName || ""}`}
                 >
-                  <div className="flex w-full items-center">
-                    {/* TEXT + INFO */}
-                    <span className="flex-1 inline-flex items-center justify-center gap-1 whitespace-normal break-words leading-tight">
-                      <span className="flex items-center">{g.label}</span>
+                  <div className="flex w-full justify-center">
+                    <div className="inline-flex items-center justify-center gap-2 whitespace-normal break-words leading-tight">
+                      <span className="inline-flex items-center">
+                        {g.label}
+                      </span>
 
                       {g.info && (
-                        <span className="flex items-center shrink-0">
+                        <span className="inline-flex shrink-0 items-center">
                           {g.info}
                         </span>
                       )}
-                    </span>
 
-                    {/* +/- TOGGLE */}
-                    <span className="shrink-0 ml-2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                      {isCollapsed ? "+" : "−"}
-                    </span>
+                      {sortCol && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSort(sortCol.key);
+                          }}
+                          className="inline-flex shrink-0 items-center"
+                          title="Click to sort"
+                        >
+                          {renderSortArrow(sortCol.key)}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleGroup(g.id);
+                        }}
+                        className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+                        title="Click to expand/collapse"
+                      >
+                        {isCollapsed ? "+" : "−"}
+                      </button>
+                    </div>
                   </div>
                 </th>
               );
@@ -334,41 +517,23 @@ export default function GroupedCollapsibleTable<RowT>({
             const targetGroupId = toggleGroupByColKey?.[c.key];
             const isExpandable = Boolean(targetGroupId);
             const isTargetCollapsed = targetGroupId ? collapsed[targetGroupId] : true;
-            const hasLeft = isExpandable;
-            const hasRight = Boolean(c.info);
+            // const hasLeft = isExpandable;
+            // const hasRight = Boolean(c.info);
             return (
               <th
                 key={c.key}
-                // rowSpan={2}
                 rowSpan={anyGroupExpanded ? 2 : 1}
-                onClick={isExpandable ? () => toggleGroup(targetGroupId!) : undefined}
-                role={isExpandable ? "button" : undefined}
-                title={isExpandable ? "Click to expand/collapse" : undefined}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "cursor-pointer select-none" : ""
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
                   }`}
               >
-                <div className="flex w-full items-center">
-                  {/* TEXT + INFO */}
-                  <span
-                    className={`flex-1 inline-flex items-center justify-center gap-1 leading-tight ${c.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
-                      }`}
-                  >
-                    <span className="flex items-center">{c.label}</span>
-
-                    {c.info && (
-                      <span className="flex items-center shrink-0">
-                        {c.info}
-                      </span>
-                    )}
-                  </span>
-
-                  {/* +/- TOGGLE */}
-                  {hasLeft && (
-                    <span className="shrink-0 ml-2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                      {isTargetCollapsed ? "+" : "−"}
-                    </span>
-                  )}
-                </div>
+                {renderHeaderContent(c, {
+                  isExpandable,
+                  isCollapsed: isTargetCollapsed,
+                  onToggle: (e) => {
+                    e.stopPropagation();
+                    if (targetGroupId) toggleGroup(targetGroupId);
+                  },
+                })}
               </th>
             );
 
@@ -384,7 +549,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 key={c.key}
                 className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
               >
-                {c.label}
+                {renderHeaderContent(c)}
               </th>
             ))}
           </tr>
@@ -408,7 +573,7 @@ export default function GroupedCollapsibleTable<RowT>({
           </tr>
         )}
 
-        {rows.map((row, idx) => (
+        {sortedRows.map((row, idx) => (
           <tr key={getRowKey?.(row, idx) ?? idx} className={getRowClassName?.(row, idx)}>
             {visibleLeafCols.map((c) => (
               <td

@@ -57,14 +57,14 @@ import DashboardStickyKpis from "./DashboardStickyKpis";
 import { IoMdLock } from "react-icons/io";
 import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
-import MetricSortDropdown, {
-    MetricSortOption,
-    MetricSortKey,
-} from "@/components/ui/dropdown/MetricSortDropdown";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     product_name: "Product Name. The delta represents the change compared to the previous period.",
     asp: "Average Selling Price",
+    ads_spend: "Ads Spend",
+    acos: "ACos",
+    cogs: "Cogs",
+    net_units_sold: "Net Units Sold",
     net_sales: "Net Sales",
     net_taxes: "Net Taxes",
     net_credits: "Net Credits",
@@ -1684,16 +1684,15 @@ export default function DashboardPage() {
         () => new Set()
     );
 
-    const [plSortOption, setPlSortOption] =
-        useState<MetricSortOption>("sales_desc");
+    type PlSortConfig = {
+        key: string;
+        direction: "asc" | "desc";
+    };
 
-    const plSortMetrics: MetricSortKey[] = [
-        "units",
-        "sales",
-        "profit",
-        "marketplace_fees",
-        "cm2_profit",
-    ];
+    const [plSortConfig, setPlSortConfig] = useState<PlSortConfig>({
+        key: "net_sales",
+        direction: "desc",
+    });
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
@@ -5670,70 +5669,48 @@ export default function DashboardPage() {
             return Math.abs(value);
         };
 
-        const sortMap: Partial<
-            Record<
-                MetricSortOption,
-                {
-                    getValue: (row: MonthlySkuwiseRow) => number;
-                    direction: "asc" | "desc";
-                }
-            >
-        > = {
-            units_desc: {
-                getValue: (row) => toNumber(row.quantity),
-                direction: "desc",
-            },
-            units_asc: {
-                getValue: (row) => toNumber(row.quantity),
-                direction: "asc",
-            },
-
-            sales_desc: {
-                getValue: (row) => toNumber(row.net_sales),
-                direction: "desc",
-            },
-            sales_asc: {
-                getValue: (row) => toNumber(row.net_sales),
-                direction: "asc",
-            },
-
-            profit_desc: {
-                getValue: (row) => toNumber(row.profit),
-                direction: "desc",
-            },
-            profit_asc: {
-                getValue: (row) => toNumber(row.profit),
-                direction: "asc",
-            },
-
-            marketplace_fees_desc: {
-                getValue: getMarketplaceFees,
-                direction: "desc",
-            },
-            marketplace_fees_asc: {
-                getValue: getMarketplaceFees,
-                direction: "asc",
-            },
-
-            cm2_profit_desc: {
-                getValue: (row) => toNumber(row.cm2_profit),
-                direction: "desc",
-            },
-            cm2_profit_asc: {
-                getValue: (row) => toNumber(row.cm2_profit),
-                direction: "asc",
-            },
+        const getSortValue = (row: MonthlySkuwiseRow, key: string) => {
+            switch (key) {
+                case "marketplace_total":
+                    return getMarketplaceFees(row);
+                case "quantity":
+                case "asp":
+                case "net_sales":
+                case "cogs":
+                case "tax":
+                case "credits":
+                case "tax_and_credits":
+                case "cm1_profit_per_unit":
+                case "cm1_profit_per":
+                case "profit":
+                case "ads_spend":
+                case "acos":
+                case "cm2_profit_per_unit":
+                case "cm2_profit_per":
+                case "cm2_profit":
+                    return toNumber((row as any)[key]);
+                case "product_name":
+                    return String(row.product_name || "").toLowerCase();
+                case "sku":
+                    return String(row.sku || "").toLowerCase();
+                default:
+                    return toNumber((row as any)[key]);
+            }
         };
 
-        const selectedSort = sortMap[plSortOption] ?? sortMap.sales_desc!;
-
         const sorted = [...bodyRows].sort((a, b) => {
-            const aValue = selectedSort.getValue(a);
-            const bValue = selectedSort.getValue(b);
+            const aValue = getSortValue(a, plSortConfig.key);
+            const bValue = getSortValue(b, plSortConfig.key);
 
-            return selectedSort.direction === "desc"
-                ? bValue - aValue
-                : aValue - bValue;
+            if (typeof aValue === "number" && typeof bValue === "number") {
+                return plSortConfig.direction === "desc"
+                    ? bValue - aValue
+                    : aValue - bValue;
+            }
+
+            return plSortConfig.direction === "desc"
+                ? String(bValue).localeCompare(String(aValue))
+                : String(aValue).localeCompare(String(bValue));
         });
 
         if (sorted.length <= 9) {
@@ -5817,7 +5794,7 @@ export default function DashboardPage() {
         if (totalRow) out.push(totalRow);
 
         return out;
-    }, [monthlySkuwiseRowsDisplay, plSortOption]);
+    }, [monthlySkuwiseRowsDisplay, plSortConfig]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -6118,13 +6095,15 @@ export default function DashboardPage() {
         {
             id: "quantity",
             label: "Net Units Sold",
+            info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
 
             collapsedCols: [
                 {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
-                    width: 150,
+                    width: 160,
+                    sortable: true,
                 },
             ],
 
@@ -6148,6 +6127,8 @@ export default function DashboardPage() {
                     key: "profit",
                     label: "Total",
                     align: "center" as const,
+                    sortable: true,
+                    width: 145,
                 },
             ],
 
@@ -6203,6 +6184,8 @@ export default function DashboardPage() {
                     key: "cm2_profit",
                     label: "Total",
                     align: "center" as const,
+                    sortable: true,
+                    width: 145,
                 },
             ],
 
@@ -6213,6 +6196,7 @@ export default function DashboardPage() {
                     key: "cm2_profit",
                     label: "Total",
                     align: "center" as const,
+                    sortable: true,
                 },
             ],
         },
@@ -6229,13 +6213,14 @@ export default function DashboardPage() {
         {
             key: "net_sales",
             label: "Net Sales",
+            sortable: true,
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const
         },
-        { key: "cogs", label: "COGS", align: "center" as const },
+        { key: "cogs", label: "COGS", align: "center" as const,  info: <InfoTip text={TERM_DEFINITIONS.cogs} />, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
-        { key: "ads_spend", label: "Ads Spend", align: "center" as const },
-        { key: "acos", label: "ACoS %", align: "center" as const },
+        { key: "ads_spend", label: "Ads Spend", align: "center" as const, info: <InfoTip text={TERM_DEFINITIONS.ads_spend} />, },
+        { key: "acos", label: "ACoS %", align: "center" as const,  info: <InfoTip text={TERM_DEFINITIONS.acos} />,},
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
@@ -10486,12 +10471,6 @@ ${pageLoading
                                 )}
                                 {/* RIGHT: Download */}
                                 <div className="flex items-center gap-2">
-                                    <MetricSortDropdown
-                                        value={plSortOption}
-                                        onChange={setPlSortOption}
-                                        metrics={plSortMetrics}
-                                    />
-
                                     <DownloadIconButton
                                         onClick={handleDownloadPlProductwiseMtd}
                                         aria-label="Download P&L Productwise Breakdown MTD"
@@ -10515,6 +10494,8 @@ ${pageLoading
                                             leftCols={SKUWISE_LEFT_COLS}
                                             groups={SKUWISE_GROUPS}
                                             singleCols={SKUWISE_SINGLE_COLS}
+                                            defaultSort={plSortConfig}
+                                            onSortChange={setPlSortConfig}
                                             showSignRowInBody
                                             getSignForCol={getAdsSignForCol}
                                             layout={[

@@ -15,30 +15,43 @@ import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import Loader from "../loader/Loader";
-import MetricSortDropdown, {
-  MetricSortOption,
-  MetricSortKey,
-} from "@/components/ui/dropdown/MetricSortDropdown";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   product_name: "Product Name. The delta represents the change compared to the previous period.",
+
+  sku: "SKU = Stock Keeping Unit, the unique product identifier.",
+  units_sold: "Units Sold = total units sold before returns.",
+  return_units: "Return = units returned/refunded by customers.",
+  net_units_sold: "Net Units Sold = Units Sold - Return Units.",
+
   asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
-  net_sales: "Net Sales",
-  net_taxes: "Net Taxes = total taxes charged on sales minus tax adjustments/refunds (as provided by marketplace reports).",
-  net_credits: "Net Credits = credits received from marketplace adjustments (e.g., goodwill/price adjustments) excluding reimbursements (as per reports).",
-  tex_and_credits: "Taxes & Credits = combined effect of taxes and credits applied to orders (used to reconcile from gross to net).",
-  marketplace_fees: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
-  amazon_fee: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
-  selling_fees: "Selling Fees = Amazon referral/commission and selling-related fees (non-FBA components).",
-  fba_fees: "FBA Fees = fulfillment, storage-related and FBA service fees (as mapped in reports).",
-  promotional_rebates: "Promotions = promotional rebates/discounts applied (coupons/deals) that reduce profitability.",
+
+  product_sales: "Gross Sales = total product sales before refunds, taxes, credits, and deductions.",
+  refund_sales: "Sales - Refund = refunded sales amount.",
+  net_sales: "Net Sales = sales after refunds and sales-related adjustments.",
+  tex_and_credits: "Taxes & Credits = combined effect of taxes and credits applied to orders.",
+
+  net_taxes: "Net Taxes = total taxes charged on sales minus tax adjustments/refunds.",
+  net_credits: "Net Credits = credits received from marketplace adjustments, excluding reimbursements.",
+
+  promotional_rebates: "Promotions = promotional rebates/discounts applied, such as coupons or deals.",
   promotional_rebates_percentage: "Promotions % = Promotions ÷ Net Sales × 100.",
-  cost_of_unit_sold: "COGS = Cost of goods sold for the units sold in the period (as provided/derived).",
-  cm1_profit: "CM1 Profit = contribution margin after sales, COGS, promo, fees, taxes/credits (as per your CM1 definition).",
+
+  cost_of_unit_sold: "COGS = Cost of goods sold for the units sold in the period.",
+
+  marketplace_fees: "Marketplace Fees = total fees charged by Amazon, such as referral and FBA fees.",
+  amazon_fee: "Marketplace Fees = total fees charged by Amazon, such as referral and FBA fees.",
+  selling_fees: "Selling Fees = Amazon referral/commission and selling-related fees.",
+  fba_fees: "FBA Fees = fulfillment, storage, and FBA service fees.",
+
+  other_transactions: "Other Transactions = marketplace adjustments, taxes, credits, misc. charges, and other transaction-level fees.",
+
+  cm1_profit: "CM1 Profit = contribution margin after sales, COGS, promotions, marketplace fees, taxes, and credits.",
+  profit: "CM1 Profit = contribution margin after sales, COGS, promotions, marketplace fees, taxes, and credits.",
   profit_percentage: "CM1 Profit % = CM1 Profit ÷ Net Sales × 100.",
   unit_wise_profitability: "CM1 Profit Per Unit = CM1 Profit ÷ Net Units Sold.",
 };
-
 
 /* ---------- Types ---------- */
 
@@ -60,7 +73,7 @@ type SKUtableProps = {
     brand_name?: string;
     company_name?: string;
   } | null;
-  metricSortMetrics?: MetricSortKey[];
+  // metricSortMetrics?: MetricSortKey[];
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
@@ -393,7 +406,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   hideDownloadButton = false,
   onDownload,
   disableInternalFade = false,
-  metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
+  // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -403,7 +416,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ads: true,
     other: true,
   });
-  const [sortOption, setSortOption] = useState<MetricSortOption>("sales_desc");
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
@@ -416,6 +429,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const totals = useMemo(() => {
     return computeTotalsFromTotalRow(tableData);
   }, [tableData]);
+
+  const [tableSort, setTableSort] = useState<{
+    key: string;
+    direction: "asc" | "desc";
+  }>({
+    key: "net_sales",
+    direction: "desc",
+  });
 
   const userData = userMeta;
 
@@ -496,6 +517,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return units > 0 ? sales / units : 0;
   };
 
+  const getSortableValue = useCallback((row: TableRow, key: string) => {
+    if (key === "net_units_sold") return toNumber(row.net_units_sold);
+    if (key === "net_sales") return toNumber(row.net_sales);
+    if (key === "profit") return toNumber(row.profit);
+
+    return toNumber((row as any)[key]);
+  }, []);
+
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
 
@@ -506,91 +535,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
       return name === "total" || sku === "total";
     };
 
-    // Find Total row anywhere
     const totalRow = tableData.find(isTotalRow)
       ? ({ ...tableData.find(isTotalRow) } as TableRow)
       : null;
 
-    // Always exclude Total from sorting and Others calculation
     const productRows = tableData.filter((row) => !isTotalRow(row));
 
-    const getMarketplaceFeesSortValue = (row: TableRow) => {
-      return Math.abs(toNumber((row as any).amazon_fee));
-    };
-
-    const sortMap: Partial<
-      Record<
-        MetricSortOption,
-        {
-          getValue: (row: TableRow) => number;
-          direction: "asc" | "desc";
-        }
-      >
-    > = {
-      units_desc: {
-        getValue: (row) => toNumber(row.net_units_sold),
-        direction: "desc",
-      },
-      units_asc: {
-        getValue: (row) => toNumber(row.net_units_sold),
-        direction: "asc",
-      },
-      sales_desc: {
-        getValue: (row) => toNumber(row.net_sales),
-        direction: "desc",
-      },
-      sales_asc: {
-        getValue: (row) => toNumber(row.net_sales),
-        direction: "asc",
-      },
-      profit_desc: {
-        getValue: (row) => toNumber(row.profit),
-        direction: "desc",
-      },
-      profit_asc: {
-        getValue: (row) => toNumber(row.profit),
-        direction: "asc",
-      },
-      marketplace_fees_desc: {
-        getValue: getMarketplaceFeesSortValue,
-        direction: "desc",
-      },
-      marketplace_fees_asc: {
-        getValue: getMarketplaceFeesSortValue,
-        direction: "asc",
-      },
-      cm2_profit_desc: {
-        getValue: (row) => toNumber(row.cm2_profit),
-        direction: "desc",
-      },
-      cm2_profit_asc: {
-        getValue: (row) => toNumber(row.cm2_profit),
-        direction: "asc",
-      },
-    };
-
-    const selectedSort = sortMap[sortOption] ?? sortMap.sales_desc!;
-
     const sorted = [...productRows].sort((a, b) => {
-      const aValue = selectedSort.getValue(a);
-      const bValue = selectedSort.getValue(b);
+      const aValue = getSortableValue(a, tableSort.key);
+      const bValue = getSortableValue(b, tableSort.key);
 
-      return selectedSort.direction === "desc"
-        ? bValue - aValue
-        : aValue - bValue;
+      return tableSort.direction === "asc"
+        ? aValue - bValue
+        : bValue - aValue;
     });
-
-    const top9 = sorted.slice(0, 9);
-    const rest = sorted.slice(9);
-
-    const othersRow: TableRow | null =
-      rest.length > 0
-        ? (sumRows(rest, { product_name: "Others", sku: "-" }) as TableRow)
-        : null;
-
-    if (othersRow) {
-      othersRow.asp = computeAspFrom(othersRow);
-    }
 
     if (totalRow) {
       totalRow.product_name = "Total";
@@ -598,16 +556,31 @@ const SKUtable: React.FC<SKUtableProps> = ({
       totalRow.asp = computeAspFrom(totalRow);
     }
 
-    const outputRows: TableRow[] = [...top9];
+    // Expanded: show all rows, no Others row
+    if (showAllRows) {
+      return totalRow ? [...sorted, totalRow] : sorted;
+    }
 
-    // Others must come before Total
+    // Collapsed: show top 9 + Others + Total
+    const topRows = sorted.slice(0, 9);
+    const restRows = sorted.slice(9);
+
+    const othersRow: TableRow | null =
+      restRows.length > 0
+        ? (sumRows(restRows, { product_name: "Others", sku: "-" }) as TableRow)
+        : null;
+
+    if (othersRow) {
+      othersRow.asp = computeAspFrom(othersRow);
+    }
+
+    const outputRows: TableRow[] = [...topRows];
+
     if (othersRow) outputRows.push(othersRow);
-
-    // Total must always be last, for global and country-wise pages
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, sortOption]);
+  }, [tableData, tableSort, getSortableValue, showAllRows]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -626,12 +599,38 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [{ key: "net_units_sold", label: "", align: "center", width: 140 }],
+      info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
+      collapsedCols: [
+        {
+          key: "net_units_sold",
+          label: "",
+          align: "center",
+          width: 160,
+          sortable: true,
+          info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
+        },
+      ],
       expandedCols: [
-        { key: "sku", label: "SKU", align: "center" },
-        { key: "units_sold", label: "Units Sold", align: "center" },
-        { key: "return_units", label: "Return", align: "center" },
-        { key: "net_units_sold", label: "Total", align: "center" },
+        {
+          key: "sku",
+          label: "SKU",
+          align: "center",
+        },
+        {
+          key: "units_sold",
+          label: "Units Sold",
+          align: "center",
+        },
+        {
+          key: "return_units",
+          label: "Return",
+          align: "center",
+        },
+        {
+          key: "net_units_sold",
+          label: "Total",
+          align: "center",
+        },
       ],
     },
 
@@ -639,12 +638,39 @@ const SKUtable: React.FC<SKUtableProps> = ({
       id: "sales",
       label: "Net Sales",
       info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
-      collapsedCols: [{ key: "net_sales", label: "", align: "center" }],
+      collapsedCols: [
+        {
+          key: "net_sales",
+          label: "",
+          align: "center",
+          sortable: true,
+          info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
+        },
+      ],
       expandedCols: [
-        { key: "product_sales", label: "Gross Sales", align: "center" },
-        { key: "refund_sales", label: "Sales - Refund", align: "center" },
-        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-        { key: "net_sales", label: "Total", align: "center" },
+        {
+          key: "product_sales",
+          label: "Gross Sales",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+        },
+        {
+          key: "refund_sales",
+          label: "Sales - Refund",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+        },
+        {
+          key: "tex_and_credits",
+          label: "Taxes and Credits",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+        },
+        {
+          key: "net_sales",
+          label: "Total",
+          align: "center",
+        },
       ],
     },
 
@@ -652,21 +678,51 @@ const SKUtable: React.FC<SKUtableProps> = ({
       id: "amazon_breakdown",
       label: "Marketplace Fees",
       info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
-      collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }],
+      collapsedCols: [
+        {
+          key: "amazon_fee",
+          label: "",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.amazon_fee} />,
+        },
+      ],
       expandedCols: [
-        { key: "selling_fees", label: "Selling Fees", align: "center" },
-        { key: "fba_fees", label: "FBA Fees", align: "center" },
-        { key: "amazon_fee", label: "Total", align: "center" },
+        {
+          key: "selling_fees",
+          label: "Selling Fees",
+          align: "center",
+        },
+        {
+          key: "fba_fees",
+          label: "FBA Fees",
+          align: "center",
+        },
+        {
+          key: "amazon_fee",
+          label: "Total",
+          align: "center",
+        },
       ],
     },
 
     {
       id: "promotional_rebates",
       label: "Promotions",
-      // info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
-      collapsedCols: [{ key: "promotional_rebates", label: "", align: "center" }],
+      info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+      collapsedCols: [
+        {
+          key: "promotional_rebates",
+          label: "",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+        },
+      ],
       expandedCols: [
-        { key: "promotional_rebates", label: "Promotions", align: "center" },
+        {
+          key: "promotional_rebates",
+          label: "Promotions",
+          align: "center",
+        },
         {
           key: "promotional_rebates_percentage",
           label: "Promotions %",
@@ -681,7 +737,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
-      collapsedCols: [{ key: "other_transactions", label: "", align: "center" }],
+      info: <InfoTip text={TERM_DEFINITIONS.other_transactions} />,
+      collapsedCols: [
+        {
+          key: "other_transactions",
+          label: "",
+          align: "center",
+          info: <InfoTip text={TERM_DEFINITIONS.other_transactions} />,
+        },
+      ],
       expandedCols: [
         {
           key: "net_taxes",
@@ -695,7 +759,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
           align: "center",
         },
-        { key: "other_transactions", label: "Total", align: "center" },
+        {
+          key: "other_transactions",
+          label: "Total",
+          align: "center",
+        },
       ],
     },
 
@@ -703,11 +771,32 @@ const SKUtable: React.FC<SKUtableProps> = ({
       id: "profit_breakdown",
       label: "CM1 Profit",
       info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
-      collapsedCols: [{ key: "profit", label: "", align: "center" }],
+      collapsedCols: [
+        {
+          key: "profit",
+          label: "",
+          align: "center",
+          sortable: true,
+          info: <InfoTip text={TERM_DEFINITIONS.profit} />,
+        },
+      ],
       expandedCols: [
-        { key: "unit_wise_profitability", label: "Per Unit", align: "center", width: 150 },
-        { key: "profit_percentage", label: "%", align: "center" },
-        { key: "profit", label: "Total", align: "center" },
+        {
+          key: "unit_wise_profitability",
+          label: "Per Unit",
+          align: "center",
+          width: 150,
+        },
+        {
+          key: "profit_percentage",
+          label: "%",
+          align: "center",
+        },
+        {
+          key: "profit",
+          label: "Total",
+          align: "center",
+        },
       ],
     },
   ], []);
@@ -719,13 +808,23 @@ const SKUtable: React.FC<SKUtableProps> = ({
         label: "ASP",
         info: <InfoTip text={TERM_DEFINITIONS.asp} />,
         align: "center",
-
       },
-      { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-      { key: "promotional_rebates", label: "Promotions", align: "center" },
+      {
+        key: "cost_of_unit_sold",
+        label: "COGS",
+        info: <InfoTip text={TERM_DEFINITIONS.cost_of_unit_sold} />,
+        align: "center",
+      },
+      {
+        key: "promotional_rebates",
+        label: "Promotions",
+        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+        align: "center",
+      },
       {
         key: "promotional_rebates_percentage",
         label: "Promotions %",
+        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
         align: "center",
         noWrap: true,
         width: 170,
@@ -1204,11 +1303,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-            <MetricSortDropdown
+            {/* <MetricSortDropdown
               value={sortOption}
               onChange={setSortOption}
               metrics={metricSortMetrics}
-            />
+            /> */}
+
+            <button
+              type="button"
+              onClick={() => setShowAllRows((prev) => !prev)}
+              title={showAllRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllRows ? "Collapse rows" : "Expand all rows"}
+              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              {showAllRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
 
             {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
           </div>
@@ -1231,6 +1344,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
+                defaultSort={{
+                  key: "net_sales",
+                  direction: "desc",
+                }}
+                onSortChange={setTableSort}
+                getSortValue={(row, colKey) => {
+                  if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
+                  if (colKey === "net_sales") return toNumber((row as any).net_sales);
+                  if (colKey === "profit") return toNumber((row as any).profit);
+
+                  return 0;
+                }}
+                isTotalRow={(row) => {
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+                  return (
+                    (!showAllRows && (name === "others" || sku === "others")) ||
+                    name === "total" ||
+                    sku === "total"
+                  );
+                }}
                 layout={[
                   { type: "group", id: "units_breakdown" },
                   { type: "single", key: "asp" },
@@ -1270,7 +1405,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (name === "others") return "";
+                  if (!showAllRows && name === "others") return "";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}

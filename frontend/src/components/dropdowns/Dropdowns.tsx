@@ -5955,7 +5955,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   company_name: userData?.company_name,
                 }}
                 onExportPayloadChange={handleSkuExportPayloadChange}
-                metricSortMetrics={["units", "sales", "profit", "marketplace_fees"]}
+                // metricSortMetrics={["units", "sales", "profit", "marketplace_fees"]}
                 // hideDownloadButton
                 disableInternalFade={shouldShowPreviewData}
               />

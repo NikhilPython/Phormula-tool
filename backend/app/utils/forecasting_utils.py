@@ -754,210 +754,7 @@ def forecast_next_two_months_with_append(sku_id, data, global_last_training_mont
 
 
 
-# ============================== HYBRID (window = (T+S)-4, min 1) ==============================
-# def _hybrid_forecast_for_sku(sku_id, data, transit_time: int, stock_unit: int, global_last_training_month):
-#     """
-#     Hybrid model (updated):
-#       - Chooses Croston / SARIMA / ETS automatically.
-#       - Handles intermittent & sparse series.
-#       - Forecasts exactly 4 months (no growth extension).
-#       - Never returns None unless absolutely no data.
-#       - 100% compatible with generate_forecast().
-#     """
-#     try:
-      
-        
-#         # === CONFIG ===
-#         SPARSE_ZERO_THRESHOLD   = 0.60
-#         MIN_SERIES_LENGTH       = 30
-#         SEASONAL_PERIOD_DAILY   = 7
-#         SEASONAL_PERIOD_WEEKLY  = 52
-#         MIN_ARIMA_POINTS_DAILY  = 60
-#         MIN_ARIMA_POINTS_WEEKLY = 30
-#         REQUIRE_VAR_POSITIVE    = True
-#         FORECAST_MONTHS         = 4   # 👈 fixed to 4 months
-#         APPLY_GROWTH_EXTENSION  = False  # 👈 no exponential growth extension
 
-#         # === HELPERS ===
-#         def _zero_ratio(s: pd.Series) -> float:
-#             return float((s == 0).sum()) / len(s) if len(s) else 1.0
-
-#         def _sufficient_for_arima(s: pd.Series, agg: str) -> bool:
-#             n = len(s)
-#             if agg == "daily":
-#                 if n < max(MIN_SERIES_LENGTH, MIN_ARIMA_POINTS_DAILY): return False
-#             else:
-#                 if n < max(MIN_SERIES_LENGTH, MIN_ARIMA_POINTS_WEEKLY): return False
-#             if REQUIRE_VAR_POSITIVE and np.isclose(s.var(ddof=1), 0.0): return False
-#             return True
-
-#         def _croston_sba(y: np.ndarray, h: int, alpha: float = 0.1) -> np.ndarray:
-#             y = np.asarray(y, dtype=float)
-#             last_y, last_tau, t, z = None, None, 0, 0
-#             for v in y:
-#                 t += 1
-#                 if v > 0:
-#                     if last_y is None:
-#                         last_y = v
-#                         last_tau = t if last_tau is None else last_tau
-#                     else:
-#                         last_y  = last_y  + alpha * (v - last_y)
-#                         last_tau = last_tau + alpha * ((t - z) - last_tau)
-#                     z = t
-#             f = 0.0 if (last_y is None or not last_tau) else (last_y / last_tau) * (1 - alpha / 2.0)
-#             return np.full(h, f, dtype=float)
-
-#         def _ets(y: pd.Series, seasonal: int, horizon: int) -> np.ndarray:
-#             model = ExponentialSmoothing(
-#                 y.astype(float),
-#                 trend="add",
-#                 seasonal="add",
-#                 seasonal_periods=seasonal,
-#                 initialization_method="estimated",
-#             )
-#             fit = model.fit(optimized=True)
-#             return fit.forecast(horizon).values.astype(float)
-
-#         def _auto_arima(y: pd.Series, seasonal: int, horizon: int) -> np.ndarray:
-#             model = pm.auto_arima(
-#                 y.astype(float),
-#                 start_p=0, start_q=0, max_p=3, max_q=3,
-#                 start_P=0, start_Q=0, max_P=2, max_Q=2,
-#                 seasonal=True, m=seasonal,
-#                 d=None, D=None,
-#                 stepwise=True, trace=False,
-#                 error_action="ignore", suppress_warnings=True,
-#                 information_criterion="aicc",
-#             )
-#             fc = model.predict(n_periods=horizon)
-#             return np.asarray(fc, dtype=float)
-
-#         def _next_month_starts(last_hist_date: pd.Timestamp, months: int) -> pd.DatetimeIndex:
-#             start = (last_hist_date + pd.offsets.MonthBegin(1)).normalize()
-#             return pd.date_range(start, periods=months, freq="MS")
-
-#         # === DATA PREP ===
-#         sku_df = data[data['sku'] == sku_id].copy()
-#         if sku_df.empty:
-#             return None
-#         s_raw = sku_df['quantity'].copy()
-#         s_raw.index = pd.to_datetime(sku_df.index)
-#         s_raw = s_raw.sort_index()
-#         if s_raw.empty:
-#             return None
-
-#         last_date = s_raw.index.max()
-#         print(
-#             f"\n[HYBRID DEBUG] SKU={sku_id}"
-#             f"\n  RAW LAST DATE={last_date}"
-#             f"\n  RAW LAST MONTH={last_date.to_period('M')}"
-#         )
-#         start_cut = last_date - pd.Timedelta(days=365)
-#         s_daily = s_raw[s_raw.index >= start_cut].resample("D").sum().astype(float).fillna(0.0)
-
-#         zr = _zero_ratio(s_daily)
-#         if (zr > SPARSE_ZERO_THRESHOLD) or (len(s_daily) < MIN_SERIES_LENGTH):
-#             s = s_daily.resample("W-MON").sum()
-#             agg = "weekly"; seasonal = SEASONAL_PERIOD_WEEKLY; horizon = 16
-#             last_dt = s.index.max()
-#             print(
-#                 f"[HYBRID DEBUG] SKU={sku_id}"
-#                 f"\n  AGG=weekly"
-#                 f"\n  last_dt={last_dt}"
-#                 f"\n  last_dt_month={last_dt.to_period('M')}"
-#             )
-#             fc_idx = pd.date_range(last_dt + pd.offsets.Week(weekday=0), periods=horizon, freq="W-MON")
-#         else:
-#             s = s_daily.asfreq("D", fill_value=0.0)
-#             agg = "daily"; seasonal = SEASONAL_PERIOD_DAILY; horizon = 120
-#             last_dt = s.index.max()
-#             print(
-#                 f"[HYBRID DEBUG] SKU={sku_id}"
-#                 f"\n  AGG=daily"
-#                 f"\n  last_dt={last_dt}"
-#                 f"\n  last_dt_month={last_dt.to_period('M')}"
-#             )
-#             fc_idx = pd.date_range(last_dt + pd.Timedelta(days=1), periods=horizon, freq="D")
-
-#         if len(s) < MIN_SERIES_LENGTH:
-#             print(f"[HYBRID] {sku_id} skipped (len={len(s)} < {MIN_SERIES_LENGTH})")
-#             return None
-
-#         # === MODEL CHOICE ===
-#         try:
-#             if zr > SPARSE_ZERO_THRESHOLD:
-#                 yhat = _croston_sba(s.values, horizon)
-#                 model_name = "Croston-SBA"
-#             else:
-#                 if _sufficient_for_arima(s, agg):
-#                     try:
-#                         yhat = _auto_arima(s, seasonal, horizon)
-#                         model_name = f"AUTO-SARIMA(m={seasonal})"
-#                     except Exception:
-#                         yhat = _ets(s, seasonal, horizon)
-#                         model_name = "ETS(A,A)"
-#                 else:
-#                     yhat = _ets(s, seasonal, horizon)
-#                     model_name = "ETS(A,A)"
-#         except Exception as e:
-#             print(f"[HYBRID WARN] {sku_id}: modeling error -> {e}")
-
-#             avg_val = s_daily.resample("M").sum().tail(3).mean()
-
-#             future_months = _next_month_starts(last_date, FORECAST_MONTHS)
-
-#             print(
-#                 f"\n[HYBRID FALLBACK MONTHS] SKU={sku_id}"
-#                 f"\n  future_months={[d.strftime('%b%Y') for d in future_months]}"
-#             )
-
-#             monthly_out = pd.DataFrame({
-#                 "sku": sku_id,
-#                 "Month": future_months,
-#                 "Forecast": [float(avg_val)] * len(future_months),
-#             })
-
-#             monthly_out["Forecast"] = np.rint(monthly_out["Forecast"]).astype(int)
-
-#             print(
-#                 f"\n[HYBRID FALLBACK FINAL] SKU={sku_id}"
-#                 f"\n{monthly_out}"
-#             )
-
-#             return sku_id, monthly_out[["Month", "Forecast", "sku"]], s_daily
-
-#         # === FORECAST BUILD ===
-#         yhat = np.clip(yhat, 0, None)
-#         fc = pd.DataFrame({"ds": fc_idx, "yhat": yhat})
-#         fc["Month"] = fc["ds"].dt.to_period("M").dt.to_timestamp()
-#         monthly = fc.groupby("Month", as_index=False)["yhat"].sum()
-
-#         # restrict to exactly 4 months
-#         future_months = _next_month_starts(last_dt, FORECAST_MONTHS)
-#         print(
-#             f"[HYBRID DEBUG] SKU={sku_id}"
-#             f"\n  future_months={[d.strftime('%b%Y') for d in future_months]}"
-#         )
-#         monthly = monthly[monthly["Month"].isin(future_months)]
-#         # 🔧 INT ROUNDING
-#         monthly["Forecast"] = np.rint(monthly["yhat"]).astype(int)
-#         monthly_out = pd.DataFrame({
-#             "sku": sku_id,
-#             "Month": monthly["Month"],
-#             "Forecast": monthly["Forecast"]
-#         })
-
-#         print(
-#             f"\n[HYBRID NORMAL FINAL] SKU={sku_id}"
-#             f"\n{monthly_out}"
-#         )
-
-#         return sku_id, monthly_out[["Month", "Forecast", "sku"]], s_daily
-        
-        
-#     except Exception as e:
-#         print(f"[HYBRID ERROR] {sku_id}: {e}")
-#         return None
 
 def _hybrid_forecast_for_sku(
     sku_id,
@@ -1448,10 +1245,22 @@ def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_mont
             text = r.json()["choices"][0]["message"]["content"].strip().upper()
 
         if "HYBRID" in text:
-            return "HYBRID"
-        if "ARIMA" in text:
-            return "ARIMA"
-        return None  # unclear => fall back
+            winner = "HYBRID"
+        elif "ARIMA" in text:
+            winner = "ARIMA"
+        else:
+            winner = None
+
+        # print(
+        #     f"[GPT ADJUDICATOR] SKU={sku} | Country={country} | "
+        #     f"Last actual={lastN_months} | "
+        #     f"ARIMA forecast={arima_months} | "
+        #     f"HYBRID forecast={hybrid_months} | "
+        #     f"Raw GPT response={text} | "
+        #     f"Winning forecast={winner}"
+        # )
+
+        return winner
 
     except Exception as e:
         print(f"[GPT ADJUDICATOR] error: {e}")

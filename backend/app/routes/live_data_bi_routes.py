@@ -1060,7 +1060,7 @@ def live_mtd_vs_previous():
             )
 
             try:
-                inv_df = fetch_inventory_aged_by_user(user_id)
+                inv_df = fetch_inventory_aged_by_user(user_id, country)
                 portfolio_inventory_alerts_uk = {}
                 portfolio_inventory_alerts_us = {}
 
@@ -2371,7 +2371,7 @@ def live_mtd_vs_previous():
         # PORTFOLIO INVENTORY ALERTS (HISTORIC-PARITY)
         # ---------------------------
         try:
-            inv_df = fetch_inventory_aged_by_user(user_id)
+            inv_df = fetch_inventory_aged_by_user(user_id, country)
 
             portfolio_inventory_alerts = build_portfolio_inventory_alerts(
                 inv_df,
@@ -2418,7 +2418,7 @@ def live_mtd_vs_previous():
         curr_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_data)
 
         sku_context = build_sku_context(growth_data, max_items=5)
-        estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id)
+        estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id, country)
 
         currency_map = {
             "uk": {"symbol": "£", "code": "GBP"},

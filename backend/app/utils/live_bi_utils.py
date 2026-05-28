@@ -588,16 +588,29 @@ def fetch_transit_time(user_id: int, marketplace: str, country: str):
         "country": row.country,
     }
 # -----------------------------------------------------------------------------
-def fetch_inventory_aged_by_user(user_id: int) -> pd.DataFrame:
+def fetch_inventory_aged_by_user(user_id: int, country: str) -> pd.DataFrame:
+    marketplace_id = marketplace_id_for_country(country)
+
+    if not marketplace_id:
+        return pd.DataFrame()
+
     query = text("""
         SELECT *
         FROM public.inventory_aged
         WHERE user_id = :user_id
+          AND marketplace = :marketplace
         ORDER BY id ASC
     """)
 
     with engine_live.connect() as conn:
-        df = pd.read_sql(query, conn, params={"user_id": user_id})
+        df = pd.read_sql(
+            query,
+            conn,
+            params={
+                "user_id": user_id,
+                "marketplace": marketplace_id,
+            }
+        )
 
     return df
 
@@ -712,8 +725,8 @@ def build_portfolio_inventory_alerts(df: pd.DataFrame, user_id: int, country: st
     return alerts
 
 # -----------------------------------------------------------------------------
-def fetch_estimated_storage_cost_next_month(user_id: int) -> float:
-    df = fetch_inventory_aged_by_user(user_id)
+def fetch_estimated_storage_cost_next_month(user_id: int, country: str) -> float:
+    df = fetch_inventory_aged_by_user(user_id, country)
 
     if df.empty or "estimated-storage-cost-next-month" not in df.columns:
         return 0.0
@@ -2190,7 +2203,7 @@ def build_inventory_signals(user_id: int, country: str) -> dict:
     # --------------------------------------------------
     # 3) Inventory aged table
     # --------------------------------------------------
-    inv_df = fetch_inventory_aged_by_user(user_id)
+    inv_df = fetch_inventory_aged_by_user(user_id, country)
 
     for _, r in inv_df.iterrows():
         sku = _cell_value(r.at["sku"])
@@ -2872,7 +2885,7 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_
             if r.get("sku") is not None
         }
 
-    inv_df = fetch_inventory_aged_by_user(user_id)
+    inv_df = fetch_inventory_aged_by_user(user_id, country)
 
     for _, r in inv_df.iterrows():
         sku_raw = r.get("sku")
@@ -2953,7 +2966,7 @@ def generate_sku_inventory_flags(
             cov = r.get("inventory_coverage_ratio")
             coverage_map[sku] = float(cov) if cov is not None else None
 
-    inv_df = fetch_inventory_aged_by_user(user_id)
+    inv_df = fetch_inventory_aged_by_user(user_id, country)
 
     focus_set = set([str(x).strip() for x in (focus_skus or [])]) if focus_skus else None
 

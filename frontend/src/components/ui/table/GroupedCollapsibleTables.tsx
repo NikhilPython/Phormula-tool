@@ -1,21 +1,24 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { FaArrowDownLong } from "react-icons/fa6";
+import { LuArrowUpDown } from "react-icons/lu";
 
 export type Align = "left" | "center" | "right";
 
 export type LeafCol<RowT> = {
   key: string;
-  label: string;
+  label: React.ReactNode;
   align?: Align;
   tooltip?: React.ReactNode;
   thClassName?: string;
   tdClassName?: string;
+  sortable?: boolean;
 };
 
 export type ColGroup<RowT> = {
   id: string;
-  label: string;
+  label: React.ReactNode;
   headerClassName?: string;
 
   // columns always visible when collapsed (usually 0 or 1, you will decide)
@@ -39,6 +42,7 @@ type Props<RowT> = {
   singleCols: LeafCol<RowT>[];
 
   initialCollapsed?: Record<string, boolean>;
+  onCollapsedChange?: (collapsed: Record<string, boolean>) => void;
 
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
 
@@ -46,11 +50,24 @@ type Props<RowT> = {
 
   // Optional: sign row not in THEAD (keeps header strictly 2 rows)
   showSignRowInBody?: boolean;
-  getSignForCol?: (colKey: string) => { text: string; className?: string } | null;
+  getSignForCol?: (
+    colKey: string,
+  ) => { text: string; className?: string } | null;
   toggleGroupByColKey?: Record<string, string>;
   tableClassName?: string;
   headerRow1ClassName?: string;
   headerRow2ClassName?: string;
+
+  getSortValue?: (
+    row: RowT,
+    colKey: string,
+  ) => string | number | null | undefined;
+  isTotalRow?: (row: RowT) => boolean;
+  defaultSort?: {
+    key: string;
+    direction: "asc" | "desc";
+  } | null;
+  onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
 };
 
 const alignClass = (align?: Align) => {
@@ -66,15 +83,20 @@ export default function GroupedCollapsibleTables<RowT>({
   groups,
   singleCols,
   initialCollapsed,
+  onCollapsedChange,
   getValue,
   getRowClassName,
 
   showSignRowInBody = false,
   getSignForCol,
-toggleGroupByColKey,
+  toggleGroupByColKey,
   tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
+  getSortValue,
+  isTotalRow,
+  defaultSort = null,
+  onSortChange,
 }: Props<RowT>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
@@ -82,7 +104,168 @@ toggleGroupByColKey,
     return { ...base, ...(initialCollapsed || {}) };
   });
 
-  const toggleGroup = (id: string) => setCollapsed((p) => ({ ...p, [id]: !p[id] }));
+  const toggleGroup = (id: string) =>
+    setCollapsed((p) => {
+      const next = { ...p, [id]: !p[id] };
+      onCollapsedChange?.(next);
+      return next;
+    });
+
+  type SortDirection = "asc" | "desc";
+
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: SortDirection;
+  } | null>(defaultSort);
+
+  useEffect(() => {
+    setSortConfig(defaultSort);
+  }, [defaultSort]);
+
+  const handleSort = (colKey: string) => {
+    setSortConfig((prev) => {
+      const next =
+        prev?.key === colKey
+          ? {
+              key: colKey,
+              direction: (prev.direction === "desc"
+                ? "asc"
+                : "desc") as SortDirection,
+            }
+          : {
+              key: colKey,
+              direction: "asc" as const,
+            };
+
+      onSortChange?.(next);
+      return next;
+    });
+  };
+
+  const renderSortArrow = (colKey: string) => {
+    const isSorted = sortConfig?.key === colKey;
+
+    if (!isSorted) {
+      return (
+        <span
+          className="inline-flex shrink-0 items-center text-sm opacity-80"
+          title="Click to sort"
+        >
+          <LuArrowUpDown size={15} strokeWidth={2.25} />
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={[
+          "inline-flex shrink-0 items-center text-[10px]",
+          "transition-transform duration-300 ease-in-out",
+          sortConfig.direction === "asc" ? "rotate-180" : "rotate-0",
+        ].join(" ")}
+        title={
+          sortConfig.direction === "desc"
+            ? "Currently high to low"
+            : "Currently low to high"
+        }
+      >
+        <FaArrowDownLong size={16} />
+      </span>
+    );
+  };
+
+  const normalizeSortValue = (value: unknown) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "number") return value;
+
+    const raw = String(value).trim();
+    const numeric = Number(raw.replace(/[^0-9.-]/g, ""));
+
+    if (Number.isFinite(numeric) && raw.match(/[0-9]/)) {
+      return numeric;
+    }
+
+    return raw.toLowerCase();
+  };
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig) return rows;
+
+    // When the parent owns sorting through onSortChange, do not sort again here.
+    // This lets pages recalculate rows like "Others" after each sort.
+    if (onSortChange) return rows;
+
+    const normalRows: RowT[] = [];
+    const pinnedRows: RowT[] = [];
+
+    rows.forEach((row) => {
+      if (isTotalRow?.(row)) pinnedRows.push(row);
+      else normalRows.push(row);
+    });
+
+    const sorted = [...normalRows].sort((a, b) => {
+      const aValue = normalizeSortValue(getSortValue?.(a, sortConfig.key));
+      const bValue = normalizeSortValue(getSortValue?.(b, sortConfig.key));
+
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
+      }
+
+      return sortConfig.direction === "asc"
+        ? String(aValue).localeCompare(String(bValue))
+        : String(bValue).localeCompare(String(aValue));
+    });
+
+    return [...sorted, ...pinnedRows];
+  }, [rows, sortConfig, getSortValue, isTotalRow, onSortChange]);
+
+  const renderHeaderContent = (
+    col: LeafCol<RowT>,
+    options?: {
+      onToggle?: (e: React.MouseEvent) => void;
+      isCollapsed?: boolean;
+    },
+  ) => (
+    <div className="flex items-center justify-center gap-2">
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          if (col.sortable) e.stopPropagation();
+        }}
+        onClick={
+          col.sortable
+            ? (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSort(col.key);
+              }
+            : undefined
+        }
+        className={`inline-flex items-center justify-center gap-1 ${
+          col.sortable ? "cursor-pointer select-none" : "cursor-default"
+        }`}
+        title={col.sortable ? "Click to sort" : undefined}
+      >
+        <span>{col.label}</span>
+        {col.sortable ? renderSortArrow(col.key) : null}
+      </button>
+
+      {col.tooltip ? col.tooltip : null}
+
+      {options?.onToggle ? (
+        <button
+          type="button"
+          onClick={options.onToggle}
+          className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+          title="Click to expand/collapse"
+        >
+          {options.isCollapsed ? "+" : "−"}
+        </button>
+      ) : null}
+    </div>
+  );
 
   // Leaf columns that will actually render in the body (order matters)
   const visibleLeafCols = useMemo(() => {
@@ -120,12 +303,9 @@ toggleGroupByColKey,
             <th
               key={c.key}
               rowSpan={2}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""}`}
             >
-              <div className="flex items-center justify-center gap-1">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
+              {renderHeaderContent(c)}
             </th>
           ))}
 
@@ -157,22 +337,35 @@ toggleGroupByColKey,
           {groups.map((g) => {
             const isCollapsed = !!collapsed[g.id];
             const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
-            const colSpan = cols.length;              // ✅ no Math.max
+            const colSpan = cols.length; // ✅ no Math.max
 
-            if (colSpan === 0) return null;           // ✅ hide group header when collapsed has 0 cols
+            if (colSpan === 0) return null; // ✅ hide group header when collapsed has 0 cols
 
             return (
-              <th key={g.id} colSpan={colSpan} className={`${thBase} relative text-center ${g.headerClassName || ""}`}>
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(g.id)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs"
-                  aria-label={isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`}
-                  title={isCollapsed ? "Expand" : "Collapse"}
-                >
-                  {isCollapsed ? "+" : "−"}
-                </button>
-                <span className="px-6">{g.label}</span>
+              <th
+                key={g.id}
+                colSpan={colSpan}
+                className={`${thBase} relative text-center ${g.headerClassName || ""}`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="px-2">{g.label}</span>
+
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleGroup(g.id);
+                    }}
+                    className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+                    aria-label={
+                      isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`
+                    }
+                    title={isCollapsed ? "Expand" : "Collapse"}
+                  >
+                    {isCollapsed ? "+" : "−"}
+                  </button>
+                </div>
               </th>
             );
           })}
@@ -198,19 +391,23 @@ toggleGroupByColKey,
               <th
                 key={c.key}
                 rowSpan={2}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-                onClick={targetGroupId ? () => toggleGroup(targetGroupId) : undefined}
-                role={targetGroupId ? "button" : undefined}
-                title={targetGroupId ? "Click to expand/collapse" : undefined}
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""}`}
               >
-                <div className="flex items-center justify-center gap-1">
-                  {c.label}
-                  {c.tooltip ? c.tooltip : null}
-                </div>
+                {renderHeaderContent(
+                  c,
+                  targetGroupId
+                    ? {
+                        isCollapsed: !!collapsed[targetGroupId],
+                        onToggle: (e) => {
+                          e.stopPropagation();
+                          toggleGroup(targetGroupId);
+                        },
+                      }
+                    : undefined,
+                )}
               </th>
             );
           })}
-
         </tr>
 
         {/* ✅ Row 2: ONLY group leaf headers */}
@@ -220,10 +417,7 @@ toggleGroupByColKey,
               key={c.key}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
-              <div className="flex items-center justify-center gap-1 ">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
+              {renderHeaderContent(c)}
             </th>
           ))}
         </tr>
@@ -238,8 +432,9 @@ toggleGroupByColKey,
               return (
                 <td
                   key={c.key}
-                  className={` bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${sign?.className || ""
-                    }`}
+                  className={` bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${
+                    sign?.className || ""
+                  }`}
                 >
                   {sign?.text || ""}
                 </td>
@@ -248,7 +443,7 @@ toggleGroupByColKey,
           </tr>
         )}
 
-        {rows.map((row, idx) => {
+        {sortedRows.map((row, idx) => {
           const rowKey = getRowKey ? getRowKey(row, idx) : idx;
           const rowClass = getRowClassName ? getRowClassName(row, idx) : "";
 
@@ -258,7 +453,7 @@ toggleGroupByColKey,
                 <td
                   key={c.key}
                   className={`bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
-                    c.align
+                    c.align,
                   )} ${c.tdClassName || ""}`}
                 >
                   {getValue(row, c.key, idx)}
