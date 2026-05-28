@@ -15,6 +15,7 @@ import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import Loader from "../loader/Loader";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -415,7 +416,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ads: true,
     other: true,
   });
-  // const [sortOption, setSortOption] = useState<MetricSortOption>("sales_desc");
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
@@ -549,6 +550,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : bValue - aValue;
     });
 
+    if (totalRow) {
+      totalRow.product_name = "Total";
+      totalRow.sku = "Total";
+      totalRow.asp = computeAspFrom(totalRow);
+    }
+
+    // Expanded: show all rows, no Others row
+    if (showAllRows) {
+      return totalRow ? [...sorted, totalRow] : sorted;
+    }
+
+    // Collapsed: show top 9 + Others + Total
     const topRows = sorted.slice(0, 9);
     const restRows = sorted.slice(9);
 
@@ -561,19 +574,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
       othersRow.asp = computeAspFrom(othersRow);
     }
 
-    if (totalRow) {
-      totalRow.product_name = "Total";
-      totalRow.sku = "Total";
-      totalRow.asp = computeAspFrom(totalRow);
-    }
-
     const outputRows: TableRow[] = [...topRows];
 
     if (othersRow) outputRows.push(othersRow);
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue]);
+  }, [tableData, tableSort, getSortableValue, showAllRows]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -1302,6 +1309,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
               metrics={metricSortMetrics}
             /> */}
 
+            <button
+              type="button"
+              onClick={() => setShowAllRows((prev) => !prev)}
+              title={showAllRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllRows ? "Collapse rows" : "Expand all rows"}
+              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              {showAllRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+
             {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
           </div>
         </div>
@@ -1340,8 +1361,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
                   return (
-                    name === "others" ||
-                    sku === "others" ||
+                    (!showAllRows && (name === "others" || sku === "others")) ||
                     name === "total" ||
                     sku === "total"
                   );
@@ -1385,7 +1405,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (name === "others") return "";
+                  if (!showAllRows && name === "others") return "";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
