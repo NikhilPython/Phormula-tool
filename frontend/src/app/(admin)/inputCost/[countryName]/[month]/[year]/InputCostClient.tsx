@@ -1411,17 +1411,6 @@ export default function InputCostPage({ params }: Params) {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-2 justify-start">
-            {/* <PageBreadcrumb
-              pageTitle="Input Cost –"
-              variant="page"
-              align="left"
-              className=""
-            />
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === "global"
-                ? "Global"
-                : countryName?.toUpperCase()}
-            </span> */}
             <PageBreadcrumb
               variant="page"
               align="left"
@@ -1513,7 +1502,7 @@ export default function InputCostPage({ params }: Params) {
                     columns={columns}
                     data={tableData}
                     loading={false}
-                    paginate={true}
+                    paginate={false}
                     pageSize={10}
                     stickyHeader={true}
                     zebra={true}
@@ -1540,7 +1529,7 @@ export default function InputCostPage({ params }: Params) {
                 <DataTable<Record<string, any>>
                   columns={warehouseTableColumns}
                   data={warehouseData}
-                  paginate={true}
+                  paginate={false}
                   pageSize={10}
                   stickyHeader
                   scrollY={false}

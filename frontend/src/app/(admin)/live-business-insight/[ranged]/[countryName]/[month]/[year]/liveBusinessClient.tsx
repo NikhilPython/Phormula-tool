@@ -21,6 +21,7 @@ import {
   exportSkuAnalysisMtdExcel
 } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useRouter } from "next/navigation";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -2421,7 +2422,9 @@ export default function LiveBusinessClient({
   const [showAllSkus, setShowAllSkus] = useState(false);
 
   useEffect(() => {
-    if (activeTab === 'all_skus') setShowAllSkus(false);
+    if (activeTab !== "all_skus") {
+      setShowAllSkus(false);
+    }
   }, [activeTab]);
 
   const rowsToRender =
@@ -3027,18 +3030,7 @@ export default function LiveBusinessClient({
         profit: renderGrowthOrNA(makeGrowth(profit.prev, profit.curr)),
 
         // ✅ AI column
-        ...(hasAIInsights
-          ? {
-            ai: (
-              <button
-                className="font-semibold underline text-[#5EA68E]"
-                onClick={() => setShowAllSkus(true)}
-              >
-                Expand SKUs
-              </button>
-            ),
-          }
-          : {}),
+        ...(hasAIInsights ? { ai: "" } : {}),
       });
 
     }
@@ -4392,6 +4384,22 @@ export default function LiveBusinessClient({
                       {loadingInsight ? "Generating..." : "AI Insights"}
                     </AiButton>
 
+                    {activeTab === "all_skus" && allSkuRows.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSkus((prev) => !prev)}
+                        title={showAllSkus ? "Collapse rows" : "Expand all rows"}
+                        aria-label={showAllSkus ? "Collapse rows" : "Expand all rows"}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                      >
+                        {showAllSkus ? (
+                          <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                        ) : (
+                          <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        )}
+                      </button>
+                    )}
+
                     <DownloadIconButton
                       onClick={handleSkuAnalysisDownload}
                       className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
@@ -4431,7 +4439,7 @@ export default function LiveBusinessClient({
                       onClick={analyzeSkus}
                       disabled={
                         loadingInsight ||
-                        !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                        !["top_80_skus", "new_skus", "reviving_skus", "other_skus"].some(
                           (k) =>
                             (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
                         )
@@ -4439,6 +4447,22 @@ export default function LiveBusinessClient({
                     >
                       {loadingInsight ? "Generating..." : "AI Insights"}
                     </AiButton>
+
+                    {activeTab === "all_skus" && allSkuRows.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSkus((prev) => !prev)}
+                        title={showAllSkus ? "Collapse rows" : "Expand all rows"}
+                        aria-label={showAllSkus ? "Collapse rows" : "Expand all rows"}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                      >
+                        {showAllSkus ? (
+                          <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                        ) : (
+                          <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        )}
+                      </button>
+                    )}
 
                     <DownloadIconButton
                       onClick={handleSkuAnalysisDownload}
@@ -4459,6 +4483,7 @@ export default function LiveBusinessClient({
                     pageSize={10}
                     maxHeight="60vh"
                     loading={false}
+                    paginate={false}
                     headerMaxWidth={140}
                     emptyMessage={getSkuEmptyMessage()}
                     rowClassName={rowClassNameForDataTable}

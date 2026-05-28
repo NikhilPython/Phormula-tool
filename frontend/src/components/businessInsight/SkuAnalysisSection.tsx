@@ -7,16 +7,15 @@ import DataTable, { ColumnDef, Row } from "@/components/ui/table/DataTable";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
-
 import axios from "axios";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
 import { FaThumbsUp, FaThumbsDown } from "react-icons/fa";
-
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 import { AnimatePresence, motion } from "framer-motion";
 import { exportSkuAnalysisMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 export type TabKey =
     | "top_80_skus"
@@ -597,17 +596,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                 render: (row) => {
                     if (row.__isTotal) return "";
 
-                    if (row.__isOthers) {
-                        return (
-                            <button
-                                type="button"
-                                className="font-semibold underline text-[#414042]"
-                                onClick={() => setExpandAllSkusOthers(true)}
-                            >
-                                Expand SKUs
-                            </button>
-                        );
-                    }
+                   if (row.__isOthers) return "";
 
                     const item = row.ai as SkuItem;
                     const entry = getInsightForItem(item);
@@ -709,6 +698,22 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 {loadingInsight ? "Generating..." : "AI Insights"}
                             </button>
 
+                            {activeTab === "all_skus" && (
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandAllSkusOthers((prev) => !prev)}
+                                    title={expandAllSkusOthers ? "Collapse rows" : "Expand all rows"}
+                                    aria-label={expandAllSkusOthers ? "Collapse rows" : "Expand all rows"}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                                >
+                                    {expandAllSkusOthers ? (
+                                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                                    ) : (
+                                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                                    )}
+                                </button>
+                            )}
+
                             <DownloadIconButton
                                 disabled={isPreviewMode}
                                 onClick={handleDownloadSkuAnalysisTabsExcel}
@@ -779,6 +784,22 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 />
                                 {loadingInsight ? "Generating..." : "AI Insights"}
                             </button>
+
+                            {activeTab === "all_skus" && (
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandAllSkusOthers((prev) => !prev)}
+                                    title={expandAllSkusOthers ? "Collapse rows" : "Expand all rows"}
+                                    aria-label={expandAllSkusOthers ? "Collapse rows" : "Expand all rows"}
+                                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                                >
+                                    {expandAllSkusOthers ? (
+                                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                                    ) : (
+                                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                                    )}
+                                </button>
+                            )}
 
                             <DownloadIconButton
                                 disabled={isPreviewMode}

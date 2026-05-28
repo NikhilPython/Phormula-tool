@@ -1694,6 +1694,8 @@ export default function DashboardPage() {
         direction: "desc",
     });
 
+    const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
+
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
 
@@ -5713,9 +5715,14 @@ export default function DashboardPage() {
                 : String(aValue).localeCompare(String(bValue));
         });
 
-        if (sorted.length <= 9) {
-            const out = [...sorted];
-            if (totalRow) out.push(totalRow);
+        if (showAllMtdProductwiseRows || sorted.length <= 9) {
+            const out: MonthlySkuwiseTableRow[] = sorted.map((r, idx) => ({
+                ...r,
+                sno: idx + 1,
+                isOthers: false,
+            }));
+
+            if (totalRow) out.push(totalRow as MonthlySkuwiseTableRow);
 
             return out.map((r, idx) =>
                 r.isTotal ? r : { ...r, sno: idx + 1 }
@@ -5794,7 +5801,7 @@ export default function DashboardPage() {
         if (totalRow) out.push(totalRow);
 
         return out;
-    }, [monthlySkuwiseRowsDisplay, plSortConfig]);
+    }, [monthlySkuwiseRowsDisplay, plSortConfig, showAllMtdProductwiseRows]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -6072,7 +6079,7 @@ export default function DashboardPage() {
         {
             id: "marketplace_fees",
             label: "Marketplace Fees",
-            info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
+            // info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
             collapsedCols: [
                 {
                     key: "marketplace_total",
@@ -6095,7 +6102,7 @@ export default function DashboardPage() {
         {
             id: "quantity",
             label: "Net Units Sold",
-            info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
+            // info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
 
             collapsedCols: [
                 {
@@ -6120,7 +6127,7 @@ export default function DashboardPage() {
         {
             id: "profit",
             label: "CM1 Profit",
-            info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
+            // info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
 
             collapsedCols: [
                 {
@@ -6217,10 +6224,10 @@ export default function DashboardPage() {
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const
         },
-        { key: "cogs", label: "COGS", align: "center" as const,  info: <InfoTip text={TERM_DEFINITIONS.cogs} />, },
+        { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
-        { key: "ads_spend", label: "Ads Spend", align: "center" as const, info: <InfoTip text={TERM_DEFINITIONS.ads_spend} />, },
-        { key: "acos", label: "ACoS %", align: "center" as const,  info: <InfoTip text={TERM_DEFINITIONS.acos} />,},
+        { key: "ads_spend", label: "Ads Spend", align: "center" as const,  },
+        { key: "acos", label: "ACoS %", align: "center" as const, },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
@@ -10470,7 +10477,22 @@ ${pageLoading
                                     </div>
                                 )}
                                 {/* RIGHT: Download */}
+                                {/* RIGHT: Expand + Download */}
                                 <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllMtdProductwiseRows((prev) => !prev)}
+                                        title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+                                        aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                                    >
+                                        {showAllMtdProductwiseRows ? (
+                                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                                        ) : (
+                                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                                        )}
+                                    </button>
+
                                     <DownloadIconButton
                                         onClick={handleDownloadPlProductwiseMtd}
                                         aria-label="Download P&L Productwise Breakdown MTD"

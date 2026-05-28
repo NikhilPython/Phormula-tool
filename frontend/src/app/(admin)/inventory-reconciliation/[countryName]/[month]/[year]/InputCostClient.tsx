@@ -28,6 +28,7 @@ import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import { IoMdLock } from "react-icons/io";
 import Loader from '@/components/loader/Loader';
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 /* ================= TYPES ================= */
 interface Params {
@@ -658,6 +659,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
   const [activeView, setActiveView] = useState<InventoryViewTab>("charts");
+  const [showAllReconRows, setShowAllReconRows] = useState(false);
+  const [showAllLostCompRows, setShowAllLostCompRows] = useState(false);
 
   const yearOptions = useMemo(() => {
     const MIN_YEAR = 2024;
@@ -671,9 +674,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
     null
   );
 
-  // const marketplaceId =
-  //   (typeof window !== "undefined" && localStorage.getItem("marketplace_id")) ||
-  //   "A1F83G8C2ARO7P";
+  useEffect(() => {
+    setShowAllReconRows(false);
+    setShowAllLostCompRows(false);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
   const COUNTRY_MARKETPLACE_INDEX: Record<string, number> = {
     uk: 0,
@@ -959,8 +963,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
       (a, b) => Math.abs(toNum(b?.total_lost_units)) - Math.abs(toNum(a?.total_lost_units))
     );
 
-    const top9 = sorted.slice(0, 9);
-    const others = sorted.slice(9);
+    const top9 = showAllLostCompRows ? sorted : sorted.slice(0, 9);
+    const others = showAllLostCompRows ? [] : sorted.slice(9);
 
     const out: AnyRow[] = [...top9];
 
@@ -983,11 +987,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (totalRow) out.push(totalRow);
 
     return out;
-  }, [effectiveLostCompRows]);
+  }, [effectiveLostCompRows, showAllLostCompRows]);
 
   const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
     return (lostCompDisplayRows || []).map((row, idx) => ({
       __isTotal: row?.__isTotal,
+      __isOthers: row?.__isOthers,
       __sno: row?.__isTotal ? "" : idx + 1,
       product_name: formatCell(row?.product_name),
       msku: formatCell(row?.msku),
@@ -1496,9 +1501,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
       return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
     });
 
-    // Top 9 rows shown individually
-    const top = sortedDataRows.slice(0, 9);
-    const remaining = sortedDataRows.slice(9);
+    // Collapsed: Top 9 + Others
+    // Expanded: All rows, no Others
+    const top = showAllReconRows ? sortedDataRows : sortedDataRows.slice(0, 9);
+    const remaining = showAllReconRows ? [] : sortedDataRows.slice(9);
 
     // Sum only additive numeric fields.
     // Exclude inventory_coverage_ratio because it must be recalculated,
@@ -1563,7 +1569,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     out.push(total);
 
     return out;
-  }, [rows]);
+  }, [rows, showAllReconRows]);
 
   const totalRow = useMemo(() => {
     const r = displayRows?.find((x) => x?.__isTotal === true) || null;
@@ -1854,7 +1860,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
 
     if (colKey === "__sno") {
-      if (row?.__isTotal === true || isTotalRow(row)) return "";
+      if (row?.__isTotal === true || row?.__isOthers === true || isTotalRow(row)) return "";
 
       if (typeof exportIndex === "number") {
         return String(exportIndex + 1);
@@ -2255,296 +2261,336 @@ export default function InventoryReconciliationPage({ params }: Params) {
     } catch (e) {
       console.error("Lost vs Compensation fetch failed", e);
       lostRowsForExport = [];
+    }
+
+    const periodLabel =
+      range === "monthly"
+        ? formatPeriodLabel(selectedMonth, selectedYear)
+        : range === "quarterly"
+          ? formatQuarterLabel(selectedQuarter, selectedYear)
+          : selectedYear;
+
+    // ✅ Give hidden export charts time to render before image capture
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const breakupChartBase64 =
+      exportBreakupPieRef.current?.getExportImage() ||
+      breakupPieRef.current?.getExportImage() ||
+      null;
+
+    const ageingChartBase64 =
+      exportAgeingPieRef.current?.getExportImage() ||
+      ageingPieRef.current?.getExportImage() ||
+      null;
+
+    const filenameBase = buildReconFilename(range, {
+      month: selectedMonth,
+      quarter: selectedQuarter,
+      year: selectedYear,
+    });
+
+    await exportInventoryReconExcel({
+      filename: `${filenameBase}.xlsx`,
+      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+      countryName,
+      titleCountry: countryName?.toUpperCase(),
+      platformLabel: "Phormula",
+      periodLabel,
+      companyName,
+      brandName,
+      dataRows,
+
+      // ✅ Always pass rows, so exporter always creates Lost vs Compensation sheet
+      lostCompRows: buildLostCompExportRowsFromRows(lostRowsForExport),
+
+      breakupChartBase64,
+      ageingChartBase64,
+    });
+  };
+
+  const handleConnectAmazonPreview = () => {
+    router.push(`/profile/${countryName}/NA/NA`);
+  };
+
+  if (pageLoading) {
+    return (
+      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+        <Loader transparent />
+      </div>
+    );
   }
 
-  const periodLabel =
-    range === "monthly"
-      ? formatPeriodLabel(selectedMonth, selectedYear)
-      : range === "quarterly"
-        ? formatQuarterLabel(selectedQuarter, selectedYear)
-        : selectedYear;
-
-  // ✅ Give hidden export charts time to render before image capture
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-
-  const breakupChartBase64 =
-    exportBreakupPieRef.current?.getExportImage() ||
-    breakupPieRef.current?.getExportImage() ||
-    null;
-
-  const ageingChartBase64 =
-    exportAgeingPieRef.current?.getExportImage() ||
-    ageingPieRef.current?.getExportImage() ||
-    null;
-
-  const filenameBase = buildReconFilename(range, {
-    month: selectedMonth,
-    quarter: selectedQuarter,
-    year: selectedYear,
-  });
-
-  await exportInventoryReconExcel({
-    filename: `${filenameBase}.xlsx`,
-    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-    countryName,
-    titleCountry: countryName?.toUpperCase(),
-    platformLabel: "Phormula",
-    periodLabel,
-    companyName,
-    brandName,
-    dataRows,
-
-    // ✅ Always pass rows, so exporter always creates Lost vs Compensation sheet
-    lostCompRows: buildLostCompExportRowsFromRows(lostRowsForExport),
-
-    breakupChartBase64,
-    ageingChartBase64,
-  });
-};
-
-const handleConnectAmazonPreview = () => {
-  router.push(`/profile/${countryName}/NA/NA`);
-};
-
-if (pageLoading) {
   return (
-    <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-      <Loader transparent />
+    <div className="w-full">
+
+      <div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7]">
+        <div className="flex flex-col">
+          {/* Row 1: title left, filters right */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            {/* Left title block */}
+            <div className="flex flex-col">
+              <PageBreadcrumb
+                variant="page"
+                align="left"
+                textSize="2xl"
+                pageTitle={
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[#414042] font-bold">
+                      Inventory Reconciliation - Amazon
+                    </span>
+                    <span className="text-[#60a68e] font-bold">
+                      {countryName?.toUpperCase()}
+                    </span>
+                  </div>
+                }
+              />
+            </div>
+
+            {/* Right filters */}
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <PeriodFiltersTable
+                range={range}
+                selectedMonth={selectedMonth}
+                selectedQuarter={selectedQuarter}
+                selectedYear={selectedYear}
+                yearOptions={yearOptions}
+                onRangeChange={(v) => setRange(v)}
+                onMonthChange={(v) => {
+                  const raw = String(v ?? "").trim();
+                  const parts = raw.split(/\s+/).filter(Boolean);
+                  const monthPart = parts[0] ?? raw;
+                  const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+
+                  setSelectedMonth(normalizeMonth(monthPart));
+                  if (yearPart) setSelectedYear(normalizeYear(yearPart));
+                }}
+                onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
+                onYearChange={(v) => setSelectedYear(String(v))}
+                allowedRanges={["monthly", "quarterly", "yearly"]}
+              />
+
+              {activeView === "table" &&
+                rows.filter((r) => !isTotalRow(r)).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllReconRows((prev) => !prev)}
+                    title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || fetching}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllReconRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+
+              {activeView === "extra" &&
+                effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLostCompRows((prev) => !prev)}
+                    title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || lostCompLoading}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllLostCompRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
+            </div>
+          </div>
+
+          {/* Row 2: toggle only */}
+          <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+              max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
+            <SegmentedToggle
+              value={activeView}
+              options={viewOptions}
+              onChange={(val) => setActiveView(val as InventoryViewTab)}
+              className="mt-2 w-full"
+              compact
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      <PreviewLockedSection
+        enabled={isNA}
+        title="Preview Mode"
+        description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+        buttonText="Complete Setup"
+        onAction={handleConnectAmazonPreview}
+      >
+        <div
+          aria-hidden="true"
+          className="fixed left-[-10000px] top-0 h-[760px] w-[760px] pointer-events-none"
+        >
+          <div className="h-[360px] w-[720px] bg-white">
+            <InventoryPieCard
+              ref={exportBreakupPieRef}
+              title="Inventory Breakup"
+              data={breakupPie}
+              loading={false}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
+            />
+          </div>
+
+          <div className="mt-8 h-[360px] w-[720px] bg-white">
+            <InventoryPieCard
+              ref={exportAgeingPieRef}
+              title="Current Inventory Ageing"
+              data={ageingPie}
+              loading={false}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
+            />
+          </div>
+        </div>
+
+        {/* ✅ Pie charts row */}
+        {activeView === "charts" && (
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <InventoryPieCard
+              ref={breakupPieRef}
+              title="Inventory Breakup"
+              data={breakupPie}
+              loading={pieLoading}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
+            />
+
+            <InventoryPieCard
+              ref={ageingPieRef}
+              title="Current Inventory Ageing"
+              data={ageingPie}
+              loading={pieLoading}
+              height={320}
+              emptyText={isNA ? "" : "No data available"}
+            />
+          </div>
+        )}
+
+        {/* Table */}
+        {activeView === "table" && (
+          <div
+            className={[
+              "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+              "overflow-x-auto",
+              "[-webkit-overflow-scrolling:touch]",
+            ].join(" ")}
+          >
+            {fetching || !hasLoadedOnce ? (
+              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                <Loader transparent />
+              </div>
+            ) : effectiveRows.length === 0 ? (
+              <div className="p-6 text-sm text-neutral-600">No data available</div>
+            ) : (
+              <GroupedCollapsibleTable
+                rows={effectiveRows}
+                getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+                leftCols={leftCols}
+                groups={groups}
+                singleCols={singleCols}
+                getValue={getValue}
+                getRowClassName={getRowClassName}
+                onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+                tableClassName={
+                  anyExpanded
+                    ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                    : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                }
+                headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                showSignRowInBody
+                getSignForCol={getSignForCol}
+              />
+            )}
+          </div>
+        )}
+
+        {activeView === "extra" && (
+          <div className="mt-5">
+            {lostCompLoading ? (
+              <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                <Loader transparent />
+              </div>
+            ) : (
+              <DataTable<Record<string, React.ReactNode>>
+                columns={lostCompTableColumns}
+                data={lostCompTableData}
+                loading={false}
+                paginate={false}
+                stickyHeader
+                scrollY={false}
+                maxHeight="auto"
+                emptyMessage="No data available"
+                tableClassName="text-xs 2xl:text-sm"
+                className="rounded-lg"
+                rowClassName={(row) =>
+                  (row as any).__isTotal
+                    ? "bg-[#D9D9D9] font-semibold"
+                    : (row as any).__isOthers
+                      ? "font-semibold"
+                      : ""
+                }
+              />
+            )}
+          </div>
+        )}
+      </PreviewLockedSection>
+
+      {/* Multi-country modal (kept) */}
+      {showMultiuseCountry && (
+        <div
+          onClick={() => setShowMultiuseCountry(false)}
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative flex h-[30vh] w-full max-w-lg flex-col items-center justify-center overflow-y-auto rounded-lg bg-white p-4 shadow-lg"
+          >
+            <button
+              onClick={() => setShowMultiuseCountry(false)}
+              className="absolute right-3 top-2 text-2xl leading-none text-neutral-600 hover:text-neutral-900"
+              aria-label="Close"
+              type="button"
+            >
+              &times;
+            </button>
+
+            <SkuMultiuseCountryUpload
+              onClose={function (): void {
+                throw new Error('Function not implemented.');
+              }}
+              onComplete={function (): void {
+                throw new Error('Function not implemented.');
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {!suppressModalErrors && showModal && modalMessage ? (
+        <Modalmsg
+          show={showModal}
+          message={modalMessage}
+          onClose={() => setShowModal(false)}
+          onCancel={() => setShowModal(false)}
+        />
+      ) : null}
     </div>
   );
-}
-
-return (
-  <div className="w-full">
-
-    <div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7]">
-      <div className="flex flex-col">
-        {/* Row 1: title left, filters right */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          {/* Left title block */}
-          <div className="flex flex-col">
-            <PageBreadcrumb
-              variant="page"
-              align="left"
-              textSize="2xl"
-              pageTitle={
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[#414042] font-bold">
-                    Inventory Reconciliation - Amazon
-                  </span>
-                  <span className="text-[#60a68e] font-bold">
-                    {countryName?.toUpperCase()}
-                  </span>
-                </div>
-              }
-            />
-          </div>
-
-          {/* Right filters */}
-          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-            <PeriodFiltersTable
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              yearOptions={yearOptions}
-              onRangeChange={(v) => setRange(v)}
-              onMonthChange={(v) => {
-                const raw = String(v ?? "").trim();
-                const parts = raw.split(/\s+/).filter(Boolean);
-                const monthPart = parts[0] ?? raw;
-                const yearPart = parts.find((p) => /^\d{4}$/.test(p));
-
-                setSelectedMonth(normalizeMonth(monthPart));
-                if (yearPart) setSelectedYear(normalizeYear(yearPart));
-              }}
-              onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
-              onYearChange={(v) => setSelectedYear(String(v))}
-              allowedRanges={["monthly", "quarterly", "yearly"]}
-            />
-
-            <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
-          </div>
-        </div>
-
-        {/* Row 2: toggle only */}
-        <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
-              max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
-          <SegmentedToggle
-            value={activeView}
-            options={viewOptions}
-            onChange={(val) => setActiveView(val as InventoryViewTab)}
-            className="mt-2 w-full"
-            compact
-            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-          />
-        </div>
-      </div>
-    </div>
-
-    <PreviewLockedSection
-      enabled={isNA}
-      title="Preview Mode"
-      description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
-      buttonText="Complete Setup"
-      onAction={handleConnectAmazonPreview}
-    >
-      <div
-        aria-hidden="true"
-        className="fixed left-[-10000px] top-0 h-[760px] w-[760px] pointer-events-none"
-      >
-        <div className="h-[360px] w-[720px] bg-white">
-          <InventoryPieCard
-            ref={exportBreakupPieRef}
-            title="Inventory Breakup"
-            data={breakupPie}
-            loading={false}
-            height={320}
-            emptyText={isNA ? "" : "No data available"}
-          />
-        </div>
-
-        <div className="mt-8 h-[360px] w-[720px] bg-white">
-          <InventoryPieCard
-            ref={exportAgeingPieRef}
-            title="Current Inventory Ageing"
-            data={ageingPie}
-            loading={false}
-            height={320}
-            emptyText={isNA ? "" : "No data available"}
-          />
-        </div>
-      </div>
-
-      {/* ✅ Pie charts row */}
-      {activeView === "charts" && (
-        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <InventoryPieCard
-            ref={breakupPieRef}
-            title="Inventory Breakup"
-            data={breakupPie}
-            loading={pieLoading}
-            height={320}
-            emptyText={isNA ? "" : "No data available"}
-          />
-
-          <InventoryPieCard
-            ref={ageingPieRef}
-            title="Current Inventory Ageing"
-            data={ageingPie}
-            loading={pieLoading}
-            height={320}
-            emptyText={isNA ? "" : "No data available"}
-          />
-        </div>
-      )}
-
-      {/* Table */}
-      {activeView === "table" && (
-        <div
-          className={[
-            "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-            "overflow-x-auto",
-            "[-webkit-overflow-scrolling:touch]",
-          ].join(" ")}
-        >
-          {fetching || !hasLoadedOnce ? (
-            <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-              <Loader transparent />
-            </div>
-          ) : effectiveRows.length === 0 ? (
-            <div className="p-6 text-sm text-neutral-600">No data available</div>
-          ) : (
-            <GroupedCollapsibleTable
-              rows={effectiveRows}
-              getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-              leftCols={leftCols}
-              groups={groups}
-              singleCols={singleCols}
-              getValue={getValue}
-              getRowClassName={getRowClassName}
-              onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-              tableClassName={
-                anyExpanded
-                  ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                  : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-              }
-              headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-              headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-              showSignRowInBody
-              getSignForCol={getSignForCol}
-            />
-          )}
-        </div>
-      )}
-
-      {activeView === "extra" && (
-        <div className="mt-5">
-          {lostCompLoading ? (
-            <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-              <Loader transparent />
-            </div>
-          ) : (
-            <DataTable<Record<string, React.ReactNode>>
-              columns={lostCompTableColumns}
-              data={lostCompTableData}
-              loading={false}
-              paginate={false}
-              stickyHeader
-              scrollY={false}
-              maxHeight="auto"
-              emptyMessage="No data available"
-              tableClassName="text-xs 2xl:text-sm"
-              className="rounded-lg"
-              rowClassName={(row) =>
-                (row as any).__isTotal ? "bg-[#D9D9D9] font-semibold" : ""
-              }
-            />
-          )}
-        </div>
-      )}
-    </PreviewLockedSection>
-
-    {/* Multi-country modal (kept) */}
-    {showMultiuseCountry && (
-      <div
-        onClick={() => setShowMultiuseCountry(false)}
-        className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="relative flex h-[30vh] w-full max-w-lg flex-col items-center justify-center overflow-y-auto rounded-lg bg-white p-4 shadow-lg"
-        >
-          <button
-            onClick={() => setShowMultiuseCountry(false)}
-            className="absolute right-3 top-2 text-2xl leading-none text-neutral-600 hover:text-neutral-900"
-            aria-label="Close"
-            type="button"
-          >
-            &times;
-          </button>
-
-          <SkuMultiuseCountryUpload
-            onClose={function (): void {
-              throw new Error('Function not implemented.');
-            }}
-            onComplete={function (): void {
-              throw new Error('Function not implemented.');
-            }}
-          />
-        </div>
-      </div>
-    )}
-
-    {!suppressModalErrors && showModal && modalMessage ? (
-      <Modalmsg
-        show={showModal}
-        message={modalMessage}
-        onClose={() => setShowModal(false)}
-        onCancel={() => setShowModal(false)}
-      />
-    ) : null}
-  </div>
-);
 }

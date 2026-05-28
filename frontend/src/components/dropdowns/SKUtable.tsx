@@ -599,7 +599,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
       collapsedCols: [
         {
           key: "net_units_sold",
@@ -607,7 +606,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           align: "center",
           width: 160,
           sortable: true,
-          info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
         },
       ],
       expandedCols: [
@@ -677,13 +675,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "amazon_breakdown",
       label: "Marketplace Fees",
-      info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
       collapsedCols: [
         {
           key: "amazon_fee",
           label: "",
           align: "center",
-          info: <InfoTip text={TERM_DEFINITIONS.amazon_fee} />,
         },
       ],
       expandedCols: [
@@ -737,13 +733,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
-      info: <InfoTip text={TERM_DEFINITIONS.other_transactions} />,
       collapsedCols: [
         {
           key: "other_transactions",
           label: "",
           align: "center",
-          info: <InfoTip text={TERM_DEFINITIONS.other_transactions} />,
         },
       ],
       expandedCols: [
@@ -812,7 +806,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
       {
         key: "cost_of_unit_sold",
         label: "COGS",
-        info: <InfoTip text={TERM_DEFINITIONS.cost_of_unit_sold} />,
         align: "center",
       },
       {

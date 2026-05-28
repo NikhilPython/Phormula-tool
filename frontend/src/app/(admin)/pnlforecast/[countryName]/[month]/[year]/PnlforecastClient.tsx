@@ -15,6 +15,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { IoMdLock } from "react-icons/io";
 import Loader from "@/components/loader/Loader";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 type RowData = {
   sku?: string;
@@ -284,6 +285,9 @@ const Pnlforecast: React.FC = () => {
     key: "Total_Sales_1st",
     direction: "desc",
   });
+
+  const [showAllForecastProductRows, setShowAllForecastProductRows] =
+    useState(false);
 
   const [forecastCollapsedGroups, setForecastCollapsedGroups] = useState<
     Record<string, boolean>
@@ -576,7 +580,7 @@ const Pnlforecast: React.FC = () => {
               });
             }
           }
-        } catch {}
+        } catch { }
 
         base.setMonth(base.getMonth() + 1);
       }
@@ -902,7 +906,7 @@ const Pnlforecast: React.FC = () => {
           body: formData,
         },
       );
-    } catch {}
+    } catch { }
   };
 
   const handleDownload = async () => {
@@ -1110,58 +1114,58 @@ const Pnlforecast: React.FC = () => {
   const summaryRows = isDemoMode
     ? DUMMY_SUMMARY_ROWS
     : [
-        {
-          label: "Cost of Advertisement",
-          m1: data?.find((r) => r.sku === "advertising_total1")?.value,
-          m2: data?.find((r) => r.sku === "advertising_total2")?.value,
-          m3: data?.find((r) => r.sku === "advertising_total3")?.value,
-          sum: data?.find((r) => r.sku === "advertising_total")?.value,
-        },
-        {
-          label: "Platform Fees",
-          m1: data?.find((r) => r.sku === "Platform_Fees1")?.value,
-          m2: data?.find((r) => r.sku === "Platform_Fees2")?.value,
-          m3: data?.find((r) => r.sku === "Platform_Fees3")?.value,
-          sum: data?.find((r) => r.sku === "platform_fees_total")?.value,
-        },
-        {
-          label: "Other Expenses",
-          m1:
-            (data?.find((r) => r.sku === "Platform_Fees1")?.value || 0) +
-            (data?.find((r) => r.sku === "advertising_total1")?.value || 0),
-          m2:
-            (data?.find((r) => r.sku === "Platform_Fees2")?.value || 0) +
-            (data?.find((r) => r.sku === "advertising_total2")?.value || 0),
-          m3:
-            (data?.find((r) => r.sku === "Platform_Fees3")?.value || 0) +
-            (data?.find((r) => r.sku === "advertising_total3")?.value || 0),
-          sum:
-            (data?.find((r) => r.sku === "platform_fees_total")?.value || 0) +
-            (data?.find((r) => r.sku === "advertising_total")?.value || 0),
-        },
-        {
-          label: "CM2 Profit/Loss",
-          m1: data?.find((r) => r.sku === "cm2profit1")?.value,
-          m2: data?.find((r) => r.sku === "cm2profit2")?.value,
-          m3: data?.find((r) => r.sku === "cm2profit3")?.value,
-          sum: data?.find((r) => r.sku === "cm2profit_total")?.value,
-        },
-        {
-          label: "Net Reimbursement (Projected)",
-          m1: data?.find((r) => r.sku === "NetReimbursement1")?.value,
-          m2: data?.find((r) => r.sku === "NetReimbursement2")?.value,
-          m3: data?.find((r) => r.sku === "NetReimbursement3")?.value,
-          sum: data?.find((r) => r.sku === "NetReimbursement_total")?.value,
-        },
-        {
-          label: "Reimbursement vs CM2 Margins",
-          m1: data?.find((r) => r.sku === "ReimbursementvsCM2Margins1")?.value,
-          m2: data?.find((r) => r.sku === "ReimbursementvsCM2Margins2")?.value,
-          m3: data?.find((r) => r.sku === "ReimbursementvsCM2Margins3")?.value,
-          sum: data?.find((r) => r.sku === "ReimbursementvsCM2Margins_total")
-            ?.value,
-        },
-      ];
+      {
+        label: "Cost of Advertisement",
+        m1: data?.find((r) => r.sku === "advertising_total1")?.value,
+        m2: data?.find((r) => r.sku === "advertising_total2")?.value,
+        m3: data?.find((r) => r.sku === "advertising_total3")?.value,
+        sum: data?.find((r) => r.sku === "advertising_total")?.value,
+      },
+      {
+        label: "Platform Fees",
+        m1: data?.find((r) => r.sku === "Platform_Fees1")?.value,
+        m2: data?.find((r) => r.sku === "Platform_Fees2")?.value,
+        m3: data?.find((r) => r.sku === "Platform_Fees3")?.value,
+        sum: data?.find((r) => r.sku === "platform_fees_total")?.value,
+      },
+      {
+        label: "Other Expenses",
+        m1:
+          (data?.find((r) => r.sku === "Platform_Fees1")?.value || 0) +
+          (data?.find((r) => r.sku === "advertising_total1")?.value || 0),
+        m2:
+          (data?.find((r) => r.sku === "Platform_Fees2")?.value || 0) +
+          (data?.find((r) => r.sku === "advertising_total2")?.value || 0),
+        m3:
+          (data?.find((r) => r.sku === "Platform_Fees3")?.value || 0) +
+          (data?.find((r) => r.sku === "advertising_total3")?.value || 0),
+        sum:
+          (data?.find((r) => r.sku === "platform_fees_total")?.value || 0) +
+          (data?.find((r) => r.sku === "advertising_total")?.value || 0),
+      },
+      {
+        label: "CM2 Profit/Loss",
+        m1: data?.find((r) => r.sku === "cm2profit1")?.value,
+        m2: data?.find((r) => r.sku === "cm2profit2")?.value,
+        m3: data?.find((r) => r.sku === "cm2profit3")?.value,
+        sum: data?.find((r) => r.sku === "cm2profit_total")?.value,
+      },
+      {
+        label: "Net Reimbursement (Projected)",
+        m1: data?.find((r) => r.sku === "NetReimbursement1")?.value,
+        m2: data?.find((r) => r.sku === "NetReimbursement2")?.value,
+        m3: data?.find((r) => r.sku === "NetReimbursement3")?.value,
+        sum: data?.find((r) => r.sku === "NetReimbursement_total")?.value,
+      },
+      {
+        label: "Reimbursement vs CM2 Margins",
+        m1: data?.find((r) => r.sku === "ReimbursementvsCM2Margins1")?.value,
+        m2: data?.find((r) => r.sku === "ReimbursementvsCM2Margins2")?.value,
+        m3: data?.find((r) => r.sku === "ReimbursementvsCM2Margins3")?.value,
+        sum: data?.find((r) => r.sku === "ReimbursementvsCM2Margins_total")
+          ?.value,
+      },
+    ];
 
   const productRows = data?.filter(
     (row) =>
@@ -1284,7 +1288,7 @@ const Pnlforecast: React.FC = () => {
         : String(aValue).localeCompare(String(bValue));
     });
 
-    if (sortedRows.length <= 9) {
+    if (showAllForecastProductRows || sortedRows.length <= 9) {
       return totalRow ? [...sortedRows, totalRow] : sortedRows;
     }
 
@@ -1295,7 +1299,12 @@ const Pnlforecast: React.FC = () => {
     return totalRow
       ? [...firstNine, othersRow, totalRow]
       : [...firstNine, othersRow];
-  }, [normalizedProductRows, forecastSortConfig, getForecastSortValue]);
+  }, [
+    normalizedProductRows,
+    forecastSortConfig,
+    getForecastSortValue,
+    showAllForecastProductRows,
+  ]);
 
   const tableRows = [...displayProductRows, ...summaryAsRows];
 
@@ -1387,6 +1396,23 @@ const Pnlforecast: React.FC = () => {
               align="left"
               textSize="2xl"
             />
+
+            {(normalizedProductRows || []).filter((row) => !isPnlTotalRow(row)).length > 9 && (
+              <button
+                type="button"
+                onClick={() => setShowAllForecastProductRows((prev) => !prev)}
+                title={showAllForecastProductRows ? "Collapse rows" : "Expand all rows"}
+                aria-label={showAllForecastProductRows ? "Collapse rows" : "Expand all rows"}
+                disabled={isDemoMode || noDataAvailable}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {showAllForecastProductRows ? (
+                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                ) : (
+                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                )}
+              </button>
+            )}
           </div>
 
           <div className="mt-4 w-full overflow-x-auto">

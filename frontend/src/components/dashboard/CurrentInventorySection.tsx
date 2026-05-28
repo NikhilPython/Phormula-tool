@@ -16,6 +16,7 @@ import {
 import SegmentedToggle from "../ui/SegmentedToggle";
 import type { InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
 import InfoTip from "@/components/ui/InfoTip";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 type InventoryUiRow = {
   sno: React.ReactNode;
@@ -316,6 +317,8 @@ export default function CurrentInventorySection({
   const [selectedInventoryCountry, setSelectedInventoryCountry] =
     useState<"uk" | "us">("uk");
 
+  const [showAllInventoryRows, setShowAllInventoryRows] = useState(false);
+
   const isGlobalInventory = region === "Global";
 
   const displayRegion = useMemo(() => {
@@ -524,15 +527,22 @@ export default function CurrentInventorySection({
     if (!calcRows.length) return [];
 
     // 3) Top 5 by MTD Sales (desc)
+    // 3) Sort by MTD Sales desc
     const sortedByMtd = [...calcRows].sort((a, b) => b.mtdSales - a.mtdSales);
-    const top5 = sortedByMtd.slice(0, 5);
-    const top5Indices = new Set(top5.map((r) => r.index));
 
-    // 4) Others = all remaining rows
-    const othersRows = calcRows.filter((r) => !top5Indices.has(r.index));
+    // Expanded: show all rows, no Others row
+    // Collapsed: show top 5 + Others row
+    const rowsToShow = showAllInventoryRows
+      ? sortedByMtd
+      : sortedByMtd.slice(0, 5);
 
-    // 5) Build UI rows for top 5
-    const uiRows: InventoryUiRow[] = top5.map((c, idx) => {
+    const visibleIndexes = new Set(rowsToShow.map((r) => r.index));
+    const othersRows = showAllInventoryRows
+      ? []
+      : sortedByMtd.filter((r) => !visibleIndexes.has(r.index));
+
+    // 5) Build UI rows
+    const uiRows: InventoryUiRow[] = rowsToShow.map((c, idx) => {
       const {
         row,
         currentInventory,
@@ -678,6 +688,7 @@ export default function CurrentInventorySection({
     visibleInventoryAlerts,
     convertToDisplayCurrency,
     storageSourceCurrency,
+    showAllInventoryRows,
   ]);
 
   const exportDataRows = useMemo(() => {
@@ -1111,6 +1122,23 @@ export default function CurrentInventorySection({
             />
           )}
 
+          {visibleInvRows.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setShowAllInventoryRows((prev) => !prev)}
+              title={showAllInventoryRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllInventoryRows ? "Collapse rows" : "Expand all rows"}
+              disabled={invLoading}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showAllInventoryRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+          )}
+
           <DownloadIconButton
             onClick={downloadInventoryExcel}
             disabled={invLoading || !exportDataRows.length}
@@ -1134,7 +1162,7 @@ export default function CurrentInventorySection({
               columns={columns}
               data={tableRows}
               loading={false}
-              paginate={true}
+              paginate={false}
               pageSize={15}
               scrollY={false}
               maxHeight="none"

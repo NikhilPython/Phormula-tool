@@ -18,6 +18,7 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import { exportInventoryForecastViewExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import "@/lib/chartSetup";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -98,6 +99,8 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     "";
 
   const [monthRange, setMonthRange] = useState<string | null>(null);
+  const [showAllForecastRows, setShowAllForecastRows] = useState(false);
+
   const [selectedSeries, setSelectedSeries] = useState<Record<string, boolean>>({
     top1: true,
     top2: true,
@@ -249,38 +252,49 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       })
       .sort((a, b) => b.f1 - a.f1);
 
-    const first9 = baseRows.slice(0, 9);
-    const remaining = baseRows.slice(9);
+    let rows = baseRows;
 
-    const rows = [...first9];
+    if (!showAllForecastRows) {
+      const first9 = baseRows.slice(0, 9);
+      const remaining = baseRows.slice(9);
 
-    if (remaining.length > 0) {
-      const othersRow = remaining.reduce(
-        (acc, r) => ({
-          product: 'Others',
-          sku: '-',
-          sold1: acc.sold1 + r.sold1,
-          sold2: acc.sold2 + r.sold2,
-          sold3: acc.sold3 + r.sold3,
-          f1: acc.f1 + r.f1,
-          f2: acc.f2 + r.f2,
-          f3: acc.f3 + r.f3,
-          totalUnits: acc.totalUnits + r.sold1 + r.sold2 + r.sold3 + r.f1 + r.f2 + r.f3,
-        }),
-        {
-          product: 'Others',
-          sku: '-',
-          sold1: 0,
-          sold2: 0,
-          sold3: 0,
-          f1: 0,
-          f2: 0,
-          f3: 0,
-          totalUnits: 0,
-        }
-      );
+      rows = [...first9];
 
-      rows.push(othersRow);
+      if (remaining.length > 0) {
+        const othersRow = remaining.reduce(
+          (acc, r) => ({
+            product: "Others",
+            sku: "-",
+            sold1: acc.sold1 + r.sold1,
+            sold2: acc.sold2 + r.sold2,
+            sold3: acc.sold3 + r.sold3,
+            f1: acc.f1 + r.f1,
+            f2: acc.f2 + r.f2,
+            f3: acc.f3 + r.f3,
+            totalUnits:
+              acc.totalUnits +
+              r.sold1 +
+              r.sold2 +
+              r.sold3 +
+              r.f1 +
+              r.f2 +
+              r.f3,
+          }),
+          {
+            product: "Others",
+            sku: "-",
+            sold1: 0,
+            sold2: 0,
+            sold3: 0,
+            f1: 0,
+            f2: 0,
+            f3: 0,
+            totalUnits: 0,
+          }
+        );
+
+        rows.push(othersRow);
+      }
     }
 
     return rows.map((r, idx) => ({
@@ -298,7 +312,14 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         }
         : r),
     }));
-  }, [forecastData, last3SoldOldestFirst, forecast3, demoMode, hasRenderableData]);
+  }, [
+    forecastData,
+    last3SoldOldestFirst,
+    forecast3,
+    demoMode,
+    hasRenderableData,
+    showAllForecastRows,
+  ]);
 
   const excelTableRows = useMemo(() => {
     if (!hasRenderableData) return [];
@@ -864,12 +885,31 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-          <PageBreadcrumb
-            pageTitle="Detailed Forecast Data (All SKUs)"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
+          <div className="flex items-center justify-between gap-3">
+            <PageBreadcrumb
+              pageTitle="Detailed Forecast Data (All SKUs)"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+
+            {hasRenderableData &&
+              forecastData.filter((r) => r && r.sku && r.sku !== "Total").length > 9 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllForecastRows((prev) => !prev)}
+                  title={showAllForecastRows ? "Collapse rows" : "Expand all rows"}
+                  aria-label={showAllForecastRows ? "Collapse rows" : "Expand all rows"}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                >
+                  {showAllForecastRows ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )}
+                </button>
+              )}
+          </div>
 
           <div className="mt-4 w-full overflow-x-auto">
             {hasRenderableData ? (

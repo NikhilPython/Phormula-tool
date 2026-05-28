@@ -12,6 +12,7 @@ import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { exportPurchaseOrderExcel } from '@/lib/excel/exportCurrentInventoryExcel';
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 interface Row {
   [key: string]: any;
@@ -170,6 +171,7 @@ export default function PurchaseOrderPage({
   const [skuData, setSkuData] = useState<Row[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [noData, setNoData] = useState(false);
+  const [showAllPoRows, setShowAllPoRows] = useState(false);
 
   const isGlobalRoute = useMemo(
     () => countryName.toLowerCase() === 'global',
@@ -617,7 +619,7 @@ export default function PurchaseOrderPage({
     companyName,
     brandName,
   ]);
-  
+
   const tableData = useMemo(() => {
     if (!skuData.length) return []
 
@@ -649,7 +651,7 @@ export default function PurchaseOrderPage({
 
     let rowsForDisplay: Row[] = []
 
-    if (sortedRows.length <= 9) {
+    if (showAllPoRows || sortedRows.length <= 9) {
       rowsForDisplay = [...sortedRows]
     } else {
       const firstNine = sortedRows.slice(0, 9)
@@ -706,7 +708,14 @@ export default function PurchaseOrderPage({
     })
 
     return [signRow, ...formattedRows]
-  }, [skuData, displayedColumns, signRowMap])
+  }, [
+    skuData,
+    displayedColumns,
+    signRowMap,
+    showAllPoRows,
+    isGlobalRoute,
+    normalCountryDispatchKey,
+  ])
 
   const getDispatchHeaderLabel = (col: string) => {
     if (col === 'Dispatches Amazon US') return 'Dispatch US';
@@ -949,20 +958,26 @@ export default function PurchaseOrderPage({
               valueMode="lower"
             />
 
-            <DownloadIconButton onClick={handleExportToExcel} size="md" />
+            {skuData.filter(
+              (row) => String(row["Product Name"] ?? "").trim().toLowerCase() !== "total"
+            ).length > 9 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllPoRows((prev) => !prev)}
+                  title={showAllPoRows ? "Collapse rows" : "Expand all rows"}
+                  aria-label={showAllPoRows ? "Collapse rows" : "Expand all rows"}
+                  disabled={loading || noData}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {showAllPoRows ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )}
+                </button>
+              )}
 
-            {/* <div className="flex sm:flex-row flex-col gap-4">
-              <button
-                className="fetch-button"
-                onClick={() =>
-                  isGlobalRoute
-                    ? void fetchGlobalDispatchFile(month, year)
-                    : void fetchDispatchFile(month, year)
-                }
-              >
-                {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
-              </button>
-            </div> */}
+            <DownloadIconButton onClick={handleExportToExcel} size="md" />
           </div>
         </div>
       )}
@@ -980,18 +995,42 @@ export default function PurchaseOrderPage({
           </button>
         </div>
       ) : (
-        <DataTable<Row>
-          columns={tableColumns}
-          data={tableData}
-          paginate={false}
-          pageSize={10}
-          stickyHeader
-          scrollY
-          maxHeight="90vh"
-          emptyMessage="No Data Available for selected period"
-          rowClassName={getTableRowClassName}
-          tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
-        />
+        <>
+          {embedded &&
+            skuData.filter(
+              (row) => String(row["Product Name"] ?? "").trim().toLowerCase() !== "total"
+            ).length > 9 && (
+              <div className="mb-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAllPoRows((prev) => !prev)}
+                  title={showAllPoRows ? "Collapse rows" : "Expand all rows"}
+                  aria-label={showAllPoRows ? "Collapse rows" : "Expand all rows"}
+                  disabled={loading || noData}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {showAllPoRows ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )}
+                </button>
+              </div>
+            )}
+
+          <DataTable<Row>
+            columns={tableColumns}
+            data={tableData}
+            paginate={false}
+            pageSize={10}
+            stickyHeader
+            scrollY
+            maxHeight="90vh"
+            emptyMessage="No Data Available for selected period"
+            rowClassName={getTableRowClassName}
+            tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
+          />
+        </>
       )}
 
       {showModal && (

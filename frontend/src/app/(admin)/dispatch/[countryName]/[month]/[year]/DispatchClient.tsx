@@ -13,6 +13,7 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
 import { exportDispatchExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from '@/lib/api/profileApi'
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 interface SkuRow {
   [key: string]: string | number | undefined
@@ -272,6 +273,7 @@ export default function DispatchPage({
   const [showUpload, setShowUpload] = useState(false)
   const [noData, setNoData] = useState(false)
   const monthdps = monthNames as unknown as string[]
+  const [showAllDispatchRows, setShowAllDispatchRows] = useState(false)
 
   async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
     if (!monthdpValue || !yeardpValue) {
@@ -530,25 +532,25 @@ export default function DispatchPage({
   }
 
   useEffect(() => {
-  const handleDownload = () => {
-    handleExportToExcel();
-  };
+    const handleDownload = () => {
+      handleExportToExcel();
+    };
 
-  window.addEventListener('dispatch-report-download', handleDownload);
+    window.addEventListener('dispatch-report-download', handleDownload);
 
-  return () => {
-    window.removeEventListener('dispatch-report-download', handleDownload);
-  };
-}, [
-  skuData,
-  noData,
-  loading,
-  monthdp,
-  yeardp,
-  countryName,
-  companyName,
-  brandName,
-]);
+    return () => {
+      window.removeEventListener('dispatch-report-download', handleDownload);
+    };
+  }, [
+    skuData,
+    noData,
+    loading,
+    monthdp,
+    yeardp,
+    countryName,
+    companyName,
+    brandName,
+  ]);
 
   const tableRows = useMemo(() => {
     const totalRow = skuData.find((row) => isTotalRow(row))
@@ -563,7 +565,7 @@ export default function DispatchPage({
 
     let rowsForDisplay: SkuRow[] = []
 
-    if (sortedRows.length <= 9) {
+    if (showAllDispatchRows || sortedRows.length <= 9) {
       rowsForDisplay = [...sortedRows]
     } else {
       const firstNine = sortedRows.slice(0, 9)
@@ -643,7 +645,7 @@ export default function DispatchPage({
 
       return obj
     })
-  }, [skuData, displayedColumns])
+  }, [skuData, displayedColumns, showAllDispatchRows])
 
   const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
     const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
@@ -801,6 +803,23 @@ export default function DispatchPage({
               </button>
             </div> */}
 
+            {skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+              <button
+                type="button"
+                onClick={() => setShowAllDispatchRows((prev) => !prev)}
+                title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                disabled={loading || noData}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {showAllDispatchRows ? (
+                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                ) : (
+                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                )}
+              </button>
+            )}
+
             <DownloadIconButton onClick={handleExportToExcel} size="md" />
           </div>
         </div>
@@ -821,26 +840,51 @@ export default function DispatchPage({
           </button>
         </div>
       ) : (
-        <div className="forecast-data">
-          <DataTable
-            columns={columns}
-            data={tableRows}
-            paginate={false}
-            scrollY
-            maxHeight="90vh"
-            stickyHeader
-            loading={loading}
-            emptyMessage={
-              noData
-                ? 'No Data Available for selected period'
-                : 'Select Month and Year to see Dispatch!'
-            }
-            rowClassName={(row: any) =>
-              row.__isTotal ? 'bg-[#D9D9D9] font-bold' : ''
-            }
-            tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
-          />
-        </div>
+        <>
+          {embedded && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAllDispatchRows((prev) => !prev)}
+                title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                disabled={loading || noData}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {showAllDispatchRows ? (
+                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                ) : (
+                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                )}
+              </button>
+            </div>
+          )}
+
+          <div className="forecast-data">
+            <DataTable
+              columns={columns}
+              data={tableRows}
+              paginate={false}
+              scrollY
+              maxHeight="90vh"
+              stickyHeader
+              loading={loading}
+              emptyMessage={
+                noData
+                  ? "No Data Available for selected period"
+                  : "Select Month and Year to see Dispatch!"
+              }
+              rowClassName={(row: any) =>
+                row.__isTotal
+                  ? "bg-[#D9D9D9] font-bold"
+                  : row.__isOthers
+                    ? "font-semibold"
+                    : ""
+              }
+              tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
+            />
+          </div>
+        </>
       )}
 
       <Modal

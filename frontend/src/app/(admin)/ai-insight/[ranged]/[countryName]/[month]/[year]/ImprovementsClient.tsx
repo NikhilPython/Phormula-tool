@@ -3461,95 +3461,13 @@ const MonthsforBI: React.FC = () => {
             </div>
           </div>
 
-          {/* <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              <div>
-                <PageBreadcrumb
-                  pageTitle="Units Sold"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-                <div ref={unitsChartRef} className="h-[320px] w-full" />
-              </div>
-
-              <div>
-                <PageBreadcrumb
-                  pageTitle="Net Sales"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-                <div ref={chartRef} className="h-[320px] w-full" />
-              </div>
-
-              <div className="mt-3">
-                <PageBreadcrumb
-                  pageTitle="CM1 Profit"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-                <div ref={profitChartRef} className="h-[320px] w-full" />
-              </div>
-
-              <div className="mt-3">
-                <PageBreadcrumb
-                  pageTitle="Average Selling Price"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-                <div ref={aspChartRef} className="h-[320px] w-full" />
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap justify-center gap-4 text-[10px] font-semibold text-[#414042] 2xl:text-xs">
-              <span className="inline-flex items-center gap-2">
-                <span className="inline-block h-[10px] w-[10px] bg-[#ED9F50]" />
-                Top 80%
-              </span>
-
-              <span className="inline-flex items-center gap-2">
-                <span className="inline-block h-[10px] w-[10px] bg-[#3A8EA4]" />
-                Other SKUs
-              </span>
-
-              <span className="inline-flex items-center gap-2">
-                <span className="inline-block h-[10px] w-[10px] bg-[#7B9A6D]" />
-                New/Reviving
-              </span>
-            </div>
-          </div> */}
-
+          
           <GrowthCharts
             unitsChartRef={unitsChartRef}
             chartRef={chartRef}
             profitChartRef={profitChartRef}
             aspChartRef={aspChartRef}
           />
-
-          {/* <SkuAnalysisSection
-            categorizedGrowth={categorizedGrowth}
-            month1={month1}
-            year1={year1}
-            month2={month2}
-            year2={year2}
-            month2Label={month2Label}
-            skuInsights={skuInsights}
-            loadingInsight={loadingInsight}
-            analyzeSkus={analyzeSkus}
-            exportToExcel={exportToExcel}
-            getAllSkusForExport={getAllSkusForExport}
-            getAbbr={getAbbr}
-            getInsightForItem={getInsightForItem}
-            setSelectedSku={setSelectedSku}
-            setModalOpen={setModalOpen}
-            setFbType={setFbType}
-            setFbText={setFbText}
-            setFbSuccess={setFbSuccess}
-            isPreviewMode={isPreviewMode}
-          /> */}
 
           <SkuAnalysisSection
             categorizedGrowth={categorizedGrowth}
