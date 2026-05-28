@@ -71,48 +71,86 @@ def uk_sales(
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
 
-    base_parts = ["product_sales", "promotional_rebates"]
+    gross_parts = [
+        "product_sales",
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates",
+        "promotional_rebates_tax",
+    ]
 
-    # --------------------------------------------------
-    # ✅ ROBUST REFUND DETECTION (BY VALUE)
-    # --------------------------------------------------
+    tax_credit_parts = [
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates_tax",
+    ]
+
+    # Refund rows: product_sales < 0
     refund_mask = safe_num(df.get("product_sales", 0.0)) < 0
 
-    df_base   = df.loc[~refund_mask].copy()
+    df_base = df.loc[~refund_mask].copy()
     df_refund = df.loc[refund_mask].copy()
 
-    # --------------------------------------------------
-    # TOTALS (SIGN SAFE)
-    # --------------------------------------------------
-    total_sales = safe_num(df_base.get("product_sales", 0.0)).sum()
-    total_promos = safe_num(df_base.get("promotional_rebates", 0.0)).abs().sum()
-    total_refund = safe_num(df_refund.get("product_sales", 0.0)).abs().sum()
-
-    total = float(
-        total_sales
-        - total_promos
-        - (total_refund)   # 🔥 DOUBLE REFUND (INTENTIONAL)
+    # ---------- TOTAL ----------
+    gross_total = float(
+        sum(safe_num(df_base.get(c, 0.0)).sum() for c in gross_parts)
     )
 
-    # --------------------------------------------------
-    # PER-SKU BASE
-    # --------------------------------------------------
+    refund_total = float(
+        safe_num(df_refund.get("product_sales", 0.0)).abs().sum()
+    )
+
+    taxes_and_credits_total = float(
+        safe_num(df_base.get("product_sales_tax", 0.0)).sum()
+        + safe_num(df_base.get("postage_credits", 0.0)).sum()
+        + safe_num(df_base.get("gift_wrap_credits", 0.0)).sum()
+        + safe_num(df_base.get("shipping_credits_tax", 0.0)).sum()
+        + safe_num(df_base.get("giftwrap_credits_tax", 0.0)).sum()
+        - safe_num(df_base.get("promotional_rebates_tax", 0.0)).abs().sum()
+    )
+
+    total = gross_total - refund_total - taxes_and_credits_total
+
+    # ---------- PER SKU ----------
     sku_df = df_base.copy()
     if "sku" in sku_df.columns:
         sku_df = sku_df.loc[sku_mask(sku_df)]
 
-    by = agg_by(sku_df, "sku", base_parts)
+    by = agg_by(sku_df, "sku", gross_parts)
 
     if by.empty:
         return (
             0.0,
-            pd.DataFrame(columns=["sku", "__metric__", *base_parts, "refund_sales"]),
-            base_parts + ["refund_sales"],
+            pd.DataFrame(columns=["sku", "__metric__", "gross_sales", "refund_sales", "taxes_and_credits"]),
+            ["gross_sales", "refund_sales", "taxes_and_credits"],
         )
 
-    # --------------------------------------------------
-    # REFUND SALES (SKU-WISE)
-    # --------------------------------------------------
+    by["gross_sales"] = (
+        safe_num(by["product_sales"])
+        + safe_num(by["product_sales_tax"])
+        + safe_num(by["postage_credits"])
+        + safe_num(by["gift_wrap_credits"])
+        + safe_num(by["shipping_credits_tax"])
+        + safe_num(by["giftwrap_credits_tax"])
+        + safe_num(by["promotional_rebates"])
+        + safe_num(by["promotional_rebates_tax"])
+    )
+
+    by["taxes_and_credits"] = (
+        safe_num(by["product_sales_tax"])
+        + safe_num(by["postage_credits"])
+        + safe_num(by["gift_wrap_credits"])
+        + safe_num(by["shipping_credits_tax"])
+        + safe_num(by["giftwrap_credits_tax"])
+        - safe_num(by["promotional_rebates_tax"]).abs()
+    )
+
     refund_by = pd.DataFrame(columns=["sku", "refund_sales"])
     if not df_refund.empty and "sku" in df_refund.columns:
         refund_by = (
@@ -125,20 +163,17 @@ def uk_sales(
     by = by.merge(refund_by, on="sku", how="left")
     by["refund_sales"] = safe_num(by.get("refund_sales", 0.0)).abs()
 
-    # --------------------------------------------------
-    # FINAL SKU METRIC (FINAL, CORRECT)
-    # --------------------------------------------------
     by["__metric__"] = (
-        safe_num(by["product_sales"])
-        - safe_num(by["promotional_rebates"]).abs()
+        by["gross_sales"]
         - by["refund_sales"]
+        - by["taxes_and_credits"]
     )
 
     per_sku = by[
-        ["sku", "__metric__", "product_sales", "promotional_rebates", "refund_sales"]
+        ["sku", "__metric__", "gross_sales", "refund_sales", "taxes_and_credits"]
     ]
 
-    return total, per_sku, ["product_sales", "promotional_rebates", "refund_sales"]
+    return total, per_sku, ["gross_sales", "refund_sales", "taxes_and_credits"]
 
 
 def uk_tax(
