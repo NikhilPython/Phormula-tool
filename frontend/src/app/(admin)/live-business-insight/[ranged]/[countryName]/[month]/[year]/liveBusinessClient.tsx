@@ -602,11 +602,31 @@ export default function LiveBusinessClient({
   const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
 
-  const splitIntoPoints = (para: string) =>
-    (para || "")
-      .split(/(?<=[.!?])\s+(?=[A-Z])/g)
-      .map((s) => s.trim())
+
+  const splitIntoPoints = (value: string): string[] => {
+    if (!value) return [];
+
+    return String(value)
+      // normalize escaped newlines if backend sends "\n" as text
+      .replace(/\\n/g, "\n")
+
+      // make inline bullets start on a new line
+      .replace(/\s+-\s+/g, "\n- ")
+      .replace(/\s+•\s+/g, "\n• ")
+
+      // split bullet/newline format
+      .split(/\r?\n+/)
+
+      // fallback: split long paragraph into journey-style sentences
+      .flatMap((line) =>
+        line.split(
+          /(?<=[.!?])\s+(?=(?:From|Between|In|This|ASP|Units|CM1|Net|Inventory|Long-term)\b)/g
+        )
+      )
+
+      .map(cleanPoint)
       .filter(Boolean);
+  };
 
   const extractSections = (text: string) => {
     const raw = (text || "").trim();
@@ -750,18 +770,35 @@ export default function LiveBusinessClient({
     return m;
   };
 
+  const cleanPoint = (value: string) =>
+    value
+      .replace(/^\s*[-•]\s*/, "")
+      .replace(/^\s*\d+\.\s*-\s*/, "")
+      .replace(/^\s*\d+\.\s*/, "")
+      .trim();
+
   const toPoints = (value: unknown): string[] => {
     if (!value) return [];
 
-    if (Array.isArray(value)) {
-      return value
-        .map((v) => String(v || "").trim())
-        .filter(Boolean);
-    }
+    const rawItems = Array.isArray(value) ? value : [String(value)];
 
-    return String(value)
-      .split(/\r?\n|(?<=\.)\s+/)
-      .map((v) => v.trim())
+    return rawItems
+      .flatMap((item) =>
+        String(item || "")
+          // split real bullet/newline format first
+          .split(/\r?\n+/)
+          .flatMap((line) =>
+            line
+              // split when multiple "- ..." bullets are inside one string
+              .split(/\s+(?=[-•]\s+)/g)
+          )
+          .flatMap((line) =>
+            line
+              // fallback: split long paragraph into sentences
+              .split(/(?<=[.!?])\s+(?=(?:From|Between|In|This|Long-term|ASP|Units|CM1|Net)\b)/g)
+          )
+      )
+      .map(cleanPoint)
       .filter(Boolean);
   };
 
