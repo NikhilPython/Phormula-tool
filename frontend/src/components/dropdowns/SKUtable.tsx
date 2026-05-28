@@ -1353,11 +1353,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
                   const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
-                  return (
-                    (!showAllRows && (name === "others" || sku === "others")) ||
-                    name === "total" ||
-                    sku === "total"
-                  );
+                  return name === "total" || sku === "total";
                 }}
                 layout={[
                   { type: "group", id: "units_breakdown" },

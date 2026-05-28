@@ -259,6 +259,18 @@ export default function GroupedCollapsibleTable<RowT>({
     return [...sorted, ...pinnedRows];
   }, [rows, sortConfig, getSortValue, isTotalRow, onSortChange]);
 
+  const scrollLimit = 15;
+
+  const bodyRows = useMemo(() => {
+    return sortedRows.filter((row) => !isTotalRow?.(row));
+  }, [sortedRows, isTotalRow]);
+
+  const pinnedRows = useMemo(() => {
+    return sortedRows.filter((row) => isTotalRow?.(row));
+  }, [sortedRows, isTotalRow]);
+
+  const shouldScrollBody = bodyRows.length > scrollLimit;
+
   /* ---------------- Maps ---------------- */
 
   const groupMap = useMemo(() => {
@@ -573,24 +585,65 @@ export default function GroupedCollapsibleTable<RowT>({
           </tr>
         )}
 
-        {sortedRows.map((row, idx) => (
-          <tr key={getRowKey?.(row, idx) ?? idx} className={getRowClassName?.(row, idx)}>
-            {visibleLeafCols.map((c) => (
-              <td
-                key={c.key}
-                className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
-              >
+        <tr>
+          <td colSpan={visibleLeafCols.length} className="border-0 p-0">
+            <div className={shouldScrollBody ? "max-h-[675px] overflow-y-auto" : ""}>
+              <table className={tableClassName}>
+                <colgroup>
+                  {visibleLeafCols.map((c) => (
+                    <col
+                      key={c.key}
+                      style={c.width ? { width: c.width } : undefined}
+                    />
+                  ))}
+                </colgroup>
 
-                {getValue(row, c.key, idx)}
-              </td>
-            ))}
-          </tr>
-        ))}
+                <tbody>
+                  {bodyRows.map((row, idx) => (
+                    <tr
+                      key={getRowKey?.(row, idx) ?? idx}
+                      className={getRowClassName?.(row, idx)}
+                    >
+                      {visibleLeafCols.map((c) => (
+                        <td
+                          key={c.key}
+                          className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
+                        >
+                          {getValue(row, c.key, idx)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
       </tbody>
 
 
       {summary?.enabled !== false && (summary?.sections?.length || summary?.fixedRows?.length) ? (
         <tfoot>
+          {pinnedRows.map((row, idx) => {
+            const rowIndex = bodyRows.length + idx;
+
+            return (
+              <tr
+                key={getRowKey?.(row, rowIndex) ?? `pinned-${idx}`}
+                className={getRowClassName?.(row, rowIndex)}
+              >
+                {visibleLeafCols.map((c) => (
+                  <td
+                    key={c.key}
+                    className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
+                  >
+                    {getValue(row, c.key, rowIndex)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+          
           {/* ---------- Collapsible Sections ---------- */}
           {(summary.sections || []).map((sec) => {
             const isCollapsed = summaryCollapsed[sec.id] ?? true;
