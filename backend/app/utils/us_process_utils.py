@@ -1865,145 +1865,93 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["selling_fees"] = safe_series(sku_grouped, "selling_fees")
         sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
 
-        sku_grouped["Net Sales"] = 0
-        sku_grouped["asp"] = 0
-        sku_grouped["promotional_rebates_percentage"] = 0
-
-        sku_grouped["rembursement_fee"] = 0
-        sku_grouped["shipment_fees"] = 0
-        sku_grouped["visible_ads"] = 0
-        sku_grouped["dealsvouchar_ads"] = 0
-        sku_grouped["advertising_total"] = 0
-        sku_grouped["platformfeenew"] = 0
-        sku_grouped["platform_fee_inventory_storage"] = 0
-        sku_grouped["platform_fee"] = 0
-        sku_grouped["acos"] = 0
-
-        sku_grouped["net_taxes"] = (
-            safe_series(sku_grouped, "marketplace_facilitator_tax")
-            + safe_series(sku_grouped, "shipping_credits_tax")
-        )
-
-        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(
-            lambda x: 0 if abs(x) < 1e-10 else x
-        )
-
-        credit_keywords = [
-            "FBA Inventory Reimbursement - Customer Return",
-            "FBA Inventory Reimbursement - Customer Service Issue",
-            "FBA Inventory Reimbursement - General Adjustment",
-            "FBA Inventory Reimbursement - Damaged:Warehouse",
-            "FBA Inventory Reimbursement - Lost:Warehouse"
-        ]
-        credit_mask = df["desc_norm"].str.contains("|".join(credit_keywords), case=False, na=False)
-        sku_net_credits = (
-            df.loc[credit_mask]
-            .groupby("sku")["total"]
-            .sum()
-            .abs()
-            .reset_index()
-            .rename(columns={"total": "net_credits"})
-        )
-
-        sku_grouped = sku_grouped.merge(sku_net_credits, on="sku", how="left")
-        sku_grouped["net_credits"] = (
-            safe_series(sku_grouped, "net_credits")
-            + safe_series(sku_grouped, "gift_wrap_credits")
-            + safe_series(sku_grouped, "shipping_credits")
-        )
-
-        # ---------- refund sales ----------
-        refund_sales_df = (
-            df.loc[
-                (df["type_norm"] == "refund")
-                & df["sku"].notna()
-                & (df["sku"].astype(str).str.strip() != "")
-                & (df["sku"].astype(str).str.strip() != "0")
-                & (df["sku"].astype(str).str.strip().str.lower() != "none"),
-                ["sku", "product_sales"]
-            ]
-            .copy()
-        )
-
-        refund_sales_df["sku"] = refund_sales_df["sku"].astype(str).str.strip()
-
-        refund_sales_df["product_sales"] = pd.to_numeric(
-            refund_sales_df["product_sales"],
-            errors="coerce"
-        ).fillna(0)
-
-        refund_sales_df = (
-            refund_sales_df
-            .groupby("sku", as_index=False)["product_sales"]
-            .sum()
-            .rename(columns={"product_sales": "refund_sales"})
-        )
-
-        refund_sales_df["refund_sales"] = refund_sales_df["refund_sales"].abs()
-
+        # ---------- shared formula engine: sales / gross sales / tax / credits / amazon fee ----------
+        # Keep yearly and quarterly using the same helpers as monthly.
+        # Because formulas_utils.us_* now calls the same UK helper logic, these columns stay aligned:
+        #   Net Sales, gross_sales, refund_sales, tex_and_credits,
+        #   net_taxes, net_credits, amazon_fee.
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
 
-        sku_grouped = sku_grouped.merge(
-            refund_sales_df,
-            on="sku",
-            how="left"
-        )
+        def merge_formula_metric(metric_df, value_col, out_col, component_map=None):
+            nonlocal sku_grouped
+            if component_map is None:
+                component_map = {}
 
-        sku_grouped["refund_sales"] = pd.to_numeric(
-            sku_grouped["refund_sales"],
-            errors="coerce"
-        ).fillna(0)
+            if (
+                metric_df is None
+                or metric_df.empty
+                or "sku" not in metric_df.columns
+                or value_col not in metric_df.columns
+            ):
+                if out_col not in sku_grouped.columns:
+                    sku_grouped[out_col] = 0.0
+                for dest in component_map.values():
+                    if dest not in sku_grouped.columns:
+                        sku_grouped[dest] = 0.0
+                return
 
-        sku_grouped["gross_sales"] = (
-            pd.to_numeric(sku_grouped["product_sales"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["shipping_credits_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0.0)
-        )
+            cols = ["sku", value_col] + [c for c in component_map.keys() if c in metric_df.columns]
+            tmp = metric_df[cols].copy()
+            tmp["sku"] = tmp["sku"].astype(str).str.strip()
+            tmp = tmp.rename(columns={value_col: out_col, **component_map})
 
-        sku_grouped["tex_and_credits"] = (
-            safe_series(sku_grouped, "product_sales_tax")
-            + safe_series(sku_grouped, "postage_credits")
-            + safe_series(sku_grouped, "gift_wrap_credits")
-            + safe_series(sku_grouped, "giftwrap_credits_tax")
-            + safe_series(sku_grouped, "promotional_rebates_tax")
-        )
-        sku_grouped["Net Sales"] = (
-            safe_series(sku_grouped, "gross_sales")
-            - safe_series(sku_grouped, "refund_sales")
-            - safe_series(sku_grouped, "tex_and_credits")
-        )
-        sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
-            0
-        )
-        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+            for c in [out_col, *component_map.values()]:
+                if c in sku_grouped.columns:
+                    sku_grouped = sku_grouped.drop(columns=[c])
 
-        sku_grouped["promotional_rebates_percentage"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
-            0
+            sku_grouped = sku_grouped.merge(tmp, on="sku", how="left")
+            for c in [out_col, *component_map.values()]:
+                sku_grouped[c] = pd.to_numeric(sku_grouped.get(c, 0.0), errors="coerce").fillna(0.0)
+
+        sales_total, sales_by_sku, _ = us_sales(df, country=country)
+        gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
+        tax_total, tax_by_sku, _ = us_tax(df, country=country)
+        credits_total, credits_by_sku, _ = us_credits(df, country=country)
+        fee_total, fees_by_sku, _ = us_amazon_fee(df, country=country)
+
+        merge_formula_metric(
+            sales_by_sku,
+            "__metric__",
+            "Net Sales",
+            {
+                "gross_sales": "gross_sales",
+                "refund_sales": "refund_sales",
+                "taxes_and_credits": "tex_and_credits",
+            },
         )
-        sku_grouped["promotional_rebates_percentage"] = (
-            sku_grouped["promotional_rebates_percentage"]
-            .replace([np.inf, -np.inf], 0)
-            .fillna(0)
-        )
+        merge_formula_metric(tax_by_sku, "__metric__", "net_taxes")
+        merge_formula_metric(credits_by_sku, "__metric__", "net_credits")
+        merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
+
+        for col in [
+            "Net Sales", "gross_sales", "refund_sales", "tex_and_credits",
+            "net_taxes", "net_credits", "amazon_fee",
+        ]:
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = 0.0
+            sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
         sku_grouped["other_transaction_fees"] = (
             sku_grouped["net_taxes"].abs()
             - sku_grouped["net_credits"]
         )
 
-        sku_grouped["amazon_fee"] = (
-            safe_series(sku_grouped, "fba_fees").abs()
-            + safe_series(sku_grouped, "selling_fees").abs()
-            - safe_series(sku_grouped, "other").abs()
+        sku_grouped["asp"] = np.where(
+            sku_grouped["quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            0,
+        )
+        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+
+        sku_grouped["promotional_rebates_percentage"] = np.where(
+            sku_grouped["Net Sales"] != 0,
+            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
+            0,
+        )
+        sku_grouped["promotional_rebates_percentage"] = (
+            sku_grouped["promotional_rebates_percentage"]
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
         )
 
         sku_grouped["price_in_gbp"] = safe_series(sku_grouped, "price_in_gbp")
@@ -2013,7 +1961,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             safe_series(sku_grouped, "Net Sales")
             - safe_series(sku_grouped, "cost_of_unit_sold").abs()
             - safe_series(sku_grouped, "amazon_fee").abs()
-            # - safe_series(sku_grouped, "net_taxes").abs()
+            - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
         )
 
@@ -2602,146 +2550,93 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             + safe_series(sku_grouped, "refund_selling_fees").abs()
         )
 
-        sku_grouped["Net Sales"] = 0
-        sku_grouped["asp"] = 0
-        sku_grouped["promotional_rebates_percentage"] = 0
-
-        sku_grouped["rembursement_fee"] = 0
-        sku_grouped["shipment_fees"] = 0
-        sku_grouped["visible_ads"] = 0
-        sku_grouped["dealsvouchar_ads"] = 0
-        sku_grouped["advertising_total"] = 0
-        sku_grouped["platformfeenew"] = 0
-        sku_grouped["platform_fee_inventory_storage"] = 0
-        sku_grouped["platform_fee"] = 0
-        sku_grouped["acos"] = 0
-
-        sku_grouped["net_taxes"] = (
-            safe_series(sku_grouped, "marketplace_facilitator_tax")
-            + safe_series(sku_grouped, "shipping_credits_tax")
-        )
-
-        sku_grouped["net_taxes"] = sku_grouped["net_taxes"].apply(
-            lambda x: 0 if abs(x) < 1e-10 else x
-        )
-
-        credit_keywords = [
-            "FBA Inventory Reimbursement - Customer Return",
-            "FBA Inventory Reimbursement - Customer Service Issue",
-            "FBA Inventory Reimbursement - General Adjustment",
-            "FBA Inventory Reimbursement - Damaged:Warehouse",
-            "FBA Inventory Reimbursement - Lost:Warehouse",
-        ]
-        credit_mask = df["desc_norm"].str.contains("|".join(credit_keywords), case=False, na=False)
-        sku_net_credits = (
-            df.loc[credit_mask]
-            .groupby("sku")["total"]
-            .sum()
-            .abs()
-            .reset_index()
-            .rename(columns={"total": "net_credits"})
-        )
-
-        sku_grouped = sku_grouped.merge(sku_net_credits, on="sku", how="left")
-        sku_grouped["net_credits"] = (
-            safe_series(sku_grouped, "net_credits")
-            + safe_series(sku_grouped, "gift_wrap_credits")
-            + safe_series(sku_grouped, "shipping_credits")
-        )
-
-        # ---------- refund sales ----------
-        refund_sales_df = (
-            df.loc[
-                (df["type_norm"] == "refund")
-                & df["sku"].notna()
-                & (df["sku"].astype(str).str.strip() != "")
-                & (df["sku"].astype(str).str.strip() != "0")
-                & (df["sku"].astype(str).str.strip().str.lower() != "none"),
-                ["sku", "product_sales"]
-            ]
-            .copy()
-        )
-
-        refund_sales_df["sku"] = refund_sales_df["sku"].astype(str).str.strip()
-
-        refund_sales_df["product_sales"] = pd.to_numeric(
-            refund_sales_df["product_sales"],
-            errors="coerce"
-        ).fillna(0)
-
-        refund_sales_df = (
-            refund_sales_df
-            .groupby("sku", as_index=False)["product_sales"]
-            .sum()
-            .rename(columns={"product_sales": "refund_sales"})
-        )
-
-        refund_sales_df["refund_sales"] = refund_sales_df["refund_sales"].abs()
-
+        # ---------- shared formula engine: sales / gross sales / tax / credits / amazon fee ----------
+        # Keep yearly and quarterly using the same helpers as monthly.
+        # Because formulas_utils.us_* now calls the same UK helper logic, these columns stay aligned:
+        #   Net Sales, gross_sales, refund_sales, tex_and_credits,
+        #   net_taxes, net_credits, amazon_fee.
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
 
-        sku_grouped = sku_grouped.merge(
-            refund_sales_df,
-            on="sku",
-            how="left"
-        )
+        def merge_formula_metric(metric_df, value_col, out_col, component_map=None):
+            nonlocal sku_grouped
+            if component_map is None:
+                component_map = {}
 
-        sku_grouped["refund_sales"] = pd.to_numeric(
-            sku_grouped["refund_sales"],
-            errors="coerce"
-        ).fillna(0)
+            if (
+                metric_df is None
+                or metric_df.empty
+                or "sku" not in metric_df.columns
+                or value_col not in metric_df.columns
+            ):
+                if out_col not in sku_grouped.columns:
+                    sku_grouped[out_col] = 0.0
+                for dest in component_map.values():
+                    if dest not in sku_grouped.columns:
+                        sku_grouped[dest] = 0.0
+                return
 
-        sku_grouped["gross_sales"] = (
-            pd.to_numeric(sku_grouped["product_sales"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["product_sales_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["postage_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["gift_wrap_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["shipping_credits_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["giftwrap_credits_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["promotional_rebates_tax"], errors="coerce").fillna(0.0)
-        )
+            cols = ["sku", value_col] + [c for c in component_map.keys() if c in metric_df.columns]
+            tmp = metric_df[cols].copy()
+            tmp["sku"] = tmp["sku"].astype(str).str.strip()
+            tmp = tmp.rename(columns={value_col: out_col, **component_map})
 
-        sku_grouped["tex_and_credits"] = (
-            safe_series(sku_grouped, "product_sales_tax")
-            + safe_series(sku_grouped, "postage_credits")
-            + safe_series(sku_grouped, "gift_wrap_credits")
-            + safe_series(sku_grouped, "giftwrap_credits_tax")
-            + safe_series(sku_grouped, "promotional_rebates_tax")
-        )
+            for c in [out_col, *component_map.values()]:
+                if c in sku_grouped.columns:
+                    sku_grouped = sku_grouped.drop(columns=[c])
 
-        sku_grouped["Net Sales"] = (
-            safe_series(sku_grouped, "gross_sales")
-            - safe_series(sku_grouped, "refund_sales")
-            - safe_series(sku_grouped, "tex_and_credits")
-        )
-        sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
-            0
-        )
-        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+            sku_grouped = sku_grouped.merge(tmp, on="sku", how="left")
+            for c in [out_col, *component_map.values()]:
+                sku_grouped[c] = pd.to_numeric(sku_grouped.get(c, 0.0), errors="coerce").fillna(0.0)
 
-        sku_grouped["promotional_rebates_percentage"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
-            0
+        sales_total, sales_by_sku, _ = us_sales(df, country=country)
+        gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
+        tax_total, tax_by_sku, _ = us_tax(df, country=country)
+        credits_total, credits_by_sku, _ = us_credits(df, country=country)
+        fee_total, fees_by_sku, _ = us_amazon_fee(df, country=country)
+
+        merge_formula_metric(
+            sales_by_sku,
+            "__metric__",
+            "Net Sales",
+            {
+                "gross_sales": "gross_sales",
+                "refund_sales": "refund_sales",
+                "taxes_and_credits": "tex_and_credits",
+            },
         )
-        sku_grouped["promotional_rebates_percentage"] = (
-            sku_grouped["promotional_rebates_percentage"]
-            .replace([np.inf, -np.inf], 0)
-            .fillna(0)
-        )
+        merge_formula_metric(tax_by_sku, "__metric__", "net_taxes")
+        merge_formula_metric(credits_by_sku, "__metric__", "net_credits")
+        merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
+
+        for col in [
+            "Net Sales", "gross_sales", "refund_sales", "tex_and_credits",
+            "net_taxes", "net_credits", "amazon_fee",
+        ]:
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = 0.0
+            sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
         sku_grouped["other_transaction_fees"] = (
             sku_grouped["net_taxes"].abs()
             - sku_grouped["net_credits"]
         )
 
-        sku_grouped["amazon_fee"] = (
-            safe_series(sku_grouped, "fba_fees").abs()
-            + safe_series(sku_grouped, "selling_fees").abs()
-            - safe_series(sku_grouped, "other").abs()
+        sku_grouped["asp"] = np.where(
+            sku_grouped["quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            0,
+        )
+        sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
+
+        sku_grouped["promotional_rebates_percentage"] = np.where(
+            sku_grouped["Net Sales"] != 0,
+            (safe_series(sku_grouped, "promotional_rebates") / sku_grouped["Net Sales"]) * 100,
+            0,
+        )
+        sku_grouped["promotional_rebates_percentage"] = (
+            sku_grouped["promotional_rebates_percentage"]
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
         )
 
         sku_grouped["price_in_gbp"] = safe_series(sku_grouped, "price_in_gbp")
@@ -2751,7 +2646,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             safe_series(sku_grouped, "Net Sales")
             - safe_series(sku_grouped, "cost_of_unit_sold").abs()
             - safe_series(sku_grouped, "amazon_fee").abs()
-            # - safe_series(sku_grouped, "net_taxes").abs()
+            - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
         )
 
