@@ -1050,8 +1050,61 @@ def live_mtd_vs_previous():
                 "code": "USD",
             }
 
+            # # -------------------------------------------------
+            # # GLOBAL: Portfolio inventory blocks by available country only
+            # # -------------------------------------------------
+            # available_countries = (
+            #     current_global_payload.get("available_countries")
+            #     or previous_global_payload.get("available_countries")
+            #     or []
+            # )
+
+            # try:
+            #     inv_df = fetch_inventory_aged_by_user(user_id, country)
+            #     portfolio_inventory_alerts_uk = {}
+            #     portfolio_inventory_alerts_us = {}
+
+            #     portfolio_inventory_block_uk = ""
+            #     portfolio_inventory_block_us = ""
+
+            #     if "uk" in available_countries:
+            #         portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
+            #             inv_df,
+            #             user_id=user_id,
+            #             country="uk",
+            #         )
+
+            #         portfolio_inventory_block_uk = render_portfolio_inventory_block(
+            #             inventory_alerts=portfolio_inventory_alerts_uk,
+            #             currency_symbol="£",
+            #         )
+
+            #     if "us" in available_countries:
+            #         portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
+            #             inv_df,
+            #             user_id=user_id,
+            #             country="us",
+            #         )
+
+            #         portfolio_inventory_block_us = render_portfolio_inventory_block(
+            #             inventory_alerts=portfolio_inventory_alerts_us,
+            #             currency_symbol="$",
+            #         )
+
+            # except Exception as e:
+            #     print("[WARN] Failed to build global portfolio inventory blocks:", e)
+
+            #     portfolio_inventory_alerts_uk = {}
+            #     portfolio_inventory_alerts_us = {}
+
+            #     portfolio_inventory_block_uk = ""
+            #     portfolio_inventory_block_us = ""
+
             # -------------------------------------------------
             # GLOBAL: Portfolio inventory blocks by available country only
+            # Keep response structure same:
+            # portfolio_inventory_block = {"uk": "...", "us": "..."}
+            # portfolio_inventory_alerts = {"uk": {...}, "us": {...}}
             # -------------------------------------------------
             available_countries = (
                 current_global_payload.get("available_countries")
@@ -1060,7 +1113,6 @@ def live_mtd_vs_previous():
             )
 
             try:
-                inv_df = fetch_inventory_aged_by_user(user_id, country)
                 portfolio_inventory_alerts_uk = {}
                 portfolio_inventory_alerts_us = {}
 
@@ -1068,8 +1120,10 @@ def live_mtd_vs_previous():
                 portfolio_inventory_block_us = ""
 
                 if "uk" in available_countries:
+                    inv_df_uk = fetch_inventory_aged_by_user(user_id, "uk")
+
                     portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
-                        inv_df,
+                        inv_df_uk,
                         user_id=user_id,
                         country="uk",
                     )
@@ -1080,8 +1134,10 @@ def live_mtd_vs_previous():
                     )
 
                 if "us" in available_countries:
+                    inv_df_us = fetch_inventory_aged_by_user(user_id, "us")
+
                     portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
-                        inv_df,
+                        inv_df_us,
                         user_id=user_id,
                         country="us",
                     )
@@ -1123,7 +1179,7 @@ def live_mtd_vs_previous():
                 },
                 prev_fee_totals=previous_global_payload.get("derived_totals_global", {}),
                 curr_fee_totals=current_global_payload.get("derived_totals_global", {}),
-                estimated_storage_cost_next_month=fetch_estimated_storage_cost_next_month(user_id),
+                estimated_storage_cost_next_month=fetch_estimated_storage_cost_next_month(user_id, country),
                 currency=currency,
                 user_objective=user_objective,
                 movement_context=movement_context,
