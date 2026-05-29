@@ -3137,14 +3137,28 @@ export default function DashboardPage() {
                     const alignedFromTopLevel: BiAlignedTotals = {
                         total_current_advertising: (json as any)?.total_current_advertising,
                         total_previous_advertising: (json as any)?.total_previous_advertising,
+
                         total_current_net_sales: (json as any)?.total_current_net_sales,
                         total_previous_net_sales: (json as any)?.total_previous_net_sales,
                         total_previous_net_sales_full_month:
                             (json as any)?.total_previous_net_sales_full_month,
+
                         total_current_platform_fees: (json as any)?.total_current_platform_fees,
                         total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
+
                         total_current_profit: (json as any)?.total_current_profit,
                         total_previous_profit: (json as any)?.total_previous_profit,
+
+                        // ✅ add these
+                        current_cm2_profit: (json as any)?.current_cm2_profit,
+                        previous_cm2_profit: (json as any)?.previous_cm2_profit,
+
+                        total_current_profit_cm2: (json as any)?.total_current_profit_cm2,
+                        total_previous_profit_cm2: (json as any)?.total_previous_profit_cm2,
+
+                        total_current_profit_percentage: (json as any)?.total_current_profit_percentage,
+                        total_previous_profit_percentage: (json as any)?.total_previous_profit_percentage,
+
                         total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
                         total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
                     };
@@ -4368,6 +4382,57 @@ export default function DashboardPage() {
     const useBiCm2 = showLiveBI && rangeActive;
     const cm2Ready = useBiCm2 && !biLoading && !!biAlignedTotals;
     const biCardsReady = rangeActive && !biLoading && !!biAlignedTotals;
+
+    const cachedRangeTotals = useMemo(() => {
+        const currAll = biDailySeriesHome?.current_mtd || [];
+        const prevAll = biDailySeriesHome?.previous || [];
+
+        const currPts = sliceByDayRange(currAll, selectedStartDay, selectedEndDay);
+        const prevPts = sliceByDayRange(prevAll, selectedStartDay, selectedEndDay);
+
+        const sum = (arr: DailyPoint[], key: keyof DailyPoint) =>
+            arr.reduce((acc, row) => acc + Number(row?.[key] ?? 0), 0);
+
+        const currentProfit = sum(currPts, "profit");
+        const previousProfit = sum(prevPts, "profit");
+
+        const currentAds = sum(currPts as any[], "advertising" as keyof DailyPoint);
+        const previousAds = sum(prevPts as any[], "advertising" as keyof DailyPoint);
+
+        const currentPlatformFees = sum(currPts as any[], "platform_fee" as keyof DailyPoint);
+        const previousPlatformFees = sum(prevPts as any[], "platform_fee" as keyof DailyPoint);
+
+        const currentNetSales = sum(currPts, "net_sales");
+        const previousNetSales = sum(prevPts, "net_sales");
+
+        const currentCm2Profit = currentProfit - currentAds - currentPlatformFees;
+        const previousCm2Profit = previousProfit - previousAds - previousPlatformFees;
+
+        const currentCm2Pct =
+            currentNetSales > 0 ? (currentCm2Profit / currentNetSales) * 100 : 0;
+
+        const previousCm2Pct =
+            previousNetSales > 0 ? (previousCm2Profit / previousNetSales) * 100 : 0;
+
+        return {
+            currentProfit,
+            previousProfit,
+            currentAds,
+            previousAds,
+            currentPlatformFees,
+            previousPlatformFees,
+            currentNetSales,
+            previousNetSales,
+            currentCm2Profit,
+            previousCm2Profit,
+            currentCm2Pct,
+            previousCm2Pct,
+        };
+    }, [
+        biDailySeriesHome,
+        selectedStartDay,
+        selectedEndDay,
+    ]);
 
     const biAlignedTotalsHome = useMemo(() => {
         if (!biCardsReady || !biAlignedTotals) return null;
@@ -8047,52 +8112,49 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.current
         : rangeActive
-            ? convertToDisplayCurrency(
-                biAlignedTotals?.total_current_advertising ?? 0,
-                biSourceCurrency
-            )
+            ? cachedRangeTotals.currentAds
             : adsSpendTotal;
 
     const mtdCostOfAdsPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.previous
         : rangeActive
-            ? convertToDisplayCurrency(
-                biAlignedTotals?.total_previous_advertising ?? 0,
-                biSourceCurrency
-            )
+            ? cachedRangeTotals.previousAds
             : amazonPrevAdsDisp;
 
     const mtdCostOfAdsDelta = shouldShowDummyUi
         ? dummyStatData.costOfAds.deltaPct
-        : safeDeltaPct(mtdCostOfAdsCurrentDisplay, mtdCostOfAdsPreviousDisplay);
+        : safeDeltaPct(
+            mtdCostOfAdsCurrentDisplay,
+            mtdCostOfAdsPreviousDisplay
+        );
 
     const mtdTacosCurrent = shouldShowDummyUi
         ? dummyStatData.tacos.current
-        : (() => {
-            const ads = rangeActive
-                ? Number(biAlignedTotals?.total_current_advertising ?? 0)
-                : Number(adsSpendTotal ?? 0);
-
-            const sales = rangeActive
-                ? Number(biAlignedTotals?.total_current_net_sales ?? 0)
-                : Number(plSummaryTotals.net_sales ?? 0);
-
-            return sales > 0 ? (ads / sales) * 100 : 0;
-        })();
+        : rangeActive
+            ? (
+                cachedRangeTotals.currentNetSales > 0
+                    ? (cachedRangeTotals.currentAds / cachedRangeTotals.currentNetSales) * 100
+                    : 0
+            )
+            : (
+                Number(plSummaryTotals.net_sales ?? 0) > 0
+                    ? (Number(adsSpendTotal ?? 0) / Number(plSummaryTotals.net_sales ?? 0)) * 100
+                    : 0
+            );
 
     const mtdTacosPrevious = shouldShowDummyUi
         ? dummyStatData.tacos.previous
-        : (() => {
-            const ads = rangeActive
-                ? Number(biAlignedTotals?.total_previous_advertising ?? 0)
-                : Number(amazonPrevAdsDisp ?? 0);
-
-            const sales = rangeActive
-                ? Number(biAlignedTotals?.total_previous_net_sales ?? 0)
-                : Number(prev.netSales ?? 0);
-
-            return sales > 0 ? (ads / sales) * 100 : 0;
-        })();
+        : rangeActive
+            ? (
+                cachedRangeTotals.previousNetSales > 0
+                    ? (cachedRangeTotals.previousAds / cachedRangeTotals.previousNetSales) * 100
+                    : 0
+            )
+            : (
+                Number(prev.netSales ?? 0) > 0
+                    ? (Number(amazonPrevAdsDisp ?? 0) / Number(prev.netSales ?? 0)) * 100
+                    : 0
+            );
 
     const mtdTacosDelta = shouldShowDummyUi
         ? dummyStatData.tacos.deltaPct
@@ -9123,46 +9185,51 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 : 0)
             : Number(prev?.cm2Profit ?? 0);
 
+    const rangeCm2ProfitCurrent = cachedRangeTotals.currentCm2Profit;
 
+    const rangeCm2ProfitPrevious = cachedRangeTotals.previousCm2Profit;
+
+    const rangeCm2ProfitPctCurrent = cachedRangeTotals.currentCm2Pct;
+
+    const rangeCm2ProfitPctPrevious = cachedRangeTotals.previousCm2Pct;
 
     const mtdCm2ProfitCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
         : rangeActive
-            ? Number(biCardKpis.curr.cm2Profit ?? 0)
+            ? rangeCm2ProfitCurrent
             : totalRowCm2Profit;
 
     const mtdCm2ProfitPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.previous
         : rangeActive
-            ? Number(biCardKpis.prev.cm2Profit ?? 0)
+            ? rangeCm2ProfitPrevious
             : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
 
     const mtdCm2ProfitDelta = shouldShowDummyUi
         ? dummyStatData.cm2Profit.deltaPct
-        : rangeActive
-            ? biCardKpis.deltas.profit
-            : safeDeltaPct(
-                totalRowCm2Profit,
-                convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
-            );
+        : safeDeltaPct(
+            mtdCm2ProfitCurrentDisplay,
+            mtdCm2ProfitPreviousDisplay
+        );
 
     const mtdCm2ProfitPctCurrent = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.current
         : rangeActive
-            ? Number(biCardKpis.curr.profitPct ?? 0)
+            ? rangeCm2ProfitPctCurrent
             : totalRowCm2Margins;
 
     const mtdCm2ProfitPctPrevious = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.previous
         : rangeActive
-            ? Number(biCardKpis.prev.profitPct ?? 0)
+            ? rangeCm2ProfitPctPrevious
             : Number(prev?.profitPct ?? 0);
 
     const mtdCm2ProfitPctDelta = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.deltaPct
-        : rangeActive
-            ? biCardKpis.deltas.profitPct
-            : safeDeltaPct(totalRowCm2Margins, Number(prev?.profitPct ?? 0));
+        : safeDeltaPct(
+            mtdCm2ProfitPctCurrent,
+            mtdCm2ProfitPctPrevious
+        );
 
     const globalCm2ProfitCurrentRaw = globalUseBi
         ? (globalCm2Ready ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) : 0)
@@ -9984,18 +10051,17 @@ ${pageLoading
                                                         onSubmit={(s, e) => {
                                                             setSelectedStartDay(s);
                                                             setSelectedEndDay(e);
-
-                                                            setBiLoading(false);
-                                                            setBiStatus("ready");
                                                             setBiError(null);
                                                         }}
                                                         onClear={() => {
                                                             setSelectedStartDay(null);
                                                             setSelectedEndDay(null);
+                                                            setBiError(null);
                                                         }}
                                                         onCloseReset={() => {
                                                             setSelectedStartDay(null);
                                                             setSelectedEndDay(null);
+                                                            setBiError(null);
                                                         }}
                                                     />
                                                 </div>
