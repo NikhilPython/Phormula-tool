@@ -3601,6 +3601,25 @@ export default function LiveBusinessClient({
     return othersCard ? [...top5Cards, othersCard] : top5Cards;
   }, [recommendedActions, convertMetricValueString, displayCurrency]);
 
+  const formatUnfulfillableInventoryText = (line: string) => {
+    const raw = String(line || "").trim();
+
+    const pctMatch = raw.match(/\(([^)]+%)\)/);
+    const isAbove = raw.toLowerCase().includes("above");
+    const isBelow = raw.toLowerCase().includes("below");
+
+    if (isAbove) {
+      return `Above 1% of Total Inventory${pctMatch?.[1] ? ` (${pctMatch[1]})` : ""}`;
+    }
+
+    if (isBelow) {
+      return `Below 1% of Total Inventory${pctMatch?.[1] ? ` (${pctMatch[1]})` : ""}`;
+    }
+
+    const colonMatch = raw.match(/:\s*(.+)$/);
+    return colonMatch?.[1]?.trim() || raw;
+  };
+
   const parseGlobalInventoryItems = (inventoryText: string) => {
     const lines = String(inventoryText || "")
       .split(/\r?\n/)
@@ -3651,10 +3670,8 @@ export default function LiveBusinessClient({
       }
 
       if (/unfulfillable/i.test(clean)) {
-        const match = clean.match(/:\s*(.+)$/);
         result[currentCountry].unfulfillableInventory =
-          match?.[1]?.trim() ||
-          clean.replace(/^Unfulfillable inventory\s*/i, "").trim();
+          formatUnfulfillableInventoryText(clean);
         continue;
       }
 
@@ -3699,8 +3716,7 @@ export default function LiveBusinessClient({
       }
 
       if (/unfulfillable/i.test(line)) {
-        const match = line.match(/:\s*(.+)$/);
-        result.unfulfillableInventory = match?.[1]?.trim() || line;
+        result.unfulfillableInventory = formatUnfulfillableInventoryText(line);
         continue;
       }
 
@@ -3722,12 +3738,244 @@ export default function LiveBusinessClient({
   const getInventoryAccentClass = (country?: string) => {
     const c = String(country || "").toLowerCase();
 
-    if (c === "uk") return "border-l-[#7B9A6D]";
-    if (c === "us") return "border-l-[#3A8EA4]";
-    if (c === "ca") return "border-l-[#D97706]";
-    if (c === "india") return "border-l-[#8B5CF6]";
+    if (c === "uk") return "border-t-[#5EA68E]";
+    if (c === "us") return "border-t-[#3A8EA4]";
+    if (c === "ca") return "border-t-[#D97706]";
+    if (c === "india") return "border-t-[#8B5CF6]";
 
-    return "border-l-[#5EA68E]";
+    return "border-t-[#5EA68E]";
+  };
+
+  const splitInventoryValue = (label: string, value?: string) => {
+    const rawValue = String(value || "").trim();
+    const lowerLabel = label.toLowerCase();
+
+    if (!rawValue) {
+      return {
+        main: "—",
+        sub: "",
+      };
+    }
+
+    if (lowerLabel.includes("ageing")) {
+      const match = rawValue.match(/^(.+?)\s+across\s+(.+)$/i);
+
+      if (match) {
+        return {
+          main: match[1].trim(),
+          sub: `across ${match[2].trim()}`,
+        };
+      }
+    }
+
+    return {
+      main: rawValue,
+      sub: "",
+    };
+  };
+
+  const InventoryMetricCard = ({
+    label,
+    value,
+  }: {
+    label: string;
+    value?: string;
+  }) => {
+    const { main, sub } = splitInventoryValue(label, value);
+
+    return (
+      <div className="min-h-[72px] rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+        <div className="text-xs font-medium text-slate-500">
+          {label}
+        </div>
+
+        <div className="mt-1 flex flex-wrap items-baseline gap-1 leading-tight">
+          <span className="text-base font-bold text-slate-900">
+            {main}
+          </span>
+
+          {sub ? (
+            <span className="text-xs font-medium text-slate-500">
+              {sub}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const InventoryCard = ({
+    title,
+    countryCode,
+    rows,
+    accentClass,
+    showHeader = true,
+  }: {
+    title: string;
+    countryCode?: string;
+    rows: {
+      label: string;
+      value?: string;
+    }[];
+    accentClass: string;
+    showHeader?: boolean;
+  }) => {
+    const visibleRows = rows.filter((row) => row.value !== undefined);
+
+    if (!visibleRows.length) return null;
+
+    return (
+      <div
+        className={[
+          "w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm",
+          "border-t-4 transition hover:shadow-md",
+          accentClass,
+        ].join(" ")}
+      >
+        <div className="p-4">
+          {showHeader && (
+            <div className="mb-4 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-800">
+                {title}
+              </h3>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {visibleRows.map((item, idx) => (
+              <InventoryMetricCard
+                key={`${item.label}-${idx}`}
+                label={item.label}
+                value={item.value}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={goToInventoryReconciliation}
+            className="mt-4 inline-flex items-center text-sm font-semibold text-[#5EA68E] transition hover:text-[#4B8F7A] hover:underline"
+          >
+            View inventory reconciliation
+            <span className="ml-1">→</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const SingleCountryInventoryInsights = () => {
+    const inventory = parseSingleCountryInventoryItems(portfolioInventoryBlock);
+
+    const rows = [
+      {
+        label: "Ageing Inventory",
+        value: inventory.ageingInventory,
+      },
+      {
+        label: "High Coverage SKUs",
+        value: inventory.highCoverage,
+      },
+      {
+        label: "Unfulfillable Inventory",
+        value: inventory.unfulfillableInventory,
+      },
+      {
+        label: "Est. Storage Cost",
+        value: inventory.estimatedStorageCost,
+      },
+    ];
+
+    const hasRows = rows.some((row) => row.value !== undefined);
+    if (!hasRows) return null;
+
+    return (
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+            Inventory Insights
+          </span>
+        </div>
+
+        <InventoryCard
+          title=""
+          rows={rows}
+          showHeader={false}
+          accentClass={getInventoryAccentClass(normalizedCountry)}
+        />
+      </div>
+    );
+  };
+
+  const GlobalInventoryInsights = () => {
+    const inventory = parseGlobalInventoryItems(portfolioInventoryBlock);
+
+    const hasUkInventory = Object.values(inventory.uk).some(Boolean);
+    const hasUsInventory = Object.values(inventory.us).some(Boolean);
+
+    const hasInventory = hasUkInventory || hasUsInventory;
+    if (!hasInventory) return null;
+
+    const visibleCountryCount = Number(hasUkInventory) + Number(hasUsInventory);
+
+    const buildRows = (items: {
+      ageingInventory?: string;
+      estimatedStorageCost?: string;
+      unfulfillableInventory?: string;
+      highCoverage?: string;
+    }) => [
+        {
+          label: "Ageing Inventory",
+          value: items.ageingInventory,
+        },
+        {
+          label: "Est. Storage Cost",
+          value: items.estimatedStorageCost,
+        },
+        {
+          label: "Unfulfillable Inventory",
+          value: items.unfulfillableInventory,
+        },
+        {
+          label: "High Coverage SKUs",
+          value: items.highCoverage,
+        },
+      ];
+
+    return (
+      <div className="w-full space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+            Inventory Insights
+          </span>
+        </div>
+
+        <div
+          className={[
+            "grid grid-cols-1 gap-4",
+            visibleCountryCount > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1",
+          ].join(" ")}
+        >
+          {hasUkInventory && (
+            <InventoryCard
+              title="UK Inventory"
+              countryCode="GB"
+              rows={buildRows(inventory.uk)}
+              accentClass={getInventoryAccentClass("uk")}
+            />
+          )}
+
+          {hasUsInventory && (
+            <InventoryCard
+              title="US Inventory"
+              countryCode="US"
+              rows={buildRows(inventory.us)}
+              accentClass={getInventoryAccentClass("us")}
+            />
+          )}
+        </div>
+      </div>
+    );
   };
 
   const goToInventoryReconciliation = () => {
@@ -3745,228 +3993,6 @@ export default function LiveBusinessClient({
 
     router.push(
       `/inventory-reconciliation/${routeCountry}/${routeMonth}/${routeYear}`
-    );
-  };
-
-  const SingleCountryInventoryInsights = () => {
-    const inventory = parseSingleCountryInventoryItems(portfolioInventoryBlock);
-
-    const rows = [
-      {
-        label: "Ageing Inventory (181+ Days)",
-        value: inventory.ageingInventory,
-      },
-      {
-        label: "High Coverage SKUs",
-        value: inventory.highCoverage,
-      },
-      {
-        label: "Unfulfillable Inventory Remains Below 1%",
-        value: inventory.unfulfillableInventory,
-      },
-      {
-        label: "Est. Storage Cost Next Month",
-        value: inventory.estimatedStorageCost,
-      },
-      {
-        label: "For Detailed Inventory Insights, Please Refer To The Inventory Reconciliation Tab.",
-        value: inventory.detailNote ? "" : undefined,
-        fullWidth: true,
-      },
-    ].filter((row) => row.value !== undefined);
-
-    if (!rows.length) return null;
-
-    const countryTitle =
-      normalizedCountry === "uk"
-        ? "UK Inventory"
-        : normalizedCountry === "us"
-          ? "US Inventory"
-          : normalizedCountry === "ca"
-            ? "CA Inventory"
-            : `${titleCountry} Inventory`;
-
-    return (
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-            Inventory Insights
-          </span>
-        </div>
-
-        <div
-          className={[
-            "w-full rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4",
-            getInventoryAccentClass(normalizedCountry),
-          ].join(" ")}
-        >
-          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-            <div className="text-sm font-bold text-slate-800">
-              {countryTitle}
-            </div>
-          </div>
-
-          <div className="grid w-full grid-cols-1 md:grid-cols-2 gap-2 p-3">
-            {rows.map((item, idx) => (
-              <div
-                key={idx}
-                className={[
-                  "flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2",
-                  item.fullWidth ? "md:col-span-2 justify-start" : "",
-                ].join(" ")}
-              >
-                {item.fullWidth ? (
-                  <button
-                    type="button"
-                    onClick={goToInventoryReconciliation}
-                    className="text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
-                  >
-                    For Detailed Inventory Insights, Please Refer To The{" "}
-                    <span className="font-bold text-[#5EA68E] underline underline-offset-2">
-                      Inventory Reconciliation Tab
-                    </span>
-                    .
-                  </button>
-                ) : (
-                  <>
-                    <span className="text-sm font-medium text-slate-700">
-                      {item.label}
-                    </span>
-
-                    {item.value && (
-                      <span className="text-sm font-bold text-[#414042] text-right">
-                        {item.value}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const GlobalInventoryInsights = () => {
-    const inventory = parseGlobalInventoryItems(portfolioInventoryBlock);
-
-    const InventoryCountryCard = ({
-      title,
-      items,
-      accentClass,
-    }: {
-      title: string;
-      items: {
-        ageingInventory?: string;
-        estimatedStorageCost?: string;
-        unfulfillableInventory?: string;
-        highCoverage?: string;
-      };
-      accentClass: string;
-    }) => {
-      const rows = [
-        {
-          label: "Ageing Inventory",
-          value: items.ageingInventory,
-        },
-        {
-          label: "Estimated Storage Cost",
-          value: items.estimatedStorageCost,
-        },
-        {
-          label: "Unfulfillable Inventory",
-          value: items.unfulfillableInventory,
-        },
-        {
-          label: "High Coverage SKUs",
-          value: items.highCoverage,
-        },
-      ].filter((row) => row.value);
-
-      if (!rows.length) return null;
-
-      return (
-        <div
-          className={`rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden border-l-4 ${accentClass}`}
-        >
-          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-            <div className="text-sm font-bold text-slate-800">{title}</div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
-            {rows.map((item, idx) => (
-              <div
-                key={idx}
-                className="flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
-              >
-                <span className="text-sm font-medium text-slate-700">
-                  {item.label}
-                </span>
-
-                <span className="text-sm font-bold text-[#414042] text-right">
-                  {item.value}
-                </span>
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={goToInventoryReconciliation}
-              className="md:col-span-2 flex min-h-[38px] items-center rounded-lg border border-amber-100 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
-            >
-              For Detailed Inventory Insights, Please Refer To The{" "}
-              <span className="ml-1 font-bold text-[#5EA68E] underline underline-offset-2">
-                Inventory Reconciliation Tab
-              </span>
-              .
-            </button>
-          </div>
-        </div>
-      );
-    };
-
-    const hasInventory =
-      Object.values(inventory.uk).some(Boolean) ||
-      Object.values(inventory.us).some(Boolean);
-
-    if (!hasInventory) return null;
-
-    const hasUkInventory = Object.values(inventory.uk).some(Boolean);
-    const hasUsInventory = Object.values(inventory.us).some(Boolean);
-    const visibleCountryCount = Number(hasUkInventory) + Number(hasUsInventory);
-
-    return (
-      <div className="w-full space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-            Inventory Insights
-          </span>
-        </div>
-
-        <div
-          className={[
-            "grid grid-cols-1 gap-4",
-            visibleCountryCount > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1",
-          ].join(" ")}
-        >
-          {hasUkInventory && (
-            <InventoryCountryCard
-              title="UK Inventory"
-              items={inventory.uk}
-              accentClass={getInventoryAccentClass("uk")}
-            />
-          )}
-
-          {hasUsInventory && (
-            <InventoryCountryCard
-              title="US Inventory"
-              items={inventory.us}
-              accentClass={getInventoryAccentClass("us")}
-            />
-          )}
-        </div>
-      </div>
     );
   };
 

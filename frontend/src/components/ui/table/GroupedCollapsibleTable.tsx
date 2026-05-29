@@ -132,15 +132,6 @@ export default function GroupedCollapsibleTable<RowT>({
     return { ...base, ...(initialCollapsed || {}) };
   });
 
-  useEffect(() => {
-    if (!initialCollapsed) return;
-
-    setCollapsed((prev) => ({
-        ...prev,
-        ...initialCollapsed,
-    }));
-}, [initialCollapsed]);
-
   const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
     (summary?.sections || []).forEach((s) => {

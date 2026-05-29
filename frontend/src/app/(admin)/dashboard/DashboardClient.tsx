@@ -1697,7 +1697,11 @@ export default function DashboardPage() {
 
     const productwiseInitialCollapsed = useMemo(
         () => ({
-            quantity: false,
+            quantity: true,
+            marketplace_fees: true,
+            tax_and_credits: true,
+            profit: true,
+            cm2_profit: true,
         }),
         []
     );
