@@ -1744,7 +1744,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                   .replace(/\bSkus\b/g, "SKUs")
                   .replace(/\bSku\b/g, "SKU")
                   .replace(/\bUk\b/g, "UK")
-                  .replace(/\bUs\b/g, "US");
+                  .replace(/\bUs\b/g, "US")
+                  .replace("Estimated Storage Cost", "Est. Storage Cost")
+                  .replace("Estimated Storage Cost Next Month", "Est. Storage Cost Next Month");
               };
 
               const parseInventoryLine = (line: string) => {
@@ -1757,23 +1759,41 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                   return null;
                 }
 
-                const colonIdx = raw.indexOf(":");
-
-                const left = colonIdx > -1 ? raw.slice(0, colonIdx).trim() : raw;
-                const right = colonIdx > -1 ? raw.slice(colonIdx + 1).trim() : "";
-
                 const country = /^UK\b/i.test(raw)
                   ? "UK"
                   : /^US\b/i.test(raw)
                     ? "US"
                     : "";
 
-                const cleanLabel = toTitleLabel(
-                  left
-                    .replace(/^UK\s+/i, "")
-                    .replace(/^US\s+/i, "")
-                    .trim()
-                );
+                const withoutCountry = raw
+                  .replace(/^UK\s+/i, "")
+                  .replace(/^US\s+/i, "")
+                  .trim();
+
+                const colonIdx = withoutCountry.indexOf(":");
+
+                let left = colonIdx > -1 ? withoutCountry.slice(0, colonIdx).trim() : withoutCountry;
+                let right = colonIdx > -1 ? withoutCountry.slice(colonIdx + 1).trim() : "";
+
+                // ✅ Fix for old unfulfillable sentence format:
+                // "Unfulfillable Inventory Is Above 1% Of Total Inventory (2.01%)"
+                if (!right && left.toLowerCase().includes("unfulfillable")) {
+                  const pctMatch = left.match(/\(([^)]+%)\)/);
+                  const isAbove = left.toLowerCase().includes("above");
+                  const isBelow = left.toLowerCase().includes("below");
+
+                  left = "Unfulfillable Inventory";
+
+                  right = [
+                    isAbove ? "Above 1% of Total Inventory" : "",
+                    isBelow ? "Below 1% of Total Inventory" : "",
+                    pctMatch?.[1] ? `(${pctMatch[1]})` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+                }
+
+                const cleanLabel = toTitleLabel(left);
 
                 return {
                   country,
@@ -1784,27 +1804,79 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
               type InventoryItem = NonNullable<ReturnType<typeof parseInventoryLine>>;
 
+              const getItemRank = (label: string) => {
+                const value = label.toLowerCase();
+
+                if (value.includes("ageing")) return 1;
+                if (value.includes("estimated storage") || value.includes("est. storage")) return 2;
+                if (value.includes("unfulfillable")) return 3;
+                if (value.includes("high coverage")) return 4;
+
+                return 99;
+              };
+
+              const getMetricLabel = (label: string) => {
+                const value = label.toLowerCase();
+
+                if (value.includes("ageing")) return "Ageing Inventory";
+                if (value.includes("estimated storage") || value.includes("est. storage")) {
+                  return "Est. Storage Cost";
+                }
+                if (value.includes("unfulfillable")) return "Unfulfillable Inventory";
+                if (value.includes("high coverage")) return "High Coverage SKUs";
+
+                return label;
+              };
+
+              const splitInventoryValue = (label: string, value: string) => {
+                const rawValue = String(value || "").trim();
+                const lowerLabel = label.toLowerCase();
+
+                if (!rawValue) {
+                  return {
+                    main: "—",
+                    sub: "",
+                  };
+                }
+
+                if (lowerLabel.includes("unfulfillable")) {
+                  return {
+                    main: rawValue,
+                    sub: "",
+                  };
+                }
+
+                if (lowerLabel.includes("ageing")) {
+                  const match = rawValue.match(/^(.+?)\s+across\s+(.+)$/i);
+
+                  if (match) {
+                    return {
+                      main: match[1].trim(),
+                      sub: `across ${match[2].trim()}`,
+                    };
+                  }
+                }
+
+                return {
+                  main: rawValue,
+                  sub: "",
+                };
+              };
+
               const CountryInventoryCard = ({
                 title,
                 items,
                 accentClass,
+                countryCode,
+                showHeader = true,
               }: {
                 title: string;
                 items: InventoryItem[];
                 accentClass: string;
+                countryCode?: string;
+                showHeader?: boolean;
               }) => {
                 if (!items.length) return null;
-
-                const getItemRank = (label: string) => {
-                  const value = label.toLowerCase();
-
-                  if (value.includes("ageing")) return 1;
-                  if (value.includes("estimated storage") || value.includes("est. storage")) return 2;
-                  if (value.includes("unfulfillable")) return 3;
-                  if (value.includes("high coverage")) return 4;
-
-                  return 99;
-                };
 
                 const orderedItems = [...items].sort(
                   (a, b) => getItemRank(a.label) - getItemRank(b.label)
@@ -1812,42 +1884,59 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
                 return (
                   <div
-                    className={`w-full rounded-xl border bg-white shadow-sm overflow-hidden ${accentClass}`}
+                    className={[
+                      "w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm",
+                      "transition hover:shadow-md",
+                      accentClass,
+                    ].join(" ")}
                   >
-                    <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-                      <div className="text-sm font-bold text-slate-800">
-                        {title}
-                      </div>
-                    </div>
+                    <div className="p-4">
+                      {showHeader && (
+                        <div className="mb-4 flex items-center gap-2">
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
-                      {orderedItems.map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex min-h-[38px] items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-3 py-2"
-                        >
-                          <span className="text-sm font-medium text-slate-700">
-                            {item.label}
-                          </span>
-
-                          {item.value ? (
-                            <span className="text-sm font-bold text-[#414042] text-right whitespace-nowrap">
-                              {item.value}
-                            </span>
-                          ) : null}
+                          <h3 className="text-sm font-bold text-slate-800">
+                            {title}
+                          </h3>
                         </div>
-                      ))}
+                      )}
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {orderedItems.map((item, i) => {
+                          const metricLabel = getMetricLabel(item.label);
+                          const { main, sub } = splitInventoryValue(metricLabel, item.value);
+
+                          return (
+                            <div
+                              key={`${item.label}-${i}`}
+                              className="min-h-[72px] rounded-lg border border-slate-200 bg-slate-50/70 p-3"
+                            >
+                              <div className="text-xs font-medium text-slate-500">
+                                {metricLabel}
+                              </div>
+
+                              <div className="mt-1 flex flex-wrap items-baseline gap-1 leading-tight">
+                                <span className="text-base font-bold text-charcoal-500">
+                                  {main}
+                                </span>
+
+                                {sub ? (
+                                  <span className="text-xs font-medium text-charcoal-500">
+                                    {sub}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       <button
                         type="button"
                         onClick={goToInventoryReconciliation}
-                        className="md:col-span-2 flex min-h-[38px] items-center rounded-lg border border-amber-100 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:text-[#5EA68E]"
+                        className="mt-4 inline-flex items-center text-sm font-semibold text-[#5EA68E] transition hover:text-[#4B8F7A] hover:underline"
                       >
-                        For Detailed Inventory Insights, Please Refer To The{" "}
-                        <span className="ml-1 font-bold text-[#5EA68E] underline underline-offset-2">
-                          Inventory Reconciliation Tab
-                        </span>
-                        .
+                        View inventory reconciliation
+                        <span className="ml-1">→</span>
                       </button>
                     </div>
                   </div>
@@ -1858,24 +1947,26 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 .map(parseInventoryLine)
                 .filter((item): item is InventoryItem => item !== null);
 
-              // ✅ Country-wise page: render one country card only
               if (!isGlobalInventory) {
+                const c = countryName.toLowerCase();
+
                 return (
                   <div className="grid grid-cols-1 gap-4">
                     <CountryInventoryCard
                       title={getCountryTitle()}
                       items={parsedItems}
+                      countryCode={c === "uk" ? "GB" : c === "us" ? "US" : c.toUpperCase()}
+                      showHeader={false}
                       accentClass={
-                        countryName.toLowerCase() === "uk"
-                          ? "border-l-4 border-l-[#7B9A6D]"
-                          : "border-l-4 border-l-[#3A8EA4]"
+                        c === "uk"
+                          ? "border-t-4 border-t-[#5EA68E]"
+                          : "border-t-4 border-t-[#3A8EA4]"
                       }
                     />
                   </div>
                 );
               }
 
-              // ✅ Global page: group UK and US separately
               const grouped = parsedItems.reduce(
                 (acc, item) => {
                   if (item.country === "UK") acc.uk.push(item);
@@ -1909,7 +2000,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     <CountryInventoryCard
                       title="UK Inventory"
                       items={grouped.uk}
-                      accentClass="border-l-4 border-l-[#7B9A6D]"
+                      countryCode="GB"
+                      accentClass="border-t-4 border-t-[#5EA68E]"
                     />
                   )}
 
@@ -1917,7 +2009,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     <CountryInventoryCard
                       title="US Inventory"
                       items={grouped.us}
-                      accentClass="border-l-4 border-l-[#3A8EA4]"
+                      countryCode="US"
+                      accentClass="border-t-4 border-t-[#3A8EA4]"
                     />
                   )}
 
@@ -1925,7 +2018,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     <CountryInventoryCard
                       title="Other Inventory"
                       items={grouped.other}
-                      accentClass="border-l-4 border-l-slate-400 lg:col-span-2"
+                      countryCode="OTHER"
+                      accentClass="border-t-4 border-t-slate-400 lg:col-span-2"
                     />
                   )}
                 </div>
