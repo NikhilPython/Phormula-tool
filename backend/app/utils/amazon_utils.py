@@ -140,18 +140,26 @@ class AmazonSPAPIClient:
 
         # Refresh token from env or .refresh_token file
         self.refresh_token = (os.getenv("AMAZON_REFRESH_TOKEN") or "").strip()
-        if not self.refresh_token:
-            try:
-                with open(".refresh_token", "r") as f:
-                    self.refresh_token = f.read().strip()
-                    logger.info("Loaded refresh token from .refresh_token")
-            except FileNotFoundError:
-                pass
+        # if not self.refresh_token:
+        #     try:
+        #         with open(".refresh_token", "r") as f:
+        #             self.refresh_token = f.read().strip()
+        #             logger.info("Loaded refresh token from .refresh_token")
+        #     except FileNotFoundError:
+        #         pass
 
         logger.info(
             f"SP-API init (prod) -> region={self.region} base={self.api_base_url} "
             f"mkt={self.marketplace_id} has_refresh={bool(self.refresh_token)}"
         )
+
+    ##new#######################
+    def use_refresh_token(self, refresh_token: str) -> None:
+        self.refresh_token = (refresh_token or "").strip()
+        self._access_token = None
+        self._token_expires_at = None    
+    ##########################################
+
 
     def set_region(self, region: str):
         if region not in self.PROD_ENDPOINTS:
@@ -169,11 +177,28 @@ class AmazonSPAPIClient:
             self.marketplace_id = self.DEFAULT_MARKETPLACE_BY_REGION[region]
         logger.info(f"SP-API region -> {region}; base={self.api_base_url}; mkt={self.marketplace_id}")
 
+    # def set_marketplace(self, mkt: str):
+    #     if not mkt or mkt not in self.ALLOWED_MARKETPLACES:
+    #         return
+    #     self.marketplace_id = mkt
+    #     self.set_region(self.MARKETPLACE_REGION[mkt])
+
+    ####New##################\
+    
     def set_marketplace(self, mkt: str):
         if not mkt or mkt not in self.ALLOWED_MARKETPLACES:
             return
+
+        marketplace_changed = getattr(self, "marketplace_id", None) != mkt
+
         self.marketplace_id = mkt
         self.set_region(self.MARKETPLACE_REGION[mkt])
+
+        if marketplace_changed:
+            self._access_token = None
+            self._token_expires_at = None
+#########################################################
+
 
     def get_oauth_url(self, state: str) -> str:
         base = self.SELLER_CENTRAL_BY_MKT.get(self.marketplace_id, "https://sellercentral.amazon.com")
@@ -204,8 +229,8 @@ class AmazonSPAPIClient:
             refresh = data.get("refresh_token")
             if refresh:
                 self.refresh_token = refresh.strip()
-                with open(".refresh_token", "w") as f:
-                    f.write(self.refresh_token)
+                # with open(".refresh_token", "w") as f:
+                #     f.write(self.refresh_token)
                 logger.info("Saved refresh token to .refresh_token")
                 return self.refresh_token
             logger.error(f"Auth code exchange ok but no refresh_token: {data}")
