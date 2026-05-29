@@ -1707,6 +1707,10 @@ export default function DashboardPage() {
         []
     );
 
+    const [productwiseCollapsed, setProductwiseCollapsed] = useState<Record<string, boolean>>(
+        productwiseInitialCollapsed
+    );
+
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
@@ -10612,6 +10616,8 @@ ${pageLoading
                                             groups={SKUWISE_GROUPS}
                                             singleCols={SKUWISE_SINGLE_COLS}
                                             initialCollapsed={productwiseInitialCollapsed}
+                                            collapsedState={productwiseCollapsed}
+                                            onCollapsedChange={setProductwiseCollapsed}
                                             defaultSort={plSortConfig}
                                             onSortChange={setPlSortConfig}
                                             showSignRowInBody

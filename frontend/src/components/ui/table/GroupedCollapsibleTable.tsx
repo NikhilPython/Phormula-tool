@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FaArrowDownLong } from "react-icons/fa6";
 import { LuArrowUpDown } from "react-icons/lu";
 
@@ -63,6 +63,8 @@ type Props<RowT> = {
     direction: "asc" | "desc";
   };
   bodyMaxHeight?: number;
+  collapsedState?: Record<string, boolean>;
+  onCollapsedChange?: (next: Record<string, boolean>) => void;
 
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
 };
@@ -107,6 +109,8 @@ export default function GroupedCollapsibleTable<RowT>({
   singleCols,
   layout,
   initialCollapsed,
+  collapsedState,
+  onCollapsedChange,
   getValue,
   getRowClassName,
   showSignRowInBody = false,
@@ -126,11 +130,48 @@ export default function GroupedCollapsibleTable<RowT>({
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
 
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+  const buildDefaultCollapsed = () => {
     const base: Record<string, boolean> = {};
-    groups.forEach((g) => (base[g.id] = true));
-    return { ...base, ...(initialCollapsed || {}) };
-  });
+
+    groups.forEach((g) => {
+      base[g.id] = true;
+    });
+
+    return {
+      ...base,
+      ...(initialCollapsed || {}),
+    };
+  };
+
+  const [internalCollapsed, setInternalCollapsed] = useState<Record<string, boolean>>(
+    buildDefaultCollapsed
+  );
+
+  const collapsed = collapsedState ?? internalCollapsed;
+
+  const updateCollapsed = (
+    updater:
+      | Record<string, boolean>
+      | ((prev: Record<string, boolean>) => Record<string, boolean>)
+  ) => {
+    const next =
+      typeof updater === "function"
+        ? updater(collapsed)
+        : updater;
+
+    if (!collapsedState) {
+      setInternalCollapsed(next);
+    }
+
+    onCollapsedChange?.(next);
+  };
+
+  const toggleGroup = (id: string) => {
+    updateCollapsed((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? true),
+    }));
+  };
 
   const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
@@ -144,8 +185,6 @@ export default function GroupedCollapsibleTable<RowT>({
     setSummaryCollapsed((p) => ({ ...p, [id]: !p[id] }));
 
 
-  const toggleGroup = (id: string) =>
-    setCollapsed((p) => ({ ...p, [id]: !p[id] }));
 
   type SortDirection = "asc" | "desc";
 
@@ -515,10 +554,6 @@ export default function GroupedCollapsibleTable<RowT>({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-
-                        const target = e.target as HTMLElement;
-                        if (target.closest("[data-sort-control='true']")) return;
-
                         toggleGroup(g.id);
                       }}
                       className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
