@@ -625,11 +625,26 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   string,
   { group?: string; subHeader?: string; sign?: "(+)" | "(-)" }
 > = {
-  "S.No": { subHeader: "S.No" },
-  "Product Name": { subHeader: "Product Name" },
-  "Net Units Sold": { subHeader: "Net Units Sold" },
-  "ASP": { subHeader: "ASP" },
+"S.No": { subHeader: "S.No" },
+"Product Name": { subHeader: "Product Name" },
 
+"Units Sold": {
+  group: "Net Units Sold",
+  subHeader: "Units Sold",
+  sign: "(+)",
+},
+"Return": {
+  group: "Net Units Sold",
+  subHeader: "Return",
+  sign: "(-)",
+},
+"Total Units": {
+  group: "Net Units Sold",
+  subHeader: "Total",
+  sign: "(+)",
+},
+
+"ASP": { subHeader: "ASP" },
   "Net Sales": { subHeader: "Net Sales", sign: "(+)" },
   "COGS": { subHeader: "COGS", sign: "(-)" },
 
@@ -912,7 +927,12 @@ const totalRowIndex = firstDataRowIndex + bodyAoA.length - 1;
 
 // Force numeric cells formatting
 const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-const netUnitsSoldCol = headers.indexOf("Net Units Sold");
+const unitCols = new Set([
+  headers.indexOf("Units Sold"),
+  headers.indexOf("Return"),
+  headers.indexOf("Total Units"),
+].filter((idx) => idx >= 0));
+
 const serialNoCol = headers.indexOf("S.No");
 
 for (let r = range.s.r; r <= range.e.r; r++) {
@@ -923,7 +943,7 @@ for (let r = range.s.r; r <= range.e.r; r++) {
     if (!cell) continue;
     if (!isNumber(cell.v)) continue;
 
-if (c === netUnitsSoldCol || c === serialNoCol) {
+    if (unitCols.has(c) || c === serialNoCol) {
       cell.z = "#,##0";
     } else {
       cell.z = "#,##0.00";

@@ -132,6 +132,15 @@ export default function GroupedCollapsibleTable<RowT>({
     return { ...base, ...(initialCollapsed || {}) };
   });
 
+  useEffect(() => {
+    if (!initialCollapsed) return;
+
+    setCollapsed((prev) => ({
+        ...prev,
+        ...initialCollapsed,
+    }));
+}, [initialCollapsed]);
+
   const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
     (summary?.sections || []).forEach((s) => {
@@ -305,7 +314,9 @@ export default function GroupedCollapsibleTable<RowT>({
   ) => {
     const onSortClick = col.sortable
       ? (e: React.MouseEvent) => {
+        e.preventDefault();
         e.stopPropagation();
+
         handleSort(col.key);
       }
       : undefined;
@@ -315,6 +326,7 @@ export default function GroupedCollapsibleTable<RowT>({
         <div className="inline-flex items-center justify-center gap-2 leading-tight">
           <button
             type="button"
+            data-sort-control={col.sortable ? "true" : undefined}
             onClick={onSortClick}
             className={`inline-flex items-center justify-center ${col.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
               } ${col.sortable ? "cursor-pointer select-none" : "cursor-default"}`}
@@ -335,6 +347,7 @@ export default function GroupedCollapsibleTable<RowT>({
           {col.sortable && (
             <button
               type="button"
+              data-sort-control="true"
               onClick={onSortClick}
               className="inline-flex shrink-0 items-center"
               title="Click to sort"
@@ -492,8 +505,11 @@ export default function GroupedCollapsibleTable<RowT>({
                     {sortCol && (
                       <button
                         type="button"
+                        data-sort-control="true"
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+
                           handleSort(sortCol.key);
                         }}
                         className="inline-flex shrink-0 items-center"
@@ -506,7 +522,12 @@ export default function GroupedCollapsibleTable<RowT>({
                     <button
                       type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+
+                        const target = e.target as HTMLElement;
+                        if (target.closest("[data-sort-control='true']")) return;
+
                         toggleGroup(g.id);
                       }}
                       className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
