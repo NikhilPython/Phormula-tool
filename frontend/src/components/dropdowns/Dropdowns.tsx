@@ -2616,12 +2616,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return computeDefaultYearlyYear();
   };
 
-  const [range, setRange] = useState<RangeType>("yearly");
+  const getInitialRange = (): RangeType => {
+    const routeRange = String(initialRanged || "").toLowerCase();
+
+    if (routeRange === "monthly") return "monthly";
+    if (routeRange === "quarterly") return "quarterly";
+    return "yearly";
+  };
+
+  const [range, setRange] = useState<RangeType>(() => getInitialRange());
 
   const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   const [selectedYear, setSelectedYear] = useState<string>(() => {
-    return computeDefaultYearlyYear();
+    return getInitialSelectedYear();
   });
 
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
@@ -2629,7 +2637,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
   );
-  const [allDropdownsSelected, setAllDropdownsSelected] = useState(isDemoMode);
+
+  const [allDropdownsSelected, setAllDropdownsSelected] = useState(() => {
+    if (isDemoMode) return true;
+
+    const initialRange = getInitialRange();
+    const initialSelectedYear = getInitialSelectedYear();
+
+    if (initialRange === "yearly") return !!initialSelectedYear;
+    if (initialRange === "monthly") return !!initialSelectedYear && !!initialMonth;
+    if (initialRange === "quarterly") return !!initialSelectedYear && isQuarter(initialMonth);
+
+    return false;
+  });
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
@@ -3007,6 +3027,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
+    // ✅ Important: if user is already on this range, don't reset filters.
+    // This fixes yearly 2026 -> yearly 2025 getting forced back to 2026.
+    if (v === range) return;
+
     setRange(v);
 
     if (isDemoMode) {
@@ -3026,7 +3050,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (v === "yearly") {
       setSelectedMonth("");
       setSelectedQuarter("");
-      setSelectedYear(computeDefaultYearlyYear());
+
+      // ✅ Only set a default if year is empty.
+      // Do not overwrite user's selected year.
+      setSelectedYear((prev) => prev || computeDefaultYearlyYear());
     }
 
     if (v === "monthly") {
@@ -4226,11 +4253,28 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (didApplyLandingDefault.current) return;
     didApplyLandingDefault.current = true;
 
-    setRange("yearly");
+    const routeRange = getInitialRange();
+
+    setRange(routeRange);
+    setSelectedYear(getInitialSelectedYear());
+
+    if (routeRange === "monthly") {
+      setSelectedMonth(initialMonth || computeDefaultMonthlyPeriod().month);
+      setSelectedQuarter("");
+      return;
+    }
+
+    if (routeRange === "quarterly") {
+      setSelectedMonth("");
+      setSelectedQuarter(
+        isQuarter(initialMonth) ? initialMonth : computeDefaultQuarterlyPeriod().quarter
+      );
+      return;
+    }
+
     setSelectedMonth("");
     setSelectedQuarter("");
-    setSelectedYear(computeDefaultYearlyYear());
-  }, [isDemoMode]);
+  }, [isDemoMode, initialRanged, initialMonth, initialYear]);
 
 
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
