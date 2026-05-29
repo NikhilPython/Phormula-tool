@@ -68,6 +68,7 @@ type Props<RowT> = {
     direction: "asc" | "desc";
   } | null;
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
+  bodyMaxHeight?: number | string;
 };
 
 const alignClass = (align?: Align) => {
@@ -97,6 +98,7 @@ export default function GroupedCollapsibleTables<RowT>({
   isTotalRow,
   defaultSort = null,
   onSortChange,
+  bodyMaxHeight,
 }: Props<RowT>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
@@ -127,15 +129,15 @@ export default function GroupedCollapsibleTables<RowT>({
       const next =
         prev?.key === colKey
           ? {
-              key: colKey,
-              direction: (prev.direction === "desc"
-                ? "asc"
-                : "desc") as SortDirection,
-            }
+            key: colKey,
+            direction: (prev.direction === "desc"
+              ? "asc"
+              : "desc") as SortDirection,
+          }
           : {
-              key: colKey,
-              direction: "asc" as const,
-            };
+            key: colKey,
+            direction: "asc" as const,
+          };
 
       onSortChange?.(next);
       return next;
@@ -221,6 +223,27 @@ export default function GroupedCollapsibleTables<RowT>({
     return [...sorted, ...pinnedRows];
   }, [rows, sortConfig, getSortValue, isTotalRow, onSortChange]);
 
+  const shouldPinRows = bodyMaxHeight !== undefined;
+
+  const scrollRows = useMemo(() => {
+    if (!shouldPinRows) return sortedRows;
+    return sortedRows.filter((row) => !isTotalRow?.(row));
+  }, [sortedRows, shouldPinRows, isTotalRow]);
+
+  const pinnedRows = useMemo(() => {
+    if (!shouldPinRows) return [];
+    return sortedRows.filter((row) => isTotalRow?.(row));
+  }, [sortedRows, shouldPinRows, isTotalRow]);
+
+  const bodyScrollStyle: React.CSSProperties = {
+    maxHeight:
+      bodyMaxHeight === undefined
+        ? undefined
+        : typeof bodyMaxHeight === "number"
+          ? `${bodyMaxHeight}px`
+          : bodyMaxHeight,
+  };
+
   const renderHeaderContent = (
     col: LeafCol<RowT>,
     options?: {
@@ -237,15 +260,14 @@ export default function GroupedCollapsibleTables<RowT>({
         onClick={
           col.sortable
             ? (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleSort(col.key);
-              }
+              e.preventDefault();
+              e.stopPropagation();
+              handleSort(col.key);
+            }
             : undefined
         }
-        className={`inline-flex items-center justify-center gap-1 ${
-          col.sortable ? "cursor-pointer select-none" : "cursor-default"
-        }`}
+        className={`inline-flex items-center justify-center gap-1 ${col.sortable ? "cursor-pointer select-none" : "cursor-default"
+          }`}
         title={col.sortable ? "Click to sort" : undefined}
       >
         <span>{col.label}</span>
@@ -294,174 +316,174 @@ export default function GroupedCollapsibleTables<RowT>({
   const thBase =
     "whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm";
 
-  return (
-    <table className={tableClassName}>
-      <thead className="sticky top-0 z-10 font-bold">
-        {/* ✅ Row 1: leftCols(rowSpan=2) + group headers(colSpan) + singleCols(rowSpan=2) */}
-        <tr className={headerRow1ClassName}>
-          {leftCols.map((c) => (
+  const renderHeader = () => (
+    <thead className="font-bold">
+      <tr className={headerRow1ClassName}>
+        {leftCols.map((c) => (
+          <th
+            key={c.key}
+            rowSpan={2}
+            className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+              }`}
+          >
+            {renderHeaderContent(c)}
+          </th>
+        ))}
+
+        {groups.map((g) => {
+          const isCollapsed = !!collapsed[g.id];
+          const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
+          const colSpan = cols.length;
+
+          if (colSpan === 0) return null;
+
+          return (
             <th
-              key={c.key}
-              rowSpan={2}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""}`}
+              key={g.id}
+              colSpan={colSpan}
+              className={`${thBase} relative text-center ${g.headerClassName || ""}`}
             >
-              {renderHeaderContent(c)}
-            </th>
-          ))}
+              <div className="flex items-center justify-center gap-2">
+                <span className="px-2">{g.label}</span>
 
-          {/* {groups.map((g) => {
-            const isCollapsed = !!collapsed[g.id];
-            const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
-            const colSpan = Math.max(cols.length, 1);
-
-            return (
-              <th
-                key={g.id}
-                colSpan={colSpan}
-                className={`${thBase} relative text-center ${g.headerClassName || ""}`}
-              >
                 <button
                   type="button"
-                  onClick={() => toggleGroup(g.id)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs"
-                  aria-label={isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGroup(g.id);
+                  }}
+                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+                  aria-label={
+                    isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`
+                  }
                   title={isCollapsed ? "Expand" : "Collapse"}
                 >
                   {isCollapsed ? "+" : "−"}
                 </button>
-                <span className="px-6">{g.label}</span>
-              </th>
-            );
-          })} */}
+              </div>
+            </th>
+          );
+        })}
 
-          {groups.map((g) => {
-            const isCollapsed = !!collapsed[g.id];
-            const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
-            const colSpan = cols.length; // ✅ no Math.max
+        {singleCols.map((c) => {
+          const targetGroupId = toggleGroupByColKey?.[c.key];
 
-            if (colSpan === 0) return null; // ✅ hide group header when collapsed has 0 cols
-
-            return (
-              <th
-                key={g.id}
-                colSpan={colSpan}
-                className={`${thBase} relative text-center ${g.headerClassName || ""}`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="px-2">{g.label}</span>
-
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleGroup(g.id);
-                    }}
-                    className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
-                    aria-label={
-                      isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`
-                    }
-                    title={isCollapsed ? "Expand" : "Collapse"}
-                  >
-                    {isCollapsed ? "+" : "−"}
-                  </button>
-                </div>
-              </th>
-            );
-          })}
-
-          {/* 
-          {singleCols.map((c) => (
+          return (
             <th
               key={c.key}
               rowSpan={2}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+                }`}
             >
-              <div className="flex items-center justify-center gap-1">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
+              {renderHeaderContent(
+                c,
+                targetGroupId
+                  ? {
+                    isCollapsed: !!collapsed[targetGroupId],
+                    onToggle: (e) => {
+                      e.stopPropagation();
+                      toggleGroup(targetGroupId);
+                    },
+                  }
+                  : undefined,
+              )}
             </th>
-          ))} */}
-
-          {singleCols.map((c) => {
-            const targetGroupId = toggleGroupByColKey?.[c.key];
-
-            return (
-              <th
-                key={c.key}
-                rowSpan={2}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""}`}
-              >
-                {renderHeaderContent(
-                  c,
-                  targetGroupId
-                    ? {
-                        isCollapsed: !!collapsed[targetGroupId],
-                        onToggle: (e) => {
-                          e.stopPropagation();
-                          toggleGroup(targetGroupId);
-                        },
-                      }
-                    : undefined,
-                )}
-              </th>
-            );
-          })}
-        </tr>
-
-        {/* ✅ Row 2: ONLY group leaf headers */}
-        <tr className={headerRow2ClassName}>
-          {row2GroupLeafCols.map((c) => (
-            <th
-              key={c.key}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-            >
-              {renderHeaderContent(c)}
-            </th>
-          ))}
-        </tr>
-      </thead>
-
-      <tbody className="bg-white">
-        {/* Optional sign row as FIRST BODY ROW (keeps header strictly 2 rows) */}
-        {showSignRowInBody && (
-          <tr className="bg-white font-bold text-center">
-            {visibleLeafCols.map((c) => {
-              const sign = getSignForCol?.(c.key);
-              return (
-                <td
-                  key={c.key}
-                  className={` bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${
-                    sign?.className || ""
-                  }`}
-                >
-                  {sign?.text || ""}
-                </td>
-              );
-            })}
-          </tr>
-        )}
-
-        {sortedRows.map((row, idx) => {
-          const rowKey = getRowKey ? getRowKey(row, idx) : idx;
-          const rowClass = getRowClassName ? getRowClassName(row, idx) : "";
-
-          return (
-            <tr key={rowKey} className={rowClass || "bg-white"}>
-              {visibleLeafCols.map((c) => (
-                <td
-                  key={c.key}
-                  className={`bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
-                    c.align,
-                  )} ${c.tdClassName || ""}`}
-                >
-                  {getValue(row, c.key, idx)}
-                </td>
-              ))}
-            </tr>
           );
         })}
+      </tr>
+
+      <tr className={headerRow2ClassName}>
+        {row2GroupLeafCols.map((c) => (
+          <th
+            key={c.key}
+            className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+          >
+            {renderHeaderContent(c)}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const renderSignRow = () =>
+    showSignRowInBody ? (
+      <tr className="h-[40px] bg-white font-bold text-center">
+        {visibleLeafCols.map((c) => {
+          const sign = getSignForCol?.(c.key);
+
+          return (
+            <td
+              key={c.key}
+              className={`bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${sign?.className || ""
+                }`}
+            >
+              {sign?.text || ""}
+            </td>
+          );
+        })}
+      </tr>
+    ) : null;
+
+  const renderRows = (rowsToRender: RowT[], startIndex = 0) =>
+    rowsToRender.map((row, idx) => {
+      const realIndex = startIndex + idx;
+      const rowKey = getRowKey ? getRowKey(row, realIndex) : realIndex;
+      const rowClass = getRowClassName ? getRowClassName(row, realIndex) : "";
+
+      return (
+        <tr key={rowKey} className={`h-[40px] ${rowClass || "bg-white"}`}>
+          {visibleLeafCols.map((c) => (
+            <td
+              key={c.key}
+              className={`bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
+                c.align,
+              )} ${c.tdClassName || ""}`}
+            >
+              {getValue(row, c.key, realIndex)}
+            </td>
+          ))}
+        </tr>
+      );
+    });
+
+  if (shouldPinRows) {
+    return (
+      <div className="w-full">
+        <table className={tableClassName}>{renderHeader()}</table>
+
+        <div
+          className="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+          style={bodyScrollStyle}
+        >
+          <table className={tableClassName}>
+            <tbody className="bg-white">
+              {renderSignRow()}
+              {renderRows(scrollRows)}
+            </tbody>
+          </table>
+        </div>
+
+        {pinnedRows.length > 0 && (
+          <table className={tableClassName}>
+            <tbody className="bg-white">
+              {renderRows(
+                pinnedRows,
+                scrollRows.length + (showSignRowInBody ? 1 : 0),
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <table className={tableClassName}>
+      {renderHeader()}
+
+      <tbody className="bg-white">
+        {renderSignRow()}
+        {renderRows(sortedRows)}
       </tbody>
     </table>
   );

@@ -282,7 +282,8 @@ export default function DataTable<T extends Row>({
 
         <div
           className={clsx(
-            shouldPinTotalRows && "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+            shouldPinTotalRows &&
+            "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
           )}
           style={bodyScrollStyle}
         >
@@ -295,6 +296,8 @@ export default function DataTable<T extends Row>({
               tableClassName
             )}
           >
+            {colGroup}
+
             <tbody>
               {!hasData && (
                 <tr>
@@ -321,7 +324,10 @@ export default function DataTable<T extends Row>({
                         (row as Record<string, React.ReactNode>)[String(col.key)];
 
                       const keyStr = String(col.key);
-                      const isTextCol = keyStr === "productName" || keyStr === "alert";
+                      const isTextCol =
+                        keyStr === "productName" ||
+                        keyStr === "product_name" ||
+                        keyStr === "alert";
 
                       return (
                         <td

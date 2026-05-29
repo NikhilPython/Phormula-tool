@@ -279,7 +279,7 @@ async function seedAdsReportsOnConnect(
         month: monthToNumber(month),
         year,
         country,
-        include: ["SP", "SD"],
+        include: ["SP", "SD", "SB"],
     });
 
     onStep?.(3, "Sponsored Brand", 100, "Sponsored Brand and monthly sync complete");

@@ -1399,6 +1399,14 @@ export default function InputCostPage({ params }: Params) {
     });
   };
 
+  const INPUT_COST_VISIBLE_ROWS = 15;
+  const INPUT_COST_ROW_HEIGHT = 40;
+
+  const shouldScrollSkuInfoTable = tableData.length > INPUT_COST_VISIBLE_ROWS;
+
+  const shouldScrollWarehouseTable =
+    warehouseData.length > INPUT_COST_VISIBLE_ROWS;
+
   return (
     <div>
       <style>{`
@@ -1507,7 +1515,12 @@ export default function InputCostPage({ params }: Params) {
                     stickyHeader={true}
                     zebra={true}
                     scrollY={false}
-                    maxHeight="auto"
+                    maxHeight="none"
+                    bodyMaxHeight={
+                      shouldScrollSkuInfoTable
+                        ? INPUT_COST_ROW_HEIGHT * INPUT_COST_VISIBLE_ROWS
+                        : undefined
+                    }
                     emptyMessage="No data available"
                     tableClassName="text-sm"
                     className="rounded-xl"
@@ -1533,7 +1546,12 @@ export default function InputCostPage({ params }: Params) {
                   pageSize={10}
                   stickyHeader
                   scrollY={false}
-                  maxHeight="auto"
+                  maxHeight="none"
+                  bodyMaxHeight={
+                    shouldScrollWarehouseTable
+                      ? INPUT_COST_ROW_HEIGHT * INPUT_COST_VISIBLE_ROWS
+                      : undefined
+                  }
                   emptyMessage="No warehouse data available"
                   tableClassName="text-sm"
                   className="rounded-xl"

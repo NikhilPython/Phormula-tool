@@ -1416,7 +1416,7 @@ const Pnlforecast: React.FC = () => {
           </div>
 
           <div className="mt-4 w-full overflow-x-auto">
-            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+            <div className="rounded-xl border border-gray-300 overflow-x-auto overflow-y-hidden min-w-[1100px]">
               <div className="w-full text-xs 2xl:text-sm text-[#414042]">
                 <GroupedCollapsibleTables<RowData>
                   rows={noDataAvailable ? [] : tableRows}
@@ -1431,7 +1431,21 @@ const Pnlforecast: React.FC = () => {
                   defaultSort={forecastSortConfig}
                   onSortChange={setForecastSortConfig}
                   getSortValue={getForecastSortValue}
-                  isTotalRow={isPnlTotalRow}
+                  isTotalRow={(row) => {
+                    const isTotal = isPnlTotalRow(row);
+
+                    const isSummary = summaryRows.some(
+                      (s) => s.label === row.product_name,
+                    );
+
+                    return isTotal || isSummary;
+                  }}
+                  bodyMaxHeight={
+                    showAllForecastProductRows &&
+                      displayProductRows.filter((row) => !isPnlTotalRow(row)).length > 15
+                      ? 40 * 15
+                      : undefined
+                  }
                   getValue={(row, key) => {
                     if (key === "sr_no") {
                       const isTotal =
@@ -1448,6 +1462,7 @@ const Pnlforecast: React.FC = () => {
                       const productIndex = displayProductRows.findIndex(
                         (r) => r === row,
                       );
+
                       return productIndex >= 0 ? productIndex + 1 : "";
                     }
 
@@ -1474,9 +1489,11 @@ const Pnlforecast: React.FC = () => {
                     if (row.product_name === "Total") {
                       return "bg-[#EFEFEF] font-semibold";
                     }
+
                     if (summaryRows.some((s) => s.label === row.product_name)) {
                       return "bg-white";
                     }
+
                     return "bg-white";
                   }}
                 />
