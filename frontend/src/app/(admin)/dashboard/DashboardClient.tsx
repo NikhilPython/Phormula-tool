@@ -120,6 +120,8 @@ type MonthlySkuwiseRow = {
     ad_type?: string;
 
     quantity: number;
+    return_quantity?: number;
+    total_quantity?: number;
     asp: number;
     net_sales: number;
 
@@ -165,7 +167,6 @@ type MonthlySkuwiseRow = {
     total_ads?: number;
     advertising_fees?: number;
     amazon_fees?: number;
-
     isTotal?: boolean;
     isOthers?: boolean;
 };
@@ -1693,6 +1694,13 @@ export default function DashboardPage() {
         key: "net_sales",
         direction: "desc",
     });
+
+    const productwiseInitialCollapsed = useMemo(
+        () => ({
+            quantity: false,
+        }),
+        []
+    );
 
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
 
@@ -4975,6 +4983,23 @@ export default function DashboardPage() {
                 ad_type: String(r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""),
 
                 quantity: Number(r.quantity ?? 0),
+
+                return_quantity: Number(
+                    r.return_quantity ??
+                    r.returns_quantity ??
+                    r.return_qty ??
+                    0
+                ),
+
+                total_quantity: Number(
+                    r.total_quantity ??
+                    r.net_quantity ??
+                    (
+                        Number(r.quantity ?? 0) -
+                        Number(r.return_quantity ?? r.returns_quantity ?? r.return_qty ?? 0)
+                    )
+                ),
+
                 asp: Number(r.asp ?? 0),
                 net_sales: Number(r.net_sales ?? 0),
 
@@ -5057,6 +5082,22 @@ export default function DashboardPage() {
         return {
             ...raw,
             quantity: toNumberSafe(raw?.quantity),
+
+            return_quantity: toNumberSafe(
+                raw?.return_quantity ??
+                raw?.returns_quantity ??
+                raw?.return_qty
+            ),
+
+            total_quantity: toNumberSafe(
+                raw?.total_quantity ??
+                raw?.net_quantity ??
+                (
+                    toNumberSafe(raw?.quantity) -
+                    toNumberSafe(raw?.return_quantity ?? raw?.returns_quantity ?? raw?.return_qty)
+                )
+            ),
+
             asp: toNumberSafe(raw?.asp),
             net_sales: toNumberSafe(raw?.net_sales),
 
@@ -5099,6 +5140,11 @@ export default function DashboardPage() {
         const converted: MonthlySkuwiseRow = {
             ...row,
             quantity: toNumberSafe(row.quantity),
+            return_quantity: toNumberSafe(row.return_quantity),
+            total_quantity: toNumberSafe(
+                row.total_quantity ??
+                (toNumberSafe(row.quantity) - toNumberSafe(row.return_quantity))
+            ),
         };
 
         PRODUCTWISE_MONEY_KEYS.forEach((key) => {
@@ -5236,6 +5282,22 @@ export default function DashboardPage() {
             sku: "GRAND_TOTAL",
             product_name: "Grand Total",
             quantity: totalQuantity,
+
+            return_quantity: rows.reduce(
+                (s, r) => s + toNumberSafe(r.return_quantity),
+                0
+            ),
+
+            total_quantity: rows.reduce(
+                (s, r) =>
+                    s +
+                    toNumberSafe(
+                        r.total_quantity ??
+                        (toNumberSafe(r.quantity) - toNumberSafe(r.return_quantity))
+                    ),
+                0
+            ),
+
             asp:
                 totalAspValues.length > 0
                     ? totalAspValues.reduce((s, v) => s + v, 0) / totalAspValues.length
@@ -5653,14 +5715,32 @@ export default function DashboardPage() {
     const monthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
         if (!monthlySkuwiseRowsDisplay || monthlySkuwiseRowsDisplay.length === 0) return [];
 
-        const totalRow =
-            monthlySkuwiseRowsDisplay.find((r) => r.isTotal) ??
-            monthlySkuwiseRowsDisplay.find((r) => r.sku === "GRAND_TOTAL") ??
-            null;
+        const isMtdTotalRow = (row: any) => {
+            const name = String(row?.product_name || "").trim().toLowerCase();
+            const sku = String(row?.sku || "").trim().toUpperCase();
 
-        const bodyRows = monthlySkuwiseRowsDisplay.filter(
-            (r) => !r.isTotal && r.sku !== "GRAND_TOTAL"
-        );
+            return (
+                !!row?.isTotal ||
+                sku === "GRAND_TOTAL" ||
+                sku === "TOTAL" ||
+                name === "grand total" ||
+                name === "total"
+            );
+        };
+
+        const normalizeTotalRow = (row: any): MonthlySkuwiseTableRow => ({
+            ...row,
+            sku: row?.sku || "GRAND_TOTAL",
+            product_name: "Total",
+            isTotal: true,
+            isOthers: false,
+            sno: undefined,
+        });
+
+        const totalRowRaw = monthlySkuwiseRowsDisplay.find(isMtdTotalRow) ?? null;
+        const totalRow = totalRowRaw ? normalizeTotalRow(totalRowRaw) : null;
+
+        const bodyRows = monthlySkuwiseRowsDisplay.filter((r) => !isMtdTotalRow(r));
 
         const getMarketplaceFees = (row: MonthlySkuwiseRow) => {
             const value =
@@ -5675,7 +5755,10 @@ export default function DashboardPage() {
             switch (key) {
                 case "marketplace_total":
                     return getMarketplaceFees(row);
+
                 case "quantity":
+                case "return_quantity":
+                case "total_quantity":
                 case "asp":
                 case "net_sales":
                 case "cogs":
@@ -5691,10 +5774,13 @@ export default function DashboardPage() {
                 case "cm2_profit_per":
                 case "cm2_profit":
                     return toNumber((row as any)[key]);
+
                 case "product_name":
                     return String(row.product_name || "").toLowerCase();
+
                 case "sku":
                     return String(row.sku || "").toLowerCase();
+
                 default:
                     return toNumber((row as any)[key]);
             }
@@ -5720,18 +5806,19 @@ export default function DashboardPage() {
                 ...r,
                 sno: idx + 1,
                 isOthers: false,
+                isTotal: false,
             }));
 
-            if (totalRow) out.push(totalRow as MonthlySkuwiseTableRow);
+            if (totalRow) out.push(totalRow);
 
-            return out.map((r, idx) =>
-                r.isTotal ? r : { ...r, sno: idx + 1 }
-            );
+            return out;
         }
 
         const top9 = sorted.slice(0, 9).map((r, idx) => ({
             ...r,
             sno: idx + 1,
+            isOthers: false,
+            isTotal: false,
         }));
 
         const rest = sorted.slice(9);
@@ -5755,6 +5842,19 @@ export default function DashboardPage() {
             product_name: "Others",
 
             quantity: othersQty,
+
+            return_quantity: sum("return_quantity" as keyof MonthlySkuwiseRow),
+
+            total_quantity: rest.reduce(
+                (acc, r) =>
+                    acc +
+                    toNumber(
+                        (r as any).total_quantity ??
+                        (toNumber((r as any).quantity) - toNumber((r as any).return_quantity))
+                    ),
+                0
+            ),
+
             asp: othersAsp,
             net_sales: othersNetSales,
 
@@ -5794,6 +5894,7 @@ export default function DashboardPage() {
             amazon_fees: rest.reduce((acc, r) => acc + getMarketplaceFees(r), 0),
 
             isOthers: true,
+            isTotal: false,
         };
 
         const out: MonthlySkuwiseTableRow[] = [...top9, othersRow];
@@ -6102,11 +6203,11 @@ export default function DashboardPage() {
         {
             id: "quantity",
             label: "Net Units Sold",
-            // info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
+            info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
 
             collapsedCols: [
                 {
-                    key: "quantity",
+                    key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
                     width: 160,
@@ -6115,11 +6216,32 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "sku", label: "SKU", align: "center" as const },
+                {
+                    key: "sku",
+                    label: "SKU",
+                    align: "center" as const,
+                    width: 120,
+                },
                 {
                     key: "quantity",
+                    label: "Units Sold",
+                    align: "center" as const,
+                    sortable: true,
+                    width: 110,
+                },
+                {
+                    key: "return_quantity",
+                    label: "Return",
+                    align: "center" as const,
+                    sortable: true,
+                    width: 100,
+                },
+                {
+                    key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
+                    sortable: true,
+                    width: 100,
                 },
             ],
         },
@@ -6857,8 +6979,9 @@ export default function DashboardPage() {
             : 0;
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
-    const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits"]);
+    const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
     const ADS_SIGN_MINUS = new Set([
+        "return_quantity",
         "ads_spend",
         "cogs",
         "fba_fees",
@@ -6899,7 +7022,15 @@ export default function DashboardPage() {
 
         const totalRow =
             monthlySkuwiseRowsDisplay.find((r) => r.isTotal) ??
-            monthlySkuwiseRowsDisplay.find((r) => r.sku === "GRAND_TOTAL");
+            monthlySkuwiseRowsDisplay.find((r) => String(r.sku || "").toUpperCase() === "GRAND_TOTAL") ??
+            monthlySkuwiseRowsDisplay.find((r) => String(r.sku || "").toUpperCase() === "TOTAL") ??
+            monthlySkuwiseRowsDisplay.find(
+                (r) => String(r.product_name || "").trim().toLowerCase() === "grand total"
+            ) ??
+            monthlySkuwiseRowsDisplay.find(
+                (r) => String(r.product_name || "").trim().toLowerCase() === "total"
+            ) ??
+            monthlySkuwiseRowsDisplay[monthlySkuwiseRowsDisplay.length - 1];
 
         if (idxNetSales !== -1) {
             copy[idxNetSales] = toNumberSafe(totalRow?.net_sales ?? 0);
@@ -8504,7 +8635,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
                 // "Ad Type": r.isOthers || r.isTotal ? "-" : formatAdType(r.ad_type || "-"),
 
-                "Net Units Sold": n(r.quantity),
+                "Units Sold": n(r.quantity),
+                "Return": n(r.return_quantity),
+                "Total Units": n(
+                    r.total_quantity ??
+                    (toNumber(r.quantity) - toNumber(r.return_quantity))
+                ),
                 "ASP": n(r.asp),
                 "Net Sales": n(r.net_sales),
                 "COGS": n(r.cogs),
@@ -10541,10 +10677,17 @@ ${pageLoading
                                     <div className="min-w-full">
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                             rows={finalMonthlySkuwiseRowsForTable}
-                                            getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
+                                            getRowKey={(row, idx) =>
+                                                row.isTotal
+                                                    ? "TOTAL"
+                                                    : row.isOthers
+                                                        ? "OTHERS"
+                                                        : row.sku || String(idx)
+                                            }
                                             leftCols={SKUWISE_LEFT_COLS}
                                             groups={SKUWISE_GROUPS}
                                             singleCols={SKUWISE_SINGLE_COLS}
+                                            initialCollapsed={productwiseInitialCollapsed}
                                             defaultSort={plSortConfig}
                                             onSortChange={setPlSortConfig}
                                             showSignRowInBody
@@ -10592,6 +10735,22 @@ ${pageLoading
                                                 if (colKey === "sku") {
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return row.sku || "-";
+                                                }
+                                                if (colKey === "quantity") {
+                                                    return fmtInt(toNumber((row as any).quantity));
+                                                }
+
+                                                if (colKey === "return_quantity") {
+                                                    return fmtInt(toNumber((row as any).return_quantity));
+                                                }
+
+                                                if (colKey === "total_quantity") {
+                                                    return fmtInt(
+                                                        toNumber(
+                                                            (row as any).total_quantity ??
+                                                            (toNumber((row as any).quantity) - toNumber((row as any).return_quantity))
+                                                        )
+                                                    );
                                                 }
                                                 if (colKey === "product_name") {
                                                     if (row.isTotal) {
