@@ -64,7 +64,11 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   } = props;
 
   const safeRange: Range | "" =
-    range && allowedRanges.includes(range) ? range : "";
+    range && allowedRanges.includes(range)
+      ? range
+      : allowedRanges.includes("yearly")
+        ? "yearly"
+        : allowedRanges[0] ?? "";
 
   // Current date (client)
   const now = new Date();
@@ -166,6 +170,10 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   const handleRangeChange = (nextRange: Range) => {
     onRangeChange(nextRange);
 
+    // Yearly does not need month/quarter seeding.
+    // Keep the current selected year.
+    if (nextRange === "yearly") return;
+
     const latest = getLatestPeriod();
     if (!latest?.month || !latest?.year) return;
 
@@ -188,39 +196,39 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   };
 
   // Seed once from latestFetchedPeriod (but normalized to historic)
-  const initializedRef = React.useRef(false);
+  // const initializedRef = React.useRef(false);
 
-  React.useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+  // React.useEffect(() => {
+  //   if (initializedRef.current) return;
+  //   initializedRef.current = true;
 
-    const latest = getLatestPeriod();
-    if (!latest?.month || !latest?.year) return;
+  //   const latest = getLatestPeriod();
+  //   if (!latest?.month || !latest?.year) return;
 
-    const y = Number(latest.year);
-    if (Number.isNaN(y)) return;
+  //   const y = Number(latest.year);
+  //   if (Number.isNaN(y)) return;
 
-    const normalized = getLatestHistoricMonthly(y, latest.month);
-    if (!normalized) return;
+  //   const normalized = getLatestHistoricMonthly(y, latest.month);
+  //   if (!normalized) return;
 
-    // ✅ Force default year to latest HISTORIC (only once)
-    if (String(selectedYear) !== normalized.year) {
-      onYearChange(normalized.year);
-    }
+  //   // ✅ Force default year to latest HISTORIC (only once)
+  //   if (String(selectedYear) !== normalized.year) {
+  //     onYearChange(normalized.year);
+  //   }
 
-    // ✅ Optionally seed month/quarter once if empty
-    if (safeRange === "monthly") {
-      if (!selectedMonth) onMonthChange(normalized.month);
-    }
+  //   // ✅ Optionally seed month/quarter once if empty
+  //   if (safeRange === "monthly") {
+  //     if (!selectedMonth) onMonthChange(normalized.month);
+  //   }
 
-    if (safeRange === "quarterly") {
-      if (!selectedQuarter || selectedQuarter === "Range") {
-        const q = monthToQuarter(normalized.month);
-        if (q) onQuarterChange(q);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  //   if (safeRange === "quarterly") {
+  //     if (!selectedQuarter || selectedQuarter === "Range") {
+  //       const q = monthToQuarter(normalized.month);
+  //       if (q) onQuarterChange(q);
+  //     }
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []);
 
   /* =========================
      Month/Quarter disable rules (kept for safety)
