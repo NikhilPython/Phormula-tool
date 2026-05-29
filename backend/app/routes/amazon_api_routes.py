@@ -3267,6 +3267,47 @@ def finances_mtd_transactions():
         df_sku.loc[df_sku["sku"].astype(str).str.upper() == "GRAND_TOTAL", "sku"] = "TOTAL"
         df_sku.loc[df_sku["product_name"].astype(str).str.lower() == "grand total", "product_name"] = "TOTAL"
 
+        # ------------------------------------------------------------
+        # FINAL COLUMN ORDER FIX
+        # Keep quantity, return_quantity, total_quantity together
+        # ------------------------------------------------------------
+        preferred_first_cols = [
+            "sku",
+            "product_name",
+            "quantity",
+            "return_quantity",
+            "total_quantity",
+            "asp",
+            "net_sales",
+            "product_sales",
+            "product_sales_tax",
+            "postage_credits",
+            "gift_wrap_credits",
+            "shipping_credits_tax",
+            "giftwrap_credits_tax",
+            "promotional_rebates",
+            "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "cogs",
+            "selling_fees",
+            "fba_fees",
+            "marketplace_fees",
+            "credits",
+            "tax",
+            "tax_and_credits",
+            "other",
+            "gross_sales",
+            "profit",
+            "ads_spend",
+            "acos",
+            "cm2_profit",
+        ]
+
+        existing_first_cols = [c for c in preferred_first_cols if c in df_sku.columns]
+        remaining_cols = [c for c in df_sku.columns if c not in existing_first_cols]
+
+        df_sku = df_sku[existing_first_cols + remaining_cols]
+
         skuwise_items = df_sku.to_dict(orient="records")
 
         # store SKU-wise table
