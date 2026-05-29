@@ -2680,8 +2680,47 @@ def finances_mtd_transactions():
 
         df_skus = df_all[df_all["sku"] != ""].copy()
 
+        # ------------------------------------------------------------
+        # QUANTITY / RETURN QUANTITY FIX
+        # ------------------------------------------------------------
+
+        for col, default in [
+            ("description", ""),
+            ("type", ""),
+            ("transaction_type", ""),
+            ("quantity", 0.0),
+        ]:
+            if col not in df_skus.columns:
+                df_skus[col] = default
+
+        df_skus["quantity"] = pd.to_numeric(
+            df_skus["quantity"], errors="coerce"
+        ).fillna(0.0)
+
+        desc_lower = df_skus["description"].fillna("").astype(str).str.lower()
+        type_lower = df_skus["type"].fillna("").astype(str).str.lower()
+        transaction_type_lower = df_skus["transaction_type"].fillna("").astype(str).str.lower()
+
+        return_mask = (
+            desc_lower.str.contains("refund|return", case=False, na=False, regex=True)
+            | type_lower.str.contains("refund|return", case=False, na=False, regex=True)
+            | transaction_type_lower.str.contains("refund|return", case=False, na=False, regex=True)
+        )
+
+        # Sales quantity only from non-return rows
+        df_skus["sales_quantity"] = 0.0
+        df_skus.loc[~return_mask, "sales_quantity"] = (
+            df_skus.loc[~return_mask, "quantity"].abs()
+        )
+
+        # Return quantity only from refund/return rows
+        df_skus["return_quantity"] = 0.0
+        df_skus.loc[return_mask, "return_quantity"] = (
+            df_skus.loc[return_mask, "quantity"].abs()
+        )
+
         preferred_sum_cols = [
-            "quantity", "product_sales", "product_sales_tax", "postage_credits", "gift_wrap_credits",
+            "sales_quantity", "return_quantity","quantity", "product_sales", "product_sales_tax", "postage_credits", "gift_wrap_credits",
             "shipping_credits_tax", "giftwrap_credits_tax", "promotional_rebates", "promotional_rebates_tax",
             "marketplace_facilitator_tax", "selling_fees", "fba_fees", "other", "gross_sales", "cogs", "profit",
         ]
@@ -2691,6 +2730,40 @@ def finances_mtd_transactions():
             df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+        
+        # ------------------------------------------------------------
+        # FINAL REQUIRED QUANTITY COLUMNS
+        # ------------------------------------------------------------
+
+        if "sales_quantity" not in df_sku.columns:
+            df_sku["sales_quantity"] = 0.0
+
+        if "return_quantity" not in df_sku.columns:
+            df_sku["return_quantity"] = 0.0
+
+        df_sku["sales_quantity"] = pd.to_numeric(
+            df_sku["sales_quantity"], errors="coerce"
+        ).fillna(0.0)
+
+        df_sku["return_quantity"] = pd.to_numeric(
+            df_sku["return_quantity"], errors="coerce"
+        ).fillna(0.0)
+
+        # Final required quantity columns
+        # quantity = sold units before deducting returns
+        df_sku["quantity"] = (
+            pd.to_numeric(df_sku["sales_quantity"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(df_sku["return_quantity"], errors="coerce").fillna(0.0)
+        )
+
+        # total_quantity = quantity - return_quantity
+        df_sku["total_quantity"] = (
+            pd.to_numeric(df_sku["quantity"], errors="coerce").fillna(0.0)
+            - pd.to_numeric(df_sku["return_quantity"], errors="coerce").fillna(0.0)
+        )
+
+        df_sku["total_quantity"] = df_sku["total_quantity"].clip(lower=0)
+
         df_sku["shipment_fees"] = 0.0
 
         # merge lost_total
@@ -2729,7 +2802,7 @@ def finances_mtd_transactions():
         df_sku["quantity"] = pd.to_numeric(df_sku["quantity"], errors="coerce").fillna(0.0)
 
         df_sku["asp"] = df_sku.apply(
-            lambda r: (float(r["net_sales"]) / float(r["quantity"])) if float(r["quantity"]) else 0.0,
+            lambda r: (float(r["net_sales"]) / float(r["total_quantity"])) if float(r["total_quantity"]) else 0.0,
             axis=1,
         )
 
@@ -2905,7 +2978,7 @@ def finances_mtd_transactions():
         df_sku["cm2_profit"] = (df_sku["profit"] - df_sku["ads_spend"]).fillna(0.0)
 
         df_sku["cm1_profit_per_unit"] = df_sku.apply(
-            lambda r: (float(r["profit"]) / float(r["quantity"])) if float(r["quantity"]) else 0.0,
+            lambda r: (float(r["profit"]) / float(r["total_quantity"])) if float(r["total_quantity"]) else 0.0,
             axis=1,
         )
         df_sku["cm1_profit_per"] = df_sku.apply(
@@ -2913,7 +2986,7 @@ def finances_mtd_transactions():
             axis=1,
         )
         df_sku["cm2_profit_per_unit"] = df_sku.apply(
-            lambda r: (float(r["cm2_profit"]) / float(r["quantity"])) if float(r["quantity"]) else 0.0,
+            lambda r: (float(r["cm2_profit"]) / float(r["total_quantity"])) if float(r["total_quantity"]) else 0.0,
             axis=1,
         )
         df_sku["cm2_profit_per"] = df_sku.apply(
@@ -2981,8 +3054,23 @@ def finances_mtd_transactions():
         total_row["misc_transaction"] = round(float(misc_transaction_total or 0.0), 2)
 
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
-        total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
-        total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
+
+        total_quantity = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
+        total_return_quantity = float(df_sku["return_quantity"].sum()) if "return_quantity" in df_sku.columns else 0.0
+        total_total_quantity = float(df_sku["total_quantity"].sum()) if "total_quantity" in df_sku.columns else 0.0
+
+        total_row["quantity"] = total_quantity
+        total_row["return_quantity"] = total_return_quantity
+        total_row["total_quantity"] = total_total_quantity
+
+        # Use total_quantity after returns for ASP and per-unit calculations
+        total_qty = total_total_quantity
+
+        total_row["asp"] = (
+            total_row["net_sales"] / total_qty
+            if total_qty
+            else 0.0
+        )
         # Grand Total Marketplace Fees
         total_row["marketplace_fees"] = round(
             float(pd.to_numeric(df_sku["marketplace_fees"], errors="coerce").fillna(0.0).sum())
@@ -3172,7 +3260,53 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
-        
+        # Remove helper column from final DB table
+        df_sku.drop(columns=["sales_quantity"], inplace=True, errors="ignore")
+
+        # Optional: make grand total row same as your old table
+        df_sku.loc[df_sku["sku"].astype(str).str.upper() == "GRAND_TOTAL", "sku"] = "TOTAL"
+        df_sku.loc[df_sku["product_name"].astype(str).str.lower() == "grand total", "product_name"] = "TOTAL"
+
+        # ------------------------------------------------------------
+        # FINAL COLUMN ORDER FIX
+        # Keep quantity, return_quantity, total_quantity together
+        # ------------------------------------------------------------
+        preferred_first_cols = [
+            "sku",
+            "product_name",
+            "quantity",
+            "return_quantity",
+            "total_quantity",
+            "asp",
+            "net_sales",
+            "product_sales",
+            "product_sales_tax",
+            "postage_credits",
+            "gift_wrap_credits",
+            "shipping_credits_tax",
+            "giftwrap_credits_tax",
+            "promotional_rebates",
+            "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "cogs",
+            "selling_fees",
+            "fba_fees",
+            "marketplace_fees",
+            "credits",
+            "tax",
+            "tax_and_credits",
+            "other",
+            "gross_sales",
+            "profit",
+            "ads_spend",
+            "acos",
+            "cm2_profit",
+        ]
+
+        existing_first_cols = [c for c in preferred_first_cols if c in df_sku.columns]
+        remaining_cols = [c for c in df_sku.columns if c not in existing_first_cols]
+
+        df_sku = df_sku[existing_first_cols + remaining_cols]
 
         skuwise_items = df_sku.to_dict(orient="records")
 
