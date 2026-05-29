@@ -584,12 +584,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
-      { key: "sno", label: "S.No.", align: "center" },
+      { key: "sno", label: "S.No.", align: "center",width: 60, },
       {
         key: "product_name",
         label: "Product Name",
         info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
         align: "left",
+        width: 220,
       },
     ],
     []
@@ -802,11 +803,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
         label: "ASP",
         info: <InfoTip text={TERM_DEFINITIONS.asp} />,
         align: "center",
+        width: 90,
       },
       {
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
+         width: 120,
       },
       {
         key: "promotional_rebates",
@@ -1740,7 +1743,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         </div>
       </div> */}
 
-      {showModal && selectedProduct && (
+      {/* {showModal && selectedProduct && (
         <Productinfoinpopup
           productname={selectedProduct}
           countryName={countryName}
@@ -1748,7 +1751,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           year={year}
           onClose={() => setShowModal(false)}
         />
-      )}
+      )} */}
     </>
   );
 };

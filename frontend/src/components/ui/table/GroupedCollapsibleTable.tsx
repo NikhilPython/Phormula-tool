@@ -186,6 +186,8 @@ export default function GroupedCollapsibleTable<RowT>({
 
 
 
+
+
   type SortDirection = "asc" | "desc";
 
   const [sortConfig, setSortConfig] = useState<{
@@ -426,6 +428,26 @@ export default function GroupedCollapsibleTable<RowT>({
     onVisibleColCountChange?.(visibleLeafCols.length);
   }, [visibleLeafCols.length, onVisibleColCountChange]);
 
+
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollbarWidth, setScrollbarWidth] = useState(0);
+
+  useEffect(() => {
+    if (!bodyMaxHeight) return;
+
+    const measure = () => {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+
+      const width = el.offsetWidth - el.clientWidth;
+      setScrollbarWidth(width > 0 ? width : 0);
+    };
+
+    measure();
+
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   /* ---------------- Row 2 Headers ---------------- */
   type Row2Cell<RowT> =
@@ -750,10 +772,20 @@ export default function GroupedCollapsibleTable<RowT>({
     return (
       <div className="w-full">
         <div
+          ref={scrollContainerRef}
           className="w-full overflow-y-auto"
-          style={{ maxHeight: `${bodyMaxHeight}px` }}
+          style={{
+            maxHeight: `${bodyMaxHeight}px`,
+            scrollbarGutter: "stable",
+          }}
         >
-          <table className={tableClassName}>
+          <table
+            className={tableClassName}
+            style={{
+              tableLayout: "fixed",
+              width: "100%",
+            }}
+          >
             {renderColGroup()}
             {renderTableHead()}
 
@@ -764,17 +796,31 @@ export default function GroupedCollapsibleTable<RowT>({
           </table>
         </div>
 
-        <table className={tableClassName}>
-          {renderColGroup()}
+        <div
+          className="w-full"
+          style={{
+            paddingRight: scrollbarWidth ? `${scrollbarWidth}px` : undefined,
+            boxSizing: "border-box",
+          }}
+        >
+          <table
+            className={tableClassName}
+            style={{
+              tableLayout: "fixed",
+              width: "100%",
+            }}
+          >
+            {renderColGroup()}
 
-          {pinnedRows.length > 0 && (
-            <tbody>
-              {renderBodyRows(pinnedRows, scrollRows.length)}
-            </tbody>
-          )}
+            {pinnedRows.length > 0 && (
+              <tbody>
+                {renderBodyRows(pinnedRows, scrollRows.length)}
+              </tbody>
+            )}
 
-          {renderSummaryFooter()}
-        </table>
+            {renderSummaryFooter()}
+          </table>
+        </div>
       </div>
     );
   }

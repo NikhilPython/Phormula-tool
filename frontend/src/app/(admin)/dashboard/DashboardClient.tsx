@@ -43,7 +43,10 @@ import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[co
 import { useRouter, useParams } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
-import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
+import GroupedCollapsibleTable, {
+    ColGroup,
+    type LeafCol,
+} from "@/components/ui/table/GroupedCollapsibleTable";
 import {
     exportPnLProductwiseBreakdownMtdExcel,
     exportCurrentInventoryExcel,
@@ -6283,13 +6286,19 @@ export default function DashboardPage() {
         previousSkuwiseGlobalData,
     ]);
 
-    const SKUWISE_LEFT_COLS = [
-        { key: "sno", label: "S.No", align: "center" as const },
+    const SKUWISE_LEFT_COLS: LeafCol<MonthlySkuwiseTableRow>[] = [
+        {
+            key: "sno",
+            label: "S.No",
+            align: "center",
+            width: 60,
+        },
         {
             key: "product_name",
             label: "Product Name",
+            align: "left",
             info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
-            align: "left" as const,
+            width: 190,
         },
     ];
 
