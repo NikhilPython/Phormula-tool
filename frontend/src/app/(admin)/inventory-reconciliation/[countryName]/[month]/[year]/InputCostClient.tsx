@@ -2321,6 +2321,18 @@ export default function InventoryReconciliationPage({ params }: Params) {
     );
   }
 
+  const RECON_VISIBLE_ROWS = 15;
+  const LOST_COMP_VISIBLE_ROWS = 15;
+  const TABLE_ROW_HEIGHT = 40;
+
+  const shouldScrollReconTable =
+    showAllReconRows &&
+    effectiveRows.filter((row) => !isTotalRow(row)).length > RECON_VISIBLE_ROWS;
+
+  const shouldScrollLostCompTable =
+    showAllLostCompRows &&
+    lostCompTableData.filter((row: any) => !row.__isTotal).length > LOST_COMP_VISIBLE_ROWS;
+
   return (
     <div className="w-full">
 
@@ -2507,6 +2519,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 getValue={getValue}
                 getRowClassName={getRowClassName}
                 onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+                isTotalRow={isTotalRow}
+                bodyMaxHeight={
+                  shouldScrollReconTable
+                    ? TABLE_ROW_HEIGHT * RECON_VISIBLE_ROWS
+                    : undefined
+                }
                 tableClassName={
                   anyExpanded
                     ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
@@ -2535,10 +2553,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 paginate={false}
                 stickyHeader
                 scrollY={false}
-                maxHeight="auto"
+                maxHeight="none"
                 emptyMessage="No data available"
                 tableClassName="text-xs 2xl:text-sm"
                 className="rounded-lg"
+                isTotalRow={(row) => !!(row as any).__isTotal}
+                bodyMaxHeight={
+                  shouldScrollLostCompTable
+                    ? TABLE_ROW_HEIGHT * LOST_COMP_VISIBLE_ROWS
+                    : undefined
+                }
                 rowClassName={(row) =>
                   (row as any).__isTotal
                     ? "bg-[#D9D9D9] font-semibold"

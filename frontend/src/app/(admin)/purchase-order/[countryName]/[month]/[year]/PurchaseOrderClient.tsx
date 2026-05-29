@@ -1024,10 +1024,17 @@ export default function PurchaseOrderPage({
             paginate={false}
             pageSize={10}
             stickyHeader
-            scrollY
-            maxHeight="90vh"
+            scrollY={false}
+            maxHeight="none"
             emptyMessage="No Data Available for selected period"
             rowClassName={getTableRowClassName}
+            isTotalRow={(row) => !!row.__isTotalRow}
+            bodyMaxHeight={
+              showAllPoRows &&
+                tableData.filter((row) => !row.__isTotalRow).length > 16
+                ? 40 * 16
+                : undefined
+            }
             tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
           />
         </>

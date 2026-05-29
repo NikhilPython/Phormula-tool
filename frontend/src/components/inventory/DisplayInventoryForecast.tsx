@@ -704,30 +704,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     });
   };
 
-  // const EmptyChartState = () => (
-  //   <div className="w-full h-[550px] rounded-2xl border border-slate-300 bg-slate-50 flex items-center justify-center">
-  //     <div className="text-center px-6">
-  //       {/* <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm">
-  //         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" className="text-slate-400">
-  //           <path
-  //             d="M4 19H20M7 16L10 12L13 14L17 8"
-  //             stroke="currentColor"
-  //             strokeWidth="1.8"
-  //             strokeLinecap="round"
-  //             strokeLinejoin="round"
-  //           />
-  //         </svg>
-  //       </div> */}
-  //       {/* <h3 className="text-base font-semibold text-slate-700">No data available</h3> */}
-  //       <p className="mt-1 text-sm text-slate-500">
-  //         Fetch at least 6 months of data to view the inventory forecast trend.
-  //       </p>
-  //     </div>
-  //   </div>
-  // );
-
-
-
   const EmptyTableState = () => (
     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 overflow-hidden min-w-[900px]">
       <table className="w-full 2xl:text-sm text-xs text-[#414042]">
@@ -755,6 +731,33 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       </table>
     </div>
   );
+
+  const tableHeaderCell =
+    "h-[41px] bg-[#5EA68E] text-[#F8EDCE] font-bold border-b border-r border-gray-300 px-3 py-2 text-center align-middle whitespace-nowrap";
+
+  const tableHeaderCellNoTop =
+    "h-[41px] bg-[#5EA68E] text-[#F8EDCE] font-bold border-t-0 border-b border-r border-gray-300 px-3 py-2 text-center align-middle whitespace-nowrap";
+
+  const tableBodyCell =
+    "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-center min-w-0 whitespace-nowrap";
+
+  const tableBodyTextCell =
+    "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-left min-w-0 whitespace-normal break-words";
+
+  const tableTotalCell =
+    "border-b border-r border-[#e1e5ea] bg-[#D9D9D933] px-3 py-2 align-middle text-center min-w-0 whitespace-nowrap font-bold";
+
+  const tableTotalTextCell =
+    "border-b border-r border-[#e1e5ea] bg-[#D9D9D933] px-3 py-2 align-middle text-left min-w-0 whitespace-normal break-words font-bold";
+
+  const FORECAST_VISIBLE_ROWS = 15;
+  const FORECAST_ROW_HEIGHT = 40;
+
+  const shouldScrollForecastTable =
+    showAllForecastRows && tableRows.length > FORECAST_VISIBLE_ROWS;
+
+  const forecastTableBodyMaxHeight =
+    FORECAST_ROW_HEIGHT * FORECAST_VISIBLE_ROWS;
 
   return (
     <div>
@@ -913,93 +916,137 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
           <div className="mt-4 w-full overflow-x-auto">
             {hasRenderableData ? (
-              <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
-                <table className="w-full 2xl:text-sm text-xs text-[#414042]">
+              <div
+                className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-auto min-w-[900px] [scrollbar-gutter:stable]"
+                style={
+                  shouldScrollForecastTable
+                    ? { maxHeight: `${forecastTableBodyMaxHeight + 88 + 40}px` }
+                    : undefined
+                }
+              >
+                <table className="w-full 2xl:text-sm text-xs text-slate-700 border-separate border-spacing-0 table-fixed">
                   <thead>
-                    <tr className="font-normal">
+                    <tr>
                       <th
                         rowSpan={2}
-                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                        className={`sticky top-0 z-30 w-[70px] ${tableHeaderCell}`}
                       >
                         S.No
                       </th>
+
                       <th
                         rowSpan={2}
-                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left align-middle"
+                        className={`sticky top-0 z-30 w-[260px] ${tableHeaderCell} text-left`}
                       >
                         Product Name
                       </th>
+
                       <th
                         rowSpan={2}
-                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                        className={`sticky top-0 z-30 w-[150px] ${tableHeaderCell}`}
                       >
                         SKU
                       </th>
 
                       <th
-                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
                         colSpan={3}
+                        className={`sticky top-0 z-30 ${tableHeaderCell}`}
                       >
                         Last 3 Months
                       </th>
 
                       <th
-                        className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
                         colSpan={3}
+                        className={`sticky top-0 z-30 ${tableHeaderCell} border-r-0`}
                       >
                         Forecasted Months
                       </th>
                     </tr>
 
                     <tr>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {soldLabels[0] || ''}
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                        {soldLabels[0] || ""}
                       </th>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {soldLabels[1] || ''}
+
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                        {soldLabels[1] || ""}
                       </th>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {soldLabels[2] || ''}
+
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                        {soldLabels[2] || ""}
                       </th>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {forecastLabels[0] || ''}
+
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                        {forecastLabels[0] || ""}
                       </th>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {forecastLabels[1] || ''}
+
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                        {forecastLabels[1] || ""}
                       </th>
-                      <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                        {forecastLabels[2] || ''}
+
+                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop} border-r-0`}>
+                        {forecastLabels[2] || ""}
                       </th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {tableRows.map((row, i) => (
-                      <tr key={i} className="text-center border-t border-gray-300 bg-white">
-                        <td className="p-2 border border-gray-300">{row.sNo}</td>
-                        <td className="p-2 border border-gray-300 text-left">{row.product}</td>
-                        <td className="p-2 border border-gray-300">{row.sku}</td>
-                        <td className="p-2 border border-gray-300">{row.sold1}</td>
-                        <td className="p-2 border border-gray-300">{row.sold2}</td>
-                        <td className="p-2 border border-gray-300">{row.sold3}</td>
-                        <td className="p-2 border border-gray-300">{row.f1}</td>
-                        <td className="p-2 border border-gray-300">{row.f2}</td>
-                        <td className="p-2 border border-gray-300">{row.f3}</td>
+                      <tr key={i} className="h-[40px] bg-white text-center transition-colors">
+                        <td className={tableBodyCell}>{row.sNo}</td>
+
+                        <td className={tableBodyTextCell}>
+                          <div className="leading-snug max-w-[260px]">
+                            {row.product}
+                          </div>
+                        </td>
+
+                        <td className={tableBodyCell}>{row.sku}</td>
+                        <td className={tableBodyCell}>{row.sold1}</td>
+                        <td className={tableBodyCell}>{row.sold2}</td>
+                        <td className={tableBodyCell}>{row.sold3}</td>
+                        <td className={tableBodyCell}>{row.f1}</td>
+                        <td className={tableBodyCell}>{row.f2}</td>
+                        <td className={`${tableBodyCell} border-r-0`}>{row.f3}</td>
                       </tr>
                     ))}
-
-                    <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
-                      <td className="p-2 border border-gray-300"></td>
-                      <td className="p-2 border border-gray-300 text-left">Total</td>
-                      <td className="p-2 border border-gray-300"></td>
-                      <td className="p-2 border border-gray-300">{totalsRow.sold1}</td>
-                      <td className="p-2 border border-gray-300">{totalsRow.sold2}</td>
-                      <td className="p-2 border border-gray-300">{totalsRow.sold3}</td>
-                      <td className="p-2 border border-gray-300">{totalsRow.f1}</td>
-                      <td className="p-2 border border-gray-300">{totalsRow.f2}</td>
-                      <td className="p-2 border border-gray-300">{totalsRow.f3}</td>
-                    </tr>
                   </tbody>
+
+                  <tfoot>
+                    <tr className="sticky bottom-0 z-30 h-[40px] bg-[#D9D9D933] text-center font-bold">
+                      <td className={tableTotalCell}></td>
+
+                      <td className={tableTotalTextCell}>
+                        Total
+                      </td>
+
+                      <td className={tableTotalCell}></td>
+
+                      <td className={tableTotalCell}>
+                        {totalsRow.sold1}
+                      </td>
+
+                      <td className={tableTotalCell}>
+                        {totalsRow.sold2}
+                      </td>
+
+                      <td className={tableTotalCell}>
+                        {totalsRow.sold3}
+                      </td>
+
+                      <td className={tableTotalCell}>
+                        {totalsRow.f1}
+                      </td>
+
+                      <td className={tableTotalCell}>
+                        {totalsRow.f2}
+                      </td>
+
+                      <td className={`${tableTotalCell} border-r-0`}>
+                        {totalsRow.f3}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             ) : (

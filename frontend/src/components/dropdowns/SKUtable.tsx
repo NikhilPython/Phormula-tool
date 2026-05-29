@@ -1286,6 +1286,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
+  const productRowCount = displayRows.filter((row) => {
+    const name = String((row as any)?.product_name || "").trim().toLowerCase();
+    const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+    return name !== "total" && sku !== "total" && name !== "others";
+  }).length;
+
+  const VISIBLE_PRODUCT_ROWS = 15;
+
+  const HEADER_HEIGHT = 48;
+  const SIGN_ROW_HEIGHT = 30;
+  const PRODUCT_ROW_HEIGHT = 35;
+  // const TOTAL_ROW_HEIGHT = 40;
+
+  const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
+
+  const tableScrollHeight =
+    SIGN_ROW_HEIGHT +
+    PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
+
   return (
     <>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
@@ -1341,6 +1361,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   key: "net_sales",
                   direction: "desc",
                 }}
+                bodyMaxHeight={
+                  shouldScrollTable
+                    ? tableScrollHeight
+                    : undefined
+                }
                 onSortChange={setTableSort}
                 getSortValue={(row, colKey) => {
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
