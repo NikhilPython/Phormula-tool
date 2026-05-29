@@ -6226,7 +6226,7 @@ export default function DashboardPage() {
         },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
-        { key: "ads_spend", label: "Ads Spend", align: "center" as const,  },
+        { key: "ads_spend", label: "Ads Spend", align: "center" as const, },
         { key: "acos", label: "ACoS %", align: "center" as const, },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
@@ -9485,6 +9485,35 @@ Keep enough stock for validation but avoid over-committing too early.`,
         );
     };
 
+    const MTD_VISIBLE_PRODUCT_ROWS = 15;
+
+    const MTD_HEADER_ROW_HEIGHT = 60;
+    const MTD_SIGN_ROW_HEIGHT = 45;
+    const MTD_PRODUCT_ROW_HEIGHT = 45;
+
+    const mtdProductRowCount = finalMonthlySkuwiseRowsForTable.filter((row) => {
+        const name = String(row?.product_name || "").trim().toLowerCase();
+        const sku = String(row?.sku || "").trim().toUpperCase();
+
+        return (
+            !row.isTotal &&
+            !row.isOthers &&
+            sku !== "GRAND_TOTAL" &&
+            sku !== "TOTAL" &&
+            name !== "grand total" &&
+            name !== "total" &&
+            name !== "others"
+        );
+    }).length;
+
+    const shouldScrollMtdProductwiseTable =
+        showAllMtdProductwiseRows && mtdProductRowCount > MTD_VISIBLE_PRODUCT_ROWS;
+
+    const mtdProductwiseTableScrollHeight =
+        MTD_HEADER_ROW_HEIGHT +
+        MTD_SIGN_ROW_HEIGHT +
+        MTD_PRODUCT_ROW_HEIGHT * MTD_VISIBLE_PRODUCT_ROWS;
+
     return (
         <div className="relative w-full">
             <Toaster
@@ -10520,6 +10549,24 @@ ${pageLoading
                                             onSortChange={setPlSortConfig}
                                             showSignRowInBody
                                             getSignForCol={getAdsSignForCol}
+                                            bodyMaxHeight={
+                                                shouldScrollMtdProductwiseTable
+                                                    ? mtdProductwiseTableScrollHeight
+                                                    : undefined
+                                            }
+                                            isTotalRow={(row) => {
+                                                const name = String(row?.product_name || "").trim().toLowerCase();
+                                                const sku = String(row?.sku || "").trim().toUpperCase();
+
+                                                return (
+                                                    !!row.isTotal ||
+                                                    sku === "GRAND_TOTAL" ||
+                                                    sku === "TOTAL" ||
+                                                    name === "grand total" ||
+                                                    name === "total"
+                                                );
+                                            }}
+
                                             layout={[
                                                 { type: "group", id: "quantity" },
                                                 { type: "single", key: "asp" },

@@ -596,7 +596,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                 render: (row) => {
                     if (row.__isTotal) return "";
 
-                   if (row.__isOthers) return "";
+                    if (row.__isOthers) return "";
 
                     const item = row.ai as SkuItem;
                     const entry = getInsightForItem(item);
@@ -816,14 +816,23 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         data={buildTableRows}
                         stickyHeader
                         zebra
-                        paginate
-                        pageSize={10}
-                        maxHeight="60vh"
+                        paginate={false}
+                        scrollY={false}
+                        maxHeight="none"
                         loading={false}
                         headerMaxWidth={140}
                         emptyMessage={getSkuEmptyMessage()}
-                        rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
+                        rowClassName={(row) =>
+                            row.__isTotal ? "bg-[#D9D9D933] font-bold" : ""
+                        }
+                        isTotalRow={(row) => !!row.__isTotal}
+                        bodyMaxHeight={
+                            buildTableRows.filter((row) => !row.__isTotal).length > 15
+                                ? 40 * 15
+                                : undefined
+                        }
                     />
+
                 </div>
 
                 <div className="mt-2 flex justify-center">

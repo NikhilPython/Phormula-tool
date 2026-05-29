@@ -36,7 +36,8 @@ type DataTableProps<T extends Row> = {
 
   rowClassName?: (row: T, rowIndex: number) => string;
   onPageChange?: (page: number) => void;
-
+  isTotalRow?: (row: T) => boolean;
+  bodyMaxHeight?: number | string;
   loading?: boolean;
   loaderHeight?: number | string;
 
@@ -58,6 +59,8 @@ export default function DataTable<T extends Row>({
   paginate = true,
   scrollY = true,
   rowClassName,
+  isTotalRow,
+  bodyMaxHeight,
   onPageChange,
   loading = false,
   loaderHeight = 260,
@@ -93,6 +96,27 @@ export default function DataTable<T extends Row>({
     const start = (page - 1) * pageSize;
     return data.slice(start, start + pageSize);
   }, [data, page, pageSize, hasData, paginate]);
+
+  const shouldPinTotalRows = bodyMaxHeight !== undefined;
+
+  const scrollRows = React.useMemo(() => {
+    if (!shouldPinTotalRows) return pageRows;
+    return pageRows.filter((row) => !isTotalRow?.(row));
+  }, [pageRows, shouldPinTotalRows, isTotalRow]);
+
+  const pinnedRows = React.useMemo(() => {
+    if (!shouldPinTotalRows) return [];
+    return pageRows.filter((row) => isTotalRow?.(row));
+  }, [pageRows, shouldPinTotalRows, isTotalRow]);
+
+  const bodyScrollStyle: React.CSSProperties = {
+    maxHeight:
+      bodyMaxHeight === undefined
+        ? undefined
+        : typeof bodyMaxHeight === "number"
+          ? `${bodyMaxHeight}px`
+          : bodyMaxHeight,
+  };
 
   if (loading) {
     return (
@@ -168,236 +192,300 @@ export default function DataTable<T extends Row>({
   };
 
   const isCssSize = (v?: string) => {
-  if (!v) return false;
-  // accept: 120px, 12rem, 20%, 10vw, etc.
-  return /^(\d+(\.\d+)?)(px|rem|em|%|vw|vh)$/.test(v.trim());
-};
+    if (!v) return false;
+    // accept: 120px, 12rem, 20%, 10vw, etc.
+    return /^(\d+(\.\d+)?)(px|rem|em|%|vw|vh)$/.test(v.trim());
+  };
 
-const getWidthStyle = (col: ColumnDef<T>): React.CSSProperties => {
-  if (typeof col.width === "string" && isCssSize(col.width)) {
-    return { width: col.width, minWidth: col.width, maxWidth: col.width };
-  }
-  // default min width so headers don't crush on mobile
-  return { minWidth: `${headerMaxWidth}px` };
-};
+  const getWidthStyle = (col: ColumnDef<T>): React.CSSProperties => {
+    if (typeof col.width === "string" && isCssSize(col.width)) {
+      return { width: col.width, minWidth: col.width, maxWidth: col.width };
+    }
+    // default min width so headers don't crush on mobile
+    return { minWidth: `${headerMaxWidth}px` };
+  };
 
-const getWidthClass = (col: ColumnDef<T>) => {
-  if (typeof col.width !== "string") return "";
-  // if it looks like tailwind width tokens, treat as className not style
-  if (/\bw-|\bmin-w-|\bmax-w-/.test(col.width)) return col.width;
-  return "";
-};  
-return (
-  <div
-    className={clsx(
-      "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
-      "rounded-xl overflow-hidden",
-      scrollY && "overflow-y-auto",
-      className
-    )}
-    style={containerStyle}
-  >
-    {/* Horizontal scroll only for table */}
-    <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
-      <table
-        className={clsx(
-          // Safari-safe borders
-          "border-separate border-spacing-0",
+  const getWidthClass = (col: ColumnDef<T>) => {
+    if (typeof col.width !== "string") return "";
+    // if it looks like tailwind width tokens, treat as className not style
+    if (/\bw-|\bmin-w-|\bmax-w-/.test(col.width)) return col.width;
+    return "";
+  };
 
-          // Text styling
-          "text-xs 2xl:text-sm text-slate-700",
+  const colGroup = (
+    <colgroup>
+      {columns.map((col, i) => (
+        <col
+          key={String(col.key) + i}
+          style={getWidthStyle(col)}
+          className={getWidthClass(col)}
+        />
+      ))}
+    </colgroup>
+  );
 
-          // Allow table to expand wider than screen
-          "min-w-max w-max lg:w-full",
-
-          // Prevent column crushing
-          "table-auto",
-
-          tableClassName
-        )}
-      >
-        <thead>
-          <tr>
-            {columns.map((col, i) => (
-              <th
-                key={String(col.key) + i}
-                onClick={col.onHeaderClick}
-                style={getWidthStyle(col)}
-                className={clsx(
-                  // Sticky header (Safari-safe)
-                  stickyHeader && "sticky top-0 z-20",
-
-                  // Header styling
-                  "bg-[#5EA68E] text-yellow-200 font-bold",
-
-                  // Borders (vertical + horizontal)
-                  "border-b border-r border-gray-300",
-                  i === columns.length - 1 && "border-r-0",
-
-                  // Layout
-                  "px-3 py-2 text-center align-middle whitespace-nowrap",
-
-                  getWidthClass(col),
-                  col.headerClassName,
-                  col.onHeaderClick && "cursor-pointer select-none"
-                )}
-              >
-                <div
-                  className="
-                    overflow-hidden text-ellipsis
-                    [display:-webkit-box]
-                    [-webkit-box-orient:vertical]
-                    [-webkit-line-clamp:2]
-                  "
-                >
-                  {formatHeader(col.header)}
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {!hasData && (
-            <tr>
-              <td
-                className="px-3 py-8 text-center text-slate-400"
-                colSpan={columns.length}
-              >
-                {emptyMessage}
-              </td>
-            </tr>
+  return (
+    <div
+      className={clsx(
+        "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
+        "rounded-xl overflow-hidden",
+        scrollY && !shouldPinTotalRows && "overflow-y-auto",
+        className
+      )}
+      style={shouldPinTotalRows ? undefined : containerStyle}
+    >
+      {/* Horizontal scroll only for table */}
+      <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+        <table
+          className={clsx(
+            "border-separate border-spacing-0",
+            "text-xs 2xl:text-sm text-slate-700",
+            "min-w-max w-max lg:w-full",
+            "table-fixed",
+            tableClassName
           )}
-
-          {hasData &&
-            pageRows.map((row, ri) => (
-              <tr
-                key={ri}
-                className={clsx(
-                  rowClassName?.(row, (page - 1) * pageSize + ri),
-                  "transition-colors"
-                )}
-              >
-                {columns.map((col, ci) => {
-                  const value =
-                    (row as Record<string, React.ReactNode>)[
-                      String(col.key)
-                    ];
-
-                  const keyStr = String(col.key);
-                  const isTextCol =
-                    keyStr === "productName" || keyStr === "alert";
-
-                  return (
-                    <td
-                      key={String(col.key) + ci}
-                      style={getWidthStyle(col)}
-                      className={clsx(
-                        // Borders (vertical + horizontal)
-                        "border-b border-r border-[#e1e5ea]",
-                        ci === columns.length - 1 && "border-r-0",
-
-                        // Layout
-                        "px-3 py-2 align-middle text-center min-w-0",
-
-                        // Text wrapping rules
-                        isTextCol
-                          ? "whitespace-normal break-words"
-                          : "whitespace-nowrap",
-
-                        getWidthClass(col),
-                        col.cellClassName
-                      )}
-                      title={
-                        showCellTitle
-                          ? String(value ?? "\u00A0")
-                          : undefined
-                      }
-                    >
-                      {isTextCol ? (
-                        <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
-                          {col.render
-                            ? col.render(
-                                row as any,
-                                value,
-                                (page - 1) * pageSize + ri
-                              )
-                            : value ?? "\u00A0"}
-                        </div>
-                      ) : col.render ? (
-                        col.render(
-                          row as any,
-                          value,
-                          (page - 1) * pageSize + ri
-                        )
-                      ) : (
-                        value ?? "\u00A0"
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-        </tbody>
-      </table>
-    </div>
-
-    {/* Pagination outside horizontal scroll */}
-    {paginate && totalPages > 1 && (
-      <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-        <div className="flex items-center justify-between gap-4 text-[10px] 2xl:text-xs">
-          <button
-            onClick={onPrev}
-            disabled={page <= 1}
-            className={clsx(
-              "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
-              "disabled:cursor-not-allowed disabled:opacity-50"
-            )}
-          >
-            <FaChevronLeft />
-          </button>
-
-          <div className="flex items-center justify-center gap-1 sm:gap-1.5">
-            {pageItems.map((item, idx) =>
-              item === "dots" ? (
-                <span
-                  key={`dots-${idx}`}
-                  className="px-1 text-slate-400 select-none"
-                >
-                  …
-                </span>
-              ) : (
-                <button
-                  key={item}
-                  onClick={() => goToPage(item)}
+        >
+          {colGroup}
+          <thead>
+            <tr>
+              {columns.map((col, i) => (
+                <th
+                  key={String(col.key) + i}
+                  onClick={col.onHeaderClick}
+                  style={getWidthStyle(col)}
                   className={clsx(
-                    "h-7 w-7 sm:h-8 sm:w-8 rounded-full",
-                    "flex items-center justify-center transition-colors",
-                    item === page
-                      ? "bg-slate-200 text-slate-900 font-semibold"
-                      : "text-slate-700 hover:bg-slate-100"
+                    stickyHeader && "sticky top-0 z-20",
+                    "bg-[#5EA68E] text-yellow-200 font-bold",
+                    "border-b border-r border-gray-300",
+                    i === columns.length - 1 && "border-r-0",
+                    "px-3 py-2 text-center align-middle whitespace-nowrap",
+                    getWidthClass(col),
+                    col.headerClassName,
+                    col.onHeaderClick && "cursor-pointer select-none"
                   )}
                 >
-                  {item}
-                </button>
-              )
-            )}
-          </div>
+                  <div
+                    className="
+                overflow-hidden text-ellipsis
+                [display:-webkit-box]
+                [-webkit-box-orient:vertical]
+                [-webkit-line-clamp:2]
+              "
+                  >
+                    {formatHeader(col.header)}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+        </table>
 
-          <button
-            onClick={onNext}
-            disabled={page >= totalPages}
+        <div
+          className={clsx(
+            shouldPinTotalRows && "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+          )}
+          style={bodyScrollStyle}
+        >
+          <table
             className={clsx(
-              "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
-              "disabled:cursor-not-allowed disabled:opacity-50"
+              "border-separate border-spacing-0",
+              "text-xs 2xl:text-sm text-slate-700",
+              "min-w-max w-max lg:w-full",
+              "table-fixed",
+              tableClassName
             )}
           >
-            <FaChevronRight />
-          </button>
+            <tbody>
+              {!hasData && (
+                <tr>
+                  <td
+                    className="px-3 py-8 text-center text-slate-400"
+                    colSpan={columns.length}
+                  >
+                    {emptyMessage}
+                  </td>
+                </tr>
+              )}
+
+              {hasData &&
+                scrollRows.map((row, ri) => (
+                  <tr
+                    key={ri}
+                    className={clsx(
+                      rowClassName?.(row, (page - 1) * pageSize + ri),
+                      "h-[40px] transition-colors"
+                    )}
+                  >
+                    {columns.map((col, ci) => {
+                      const value =
+                        (row as Record<string, React.ReactNode>)[String(col.key)];
+
+                      const keyStr = String(col.key);
+                      const isTextCol = keyStr === "productName" || keyStr === "alert";
+
+                      return (
+                        <td
+                          key={String(col.key) + ci}
+                          style={getWidthStyle(col)}
+                          className={clsx(
+                            "border-b border-r border-[#e1e5ea]",
+                            ci === columns.length - 1 && "border-r-0",
+                            "px-3 py-2 align-middle text-center min-w-0",
+                            isTextCol
+                              ? "whitespace-normal break-words"
+                              : "whitespace-nowrap",
+                            getWidthClass(col),
+                            col.cellClassName
+                          )}
+                          title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+                        >
+                          {isTextCol ? (
+                            <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+                              {col.render
+                                ? col.render(row as any, value, (page - 1) * pageSize + ri)
+                                : value ?? "\u00A0"}
+                            </div>
+                          ) : col.render ? (
+                            col.render(row as any, value, (page - 1) * pageSize + ri)
+                          ) : (
+                            value ?? "\u00A0"
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
+
+        {pinnedRows.length > 0 && (
+          <table
+            className={clsx(
+              "border-separate border-spacing-0",
+              "text-xs 2xl:text-sm text-slate-700",
+              "min-w-max w-max lg:w-full",
+              "table-fixed",
+              tableClassName
+            )}
+          >
+            {colGroup}
+            <tbody>
+              {pinnedRows.map((row, ri) => {
+                const realIndex = scrollRows.length + ri;
+
+                return (
+                  <tr
+                    key={`pinned-${ri}`}
+                    className={clsx(
+                      rowClassName?.(row, (page - 1) * pageSize + realIndex),
+                      "h-[40px] transition-colors"
+                    )}
+                  >
+                    {columns.map((col, ci) => {
+                      const value =
+                        (row as Record<string, React.ReactNode>)[String(col.key)];
+
+                      const keyStr = String(col.key);
+                      const isTextCol =
+                        keyStr === "productName" ||
+                        keyStr === "product_name" ||
+                        keyStr === "alert";
+
+                      return (
+                        <td
+                          key={String(col.key) + ci}
+                          style={getWidthStyle(col)}
+                          className={clsx(
+                            "border-b border-r border-[#e1e5ea]",
+                            ci === columns.length - 1 && "border-r-0",
+                            "px-3 py-2 align-middle text-center min-w-0",
+                            isTextCol
+                              ? "whitespace-normal break-words"
+                              : "whitespace-nowrap",
+                            getWidthClass(col),
+                            col.cellClassName
+                          )}
+                          title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+                        >
+                          {isTextCol ? (
+                            <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+                              {col.render
+                                ? col.render(row as any, value, (page - 1) * pageSize + realIndex)
+                                : value ?? "\u00A0"}
+                            </div>
+                          ) : col.render ? (
+                            col.render(row as any, value, (page - 1) * pageSize + realIndex)
+                          ) : (
+                            value ?? "\u00A0"
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
-    )}
-  </div>
-);
+
+      {/* Pagination outside horizontal scroll */}
+      {paginate && totalPages > 1 && (
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-4 text-[10px] 2xl:text-xs">
+            <button
+              onClick={onPrev}
+              disabled={page <= 1}
+              className={clsx(
+                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
+            >
+              <FaChevronLeft />
+            </button>
+
+            <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+              {pageItems.map((item, idx) =>
+                item === "dots" ? (
+                  <span
+                    key={`dots-${idx}`}
+                    className="px-1 text-slate-400 select-none"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={item}
+                    onClick={() => goToPage(item)}
+                    className={clsx(
+                      "h-7 w-7 sm:h-8 sm:w-8 rounded-full",
+                      "flex items-center justify-center transition-colors",
+                      item === page
+                        ? "bg-slate-200 text-slate-900 font-semibold"
+                        : "text-slate-700 hover:bg-slate-100"
+                    )}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            </div>
+
+            <button
+              onClick={onNext}
+              disabled={page >= totalPages}
+              className={clsx(
+                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
+            >
+              <FaChevronRight />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
 }

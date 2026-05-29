@@ -4479,14 +4479,19 @@ export default function LiveBusinessClient({
                     data={tableData}
                     stickyHeader
                     zebra
-                    paginate
-                    pageSize={10}
-                    maxHeight="60vh"
-                    loading={false}
                     paginate={false}
+                    scrollY={false}
+                    maxHeight="none"
+                    loading={false}
                     headerMaxWidth={140}
                     emptyMessage={getSkuEmptyMessage()}
                     rowClassName={rowClassNameForDataTable}
+                    isTotalRow={(row) => !!row.__isTotal}
+                    bodyMaxHeight={
+                      showAllSkus && activeTab === "all_skus" && allSkuRows.length > 15
+                        ? 40 * 15
+                        : undefined
+                    }
                   />
                 </div>
               ) : (

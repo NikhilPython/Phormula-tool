@@ -861,28 +861,37 @@ export default function DispatchPage({
           )}
 
           <div className="forecast-data">
-            <DataTable
-              columns={columns}
-              data={tableRows}
-              paginate={false}
-              scrollY
-              maxHeight="90vh"
-              stickyHeader
-              loading={loading}
-              emptyMessage={
-                noData
-                  ? "No Data Available for selected period"
-                  : "Select Month and Year to see Dispatch!"
-              }
-              rowClassName={(row: any) =>
-                row.__isTotal
-                  ? "bg-[#D9D9D9] font-bold"
-                  : row.__isOthers
-                    ? "font-semibold"
-                    : ""
-              }
-              tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
-            />
+            <div className="forecast-data">
+              <DataTable
+                columns={columns}
+                data={tableRows}
+                paginate={false}
+                scrollY={false}
+                maxHeight="none"
+                stickyHeader
+                loading={loading}
+                emptyMessage={
+                  noData
+                    ? "No Data Available for selected period"
+                    : "Select Month and Year to see Dispatch!"
+                }
+                rowClassName={(row: any) =>
+                  row.__isTotal
+                    ? "bg-[#D9D9D9] font-bold"
+                    : row.__isOthers
+                      ? "font-semibold"
+                      : ""
+                }
+                isTotalRow={(row: any) => !!row.__isTotal}
+                bodyMaxHeight={
+                  showAllDispatchRows &&
+                    tableRows.filter((row: any) => !row.__isTotal).length > 15
+                    ? 40 * 15
+                    : undefined
+                }
+                tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
+              />
+            </div>
           </div>
         </>
       )}
