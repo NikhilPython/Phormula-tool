@@ -1976,6 +1976,10 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped = sku_grouped.merge(shipment_charges_df, on="sku", how="left")
 
         sku_grouped["shipment_charges"] = safe_series(sku_grouped, "shipment_charges")
+        # Yearly/quarterly SKU rows do not have SKU-wise shipment_fees; keep a safe
+        # zero column so CM2 and final output do not crash with KeyError.
+        # The total row still receives the actual shipment_fees total below.
+        sku_grouped["shipment_fees"] = safe_series(sku_grouped, "shipment_fees")
         sku_grouped["advertising_total"] = 0
 
         sku_grouped["platformfeenew"] = safe_series(sku_grouped, "platformfeenew")
@@ -2661,6 +2665,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped = sku_grouped.merge(shipment_charges_df, on="sku", how="left")
 
         sku_grouped["shipment_charges"] = safe_series(sku_grouped, "shipment_charges")
+        # Yearly/quarterly SKU rows do not have SKU-wise shipment_fees; keep a safe
+        # zero column so CM2 and final output do not crash with KeyError.
+        # The total row still receives the actual shipment_fees total below.
+        sku_grouped["shipment_fees"] = safe_series(sku_grouped, "shipment_fees")
         sku_grouped["advertising_total"] = 0
 
         sku_grouped["platformfeenew"] = safe_series(sku_grouped, "platformfeenew")
