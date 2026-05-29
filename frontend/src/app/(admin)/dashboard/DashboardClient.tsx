@@ -5397,7 +5397,39 @@ export default function DashboardPage() {
         return computePlSummaryTotals(data, monthlySkuwiseRows, platform);
     }, [data, monthlySkuwiseRows, platform]);
 
+    const totalRowCm2Profit = useMemo(() => {
+        return toNumber(
+            grandTotalRowRaw?.total_cm2_profit ??
+            grandTotalRowDisplay?.total_cm2_profit ??
+            plSummaryTotals.cm2_profit ??
+            grandTotalRowRaw?.cm2_profit ??
+            grandTotalRowDisplay?.cm2_profit ??
+            0
+        );
+    }, [
+        grandTotalRowRaw?.total_cm2_profit,
+        grandTotalRowDisplay?.total_cm2_profit,
+        plSummaryTotals.cm2_profit,
+        grandTotalRowRaw?.cm2_profit,
+        grandTotalRowDisplay?.cm2_profit,
+    ]);
 
+    const totalRowCm2Margins = useMemo(() => {
+        return toNumber(
+            grandTotalRowRaw?.total_cm2_margins ??
+            grandTotalRowDisplay?.total_cm2_margins ??
+            plSummaryTotals.cm2_margins ??
+            grandTotalRowRaw?.cm2_profit_per ??
+            grandTotalRowDisplay?.cm2_profit_per ??
+            0
+        );
+    }, [
+        grandTotalRowRaw?.total_cm2_margins,
+        grandTotalRowDisplay?.total_cm2_margins,
+        plSummaryTotals.cm2_margins,
+        grandTotalRowRaw?.cm2_profit_per,
+        grandTotalRowDisplay?.cm2_profit_per,
+    ]);
 
     // ===================== SKUWISE API FIELD MAPPING =====================
     // These replace the old frontend-calculated variables.
@@ -7161,27 +7193,8 @@ export default function DashboardPage() {
     ]);
 
     const cm2MarginPctForSummary = useMemo(() => {
-        if (platform === "global") {
-            return toNumber(
-                plSummaryTotals.cm2_margins ??
-                (data as any)?.derived_totals?.cm2_margins ??
-                (data as any)?.derived_totals?.cm2_profit_percentage ??
-                (data as any)?.cm2_margins
-            );
-        }
-
-        const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
-        const cm2 = toNumber(cm2Profit);
-
-        return netSales ? (cm2 / netSales) * 100 : 0;
-    }, [
-        platform,
-        plSummaryTotals.cm2_margins,
-        plSummaryTotals.net_sales,
-        data,
-        stats_mtdHome,
-        cm2Profit,
-    ]);
+        return totalRowCm2Margins;
+    }, [totalRowCm2Margins]);
 
     const tacosFromDisplayedCardsForSummary = useMemo(() => {
         if (platform === "global") {
@@ -8031,6 +8044,60 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ? stats_lastMonthTotalHome
                     : 0;
 
+    const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
+        ? dummyStatData.costOfAds.current
+        : rangeActive
+            ? convertToDisplayCurrency(
+                biAlignedTotals?.total_current_advertising ?? 0,
+                biSourceCurrency
+            )
+            : adsSpendTotal;
+
+    const mtdCostOfAdsPreviousDisplay = shouldShowDummyUi
+        ? dummyStatData.costOfAds.previous
+        : rangeActive
+            ? convertToDisplayCurrency(
+                biAlignedTotals?.total_previous_advertising ?? 0,
+                biSourceCurrency
+            )
+            : amazonPrevAdsDisp;
+
+    const mtdCostOfAdsDelta = shouldShowDummyUi
+        ? dummyStatData.costOfAds.deltaPct
+        : safeDeltaPct(mtdCostOfAdsCurrentDisplay, mtdCostOfAdsPreviousDisplay);
+
+    const mtdTacosCurrent = shouldShowDummyUi
+        ? dummyStatData.tacos.current
+        : (() => {
+            const ads = rangeActive
+                ? Number(biAlignedTotals?.total_current_advertising ?? 0)
+                : Number(adsSpendTotal ?? 0);
+
+            const sales = rangeActive
+                ? Number(biAlignedTotals?.total_current_net_sales ?? 0)
+                : Number(plSummaryTotals.net_sales ?? 0);
+
+            return sales > 0 ? (ads / sales) * 100 : 0;
+        })();
+
+    const mtdTacosPrevious = shouldShowDummyUi
+        ? dummyStatData.tacos.previous
+        : (() => {
+            const ads = rangeActive
+                ? Number(biAlignedTotals?.total_previous_advertising ?? 0)
+                : Number(amazonPrevAdsDisp ?? 0);
+
+            const sales = rangeActive
+                ? Number(biAlignedTotals?.total_previous_net_sales ?? 0)
+                : Number(prev.netSales ?? 0);
+
+            return sales > 0 ? (ads / sales) * 100 : 0;
+        })();
+
+    const mtdTacosDelta = shouldShowDummyUi
+        ? dummyStatData.tacos.deltaPct
+        : safeDeltaPct(mtdTacosCurrent, mtdTacosPrevious);
+
     const stickyKpiItems = [
         {
             label: "Units",
@@ -8142,52 +8209,25 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? dummyStatData.costOfAds.current
                 : isStickyGlobal
                     ? stickyTableTotals.costOfAds
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? convertToDisplayCurrency(
-                                biAlignedTotals?.total_current_advertising ?? 0,
-                                biSourceCurrency
-                            )
-                            : 0)
-                        : adsSpendTotal),
+                    : mtdCostOfAdsCurrentDisplay,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.costOfAds.previous
                 : isStickyGlobal
                     ? stickyPreviousTotals.costOfAds
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? convertToDisplayCurrency(
-                                biAlignedTotals?.total_previous_advertising ?? 0,
-                                biSourceCurrency
-                            )
-                            : 0)
-                        : amazonPrevAdsDisp),
+                    : mtdCostOfAdsPreviousDisplay,
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.costOfAds.deltaPct
                 : isStickyGlobal
                     ? safeDeltaPct(stickyTableTotals.costOfAds, stickyPreviousTotals.costOfAds)
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? safeDeltaPct(
-                                convertToDisplayCurrency(
-                                    biAlignedTotals?.total_current_advertising ?? 0,
-                                    biSourceCurrency
-                                ),
-                                convertToDisplayCurrency(
-                                    biAlignedTotals?.total_previous_advertising ?? 0,
-                                    biSourceCurrency
-                                )
-                            )
-                            : null)
-                        : safeDeltaPct(adsSpendTotal, amazonPrevAdsDisp)),
+                    : mtdCostOfAdsDelta,
 
             inverseDelta: true,
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || previousSkuwiseGlobalLoading)
-                    : (loading || (useBiForAmazonCards ? biLoading : false))
+                    : (loading || (rangeActive ? biLoading : false))
             ),
             formatter: (val: number) => formatDisplayAmount(val, "Cost of Ads"),
             previousFormatter: (val: number) => formatDisplayAmount(val, "Cost of Ads"),
@@ -8201,65 +8241,25 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? dummyStatData.tacos.current
                 : isStickyGlobal
                     ? stickyTableTotals.tacos
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? (() => {
-                                const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                return sales > 0 ? (ads / sales) * 100 : 0;
-                            })()
-                            : 0)
-                        : (() => {
-                            const sales = toNumber(plSummaryTotals.net_sales);
-                            return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                        })()),
+                    : mtdTacosCurrent,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.tacos.previous
                 : isStickyGlobal
                     ? stickyPreviousTotals.tacos
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? (() => {
-                                const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                return sales > 0 ? (ads / sales) * 100 : 0;
-                            })()
-                            : 0)
-                        : amazonPrevRoasPct),
+                    : mtdTacosPrevious,
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
                 : isStickyGlobal
                     ? safeDeltaPct(stickyTableTotals.tacos, stickyPreviousTotals.tacos)
-                    : (useBiForAmazonCards
-                        ? (cm2Ready
-                            ? safeDeltaPct(
-                                (() => {
-                                    const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                    const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                    return sales > 0 ? (ads / sales) * 100 : 0;
-                                })(),
-                                (() => {
-                                    const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                    const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                    return sales > 0 ? (ads / sales) * 100 : 0;
-                                })()
-                            )
-                            : null)
-                        : safeDeltaPct(
-                            (() => {
-                                const sales = toNumber(plSummaryTotals.net_sales);
-                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                            })(),
-                            amazonPrevRoasPct
-                        )),
+                    : mtdTacosDelta,
 
             inverseDelta: true,
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || previousSkuwiseGlobalLoading)
-                    : (loading || (useBiForAmazonCards ? biLoading : false))
+                    : (loading || (rangeActive ? biLoading : false))
             ),
             formatter: fmtPct2,
             previousFormatter: fmtPct2,
@@ -8273,55 +8273,29 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? dummyStatData.cm2Profit.current
                 : isStickyGlobal
                     ? stickyTableTotals.cm2Profit
-                    : (useBiCm2
-                        ? (cm2Ready
-                            ? convertToDisplayCurrency(
-                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                rangeCurrency
-                            )
-                            : 0)
-                        : cm2Profit),
+                    : totalRowCm2Profit,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.previous
                 : isStickyGlobal
                     ? stickyPreviousTotals.cm2Profit
-                    : (useBiCm2
-                        ? (cm2Ready
-                            ? convertToDisplayCurrency(
-                                biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                                rangeCurrency
-                            )
-                            : 0)
-                        : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)),
+                    : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency),
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
                 : isStickyGlobal
                     ? safeDeltaPct(stickyTableTotals.cm2Profit, stickyPreviousTotals.cm2Profit)
-                    : (useBiCm2
-                        ? (cm2Ready
-                            ? safeDeltaPct(
-                                convertToDisplayCurrency(
-                                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                    rangeCurrency
-                                ),
-                                convertToDisplayCurrency(
-                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                                    rangeCurrency
-                                )
-                            )
-                            : null)
-                        : safeDeltaPct(
-                            cm2Profit ?? 0,
-                            convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
-                        )),
+                    : safeDeltaPct(
+                        totalRowCm2Profit,
+                        convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+                    ),
 
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || previousSkuwiseGlobalLoading)
-                    : (loading || (useBiCm2 ? biLoading : false))
+                    : loading
             ),
+
             formatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
             previousFormatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
             bottomLabel: prevLabel,
@@ -9148,34 +9122,47 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 )
                 : 0)
             : Number(prev?.cm2Profit ?? 0);
+
+
+
     const mtdCm2ProfitCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
-        : useBiCm2
-            ? (cm2Ready
-                ? convertToDisplayCurrency(
-                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                    rangeCurrency
-                )
-                : 0)
-            : Number(cm2Profit ?? 0);
+        : rangeActive
+            ? Number(biCardKpis.curr.cm2Profit ?? 0)
+            : totalRowCm2Profit;
 
     const mtdCm2ProfitPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.previous
-        : useBiCm2
-            ? (cm2Ready
-                ? convertToDisplayCurrency(
-                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                    rangeCurrency
-                )
-                : 0)
+        : rangeActive
+            ? Number(biCardKpis.prev.cm2Profit ?? 0)
             : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
 
     const mtdCm2ProfitDelta = shouldShowDummyUi
         ? dummyStatData.cm2Profit.deltaPct
-        : safeDeltaPct(
-            mtdCm2ProfitCurrentDisplay,
-            mtdCm2ProfitPreviousDisplay
-        );
+        : rangeActive
+            ? biCardKpis.deltas.profit
+            : safeDeltaPct(
+                totalRowCm2Profit,
+                convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+            );
+
+    const mtdCm2ProfitPctCurrent = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.current
+        : rangeActive
+            ? Number(biCardKpis.curr.profitPct ?? 0)
+            : totalRowCm2Margins;
+
+    const mtdCm2ProfitPctPrevious = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.previous
+        : rangeActive
+            ? Number(biCardKpis.prev.profitPct ?? 0)
+            : Number(prev?.profitPct ?? 0);
+
+    const mtdCm2ProfitPctDelta = shouldShowDummyUi
+        ? dummyStatData.cm2ProfitPct.deltaPct
+        : rangeActive
+            ? biCardKpis.deltas.profitPct
+            : safeDeltaPct(totalRowCm2Margins, Number(prev?.profitPct ?? 0));
 
     const globalCm2ProfitCurrentRaw = globalUseBi
         ? (globalCm2Ready ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) : 0)
@@ -10133,50 +10120,11 @@ ${pageLoading
 
                                                 <AmazonStatCard
                                                     label="Cost of Ads"
-                                                    current={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.costOfAds.current
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? convertToDisplayCurrency(
-                                                                        biAlignedTotals?.total_current_advertising ?? 0,
-                                                                        biSourceCurrency
-                                                                    )
-                                                                    : 0)
-                                                                : adsSpendTotal
-                                                    }
-                                                    previous={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.costOfAds.previous
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? convertToDisplayCurrency(
-                                                                        biAlignedTotals?.total_previous_advertising ?? 0,
-                                                                        biSourceCurrency
-                                                                    )
-                                                                    : 0)
-                                                                : amazonPrevAdsDisp
-                                                    }
-                                                    deltaPct={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.costOfAds.deltaPct
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? safeDeltaPct(
-                                                                        convertToDisplayCurrency(
-                                                                            biAlignedTotals?.total_current_advertising ?? 0,
-                                                                            biSourceCurrency
-                                                                        ),
-                                                                        convertToDisplayCurrency(
-                                                                            biAlignedTotals?.total_previous_advertising ?? 0,
-                                                                            biSourceCurrency
-                                                                        )
-                                                                    )
-                                                                    : null)
-                                                                : safeDeltaPct(adsSpendTotal, amazonPrevAdsDisp)
-                                                    }
+                                                    current={mtdCostOfAdsCurrentDisplay}
+                                                    previous={mtdCostOfAdsPreviousDisplay}
+                                                    deltaPct={mtdCostOfAdsDelta}
                                                     inverseDelta
-                                                    loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
+                                                    loading={!shouldShowDummyUi && (loading || (rangeActive ? biLoading : false))}
                                                     formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                                     bottomLabel={prevLabel}
@@ -10185,63 +10133,13 @@ ${pageLoading
 
                                                 <AmazonStatCard
                                                     label="TACoS"
-                                                    current={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.tacos.current
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? (() => {
-                                                                        const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                                        return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                                    })()
-                                                                    : 0)
-                                                                : (() => {
-                                                                    const sales = toNumber(plSummaryTotals.net_sales);
-                                                                    return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                                })()
-                                                    }
-                                                    previous={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.tacos.previous
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? (() => {
-                                                                        const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                                        const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                                        return sales > 0 ? (ads / sales) * 100 : 0;
-                                                                    })()
-                                                                    : 0)
-                                                                : amazonPrevRoasPct
-                                                    }
-                                                    deltaPct={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.tacos.deltaPct
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? safeDeltaPct(
-                                                                        (() => {
-                                                                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                                                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                                            return sales > 0 ? (ads / sales) * 100 : 0;
-                                                                        })(),
-                                                                        (() => {
-                                                                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                                            return sales > 0 ? (ads / sales) * 100 : 0;
-                                                                        })()
-                                                                    )
-                                                                    : null)
-                                                                : safeDeltaPct(
-                                                                    (() => {
-                                                                        const sales = toNumber(plSummaryTotals.net_sales);
-                                                                        return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                                    })(),
-                                                                    amazonPrevRoasPct
-                                                                )
-                                                    }
+                                                    current={mtdTacosCurrent}
+                                                    previous={mtdTacosPrevious}
+                                                    deltaPct={mtdTacosDelta}
                                                     inverseDelta
-                                                    loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
+                                                    loading={!shouldShowDummyUi && (loading || (rangeActive ? biLoading : false))}
                                                     formatter={fmtPct2}
+                                                    previousFormatter={fmtPct2}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                                                 />
@@ -10251,7 +10149,7 @@ ${pageLoading
                                                     current={mtdCm2ProfitCurrentDisplay}
                                                     previous={mtdCm2ProfitPreviousDisplay}
                                                     deltaPct={mtdCm2ProfitDelta}
-                                                    loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
+                                                    loading={!shouldShowDummyUi && loading}
                                                     formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
                                                     bottomLabel={prevLabel}
@@ -10260,78 +10158,12 @@ ${pageLoading
 
                                                 <AmazonStatCard
                                                     label="CM2 Profit %"
-                                                    current={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.cm2ProfitPct.current
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? (
-                                                                        Number(biAlignedTotals?.total_current_net_sales ?? 0) !== 0
-                                                                            ? (
-                                                                                Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) /
-                                                                                Number(biAlignedTotals?.total_current_net_sales ?? 0)
-                                                                            ) * 100
-                                                                            : 0
-                                                                    )
-                                                                    : 0)
-                                                                : (
-                                                                    Number(curr?.netSales ?? 0) !== 0
-                                                                        ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
-                                                                        : 0
-                                                                )
-                                                    }
-                                                    previous={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.cm2ProfitPct.previous
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? (
-                                                                        Number(biAlignedTotals?.total_previous_net_sales ?? 0) !== 0
-                                                                            ? (
-                                                                                Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) /
-                                                                                Number(biAlignedTotals?.total_previous_net_sales ?? 0)
-                                                                            ) * 100
-                                                                            : 0
-                                                                    )
-                                                                    : 0)
-                                                                : (
-                                                                    Number(prev?.netSales ?? 0) !== 0
-                                                                        ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
-                                                                        : 0
-                                                                )
-                                                    }
-                                                    deltaPct={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.cm2ProfitPct.deltaPct
-                                                            : useBiForAmazonCards
-                                                                ? (cm2Ready
-                                                                    ? safeDeltaPct(
-                                                                        Number(biAlignedTotals?.total_current_net_sales ?? 0) !== 0
-                                                                            ? (
-                                                                                Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) /
-                                                                                Number(biAlignedTotals?.total_current_net_sales ?? 0)
-                                                                            ) * 100
-                                                                            : 0,
-                                                                        Number(biAlignedTotals?.total_previous_net_sales ?? 0) !== 0
-                                                                            ? (
-                                                                                Number(biAlignedTotals?.total_previous_profit_cm2 ?? 0) /
-                                                                                Number(biAlignedTotals?.total_previous_net_sales ?? 0)
-                                                                            ) * 100
-                                                                            : 0
-                                                                    )
-                                                                    : null)
-                                                                : safeDeltaPct(
-                                                                    Number(curr?.netSales ?? 0) !== 0
-                                                                        ? (Number(uk?.cm2ProfitGBP ?? 0) / Number(curr.netSales)) * 100
-                                                                        : 0,
-                                                                    Number(prev?.netSales ?? 0) !== 0
-                                                                        ? (Number(prev?.cm2Profit ?? 0) / Number(prev.netSales)) * 100
-                                                                        : 0
-                                                                )
-                                                    }
-                                                    loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
-                                                    formatter={(v) => `${Number(v || 0).toFixed(2)}%`}
-                                                    previousFormatter={(v) => `${Number(v || 0).toFixed(2)}%`}
+                                                    current={mtdCm2ProfitPctCurrent}
+                                                    previous={mtdCm2ProfitPctPrevious}
+                                                    deltaPct={mtdCm2ProfitPctDelta}
+                                                    loading={!shouldShowDummyUi && loading}
+                                                    formatter={fmtPct2}
+                                                    previousFormatter={fmtPct2}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                                 />
@@ -10928,21 +10760,12 @@ ${pageLoading
                                                     {
                                                         id: "cm2_profit",
                                                         label: "CM2 Profit/Loss",
-                                                        endValue: Math.round(
-                                                            Number(
-                                                                grandTotalRowRaw?.total_cm2_profit ??
-                                                                grandTotalRowDisplay?.total_cm2_profit ??
-                                                                plSummaryTotals.cm2_profit ??
-                                                                grandTotalRowRaw?.cm2_profit ??
-                                                                cm2Profit ??
-                                                                0
-                                                            )
-                                                        ).toLocaleString(),
+                                                        endValue: Math.round(totalRowCm2Profit).toLocaleString(),
                                                     },
                                                     {
                                                         id: "cm2_margins",
                                                         label: "CM2 Margins",
-                                                        endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
+                                                        endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
                                                     },
 
                                                     {
