@@ -1681,6 +1681,7 @@ export default function DashboardPage() {
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("live");
     const [summaryLoading, setSummaryLoading] = useState(true);
+
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
@@ -2228,6 +2229,7 @@ export default function DashboardPage() {
     const biUiLoading = biLoading;
 
     const [dashboardBusy, setDashboardBusy] = useState(false);
+    const [showDashboardStepLoader, setShowDashboardStepLoader] = useState(false);
 
     const [currentStep, setCurrentStep] = useState<number>(0); // 0 = idle
     const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -3332,8 +3334,10 @@ export default function DashboardPage() {
             return;
         }
 
+        setShowDashboardStepLoader(true);
         setLoadingStartedAt(Date.now());
         setDashboardBusy(true);
+
         setError(null);
         setBiError(null);
         setInvError("");
@@ -3433,6 +3437,14 @@ export default function DashboardPage() {
                 ...prev,
                 active: false,
             }));
+        } finally {
+            setDashboardBusy(false);
+            setShowDashboardStepLoader(false);
+            setStepProgress((prev) => ({
+                ...prev,
+                active: false,
+            }));
+            setLoadingStartedAt(null);
         }
     }, [
         isMonthYearNA,
@@ -9720,16 +9732,26 @@ Keep enough stock for validation but avoid over-committing too early.`,
             />
             <HashScroll offset={80} />
 
-            <DashboardLoaderModal
-                pageLoading={pageLoading}
-                shouldShowDummyUi={shouldShowDummyUi}
-                currentStep={currentStep}
-                completedSteps={completedSteps}
-                dashboardSteps={dashboardSteps}
-                stepProgress={stepProgress}
-                loadingStartedAt={loadingStartedAt}
-                estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
-            />
+            {!shouldShowDummyUi && showDashboardStepLoader && (
+                <DashboardLoaderModal
+                    pageLoading={showDashboardStepLoader}
+                    shouldShowDummyUi={shouldShowDummyUi}
+                    currentStep={currentStep}
+                    completedSteps={completedSteps}
+                    dashboardSteps={dashboardSteps}
+                    stepProgress={stepProgress}
+                    loadingStartedAt={loadingStartedAt}
+                    estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
+                />
+            )}
+
+            {!shouldShowDummyUi && pageLoading && !showDashboardStepLoader && (
+                <Loader
+                    fullscreen
+                    contained
+                    backgroundClass="bg-white/40"
+                />
+            )}
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
                 <div className="flex items-center justify-between gap-2">

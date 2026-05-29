@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 
 type LoaderProps = {
   src?: string;
-  size?: number; // add this
+  size?: number;
   label?: string;
   roundedClass?: string;
   backgroundClass?: string;
@@ -12,19 +12,21 @@ type LoaderProps = {
   className?: string;
   forceFallback?: boolean;
   fullscreen?: boolean;
+  contained?: boolean; // add this
   zIndex?: number;
   respectReducedMotion?: boolean;
 };
 
 export default function Loader({
   src = "/infinityNew.gif",
-  size: customSize, // rename prop to avoid clash
+  size: customSize,
   label = "Loading…",
   roundedClass = "rounded-2xl",
   backgroundClass = "",
   transparent = false,
   className = "",
   forceFallback = false,
+  contained = false,
   fullscreen = false,
   zIndex = 9999,
   respectReducedMotion = false,
@@ -83,19 +85,19 @@ export default function Loader({
       style={
         fullscreen
           ? {
-              position: "fixed",
-              inset: 0,
-              width: "100vw",
-              height: "100vh",
-              zIndex,
-              background: transparent ? "transparent" : undefined,
-            }
+            position: contained ? "absolute" : "fixed",
+            inset: 0,
+            width: contained ? "100%" : "100vw",
+            height: contained ? "100%" : "100vh",
+            zIndex,
+            background: transparent ? "transparent" : undefined,
+          }
           : {
-              width: size,
-              height: size,
-              minWidth: size,
-              minHeight: size,
-            }
+            width: size,
+            height: size,
+            minWidth: size,
+            minHeight: size,
+          }
       }
     >
       {children}
