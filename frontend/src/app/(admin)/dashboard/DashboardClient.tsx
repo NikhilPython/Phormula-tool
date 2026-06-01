@@ -230,6 +230,25 @@ type ProductwiseMoneyKey =
     | "dealsvouchar_ads"
     | "platformfeenew";
 
+type CountryTimezoneResponse = {
+    country: "uk" | "us";
+    country_label: string;
+    india: {
+        timezone: string;
+        abbreviation: string;
+        datetime: string;
+        date: string;
+        time: string;
+    };
+    selected_country: {
+        timezone: string;
+        abbreviation: string;
+        datetime: string;
+        date: string;
+        time: string;
+    };
+};
+
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -240,6 +259,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
+const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
@@ -772,6 +792,62 @@ const getTimezoneForRegion = (region: RegionKey) => {
     return REGION_TIMEZONE[region] || "Asia/Kolkata";
 };
 
+const getRegionNow = (region: RegionKey) => {
+    const tz = getTimezoneForRegion(region);
+
+    return new Date(
+        new Date().toLocaleString("en-US", {
+            timeZone: tz,
+        })
+    );
+};
+
+const getRegionYearMonth = (region: RegionKey) => {
+    const now = getRegionNow(region);
+
+    const monthName = now.toLocaleString("en-US", {
+        month: "long",
+    });
+
+    return {
+        monthName,
+        year: now.getFullYear(),
+    };
+};
+
+const getPrevRegionYearMonth = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    now.setMonth(now.getMonth() - 1);
+
+    const monthName = now.toLocaleString("en-US", {
+        month: "long",
+    });
+
+    return {
+        monthName,
+        year: now.getFullYear(),
+    };
+};
+
+const getDayOfMonthByRegion = (region: RegionKey) => {
+    return getRegionNow(region).getDate();
+};
+
+const getRegionDayInfo = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    const todayDay = now.getDate();
+
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+    const daysInPrevMonth = prevMonthDate.getDate();
+
+    return { todayDay, daysInPrevMonth };
+};
+
+const getDaysInMonthByRegion = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+};
+
 // ===================== ADS REPORT SEED (SP + SD) - ONCE PER DAY =====================
 
 const decodeJwtUserId = (jwt: string): string | null => {
@@ -794,39 +870,19 @@ const decodeJwtUserId = (jwt: string): string | null => {
     }
 };
 
-const getRegionNow = (region: RegionKey) => {
-    const tz = getTimezoneForRegion(region);
-    return new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
-};
+// const getBackendCountryDate = useCallback(() => {
+//     const dt = countryTime?.selected_country?.datetime;
 
-const getRegionYearMonth = (region: RegionKey) => {
-    const now = getRegionNow(region);
+//     if (!dt) {
+//         return new Date();
+//     }
 
-    const monthName = now.toLocaleString("en-US", {
-        month: "long",
-        timeZone: getTimezoneForRegion(region),
-    });
+//     // Backend format: "YYYY-MM-DD HH:mm:ss"
+//     // Convert to browser-safe local Date object.
+//     return new Date(dt.replace(" ", "T"));
+// }, [countryTime]);
 
-    return {
-        monthName,
-        year: now.getFullYear(),
-    };
-};
 
-const getPrevRegionYearMonth = (region: RegionKey) => {
-    const now = getRegionNow(region);
-    now.setMonth(now.getMonth() - 1);
-
-    const monthName = now.toLocaleString("en-US", {
-        month: "long",
-        timeZone: getTimezoneForRegion(region),
-    });
-
-    return {
-        monthName,
-        year: now.getFullYear(),
-    };
-};
 
 const roundForAmazonCard = (label: string, value: number) => {
     const n = Number(value || 0);
@@ -839,26 +895,6 @@ const roundForAmazonCard = (label: string, value: number) => {
 
     return n;
 };
-
-const getDayOfMonthByRegion = (region: RegionKey) => {
-    return getRegionNow(region).getDate();
-};
-
-const getRegionDayInfo = (region: RegionKey) => {
-    const now = getRegionNow(region);
-    const todayDay = now.getDate();
-
-    const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
-    const daysInPrevMonth = prevMonthDate.getDate();
-
-    return { todayDay, daysInPrevMonth };
-};
-
-const getDaysInMonthByRegion = (region: RegionKey) => {
-    const now = getRegionNow(region);
-    return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-};
-
 
 const getIstTodayISO = () => {
     const now = new Date();
@@ -1727,7 +1763,9 @@ export default function DashboardPage() {
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("live");
     const [summaryLoading, setSummaryLoading] = useState(true);
-
+    const [countryTime, setCountryTime] = useState<CountryTimezoneResponse | null>(null);
+    const [countryTimeLoading, setCountryTimeLoading] = useState(false);
+    const [countryTimeError, setCountryTimeError] = useState<string | null>(null);
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
@@ -1741,6 +1779,8 @@ export default function DashboardPage() {
         key: "net_sales",
         direction: "desc",
     });
+
+
 
     const productwiseInitialCollapsed = useMemo(
         () => ({
@@ -1811,6 +1851,68 @@ export default function DashboardPage() {
         uk?: any;
         us?: any;
     }>({});
+
+    const timezoneCountry = useMemo<"uk" | "us">(() => {
+        if (platform === "amazon-us") return "us";
+        if (platform === "amazon-uk") return "uk";
+
+        // For global, choose the currently selected MTD country if you use one.
+        if (platform === "global") return globalMtdCountry;
+
+        // Default fallback
+        return "uk";
+    }, [platform, globalMtdCountry]);
+
+    const fetchCountryTime = useCallback(async () => {
+        if (typeof window === "undefined") return null;
+
+        const token = localStorage.getItem("jwtToken");
+
+        if (!token) {
+            setCountryTime(null);
+            setCountryTimeError("Authorization token is missing");
+            return null;
+        }
+
+        try {
+            setCountryTimeLoading(true);
+            setCountryTimeError(null);
+
+            const res = await fetch(`${COUNTRY_TIMEZONE_ENDPOINT}/${timezoneCountry}`, {
+                method: "GET",
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                cache: "no-store",
+            });
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(json?.error || `Failed to fetch country time (${res.status})`);
+            }
+
+            setCountryTime(json);
+            return json;
+        } catch (err: any) {
+            setCountryTime(null);
+            setCountryTimeError(err?.message || "Failed to fetch country time");
+            return null;
+        } finally {
+            setCountryTimeLoading(false);
+        }
+    }, [timezoneCountry]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const token = localStorage.getItem("jwtToken");
+
+        if (!token) return;
+
+        void fetchCountryTime();
+    }, [fetchCountryTime]);
 
     const dismissAlert = useCallback((id?: string) => {
         if (!id) return;
@@ -1964,6 +2066,59 @@ export default function DashboardPage() {
     const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
     const activeDateRegion = graphRegionToUse;
 
+    const getBackendCountryDate = useCallback(() => {
+        const dt = countryTime?.selected_country?.datetime;
+
+        if (!dt) {
+            return getRegionNow(activeDateRegion);
+        }
+
+        return new Date(dt.replace(" ", "T"));
+    }, [countryTime, activeDateRegion]);
+
+    const getBackendCountryYearMonth = useCallback(() => {
+        const now = getBackendCountryDate();
+
+        const monthName = now.toLocaleString("en-US", {
+            month: "long",
+        });
+
+        return {
+            monthName,
+            year: now.getFullYear(),
+        };
+    }, [getBackendCountryDate]);
+
+    const getPrevBackendCountryYearMonth = useCallback(() => {
+        const now = getBackendCountryDate();
+        now.setMonth(now.getMonth() - 1);
+
+        const monthName = now.toLocaleString("en-US", {
+            month: "long",
+        });
+
+        return {
+            monthName,
+            year: now.getFullYear(),
+        };
+    }, [getBackendCountryDate]);
+
+    const getBackendCountryDayInfo = useCallback(() => {
+        const now = getBackendCountryDate();
+
+        const todayDay = now.getDate();
+        const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        const daysInPrevMonth = prevMonthDate.getDate();
+
+        return { todayDay, daysInPrevMonth };
+    }, [getBackendCountryDate]);
+
+    const getDaysInBackendCountryMonth = useCallback(() => {
+        const now = getBackendCountryDate();
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    }, [getBackendCountryDate]);
+
+
     const dashboardLabelAnchor = dbUpdatedAt ?? lastRefreshAt ?? Date.now();
 
     const currentDisplayMonth = useMemo(() => {
@@ -2018,6 +2173,16 @@ export default function DashboardPage() {
                 ? formatLastUpdatedDateTime(dbUpdatedAt, "America/Toronto")
                 : formatLastUpdatedDateTime(dbUpdatedAt, "Europe/London");
     }, [dbUpdatedAt, platform, isUsAmazonConnected, activeDateRegion]);
+
+    const countryLastRefreshTimeText = useMemo(() => {
+        const selected = countryTime?.selected_country;
+
+        if (!selected?.time) {
+            return "";
+        }
+
+        return `${selected.time} ${selected.abbreviation || ""}`.trim();
+    }, [countryTime]);
 
     const globalMtdCountryOptions = useMemo(() => {
         // ✅ Preview / dummy mode should still show UK/US toggle + cards
@@ -2091,7 +2256,7 @@ export default function DashboardPage() {
             const country =
                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-            const { monthName, year } = getRegionYearMonth(activeDateRegion);
+            const { monthName, year } = getBackendCountryYearMonth();
 
             const res = await fetch(MONTHLY_SP_ENDPOINT, {
                 method: "POST",
@@ -2144,7 +2309,7 @@ export default function DashboardPage() {
         } finally {
             if (!silent) setMonthlySpLoading(false);
         }
-    }, [platform, isMonthYearNA, activeDateRegion]);
+    }, [platform, isMonthYearNA, getBackendCountryYearMonth]);
 
     const adsBackgroundLoadingRef = useRef(false);
     const adsSeededRef = useRef(false);
@@ -2540,7 +2705,7 @@ export default function DashboardPage() {
 
         if (!token) return;
 
-        const { monthName, year } = getPrevRegionYearMonth(activeDateRegion);
+        const { monthName, year } = getPrevBackendCountryYearMonth();
 
         const countries =
             platform === "global"
@@ -2571,7 +2736,12 @@ export default function DashboardPage() {
 
         const next = Object.fromEntries(results);
         setPrevTargetSummaries(next);
-    }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
+    }, [
+        targetSummaryCountry,
+        isMonthYearNA,
+        platform,
+        getPrevBackendCountryYearMonth,
+    ]);
 
     // useEffect(() => {
     //     fetchTargetSummary();
@@ -2605,9 +2775,13 @@ export default function DashboardPage() {
     }, [platform, graphRegionToUse]);
 
     const invMonthYear = useMemo(() => {
-        const { monthName, year } = getRegionYearMonth(activeDateRegion);
-        return { month: monthName.toLowerCase(), year: String(year) };
-    }, [activeDateRegion]);
+        const { monthName, year } = getBackendCountryYearMonth();
+
+        return {
+            month: monthName.toLowerCase(),
+            year: String(year),
+        };
+    }, [getBackendCountryYearMonth]);
 
     const fetchInventory = useCallback(async () => {
         if (isMonthYearNA) {
@@ -3134,7 +3308,8 @@ export default function DashboardPage() {
     }, [shopifyStore, activeDateRegion]);
 
     /* ===================== ✅ SHARED BI FETCH (FOR CARDS + GRAPH) ===================== */
-    const { monthName: currMonthName, year: currYear } = getRegionYearMonth(activeDateRegion);
+    const { monthName: currMonthName, year: currYear } =
+        getBackendCountryYearMonth();
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
@@ -4155,16 +4330,17 @@ export default function DashboardPage() {
         resetStepState();
 
         try {
+            await fetchCountryTime();
+
             await runDashboardLoadWithSteps();
 
-            // ✅ countrywise + global both save after refresh
             triggerCachePost();
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
         }
-    }, [runDashboardLoadWithSteps, triggerCachePost]);
+    }, [fetchCountryTime, runDashboardLoadWithSteps, triggerCachePost]);
 
     useEffect(() => {
         if (!fxReady) return;
@@ -4404,7 +4580,7 @@ export default function DashboardPage() {
         const pts = biDailySeriesHome?.current_mtd || [];
         if (!pts.length) return;
 
-        const todayDay = getDayOfMonthByRegion(activeDateRegion);
+        const todayDay = getBackendCountryDate().getDate();
         const exact = pts.find((p) => Number(p.date?.slice(8, 10)) === todayDay);
         if (exact?.net_sales != null) {
             setTodaySalesRaw(Number(exact.net_sales) || 0);
@@ -9900,7 +10076,13 @@ ${pageLoading
                             //     Last Updated at {lastUpdatedTimeText}
                             // </div>
                             <span className="text-sm text-gray-500">
-                                Last Updated at {lastUpdatedTimeText}
+                                {countryTimeLoading
+                                    ? "Fetching country time..."
+                                    : countryLastRefreshTimeText
+                                        ? `Last Updated at ${countryLastRefreshTimeText}`
+                                        : countryTimeError
+                                            ? "Last Updated time unavailable"
+                                            : "Last Updated time unavailable"}
                             </span>
                         )}
                     </div>
