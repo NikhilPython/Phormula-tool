@@ -1281,44 +1281,180 @@ def skutableprofit():
                 'error': 'country, month, and year are required'
             }), 400
 
+        # Main SKU monthly table:
+        # example: skuwisemonthly_2_uk_may2026
         table_name = build_skuwise_table_name(user_id, country, month, year)
+
+        # Ads table:
+        requested_ads_table_name = f"skuwisemonthly_{user_id}_{country}_{month}_{year}".lower()
+
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names(schema="public"))
+
+        ads_table_name = requested_ads_table_name if requested_ads_table_name in existing_tables else None
 
         metadata = MetaData(schema='public')
 
-        def _fetch_as_dicts(tbl_name):
-            user_specific_table = Table(tbl_name, metadata, autoload_with=engine)
+        def safe_float(value):
+            try:
+                if value is None:
+                    return 0.0
+                return float(value)
+            except Exception:
+                return 0.0
+
+        def safe_divide(numerator, denominator):
+            numerator = safe_float(numerator)
+            denominator = safe_float(denominator)
+            if denominator == 0:
+                return 0.0
+            return numerator / denominator
+
+        def _fetch_profit_data(main_tbl_name, ads_tbl_name=None):
+            main_table = Table(main_tbl_name, metadata, autoload_with=engine)
 
             with engine.connect() as conn:
-                results = conn.execute(
-                    select(*user_specific_table.columns)
+                main_rows = conn.execute(
+                    select(*main_table.columns)
                 ).mappings().all()
 
-            return [_normalize_sku_row(dict(row)) for row in results]
+                ads_rows = []
+
+                if ads_tbl_name:
+                    ads_table = Table(ads_tbl_name, metadata, autoload_with=engine)
+                    ads_rows = conn.execute(
+                        select(*ads_table.columns)
+                    ).mappings().all()
+
+            final_data = []
+
+            for index, row in enumerate(main_rows):
+                row_dict = _normalize_sku_row(dict(row))
+
+                ads_spend = 0.0
+
+                # Existing row-by-row ads_spend matching
+                if index < len(ads_rows):
+                    ads_dict = _normalize_sku_row(dict(ads_rows[index]))
+
+                    ads_spend = safe_float(
+                        ads_dict.get("ads_spend")
+                        if ads_dict.get("ads_spend") is not None
+                        else ads_dict.get("ads_spend_raw")
+                        if ads_dict.get("ads_spend_raw") is not None
+                        else ads_dict.get("product_spend")
+                    )
+
+                profit = safe_float(row_dict.get("profit"))
+                net_sales = safe_float(row_dict.get("net_sales"))
+                total_quantity = safe_float(row_dict.get("total_quantity"))
+
+                cm2_profit = profit - ads_spend
+                acos = safe_divide(ads_spend, net_sales) * 100
+                cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
+                cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
+
+                row_dict["ads_spend"] = round(ads_spend, 2)
+                row_dict["cm2_profit"] = round(cm2_profit, 2)
+                row_dict["acos"] = round(acos, 2)
+                row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
+                row_dict["cm2_profit_per_unit"] = round(cm2_profit_per_unit, 2)
+
+                final_data.append(row_dict)
+
+            # ----------------------------------------------------
+            # Add final TOTAL row values only if ads table exists.
+            # If ads table is missing, keep values 0 and do not fail.
+            # ----------------------------------------------------
+            if ads_rows:
+                def get_total_ads_row(ads_rows):
+                    for ads_row in ads_rows:
+                        ads_dict = _normalize_sku_row(dict(ads_row))
+
+                        sku = str(ads_dict.get("sku") or "").strip().lower()
+                        product_name = str(ads_dict.get("product_name") or "").strip().lower()
+
+                        if sku == "total" or product_name == "total":
+                            return ads_dict
+
+                    return _normalize_sku_row(dict(ads_rows[-1]))
+
+                ads_total_row = get_total_ads_row(ads_rows)
+
+                brand_spend_total = safe_float(ads_total_row.get("brand_spend"))
+
+                dealsvouchar_ads_total = safe_float(
+                    ads_total_row.get("dealsvouchar_ads")
+                    if ads_total_row.get("dealsvouchar_ads") is not None
+                    else ads_total_row.get("dealsvoucher_ads")
+                    if ads_total_row.get("dealsvoucher_ads") is not None
+                    else ads_total_row.get("deals_voucher_ads")
+                )
+
+                advertising_total = brand_spend_total + dealsvouchar_ads_total
+
+                for row_dict in final_data:
+                    sku = str(row_dict.get("sku") or "").strip().lower()
+                    product_name = str(row_dict.get("product_name") or "").strip().lower()
+
+                    if sku == "total" or product_name == "total":
+                        cm2_profit = safe_float(row_dict.get("cm2_profit"))
+                        platform_fee = safe_float(row_dict.get("platform_fee"))
+
+                        cm2_profit_total = cm2_profit - advertising_total - platform_fee
+
+                        row_dict["brand_spend"] = round(brand_spend_total, 2)
+                        row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
+                        row_dict["advertising_total"] = round(advertising_total, 2)
+                        row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
+
+                        break
+
+            return final_data
 
         try:
-            current_data = _fetch_as_dicts(table_name)
-        except Exception:
+            current_data = _fetch_profit_data(table_name, ads_table_name)
+        except Exception as e:
             return jsonify({
-                'error': f"Table '{table_name}' not found for user {user_id}"
-            }), 404
+                "error": "Failed to calculate SKU profit data",
+                "current_table_name": table_name,
+                "ads_table_name": ads_table_name,
+                "message": str(e)
+            }), 500
 
         previous_table_name = None
+        previous_ads_table_name = None
         previous_data = []
 
         prev_month, prev_year = get_previous_month(month, year)
 
         if prev_month and prev_year:
-            previous_table_name = build_skuwise_table_name(user_id, country, prev_month, prev_year)
+            previous_table_name = build_skuwise_table_name(
+                user_id,
+                country,
+                prev_month,
+                prev_year
+            )
+
+            # Do NOT load previous ads table
+            previous_ads_table_name = None
 
             try:
-                previous_data = _fetch_as_dicts(previous_table_name)
-            except Exception:
+                previous_data = _fetch_profit_data(
+                    previous_table_name,
+                    None
+                )
+            except Exception as e:
                 previous_data = []
+                print("Previous data error:", str(e))
 
         return jsonify({
             "current_table_name": table_name,
+            "current_ads_table_name": ads_table_name,
+            "requested_ads_table_name": requested_ads_table_name,
             "current_data": current_data,
             "previous_table_name": previous_table_name,
+            "previous_ads_table_name": previous_ads_table_name,
             "previous_data": previous_data
         }), 200
 
@@ -1327,6 +1463,7 @@ def skutableprofit():
             'error': 'An unexpected error occurred',
             'message': str(e)
         }), 500
+    
 
 
 @product_bp.route('/get_table_data/<string:file_name>', methods=['GET'])

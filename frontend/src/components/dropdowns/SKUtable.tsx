@@ -103,6 +103,12 @@ export type TableRow = {
   asp?: number;
   ASP?: number;
 
+  ads_spend?: number;
+  brand_spend?: number;
+  cm2_profit_total?: number;
+  cm2_profit_per?: number;
+  cm2_profit_per_unit?: number;
+
   gross_sales?: number;
   product_sales?: number;
   refund_sales?: number;
@@ -191,6 +197,9 @@ type Totals = {
   net_sales: number;
   lost_total: number;
   net_reimbursement: number;
+  ads_spend: number;
+  brand_spend: number;
+  cm2_profit_total: number;
 };
 
 // type JwtPayload = {
@@ -333,11 +342,21 @@ function normalizeRows(data: any[]): TableRow[] {
       unit_wise_profitability: toNumber(row.unit_wise_profitability),
 
       // CM2 / Ads
+      ads_spend: toNumber(row.ads_spend),
       advertising_total: toNumber(row.advertising_total),
+
+      brand_spend: toNumber(row.brand_spend ?? row.visible_ads),
+      visible_ads: toNumber(row.brand_spend ?? row.visible_ads),
+
+      dealsvouchar_ads: toNumber(row.dealsvouchar_ads),
+
       acos: toNumber(row.acos),
+
       cm2_profit: toNumber(row.cm2_profit),
+      cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
       cm2_margins: toNumber(
+        row.cm2_profit_per ??
         row.cm2_margins ??
         row.cm2_profit_percentage ??
         row.cm2_profit_percent ??
@@ -345,13 +364,16 @@ function normalizeRows(data: any[]): TableRow[] {
       ),
 
       cm2_profit_percentage: toNumber(
+        row.cm2_profit_per ??
         row.cm2_profit_percentage ??
         row.cm2_margins ??
         row.cm2_profit_percent ??
         row.cm2_profit_percentage_value
       ),
 
-      unit_wise_cm2_profitability: toNumber(row.unit_wise_cm2_profitability),
+      unit_wise_cm2_profitability: toNumber(
+        row.cm2_profit_per_unit ?? row.unit_wise_cm2_profitability
+      ),
     } as TableRow;
 
   });
@@ -386,8 +408,12 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
   );
 
   return {
+    ads_spend: toNumber(totalRow.ads_spend),
     advertising_total: toNumber(totalRow.advertising_total),
-    visible_ads: toNumber(totalRow.visible_ads),
+
+    brand_spend: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
+    visible_ads: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
+
     dealsvouchar_ads: toNumber(totalRow.dealsvouchar_ads),
     other_transactions: toNumber(totalRow.platform_fee),
     platform_fee: platformFees,
@@ -400,6 +426,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     shipment_charges: toNumber(totalRow.shipment_charges ?? totalRow.shipment_fees),
     reimbursement_vs_sales: toNumber(totalRow.reimbursement_vs_sales),
     cm2_profit: toNumber(totalRow.cm2_profit),
+    cm2_profit_total: toNumber(totalRow.cm2_profit_total ?? totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     acos: toNumber(totalRow.acos),
     rembursment_vs_cm2_margins: toNumber(totalRow.rembursment_vs_cm2_margins),
@@ -447,14 +474,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
-  const tableData = rows || [];
+  const tableData = useMemo(() => {
+    return normalizeRows(rows || []);
+  }, [rows]);
 
   const hasCm2Data = useMemo(() => {
     return (tableData || []).some((row: any) => {
       return (
-        toNumber(row.advertising_total) !== 0 ||
+        toNumber(row.ads_spend ?? row.advertising_total) !== 0 ||
+        toNumber(row.brand_spend ?? row.visible_ads) !== 0 ||
         toNumber(row.acos) !== 0 ||
         toNumber(row.cm2_profit) !== 0 ||
+        toNumber(row.cm2_profit_total) !== 0 ||
+        toNumber(row.cm2_profit_per) !== 0 ||
         toNumber(row.cm2_margins) !== 0 ||
         toNumber(row.cm2_profit_percentage) !== 0
       );
@@ -487,7 +519,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const backendValue = toNumber((row as any).acos);
     if (backendValue) return backendValue;
 
-    const ads = toNumber((row as any).advertising_total);
+    const ads = toNumber((row as any).ads_spend ?? (row as any).advertising_total);
     const sales = toNumber((row as any).net_sales);
 
     return sales !== 0 ? (ads / sales) * 100 : 0;
@@ -672,7 +704,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "net_units_sold",
           label: "",
           align: "center",
-          width: 160,
+          width: 140,
           sortable: true,
         },
       ],
@@ -710,6 +742,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "",
           align: "center",
           sortable: true,
+          width: 125,
           info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
         },
       ],
@@ -778,6 +811,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "promotional_rebates",
           label: "",
           align: "center",
+          width: 150,
           info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
         },
       ],
@@ -792,7 +826,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "Promotions %",
           align: "center",
           noWrap: true,
-          width: 170,
+          width: 100,
           thClassName: "whitespace-nowrap",
         },
       ],
@@ -911,12 +945,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
-        width: 120,
+        width: 100,
       },
       ...(hasCm2Data
         ? [
           {
-            key: "advertising_total",
+            key: "ads_spend",
             label: "Ads Spend",
             align: "center" as const,
           },
@@ -969,7 +1003,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
       ...(hasCm2Data
         ? [
-          { key: "advertising_total", label: "Ads Spend", align: "center" as const },
+          { key: "ads_spend", label: "Ads Spend", align: "center" as const },
           { key: "acos", label: "ACoS %", align: "center" as const },
           { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
           { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
@@ -1036,7 +1070,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "net_reimbursement",
         "cm2_profit",
         "lost_total",
-        "advertising_total",
+        "ads_spend",
+        "brand_spend",
+        "cm2_profit_total",
         "cm2_profit",
         "unit_wise_cm2_profitability",
       ]);
@@ -1104,6 +1140,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "net_taxes",
         "lost_total",
         "advertising_total",
+        "ads_spend",
+        "brand_spend",
       ]),
     []
   );
@@ -1187,7 +1225,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       const summaryRows: SummaryRow[] = [
         { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
-        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
+        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.brand_spend || 0)) },
         { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
         ...((countryName || "").toLowerCase() === "us" ||
@@ -1200,7 +1238,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
         { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
 
-        { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
+        { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit_total || 0), __bold: 1 },
         { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
         { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
         { product_name: "Net Reimbursement", profit: toNumber(totals.net_reimbursement), __bold: 1 },
@@ -1489,7 +1527,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "net_sales") return toNumber((row as any).net_sales);
                   if (colKey === "profit") return toNumber((row as any).profit);
                   if (colKey === "cm2_profit") return toNumber((row as any).cm2_profit);
-                  if (colKey === "advertising_total") return toNumber((row as any).advertising_total);
+                  if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
                   if (colKey === "acos") return getAcosPercentage(row);
 
                   return toNumber((row as any)[colKey]);
@@ -1515,7 +1553,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   ...(hasCm2Data
                     ? [
-                      { type: "single" as const, key: "advertising_total" },
+                      { type: "single" as const, key: "ads_spend" },
                       { type: "single" as const, key: "acos" },
                       { type: "group" as const, id: "cm2_profit_breakdown" },
                     ]
@@ -1630,7 +1668,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         {
                           id: "ads_1",
                           label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.visible_ads, "visible_ads"),
+                          midValue: formatValue(totals.brand_spend, "brand_spend"),
                         },
                         {
                           id: "ads_2",
@@ -1690,7 +1728,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       ]
                       : []),
 
-                    { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
+                    {
+                      id: "cm2_profit",
+                      label: "CM2 Profit/Loss",
+                      endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+                    },
                     { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}` },
 
                     // ✅ TACoS first

@@ -42,6 +42,7 @@ type Summary = {
   total_product_sales?: number;
   total_expense: number;
   cm2_profit: number;
+  cm2_profit_total?: number;
   total_cous?: number;
   otherwplatform?: number;
   advertising_total?: number;
@@ -3123,17 +3124,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     total_sales: toNum(row?.net_sales),
     gross_sales: toNum(row?.gross_sales),
     total_product_sales: toNum(row?.gross_sales),
+
     total_expense:
       toNum(row?.amazon_fee) +
       toNum(row?.cost_of_unit_sold) +
       Math.abs(toNum(row?.advertising_total)),
-    cm2_profit: toNum(row?.cm2_profit || row?.profit),
+
+    // ✅ Card CM2 Profit should come from cm2_profit_total
+    cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
+    cm2_profit_total: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
     total_cous: toNum(row?.cost_of_unit_sold),
+
     otherwplatform:
       toNum(row?.platform_fee) +
       toNum(row?.platform_fee_inventory_storage) +
       toNum(row?.platformfeenew),
-    advertising_total: Math.abs(toNum(row?.advertising_total || row?.visible_ads)),
+
+    // ✅ Cost of Ads card/summary should remain advertising_total
+    advertising_total: Math.abs(toNum(row?.advertising_total)),
+
     total_amazon_fee: toNum(row?.amazon_fee),
   });
 
@@ -3157,7 +3166,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum(row?.platform_fee_inventory_storage) +
       toNum(row?.platformfeenew),
     taxncredit: toNum(row?.tex_and_credits),
-    cm2_profit: toNum(row?.cm2_profit || row?.profit),
+    cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
     total_profit: toNum(row?.profit),
   });
 
