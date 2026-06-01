@@ -46,6 +46,7 @@ type Summary = {
   total_cous?: number;
   otherwplatform?: number;
   advertising_total?: number;
+  advertising_total_final?: number;
   total_amazon_fee?: number;
 };
 
@@ -57,6 +58,7 @@ type UploadRow = {
   total_amazon_fee: number;
   total_cous: number;
   advertising_total: number;
+  advertising_total_final?: number;
   otherwplatform: number;
   taxncredit?: number;
   cm2_profit: number;
@@ -3119,32 +3121,41 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const mapSkuTotalToSummary = (row: any): Summary => ({
-    unit_sold: toNum(row?.total_quantity),
-    total_sales: toNum(row?.net_sales),
-    gross_sales: toNum(row?.gross_sales),
-    total_product_sales: toNum(row?.gross_sales),
+  const mapSkuTotalToSummary = (row: any): Summary => {
+    const advertisingTotalFinal = toNum(
+      row?.advertising_total_final ?? row?.advertising_total
+    );
 
-    total_expense:
-      toNum(row?.amazon_fee) +
-      toNum(row?.cost_of_unit_sold) +
-      Math.abs(toNum(row?.advertising_total)),
+    return {
+      unit_sold: toNum(row?.total_quantity),
+      total_sales: toNum(row?.net_sales),
+      gross_sales: toNum(row?.gross_sales),
+      total_product_sales: toNum(row?.gross_sales),
 
-    // ✅ Card CM2 Profit should come from cm2_profit_total
-    cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
-    cm2_profit_total: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
-    total_cous: toNum(row?.cost_of_unit_sold),
+      total_expense:
+        toNum(row?.amazon_fee) +
+        toNum(row?.cost_of_unit_sold) +
+        Math.abs(advertisingTotalFinal),
 
-    otherwplatform:
-      toNum(row?.platform_fee) +
-      toNum(row?.platform_fee_inventory_storage) +
-      toNum(row?.platformfeenew),
+      cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
+      cm2_profit_total: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
 
-    // ✅ Cost of Ads card/summary should remain advertising_total
-    advertising_total: Math.abs(toNum(row?.advertising_total)),
+      total_cous: toNum(row?.cost_of_unit_sold),
 
-    total_amazon_fee: toNum(row?.amazon_fee),
-  });
+      otherwplatform:
+        toNum(row?.platform_fee) +
+        toNum(row?.platform_fee_inventory_storage) +
+        toNum(row?.platformfeenew),
+
+      // This is what your top metric card reads
+      advertising_total: Math.abs(advertisingTotalFinal),
+
+      // Keep original named field too
+      advertising_total_final: Math.abs(advertisingTotalFinal),
+
+      total_amazon_fee: toNum(row?.amazon_fee),
+    };
+  };
 
   const mapSkuTotalToUploadRow = (
     row: any,
@@ -3160,7 +3171,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     total_sales: toNum(row?.net_sales),
     total_amazon_fee: toNum(row?.amazon_fee),
     total_cous: toNum(row?.cost_of_unit_sold),
-    advertising_total: Math.abs(toNum(row?.advertising_total || row?.visible_ads)),
+    advertising_total: Math.abs(
+      toNum(row?.advertising_total_final ?? row?.advertising_total)
+    ),
+    advertising_total_final: Math.abs(
+      toNum(row?.advertising_total_final ?? row?.advertising_total)
+    ),
     otherwplatform:
       toNum(row?.platform_fee) +
       toNum(row?.platform_fee_inventory_storage) +
