@@ -1383,15 +1383,16 @@ def skutableprofit():
 
                 brand_spend_total = safe_float(ads_total_row.get("brand_spend"))
 
-                dealsvouchar_ads_total = safe_float(
+                dealsvouchar_ads_total = abs(safe_float(
                     ads_total_row.get("dealsvouchar_ads")
                     if ads_total_row.get("dealsvouchar_ads") is not None
                     else ads_total_row.get("dealsvoucher_ads")
                     if ads_total_row.get("dealsvoucher_ads") is not None
                     else ads_total_row.get("deals_voucher_ads")
-                )
+                ))
 
                 advertising_total = brand_spend_total + dealsvouchar_ads_total
+                advertising_total_final = advertising_total + ads_spend 
 
                 for row_dict in final_data:
                     sku = str(row_dict.get("sku") or "").strip().lower()
@@ -1406,6 +1407,7 @@ def skutableprofit():
                         row_dict["brand_spend"] = round(brand_spend_total, 2)
                         row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
                         row_dict["advertising_total"] = round(advertising_total, 2)
+                        row_dict["advertising_total_final"] = round(advertising_total_final, 2)
                         row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
 
                         break
