@@ -17,6 +17,7 @@ import SegmentedToggle from "../ui/SegmentedToggle";
 import type { InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
 import InfoTip from "@/components/ui/InfoTip";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import InventoryAgeStackedBarChart from "@/components/dashboard/InventoryAgeStackedBarChart";
 
 type InventoryUiRow = {
   sno: React.ReactNode;
@@ -366,6 +367,81 @@ export default function CurrentInventorySection({
       return rowCountry === selectedInventoryCountry;
     });
   }, [invRows, isGlobalInventory, selectedInventoryCountry]);
+
+  const inventoryAgeChartData = useMemo(() => {
+    if (!visibleInvRows?.length) return [];
+
+    const usableRows = visibleInvRows.filter((row) => {
+      const name = String(row["Product Name"] ?? "").trim();
+      const sku = String(row["SKU"] ?? "").trim();
+
+      if (!name && !sku) return false;
+      if (isInventoryTotalRow(row)) return false;
+
+      return true;
+    });
+
+    return usableRows
+      .map((row) => {
+        const sku = normalizeSku((row as any)["SKU"]);
+
+        const age0to90 = getNumberByPossibleKeys(row, [
+          "inv-age-0-to-90-days",
+          "inv_age_0_to_90_days",
+          "Inventory Age 0 to 90 Days",
+          "inv age 0 to 90 days",
+        ]);
+
+        const age91to180 = getNumberByPossibleKeys(row, [
+          "inv-age-91-to-180-days",
+          "inv_age_91_to_180_days",
+          "Inventory Age 91 to 180 Days",
+          "inv age 91 to 180 days",
+        ]);
+
+        const age181to270 = getNumberByPossibleKeys(row, [
+          "inv-age-181-to-270-days",
+          "inv_age_181_to_270_days",
+          "Inventory Age 181 to 270 Days",
+          "inv age 181 to 270 days",
+        ]);
+
+        const age271to365 = getNumberByPossibleKeys(row, [
+          "inv-age-271-to-365-days",
+          "inv_age_271_to_365_days",
+          "Inventory Age 271 to 365 Days",
+          "inv age 271 to 365 days",
+        ]);
+
+        const age365plus = getNumberByPossibleKeys(row, [
+          "inv-age-365-plus-days",
+          "inv_age_365_plus_days",
+          "Inventory Age 365+ Days",
+          "inv age 365 plus days",
+          "inv-age-365+-days",
+        ]);
+
+        const total =
+          age0to90 +
+          age91to180 +
+          age181to270 +
+          age271to365 +
+          age365plus;
+
+        return {
+          sku,
+          age0to90,
+          age91to180,
+          age181to270,
+          age271to365,
+          age365plus,
+          total,
+        };
+      })
+      .filter((row) => row.sku && row.total > 0)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, showAllInventoryRows ? undefined : 10);
+  }, [visibleInvRows, showAllInventoryRows]);
 
   const visibleInventoryAlerts = useMemo(() => {
     if (!isGlobalInventory) return inventoryAlerts;
@@ -1152,7 +1228,7 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : invLoading ? (
-        <div className="w-full rounded-xl  min-h-[280px] flex items-center justify-center">
+        <div className="w-full rounded-xl min-h-[280px] flex items-center justify-center">
           <Loader transparent />
         </div>
       ) : (
@@ -1169,7 +1245,8 @@ export default function CurrentInventorySection({
               emptyMessage="No inventory data."
               isTotalRow={(row) => row.rowType === "total"}
               bodyMaxHeight={
-                showAllInventoryRows && tableRows.filter((row) => row.rowType === "normal").length > 15
+                showAllInventoryRows &&
+                  tableRows.filter((row) => row.rowType === "normal").length > 15
                   ? 40 * 15
                   : undefined
               }
@@ -1179,16 +1256,16 @@ export default function CurrentInventorySection({
                 return "bg-white";
               }}
               tableClassName="
-    table-fixed w-full
-    [&_th]:whitespace-normal
-    [&_th]:break-words
-    [&_th]:leading-snug
-    [&_th>div]:[display:-webkit-box]
-    [&_th>div]:[-webkit-box-orient:vertical]
-    [&_th>div]:[-webkit-line-clamp:3]
-    [&_th>div]:overflow-hidden
-    [&_th>div]:text-ellipsis
-  "
+          table-fixed w-full
+          [&_th]:whitespace-normal
+          [&_th]:break-words
+          [&_th]:leading-snug
+          [&_th>div]:[display:-webkit-box]
+          [&_th>div]:[-webkit-box-orient:vertical]
+          [&_th>div]:[-webkit-line-clamp:3]
+          [&_th>div]:overflow-hidden
+          [&_th>div]:text-ellipsis
+        "
             />
           </div>
         </div>

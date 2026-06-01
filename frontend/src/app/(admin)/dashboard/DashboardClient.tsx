@@ -60,6 +60,7 @@ import DashboardStickyKpis from "./DashboardStickyKpis";
 import { IoMdLock } from "react-icons/io";
 import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
+import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -11124,6 +11125,13 @@ ${pageLoading
                             convertToDisplayCurrency={convertToDisplayCurrency}
                             displayCurrency={displayCurrency}
                         />
+                        {!invLoading && !invError && (
+                            <InventoryAgeGraphSection
+                                invRows={invRows}
+                                region={graphRegionToUse}
+                                selectedCountry="uk"
+                            />
+                        )}
                     </div>
                 )}
             </PreviewLockedSection>

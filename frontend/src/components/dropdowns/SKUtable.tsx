@@ -167,6 +167,8 @@ export type TableRow = {
 
   // backend might send this as well
   return_quantity?: number;
+
+  unit_wise_cm2_profitability?: number;
 };
 
 type Totals = {
@@ -329,6 +331,27 @@ function normalizeRows(data: any[]): TableRow[] {
       profit: toNumber(row.profit),
       profit_percentage: toNumber(row.profit_percentage),
       unit_wise_profitability: toNumber(row.unit_wise_profitability),
+
+      // CM2 / Ads
+      advertising_total: toNumber(row.advertising_total),
+      acos: toNumber(row.acos),
+      cm2_profit: toNumber(row.cm2_profit),
+
+      cm2_margins: toNumber(
+        row.cm2_margins ??
+        row.cm2_profit_percentage ??
+        row.cm2_profit_percent ??
+        row.cm2_profit_percentage_value
+      ),
+
+      cm2_profit_percentage: toNumber(
+        row.cm2_profit_percentage ??
+        row.cm2_margins ??
+        row.cm2_profit_percent ??
+        row.cm2_profit_percentage_value
+      ),
+
+      unit_wise_cm2_profitability: toNumber(row.unit_wise_cm2_profitability),
     } as TableRow;
 
   });
@@ -425,6 +448,50 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const tableData = rows || [];
+
+  const hasCm2Data = useMemo(() => {
+    return (tableData || []).some((row: any) => {
+      return (
+        toNumber(row.advertising_total) !== 0 ||
+        toNumber(row.acos) !== 0 ||
+        toNumber(row.cm2_profit) !== 0 ||
+        toNumber(row.cm2_margins) !== 0 ||
+        toNumber(row.cm2_profit_percentage) !== 0
+      );
+    });
+  }, [tableData]);
+
+  const getCm2PerUnit = (row: Partial<TableRow>) => {
+    const cm2 = toNumber((row as any).cm2_profit);
+    const units = toNumber((row as any).net_units_sold ?? (row as any).total_quantity);
+    return units > 0 ? cm2 / units : 0;
+  };
+
+  const getCm2Percentage = (row: Partial<TableRow>) => {
+    const backendValue = toNumber(
+      (row as any).cm2_margins ??
+      (row as any).cm2_profit_percentage ??
+      (row as any).cm2_profit_percent ??
+      (row as any).cm2_profit_percentage_value
+    );
+
+    if (backendValue) return backendValue;
+
+    const cm2 = toNumber((row as any).cm2_profit);
+    const sales = toNumber((row as any).net_sales);
+
+    return sales !== 0 ? (cm2 / sales) * 100 : 0;
+  };
+
+  const getAcosPercentage = (row: Partial<TableRow>) => {
+    const backendValue = toNumber((row as any).acos);
+    if (backendValue) return backendValue;
+
+    const ads = toNumber((row as any).advertising_total);
+    const sales = toNumber((row as any).net_sales);
+
+    return sales !== 0 ? (ads / sales) * 100 : 0;
+  };
 
   const totals = useMemo(() => {
     return computeTotalsFromTotalRow(tableData);
@@ -584,7 +651,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
-      { key: "sno", label: "S.No.", align: "center",width: 60, },
+      { key: "sno", label: "S.No.", align: "center", width: 60, },
       {
         key: "product_name",
         label: "Product Name",
@@ -794,7 +861,42 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
       ],
     },
-  ], []);
+    ...(hasCm2Data
+      ? [
+        {
+          id: "cm2_profit_breakdown",
+          label: "CM2 Profit",
+          collapsedCols: [
+            {
+              key: "cm2_profit",
+              label: "",
+              align: "center",
+              sortable: true,
+            },
+          ],
+          expandedCols: [
+            {
+              key: "unit_wise_cm2_profitability",
+              label: "Per Unit",
+              align: "center",
+              width: 150,
+            },
+            {
+              key: "cm2_margins",
+              label: "%",
+              align: "center",
+            },
+            {
+              key: "cm2_profit",
+              label: "Total",
+              align: "center",
+            },
+          ],
+        } as ColGroup<TableRow>,
+      ]
+      : []),
+
+  ], [hasCm2Data]);
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -809,25 +911,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
-         width: 120,
+        width: 120,
       },
-      {
-        key: "promotional_rebates",
-        label: "Promotions",
-        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-        align: "center",
-      },
-      {
-        key: "promotional_rebates_percentage",
-        label: "Promotions %",
-        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
-        align: "center",
-        noWrap: true,
-        width: 170,
-        thClassName: "whitespace-nowrap",
-      },
+      ...(hasCm2Data
+        ? [
+          {
+            key: "advertising_total",
+            label: "Ads Spend",
+            align: "center" as const,
+          },
+          {
+            key: "acos",
+            label: "ACoS %",
+            align: "center" as const,
+          },
+        ]
+        : []),
     ],
-    []
+    [hasCm2Data]
   );
 
   const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
@@ -866,6 +967,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
       { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+      ...(hasCm2Data
+        ? [
+          { key: "advertising_total", label: "Ads Spend", align: "center" as const },
+          { key: "acos", label: "ACoS %", align: "center" as const },
+          { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
+          { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
+          { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
+        ]
+        : []),
     ];
 
     // optional: remove duplicates if any
@@ -876,7 +986,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       seen.add(c.key);
       return true;
     });
-  }, []);
+  }, [hasCm2Data]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -926,6 +1036,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "net_reimbursement",
         "cm2_profit",
         "lost_total",
+        "advertising_total",
+        "cm2_profit",
+        "unit_wise_cm2_profitability",
       ]);
 
       let formatted;
@@ -990,6 +1103,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "platform_fee_inventory_storage",
         "net_taxes",
         "lost_total",
+        "advertising_total",
       ]),
     []
   );
@@ -1374,8 +1488,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
                   if (colKey === "net_sales") return toNumber((row as any).net_sales);
                   if (colKey === "profit") return toNumber((row as any).profit);
+                  if (colKey === "cm2_profit") return toNumber((row as any).cm2_profit);
+                  if (colKey === "advertising_total") return toNumber((row as any).advertising_total);
+                  if (colKey === "acos") return getAcosPercentage(row);
 
-                  return 0;
+                  return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
@@ -1384,20 +1501,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   return name === "total" || sku === "total";
                 }}
                 layout={[
-                  { type: "group", id: "units_breakdown" },
-                  { type: "single", key: "asp" },
+                  { type: "group" as const, id: "units_breakdown" },
+                  { type: "single" as const, key: "asp" },
 
-                  { type: "group", id: "sales" },
-                  { type: "group", id: "promotional_rebates" },
+                  { type: "group" as const, id: "sales" },
+                  { type: "group" as const, id: "promotional_rebates" },
 
-                  // { type: "single", key: "promotional_rebates" },
-                  // { type: "single", key: "promotional_rebates_percentage" },
-                  { type: "single", key: "cost_of_unit_sold" },
+                  { type: "single" as const, key: "cost_of_unit_sold" },
 
+                  { type: "group" as const, id: "amazon_breakdown" },
+                  { type: "group" as const, id: "other_transactions_breakdown" },
+                  { type: "group" as const, id: "profit_breakdown" },
 
-                  { type: "group", id: "amazon_breakdown" },
-                  { type: "group", id: "other_transactions_breakdown" },
-                  { type: "group", id: "profit_breakdown" },
+                  ...(hasCm2Data
+                    ? [
+                      { type: "single" as const, key: "advertising_total" },
+                      { type: "single" as const, key: "acos" },
+                      { type: "group" as const, id: "cm2_profit_breakdown" },
+                    ]
+                    : []),
                 ]}
                 initialCollapsed={{
                   units_breakdown: true,
@@ -1407,6 +1529,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,
                   profit_breakdown: true,
+                  ...(hasCm2Data ? { cm2_profit_breakdown: true } : {}),
                 }}
                 toggleGroupByColKey={{
                   net_units_sold: "units_breakdown",
@@ -1414,6 +1537,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   amazon_fee: "amazon_breakdown",
                   other_transactions: "other_transactions_breakdown",
                   profit: "profit_breakdown",
+                  ...(hasCm2Data ? { cm2_profit: "cm2_profit_breakdown" } : {}),
                 }}
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
@@ -1477,6 +1601,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "sku") {
                     if (isOthers || isTotal) return "-"; // or "" if you want blank
                     return !isMissingName((row as any).sku) ? String((row as any).sku) : "-";
+                  }
+
+                  if (colKey === "unit_wise_cm2_profitability") {
+                    return formatValue(getCm2PerUnit(row), colKey);
+                  }
+
+                  if (colKey === "cm2_margins") {
+                    return formatValue(getCm2Percentage(row), "cm2_margins");
+                  }
+
+                  if (colKey === "acos") {
+                    return formatValue(getAcosPercentage(row), "acos");
                   }
 
                   return formatValue((row as any)[colKey], colKey);

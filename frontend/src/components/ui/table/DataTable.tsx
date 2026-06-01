@@ -109,6 +109,48 @@ export default function DataTable<T extends Row>({
     return pageRows.filter((row) => isTotalRow?.(row));
   }, [pageRows, shouldPinTotalRows, isTotalRow]);
 
+  const bodyScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [scrollbarWidth, setScrollbarWidth] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!shouldPinTotalRows) return;
+
+    const measure = () => {
+      const el = bodyScrollRef.current;
+      if (!el) return;
+
+      const width = el.offsetWidth - el.clientWidth;
+      setScrollbarWidth(width > 0 ? width : 0);
+    };
+
+    measure();
+
+    const el = bodyScrollRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined" && el
+        ? new ResizeObserver(measure)
+        : null;
+
+    if (resizeObserver && el) {
+      resizeObserver.observe(el);
+    }
+
+    window.addEventListener("resize", measure);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [shouldPinTotalRows, bodyMaxHeight, pageRows.length, columns.length]);
+
+  const scrollbarCompensationStyle: React.CSSProperties =
+    shouldPinTotalRows && scrollbarWidth
+      ? {
+        paddingRight: `${scrollbarWidth}px`,
+        boxSizing: "border-box",
+      }
+      : {};
+
   const bodyScrollStyle: React.CSSProperties = {
     maxHeight:
       bodyMaxHeight === undefined
@@ -234,53 +276,59 @@ export default function DataTable<T extends Row>({
       )}
       style={shouldPinTotalRows ? undefined : containerStyle}
     >
-      {/* Horizontal scroll only for table */}
+      {/* Horizontal scroll wrapper for header + body + pinned total */}
       <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
-        <table
-          className={clsx(
-            "border-separate border-spacing-0",
-            "text-xs 2xl:text-sm text-slate-700",
-            "min-w-max w-max lg:w-full",
-            "table-fixed",
-            tableClassName
-          )}
-        >
-          {colGroup}
-          <thead>
-            <tr>
-              {columns.map((col, i) => (
-                <th
-                  key={String(col.key) + i}
-                  onClick={col.onHeaderClick}
-                  style={getWidthStyle(col)}
-                  className={clsx(
-                    stickyHeader && "sticky top-0 z-20",
-                    "bg-[#5EA68E] text-yellow-200 font-bold",
-                    "border-b border-r border-gray-300",
-                    i === columns.length - 1 && "border-r-0",
-                    "px-3 py-2 text-center align-middle whitespace-nowrap",
-                    getWidthClass(col),
-                    col.headerClassName,
-                    col.onHeaderClick && "cursor-pointer select-none"
-                  )}
-                >
-                  <div
-                    className="
-                overflow-hidden text-ellipsis
-                [display:-webkit-box]
-                [-webkit-box-orient:vertical]
-                [-webkit-line-clamp:2]
-              "
-                  >
-                    {formatHeader(col.header)}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-        </table>
+        {/* Header table */}
+        <div style={scrollbarCompensationStyle}>
+          <table
+            className={clsx(
+              "border-separate border-spacing-0",
+              "text-xs 2xl:text-sm text-slate-700",
+              "min-w-max w-max lg:w-full",
+              "table-fixed",
+              tableClassName
+            )}
+          >
+            {colGroup}
 
+            <thead>
+              <tr>
+                {columns.map((col, i) => (
+                  <th
+                    key={String(col.key) + i}
+                    onClick={col.onHeaderClick}
+                    style={getWidthStyle(col)}
+                    className={clsx(
+                      stickyHeader && "sticky top-0 z-20",
+                      "bg-[#5EA68E] text-yellow-200 font-bold",
+                      "border-b border-r border-gray-300",
+                      i === columns.length - 1 && "border-r-0",
+                      "px-3 py-2 text-center align-middle whitespace-nowrap",
+                      getWidthClass(col),
+                      col.headerClassName,
+                      col.onHeaderClick && "cursor-pointer select-none"
+                    )}
+                  >
+                    <div
+                      className="
+                      overflow-hidden text-ellipsis
+                      [display:-webkit-box]
+                      [-webkit-box-orient:vertical]
+                      [-webkit-line-clamp:2]
+                    "
+                    >
+                      {formatHeader(col.header)}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          </table>
+        </div>
+
+        {/* Scrollable body table */}
         <div
+          ref={bodyScrollRef}
           className={clsx(
             shouldPinTotalRows &&
             "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
@@ -343,16 +391,26 @@ export default function DataTable<T extends Row>({
                             getWidthClass(col),
                             col.cellClassName
                           )}
-                          title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+                          title={
+                            showCellTitle ? String(value ?? "\u00A0") : undefined
+                          }
                         >
                           {isTextCol ? (
                             <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
                               {col.render
-                                ? col.render(row as any, value, (page - 1) * pageSize + ri)
+                                ? col.render(
+                                  row as any,
+                                  value,
+                                  (page - 1) * pageSize + ri
+                                )
                                 : value ?? "\u00A0"}
                             </div>
                           ) : col.render ? (
-                            col.render(row as any, value, (page - 1) * pageSize + ri)
+                            col.render(
+                              row as any,
+                              value,
+                              (page - 1) * pageSize + ri
+                            )
                           ) : (
                             value ?? "\u00A0"
                           )}
@@ -365,74 +423,91 @@ export default function DataTable<T extends Row>({
           </table>
         </div>
 
+        {/* Fixed total row table */}
         {pinnedRows.length > 0 && (
-          <table
-            className={clsx(
-              "border-separate border-spacing-0",
-              "text-xs 2xl:text-sm text-slate-700",
-              "min-w-max w-max lg:w-full",
-              "table-fixed",
-              tableClassName
-            )}
-          >
-            {colGroup}
-            <tbody>
-              {pinnedRows.map((row, ri) => {
-                const realIndex = scrollRows.length + ri;
+          <div style={scrollbarCompensationStyle}>
+            <table
+              className={clsx(
+                "border-separate border-spacing-0",
+                "text-xs 2xl:text-sm text-slate-700",
+                "min-w-max w-max lg:w-full",
+                "table-fixed",
+                tableClassName
+              )}
+            >
+              {colGroup}
 
-                return (
-                  <tr
-                    key={`pinned-${ri}`}
-                    className={clsx(
-                      rowClassName?.(row, (page - 1) * pageSize + realIndex),
-                      "h-[40px] transition-colors"
-                    )}
-                  >
-                    {columns.map((col, ci) => {
-                      const value =
-                        (row as Record<string, React.ReactNode>)[String(col.key)];
+              <tbody>
+                {pinnedRows.map((row, ri) => {
+                  const realIndex = scrollRows.length + ri;
 
-                      const keyStr = String(col.key);
-                      const isTextCol =
-                        keyStr === "productName" ||
-                        keyStr === "product_name" ||
-                        keyStr === "alert";
+                  return (
+                    <tr
+                      key={`pinned-${ri}`}
+                      className={clsx(
+                        rowClassName?.(
+                          row,
+                          (page - 1) * pageSize + realIndex
+                        ),
+                        "h-[40px] transition-colors"
+                      )}
+                    >
+                      {columns.map((col, ci) => {
+                        const value =
+                          (row as Record<string, React.ReactNode>)[String(col.key)];
 
-                      return (
-                        <td
-                          key={String(col.key) + ci}
-                          style={getWidthStyle(col)}
-                          className={clsx(
-                            "border-b border-r border-[#e1e5ea]",
-                            ci === columns.length - 1 && "border-r-0",
-                            "px-3 py-2 align-middle text-center min-w-0",
-                            isTextCol
-                              ? "whitespace-normal break-words"
-                              : "whitespace-nowrap",
-                            getWidthClass(col),
-                            col.cellClassName
-                          )}
-                          title={showCellTitle ? String(value ?? "\u00A0") : undefined}
-                        >
-                          {isTextCol ? (
-                            <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
-                              {col.render
-                                ? col.render(row as any, value, (page - 1) * pageSize + realIndex)
-                                : value ?? "\u00A0"}
-                            </div>
-                          ) : col.render ? (
-                            col.render(row as any, value, (page - 1) * pageSize + realIndex)
-                          ) : (
-                            value ?? "\u00A0"
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        const keyStr = String(col.key);
+                        const isTextCol =
+                          keyStr === "productName" ||
+                          keyStr === "product_name" ||
+                          keyStr === "alert";
+
+                        return (
+                          <td
+                            key={String(col.key) + ci}
+                            style={getWidthStyle(col)}
+                            className={clsx(
+                              "border-b border-r border-[#e1e5ea]",
+                              ci === columns.length - 1 && "border-r-0",
+                              "px-3 py-2 align-middle text-center min-w-0",
+                              isTextCol
+                                ? "whitespace-normal break-words"
+                                : "whitespace-nowrap",
+                              getWidthClass(col),
+                              col.cellClassName
+                            )}
+                            title={
+                              showCellTitle ? String(value ?? "\u00A0") : undefined
+                            }
+                          >
+                            {isTextCol ? (
+                              <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+                                {col.render
+                                  ? col.render(
+                                    row as any,
+                                    value,
+                                    (page - 1) * pageSize + realIndex
+                                  )
+                                  : value ?? "\u00A0"}
+                              </div>
+                            ) : col.render ? (
+                              col.render(
+                                row as any,
+                                value,
+                                (page - 1) * pageSize + realIndex
+                              )
+                            ) : (
+                              value ?? "\u00A0"
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
