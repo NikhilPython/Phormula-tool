@@ -442,6 +442,48 @@ const normalizeProductDisplayName = (value: any) => {
         .join("");
 };
 
+const getRegionDateFromTimestamp = (
+    timestamp: number | string | Date,
+    region: RegionKey
+) => {
+    const date = new Date(timestamp);
+
+    return new Date(
+        date.toLocaleString("en-US", {
+            timeZone: getTimezoneForRegion(region),
+        })
+    );
+};
+
+const getRegionYearMonthFromTimestamp = (
+    region: RegionKey,
+    timestamp: number | string | Date
+) => {
+    const date = getRegionDateFromTimestamp(timestamp, region);
+
+    return {
+        monthName: date.toLocaleString("en-US", { month: "long" }),
+        year: date.getFullYear(),
+    };
+};
+
+const getPrevRegionYearMonthFromTimestamp = (
+    region: RegionKey,
+    timestamp: number | string | Date
+) => {
+    const date = getRegionDateFromTimestamp(timestamp, region);
+    date.setMonth(date.getMonth() - 1);
+
+    return {
+        monthName: date.toLocaleString("en-US", { month: "long" }),
+        year: date.getFullYear(),
+    };
+};
+
+const formatMonthYearShort = (monthName: string, year: number) => {
+    return `${monthName.slice(0, 3)}'${String(year).slice(-2)}`;
+};
+
 /* ===================== P&L PRODUCTWISE SUMMARY (MTD) HELPERS ===================== */
 type PlSummaryTotals = {
     advertising_total: number;
@@ -1899,7 +1941,7 @@ export default function DashboardPage() {
     >("idle");
     const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
     const chartRef = React.useRef<HTMLDivElement | null>(null);
-    const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
+    // const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
     const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
@@ -1918,10 +1960,35 @@ export default function DashboardPage() {
         }
     }, [platform]);
 
-
-
     const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
     const activeDateRegion = graphRegionToUse;
+
+    const dashboardLabelAnchor = dbUpdatedAt ?? lastRefreshAt ?? Date.now();
+
+    const currentDisplayMonth = useMemo(() => {
+        return getRegionYearMonthFromTimestamp(activeDateRegion, dashboardLabelAnchor);
+    }, [activeDateRegion, dashboardLabelAnchor]);
+
+    const previousDisplayMonth = useMemo(() => {
+        return getPrevRegionYearMonthFromTimestamp(activeDateRegion, dashboardLabelAnchor);
+    }, [activeDateRegion, dashboardLabelAnchor]);
+
+    const formattedMonthYear = useMemo(() => {
+        return formatMonthYearShort(
+            currentDisplayMonth.monthName,
+            currentDisplayMonth.year
+        );
+    }, [currentDisplayMonth]);
+
+    const prevLabel = useMemo(() => {
+        return formatMonthYearShort(
+            previousDisplayMonth.monthName,
+            previousDisplayMonth.year
+        );
+    }, [previousDisplayMonth]);
+
+
+
 
     // const getDayOfMonthIST = () => {
     //     const now = new Date();
@@ -6599,7 +6666,7 @@ export default function DashboardPage() {
         return `${monthShort}'${yearShort}`;
     };
 
-    const formattedMonthYear = getFormattedMonthYearByRegion(activeDateRegion);
+    // const formattedMonthYear = getFormattedMonthYearByRegion(activeDateRegion);
 
     const countryNameForGraph =
         graphRegionToUse === "Global" ? "global" : graphRegionToUse.toLowerCase();
@@ -10456,6 +10523,10 @@ ${pageLoading
                                         previousReimbursement={finalTargetsReimbursement.previous}
                                         biAlignedTotals={shouldShowDummyUi ? null : biAlignedTotalsHome}
                                         biEnabled={shouldShowDummyUi ? false : biCardsReady}
+                                        currentMonthLabel={formattedMonthYear}
+                                        previousMonthLabel={prevLabel}
+                                        currentMonthName={currentDisplayMonth.monthName}
+                                        currentYear={currentDisplayMonth.year}
                                     />
 
                                 </div>
@@ -10477,7 +10548,8 @@ ${pageLoading
 
                                         // ✅ previous MTD / same period
                                         lastMonthToDateHome={targets_lastMonthToDateHome}
-
+                                        currentMonthLabel={formattedMonthYear}
+                                        previousMonthLabel={prevLabel}
                                         currentReimbursement={targets_reimbursement.current}
                                         previousReimbursement={targets_reimbursement.previous}
                                         reimbursementDeltaPct={

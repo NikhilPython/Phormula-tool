@@ -28,7 +28,7 @@ type BiAlignedTotalsCard = {
 
 
 type Props = {
-  data: RegionMetrics; // selected region metrics
+  data: RegionMetrics;
   homeCurrency: CurrencyCode;
   convertToHomeCurrency: (value: number, from: CurrencyCode) => number;
   formatHomeK: (value: number) => string;
@@ -44,8 +44,11 @@ type Props = {
   reimbursementDeltaPct?: number | null;
   biEnabled?: boolean;
   biAlignedTotals?: BiAlignedTotalsCard | null;
-  periodCompletedPct?: number; // for BI/range mode
+  periodCompletedPct?: number;
   periodCompletedLabel?: string;
+
+  currentMonthLabel?: string;
+  previousMonthLabel?: string;
 };
 
 const currencySymbolMap: Record<CurrencyCode, string> = {
@@ -75,6 +78,8 @@ export default function SalesTargetCard({
   biAlignedTotals,
   periodCompletedPct,
   periodCompletedLabel,
+  currentMonthLabel,
+  previousMonthLabel,
 }: Props) {
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
@@ -247,8 +252,8 @@ export default function SalesTargetCard({
     : "Month";
 
 
-  const prevLabel = getPrevMonthShortLabel();
-  const thisMonthLabel = getThisMonthShortLabel();
+  const prevLabel = previousMonthLabel ?? getPrevMonthShortLabel();
+  const thisMonthLabel = currentMonthLabel ?? getThisMonthShortLabel();
 
   // Gauge sizing
   const size = 220;
@@ -356,16 +361,8 @@ export default function SalesTargetCard({
     `Last month by today: ${formatHomeK(lastMonthToDateHomeFinal)}`,
   ];
 
-  // Reimbursement labels
-  const reimbNowLabel = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    year: "2-digit",
-  }).format(new Date());
-
-  const reimbPrevLabel = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    year: "2-digit",
-  }).format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
+  const reimbNowLabel = thisMonthLabel;
+  const reimbPrevLabel = prevLabel;
 
   // const reimbNow =
   //   biEnabled && biAlignedTotals
@@ -696,7 +693,7 @@ export default function SalesTargetCard({
           <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
               <span className="text-charcoal-500">
-                {toApostropheLabel(reimbNowLabel)}{" "}
+                {reimbNowLabel}
               </span>
               <span className="font-semibold text-gray-900">
                 {formatWithCurrencySpace(reimbNow)}{" "}
@@ -758,7 +755,7 @@ export default function SalesTargetCard({
           <div className="mt-2">
             <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
               <span className="text-charcoal-500">
-                {toApostropheLabel(reimbPrevLabel)}{" "}
+                {reimbPrevLabel}
               </span>
               <span className="font-semibold text-gray-900">
                 {formatWithCurrencySpace(reimbPrev)}{" "}

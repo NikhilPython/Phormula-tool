@@ -45,9 +45,12 @@ type Props = {
   biEnabled?: boolean;
   biAlignedTotals?: BiAlignedTotalsCard | null;
   lastMonthToDateHome?: number;
+
+  currentMonthLabel?: string;
+  previousMonthLabel?: string;
+  currentMonthName?: string;
+  currentYear?: number;
 };
-
-
 
 export default function SalesTargetStatsCard({
   regions,
@@ -67,14 +70,26 @@ export default function SalesTargetStatsCard({
   biEnabled,
   biAlignedTotals,
   lastMonthToDateHome,
+  currentMonthLabel,
+  previousMonthLabel,
+  currentMonthName,
+  currentYear,
 }: Props) {
 
-  const prevLabel = getPrevMonthShortLabel();
   const router = useRouter();
-  const { monthName, year } = getISTYearMonth();
-  const monthYearLabel = `${new Date(`${monthName} 1, ${year}`).toLocaleString("en-US", {
-    month: "short",
-  })}'${String(year).slice(-2)}`;
+
+  const fallbackYm = getISTYearMonth();
+
+  const monthName = currentMonthName ?? fallbackYm.monthName;
+  const year = currentYear ?? fallbackYm.year;
+
+  const prevLabel = previousMonthLabel ?? getPrevMonthShortLabel();
+
+  const monthYearLabel =
+    currentMonthLabel ??
+    `${new Date(`${monthName} 1, ${year}`).toLocaleString("en-US", {
+      month: "short",
+    })}'${String(year).slice(-2)}`;
 
   // 🔥 ADD THIS
   const activeRegion: RegionKey =
