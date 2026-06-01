@@ -479,14 +479,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [rows]);
 
   const hasCm2Data = useMemo(() => {
-    return (tableData || []).some((row: any) => {
+    const productRows = (tableData || []).filter((row: any) => {
+      const name = String(row?.product_name || "").trim().toLowerCase();
+      const sku = String(row?.sku || "").trim().toLowerCase();
+
       return (
-        toNumber(row.ads_spend ?? row.advertising_total) !== 0 ||
-        toNumber(row.brand_spend ?? row.visible_ads) !== 0 ||
+        name !== "total" &&
+        sku !== "total" &&
+        name !== "others" &&
+        sku !== "others"
+      );
+    });
+
+    return productRows.some((row: any) => {
+      return (
+        toNumber(row.ads_spend) !== 0 ||
         toNumber(row.acos) !== 0 ||
         toNumber(row.cm2_profit) !== 0 ||
-        toNumber(row.cm2_profit_total) !== 0 ||
         toNumber(row.cm2_profit_per) !== 0 ||
+        toNumber(row.cm2_profit_per_unit) !== 0 ||
         toNumber(row.cm2_margins) !== 0 ||
         toNumber(row.cm2_profit_percentage) !== 0
       );
