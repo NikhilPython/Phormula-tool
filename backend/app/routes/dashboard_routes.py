@@ -2560,4 +2560,73 @@ def target_summary():
     finally:
         db_session.close()
 
+
+@dashboard_bp.route('/country-timezone/<country>', methods=['GET'])
+def country_timezone(country):
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    country = (country or "").strip().lower()
+
+    timezone_map = {
+        "uk": {
+            "timezone": "Europe/London",
+            "label": "UK"
+        },
+        "us": {
+            "timezone": "America/Los_Angeles",
+            "label": "US"
+        }
+    }
+
+    if country not in timezone_map:
+        return jsonify({
+            "error": "Invalid country. Use 'uk' or 'us'."
+        }), 400
+
+    try:
+        # Your system/local reference time: India time
+        india_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+
+        # Convert same Indian local time to selected country timezone
+        selected_tz = ZoneInfo(timezone_map[country]["timezone"])
+        country_now = india_now.astimezone(selected_tz)
+
+        return jsonify({
+            "country": country,
+            "country_label": timezone_map[country]["label"],
+
+            "india": {
+                "timezone": "Asia/Kolkata",
+                "abbreviation": india_now.strftime("%Z"),   # IST
+                "datetime": india_now.strftime("%Y-%m-%d %H:%M:%S"),
+                "date": india_now.strftime("%Y-%m-%d"),
+                "time": india_now.strftime("%I:%M %p")
+            },
+
+            "selected_country": {
+                "timezone": timezone_map[country]["timezone"],
+                "abbreviation": country_now.strftime("%Z"),  # BST/GMT for UK, PDT/PST for US
+                "datetime": country_now.strftime("%Y-%m-%d %H:%M:%S"),
+                "date": country_now.strftime("%Y-%m-%d"),
+                "time": country_now.strftime("%I:%M %p")
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+    
+    
         
