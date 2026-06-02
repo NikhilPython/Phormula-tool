@@ -117,7 +117,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "min-w-[800px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm",
+  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[11px] 2xl:text-xs",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary,
@@ -336,6 +336,9 @@ export default function GroupedCollapsibleTable<RowT>({
     [layout, groups, singleCols]
   );
 
+  const iconButtonClass =
+    "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none";
+
   const renderHeaderContent = (
     col: LeafCol<RowT>,
     options?: {
@@ -348,57 +351,63 @@ export default function GroupedCollapsibleTable<RowT>({
       ? (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-
         handleSort(col.key);
       }
       : undefined;
 
     return (
-      <div className="flex w-full items-center justify-center">
-        <div className="inline-flex items-center justify-center gap-2 leading-tight">
-          <button
-            type="button"
-            data-sort-control={col.sortable ? "true" : undefined}
-            onClick={onSortClick}
-            className={`inline-flex items-center justify-center ${col.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
-              } ${col.sortable ? "cursor-pointer select-none" : "cursor-default"}`}
-            title={col.sortable ? "Click to sort" : undefined}
-          >
-            <span className="inline-flex items-center">{col.label}</span>
-          </button>
+      <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
+        {/* Title row */}
+        <button
+          type="button"
+          data-sort-control={col.sortable ? "true" : undefined}
+          onClick={onSortClick}
+          className={[
+            "block w-full min-w-0 text-center",
+            col.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words",
+            col.sortable ? "cursor-pointer select-none" : "cursor-default",
+          ].join(" ")}
+          title={col.sortable ? "Click to sort" : undefined}
+        >
+          {col.label}
+        </button>
 
-          {col.info && (
-            <span
-              className="inline-flex shrink-0 items-center"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {col.info}
-            </span>
-          )}
+        {/* Icons row */}
+        {(col.info || col.sortable || options?.isExpandable) && (
+          <div className="flex items-center justify-center gap-1">
+            {col.info && (
+              <span
+                className="inline-flex shrink-0 items-center"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {col.info}
+              </span>
+            )}
 
-          {col.sortable && (
-            <button
-              type="button"
-              data-sort-control="true"
-              onClick={onSortClick}
-              className="inline-flex shrink-0 items-center"
-              title="Click to sort"
-            >
-              {renderSortArrow(col.key)}
-            </button>
-          )}
+            {col.sortable && (
+              <button
+                type="button"
+                data-sort-control="true"
+                onClick={onSortClick}
+                className="inline-flex shrink-0 items-center"
+                title="Click to sort"
+              >
+                {renderSortArrow(col.key)}
+              </button>
+            )}
 
-          {options?.isExpandable && (
-            <button
-              type="button"
-              onClick={options.onToggle}
-              className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
-              title="Click to expand/collapse"
-            >
-              {options.isCollapsed ? "+" : "−"}
-            </button>
-          )}
-        </div>
+            {options?.isExpandable && (
+              <button
+                type="button"
+                onClick={options.onToggle}
+                className={iconButtonClass}
+                title="Click to expand/collapse"
+              >
+                {options.isCollapsed ? "+" : "−"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -486,7 +495,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const midColSpan = 1;
   const endColSpan = 1;
 
-  const cellPadding = "px-2 sm:px-3 py-3";
+  const cellPadding = "px-1 py-2";
   const thBase =
     `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
 
@@ -542,12 +551,14 @@ export default function GroupedCollapsibleTable<RowT>({
                 rowSpan={groupRowSpan}
                 className={`${thBase} text-center ${g.headerClassName || ""}`}
               >
-                <div className="flex w-full justify-center">
-                  <div className="inline-flex items-center justify-center gap-2 whitespace-normal break-words leading-tight">
-                    <span className="inline-flex items-center">
-                      {g.label}
-                    </span>
+                <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
+                  {/* Title row */}
+                  <span className="block w-full min-w-0 whitespace-normal break-words text-center">
+                    {g.label}
+                  </span>
 
+                  {/* Icons row */}
+                  <div className="flex items-center justify-center gap-1">
                     {g.info && (
                       <span className="inline-flex shrink-0 items-center">
                         {g.info}
@@ -561,7 +572,6 @@ export default function GroupedCollapsibleTable<RowT>({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-
                           handleSort(sortCol.key);
                         }}
                         className="inline-flex shrink-0 items-center"
@@ -578,7 +588,7 @@ export default function GroupedCollapsibleTable<RowT>({
                         e.stopPropagation();
                         toggleGroup(g.id);
                       }}
-                      className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded border border-white/60 bg-white/10 px-1 text-xs leading-none"
+                      className={iconButtonClass}
                       title="Click to expand/collapse"
                     >
                       {isCollapsed ? "+" : "−"}

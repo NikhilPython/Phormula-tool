@@ -407,6 +407,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     totalRow.cm2_profit_percentage_value
   );
 
+
   return {
     ads_spend: toNumber(totalRow.ads_spend),
     advertising_total: toNumber(totalRow.advertising_total),
@@ -462,6 +463,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const [showModal, setShowModal] = useState(false);
   const [showModal2, setShowModal2] = useState(false);
   const [mainColCount, setMainColCount] = useState(0);
+  const [anyGroupExpanded, setAnyGroupExpanded] = useState(false);
   const [summaryCollapsed, setSummaryCollapsed] = useState({
     ads: true,
     other: true,
@@ -694,13 +696,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
-      { key: "sno", label: "S.No.", align: "center", width: 60, },
+      {
+        key: "sno",
+        label: "S.No.",
+        align: "center",
+        width: "4%",
+      },
       {
         key: "product_name",
         label: "Product Name",
         info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
         align: "left",
-        width: 220,
+        width: "14%",
       },
     ],
     []
@@ -715,7 +722,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "net_units_sold",
           label: "",
           align: "center",
-          width: 140,
+          width: "7%",
           sortable: true,
         },
       ],
@@ -729,6 +736,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "units_sold",
           label: "Units Sold",
           align: "center",
+          width: "7%",
         },
         {
           key: "return_units",
@@ -753,7 +761,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "",
           align: "center",
           sortable: true,
-          width: 125,
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
         },
       ],
@@ -762,18 +770,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "product_sales",
           label: "Gross Sales",
           align: "center",
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
         },
         {
           key: "refund_sales",
           label: "Sales - Refund",
           align: "center",
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
         },
         {
           key: "tex_and_credits",
           label: "Taxes and Credits",
           align: "center",
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
         },
         {
@@ -792,6 +803,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "amazon_fee",
           label: "",
           align: "center",
+          width: "8%",
         },
       ],
       expandedCols: [
@@ -799,16 +811,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "selling_fees",
           label: "Selling Fees",
           align: "center",
+          width: "8%",
         },
         {
           key: "fba_fees",
           label: "FBA Fees",
           align: "center",
+          width: "8%",
         },
         {
           key: "amazon_fee",
           label: "Total",
           align: "center",
+          width: "6%",
         },
       ],
     },
@@ -822,7 +837,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "promotional_rebates",
           label: "",
           align: "center",
-          width: 150,
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
         },
       ],
@@ -831,13 +846,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "promotional_rebates",
           label: "Promotions",
           align: "center",
+          width: "8%",
         },
         {
           key: "promotional_rebates_percentage",
           label: "Promotions %",
           align: "center",
           noWrap: true,
-          width: 100,
+          width: "8%",
           thClassName: "whitespace-nowrap",
         },
       ],
@@ -851,6 +867,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "other_transactions",
           label: "",
           align: "center",
+          width: "8%",
         },
       ],
       expandedCols: [
@@ -859,17 +876,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "Net Taxes",
           info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
           align: "center",
+          width: "8%",
         },
         {
           key: "net_credits",
           label: "Net Credits",
           info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
           align: "center",
+          width: "8%",
         },
         {
           key: "other_transactions",
           label: "Total",
           align: "center",
+          width: "6%",
         },
       ],
     },
@@ -884,6 +904,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "",
           align: "center",
           sortable: true,
+          width: "8%",
           info: <InfoTip text={TERM_DEFINITIONS.profit} />,
         },
       ],
@@ -892,20 +913,23 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "unit_wise_profitability",
           label: "Per Unit",
           align: "center",
-          width: 150,
+          width: "8%",
         },
         {
           key: "profit_percentage",
           label: "%",
           align: "center",
+          width: "8%",
         },
         {
           key: "profit",
           label: "Total",
           align: "center",
+          width: "8%",
         },
       ],
     },
+
     ...(hasCm2Data
       ? [
         {
@@ -917,6 +941,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
               label: "",
               align: "center",
               sortable: true,
+              width: "8%",
             },
           ],
           expandedCols: [
@@ -924,23 +949,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
               key: "unit_wise_cm2_profitability",
               label: "Per Unit",
               align: "center",
-              width: 150,
+              width: "8%",
             },
             {
               key: "cm2_margins",
               label: "%",
               align: "center",
+              width: "8%",
             },
             {
               key: "cm2_profit",
               label: "Total",
               align: "center",
+              width: "8%",
             },
           ],
         } as ColGroup<TableRow>,
       ]
       : []),
-
   ], [hasCm2Data]);
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
@@ -950,13 +976,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
         label: "ASP",
         info: <InfoTip text={TERM_DEFINITIONS.asp} />,
         align: "center",
-        width: 90,
+        width: "6%",
       },
       {
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
-        width: 100,
+        width: "7%",
       },
       ...(hasCm2Data
         ? [
@@ -964,11 +990,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
             key: "ads_spend",
             label: "Ads Spend",
             align: "center" as const,
+            width: "7%",
           },
           {
             key: "acos",
             label: "ACoS %",
             align: "center" as const,
+            width: "6%",
           },
         ]
         : []),
@@ -1440,7 +1468,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return (
       <span
-        className={`shrink-0 text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+        className={`shrink-0 text-[11px] min-[1700px]:text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
           }`}
         title={`Previous Net Sales: ${formatValue(
           row.previous_net_sales,
@@ -1516,13 +1544,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
             </CustomModal>
           )}
 
-          <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
-            <div className="min-w-full">
+          <div
+            className={[
+              "w-full rounded-xl border border-gray-300",
+              anyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+            ].join(" ")}
+          >
+            <div className={anyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
               <GroupedCollapsibleTable<TableRow>
                 rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
+                onAnyGroupExpandedChange={setAnyGroupExpanded}
+                tableClassName={[
+                  "w-full border-collapse bg-white text-[#414042] text-xs",
+                  anyGroupExpanded
+                    ? "table-auto min-w-[1200px]"
+                    : "table-fixed",
+                ].join(" ")}
                 defaultSort={{
                   key: "net_sales",
                   direction: "desc",
