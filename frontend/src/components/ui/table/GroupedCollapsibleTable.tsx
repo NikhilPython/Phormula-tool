@@ -117,7 +117,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[11px] 2xl:text-xs",
+  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary,
@@ -495,7 +495,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const midColSpan = 1;
   const endColSpan = 1;
 
-  const cellPadding = "px-1 py-2";
+  const cellPadding = "px-2 sm:px-3 py-3";
   const thBase =
     `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
 

@@ -1558,7 +1558,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 singleCols={SINGLE_COLS}
                 onAnyGroupExpandedChange={setAnyGroupExpanded}
                 tableClassName={[
-                  "w-full border-collapse bg-white text-[#414042] text-xs",
+                  "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
                   anyGroupExpanded
                     ? "table-auto min-w-[1200px]"
                     : "table-fixed",
