@@ -3741,11 +3741,11 @@ export default function DashboardPage() {
 
     const saveDashboardCacheToBackend = useCallback(
         async (payload: DashboardCachePayload): Promise<void> => {
-            if (typeof window === "undefined") return null;
+            if (typeof window === "undefined") return;
 
             try {
                 const token = localStorage.getItem("jwtToken");
-                if (!token) return null;
+                if (!token) return;
 
                 const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
                     method: "POST",
@@ -3775,7 +3775,7 @@ export default function DashboardPage() {
                 return;
             } catch (err) {
                 console.error(err);
-                return null;
+                return;
             }
         },
         [
@@ -6604,7 +6604,7 @@ export default function DashboardPage() {
                 {
                     key: "marketplace_total",
                     label: "Total",
-                     width: "7%",
+                    width: "7%",
                     align: "center" as const,
                 },
             ],
@@ -6630,7 +6630,7 @@ export default function DashboardPage() {
                     key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
-                     width: "8%",
+                    width: "8%",
                     sortable: true,
                 },
             ],
@@ -6640,14 +6640,14 @@ export default function DashboardPage() {
                     key: "sku",
                     label: "SKU",
                     align: "center" as const,
-                     width: "7%",
+                    width: "7%",
                 },
                 {
                     key: "quantity",
                     label: "Units Sold",
                     align: "center" as const,
                     sortable: true,
-                     width: "7%",
+                    width: "7%",
                 },
                 {
                     key: "return_quantity",
@@ -6661,7 +6661,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                     width: "7%",
+                    width: "7%",
                 },
             ],
         },
@@ -6677,7 +6677,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                     width: "7%",
+                    width: "7%",
                 },
             ],
 
@@ -6700,7 +6700,7 @@ export default function DashboardPage() {
                     key: "tax_and_credits",
                     label: "Total",
                     align: "center" as const,
-                     width: "10%",
+                    width: "10%",
                 },
             ],
 
@@ -6735,7 +6735,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                     width: "7%",
+                    width: "7%",
                 },
             ],
 
@@ -6759,7 +6759,7 @@ export default function DashboardPage() {
             label: "ASP",
             info: <InfoTip text={TERM_DEFINITIONS.asp} />,
             align: "center" as const,
-             width: "7%",
+            width: "7%",
         },
         {
             key: "net_sales",
@@ -6767,7 +6767,7 @@ export default function DashboardPage() {
             sortable: true,
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const,
-             width: "7%",
+            width: "7%",
         },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
