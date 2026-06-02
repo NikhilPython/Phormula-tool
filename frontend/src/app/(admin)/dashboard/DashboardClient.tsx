@@ -1797,6 +1797,8 @@ export default function DashboardPage() {
         productwiseInitialCollapsed
     );
 
+    const [productwiseAnyGroupExpanded, setProductwiseAnyGroupExpanded] = useState(false);
+
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
@@ -6597,14 +6599,14 @@ export default function DashboardPage() {
             key: "sno",
             label: "S.No",
             align: "center",
-            width: 60,
+            width: "6%",
         },
         {
             key: "product_name",
             label: "Product Name",
             align: "left",
             info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
-            width: 190,
+            width: "14%",
         },
     ];
 
@@ -6617,6 +6619,7 @@ export default function DashboardPage() {
                 {
                     key: "marketplace_total",
                     label: "Total",
+                     width: "7%",
                     align: "center" as const,
                 },
             ],
@@ -6642,7 +6645,7 @@ export default function DashboardPage() {
                     key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
-                    width: 160,
+                     width: "8%",
                     sortable: true,
                 },
             ],
@@ -6652,28 +6655,28 @@ export default function DashboardPage() {
                     key: "sku",
                     label: "SKU",
                     align: "center" as const,
-                    width: 120,
+                     width: "7%",
                 },
                 {
                     key: "quantity",
                     label: "Units Sold",
                     align: "center" as const,
                     sortable: true,
-                    width: 110,
+                     width: "7%",
                 },
                 {
                     key: "return_quantity",
                     label: "Return",
                     align: "center" as const,
                     sortable: true,
-                    width: 100,
+                    width: "7%",
                 },
                 {
                     key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 100,
+                     width: "7%",
                 },
             ],
         },
@@ -6689,7 +6692,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 145,
+                     width: "7%",
                 },
             ],
 
@@ -6712,6 +6715,7 @@ export default function DashboardPage() {
                     key: "tax_and_credits",
                     label: "Total",
                     align: "center" as const,
+                     width: "10%",
                 },
             ],
 
@@ -6746,7 +6750,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 145,
+                     width: "7%",
                 },
             ],
 
@@ -6769,14 +6773,16 @@ export default function DashboardPage() {
             key: "asp",
             label: "ASP",
             info: <InfoTip text={TERM_DEFINITIONS.asp} />,
-            align: "center" as const
+            align: "center" as const,
+             width: "7%",
         },
         {
             key: "net_sales",
             label: "Net Sales",
             sortable: true,
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
-            align: "center" as const
+            align: "center" as const,
+             width: "7%",
         },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
@@ -10853,7 +10859,7 @@ ${pageLoading
 
                 {activeTab === "productwise" && (
                     <>
-                        <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+                        <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
                                 {/* LEFT: Title */}
                                 <div className="flex items-center gap-2">
@@ -10906,10 +10912,22 @@ ${pageLoading
                                     No P&L productwise rows available for this period.
                                 </div>
                             ) : (
-                                <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
-                                    <div className="min-w-full">
+                                <div
+                                    className={[
+                                        "w-full rounded-xl border border-gray-300",
+                                        productwiseAnyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+                                    ].join(" ")}
+                                >
+                                    <div className={productwiseAnyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                             rows={finalMonthlySkuwiseRowsForTable}
+                                            onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
+                                            tableClassName={[
+                                                "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                                productwiseAnyGroupExpanded
+                                                    ? "table-auto min-w-[1200px]"
+                                                    : "table-fixed",
+                                            ].join(" ")}
                                             getRowKey={(row, idx) =>
                                                 row.isTotal
                                                     ? "TOTAL"
