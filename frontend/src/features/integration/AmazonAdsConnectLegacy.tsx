@@ -525,13 +525,13 @@ export default function AmazonAdsConnect({
     //         platform === "amazon-ca" ? "CA" :
     //             "UK";
 
-  const resolvedCountry = mapCountry(country);
+    const resolvedCountry = mapCountry(country);
 
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
     const [isOpen, setIsOpen] = useState(true);
-
+    const [showSuccessPopup, setShowSuccessPopup] = useState(false);
     const popupRef = useRef<Window | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const startedAtRef = useRef<number>(0);
@@ -618,49 +618,6 @@ export default function AmazonAdsConnect({
 
     const finalizedRef = useRef(false);
 
-    // const finalizeConnection = async () => {
-    //     if (finalizedRef.current) return;
-    //     finalizedRef.current = true;
-
-    //     setMessage("Connected to Amazon Ads ✅");
-    //     setError("");
-
-    //     stopPolling();
-    //     closePopup();
-
-    //     try {
-    //         await onConnected?.();
-    //     } catch { }
-
-    //     // ✅ This is what you wanted: page refresh immediately after connect
-    //     window.location.reload();
-    // };
-
-    // const finalizeConnection = async () => {
-    //     if (finalizedRef.current) return;
-    //     finalizedRef.current = true;
-
-    //     setMessage("Connected to Amazon Ads ✅");
-    //     setError("");
-
-    //     stopPolling();
-    //     closePopup();
-
-    //     try {
-    //         setIsConnecting(true);
-
-    //         await seedAdsReportsOnConnect(resolvedCountry);
-    //         await onConnected?.();
-    //     } catch (e: any) {
-    //         setError(e?.message || "Amazon Ads connected, but ads sync failed.");
-    //         setIsConnecting(false);
-    //         finalizedRef.current = false;
-    //         return;
-    //     }
-
-    //     window.location.reload();
-    // };
-
     const finalizeConnection = async () => {
         if (finalizedRef.current) return;
         finalizedRef.current = true;
@@ -693,6 +650,9 @@ export default function AmazonAdsConnect({
                 active: false,
             }));
 
+            setIsConnecting(false);
+            setShowSuccessPopup(true);
+
             await onConnected?.();
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : "Amazon Ads connected, but ads sync failed.");
@@ -702,7 +662,9 @@ export default function AmazonAdsConnect({
             return;
         }
 
-        window.location.reload();
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
     };
 
     const checkStatusOnce = async () => {
@@ -845,109 +807,140 @@ export default function AmazonAdsConnect({
     if (!isOpen) return null;
 
     return (
-        <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-6"
-            role="dialog"
-            aria-modal="true"
-            onClick={handleCloseModal}
-        >
-            {isConnecting && stepProgress.active ? (
-                <AdsSyncLoaderModal
-                    open={true}
-                    currentStep={currentStep}
-                    completedSteps={completedSteps}
-                    dashboardSteps={dashboardSteps}
-                    stepProgress={stepProgress}
-                    loadingStartedAt={loadingStartedAt}
-                    estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
-                />
-            ) : (
-                <div
-                    className="relative w-full max-w-md sm:max-w-lg md:max-w-xl bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="flex justify-center w-full mt-1 sm:mt-2">
-                        <img
-                            src={ICONS.amazonAdsLogo}
-                            alt="Amazon Ads"
-                            className="w-12 sm:w-14 md:w-44 mx-auto mb-2"
-                        />
-                    </div>
-
-                    <PageBreadcrumb
-                        pageTitle="Connect Amazon Ads"
-                        align="center"
-                        variant="table"
-                        textSize="2xl"
-                    />
-
-                    <p className="text-center text-xs sm:text-sm md:text-base text-[#414042] font-bold mt-2 mb-4 sm:mb-5 md:mb-6 w-[90%] sm:w-[80%] m-auto">
-                        Authorize access to your Amazon Ads account to view campaign performance and advertising spend insights.
-                    </p>
-
-                    <div className="w-full border-t border-gray-300 mb-4 sm:mb-6" />
-
-                    <div className="rounded-lg border border-[#5EA68E26] bg-emerald-50/50 p-3 sm:p-4 mb-4 sm:mb-5">
-                        <div className="flex items-center gap-3 mb-2 sm:mb-3">
-                            <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#D9D9D9]">
-                                <FaLink size={16} color="#5EA68E" />
-                            </div>
-                            <div className="flex flex-col">
-                                <h3 className="font-semibold text-[#414042] text-xs sm:text-sm md:text-base leading-tight">
-                                    Link your Amazon Ads Account
-                                </h3>
-                                <p className="text-[10px] sm:text-xs md:text-sm text-[#5EA68E] mt-0.5">
-                                    Setup in 30 seconds
-                                </p>
-                            </div>
+        <>
+            {showSuccessPopup && (
+                <div className="fixed inset-0 z-[100001] bg-black/40 flex items-center justify-center px-4">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl text-center">
+                        <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[#E8F5F0] flex items-center justify-center">
+                            <svg
+                                width="28"
+                                height="28"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#5EA68E"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg>
                         </div>
 
-                        <ul className="text-xs sm:text-sm text-[#414042] space-y-2 sm:space-y-3 mb-3 sm:mb-4 ml-3 sm:ml-4">
-                            {[
-                                "Automatic campaign data synchronization",
-                                "Accurate, real-time performance metrics",
-                                "Secure, encrypted authorization",
-                            ].map((text) => (
-                                <li key={text} className="flex items-start gap-2">
-                                    <TiTick className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 mt-[1px]" />
-                                    <span>{text}</span>
-                                </li>
-                            ))}
-                        </ul>
+                        <h3 className="text-lg font-semibold text-[#37455F]">
+                            Ads fetched successfully
+                        </h3>
 
-                        <Button
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            onClick={handleAmazonAdsLogin}
-                            disabled={isConnecting}
-                            className="w-full bg-blue-700"
-                        >
-                            <FaLink size={14} />
-                            <span className="text-[#F8EDCE] text-xs sm:text-sm">
-                                Connect
-                            </span>
-                        </Button>
+                        <p className="mt-2 text-sm text-slate-500">
+                            Amazon Ads data has been synced successfully.
+                        </p>
                     </div>
-
-                    <div className="w-full border-t border-gray-300 mb-4 sm:mb-5" />
-
-                    <div className="flex items-center justify-center gap-2 text-[10px] sm:text-xs md:text-sm text-[#414042]">
-                        <img
-                            src={ICONS.secure}
-                            alt="Secure"
-                            className="w-3 h-3 sm:w-4 sm:h-4 opacity-70"
-                        />
-                        <span>Your credentials are encrypted and stored securely</span>
-                    </div>
-
-                    {error && (
-                        <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">
-                            {error}
-                        </div>
-                    )}
                 </div>
             )}
-        </div>
+
+            <div
+                className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-6"
+                role="dialog"
+                aria-modal="true"
+                onClick={handleCloseModal}
+            >
+                {isConnecting && stepProgress.active ? (
+                    <AdsSyncLoaderModal
+                        open={true}
+                        currentStep={currentStep}
+                        completedSteps={completedSteps}
+                        dashboardSteps={dashboardSteps}
+                        stepProgress={stepProgress}
+                        loadingStartedAt={loadingStartedAt}
+                        estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
+                    />
+                ) : (
+                    <div
+                        className="relative w-full max-w-md sm:max-w-lg md:max-w-xl bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex justify-center w-full mt-1 sm:mt-2">
+                            <img
+                                src={ICONS.amazonAdsLogo}
+                                alt="Amazon Ads"
+                                className="w-12 sm:w-14 md:w-44 mx-auto mb-2"
+                            />
+                        </div>
+
+                        <PageBreadcrumb
+                            pageTitle="Connect Amazon Ads"
+                            align="center"
+                            variant="table"
+                            textSize="2xl"
+                        />
+
+                        <p className="text-center text-xs sm:text-sm md:text-base text-[#414042] font-bold mt-2 mb-4 sm:mb-5 md:mb-6 w-[90%] sm:w-[80%] m-auto">
+                            Authorize access to your Amazon Ads account to view campaign performance and advertising spend insights.
+                        </p>
+
+                        <div className="w-full border-t border-gray-300 mb-4 sm:mb-6" />
+
+                        <div className="rounded-lg border border-[#5EA68E26] bg-emerald-50/50 p-3 sm:p-4 mb-4 sm:mb-5">
+                            <div className="flex items-center gap-3 mb-2 sm:mb-3">
+                                <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#D9D9D9]">
+                                    <FaLink size={16} color="#5EA68E" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h3 className="font-semibold text-[#414042] text-xs sm:text-sm md:text-base leading-tight">
+                                        Link your Amazon Ads Account
+                                    </h3>
+                                    <p className="text-[10px] sm:text-xs md:text-sm text-[#5EA68E] mt-0.5">
+                                        Setup in 30 seconds
+                                    </p>
+                                </div>
+                            </div>
+
+                            <ul className="text-xs sm:text-sm text-[#414042] space-y-2 sm:space-y-3 mb-3 sm:mb-4 ml-3 sm:ml-4">
+                                {[
+                                    "Automatic campaign data synchronization",
+                                    "Accurate, real-time performance metrics",
+                                    "Secure, encrypted authorization",
+                                ].map((text) => (
+                                    <li key={text} className="flex items-start gap-2">
+                                        <TiTick className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 mt-[1px]" />
+                                        <span>{text}</span>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <Button
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                                onClick={handleAmazonAdsLogin}
+                                disabled={isConnecting}
+                                className="w-full bg-blue-700"
+                            >
+                                <FaLink size={14} />
+                                <span className="text-[#F8EDCE] text-xs sm:text-sm">
+                                    Connect
+                                </span>
+                            </Button>
+                        </div>
+
+                        <div className="w-full border-t border-gray-300 mb-4 sm:mb-5" />
+
+                        <div className="flex items-center justify-center gap-2 text-[10px] sm:text-xs md:text-sm text-[#414042]">
+                            <img
+                                src={ICONS.secure}
+                                alt="Secure"
+                                className="w-3 h-3 sm:w-4 sm:h-4 opacity-70"
+                            />
+                            <span>Your credentials are encrypted and stored securely</span>
+                        </div>
+
+                        {error && (
+                            <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">
+                                {error}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </>
     );
 }
