@@ -16,6 +16,7 @@ import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import { IoMdLock } from 'react-icons/io';
 import IntegrationsModal from '@/features/integration/IntegrationsModal';
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 type UploadItem = {
   filename?: string;
@@ -54,7 +55,7 @@ const DUMMY_INVENTORY_FORECAST = [
     "Feb'26": 330,
     "Mar'26": 360,
   },
-    {
+  {
     sku: 'SKU-DEMO-5',
     'Product Name': 'Demo Product E',
     "Oct'25 Sold": 120,
@@ -286,6 +287,8 @@ export default function InventoryFlowPage() {
   const forecastInFlightRef = useRef<string | null>(null);
   const latestForecastRequestRef = useRef<string | null>(null);
   const lastPoTriggerRef = useRef<string | null>(null);
+  const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
+  const [showAllPoRows, setShowAllPoRows] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -437,15 +440,15 @@ export default function InventoryFlowPage() {
       const data = (await res.json()) as UploadHistoryRes;
 
       const filtered =
-  countryName === 'global'
-    ? data.uploads.filter((upload) =>
-        ['uk', 'us'].includes((upload.country ?? '').toString().toLowerCase())
-      )
-    : countryName
-      ? data.uploads.filter(
-          (upload) => (upload.country ?? '').toString().toLowerCase() === countryName
-        )
-      : data.uploads;
+        countryName === 'global'
+          ? data.uploads.filter((upload) =>
+            ['uk', 'us'].includes((upload.country ?? '').toString().toLowerCase())
+          )
+          : countryName
+            ? data.uploads.filter(
+              (upload) => (upload.country ?? '').toString().toLowerCase() === countryName
+            )
+            : data.uploads;
 
       setUploads(data.uploads);
       setFilteredUploads(filtered);
@@ -860,9 +863,9 @@ export default function InventoryFlowPage() {
     );
   };
 
-const handleConnectAmazonPreview = () => {
+  const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
-};
+  };
 
   return (
     <>
@@ -969,7 +972,7 @@ const handleConnectAmazonPreview = () => {
                 textSize="2xl"
               />
               <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                 {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+                {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
               </span>
             </div>
 
@@ -1037,8 +1040,54 @@ const handleConnectAmazonPreview = () => {
             )}
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 flex items-center justify-between gap-3">
             <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
+
+            {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeTab === 'dispatch') {
+                    setShowAllDispatchRows((prev) => !prev);
+                    return;
+                  }
+
+                  setShowAllPoRows((prev) => !prev);
+                }}
+                title={
+                  activeTab === 'dispatch'
+                    ? showAllDispatchRows
+                      ? "Collapse rows"
+                      : "Expand all rows"
+                    : showAllPoRows
+                      ? "Collapse rows"
+                      : "Expand all rows"
+                }
+                aria-label={
+                  activeTab === 'dispatch'
+                    ? showAllDispatchRows
+                      ? "Collapse rows"
+                      : "Expand all rows"
+                    : showAllPoRows
+                      ? "Collapse rows"
+                      : "Expand all rows"
+                }
+                disabled={isDemoMode}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {activeTab === 'dispatch' ? (
+                  showAllDispatchRows ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )
+                ) : showAllPoRows ? (
+                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                ) : (
+                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                )}
+              </button>
+            )}
           </div>
 
           <PreviewLockedSection
@@ -1119,6 +1168,8 @@ const handleConnectAmazonPreview = () => {
                       countryNameProp={countryName}
                       selectedMonthProp={sharedMonth}
                       selectedYearProp={sharedYear}
+                      showAllRowsProp={showAllDispatchRows}
+                      onShowAllRowsChange={setShowAllDispatchRows}
                     />
                   )}
                 </div>
@@ -1132,6 +1183,8 @@ const handleConnectAmazonPreview = () => {
                       countryNameProp={countryName}
                       selectedMonthProp={sharedMonth}
                       selectedYearProp={sharedYear}
+                      showAllRowsProp={showAllPoRows}
+                      onShowAllRowsChange={setShowAllPoRows}
                     />
                   )}
                 </div>

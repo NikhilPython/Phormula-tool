@@ -30,6 +30,8 @@ type DispatchPageProps = {
   countryNameProp?: string
   selectedMonthProp?: string
   selectedYearProp?: string
+  showAllRowsProp?: boolean
+  onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 const monthNames = [
@@ -230,6 +232,8 @@ export default function DispatchPage({
   countryNameProp,
   selectedMonthProp,
   selectedYearProp,
+  showAllRowsProp,
+  onShowAllRowsChange,
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
   const router = useRouter()
@@ -273,7 +277,15 @@ export default function DispatchPage({
   const [showUpload, setShowUpload] = useState(false)
   const [noData, setNoData] = useState(false)
   const monthdps = monthNames as unknown as string[]
-  const [showAllDispatchRows, setShowAllDispatchRows] = useState(false)
+  const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
+
+  const showAllDispatchRows =
+    typeof showAllRowsProp === 'boolean'
+      ? showAllRowsProp
+      : localShowAllDispatchRows
+
+  const setShowAllDispatchRows =
+    onShowAllRowsChange ?? setLocalShowAllDispatchRows
 
   async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
     if (!monthdpValue || !yeardpValue) {
@@ -702,7 +714,7 @@ export default function DispatchPage({
   }
 
   .forecast-data {
-    margin-top: 20px;
+    // margin-top: 20px;
     width: 100%;
     overflow-x: auto;
   }
@@ -727,7 +739,7 @@ export default function DispatchPage({
 }
 
 .forecast-data {
-  margin-top: 20px;
+  // margin-top: 20px;
   width: 100%;
   overflow-x: auto;
 }
@@ -841,7 +853,7 @@ export default function DispatchPage({
         </div>
       ) : (
         <>
-          {embedded && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+          {/* {embedded && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
             <div className="mb-3 flex justify-end">
               <button
                 type="button"
@@ -858,7 +870,7 @@ export default function DispatchPage({
                 )}
               </button>
             </div>
-          )}
+          )} */}
 
           <div className="forecast-data">
             <div className="forecast-data">

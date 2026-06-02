@@ -23,6 +23,8 @@ type PurchaseOrderPageProps = {
   countryNameProp?: string;
   selectedMonthProp?: string;
   selectedYearProp?: string;
+  showAllRowsProp?: boolean;
+  onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const MONTHS = [
@@ -136,6 +138,8 @@ export default function PurchaseOrderPage({
   countryNameProp,
   selectedMonthProp,
   selectedYearProp,
+  showAllRowsProp,
+  onShowAllRowsChange,
 }: PurchaseOrderPageProps) {
   const params = useParams() as {
     countryName?: string;
@@ -171,7 +175,15 @@ export default function PurchaseOrderPage({
   const [skuData, setSkuData] = useState<Row[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [noData, setNoData] = useState(false);
-  const [showAllPoRows, setShowAllPoRows] = useState(false);
+  const [localShowAllPoRows, setLocalShowAllPoRows] = useState(false);
+
+  const showAllPoRows =
+    typeof showAllRowsProp === 'boolean'
+      ? showAllRowsProp
+      : localShowAllPoRows;
+
+  const setShowAllPoRows =
+    onShowAllRowsChange ?? setLocalShowAllPoRows;
 
   const isGlobalRoute = useMemo(
     () => countryName.toLowerCase() === 'global',
@@ -995,49 +1007,25 @@ export default function PurchaseOrderPage({
           </button>
         </div>
       ) : (
-        <>
-          {embedded &&
-            skuData.filter(
-              (row) => String(row["Product Name"] ?? "").trim().toLowerCase() !== "total"
-            ).length > 9 && (
-              <div className="mb-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAllPoRows((prev) => !prev)}
-                  title={showAllPoRows ? "Collapse rows" : "Expand all rows"}
-                  aria-label={showAllPoRows ? "Collapse rows" : "Expand all rows"}
-                  disabled={loading || noData}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {showAllPoRows ? (
-                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                  ) : (
-                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                  )}
-                </button>
-              </div>
-            )}
-
-          <DataTable<Row>
-            columns={tableColumns}
-            data={tableData}
-            paginate={false}
-            pageSize={10}
-            stickyHeader
-            scrollY={false}
-            maxHeight="none"
-            emptyMessage="No Data Available for selected period"
-            rowClassName={getTableRowClassName}
-            isTotalRow={(row) => !!row.__isTotalRow}
-            bodyMaxHeight={
-              showAllPoRows &&
-                tableData.filter((row) => !row.__isTotalRow).length > 16
-                ? 40 * 16
-                : undefined
-            }
-            tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
-          />
-        </>
+        <DataTable<Row>
+          columns={tableColumns}
+          data={tableData}
+          paginate={false}
+          pageSize={10}
+          stickyHeader
+          scrollY={false}
+          maxHeight="none"
+          emptyMessage="No Data Available for selected period"
+          rowClassName={getTableRowClassName}
+          isTotalRow={(row) => !!row.__isTotalRow}
+          bodyMaxHeight={
+            showAllPoRows &&
+              tableData.filter((row) => !row.__isTotalRow).length > 16
+              ? 40 * 16
+              : undefined
+          }
+          tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center"
+        />
       )}
 
       {showModal && (
