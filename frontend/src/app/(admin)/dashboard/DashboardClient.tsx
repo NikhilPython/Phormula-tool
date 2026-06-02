@@ -3738,7 +3738,7 @@ export default function DashboardPage() {
     const didBootstrapRef = useRef<string | null>(null);
 
     const saveDashboardCacheToBackend = useCallback(
-        async (payload: DashboardCachePayload): Promise<number | null> => {
+        async (payload: DashboardCachePayload): Promise<void> => {
             if (typeof window === "undefined") return null;
 
             try {
@@ -3770,22 +3770,7 @@ export default function DashboardPage() {
                     );
                 }
 
-                const apiUpdatedAt =
-                    json?.data?.updated_at ??
-                    json?.data?.created_at ??
-                    json?.updated_at ??
-                    json?.created_at ??
-                    null;
-
-                if (apiUpdatedAt) {
-                    const ts = new Date(apiUpdatedAt).getTime();
-
-                    if (!Number.isNaN(ts)) {
-                        return ts;
-                    }
-                }
-
-                return null;
+                return;
             } catch (err) {
                 console.error(err);
                 return null;
@@ -4361,7 +4346,7 @@ export default function DashboardPage() {
 
             const refreshedAt = Date.now();
 
-            // localStorage.setItem(lastRefreshKey, String(refreshedAt));
+            localStorage.setItem(lastRefreshKey, String(refreshedAt));
             setLastRefreshAt(refreshedAt);
 
             triggerCachePost();
@@ -7337,20 +7322,10 @@ export default function DashboardPage() {
         }
 
         saveDashboardCacheToBackend(payload)
-            .then((serverUpdatedAt) => {
-                if (serverUpdatedAt != null) {
-                    setLastRefreshAt(serverUpdatedAt);
-                }
-
+            .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             })
-            .catch((err) => {
-                console.error("Failed to persist dashboard cache:", err);
-
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
-            });
     }, [
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
