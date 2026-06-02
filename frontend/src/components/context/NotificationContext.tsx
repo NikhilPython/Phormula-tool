@@ -70,6 +70,22 @@ function getTimeAgo(dateString?: string | null) {
   return years === 1 ? "1 year ago" : `${years} years ago`;
 }
 
+function isWithinLast7Days(dateString?: string | null) {
+  if (!dateString) return false;
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+
+  if (diffMs < 0) return true;
+
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+  return diffMs <= sevenDaysMs;
+}
+
 export function NotificationProvider({
   children,
 }: {
@@ -134,6 +150,11 @@ export function NotificationProvider({
             value?.last_alert_time ||
             null;
 
+          // Hide notifications older than 7 days
+          if (!isWithinLast7Days(alertTime)) {
+            return null;
+          }
+
           return {
             id: value?.sku || productName,
             title: productName,
@@ -162,14 +183,17 @@ export function NotificationProvider({
     refreshNotifications();
   }, [refreshNotifications]);
 
-  // Optional: auto-refresh relative time every 1 minute
+  // Auto-refresh relative time every 1 minute
+  // Also remove notifications older than 7 days
   useEffect(() => {
     const interval = setInterval(() => {
       setItems((prev) =>
-        prev.map((item) => ({
-          ...item,
-          timeAgo: getTimeAgo(item.alertTime),
-        }))
+        prev
+          .filter((item) => isWithinLast7Days(item.alertTime))
+          .map((item) => ({
+            ...item,
+            timeAgo: getTimeAgo(item.alertTime),
+          }))
       );
     }, 60000);
 
@@ -191,6 +215,8 @@ export function NotificationProvider({
     </NotificationContext.Provider>
   );
 }
+
+
 
 export function useHeaderNotifications() {
   const context = useContext(NotificationContext);
