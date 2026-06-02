@@ -1924,13 +1924,16 @@ export default function DashboardPage() {
     }, []);
 
 
-    // Move this here, before runAdsBackgroundSync
     const isManualRefreshRef = useRef(false);
     const shouldPostCacheRef = useRef(false);
+    const [cacheSaveTick, setCacheSaveTick] = useState(0);
 
     const triggerCachePost = useCallback(() => {
         shouldPostCacheRef.current = true;
         isManualRefreshRef.current = true;
+
+        // Force the cache-save effect to run after manual refresh.
+        setCacheSaveTick((x) => x + 1);
     }, []);
 
     const [pendingHash, setPendingHash] = useState<string>("");
@@ -2047,7 +2050,6 @@ export default function DashboardPage() {
     // const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
 
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
-    const [dbUpdatedAt, setDbUpdatedAt] = useState<number | null>(null);
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
     const forcedRegion: RegionKey = useMemo(() => {
@@ -2119,7 +2121,7 @@ export default function DashboardPage() {
     }, [getBackendCountryDate]);
 
 
-    const dashboardLabelAnchor = dbUpdatedAt ?? lastRefreshAt ?? Date.now();
+    const dashboardLabelAnchor = lastRefreshAt ?? Date.now();
 
     const currentDisplayMonth = useMemo(() => {
         return getRegionYearMonthFromTimestamp(activeDateRegion, dashboardLabelAnchor);
@@ -2161,18 +2163,18 @@ export default function DashboardPage() {
     }, [amazonConnections]);
 
     const lastUpdatedTimeText = useMemo(() => {
-        if (!dbUpdatedAt) return "";
+        if (!lastRefreshAt) return "";
 
         if (platform === "global" && isUsAmazonConnected) {
-            return formatLastUpdatedDateTime(dbUpdatedAt, "America/Los_Angeles");
+            return formatLastUpdatedDateTime(lastRefreshAt, "America/Los_Angeles");
         }
 
         return activeDateRegion === "US"
-            ? formatLastUpdatedDateTime(dbUpdatedAt, "America/Los_Angeles")
+            ? formatLastUpdatedDateTime(lastRefreshAt, "America/Los_Angeles")
             : activeDateRegion === "CA"
-                ? formatLastUpdatedDateTime(dbUpdatedAt, "America/Toronto")
-                : formatLastUpdatedDateTime(dbUpdatedAt, "Europe/London");
-    }, [dbUpdatedAt, platform, isUsAmazonConnected, activeDateRegion]);
+                ? formatLastUpdatedDateTime(lastRefreshAt, "America/Toronto")
+                : formatLastUpdatedDateTime(lastRefreshAt, "Europe/London");
+    }, [lastRefreshAt, platform, isUsAmazonConnected, activeDateRegion]);
 
     const countryLastRefreshTimeText = useMemo(() => {
         const selected = countryTime?.selected_country;
@@ -3866,26 +3868,35 @@ export default function DashboardPage() {
                 Accept: "application/json",
                 Authorization: `Bearer ${token}`,
             },
+            cache: "no-store",
         });
 
         const json = await res.json().catch(() => null);
 
-        if (!res.ok || !json?.success) {
+        if (!res.ok) {
             throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
         }
 
-        if (json?.found === false) {
-            return { found: false, payload: null, updatedAt: null };
-        }
+        const payload =
+            json?.data?.payload ??
+            json?.payload ??
+            null;
 
-        if (!json?.data?.payload) {
-            return { found: false, payload: null, updatedAt: null };
+        if (!payload) {
+            return {
+                found: false,
+                payload: null,
+                updatedAt: null,
+            };
         }
 
         return {
             found: true,
-            payload: json.data.payload,
-            updatedAt: json.data.updated_at ?? null,
+            payload,
+            updatedAt:
+                json?.data?.updated_at ??
+                json?.updated_at ??
+                null,
         };
     }, [
         liveDashboardCountry,
@@ -3905,6 +3916,9 @@ export default function DashboardPage() {
         return `live-dashboard-cache:${country}:${activeDateRegion}`;
     }, [platform, activeDateRegion]);
 
+    const lastRefreshKey = useMemo(() => {
+        return `${liveCacheKey}:last-updated-at`;
+    }, [liveCacheKey]);
 
     const restoreLiveCacheFromLocalStorage = useCallback(() => {
         if (typeof window === "undefined") return false;
@@ -4300,14 +4314,15 @@ export default function DashboardPage() {
     useEffect(() => {
         if (typeof window === "undefined") return;
 
-        const saved = localStorage.getItem(LAST_REFRESH_KEY);
-        if (saved) {
-            const ts = Number(saved);
-            if (!Number.isNaN(ts)) {
-                setLastRefreshAt(ts);
-            }
+        const saved = localStorage.getItem(lastRefreshKey);
+        if (!saved) {
+            setLastRefreshAt(null);
+            return;
         }
-    }, []);
+
+        const ts = Number(saved);
+        setLastRefreshAt(Number.isNaN(ts) ? null : ts);
+    }, [lastRefreshKey]);
 
     const getRelativeRefreshText = useCallback((ts: number | null) => {
         if (!ts) return "Never refreshed";
@@ -4345,9 +4360,7 @@ export default function DashboardPage() {
     useEffect(() => {
         if (!fxReady) return;
 
-        // prevent loop for same cache key
         if (didBootstrapRef.current === liveCacheKey) return;
-        didBootstrapRef.current = liveCacheKey;
 
         let cancelled = false;
 
@@ -4357,20 +4370,13 @@ export default function DashboardPage() {
 
                 if (cancelled) return;
 
+                didBootstrapRef.current = liveCacheKey;
+
                 if (cacheResult?.found && cacheResult.payload) {
                     shouldPostCacheRef.current = false;
                     isManualRefreshRef.current = false;
 
                     applyDashboardCachePayload(cacheResult.payload);
-
-                    if (cacheResult.updatedAt) {
-                        const ts = new Date(cacheResult.updatedAt).getTime();
-                        if (!Number.isNaN(ts)) {
-                            setDbUpdatedAt(ts);
-                            setLastRefreshAt(ts);
-                            localStorage.setItem(LAST_REFRESH_KEY, String(ts));
-                        }
-                    }
 
                     localStorage.setItem(
                         liveCacheKey,
@@ -4380,17 +4386,32 @@ export default function DashboardPage() {
                         })
                     );
 
+                    setDashboardBusy(false);
+                    setShowDashboardStepLoader(false);
+                    setStepProgress((prev) => ({
+                        ...prev,
+                        active: false,
+                    }));
+
                     return;
                 }
 
                 const restoredFromLocal = restoreLiveCacheFromLocalStorage();
+
                 if (restoredFromLocal) {
                     shouldPostCacheRef.current = false;
                     isManualRefreshRef.current = false;
+
+                    setDashboardBusy(false);
+                    setShowDashboardStepLoader(false);
+                    setStepProgress((prev) => ({
+                        ...prev,
+                        active: false,
+                    }));
+
                     return;
                 }
 
-                // First-time fallback only: no DB cache and no browser cache.
                 await runDashboardLoadWithSteps();
 
                 if (cancelled) return;
@@ -4398,8 +4419,12 @@ export default function DashboardPage() {
                 triggerCachePost();
             } catch (err) {
                 console.error("Dashboard bootstrap failed:", err);
+
+                didBootstrapRef.current = null;
+
                 resetStepState();
                 setDashboardBusy(false);
+                setShowDashboardStepLoader(false);
             }
         };
 
@@ -4408,7 +4433,16 @@ export default function DashboardPage() {
         return () => {
             cancelled = true;
         };
-    }, [fxReady, liveCacheKey]);
+    }, [
+        fxReady,
+        liveCacheKey,
+        getDashboardCacheFromBackend,
+        applyDashboardCachePayload,
+        restoreLiveCacheFromLocalStorage,
+        runDashboardLoadWithSteps,
+        triggerCachePost,
+    ]);
+
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
     const derived = data?.derived_totals || null;
@@ -7275,18 +7309,18 @@ export default function DashboardPage() {
         }
 
         saveDashboardCacheToBackend(payload)
-            .then((serverUpdatedAt) => {
-                if (serverUpdatedAt != null) {
-                    setDbUpdatedAt(serverUpdatedAt);
-                    setLastRefreshAt(serverUpdatedAt);
-                    localStorage.setItem(LAST_REFRESH_KEY, String(serverUpdatedAt));
-                }
+            .then(() => {
+                const refreshedAt = Date.now();
+
+                localStorage.setItem(lastRefreshKey, String(refreshedAt));
+                setLastRefreshAt(refreshedAt);
 
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             })
             .catch((err) => {
                 console.error("Failed to persist dashboard cache:", err);
+
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             });
@@ -7294,6 +7328,7 @@ export default function DashboardPage() {
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
         liveCacheKey,
+        lastRefreshKey,
         pageLoading,
         dashboardBusy,
         loading,
@@ -7306,7 +7341,7 @@ export default function DashboardPage() {
         invRows,
         monthlySpRows,
         monthlySpTotalSpend,
-        // cacheSaveTick,
+        cacheSaveTick,
     ]);
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
@@ -10071,18 +10106,13 @@ ${pageLoading
                         >
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
-                        {dbUpdatedAt && (
-                            // <div className="text-xs text-slate-500">
-                            //     Last Updated at {lastUpdatedTimeText}
-                            // </div>
+                        {lastRefreshAt && (
                             <span className="text-sm text-gray-500">
-                                {countryTimeLoading
-                                    ? "Fetching country time..."
-                                    : countryLastRefreshTimeText
-                                        ? `Last Updated at ${countryLastRefreshTimeText}`
-                                        : countryTimeError
-                                            ? "Last Updated time unavailable"
-                                            : "Last Updated time unavailable"}
+                                Last Updated at{" "}
+                                {lastUpdatedTimeText ||
+                                    (activeDateRegion === "US"
+                                        ? formatUSTime12hr(lastRefreshAt)
+                                        : formatUKTime12hr(lastRefreshAt))}
                             </span>
                         )}
                     </div>
