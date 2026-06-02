@@ -130,8 +130,8 @@ export function NotificationProvider({
           }
 
           const alertTime =
-            value?.last_alert_time ||
             value?.first_alert_time ||
+            value?.last_alert_time ||
             null;
 
           return {
