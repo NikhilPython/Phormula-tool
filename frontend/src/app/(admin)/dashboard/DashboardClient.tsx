@@ -3770,8 +3770,16 @@ export default function DashboardPage() {
                     );
                 }
 
-                if (json?.data?.updated_at) {
-                    const ts = new Date(json.data.updated_at).getTime();
+                const apiUpdatedAt =
+                    json?.data?.updated_at ??
+                    json?.data?.created_at ??
+                    json?.updated_at ??
+                    json?.created_at ??
+                    null;
+
+                if (apiUpdatedAt) {
+                    const ts = new Date(apiUpdatedAt).getTime();
+
                     if (!Number.isNaN(ts)) {
                         return ts;
                     }
@@ -3895,7 +3903,9 @@ export default function DashboardPage() {
             payload,
             updatedAt:
                 json?.data?.updated_at ??
+                json?.data?.created_at ??
                 json?.updated_at ??
+                json?.created_at ??
                 null,
         };
     }, [
@@ -4311,18 +4321,18 @@ export default function DashboardPage() {
         3: 60,
     };
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
 
-        const saved = localStorage.getItem(lastRefreshKey);
-        if (!saved) {
-            setLastRefreshAt(null);
-            return;
-        }
+    //     const saved = localStorage.getItem(lastRefreshKey);
+    //     if (!saved) {
+    //         setLastRefreshAt(null);
+    //         return;
+    //     }
 
-        const ts = Number(saved);
-        setLastRefreshAt(Number.isNaN(ts) ? null : ts);
-    }, [lastRefreshKey]);
+    //     const ts = Number(saved);
+    //     setLastRefreshAt(Number.isNaN(ts) ? null : ts);
+    // }, [lastRefreshKey]);
 
     const getRelativeRefreshText = useCallback((ts: number | null) => {
         if (!ts) return "Never refreshed";
@@ -4349,13 +4359,23 @@ export default function DashboardPage() {
 
             await runDashboardLoadWithSteps();
 
+            const refreshedAt = Date.now();
+
+            // localStorage.setItem(lastRefreshKey, String(refreshedAt));
+            setLastRefreshAt(refreshedAt);
+
             triggerCachePost();
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
         }
-    }, [fetchCountryTime, runDashboardLoadWithSteps, triggerCachePost]);
+    }, [
+        fetchCountryTime,
+        runDashboardLoadWithSteps,
+        triggerCachePost,
+        lastRefreshKey,
+    ]);
 
     useEffect(() => {
         if (!fxReady) return;
@@ -4377,6 +4397,14 @@ export default function DashboardPage() {
                     isManualRefreshRef.current = false;
 
                     applyDashboardCachePayload(cacheResult.payload);
+
+                    if (cacheResult.updatedAt) {
+                        const ts = new Date(cacheResult.updatedAt).getTime();
+
+                        if (!Number.isNaN(ts)) {
+                            setLastRefreshAt(ts);
+                        }
+                    }
 
                     localStorage.setItem(
                         liveCacheKey,
@@ -7309,11 +7337,10 @@ export default function DashboardPage() {
         }
 
         saveDashboardCacheToBackend(payload)
-            .then(() => {
-                const refreshedAt = Date.now();
-
-                localStorage.setItem(lastRefreshKey, String(refreshedAt));
-                setLastRefreshAt(refreshedAt);
+            .then((serverUpdatedAt) => {
+                if (serverUpdatedAt != null) {
+                    setLastRefreshAt(serverUpdatedAt);
+                }
 
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
@@ -10072,26 +10099,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         </div>
                     </div>
 
-                    {/* RIGHT SIDE BUTTON */}
-                    {/* <button
-                        onClick={refreshAll}
-                        disabled={loading || shopifyLoading || biLoading}
-                        className={`shrink-0 rounded-md border shadow-sm
-        px-2 py-1 text-[10px]
-        sm:px-3 sm:py-1.5 sm:text-xs
-        2xl:text-sm
-        ${loading || shopifyLoading || biLoading
-                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                : "border-gray-300 bg-white hover:bg-gray-50"
-                            }`}
-                    >
-                        {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
-                    </button> */}
-
                     <div className="flex flex-col items-end gap-1">
-
-
-                        {/* {platform !== "global" && ( */}
                         <button
                             onClick={handleHardRefresh}
                             disabled={pageLoading}
@@ -10106,13 +10114,16 @@ ${pageLoading
                         >
                             {pageLoading ? "Refreshing…" : "Refresh"}
                         </button>
-                        {lastRefreshAt && (
-                            <span className="text-sm text-gray-500">
+
+                        {lastRefreshAt != null && (
+                            <span className="text-xs 2xl:text-sm text-gray-500 whitespace-nowrap">
                                 Last Updated at{" "}
                                 {lastUpdatedTimeText ||
                                     (activeDateRegion === "US"
                                         ? formatUSTime12hr(lastRefreshAt)
-                                        : formatUKTime12hr(lastRefreshAt))}
+                                        : activeDateRegion === "CA"
+                                            ? formatLastUpdatedDateTime(lastRefreshAt, "America/Toronto")
+                                            : formatUKTime12hr(lastRefreshAt))}
                             </span>
                         )}
                     </div>
