@@ -1252,6 +1252,10 @@ def finances_monthly_transactions():
         else:
             ui_country = "us"
 
+    # add this
+    if ui_country in ("us", "usa", "united_states"):
+        transaction_status = "RELEASED"
+
     if run_upload and not ui_country:
         return jsonify({"success": False, "error": "country is required when run_upload_pipeline=true"}), 400
 
@@ -2232,7 +2236,7 @@ def finances_mtd_transactions():
         payload_out = get_current_global_data_for_live_bi(user_id)
         return jsonify(_json_safe(payload_out)), 200
 
-    if ui_country in ("us", "usa", "united_states"):
+    if ui_country in ("us", "usa", "united_states"): 
         transaction_status = "RELEASED"
     else:
         transaction_status = request.args.get("transaction_status", "RELEASED")

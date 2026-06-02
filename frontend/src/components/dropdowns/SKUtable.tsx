@@ -711,7 +711,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "sno",
         label: "S.No.",
         align: "center",
-        width: "4%",
+        width: "6%",
       },
       {
         key: "product_name",
