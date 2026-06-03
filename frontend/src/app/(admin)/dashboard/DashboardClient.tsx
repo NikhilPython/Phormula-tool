@@ -1797,6 +1797,8 @@ export default function DashboardPage() {
         productwiseInitialCollapsed
     );
 
+    const [productwiseAnyGroupExpanded, setProductwiseAnyGroupExpanded] = useState(false);
+
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
@@ -3738,12 +3740,12 @@ export default function DashboardPage() {
     const didBootstrapRef = useRef<string | null>(null);
 
     const saveDashboardCacheToBackend = useCallback(
-        async (payload: DashboardCachePayload): Promise<number | null> => {
-            if (typeof window === "undefined") return null;
+        async (payload: DashboardCachePayload): Promise<void> => {
+            if (typeof window === "undefined") return;
 
             try {
                 const token = localStorage.getItem("jwtToken");
-                if (!token) return null;
+                if (!token) return;
 
                 const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
                     method: "POST",
@@ -3770,25 +3772,10 @@ export default function DashboardPage() {
                     );
                 }
 
-                const apiUpdatedAt =
-                    json?.data?.updated_at ??
-                    json?.data?.created_at ??
-                    json?.updated_at ??
-                    json?.created_at ??
-                    null;
-
-                if (apiUpdatedAt) {
-                    const ts = new Date(apiUpdatedAt).getTime();
-
-                    if (!Number.isNaN(ts)) {
-                        return ts;
-                    }
-                }
-
-                return null;
+                return;
             } catch (err) {
                 console.error(err);
-                return null;
+                return;
             }
         },
         [
@@ -4361,7 +4348,7 @@ export default function DashboardPage() {
 
             const refreshedAt = Date.now();
 
-            // localStorage.setItem(lastRefreshKey, String(refreshedAt));
+            localStorage.setItem(lastRefreshKey, String(refreshedAt));
             setLastRefreshAt(refreshedAt);
 
             triggerCachePost();
@@ -4398,11 +4385,17 @@ export default function DashboardPage() {
 
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    if (cacheResult.updatedAt) {
-                        const ts = new Date(cacheResult.updatedAt).getTime();
+                    const savedRefreshAt = localStorage.getItem(lastRefreshKey);
+                    const savedTs = savedRefreshAt ? Number(savedRefreshAt) : NaN;
 
-                        if (!Number.isNaN(ts)) {
-                            setLastRefreshAt(ts);
+                    if (!Number.isNaN(savedTs)) {
+                        setLastRefreshAt(savedTs);
+                    } else if (cacheResult.updatedAt) {
+                        const backendTs = new Date(cacheResult.updatedAt).getTime();
+
+                        if (!Number.isNaN(backendTs)) {
+                            setLastRefreshAt(backendTs);
+                            localStorage.setItem(lastRefreshKey, String(backendTs));
                         }
                     }
 
@@ -4464,6 +4457,7 @@ export default function DashboardPage() {
     }, [
         fxReady,
         liveCacheKey,
+        lastRefreshKey,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
         restoreLiveCacheFromLocalStorage,
@@ -6597,14 +6591,14 @@ export default function DashboardPage() {
             key: "sno",
             label: "S.No",
             align: "center",
-            width: 60,
+            width: "6%",
         },
         {
             key: "product_name",
             label: "Product Name",
             align: "left",
             info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
-            width: 190,
+            width: "14%",
         },
     ];
 
@@ -6617,6 +6611,7 @@ export default function DashboardPage() {
                 {
                     key: "marketplace_total",
                     label: "Total",
+                    width: "7%",
                     align: "center" as const,
                 },
             ],
@@ -6642,7 +6637,7 @@ export default function DashboardPage() {
                     key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
-                    width: 160,
+                    width: "8%",
                     sortable: true,
                 },
             ],
@@ -6652,28 +6647,28 @@ export default function DashboardPage() {
                     key: "sku",
                     label: "SKU",
                     align: "center" as const,
-                    width: 120,
+                    width: "7%",
                 },
                 {
                     key: "quantity",
                     label: "Units Sold",
                     align: "center" as const,
                     sortable: true,
-                    width: 110,
+                    width: "7%",
                 },
                 {
                     key: "return_quantity",
                     label: "Return",
                     align: "center" as const,
                     sortable: true,
-                    width: 100,
+                    width: "7%",
                 },
                 {
                     key: "total_quantity",
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 100,
+                    width: "7%",
                 },
             ],
         },
@@ -6689,7 +6684,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 145,
+                    width: "7%",
                 },
             ],
 
@@ -6712,6 +6707,7 @@ export default function DashboardPage() {
                     key: "tax_and_credits",
                     label: "Total",
                     align: "center" as const,
+                    width: "10%",
                 },
             ],
 
@@ -6746,7 +6742,7 @@ export default function DashboardPage() {
                     label: "Total",
                     align: "center" as const,
                     sortable: true,
-                    width: 145,
+                    width: "7%",
                 },
             ],
 
@@ -6769,14 +6765,16 @@ export default function DashboardPage() {
             key: "asp",
             label: "ASP",
             info: <InfoTip text={TERM_DEFINITIONS.asp} />,
-            align: "center" as const
+            align: "center" as const,
+            width: "7%",
         },
         {
             key: "net_sales",
             label: "Net Sales",
             sortable: true,
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
-            align: "center" as const
+            align: "center" as const,
+            width: "7%",
         },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
@@ -7337,20 +7335,10 @@ export default function DashboardPage() {
         }
 
         saveDashboardCacheToBackend(payload)
-            .then((serverUpdatedAt) => {
-                if (serverUpdatedAt != null) {
-                    setLastRefreshAt(serverUpdatedAt);
-                }
-
+            .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             })
-            .catch((err) => {
-                console.error("Failed to persist dashboard cache:", err);
-
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
-            });
     }, [
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
@@ -9622,80 +9610,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const secondsLeft = remainingSteps * 30;
 
-
-    // const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
-    //     const rows =
-    //         country === "uk"
-    //             ? Array.isArray(data?.skuwise_items_uk)
-    //                 ? data.skuwise_items_uk
-    //                 : []
-    //             : Array.isArray(data?.skuwise_items_us)
-    //                 ? data.skuwise_items_us
-    //                 : [];
-
-    //     const grand = getGrandTotalRow(rows);
-
-    //     const prevTotals =
-    //         country === "uk"
-    //             ? data?.previous_period_uk?.totals || {}
-    //             : data?.previous_period_us?.totals || {};
-
-    //     return {
-    //         units: toNumber(grand?.quantity),
-    //         prevUnits: toNumber(prevTotals?.quantity),
-
-    //         grossSales: toNumber(grand?.gross_sales),
-    //         prevGrossSales: toNumber(prevTotals?.gross_sales),
-
-    //         netSales: toNumber(grand?.net_sales),
-    //         prevNetSales: toNumber(prevTotals?.net_sales),
-
-    //         asp: toNumber(grand?.asp),
-    //         prevAsp: toNumber(prevTotals?.asp),
-
-    //         // direct total-row values
-    //         ads: toNumber(
-    //             grand?.total_ads ??
-    //             grand?.advertising_fees ??
-    //             grand?.ads_spend
-    //         ),
-    //         prevAds: toNumber(
-    //             prevTotals?.total_ads ??
-    //             prevTotals?.advertising_fees
-    //         ),
-
-    //         tacos: toNumber(
-    //             grand?.tacos_total_advertising_cost_of_sale ??
-    //             grand?.acos
-    //         ),
-    //         prevTacos: toNumber(
-    //             prevTotals?.tacos_total_advertising_cost_of_sale ??
-    //             prevTotals?.acos
-    //         ),
-
-    //         cm2Profit: toNumber(
-    //             grand?.total_cm2_profit ??
-    //             grand?.cm2_profit
-    //         ),
-    //         prevCm2Profit: toNumber(
-    //             prevTotals?.total_cm2_profit ??
-    //             prevTotals?.cm2_profit
-    //         ),
-
-    //         cm2Pct: toNumber(
-    //             grand?.total_cm2_margins ??
-    //             grand?.profit_percentage ??
-    //             grand?.cm2_profit_per
-    //         ),
-    //         prevCm2Pct: toNumber(
-    //             prevTotals?.total_cm2_margins ??
-    //             prevTotals?.profit_percentage ??
-    //             prevTotals?.cm2_profit_per
-    //         ),
-    //     };
-    // }, [data]);
-
-    const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
+       const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
         const currentRows =
             country === "uk"
                 ? Array.isArray(data?.skuwise_items_uk)
@@ -10172,42 +10087,7 @@ ${pageLoading
                                             <div className="min-w-0 shrink-0">
                                                 <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                             </div>
-
-                                            {/* {showLiveBI && platform === "global" && (
-                                                <div className="shrink-0 ml-auto">
-                                                    <RangePicker
-                                                        selectedStartDay={selectedStartDay}
-                                                        selectedEndDay={selectedEndDay}
-                                                        label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
-                                                        onSubmit={(s, e) => {
-                                                            setSelectedStartDay(s);
-                                                            setSelectedEndDay(e);
-
-                                                            fetchPreviousSkuwiseGlobal(s, e);
-
-                                                            setBiLoading(false);
-                                                            setBiStatus("ready");
-                                                            setBiError(null);
-                                                        }}
-                                                        onClear={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                        onCloseReset={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({
-                                                                startDay: null,
-                                                                endDay: null,
-                                                                generateInsights: false,
-                                                            });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                    />
-                                                </div>
-                                            )} */}
+                                           
                                         </div>
 
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
@@ -10853,7 +10733,7 @@ ${pageLoading
 
                 {activeTab === "productwise" && (
                     <>
-                        <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+                        <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
                                 {/* LEFT: Title */}
                                 <div className="flex items-center gap-2">
@@ -10906,10 +10786,22 @@ ${pageLoading
                                     No P&L productwise rows available for this period.
                                 </div>
                             ) : (
-                                <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
-                                    <div className="min-w-full">
+                                <div
+                                    className={[
+                                        "w-full rounded-xl border border-gray-300",
+                                        productwiseAnyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+                                    ].join(" ")}
+                                >
+                                    <div className={productwiseAnyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                             rows={finalMonthlySkuwiseRowsForTable}
+                                            onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
+                                            tableClassName={[
+                                                "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                                productwiseAnyGroupExpanded
+                                                    ? "table-auto min-w-[1200px]"
+                                                    : "table-fixed",
+                                            ].join(" ")}
                                             getRowKey={(row, idx) =>
                                                 row.isTotal
                                                     ? "TOTAL"

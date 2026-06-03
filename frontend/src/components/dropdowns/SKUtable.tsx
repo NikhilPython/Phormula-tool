@@ -481,6 +481,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [rows]);
 
   const hasCm2Data = useMemo(() => {
+    const currentCountry = String(countryName || "").trim().toLowerCase();
+    const currentRange = String(range || "").trim().toLowerCase();
+
+    // Hide Ads + CM2 for US yearly and quarterly, same as UK behavior
+    if (
+      currentCountry === "us" &&
+      (currentRange === "yearly" || currentRange === "quarterly")
+    ) {
+      return false;
+    }
+
     const productRows = (tableData || []).filter((row: any) => {
       const name = String(row?.product_name || "").trim().toLowerCase();
       const sku = String(row?.sku || "").trim().toLowerCase();
@@ -504,7 +515,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         toNumber(row.cm2_profit_percentage) !== 0
       );
     });
-  }, [tableData]);
+  }, [tableData, countryName, range]);
 
   const getCm2PerUnit = (row: Partial<TableRow>) => {
     const cm2 = toNumber((row as any).cm2_profit);
@@ -700,7 +711,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "sno",
         label: "S.No.",
         align: "center",
-        width: "4%",
+        width: "6%",
       },
       {
         key: "product_name",

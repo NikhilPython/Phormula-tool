@@ -53,49 +53,65 @@ def sync_monthly_transactions_for_user(
 
     posted_after, posted_before = _month_date_range_utc(year, month)
 
-    params: Dict[str, Any] = {
-        "postedAfter": posted_after,
-        "postedBefore": posted_before,
-        "marketplaceId": amazon_client.marketplace_id,
-    }
-    if transaction_status and str(transaction_status).lower() not in ("all", ""):
-        params["transactionStatus"] = transaction_status
-
     all_rows: List[Dict[str, Any]] = []
 
-    while True:
-        res = amazon_client.make_api_call(
-            "/finances/2024-06-19/transactions",
-            method="GET",
-            params=params,
-        )
+    # Amazon accepts only one transactionStatus per request.
+    # So "RELEASED,DEFERRED" must become two separate API calls.
+    status_list: list[str] = []
 
-        if not res or "error" in res:
-            return {
-                "success": False,
-                "error": res or {"error": "Unknown SP-API error"},
-            }
+    if transaction_status and str(transaction_status).lower() not in ("all", ""):
+        status_list = [
+            s.strip()
+            for s in str(transaction_status).split(",")
+            if s.strip()
+        ]
 
-        payload_res = res.get("payload") or res
-        transactions = payload_res.get("transactions") or []
+    statuses_to_fetch = status_list or [None]
 
-        for tx in transactions:
-            tstatus = (tx or {}).get("transactionStatus")
-            ttype = (tx or {}).get("transactionType")
+    for status in statuses_to_fetch:
+        params: Dict[str, Any] = {
+            "postedAfter": posted_after,
+            "postedBefore": posted_before,
+            "marketplaceId": amazon_client.marketplace_id,
+        }
 
-            if transaction_status and str(transaction_status).lower() not in ("all", ""):
-                if tstatus != transaction_status:
+        if status:
+            params["transactionStatus"] = status
+
+        while True:
+            res = amazon_client.make_api_call(
+                "/finances/2024-06-19/transactions",
+                method="GET",
+                params=params,
+            )
+
+            if not res or "error" in res:
+                return {
+                    "success": False,
+                    "error": res or {"error": "Unknown SP-API error"},
+                    "failed_status": status,
+                }
+
+            payload_res = res.get("payload") or res
+            transactions = payload_res.get("transactions") or []
+
+            for tx in transactions:
+                tstatus = (tx or {}).get("transactionStatus")
+                ttype = (tx or {}).get("transactionType")
+
+                if status and tstatus != status:
                     continue
-            if transaction_type_filter and ttype != transaction_type_filter:
-                continue
 
-            all_rows.append(_flatten_transaction_to_row(tx or {}))
+                if transaction_type_filter and ttype != transaction_type_filter:
+                    continue
 
-        next_token = payload_res.get("nextToken")
-        if not next_token:
-            break
+                all_rows.append(_flatten_transaction_to_row(tx or {}))
 
-        params = {"nextToken": next_token}
+            next_token = payload_res.get("nextToken")
+            if not next_token:
+                break
+
+            params = {"nextToken": next_token}
 
     pipeline_result = None
 
