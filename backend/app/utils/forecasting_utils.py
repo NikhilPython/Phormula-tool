@@ -35,6 +35,9 @@ db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:543
 db_url2 = os.getenv('DATABASE_AMAZON_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # ChatGPT adjudicator key
 ROLLING_HISTORY_MONTHS = 4  # 👈 compare last 4 months of actuals in ChatGPT/local adjudicator
+ASP_ELASTICITY = -0.5
+ASP_ADJUSTMENT_MIN = 0.80
+ASP_ADJUSTMENT_MAX = 1.20
 
 # ============================== SESSIONS & MAPS ==============================
 def create_user_session_phormula(db_url):
@@ -1251,14 +1254,14 @@ def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_mont
         else:
             winner = None
 
-        # print(
-        #     f"[GPT ADJUDICATOR] SKU={sku} | Country={country} | "
-        #     f"Last actual={lastN_months} | "
-        #     f"ARIMA forecast={arima_months} | "
-        #     f"HYBRID forecast={hybrid_months} | "
-        #     f"Raw GPT response={text} | "
-        #     f"Winning forecast={winner}"
-        # )
+        print(
+            f"[GPT ADJUDICATOR] SKU={sku} | Country={country} | "
+            f"Last actual={lastN_months} | "
+            f"ARIMA forecast={arima_months} | "
+            f"HYBRID forecast={hybrid_months} | "
+            f"Raw GPT response={text} | "
+            f"Winning forecast={winner}"
+        )
 
         return winner
 
@@ -1468,34 +1471,85 @@ def fetch_and_merge_inventory_monthwise_sellable(
 
     return out
 
+# def fetch_skuwise_monthly_sales(engine, meta, user_id, country, dt):
+#     """
+#     Fetch sku-wise monthly quantity and ADD label in-memory
+#     """
+#     table_name = f"skuwisemonthly_{user_id}_{country}_{dt.strftime('%B').lower()}{dt.year}"
+#     table_key = table_name.lower()
+
+#     if table_key not in {t.lower(): t for t in meta.tables}:
+#         print(f"[SOLD][WARN] Table not found: {table_name}")
+#         return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
+
+#     try:
+#         tbl = Table(table_key, meta, autoload_with=engine)
+#         with engine.connect() as conn:
+#             df = pd.read_sql(tbl.select(), conn)
+
+#         df['total_quantity'] = pd.to_numeric(df['total_quantity'], errors='coerce').fillna(0)
+
+#         # ✅ CREATE LABEL HERE
+#         df['Label'] = month_label(dt)   # e.g. "Sep'25"
+
+#         return df[['sku', 'total_quantity', 'Label']]
+
+#     except Exception as e:
+#         print(f"[SOLD][ERROR] {table_name}: {e}")
+#         return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
+
 def fetch_skuwise_monthly_sales(engine, meta, user_id, country, dt):
     """
-    Fetch sku-wise monthly quantity and ADD label in-memory
+    Fetch sku-wise monthly quantity + ASP and ADD label in-memory.
+
+    ASP will be used internally for forecast adjustment.
+    ASP will NOT be added to Excel output.
     """
+
     table_name = f"skuwisemonthly_{user_id}_{country}_{dt.strftime('%B').lower()}{dt.year}"
     table_key = table_name.lower()
 
-    if table_key not in {t.lower(): t for t in meta.tables}:
+    normalized_tables = {t.lower(): t for t in meta.tables.keys()}
+
+    if table_key not in normalized_tables:
         print(f"[SOLD][WARN] Table not found: {table_name}")
-        return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
+        return pd.DataFrame(columns=["sku", "total_quantity", "asp", "Label"])
 
     try:
-        tbl = Table(table_key, meta, autoload_with=engine)
+        actual_table_name = normalized_tables[table_key]
+        tbl = Table(actual_table_name, meta, autoload_with=engine)
+
         with engine.connect() as conn:
             df = pd.read_sql(tbl.select(), conn)
 
-        df['total_quantity'] = pd.to_numeric(df['total_quantity'], errors='coerce').fillna(0)
+        if "sku" not in df.columns:
+            print(f"[SOLD][WARN] sku column missing in table: {table_name}")
+            return pd.DataFrame(columns=["sku", "total_quantity", "asp", "Label"])
 
-        # ✅ CREATE LABEL HERE
-        df['Label'] = month_label(dt)   # e.g. "Sep'25"
+        if "total_quantity" not in df.columns:
+            df["total_quantity"] = 0
 
-        return df[['sku', 'total_quantity', 'Label']]
+        if "asp" not in df.columns:
+            print(f"[ASP][WARN] asp column missing in table: {table_name}")
+            df["asp"] = np.nan
+
+        df["total_quantity"] = (
+            pd.to_numeric(df["total_quantity"], errors="coerce")
+            .fillna(0)
+        )
+
+        df["asp"] = pd.to_numeric(df["asp"], errors="coerce")
+
+        # ASP is valid only where units sold > 0
+        df.loc[df["total_quantity"] <= 0, "asp"] = np.nan
+
+        df["Label"] = month_label(dt)
+
+        return df[["sku", "total_quantity", "asp", "Label"]]
 
     except Exception as e:
         print(f"[SOLD][ERROR] {table_name}: {e}")
-        return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
-
-
+        return pd.DataFrame(columns=["sku", "total_quantity", "asp", "Label"])
 
 def _norm_sku(x: str) -> str:
     if x is None:
@@ -1595,6 +1649,159 @@ def _build_sku_daily_map(new_df: pd.DataFrame) -> dict[str, pd.Series]:
         out[sku] = s
     return out
 
+def _safe_float(x, default=np.nan):
+    try:
+        if x is None:
+            return default
+
+        val = float(x)
+
+        if np.isnan(val) or np.isinf(val):
+            return default
+
+        return val
+
+    except Exception:
+        return default
+
+
+def build_latest_asp_change_map(sold_df: pd.DataFrame) -> dict:
+    """
+    Builds SKU-wise ASP movement using actual monthly ASP.
+
+    Uses latest two valid ASP months where total_quantity > 0.
+
+    Returns:
+    {
+        "SKU123": {
+            "previous_asp": 10.0,
+            "latest_asp": 12.0,
+            "asp_change": 0.20
+        }
+    }
+    """
+
+    asp_map = {}
+
+    if sold_df is None or sold_df.empty:
+        return asp_map
+
+    required_cols = {"sku", "asp", "Label"}
+
+    if not required_cols.issubset(set(sold_df.columns)):
+        return asp_map
+
+    temp = sold_df.copy()
+
+    temp["sku_norm"] = temp["sku"].map(_norm_sku)
+    temp["asp"] = pd.to_numeric(temp["asp"], errors="coerce")
+
+    if "total_quantity" in temp.columns:
+        temp["total_quantity"] = (
+            pd.to_numeric(temp["total_quantity"], errors="coerce")
+            .fillna(0)
+        )
+
+        temp = temp[temp["total_quantity"] > 0]
+
+    temp = temp.dropna(subset=["sku_norm", "asp", "Label"])
+
+    if temp.empty:
+        return asp_map
+
+    temp["Label_dt"] = pd.to_datetime(
+        temp["Label"].astype(str).str.replace("'", ""),
+        format="%b%y",
+        errors="coerce"
+    )
+
+    temp = temp.dropna(subset=["Label_dt"])
+    temp = temp.sort_values(["sku_norm", "Label_dt"])
+
+    for sku_norm, g in temp.groupby("sku_norm"):
+        g = g.dropna(subset=["asp"]).sort_values("Label_dt")
+
+        if len(g) < 2:
+            continue
+
+        previous_asp = _safe_float(g.iloc[-2]["asp"])
+        latest_asp = _safe_float(g.iloc[-1]["asp"])
+
+        if (
+            np.isnan(previous_asp)
+            or np.isnan(latest_asp)
+            or previous_asp <= 0
+            or latest_asp <= 0
+        ):
+            continue
+
+        asp_change = (latest_asp / previous_asp) - 1.0
+
+        asp_map[sku_norm] = {
+            "previous_asp": previous_asp,
+            "latest_asp": latest_asp,
+            "asp_change": float(asp_change),
+        }
+
+    return asp_map
+
+
+def apply_asp_adjustment_to_forecast(
+    chosen_df: pd.DataFrame,
+    sku: str,
+    asp_change_map: dict,
+    elasticity: float = ASP_ELASTICITY,
+    min_factor: float = ASP_ADJUSTMENT_MIN,
+    max_factor: float = ASP_ADJUSTMENT_MAX,
+) -> pd.DataFrame:
+    """
+    Adjust forecasted units using actual ASP movement.
+
+    Important:
+    - Does NOT multiply forecast by ASP.
+    - Does NOT add ASP columns to final Excel.
+    - Only modifies Forecast internally.
+    """
+
+    out = chosen_df.copy()
+
+    sku_norm = _norm_sku(sku)
+    asp_info = asp_change_map.get(sku_norm)
+
+    if not asp_info:
+        return out
+
+    asp_change = _safe_float(asp_info.get("asp_change"))
+
+    if np.isnan(asp_change):
+        return out
+
+    adjustment_factor = 1.0 + (elasticity * asp_change)
+    adjustment_factor = float(np.clip(adjustment_factor, min_factor, max_factor))
+
+    out["Forecast"] = (
+        pd.to_numeric(out["Forecast"], errors="coerce")
+        .fillna(0)
+        .astype(float)
+        * adjustment_factor
+    )
+
+    out["Forecast"] = (
+        np.rint(out["Forecast"])
+        .clip(lower=0)
+        .astype(int)
+    )
+
+    print(
+        f"[ASP ADJUST] SKU={sku} | "
+        f"previous_asp={asp_info.get('previous_asp')} | "
+        f"latest_asp={asp_info.get('latest_asp')} | "
+        f"asp_change={round(asp_change * 100, 2)}% | "
+        f"factor={round(adjustment_factor, 4)}"
+    )
+
+    return out
+
 
 def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
     import time
@@ -1617,6 +1824,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     unique_skus = new_df["sku"].unique()
     all_forecasts = pd.DataFrame()
     model_winner = {}
+    asp_change_map = {}
 
     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
     if not profile:
@@ -1690,6 +1898,45 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
 
     print("\n=== MODELING COMPLETE ===")
 
+    # ---------------- SOLD + ASP HISTORY FOR ADJUSTMENT ----------------
+    sold_anchor_dt = add_months(add_months(global_last_training_month.to_timestamp(), 1), -1)
+
+    sold_m1 = month_label(sold_anchor_dt)
+    sold_m2 = month_label(add_months(sold_anchor_dt, -1))
+    sold_m3 = month_label(add_months(sold_anchor_dt, -2))
+
+    sold_labels = [sold_m3, sold_m2, sold_m1]
+
+    sold_month_dts = [
+        add_months(sold_anchor_dt, -2),
+        add_months(sold_anchor_dt, -1),
+        sold_anchor_dt,
+    ]
+
+    sold_frames = []
+
+    for dt in sold_month_dts:
+        df_m = fetch_skuwise_monthly_sales(
+            engine=engine,
+            meta=meta,
+            user_id=user_id,
+            country=country,
+            dt=dt,
+        )
+
+        if not df_m.empty:
+            sold_frames.append(df_m)
+
+    sold_df = (
+        pd.concat(sold_frames, ignore_index=True)
+        if sold_frames
+        else pd.DataFrame(columns=["sku", "total_quantity", "asp", "Label"])
+    )
+
+    asp_change_map = build_latest_asp_change_map(sold_df)
+
+    print(f"[ASP] ASP change map built for {len(asp_change_map)} SKU(s)")
+
     # ---------------- Adjudicate ----------------
     for sku in unique_skus:
         arima_res = arima_results.get(sku)
@@ -1740,8 +1987,15 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             _, chosen_df, _ = hybrid_res
 
         chosen_df = chosen_df.sort_values("Month").copy()
+
         if model_winner[sku] == "ARIMA":
             chosen_df = chosen_df.iloc[:3]
+
+        chosen_df = apply_asp_adjustment_to_forecast(
+            chosen_df=chosen_df,
+            sku=sku,
+            asp_change_map=asp_change_map,
+        )
 
         # attach price
         try:
@@ -1817,22 +2071,6 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     inventory_forecast = inventory_forecast.merge(product_names, on="sku", how="left")
     inventory_forecast["Product Name"] = inventory_forecast["Product Name"].fillna("")
 
-
-    # ---- SOLD columns (your existing logic) ----
-    sold_anchor_dt = add_months(add_months(global_last_training_month.to_timestamp(), 1), -1)
-    sold_m1 = month_label(sold_anchor_dt)
-    sold_m2 = month_label(add_months(sold_anchor_dt, -1))
-    sold_m3 = month_label(add_months(sold_anchor_dt, -2))
-    sold_labels = [sold_m3, sold_m2, sold_m1]
-
-    sold_month_dts = [add_months(sold_anchor_dt, -2), add_months(sold_anchor_dt, -1), sold_anchor_dt]
-    sold_frames = []
-    for dt in sold_month_dts:
-        df_m = fetch_skuwise_monthly_sales(engine=engine, meta=meta, user_id=user_id, country=country, dt=dt)
-        if not df_m.empty:
-            sold_frames.append(df_m)
-
-    sold_df = pd.concat(sold_frames, ignore_index=True) if sold_frames else pd.DataFrame(columns=["sku", "total_quantity", "Label"])
 
     last3_sold_pivot = (
         sold_df.pivot_table(index="sku", columns="Label", values="total_quantity", aggfunc="sum")
