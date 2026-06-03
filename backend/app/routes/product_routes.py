@@ -1436,18 +1436,38 @@ def skutableprofit():
                     and str(row.get("product_name") or "").strip().lower() != "total"
                 )
 
+                # Get total ads_spend from ads table TOTAL row
+                total_ads_spend = _get_ads_spend(ads_total_row)
+
+                # If ads table TOTAL row has no ads_spend, use product-wise total
+                if total_ads_spend == 0:
+                    total_ads_spend = sku_ads_total
+
                 advertising_total = brand_spend_total + dealsvouchar_ads_total
-                advertising_total_final = advertising_total + sku_ads_total
+                advertising_total_final = advertising_total + total_ads_spend
 
                 for row_dict in final_data:
                     sku = str(row_dict.get("sku") or "").strip().lower()
                     product_name = str(row_dict.get("product_name") or "").strip().lower()
 
                     if sku == "total" or product_name == "total":
-                        cm2_profit = safe_float(row_dict.get("cm2_profit"))
+                        profit = safe_float(row_dict.get("profit"))
+                        net_sales = safe_float(row_dict.get("net_sales"))
+                        total_quantity = safe_float(row_dict.get("total_quantity"))
                         platform_fee = safe_float(row_dict.get("platform_fee"))
 
+                        cm2_profit = profit - total_ads_spend
+                        acos = safe_divide(total_ads_spend, net_sales) * 100
+                        cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
+                        cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
+
                         cm2_profit_total = cm2_profit - advertising_total - platform_fee
+
+                        row_dict["ads_spend"] = round(total_ads_spend, 2)
+                        row_dict["cm2_profit"] = round(cm2_profit, 2)
+                        row_dict["acos"] = round(acos, 2)
+                        row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
+                        row_dict["cm2_profit_per_unit"] = round(cm2_profit_per_unit, 2)
 
                         row_dict["brand_spend"] = round(brand_spend_total, 2)
                         row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
