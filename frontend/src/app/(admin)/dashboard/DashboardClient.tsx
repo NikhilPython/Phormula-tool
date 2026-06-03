@@ -4385,11 +4385,17 @@ export default function DashboardPage() {
 
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    if (cacheResult.updatedAt) {
-                        const ts = new Date(cacheResult.updatedAt).getTime();
+                    const savedRefreshAt = localStorage.getItem(lastRefreshKey);
+                    const savedTs = savedRefreshAt ? Number(savedRefreshAt) : NaN;
 
-                        if (!Number.isNaN(ts)) {
-                            setLastRefreshAt(ts);
+                    if (!Number.isNaN(savedTs)) {
+                        setLastRefreshAt(savedTs);
+                    } else if (cacheResult.updatedAt) {
+                        const backendTs = new Date(cacheResult.updatedAt).getTime();
+
+                        if (!Number.isNaN(backendTs)) {
+                            setLastRefreshAt(backendTs);
+                            localStorage.setItem(lastRefreshKey, String(backendTs));
                         }
                     }
 
@@ -4451,6 +4457,7 @@ export default function DashboardPage() {
     }, [
         fxReady,
         liveCacheKey,
+        lastRefreshKey,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
         restoreLiveCacheFromLocalStorage,
@@ -9603,80 +9610,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const secondsLeft = remainingSteps * 30;
 
-
-    // const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
-    //     const rows =
-    //         country === "uk"
-    //             ? Array.isArray(data?.skuwise_items_uk)
-    //                 ? data.skuwise_items_uk
-    //                 : []
-    //             : Array.isArray(data?.skuwise_items_us)
-    //                 ? data.skuwise_items_us
-    //                 : [];
-
-    //     const grand = getGrandTotalRow(rows);
-
-    //     const prevTotals =
-    //         country === "uk"
-    //             ? data?.previous_period_uk?.totals || {}
-    //             : data?.previous_period_us?.totals || {};
-
-    //     return {
-    //         units: toNumber(grand?.quantity),
-    //         prevUnits: toNumber(prevTotals?.quantity),
-
-    //         grossSales: toNumber(grand?.gross_sales),
-    //         prevGrossSales: toNumber(prevTotals?.gross_sales),
-
-    //         netSales: toNumber(grand?.net_sales),
-    //         prevNetSales: toNumber(prevTotals?.net_sales),
-
-    //         asp: toNumber(grand?.asp),
-    //         prevAsp: toNumber(prevTotals?.asp),
-
-    //         // direct total-row values
-    //         ads: toNumber(
-    //             grand?.total_ads ??
-    //             grand?.advertising_fees ??
-    //             grand?.ads_spend
-    //         ),
-    //         prevAds: toNumber(
-    //             prevTotals?.total_ads ??
-    //             prevTotals?.advertising_fees
-    //         ),
-
-    //         tacos: toNumber(
-    //             grand?.tacos_total_advertising_cost_of_sale ??
-    //             grand?.acos
-    //         ),
-    //         prevTacos: toNumber(
-    //             prevTotals?.tacos_total_advertising_cost_of_sale ??
-    //             prevTotals?.acos
-    //         ),
-
-    //         cm2Profit: toNumber(
-    //             grand?.total_cm2_profit ??
-    //             grand?.cm2_profit
-    //         ),
-    //         prevCm2Profit: toNumber(
-    //             prevTotals?.total_cm2_profit ??
-    //             prevTotals?.cm2_profit
-    //         ),
-
-    //         cm2Pct: toNumber(
-    //             grand?.total_cm2_margins ??
-    //             grand?.profit_percentage ??
-    //             grand?.cm2_profit_per
-    //         ),
-    //         prevCm2Pct: toNumber(
-    //             prevTotals?.total_cm2_margins ??
-    //             prevTotals?.profit_percentage ??
-    //             prevTotals?.cm2_profit_per
-    //         ),
-    //     };
-    // }, [data]);
-
-    const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
+       const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
         const currentRows =
             country === "uk"
                 ? Array.isArray(data?.skuwise_items_uk)
@@ -10153,42 +10087,7 @@ ${pageLoading
                                             <div className="min-w-0 shrink-0">
                                                 <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                             </div>
-
-                                            {/* {showLiveBI && platform === "global" && (
-                                                <div className="shrink-0 ml-auto">
-                                                    <RangePicker
-                                                        selectedStartDay={selectedStartDay}
-                                                        selectedEndDay={selectedEndDay}
-                                                        label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
-                                                        onSubmit={(s, e) => {
-                                                            setSelectedStartDay(s);
-                                                            setSelectedEndDay(e);
-
-                                                            fetchPreviousSkuwiseGlobal(s, e);
-
-                                                            setBiLoading(false);
-                                                            setBiStatus("ready");
-                                                            setBiError(null);
-                                                        }}
-                                                        onClear={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                        onCloseReset={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({
-                                                                startDay: null,
-                                                                endDay: null,
-                                                                generateInsights: false,
-                                                            });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                    />
-                                                </div>
-                                            )} */}
+                                           
                                         </div>
 
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
