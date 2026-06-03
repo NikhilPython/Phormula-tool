@@ -224,32 +224,14 @@ export default function SalesTargetCard({
 
   // const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
 
-  const { todayDay } = getISTDayInfo();
-  const todayHomeComputed =
-    typeof todaySales === "number" && !Number.isNaN(todaySales)
-      ? todaySales
-      : todayDay > 0
-        ? mtdHomeFinal / todayDay
-        : 0;
-
-  const now = new Date();
-  const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-
-  // If you want “month completed so far” including today:
-  const monthCompletedPct =
-    totalDaysInMonth > 0 ? (todayDay / totalDaysInMonth) * 100 : 0;
-
-  // Compare (positive means you're ahead of pace)
-  const paceDeltaPct = pctDisplay - monthCompletedPct;
-
   const completedPct =
-    biEnabled && typeof periodCompletedPct === "number"
+    typeof periodCompletedPct === "number" && Number.isFinite(periodCompletedPct)
       ? periodCompletedPct
-      : monthCompletedPct;
+      : 0;
 
-  const completedLabel = useBi
-    ? (periodCompletedLabel ?? "Period")
-    : "Month";
+  const completedLabel = periodCompletedLabel ?? "Month";
+
+  const paceDeltaPct = pctDisplay - completedPct;
 
 
   const prevLabel = previousMonthLabel ?? getPrevMonthShortLabel();
@@ -662,7 +644,7 @@ export default function SalesTargetCard({
             <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
             <div className="mt-2 text-[10px] 2xl:text-xs text-charcoal-500">
               <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%</span>
-              {" "}of Month Completed vs{" "}
+              {" "}of {completedLabel} Completed vs{" "}
               <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
               {" "}of Target Achieved
             </div>
