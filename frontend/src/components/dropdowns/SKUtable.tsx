@@ -1076,9 +1076,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
 
   const PRESERVE_SIGN_KEYS = new Set([
+    // CM1
+    "profit",
+    "profit_percentage",
+    "unit_wise_profitability",
+
+    // CM2
     "cm2_profit",
-    "net_reimbursement",
+    "cm2_profit_total",
+    "unit_wise_cm2_profitability",
     "cm2_margins",
+
+    // Summary ratios
+    "net_reimbursement",
     "reimbursement_vs_sales",
     "rembursment_vs_cm2_margins",
   ]);
