@@ -10774,11 +10774,7 @@ ${pageLoading
                                         todaySales={todaySalesRaw}
                                         targetHome={stickyTargetHome}
                                         mtdHome={targets_mtdHome}
-
-                                        // ✅ full previous month sale
                                         lastMonthTotalHome={targets_lastMonthTotalHome}
-
-                                        // ✅ previous MTD / same period
                                         lastMonthToDateHome={targets_lastMonthToDateHome}
                                         currentMonthLabel={formattedMonthYear}
                                         previousMonthLabel={prevLabel}
@@ -10800,6 +10796,10 @@ ${pageLoading
                                                     ? true
                                                     : biCardsReady
                                         }
+
+                                        // ✅ add these
+                                        periodCompletedPct={finalRangeCompletedPct}
+                                        periodCompletedLabel="Month"
                                     />
                                 </div>
                             </div>
