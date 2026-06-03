@@ -3925,13 +3925,38 @@ export default function DashboardPage() {
 
         try {
             const parsed = JSON.parse(raw);
+
             applyDashboardCachePayload(parsed);
+
+            const normalizeRefreshTimestamp = (value: any): number | null => {
+                if (!value) return null;
+
+                const numeric = Number(value);
+                if (Number.isFinite(numeric) && numeric > 0) {
+                    return numeric;
+                }
+
+                const parsedDate = new Date(value).getTime();
+                return Number.isFinite(parsedDate) && parsedDate > 0 ? parsedDate : null;
+            };
+
+            const restoredLastRefreshAt =
+                normalizeRefreshTimestamp(parsed?.lastRefreshAt) ??
+                normalizeRefreshTimestamp(parsed?.savedAt) ??
+                normalizeRefreshTimestamp(localStorage.getItem(lastRefreshKey));
+
+            setLastRefreshAt(restoredLastRefreshAt);
+
+            if (restoredLastRefreshAt) {
+                localStorage.setItem(lastRefreshKey, String(restoredLastRefreshAt));
+            }
+
             return true;
         } catch (err) {
             console.error("Failed to restore live cache from localStorage:", err);
             return false;
         }
-    }, [liveCacheKey, applyDashboardCachePayload]);
+    }, [liveCacheKey, lastRefreshKey, applyDashboardCachePayload]);
 
     const getLiveCacheKey = useCallback(
         (country: "uk" | "us") =>
@@ -4385,12 +4410,37 @@ export default function DashboardPage() {
 
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    if (cacheResult.updatedAt) {
-                        const ts = new Date(cacheResult.updatedAt).getTime();
+                    const normalizeRefreshTimestamp = (value: any): number | null => {
+                        if (!value) return null;
 
-                        if (!Number.isNaN(ts)) {
-                            setLastRefreshAt(ts);
+                        const numeric = Number(value);
+                        if (Number.isFinite(numeric) && numeric > 0) {
+                            return numeric;
                         }
+
+                        const parsed = new Date(value).getTime();
+                        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                    };
+
+                    const payloadLastRefreshAt = normalizeRefreshTimestamp(
+                        cacheResult.payload?.lastRefreshAt
+                    );
+
+                    const backendUpdatedAt = normalizeRefreshTimestamp(cacheResult.updatedAt);
+
+                    const savedRefreshAt = localStorage.getItem(lastRefreshKey);
+                    const savedTs = normalizeRefreshTimestamp(savedRefreshAt);
+
+                    const finalRefreshAt =
+                        payloadLastRefreshAt ??
+                        backendUpdatedAt ??
+                        savedTs ??
+                        null;
+
+                    setLastRefreshAt(finalRefreshAt);
+
+                    if (finalRefreshAt) {
+                        localStorage.setItem(lastRefreshKey, String(finalRefreshAt));
                     }
 
                     localStorage.setItem(
@@ -4451,6 +4501,7 @@ export default function DashboardPage() {
     }, [
         fxReady,
         liveCacheKey,
+        lastRefreshKey,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
         restoreLiveCacheFromLocalStorage,
@@ -7219,6 +7270,16 @@ export default function DashboardPage() {
     ]);
 
     const buildDashboardCachePayload = useCallback(() => {
+        const storedLastRefreshAt =
+            typeof window !== "undefined"
+                ? Number(localStorage.getItem(lastRefreshKey))
+                : NaN;
+
+        const finalLastRefreshAt =
+            Number.isFinite(storedLastRefreshAt)
+                ? storedLastRefreshAt
+                : lastRefreshAt;
+
         return {
             data,
             adsSpendTotal,
@@ -7246,6 +7307,9 @@ export default function DashboardPage() {
 
             liveBiReady,
             biStatus,
+
+            // ✅ this is the important part
+            lastRefreshAt: finalLastRefreshAt,
             savedAt: Date.now(),
         };
     }, [
@@ -7271,6 +7335,8 @@ export default function DashboardPage() {
         globalCountryPayloads,
         liveBiReady,
         biStatus,
+        lastRefreshAt,
+        lastRefreshKey,
     ]);
 
     const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
@@ -9603,79 +9669,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const secondsLeft = remainingSteps * 30;
 
-
-    // const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
-    //     const rows =
-    //         country === "uk"
-    //             ? Array.isArray(data?.skuwise_items_uk)
-    //                 ? data.skuwise_items_uk
-    //                 : []
-    //             : Array.isArray(data?.skuwise_items_us)
-    //                 ? data.skuwise_items_us
-    //                 : [];
-
-    //     const grand = getGrandTotalRow(rows);
-
-    //     const prevTotals =
-    //         country === "uk"
-    //             ? data?.previous_period_uk?.totals || {}
-    //             : data?.previous_period_us?.totals || {};
-
-    //     return {
-    //         units: toNumber(grand?.quantity),
-    //         prevUnits: toNumber(prevTotals?.quantity),
-
-    //         grossSales: toNumber(grand?.gross_sales),
-    //         prevGrossSales: toNumber(prevTotals?.gross_sales),
-
-    //         netSales: toNumber(grand?.net_sales),
-    //         prevNetSales: toNumber(prevTotals?.net_sales),
-
-    //         asp: toNumber(grand?.asp),
-    //         prevAsp: toNumber(prevTotals?.asp),
-
-    //         // direct total-row values
-    //         ads: toNumber(
-    //             grand?.total_ads ??
-    //             grand?.advertising_fees ??
-    //             grand?.ads_spend
-    //         ),
-    //         prevAds: toNumber(
-    //             prevTotals?.total_ads ??
-    //             prevTotals?.advertising_fees
-    //         ),
-
-    //         tacos: toNumber(
-    //             grand?.tacos_total_advertising_cost_of_sale ??
-    //             grand?.acos
-    //         ),
-    //         prevTacos: toNumber(
-    //             prevTotals?.tacos_total_advertising_cost_of_sale ??
-    //             prevTotals?.acos
-    //         ),
-
-    //         cm2Profit: toNumber(
-    //             grand?.total_cm2_profit ??
-    //             grand?.cm2_profit
-    //         ),
-    //         prevCm2Profit: toNumber(
-    //             prevTotals?.total_cm2_profit ??
-    //             prevTotals?.cm2_profit
-    //         ),
-
-    //         cm2Pct: toNumber(
-    //             grand?.total_cm2_margins ??
-    //             grand?.profit_percentage ??
-    //             grand?.cm2_profit_per
-    //         ),
-    //         prevCm2Pct: toNumber(
-    //             prevTotals?.total_cm2_margins ??
-    //             prevTotals?.profit_percentage ??
-    //             prevTotals?.cm2_profit_per
-    //         ),
-    //     };
-    // }, [data]);
-
     const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
         const currentRows =
             country === "uk"
@@ -10154,41 +10147,6 @@ ${pageLoading
                                                 <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                             </div>
 
-                                            {/* {showLiveBI && platform === "global" && (
-                                                <div className="shrink-0 ml-auto">
-                                                    <RangePicker
-                                                        selectedStartDay={selectedStartDay}
-                                                        selectedEndDay={selectedEndDay}
-                                                        label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
-                                                        onSubmit={(s, e) => {
-                                                            setSelectedStartDay(s);
-                                                            setSelectedEndDay(e);
-
-                                                            fetchPreviousSkuwiseGlobal(s, e);
-
-                                                            setBiLoading(false);
-                                                            setBiStatus("ready");
-                                                            setBiError(null);
-                                                        }}
-                                                        onClear={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                        onCloseReset={() => {
-                                                            setSelectedStartDay(null);
-                                                            setSelectedEndDay(null);
-                                                            fetchLiveBiPayload({
-                                                                startDay: null,
-                                                                endDay: null,
-                                                                generateInsights: false,
-                                                            });
-                                                            fetchPreviousSkuwiseGlobal(null, null);
-                                                        }}
-                                                    />
-                                                </div>
-                                            )} */}
                                         </div>
 
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
