@@ -1251,6 +1251,36 @@ def build_skuwise_table_name(user_id, country, month, year):
 
     return f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
 
+def _ads_key(row):
+    sku = str(row.get("sku") or "").strip().lower()
+    product_name = str(row.get("product_name") or "").strip().lower()
+
+    # Prefer SKU because product names can sometimes vary slightly
+    if sku and sku != "total":
+        return ("sku", sku)
+
+    if product_name and product_name != "total":
+        return ("product_name", product_name)
+
+    return None
+
+def safe_float(value):
+    try:
+        if value is None:
+            return 0.0
+        return float(value)
+    except Exception:
+        return 0.0
+
+def _get_ads_spend(ads_dict):
+    return safe_float(
+        ads_dict.get("ads_spend")
+        if ads_dict.get("ads_spend") is not None
+        else ads_dict.get("ads_spend_raw")
+        if ads_dict.get("ads_spend_raw") is not None
+        else ads_dict.get("product_spend")
+    )
+
 @product_bp.route('/skutableprofit', methods=['GET'])
 def skutableprofit():
     auth_header = request.headers.get('Authorization')
@@ -1295,13 +1325,6 @@ def skutableprofit():
 
         metadata = MetaData(schema='public')
 
-        def safe_float(value):
-            try:
-                if value is None:
-                    return 0.0
-                return float(value)
-            except Exception:
-                return 0.0
 
         def safe_divide(numerator, denominator):
             numerator = safe_float(numerator)
@@ -1326,24 +1349,43 @@ def skutableprofit():
                         select(*ads_table.columns)
                     ).mappings().all()
 
+            # Build ads lookup by SKU and product_name
+            ads_by_sku = {}
+            ads_by_product_name = {}
+
+            for ads_row in ads_rows:
+                ads_dict = _normalize_sku_row(dict(ads_row))
+
+                sku = str(ads_dict.get("sku") or "").strip().lower()
+                product_name = str(ads_dict.get("product_name") or "").strip().lower()
+
+                if sku and sku != "total":
+                    ads_by_sku[sku] = ads_dict
+
+                if product_name and product_name != "total":
+                    ads_by_product_name[product_name] = ads_dict
+
             final_data = []
 
-            for index, row in enumerate(main_rows):
+            for row in main_rows:
                 row_dict = _normalize_sku_row(dict(row))
+
+                sku = str(row_dict.get("sku") or "").strip().lower()
+                product_name = str(row_dict.get("product_name") or "").strip().lower()
 
                 ads_spend = 0.0
 
-                # Existing row-by-row ads_spend matching
-                if index < len(ads_rows):
-                    ads_dict = _normalize_sku_row(dict(ads_rows[index]))
+                # Match by SKU first, then product_name
+                ads_dict = None
 
-                    ads_spend = safe_float(
-                        ads_dict.get("ads_spend")
-                        if ads_dict.get("ads_spend") is not None
-                        else ads_dict.get("ads_spend_raw")
-                        if ads_dict.get("ads_spend_raw") is not None
-                        else ads_dict.get("product_spend")
-                    )
+                if sku and sku != "total":
+                    ads_dict = ads_by_sku.get(sku)
+
+                if not ads_dict and product_name and product_name != "total":
+                    ads_dict = ads_by_product_name.get(product_name)
+
+                if ads_dict:
+                    ads_spend = _get_ads_spend(ads_dict)
 
                 profit = safe_float(row_dict.get("profit"))
                 net_sales = safe_float(row_dict.get("net_sales"))
@@ -1362,10 +1404,6 @@ def skutableprofit():
 
                 final_data.append(row_dict)
 
-            # ----------------------------------------------------
-            # Add final TOTAL row values only if ads table exists.
-            # If ads table is missing, keep values 0 and do not fail.
-            # ----------------------------------------------------
             if ads_rows:
                 def get_total_ads_row(ads_rows):
                     for ads_row in ads_rows:
@@ -1391,8 +1429,15 @@ def skutableprofit():
                     else ads_total_row.get("deals_voucher_ads")
                 ))
 
+                sku_ads_total = sum(
+                    safe_float(row.get("ads_spend"))
+                    for row in final_data
+                    if str(row.get("sku") or "").strip().lower() != "total"
+                    and str(row.get("product_name") or "").strip().lower() != "total"
+                )
+
                 advertising_total = brand_spend_total + dealsvouchar_ads_total
-                advertising_total_final = advertising_total + ads_spend 
+                advertising_total_final = advertising_total + sku_ads_total
 
                 for row_dict in final_data:
                     sku = str(row_dict.get("sku") or "").strip().lower()
