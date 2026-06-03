@@ -913,17 +913,21 @@ const getIstMonthStartISO = () => {
     return `${y}-${String(m).padStart(2, "0")}-01`;
 };
 
+const getGlobalPreviousSkuwiseAsOfISO = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+
+    const y = ist.getFullYear();
+    const m = String(ist.getMonth() + 1).padStart(2, "0");
+    const d = String(ist.getDate()).padStart(2, "0");
+
+    return `${y}-${m}-${d}`;
+};
+
 const getIstMonthToTodayRangeISO = () => ({
     start_date: getIstMonthStartISO(),
     end_date: getIstTodayISO(),
 });
-
-const getISOFromRegionDate = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-};
 
 const ensureSpReportSeedOncePerDay = async (
     baseUrl: string,
@@ -2154,51 +2158,68 @@ export default function DashboardPage() {
         [dashboardAllowedDay]
     );
 
-    const getDashboardAnchorDate = useCallback(() => {
-        return getRegionDateFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
-    }, [dashboardDateAnchor, dashboardTimeRegion]);
+    const getBackendCountryDate = useCallback(() => {
+        const dt = countryTime?.selected_country?.datetime;
 
-    const getGlobalPreviousSkuwiseAsOfISO = useCallback(() => {
-        return getISOFromRegionDate(getDashboardAnchorDate());
-    }, [getDashboardAnchorDate]);
+        if (!dt) {
+            return getRegionNow(activeDateRegion);
+        }
 
-    const getDashboardAnchorYearMonth = useCallback(() => {
-        const now = getDashboardAnchorDate();
+        return new Date(dt.replace(" ", "T"));
+    }, [countryTime, activeDateRegion]);
+
+    const getBackendCountryYearMonth = useCallback(() => {
+        const now = getBackendCountryDate();
+
+        const monthName = now.toLocaleString("en-US", {
+            month: "long",
+        });
 
         return {
-            monthName: now.toLocaleString("en-US", { month: "long" }),
+            monthName,
             year: now.getFullYear(),
         };
-    }, [getDashboardAnchorDate]);
+    }, [getBackendCountryDate]);
 
-    const getPrevDashboardAnchorYearMonth = useCallback(() => {
-        const now = getDashboardAnchorDate();
+    const getPrevBackendCountryYearMonth = useCallback(() => {
+        const now = getBackendCountryDate();
         now.setMonth(now.getMonth() - 1);
 
+        const monthName = now.toLocaleString("en-US", {
+            month: "long",
+        });
+
         return {
-            monthName: now.toLocaleString("en-US", { month: "long" }),
+            monthName,
             year: now.getFullYear(),
         };
-    }, [getDashboardAnchorDate]);
+    }, [getBackendCountryDate]);
 
-    const getDashboardAnchorDayInfo = useCallback(() => {
-        return {
-            todayDay: dashboardAllowedDay,
-            daysInMonth: dashboardDaysInMonth,
-        };
-    }, [dashboardAllowedDay, dashboardDaysInMonth]);
+    const getBackendCountryDayInfo = useCallback(() => {
+        const now = getBackendCountryDate();
+
+        const todayDay = now.getDate();
+        const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        const daysInPrevMonth = prevMonthDate.getDate();
+
+        return { todayDay, daysInPrevMonth };
+    }, [getBackendCountryDate]);
+
+    const getDaysInBackendCountryMonth = useCallback(() => {
+        const now = getBackendCountryDate();
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    }, [getBackendCountryDate]);
 
 
     const dashboardLabelAnchor = lastRefreshAt ?? Date.now();
 
     const currentDisplayMonth = useMemo(() => {
-        return getRegionYearMonthFromTimestamp(dashboardTimeRegion, dashboardLabelAnchor);
-    }, [dashboardTimeRegion, dashboardLabelAnchor]);
+        return getRegionYearMonthFromTimestamp(activeDateRegion, dashboardLabelAnchor);
+    }, [activeDateRegion, dashboardLabelAnchor]);
 
     const previousDisplayMonth = useMemo(() => {
-        return getPrevRegionYearMonthFromTimestamp(dashboardTimeRegion, dashboardLabelAnchor);
-    }, [dashboardTimeRegion, dashboardLabelAnchor]);
-
+        return getPrevRegionYearMonthFromTimestamp(activeDateRegion, dashboardLabelAnchor);
+    }, [activeDateRegion, dashboardLabelAnchor]);
 
     const formattedMonthYear = useMemo(() => {
         return formatMonthYearShort(
@@ -2312,7 +2333,7 @@ export default function DashboardPage() {
             const country =
                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-            const { monthName, year } = getDashboardAnchorYearMonth();
+            const { monthName, year } = getBackendCountryYearMonth();
 
             const res = await fetch(MONTHLY_SP_ENDPOINT, {
                 method: "POST",
@@ -2365,7 +2386,7 @@ export default function DashboardPage() {
         } finally {
             if (!silent) setMonthlySpLoading(false);
         }
-    }, [platform, isMonthYearNA, getDashboardAnchorYearMonth]);
+    }, [platform, isMonthYearNA, getBackendCountryYearMonth]);
 
     const adsBackgroundLoadingRef = useRef(false);
     const adsSeededRef = useRef(false);
@@ -2715,7 +2736,7 @@ export default function DashboardPage() {
 
         if (!token) return;
 
-        const { monthName, year } = getDashboardAnchorYearMonth();
+        const { monthName, year } = getRegionYearMonth(activeDateRegion);
 
         const countries =
             platform === "global"
@@ -2748,7 +2769,7 @@ export default function DashboardPage() {
 
 
         setTargetSummaries(next);
-    }, [getDashboardAnchorYearMonth, targetSummaryCountry, isMonthYearNA, platform]);
+    }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
     const fetchPrevTargetSummary = useCallback(async () => {
         if (isMonthYearNA) {
@@ -2761,7 +2782,7 @@ export default function DashboardPage() {
 
         if (!token) return;
 
-        const { monthName, year } = getPrevDashboardAnchorYearMonth();
+        const { monthName, year } = getPrevBackendCountryYearMonth();
 
         const countries =
             platform === "global"
@@ -2796,8 +2817,12 @@ export default function DashboardPage() {
         targetSummaryCountry,
         isMonthYearNA,
         platform,
-        getPrevDashboardAnchorYearMonth,
+        getPrevBackendCountryYearMonth,
     ]);
+
+    // useEffect(() => {
+    //     fetchTargetSummary();
+    // }, [fetchTargetSummary]);
 
     // useEffect(() => {
     //     fetchTargetSummary();
@@ -2827,13 +2852,13 @@ export default function DashboardPage() {
     }, [platform, graphRegionToUse]);
 
     const invMonthYear = useMemo(() => {
-        const { monthName, year } = getDashboardAnchorYearMonth();
+        const { monthName, year } = getBackendCountryYearMonth();
 
         return {
             month: monthName.toLowerCase(),
             year: String(year),
         };
-    }, [getDashboardAnchorYearMonth]);
+    }, [getBackendCountryYearMonth]);
 
     const fetchInventory = useCallback(async () => {
         if (isMonthYearNA) {
@@ -3338,7 +3363,7 @@ export default function DashboardPage() {
 
     /* ===================== ✅ SHARED BI FETCH (FOR CARDS + GRAPH) ===================== */
     const { monthName: currMonthName, year: currYear } =
-        getDashboardAnchorYearMonth();
+        getBackendCountryYearMonth();
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
@@ -3523,8 +3548,7 @@ export default function DashboardPage() {
         platform,
         selectedStartDay,
         selectedEndDay,
-        dashboardAllowedDay,
-        getGlobalPreviousSkuwiseAsOfISO,
+        dashboardAllowedDay
     ]);
 
     const fetchLiveBiPayload = useCallback(

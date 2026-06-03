@@ -329,7 +329,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     : embedded
       ? selectedProductName || ""
       : initialProductName || urlProductName || "";
-      
+
   const countryName = embedded ? countryNameProp : routeCountryName;
 
   const authToken =
@@ -1015,7 +1015,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         },
         y: {
           title: { display: true, text: yAxisLabel },
-          min: 0,
+          suggestedMin: 0,
+          grace: "10%",
           ticks: { padding: 0 },
         },
       },
