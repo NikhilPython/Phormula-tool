@@ -486,7 +486,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     // Hide Ads + CM2 for US yearly and quarterly, same as UK behavior
     if (
-      currentCountry === "us" &&
       (currentRange === "yearly" || currentRange === "quarterly")
     ) {
       return false;
@@ -504,15 +503,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     });
 
+    if (!productRows.length) return false;
+
+    // ✅ Show Ads Spend, ACoS%, CM2 Profit only when at least one SKU has real CM2 impact
     return productRows.some((row: any) => {
+      const adsSpend = toNumber(row.ads_spend ?? row.advertising_total);
+      const backendAcos = toNumber(row.acos);
+      const netSales = toNumber(row.net_sales);
+
+      const acos = backendAcos || (netSales !== 0 ? (adsSpend / netSales) * 100 : 0);
+
+      const cm1Profit = toNumber(row.profit);
+      const cm2Profit = toNumber(row.cm2_profit ?? row.cm2_profit_total);
+
+      const cm2DiffersFromCm1 = Math.abs(cm2Profit - cm1Profit) > 0.01;
+
       return (
-        toNumber(row.ads_spend) !== 0 ||
-        toNumber(row.acos) !== 0 ||
-        toNumber(row.cm2_profit) !== 0 ||
-        toNumber(row.cm2_profit_per) !== 0 ||
-        toNumber(row.cm2_profit_per_unit) !== 0 ||
-        toNumber(row.cm2_margins) !== 0 ||
-        toNumber(row.cm2_profit_percentage) !== 0
+        adsSpend !== 0 ||
+        acos !== 0 ||
+        cm2DiffersFromCm1
       );
     });
   }, [tableData, countryName, range]);
@@ -742,7 +751,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "sku",
           label: "SKU",
           align: "center",
-           width: "11%",
+          width: "11%",
         },
         {
           key: "units_sold",
@@ -754,13 +763,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
           key: "return_units",
           label: "Return",
           align: "center",
-           width: "8%",
+          width: "8%",
         },
         {
           key: "net_units_sold",
           label: "Total",
           align: "center",
-           width: "7%",
+          width: "7%",
         },
       ],
     },

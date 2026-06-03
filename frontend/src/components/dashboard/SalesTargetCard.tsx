@@ -415,22 +415,15 @@ export default function SalesTargetCard({
   const homeCurrencySymbol = currencySymbolMap[homeCurrency];
 
   const reimbNowSalesPct =
-    // mtdHomeResolved > 0
-    //   ? (reimbNow / mtdHomeResolved) * 100
-    //   : 0;
-    mtdHomeFinal > 0 ? (reimbNow / mtdHomeFinal) * 100 : 0;
-
-  // const reimbPrevSalesPct =
-  //   // lastMonthTotalHomeResolved > 0
-  //   //   ? (reimbPrev / lastMonthTotalHomeResolved) * 100
-  //   // : 0;
-  //   lastMonthTotalHomeFinal > 0 ? (reimbPrev / lastMonthTotalHomeFinal) * 100 : 0;
-
-  const reimbPrevSalesPct =
-    Math.abs(lastMonthToDateHomeFinal) > 0
-      ? (reimbPrev / Math.abs(lastMonthToDateHomeFinal)) * 100
+    Math.abs(mtdHomeFinal) > 0
+      ? (reimbNow / Math.abs(mtdHomeFinal)) * 100
       : 0;
 
+  const reimbPrevSalesPct =
+    Math.abs(lastMonthTotalHomeFinal) > 0
+      ? (reimbPrev / Math.abs(lastMonthTotalHomeFinal)) * 100
+      : 0;
+      
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
   const formatWithCurrencySpace = (value: number) => {
