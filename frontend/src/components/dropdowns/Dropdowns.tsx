@@ -57,11 +57,17 @@ type UploadRow = {
   total_sales: number;
   total_amazon_fee: number;
   total_cous: number;
+
   advertising_total: number;
   advertising_total_final?: number;
+
   otherwplatform: number;
   taxncredit?: number;
+
+  profit?: number;
   cm2_profit: number;
+  cm2_profit_total?: number;
+
   total_profit: number;
 };
 
@@ -4806,27 +4812,48 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     countryVal: string
   ): UploadRow[] => {
     const totalRow = getSkuTotalRow(rows);
-    const summary = buildSummaryFromSkuRows(rows);
 
-    const cm1Profit =
-      summary.total_sales -
-      (summary.total_cous ?? 0) -
-      (summary.total_amazon_fee ?? 0) +
-      toNum((totalRow as any)?.tex_and_credits);
+    if (!totalRow) return [];
+
+    const advertisingTotalFinal = Math.abs(
+      toNum(
+        (totalRow as any)?.advertising_total_final ??
+        (totalRow as any)?.advertising_total
+      )
+    );
+
+    const cm1Profit = toNum((totalRow as any)?.profit);
+
+    const cm2ProfitTotal = toNum(
+      (totalRow as any)?.cm2_profit_total ??
+      (totalRow as any)?.cm2_profit
+    );
 
     return [
       {
         country: countryVal,
         month: monthVal.toLowerCase(),
         year: yearVal,
-        total_sales: summary.total_sales,
-        total_amazon_fee: summary.total_amazon_fee ?? 0,
-        total_cous: summary.total_cous ?? 0,
-        advertising_total: summary.advertising_total ?? 0,
-        otherwplatform: summary.otherwplatform ?? 0,
+
+        total_sales: toNum((totalRow as any)?.net_sales),
+        total_amazon_fee: toNum((totalRow as any)?.amazon_fee),
+        total_cous: toNum((totalRow as any)?.cost_of_unit_sold),
+
+        advertising_total: advertisingTotalFinal,
+        advertising_total_final: advertisingTotalFinal,
+
+        otherwplatform:
+          toNum((totalRow as any)?.platform_fee),
+
         taxncredit: toNum((totalRow as any)?.tex_and_credits),
-        cm2_profit: summary.cm2_profit,
+
+        // CM1 Profit
+        profit: cm1Profit,
         total_profit: cm1Profit,
+
+        // CM2 Profit
+        cm2_profit: cm2ProfitTotal,
+        cm2_profit_total: cm2ProfitTotal,
       },
     ];
   };

@@ -37,10 +37,17 @@ type UploadRow = {
   total_sales: number;
   total_amazon_fee: number;
   total_cous: number;
+
   advertising_total: number;
+  advertising_total_final?: number;
+
   otherwplatform: number;
   taxncredit?: number;
+
+  profit?: number;
   cm2_profit: number;
+  cm2_profit_total?: number;
+
   total_profit: number;
   total_net_credits?: number;
 };
@@ -286,11 +293,22 @@ const GraphPage: React.FC<GraphPageProps> = ({
       monthSums[key].sales += Number(upload.total_sales || 0);
       monthSums[key].AmazonExpense += Number(upload.total_amazon_fee || 0);
       monthSums[key].total_cous += Number(upload.total_cous || 0);
-      monthSums[key].advertisingCosts += Math.abs(Number(upload.advertising_total || 0));
+      monthSums[key].advertisingCosts += Math.abs(
+        Number(upload.advertising_total_final ?? upload.advertising_total ?? 0)
+      );
+
       monthSums[key].Other += Math.abs(Number(upload.otherwplatform || 0));
       monthSums[key].taxncredit += Number(upload.taxncredit || 0);
-      monthSums[key].profit += Number(upload.cm2_profit || 0);
-      monthSums[key].profit2 += Number(upload.total_profit || 0);
+
+      // CM2 Profit
+      monthSums[key].profit += Number(
+        upload.cm2_profit_total ?? upload.cm2_profit ?? 0
+      );
+
+      // CM1 Profit
+      monthSums[key].profit2 += Number(
+        upload.profit ?? upload.total_profit ?? 0
+      );
     });
 
     const labels = monthlyLabels;
@@ -471,10 +489,19 @@ const GraphPage: React.FC<GraphPageProps> = ({
         monthSums[key].AmazonExpense += Number(upload.total_amazon_fee || 0);
         monthSums[key].taxncredit += Number(upload.taxncredit || 0);
         monthSums[key].net_credits += Number(upload.total_net_credits || 0);
-        monthSums[key].profit2 += Number(upload.total_profit || 0);
-        monthSums[key].advertisingCosts += Number(upload.advertising_total || 0);
+        monthSums[key].profit2 += Number(
+          upload.profit ?? upload.total_profit ?? 0
+        );
+
+        monthSums[key].advertisingCosts += Math.abs(
+          Number(upload.advertising_total_final ?? upload.advertising_total ?? 0)
+        );
+
         monthSums[key].Other += Number(upload.otherwplatform || 0);
-        monthSums[key].profit += Number(upload.cm2_profit || 0);
+
+        monthSums[key].profit += Number(
+          upload.cm2_profit_total ?? upload.cm2_profit ?? 0
+        );
       });
 
       const fixedOrder = [
