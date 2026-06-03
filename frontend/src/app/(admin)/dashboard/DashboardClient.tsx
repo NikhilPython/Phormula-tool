@@ -2070,6 +2070,94 @@ export default function DashboardPage() {
     const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
     const activeDateRegion = graphRegionToUse;
 
+
+
+    const isUsAmazonConnected = useMemo(() => {
+        return (amazonConnections || []).some(
+            (connection: any) =>
+                String(connection?.country || "").toLowerCase() === "us"
+        );
+    }, [amazonConnections]);
+
+    const dashboardTimeRegion: RegionKey = useMemo(() => {
+        // Keep dashboard data date aligned with the same timezone used by "Last Updated at"
+        if (platform === "global" && isUsAmazonConnected) return "US";
+
+        if (platform === "global" && globalMtdCountry === "us") return "US";
+        if (platform === "global" && globalMtdCountry === "uk") return "UK";
+
+        return activeDateRegion;
+    }, [platform, isUsAmazonConnected, globalMtdCountry, activeDateRegion]);
+
+    const getRegionISODateFromTimestamp = useCallback(
+        (timestamp: number | string | Date, region: RegionKey) => {
+            const date = new Date(timestamp);
+
+            const parts = new Intl.DateTimeFormat("en-CA", {
+                timeZone: getTimezoneForRegion(region),
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+            }).formatToParts(date);
+
+            const get = (type: Intl.DateTimeFormatPartTypes) =>
+                parts.find((p) => p.type === type)?.value || "";
+
+            return `${get("year")}-${get("month")}-${get("day")}`;
+        },
+        []
+    );
+
+    const getRegionDayFromTimestamp = useCallback(
+        (timestamp: number | string | Date, region: RegionKey) => {
+            const iso = getRegionISODateFromTimestamp(timestamp, region);
+            return Number(iso.slice(8, 10)) || 1;
+        },
+        [getRegionISODateFromTimestamp]
+    );
+
+    const dashboardDateAnchor = lastRefreshAt ?? Date.now();
+
+    const dashboardAllowedEndISO = useMemo(() => {
+        return getRegionISODateFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
+    }, [dashboardDateAnchor, dashboardTimeRegion, getRegionISODateFromTimestamp]);
+
+    const dashboardAllowedDay = useMemo(() => {
+        return getRegionDayFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
+    }, [dashboardDateAnchor, dashboardTimeRegion, getRegionDayFromTimestamp]);
+
+    const dashboardDaysInMonth = useMemo(() => {
+        const anchorDate = new Date(dashboardDateAnchor);
+
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: getTimezoneForRegion(dashboardTimeRegion),
+            year: "numeric",
+            month: "2-digit",
+        }).formatToParts(anchorDate);
+
+        const year = Number(parts.find((p) => p.type === "year")?.value);
+        const month = Number(parts.find((p) => p.type === "month")?.value);
+
+        return new Date(year, month, 0).getDate();
+    }, [dashboardDateAnchor, dashboardTimeRegion]);
+
+    const isCurrentPointAllowed = useCallback(
+        (point?: DailyPoint) => {
+            if (!point?.date) return false;
+            return point.date <= dashboardAllowedEndISO;
+        },
+        [dashboardAllowedEndISO]
+    );
+
+    const isPreviousPointAllowed = useCallback(
+        (point?: DailyPoint) => {
+            if (!point?.date) return false;
+            const day = Number(point.date.slice(8, 10));
+            return Number.isFinite(day) && day <= dashboardAllowedDay;
+        },
+        [dashboardAllowedDay]
+    );
+
     const getBackendCountryDate = useCallback(() => {
         const dt = countryTime?.selected_country?.datetime;
 
@@ -2148,21 +2236,6 @@ export default function DashboardPage() {
     }, [previousDisplayMonth]);
 
 
-
-
-    // const getDayOfMonthIST = () => {
-    //     const now = new Date();
-    //     const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    //     return ist.getDate(); // 1..31
-    // };
-
-
-    const isUsAmazonConnected = useMemo(() => {
-        return (amazonConnections || []).some(
-            (connection: any) =>
-                String(connection?.country || "").toLowerCase() === "us"
-        );
-    }, [amazonConnections]);
 
     const lastUpdatedTimeText = useMemo(() => {
         if (!lastRefreshAt) return "";
@@ -2987,55 +3060,6 @@ export default function DashboardPage() {
                         ? "₹"
                         : "¤";
 
-    // const biDailySeriesHome = useMemo(() => {
-    //     if (!biDailySeries) return null;
-
-    //     const fromCurrency: CurrencyCode =
-    //         platform === "global" ? "USD" : biDataCurrency;
-
-    //     const currentSource =
-    //         platform === "global"
-    //             ? biDailySeries.current_mtd_global || biDailySeries.current_mtd || []
-    //             : biDailySeries.current_mtd || [];
-
-    //     const previousSource =
-    //         platform === "global"
-    //             ? biDailySeries.previous_global || biDailySeries.previous || []
-    //             : biDailySeries.previous || [];
-
-    //     const convPoint = (p: DailyPoint): DailyPoint => ({
-    //         ...p,
-
-    //         // units should never be currency converted
-    //         quantity: Number(p.quantity || 0),
-
-    //         net_sales:
-    //             p.net_sales != null
-    //                 ? convertToDisplayCurrency(Number(p.net_sales || 0), fromCurrency)
-    //                 : p.net_sales,
-
-    //         gross_sales:
-    //             p.gross_sales != null
-    //                 ? convertToDisplayCurrency(Number(p.gross_sales || 0), fromCurrency)
-    //                 : p.gross_sales,
-
-    //         profit:
-    //             p.profit != null
-    //                 ? convertToDisplayCurrency(Number(p.profit || 0), fromCurrency)
-    //                 : p.profit,
-
-    //         cm2_profit:
-    //             p.cm2_profit != null
-    //                 ? convertToDisplayCurrency(Number(p.cm2_profit || 0), fromCurrency)
-    //                 : p.cm2_profit,
-    //     });
-
-    //     return {
-    //         previous: previousSource.map(convPoint),
-    //         current_mtd: currentSource.map(convPoint),
-    //     };
-    // }, [biDailySeries, convertToDisplayCurrency, biDataCurrency, platform]);
-
     const biDailySeriesHome = useMemo<GraphDailySeries | null>(() => {
         if (!biDailySeries) return null;
 
@@ -3077,11 +3101,37 @@ export default function DashboardPage() {
                     : p.cm2_profit,
         });
 
-        return {
-            previous: previousSource.map(convPoint),
-            current_mtd: currentSource.map(convPoint),
+        const blankFutureCurrentPoint = (p: DailyPoint): DailyPoint => {
+            const converted = convPoint(p);
+
+            if (isCurrentPointAllowed(p)) {
+                return converted;
+            }
+
+            return {
+                ...converted,
+                quantity: undefined,
+                net_sales: undefined,
+                gross_sales: undefined,
+                profit: undefined,
+                cm2_profit: undefined,
+            };
         };
-    }, [biDailySeries, convertToDisplayCurrency, biDataCurrency, platform]);
+
+        return {
+            // keep previous full series so x-axis stays normal
+            previous: previousSource.map(convPoint),
+
+            // keep current full series, but hide future current values
+            current_mtd: currentSource.map(blankFutureCurrentPoint),
+        };
+    }, [
+        biDailySeries,
+        convertToDisplayCurrency,
+        biDataCurrency,
+        platform,
+        isCurrentPointAllowed,
+    ]);
 
     /* ===================== AMAZON FETCH ===================== */
     const fetchAmazon = useCallback(async () => {
@@ -3358,11 +3408,11 @@ export default function DashboardPage() {
                     generate_ai_insights: aiRequestedRef.current ? "true" : "false",
                 });
 
-                const rangeActive = startDay != null && endDay != null;
-                if (rangeActive) {
-                    params.set("start_day", String(startDay));
-                    params.set("end_day", String(endDay));
-                }
+                const finalStartDay = startDay ?? 1;
+                const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
+
+                params.set("start_day", String(finalStartDay));
+                params.set("end_day", String(finalEndDay));
 
                 let attempts = 0;
                 const maxAttempts = 10;
@@ -3435,7 +3485,7 @@ export default function DashboardPage() {
                 setBiLoading(false);
             }
         },
-        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA, platform]
+        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA, platform, dashboardAllowedDay]
     );
 
     const fetchPreviousSkuwiseGlobal = useCallback(async (
@@ -3460,10 +3510,8 @@ export default function DashboardPage() {
         try {
             setPreviousSkuwiseGlobalLoading(true);
 
-            const todayDay = getRegionNow("Global").getDate();
-
             const finalStartDay = startDay ?? 1;
-            const finalEndDay = endDay ?? todayDay;
+            const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
 
             const params = new URLSearchParams({
                 as_of: getGlobalPreviousSkuwiseAsOfISO(),
@@ -3500,6 +3548,7 @@ export default function DashboardPage() {
         platform,
         selectedStartDay,
         selectedEndDay,
+        dashboardAllowedDay
     ]);
 
     const fetchLiveBiPayload = useCallback(
@@ -3532,10 +3581,11 @@ export default function DashboardPage() {
                     generate_ai_insights: generateInsights ? "true" : "false",
                 });
 
-                if (startDay != null && endDay != null) {
-                    params.set("start_day", String(startDay));
-                    params.set("end_day", String(endDay));
-                }
+                const finalStartDay = startDay ?? 1;
+                const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
+
+                params.set("start_day", String(finalStartDay));
+                params.set("end_day", String(finalEndDay));
 
                 const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -3579,6 +3629,7 @@ export default function DashboardPage() {
             biCountryName,
             currMonthName,
             currYear,
+            dashboardAllowedDay,
         ]
     );
 
@@ -4677,11 +4728,17 @@ export default function DashboardPage() {
 
     /* ===================== ✅ RANGE KPIs FOR CARDS (FROM SAME BI DATA AS GRAPH) ===================== */
     useEffect(() => {
-        const pts = biDailySeriesHome?.current_mtd || [];
-        if (!pts.length) return;
+        const pts = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
 
-        const todayDay = getBackendCountryDate().getDate();
-        const exact = pts.find((p) => Number(p.date?.slice(8, 10)) === todayDay);
+        if (!pts.length) {
+            setTodaySalesRaw(0);
+            return;
+        }
+
+        const exact = pts.find(
+            (p) => Number(p.date?.slice(8, 10)) === dashboardAllowedDay
+        );
+
         if (exact?.net_sales != null) {
             setTodaySalesRaw(Number(exact.net_sales) || 0);
             return;
@@ -4689,12 +4746,12 @@ export default function DashboardPage() {
 
         const latest = [...pts].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
         setTodaySalesRaw(Number(latest?.net_sales) || 0);
-    }, [biDailySeriesHome]);
+    }, [biDailySeriesHome, isCurrentPointAllowed, dashboardAllowedDay]);
 
 
     const biCardKpis = useMemo(() => {
-        const currAll = biDailySeriesHome?.current_mtd || [];
-        const prevAll = biDailySeriesHome?.previous || [];
+        const currAll = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
+        const prevAll = (biDailySeriesHome?.previous || []).filter(isPreviousPointAllowed);
 
         const currPts = sliceByDayRange(currAll, selectedStartDay, selectedEndDay);
         const prevPts = sliceByDayRange(prevAll, selectedStartDay, selectedEndDay);
@@ -4739,7 +4796,8 @@ export default function DashboardPage() {
 
             },
         };
-    }, [biDailySeriesHome, selectedStartDay, selectedEndDay]);
+    }, [biDailySeriesHome, selectedStartDay, selectedEndDay, isCurrentPointAllowed,
+        isPreviousPointAllowed,]);
 
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const useBiCm2 = showLiveBI && rangeActive;
@@ -4747,8 +4805,8 @@ export default function DashboardPage() {
     const biCardsReady = rangeActive && !biLoading && !!biAlignedTotals;
 
     const cachedRangeTotals = useMemo(() => {
-        const currAll = biDailySeriesHome?.current_mtd || [];
-        const prevAll = biDailySeriesHome?.previous || [];
+        const currAll = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
+        const prevAll = (biDailySeriesHome?.previous || []).filter(isPreviousPointAllowed);
 
         const currPts = sliceByDayRange(currAll, selectedStartDay, selectedEndDay);
         const prevPts = sliceByDayRange(prevAll, selectedStartDay, selectedEndDay);
@@ -4795,6 +4853,8 @@ export default function DashboardPage() {
         biDailySeriesHome,
         selectedStartDay,
         selectedEndDay,
+        isCurrentPointAllowed,
+        isPreviousPointAllowed,
     ]);
 
     const biAlignedTotalsHome = useMemo(() => {
@@ -7437,11 +7497,8 @@ export default function DashboardPage() {
         return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     };
 
-    // const todayIST = getDayOfMonthIST();        // D
-    // const daysInMonthIST = getDaysInMonthIST(); // N
-
-    const todayByRegion = getDayOfMonthByRegion(activeDateRegion);
-    const daysInMonthByRegion = getDaysInMonthByRegion(activeDateRegion);
+    const todayByRegion = dashboardAllowedDay;
+    const daysInMonthByRegion = dashboardDaysInMonth;
 
     const proratedTargetToDate = (daysInMonthByRegion > 0)
         ? (todayByRegion / daysInMonthByRegion) * stats_targetHome  // x
@@ -7719,14 +7776,26 @@ export default function DashboardPage() {
         reimbursementForSummary,
     ]);
 
-
-
     const rangeCompletedPct = useMemo(() => {
-        if (!selectedStartDay || !selectedEndDay) return 0;
-        const daysInMonth = getDaysInMonthByRegion(activeDateRegion);
-        const completedDays = selectedEndDay - selectedStartDay + 1;
-        return (completedDays / daysInMonth) * 100;
-    }, [selectedStartDay, selectedEndDay, activeDateRegion]);
+        if (selectedStartDay && selectedEndDay) {
+            const safeEndDay = Math.min(selectedEndDay, dashboardAllowedDay);
+            const safeStartDay = Math.min(selectedStartDay, safeEndDay);
+            const completedDays = safeEndDay - safeStartDay + 1;
+
+            return dashboardDaysInMonth > 0
+                ? (completedDays / dashboardDaysInMonth) * 100
+                : 0;
+        }
+
+        return dashboardDaysInMonth > 0
+            ? (dashboardAllowedDay / dashboardDaysInMonth) * 100
+            : 0;
+    }, [
+        selectedStartDay,
+        selectedEndDay,
+        dashboardAllowedDay,
+        dashboardDaysInMonth,
+    ]);
 
     type TopTab =
         | "live"
