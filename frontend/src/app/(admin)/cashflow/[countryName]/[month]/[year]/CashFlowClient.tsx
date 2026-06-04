@@ -713,69 +713,57 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     allValuesZero;
 
   const getLineChartData = () => {
-    let labels: string[] = [];
-    const datasets: any[] = [];
+  let sourceMonths: string[] = [];
+  const datasets: any[] = [];
 
-    if (periodType === "quarterly" && selectedQuarter) {
-      const sourceMonths = quarterMapping[selectedQuarter] || [];
+  if (periodType === "quarterly" && selectedQuarter) {
+    const qMonths = quarterMapping[selectedQuarter] || [];
 
-      labels = sourceMonths.map((m) =>
-        isMobile ? shortMonthMap[m] || m : m
-      );
+    // Only show months that were actually fetched
+    sourceMonths = qMonths.filter((monthName) => {
+      return quarterlyMonthlyData[monthName];
+    });
+  } else if (periodType === "yearly") {
+    // Only show months that were actually fetched, but keep calendar order
+    sourceMonths = monthsList.filter((monthName) => {
+      return allYearlyData[monthName];
+    });
+  }
 
-      columnsToDisplay2.forEach((key) => {
-        if (!selectedGraphs[key]) return;
+  const labels = sourceMonths.map((m) =>
+    isMobile ? shortMonthMap[m] || m : m
+  );
 
-        const ds = sourceMonths.map((monthName) => {
-          const md = quarterlyMonthlyData[monthName];
-          return Number(md?.[key] ?? 0);
-        });
+  columnsToDisplay2.forEach((key) => {
+    if (!selectedGraphs[key]) return;
 
-        datasets.push({
-          label: labelMap[key],
-          metricKey: key,
-          data: ds,
-          borderColor: colorMapping[labelMap[key]],
-          backgroundColor: colorMapping[labelMap[key]],
-          borderWidth: 2,
-          fill: false,
-          tension: 0.35,
-          cubicInterpolationMode: "monotone",
-          pointRadius: 3,
-          pointHoverRadius: 5,
-        });
-      });
-    } else if (periodType === "yearly") {
-      labels = monthsList.map((m) => (isMobile ? shortMonthMap[m] || m : m));
+    const dataSource =
+      periodType === "quarterly" ? quarterlyMonthlyData : allYearlyData;
 
-      columnsToDisplay2.forEach((key) => {
-        if (!selectedGraphs[key]) return;
+    const ds = sourceMonths.map((monthName) => {
+      const md = dataSource[monthName];
+      return Number(md?.[key] ?? 0);
+    });
 
-        const ds = monthsList.map((m) => {
-          const md = allYearlyData[m];
-          return Number(md?.[key] ?? 0);
-        });
+    const label = labelMap[key];
 
-        const label = labelMap[key];
+    datasets.push({
+      label,
+      metricKey: key,
+      data: ds,
+      borderColor: colorMapping[label],
+      backgroundColor: colorMapping[label],
+      borderWidth: 2,
+      fill: false,
+      tension: 0.35,
+      cubicInterpolationMode: "monotone",
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    });
+  });
 
-        datasets.push({
-          label,
-          metricKey: key,
-          data: ds,
-          borderColor: colorMapping[label],
-          backgroundColor: colorMapping[label],
-          borderWidth: 2,
-          fill: false,
-          tension: 0.35,
-          cubicInterpolationMode: "monotone",
-          pointRadius: 3,
-          pointHoverRadius: 5,
-        });
-      });
-    }
-
-    return { labels, datasets };
-  };
+  return { labels, datasets };
+};
 
   const getFilteredBarChartData = () => {
     const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
