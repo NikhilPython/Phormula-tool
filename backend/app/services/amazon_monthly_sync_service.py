@@ -34,18 +34,31 @@ def sync_monthly_transactions_for_user(
     Designed for both route and Celery usage.
     """
 
-    au = amazon_user.query.filter_by(user_id=user_id).first()
+    # IMPORTANT:
+    # Use the Amazon connection for the selected marketplace.
+    # Otherwise US formula update can accidentally use a UK refresh token.
+    if marketplace_id:
+        au = amazon_user.query.filter_by(
+            user_id=user_id,
+            marketplace_id=marketplace_id,
+        ).first()
+    else:
+        au = amazon_user.query.filter_by(user_id=user_id).first()
+
     if not au or not au.refresh_token:
         return {
             "success": False,
-            "error": "Amazon account not connected",
+            "error": "Amazon account not connected for this marketplace",
             "status": "no_refresh_token",
+            "marketplace_id": marketplace_id,
         }
 
     # set client from saved connection
     amazon_client.refresh_token = au.refresh_token
+
     if au.region:
         amazon_client.region = au.region
+
     if marketplace_id:
         amazon_client.marketplace_id = marketplace_id
     elif au.marketplace_id:
@@ -90,6 +103,7 @@ def sync_monthly_transactions_for_user(
                     "success": False,
                     "error": res or {"error": "Unknown SP-API error"},
                     "failed_status": status,
+                    "marketplace_id": amazon_client.marketplace_id,
                 }
 
             payload_res = res.get("payload") or res
@@ -151,4 +165,6 @@ def sync_monthly_transactions_for_user(
         "store_in_db": store_in_db,
         "run_upload_pipeline": run_upload,
         "pipeline_result": pipeline_result,
+        "marketplace_id": amazon_client.marketplace_id,
+        "transaction_statuses_fetched": statuses_to_fetch,
     }
