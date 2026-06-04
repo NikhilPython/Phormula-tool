@@ -835,7 +835,55 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       monthly.forEach((m) => allMonthsSet.add(m.month));
     });
 
-    const labels = Array.from(allMonthsSet).sort(sortByCalendarMonth);
+    let labels = Array.from(allMonthsSet).sort(sortByCalendarMonth);
+
+    // ✅ In yearly view, show only months that are actually fetched from API.
+    // This will include May if May exists in API data.
+    if (range === "yearly") {
+      const fetchedMonthIndexes: number[] = [];
+
+      Object.values(sourceData).forEach((countryArray: any) => {
+        const monthly = Array.isArray(countryArray)
+          ? (countryArray as MonthDatum[])
+          : [];
+
+        monthly.forEach((m) => {
+          const idx = months.indexOf(String(m.month || "").toLowerCase());
+
+          const hasFetchedData =
+            Number(m.net_sales || 0) !== 0 ||
+            Number(m.quantity || 0) !== 0 ||
+            Number(m.profit || 0) !== 0;
+
+          if (idx >= 0 && hasFetchedData) {
+            fetchedMonthIndexes.push(idx);
+          }
+        });
+      });
+
+      let latestIdx =
+        fetchedMonthIndexes.length > 0
+          ? Math.max(...fetchedMonthIndexes)
+          : -1;
+
+      // fallback only if API data has no non-zero months
+      if (latestIdx < 0) {
+        const selectedIdx = months.indexOf(
+          String(selectedMonth || "").toLowerCase()
+        );
+
+        if (selectedIdx >= 0) {
+          latestIdx = selectedIdx;
+        }
+      }
+
+      if (latestIdx >= 0) {
+        labels = labels.filter((month) => {
+          const monthIdx = months.indexOf(String(month || "").toLowerCase());
+          return monthIdx >= 0 && monthIdx <= latestIdx;
+        });
+      }
+    }
 
     const getMetric = (
       country: string,
@@ -916,6 +964,9 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     connectedCountries,
     activeCountryKey,
     isGlobalPage,
+    range,
+    selectedMonth,
+    selectedYear,
   ]);
 
   const formatAxisMonth = (monthName: string) => {
