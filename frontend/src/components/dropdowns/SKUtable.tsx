@@ -364,14 +364,15 @@ function normalizeRows(data: any[]): TableRow[] {
       cm2_profit: toNumber(row.cm2_profit),
       cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
+      // Summary row CM2 Margins should use backend cm2_margins first
       cm2_margins: toNumber(
-        row.cm2_profit_per ??
         row.cm2_margins ??
         row.cm2_profit_percentage ??
         row.cm2_profit_percent ??
         row.cm2_profit_percentage_value
       ),
 
+      // Keep cm2_profit_per separate only if you need that 42.36 value elsewhere
       cm2_profit_percentage: toNumber(
         row.cm2_profit_per ??
         row.cm2_profit_percentage ??
