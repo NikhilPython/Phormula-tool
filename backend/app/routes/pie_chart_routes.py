@@ -210,8 +210,7 @@ def fetch_data_from_table(table_name):
             FROM {table_name} 
             WHERE profit IS NOT NULL 
             AND product_name IS NOT NULL
-            AND LOWER(product_name) != 'total'
-            AND profit > 0
+            AND LOWER(TRIM(product_name)) != 'total'
             ORDER BY profit DESC
         """
         
@@ -235,28 +234,47 @@ def prepare_pie_chart_data(df):
     """Prepare data for pie chart - top 5 products + others"""
     if df is None or df.empty:
         return None, None
-    
-    # Sort by profit in descending order
-    df_sorted = df.sort_values('profit', ascending=False)
-    
-    # Get top 5 products
+
+    df = df.copy()
+
+    # Clean profit
+    df['profit'] = pd.to_numeric(df['profit'], errors='coerce')
+    df = df.dropna(subset=['profit'])
+
+    # Clean product name
+    df['product_name'] = df['product_name'].astype(str).str.strip()
+
+    # Remove total row safely
+    df = df[df['product_name'].str.lower() != 'total']
+
+    if df.empty:
+        return None, None
+
+    # Group duplicate products first
+    df_grouped = (
+        df.groupby('product_name', as_index=False)['profit']
+        .sum()
+    )
+
+    # Sort by profit
+    df_sorted = df_grouped.sort_values('profit', ascending=False)
+
+    # Top 5
     top_5 = df_sorted.head(5)
-    
-    # Calculate sum of remaining products
+
+    # Everything after top 5 is Others
     remaining = df_sorted.iloc[5:]
-    
-    # Prepare data for pie chart
+
     labels = top_5['product_name'].tolist()
-    values = top_5['profit'].tolist()
-    
-    # Add "Others" if there are more than 5 products
+    values = top_5['profit'].astype(float).tolist()
+
     if len(remaining) > 0:
-        others_sum = remaining['profit'].sum()
-        if others_sum > 0:  # Only add if sum is positive
-            labels.append('Others')
-            values.append(others_sum)
-    
+        others_sum = float(remaining['profit'].sum())
+        labels.append('Others')
+        values.append(others_sum)
+
     return labels, values
+
 
 def create_pie_chart(labels, values, title="Top 5 Products by Profit"):
     """Create pie chart and return as base64 image"""
