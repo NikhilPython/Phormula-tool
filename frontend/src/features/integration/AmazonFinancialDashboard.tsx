@@ -187,9 +187,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -370,7 +370,7 @@ async function fetchMonthlyTransactionsExcel(params: {
 
   // US needs both RELEASED + DEFERRED; UK needs only RELEASED
   transaction_status:
-    params.country.toLowerCase() === "us" ? "RELEASED,DEFERRED" : "RELEASED",
+    params.country.toLowerCase() === "us" ? "all" : "RELEASED",
 });
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
