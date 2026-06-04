@@ -946,7 +946,9 @@ def process_skuwise_data(user_id, country, month, year):
             + sku_grouped["promotional_rebates_tax"].sum()
         )
 
-        sku_grouped["asp"] = (sku_grouped["Net Sales"] / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
+        sku_grouped["asp"] = (
+            sku_grouped["Net Sales"] / sku_grouped["total_quantity"]
+        ).replace([float("inf"), -float("inf")], 0).fillna(0)
         sku_grouped["previous_text_credit_change"] = ((sku_grouped["previous_net_taxes"] - sku_grouped["previous_net_credits"]) / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
         sku_grouped["month"] = month
         sku_grouped["year"] = year
@@ -2185,7 +2187,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 axis=1
             )
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["net_sales"] / row["quantity"]) if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["total_quantity"]) if row["total_quantity"] != 0 else 0,
                 axis=1
             )
             sku_grouped["unit_wise_profitability"] = sku_grouped.apply(
@@ -2426,7 +2428,7 @@ def process_yearly_skuwise_data(user_id, country, year):
                 axis=1
             )
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["net_sales"] / row["quantity"]) if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["total_quantity"]) if row["total_quantity"] != 0 else 0,
                 axis=1
             )
             sku_grouped["unit_wise_profitability"] = sku_grouped.apply(

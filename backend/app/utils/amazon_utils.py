@@ -33,6 +33,7 @@ from app.routes.live_data_bi_routes import construct_prev_table_name, engine_his
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, text
+from zoneinfo import ZoneInfo
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Tuple, Optional
 from sqlalchemy import and_, text, create_engine
@@ -1551,6 +1552,34 @@ def _month_date_range_utc(year: int, month: int) -> Tuple[str, str]:
         return dt.isoformat().replace("+00:00", "Z")
 
     return iso_z(start), iso_z(end)
+
+def _month_date_range_us_pacific_utc(year: int, month: int) -> tuple[str, str]:
+    """
+    US marketplace month range using Pacific local month boundary,
+    converted to UTC for Amazon SP-API.
+
+    Example May 2026:
+      2026-05-01 00:00 PDT -> 2026-05-01T07:00:00Z
+      2026-06-01 00:00 PDT -> 2026-06-01T07:00:00Z
+    """
+    us_tz = ZoneInfo("America/Los_Angeles")
+
+    start_local = datetime(year, month, 1, 0, 0, 0, tzinfo=us_tz)
+
+    if month == 12:
+        end_local = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=us_tz)
+    else:
+        end_local = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=us_tz)
+
+    def iso_z(dt: datetime) -> str:
+        return (
+            dt.astimezone(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+
+    return iso_z(start_local), iso_z(end_local)
 
 
 # =========================================================
