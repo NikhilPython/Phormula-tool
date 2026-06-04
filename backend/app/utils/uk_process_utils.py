@@ -425,6 +425,7 @@ def process_skuwise_data(user_id, country, month, year):
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
 
@@ -510,6 +511,7 @@ def process_skuwise_data(user_id, country, month, year):
             "SellerPoweredCoupon",
             "VineCharge", "DealParticipationEvent",
             "DealPerformanceEvent",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
             
         }
 
