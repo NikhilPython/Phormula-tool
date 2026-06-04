@@ -732,6 +732,40 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return outputRows;
   }, [tableData, tableSort, getSortableValue, showAllRows]);
 
+  const excelRows = useMemo(() => {
+    if (!tableData?.length) return [];
+
+    const isTotalRow = (row: TableRow) => {
+      const name = String((row as any)?.product_name || "").trim().toLowerCase();
+      const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+      return name === "total" || sku === "total";
+    };
+
+    const totalRow = tableData.find(isTotalRow)
+      ? ({ ...tableData.find(isTotalRow) } as TableRow)
+      : null;
+
+    const productRows = tableData.filter((row) => !isTotalRow(row));
+
+    const sorted = [...productRows].sort((a, b) => {
+      const aValue = getSortableValue(a, tableSort.key);
+      const bValue = getSortableValue(b, tableSort.key);
+
+      return tableSort.direction === "asc"
+        ? aValue - bValue
+        : bValue - aValue;
+    });
+
+    if (totalRow) {
+      totalRow.product_name = "Total";
+      totalRow.sku = "Total";
+      totalRow.asp = computeAspFrom(totalRow);
+    }
+
+    return totalRow ? [...sorted, totalRow] : sorted;
+  }, [tableData, tableSort, getSortableValue]);
+
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       {
@@ -1264,7 +1298,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         if (s?.text) signRow[k] = s.text;
       });
 
-      const sourceRows = opts?.allRows ? displayRows : displayRows;
+      const sourceRows = excelRows;
 
       const rowsForExcel = sourceRows.map((row, rowIndex) => {
         const out: Record<string, string | number> = {};
@@ -1370,8 +1404,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       };
     },
     [
-      displayRows,
-      tableData,
+      excelRows,
       totals,
       frontendTacos,
       countryName,
@@ -1423,7 +1456,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       periodLabel,
       range,
       countryName,
-      sheetModel: buildSkuSheetModel(),
+      sheetModel: buildSkuSheetModel({ allRows: true }),
     });
   }, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
 

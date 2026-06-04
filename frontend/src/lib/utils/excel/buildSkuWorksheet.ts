@@ -218,18 +218,31 @@ const HEADER_META: Record<string, HeaderMeta> = {
     subHeader: "Total",
   },
 
-  profit: {
-    group: "CM1 Profit",
-    subHeader: "Total",
-  },
-  unit_wise_profitability: {
-    group: "CM1 Profit",
-    subHeader: "Per Unit",
-  },
-  profit_percentage: {
-    group: "CM1 Profit",
-    subHeader: "%",
-  },
+profit: {
+  group: "CM1 Profit",
+  subHeader: "Total",
+},
+unit_wise_profitability: {
+  group: "CM1 Profit",
+  subHeader: "Per Unit",
+},
+profit_percentage: {
+  group: "CM1 Profit",
+  subHeader: "%",
+},
+
+unit_wise_cm2_profitability: {
+  group: "CM2 Profit",
+  subHeader: "Per Unit",
+},
+cm2_margins: {
+  group: "CM2 Profit",
+  subHeader: "%",
+},
+cm2_profit: {
+  group: "CM2 Profit",
+  subHeader: "Total",
+},
 };
 
 const groupHeaderValues = columns.map((k) => {
@@ -358,8 +371,12 @@ columns.forEach((key, index) => {
     other_transactions: 14,
 
     profit: 14,
-    unit_wise_profitability: 14,
-    profit_percentage: 10,
+unit_wise_profitability: 14,
+profit_percentage: 10,
+
+unit_wise_cm2_profitability: 14,
+cm2_margins: 12,
+cm2_profit: 14,
   };
 
   col.width = minWidthByKey[key] || Math.max(String(label).length + 4, 12);
