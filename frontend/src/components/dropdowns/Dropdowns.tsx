@@ -43,6 +43,8 @@ type Summary = {
   total_expense: number;
   cm2_profit: number;
   cm2_profit_total?: number;
+  cm2_margins?: number; // ✅ add this
+  cm2_profit_percentage?: number; // optional fallback
   total_cous?: number;
   otherwplatform?: number;
   advertising_total?: number;
@@ -58,17 +60,15 @@ type UploadRow = {
   total_sales: number;
   total_amazon_fee: number;
   total_cous: number;
-
   advertising_total: number;
   advertising_total_final?: number;
-
   otherwplatform: number;
   taxncredit?: number;
-
   profit?: number;
   cm2_profit: number;
   cm2_profit_total?: number;
-
+  cm2_margins?: number; // ✅ add this
+  cm2_profit_percentage?: number; // optional fallback
   total_profit: number;
   tacos?: number;
 };
@@ -2090,6 +2090,9 @@ const DEMO_SUMMARY: Summary = {
   total_product_sales: 0,
   total_expense: 0,
   cm2_profit: 0,
+  cm2_profit_total: 0,
+  cm2_margins: 0,
+  cm2_profit_percentage: 0,
   total_cous: 0,
   otherwplatform: 0,
   advertising_total: 0,
@@ -3023,6 +3026,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     total_product_sales: 0,
     total_expense: 0,
     cm2_profit: 0,
+    cm2_profit_total: 0,
+    cm2_margins: 0,
+    cm2_profit_percentage: 0,
     total_cous: 0,
     otherwplatform: 0,
     advertising_total: 0,
@@ -3143,6 +3149,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const netSales = toNum(row?.net_sales);
 
+    const cm2Margins = toNum(
+      (row as any)?.cm2_margins ??
+      (row as any)?.cm2_profit_percentage ??
+      (row as any)?.cm2_profit_percent ??
+      (row as any)?.cm2_profit_percentage_value
+    );
+
     return {
       unit_sold: toNum(row?.total_quantity),
       total_sales: netSales,
@@ -3156,6 +3169,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
       cm2_profit_total: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
+
+      cm2_margins: cm2Margins,
+      cm2_profit_percentage: cm2Margins,
 
       total_cous: toNum(row?.cost_of_unit_sold),
 
@@ -3180,14 +3196,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     country: string
   ): UploadRow => {
     const advertisingTotal = Math.abs(
-      toNum((totalRow as any)?.advertising_total)
+      toNum(row?.advertising_total)
     );
 
     const advertisingTotalFinal = Math.abs(
-      toNum(
-        (totalRow as any)?.advertising_total_final ??
-        (totalRow as any)?.advertising_total
-      )
+      toNum(row?.advertising_total_final ?? row?.advertising_total)
     );
 
     const netSales = toNum(row?.net_sales);
@@ -3195,7 +3208,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm1Profit = toNum(row?.profit);
 
     const cm2ProfitTotal = toNum(
-      row?.cm2_profit_total ?? row?.cm2_profit
+      row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit
+    );
+
+    const cm2Margins = toNum(
+      row?.cm2_margins ??
+      row?.cm2_profit_percentage ??
+      row?.profit_percentage
     );
 
     return {
@@ -3215,8 +3234,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
 
-      otherwplatform:
-        toNum(row?.platform_fee),
+      otherwplatform: toNum(row?.platform_fee),
 
       taxncredit: toNum(row?.tex_and_credits),
 
@@ -3227,6 +3245,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       // CM2 Profit
       cm2_profit: cm2ProfitTotal,
       cm2_profit_total: cm2ProfitTotal,
+
+      // ✅ CM2 Margin mapped directly from backend
+      cm2_margins: cm2Margins,
+      cm2_profit_percentage: cm2Margins,
 
       tacos: calculateTacos(netSales, advertisingTotalFinal),
     };
@@ -4916,6 +4938,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (totalRow as any)?.cm2_profit
     );
 
+    const cm2Margins = toNum(
+      (totalRow as any)?.cm2_margins ??
+      (totalRow as any)?.cm2_profit_percentage ??
+      (totalRow as any)?.cm2_profit_percent ??
+      (totalRow as any)?.cm2_profit_percentage_value
+    );
+
+
     return [
       {
         country: countryVal,
@@ -4941,6 +4971,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         // CM2 Profit
         cm2_profit: cm2ProfitTotal,
         cm2_profit_total: cm2ProfitTotal,
+
+        cm2_margins: cm2Margins,
+        cm2_profit_percentage: cm2Margins,
       },
     ];
   };
@@ -5481,7 +5514,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 // ---------- CM2% comparisons ----------
                 const getCm2Percent = (s?: Summary) =>
-                  s && s.total_sales > 0 ? (s.cm2_profit / s.total_sales) * 100 : 0;
+                  Number(
+                    s?.cm2_margins ??
+                    s?.cm2_profit_percentage ??
+                    0
+                  );
+
+                const cm2Margin = getCm2Percent(summary);
+
                 const renderCm2PercentComparisons = () => {
                   const yNum = Number(selectedYear);
 
@@ -5582,7 +5622,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   const diffPct =
                     hasPrev && prevVal !== 0
-                      ? ((cm2Percent - prevVal) / Math.abs(prevVal)) * 100
+                      ? ((cm2Margin - prevVal) / Math.abs(prevVal)) * 100
                       : null;
 
                   const deltaClassName =
@@ -5711,8 +5751,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "cm2Pct",
                     title: "CM2 Profit %",
-                    value: formatPercent(cm2Percent),
-                    // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                    value: formatPercent(cm2Margin),
                     className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
                     comparisons: buildCm2PercentComparisonRows(),
                   },
