@@ -187,9 +187,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 /** ---------------- localStorage run-once guards ---------------- */

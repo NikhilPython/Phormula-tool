@@ -350,10 +350,14 @@ function normalizeRows(data: any[]): TableRow[] {
         row.advertising_total_final ?? row.advertising_total
       ),
 
-      brand_spend: toNumber(row.brand_spend ?? row.visible_ads),
-      visible_ads: toNumber(row.brand_spend ?? row.visible_ads),
+      brand_spend: toNumber(row.brand_spend),
+      visible_ads: toNumber(row.visible_ads),
 
-      dealsvouchar_ads: toNumber(row.dealsvouchar_ads),
+      dealsvouchar_ads: toNumber(
+        row.dealsvouchar_ads ??
+        row.dealvouchars_ads ??
+        row.dealsvoucher_ads
+      ),
 
       acos: toNumber(row.acos),
 
@@ -423,10 +427,14 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
       totalRow.advertising_total_final ?? totalRow.advertising_total
     ),
 
-    brand_spend: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
-    visible_ads: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
+    brand_spend: toNumber(totalRow.brand_spend),
+    visible_ads: toNumber(totalRow.visible_ads),
 
-    dealsvouchar_ads: toNumber(totalRow.dealsvouchar_ads),
+    dealsvouchar_ads: toNumber(
+      totalRow.dealsvouchar_ads ??
+      totalRow.dealvouchars_ads ??
+      totalRow.dealsvoucher_ads
+    ),
     other_transactions: toNumber(totalRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
@@ -579,6 +587,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return netSales > 0 ? (adsCost / netSales) * 100 : 0;
   }, [totals.net_sales, totals.advertising_total_final]);
+
+  const visibilityAdsValue = useMemo(() => {
+    return hasCm2Data
+      ? toNumber(totals.brand_spend)
+      : toNumber(totals.visible_ads);
+  }, [hasCm2Data, totals.brand_spend, totals.visible_ads]);
 
   const [tableSort, setTableSort] = useState<{
     key: string;
@@ -1354,7 +1368,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           profit: Math.abs(Number(totals.advertising_total || 0)),
           __bold: 1,
         },
-        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.brand_spend || 0)) },
+        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(visibilityAdsValue || 0)) },
         { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
         ...((countryName || "").toLowerCase() === "us" ||
@@ -1813,7 +1827,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         {
                           id: "ads_1",
                           label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.brand_spend, "brand_spend"),
+                          midValue: formatValue(visibilityAdsValue, "brand_spend"),
                         },
                         {
                           id: "ads_2",
