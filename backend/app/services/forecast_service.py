@@ -61,7 +61,21 @@ def generate_forecast_for_user(
 
     result = process_forecasting(user_id, country, mv, year, engine)
 
-    if not result or not result.get("inventory_bytes"):
+    # process_forecasting is returning a tuple like: (data, status_code)
+    # Extract only the data dictionary.
+    if isinstance(result, tuple):
+        result = result[0]
+
+    if not isinstance(result, dict):
+        return {
+            "success": False,
+            "error": f"Forecast generation failed. Invalid result type: {type(result).__name__}"
+        }
+    
+    if result.get("success") is False:
+        return result
+
+    if not result.get("inventory_bytes"):
         return {
             "success": False,
             "error": "Forecast generation failed (no output bytes)."

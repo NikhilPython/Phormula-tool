@@ -884,7 +884,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
 
         sku_grouped["cm1_profit"] = sku_grouped["profit%"].apply(lambda x: "High" if (x / 100) > 0.5 else "Low")
-        sku_grouped["asp"] = sku_grouped["Net Sales"] / sku_grouped["quantity"]
+        sku_grouped["asp"] = sku_grouped["Net Sales"] / sku_grouped["total_quantity"]
         sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
 
         sku_grouped["previous_asp"] = sku_grouped["previous_net_sales"] / sku_grouped["previous_quantity"]
@@ -1180,7 +1180,9 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["unit_increase"] = (
             (sum_row["quantity"] - sum_row["previous_quantity"]) / sum_row["previous_quantity"]
         ) * 100 if sum_row["previous_quantity"] != 0 else 0
-        sum_row["asp"] = (sum_row["Net Sales"] / sum_row["quantity"]) if sum_row["quantity"] != 0 else 0
+        sum_row["asp"] = (
+            sum_row["Net Sales"] / sum_row["total_quantity"]
+        ) if sum_row["total_quantity"] != 0 else 0
         sum_row["previous_asp"] = (sum_row["previous_net_sales"] / sum_row["previous_quantity"]) if sum_row["previous_quantity"] != 0 else 0
         sum_row["asp_percentag"] = (
             (sum_row["asp"] - sum_row["previous_asp"]) / sum_row["previous_asp"]
@@ -1941,8 +1943,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
 
         sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            sku_grouped["total_quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["total_quantity"],
             0,
         )
         sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
@@ -2086,8 +2088,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sum_row["acos"] = abs(acos)
         sum_row["rembursment_vs_cm2_margins"] = abs(rembursment_vs_cm2_margins)
         sum_row["asp"] = (
-            sum_row["net_sales"] / sum_row["quantity"]
-            if sum_row["quantity"] != 0 else 0
+            sum_row["net_sales"] / sum_row["total_quantity"]
+            if sum_row["total_quantity"] != 0 else 0
         )
         sum_row["unit_wise_profitability"] = (
             sum_row["profit"] / sum_row["quantity"]
@@ -2632,8 +2634,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
 
         sku_grouped["asp"] = np.where(
-            sku_grouped["quantity"] != 0,
-            sku_grouped["Net Sales"] / sku_grouped["quantity"],
+            sku_grouped["total_quantity"] != 0,
+            sku_grouped["Net Sales"] / sku_grouped["total_quantity"],
             0,
         )
         sku_grouped["asp"] = sku_grouped["asp"].replace([np.inf, -np.inf], 0).fillna(0)
@@ -2774,8 +2776,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sum_row["acos"] = abs(acos)
         sum_row["rembursment_vs_cm2_margins"] = abs(rembursment_vs_cm2_margins)
         sum_row["asp"] = (
-            sum_row["net_sales"] / sum_row["quantity"]
-            if sum_row["quantity"] != 0 else 0
+            sum_row["net_sales"] / sum_row["total_quantity"]
+            if sum_row["total_quantity"] != 0 else 0
         )
         sum_row["unit_wise_profitability"] = (
             sum_row["profit"] / sum_row["quantity"]

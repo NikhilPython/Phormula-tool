@@ -490,7 +490,10 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
                 missing_months.append(month)
 
     if not fetched_data:
-        return jsonify({"error": "No data available for the selected window."}), 400
+        return {
+            "success": False,
+            "error": "No data available for the selected window."
+        }
 
     # --- Combine (raw) ---
     global_df = pd.concat(fetched_data, ignore_index=True)
@@ -526,10 +529,16 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
     
 
     if filtered_df.empty:
-        return jsonify({"error": "No usable demand rows available for forecasting."}), 400
+        return {
+            "success": False,
+            "error": "No usable demand rows available for forecasting."
+        }
 
     if 'date_time' not in filtered_df.columns:
-        return jsonify({"error": "[PF][FATAL] 'date_time' column missing after fetch."}), 400
+        return {
+            "success": False,
+            "error": "[PF][FATAL] 'date_time' column missing after fetch."
+        }
 
     # =======================
     # Robust date parsing
@@ -611,7 +620,10 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
     
 
     if new_df.empty:
-        return jsonify({"error": "No usable data inside the 12-month window."}), 400
+        return {
+            "success": False,
+            "error": "No usable data inside the 12-month window."
+        }
     
     print("LAST TRAINING DATE:", new_df.index.max())
     print("LAST TRAINING MONTH:", new_df.index.max().to_period('M'))
@@ -644,7 +656,10 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
             f"Insufficient recent data: only {streak} contiguous month(s) with demand up to {last_full_period}. "
             f"Need at least 5."
         )
-        return jsonify({"error": msg}), 400
+        return {
+            "success": False,
+            "error": msg
+        }
 
     hybrid_allowed = (streak >= 12)
 

@@ -9,10 +9,47 @@ from app import db
 from app.models.user_models import amazon_user
 from app.utils.amazon_utils import (
     _month_date_range_utc,
+    _month_date_range_us_pacific_utc,
     _flatten_transaction_to_row,
     run_upload_pipeline_from_df,
 )
+from zoneinfo import ZoneInfo
 from app.utils.amazon_utils import amazon_client
+
+def _convert_us_date_time_to_pacific_display(rows: list[dict]) -> list[dict]:
+    """
+    Amazon returns postedDate/date_time as UTC.
+    For US fetch file/display, convert only date_time to America/Los_Angeles.
+
+    Example:
+      2026-05-01T07:15:00Z -> 2026-05-01 00:15:00 PDT
+
+    UK rows are not passed into this helper.
+    """
+    if not rows:
+        return rows
+
+    us_tz = ZoneInfo("America/Los_Angeles")
+
+    for row in rows:
+        raw_dt = row.get("date_time")
+        if not raw_dt:
+            continue
+
+        try:
+            dt = pd.to_datetime(raw_dt, utc=True, errors="coerce")
+
+            if pd.isna(dt):
+                continue
+
+            row["date_time"] = dt.tz_convert(us_tz).strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
+
+        except Exception:
+            continue
+
+    return rows
 
 
 def sync_monthly_transactions_for_user(
@@ -45,13 +82,6 @@ def sync_monthly_transactions_for_user(
     else:
         au = amazon_user.query.filter_by(user_id=user_id).first()
 
-    if not au or not au.refresh_token:
-        return {
-            "success": False,
-            "error": "Amazon account not connected for this marketplace",
-            "status": "no_refresh_token",
-            "marketplace_id": marketplace_id,
-        }
 
     if not au or not au.refresh_token:
         return {
@@ -70,7 +100,15 @@ def sync_monthly_transactions_for_user(
     elif au.region:
         amazon_client.set_region(au.region)
 
-    posted_after, posted_before = _month_date_range_utc(year, month)
+    is_us_marketplace = (
+        (country or "").strip().lower() in ("us", "usa", "united_states")
+        or amazon_client.marketplace_id == "ATVPDKIKX0DER"
+    )
+
+    if is_us_marketplace:
+        posted_after, posted_before = _month_date_range_us_pacific_utc(year, month)
+    else:
+        posted_after, posted_before = _month_date_range_utc(year, month)
 
     all_rows: List[Dict[str, Any]] = []
 
@@ -132,6 +170,9 @@ def sync_monthly_transactions_for_user(
                 break
 
             params = {"nextToken": next_token}
+
+    if is_us_marketplace:
+        all_rows = _convert_us_date_time_to_pacific_display(all_rows)
 
     pipeline_result = None
 
