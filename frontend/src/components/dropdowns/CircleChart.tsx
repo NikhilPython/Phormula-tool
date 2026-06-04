@@ -50,6 +50,7 @@ type CircleChartProps = {
 type CircleSummary = {
   total_sales?: number;
   advertising_total?: number;
+  advertising_total_final?: number;
   cm2_profit?: number;
   total_amazon_fee?: number;
   taxncredit?: number;
@@ -62,9 +63,11 @@ type UploadRow = {
   total_amazon_fee?: number;
   total_cous?: number;
   advertising_total?: number;
+  advertising_total_final?: number;
   otherwplatform?: number;
   taxncredit?: number;
   cm2_profit?: number;
+  cm2_profit_total?: number;
   total_profit?: number;
 };
 
@@ -197,9 +200,22 @@ const CircleChart: React.FC<CircleChartProps> = ({
           total_cous: toNum(pnlRowFromSku.total_cous),
           total_amazon_fee: toNum(pnlRowFromSku.total_amazon_fee),
           taxncredit: toNum(pnlRowFromSku.taxncredit),
-          advertising_total: toNum(pnlRowFromSku.advertising_total),
+
+          advertising_total: toNum(
+            pnlRowFromSku.advertising_total_final ??
+            pnlRowFromSku.advertising_total
+          ),
+          advertising_total_final: toNum(
+            pnlRowFromSku.advertising_total_final ??
+            pnlRowFromSku.advertising_total
+          ),
+
           otherwplatform: toNum(pnlRowFromSku.otherwplatform),
-          cm2_profit: toNum(pnlRowFromSku.cm2_profit),
+
+          cm2_profit: toNum(
+            pnlRowFromSku.cm2_profit_total ??
+            pnlRowFromSku.cm2_profit
+          ),
         },
       });
       setLoading(false);
@@ -306,13 +322,17 @@ const CircleChart: React.FC<CircleChartProps> = ({
       "CM2 Profit",
     ];
 
+    const adsValue = Math.abs(
+      toNum(s.advertising_total_final ?? s.advertising_total)
+    );
+
     const valuesRaw = [
-      Math.abs(s.total_cous || 0),
-      Math.abs(s.total_amazon_fee || 0),
-      Math.abs(s.taxncredit || 0),
-      Math.abs(s.advertising_total || 0),
-      Math.abs(s.otherwplatform || 0),
-      Math.abs(s.cm2_profit || 0),
+      Math.abs(toNum(s.total_cous)),
+      Math.abs(toNum(s.total_amazon_fee)),
+      Math.abs(toNum(s.taxncredit)),
+      adsValue,
+      Math.abs(toNum(s.otherwplatform)),
+      Math.abs(toNum(s.cm2_profit)),
     ];
 
     const hasRenderableData = valuesRaw.some((v) => Number(v) > 0);
