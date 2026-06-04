@@ -149,6 +149,7 @@ export type TableRow = {
   platform_fee_inventory_storage?: number;
 
   advertising_total?: number;
+  advertising_total_final?: number;
   visible_ads?: number;
   dealsvouchar_ads?: number;
 
@@ -179,6 +180,7 @@ export type TableRow = {
 
 type Totals = {
   advertising_total: number;
+  advertising_total_final?: number;
   visible_ads: number;
   dealsvouchar_ads: number;
   other_transactions: number;
@@ -344,6 +346,9 @@ function normalizeRows(data: any[]): TableRow[] {
       // CM2 / Ads
       ads_spend: toNumber(row.ads_spend),
       advertising_total: toNumber(row.advertising_total),
+      advertising_total_final: toNumber(
+        row.advertising_total_final ?? row.advertising_total
+      ),
 
       brand_spend: toNumber(row.brand_spend ?? row.visible_ads),
       visible_ads: toNumber(row.brand_spend ?? row.visible_ads),
@@ -407,10 +412,16 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     totalRow.cm2_profit_percentage_value
   );
 
-
   return {
     ads_spend: toNumber(totalRow.ads_spend),
+
+    // summary row value: 3,086.90
     advertising_total: toNumber(totalRow.advertising_total),
+
+    // final card / TACoS value: 21,138.82
+    advertising_total_final: toNumber(
+      totalRow.advertising_total_final ?? totalRow.advertising_total
+    ),
 
     brand_spend: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
     visible_ads: toNumber(totalRow.brand_spend ?? totalRow.visible_ads),
@@ -561,6 +572,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const totals = useMemo(() => {
     return computeTotalsFromTotalRow(tableData);
   }, [tableData]);
+
+  const frontendTacos = useMemo(() => {
+    const netSales = toNumber(totals.net_sales);
+    const adsCost = Math.abs(toNumber(totals.advertising_total_final));
+
+    return netSales > 0 ? (adsCost / netSales) * 100 : 0;
+  }, [totals.net_sales, totals.advertising_total_final]);
 
   const [tableSort, setTableSort] = useState<{
     key: string;
@@ -1297,7 +1315,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
       type SummaryRow = Record<string, string | number> & { __bold?: number };
 
       const summaryRows: SummaryRow[] = [
-        { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
+        {
+          product_name: "Cost of Advertisement",
+          profit: Math.abs(Number(totals.advertising_total || 0)),
+          __bold: 1,
+        },
         { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.brand_spend || 0)) },
         { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
@@ -1313,7 +1335,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit_total || 0), __bold: 1 },
         { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
-        { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
+        {
+          product_name: "TACoS (Total Advertising Cost of Sale)",
+          profit: frontendTacos,
+          __bold: 1,
+        },
         { product_name: "Net Reimbursement", profit: toNumber(totals.net_reimbursement), __bold: 1 },
         { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
         { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
@@ -1345,8 +1371,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [
       displayRows,
-      tableData,     // ✅ add this dependency
+      tableData,
       totals,
+      frontendTacos,
       countryName,
       getExtraRows,
       getDisplayProductNameFromRow,
@@ -1821,7 +1848,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}` },
 
                     // ✅ TACoS first
-                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}` },
+                    {
+                      id: "tacos",
+                      label: "TACoS (Total Advertising Cost of Sale)",
+                      endValue: `${formatValue(frontendTacos, "acos")}`,
+                    },
 
                     // ✅ then Net Reimbursement (below TACoS)
                     {

@@ -48,6 +48,7 @@ type Summary = {
   advertising_total?: number;
   advertising_total_final?: number;
   total_amazon_fee?: number;
+  tacos?: number;
 };
 
 type UploadRow = {
@@ -69,6 +70,7 @@ type UploadRow = {
   cm2_profit_total?: number;
 
   total_profit: number;
+  tacos?: number;
 };
 
 type SummaryComparisons = {
@@ -605,6 +607,13 @@ const toNum = (v: any) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   const n = Number(String(v).replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : 0;
+};
+
+const calculateTacos = (netSales: any, adsCost: any) => {
+  const sales = toNum(netSales);
+  const ads = Math.abs(toNum(adsCost));
+
+  return sales > 0 ? (ads / sales) * 100 : 0;
 };
 
 const mergeToSingleBullet = (arr: string[]) => {
@@ -3132,9 +3141,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       row?.advertising_total_final ?? row?.advertising_total
     );
 
+    const netSales = toNum(row?.net_sales);
+
     return {
       unit_sold: toNum(row?.total_quantity),
-      total_sales: toNum(row?.net_sales),
+      total_sales: netSales,
       gross_sales: toNum(row?.gross_sales),
       total_product_sales: toNum(row?.gross_sales),
 
@@ -3148,18 +3159,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       total_cous: toNum(row?.cost_of_unit_sold),
 
-      otherwplatform:
-        toNum(row?.platform_fee) +
-        toNum(row?.platform_fee_inventory_storage) +
-        toNum(row?.platformfeenew),
+      otherwplatform: Math.abs(toNum(row?.platform_fee)),
 
-      // This is what your top metric card reads
       advertising_total: Math.abs(advertisingTotalFinal),
-
-      // Keep original named field too
       advertising_total_final: Math.abs(advertisingTotalFinal),
 
       total_amazon_fee: toNum(row?.amazon_fee),
+
+      // ✅ frontend calculated TACoS
+      tacos: calculateTacos(netSales, advertisingTotalFinal),
     };
   };
 
@@ -3170,27 +3178,59 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     quarterVal: string,
     yearVal: string,
     country: string
-  ): UploadRow => ({
-    country,
-    month: rangeType === "monthly" ? monthVal : rangeType === "quarterly" ? quarterVal : "ALL",
-    year: yearVal,
-    total_sales: toNum(row?.net_sales),
-    total_amazon_fee: toNum(row?.amazon_fee),
-    total_cous: toNum(row?.cost_of_unit_sold),
-    advertising_total: Math.abs(
-      toNum(row?.advertising_total_final ?? row?.advertising_total)
-    ),
-    advertising_total_final: Math.abs(
-      toNum(row?.advertising_total_final ?? row?.advertising_total)
-    ),
-    otherwplatform:
-      toNum(row?.platform_fee) +
-      toNum(row?.platform_fee_inventory_storage) +
-      toNum(row?.platformfeenew),
-    taxncredit: toNum(row?.tex_and_credits),
-    cm2_profit: toNum(row?.cm2_profit_total ?? row?.cm2_profit ?? row?.profit),
-    total_profit: toNum(row?.profit),
-  });
+  ): UploadRow => {
+    const advertisingTotal = Math.abs(
+      toNum((totalRow as any)?.advertising_total)
+    );
+
+    const advertisingTotalFinal = Math.abs(
+      toNum(
+        (totalRow as any)?.advertising_total_final ??
+        (totalRow as any)?.advertising_total
+      )
+    );
+
+    const netSales = toNum(row?.net_sales);
+
+    const cm1Profit = toNum(row?.profit);
+
+    const cm2ProfitTotal = toNum(
+      row?.cm2_profit_total ?? row?.cm2_profit
+    );
+
+    return {
+      country,
+      month:
+        rangeType === "monthly"
+          ? monthVal
+          : rangeType === "quarterly"
+            ? quarterVal
+            : "ALL",
+      year: yearVal,
+
+      total_sales: netSales,
+      total_amazon_fee: toNum(row?.amazon_fee),
+      total_cous: toNum(row?.cost_of_unit_sold),
+
+      advertising_total: advertisingTotal,
+      advertising_total_final: advertisingTotalFinal,
+
+      otherwplatform:
+        toNum(row?.platform_fee),
+
+      taxncredit: toNum(row?.tex_and_credits),
+
+      // CM1 Profit
+      profit: cm1Profit,
+      total_profit: cm1Profit,
+
+      // CM2 Profit
+      cm2_profit: cm2ProfitTotal,
+      cm2_profit_total: cm2ProfitTotal,
+
+      tacos: calculateTacos(netSales, advertisingTotalFinal),
+    };
+  };
 
   const buildUploadHistoryFromSkuApi = (
     data: any,
@@ -4729,10 +4769,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum(totalRow?.net_units_sold) ||
       sumSkuRows(rows, "total_quantity");
 
+    const advertisingTotal = Math.abs(
+      toNum((totalRow as any)?.advertising_total)
+    );
+
+    const advertisingTotalFinal = Math.abs(
+      toNum(
+        (totalRow as any)?.advertising_total_final ??
+        (totalRow as any)?.advertising_total
+      )
+    );
+
     const cm2 =
-      toNum((totalRow as any)?.cm2_profit) ||
-      toNum((totalRow as any)?.profit) ||
-      sumSkuRows(rows, "profit");
+      toNum((totalRow as any)?.cm2_profit_total) ||
+      toNum((totalRow as any)?.cm2_profit);
 
     return {
       unit_sold: units,
@@ -4740,17 +4790,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       gross_sales: grossSales,
       total_product_sales: grossSales,
       total_expense: 0,
+
       cm2_profit: cm2,
+      cm2_profit_total: cm2,
+
       total_cous:
         toNum((totalRow as any)?.cost_of_unit_sold) ||
         sumSkuRows(rows, "cost_of_unit_sold"),
-      advertising_total: toNum((totalRow as any)?.advertising_total),
+
+      advertising_total: advertisingTotal,
+      advertising_total_final: advertisingTotalFinal,
+
       total_amazon_fee:
         toNum((totalRow as any)?.amazon_fee) ||
         sumSkuRows(rows, "amazon_fee"),
-      otherwplatform:
-        toNum((totalRow as any)?.platform_fee) ||
-        toNum((totalRow as any)?.other_transaction_fees),
+
+      otherwplatform: Math.abs(toNum((totalRow as any)?.platform_fee)),
     };
   };
 
@@ -4765,13 +4820,28 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   ): UploadRow[] => {
     const totalRow = getSkuTotalRow(rows);
-    const summary = buildSummaryFromSkuRows(rows);
 
-    const cm1Profit =
-      summary.total_sales -
-      (summary.total_cous ?? 0) -
-      (summary.total_amazon_fee ?? 0) +
-      toNum((totalRow as any)?.tex_and_credits);
+    if (!totalRow) return [];
+
+    const advertisingTotal = Math.abs(
+      toNum((totalRow as any)?.advertising_total)
+    );
+
+    const advertisingTotalFinal = Math.abs(
+      toNum(
+        (totalRow as any)?.advertising_total_final ??
+        (totalRow as any)?.advertising_total
+      )
+    );
+
+    const netSales = toNum((totalRow as any)?.net_sales);
+
+    const cm1Profit = toNum((totalRow as any)?.profit);
+
+    const cm2ProfitTotal = toNum(
+      (totalRow as any)?.cm2_profit_total ??
+      (totalRow as any)?.cm2_profit
+    );
 
     return [
       {
@@ -4784,14 +4854,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               : "ALL",
         year: period.yearVal,
 
-        total_sales: summary.total_sales,
-        total_amazon_fee: summary.total_amazon_fee ?? 0,
-        total_cous: summary.total_cous ?? 0,
-        advertising_total: summary.advertising_total ?? 0,
-        otherwplatform: summary.otherwplatform ?? 0,
+        total_sales: netSales,
+        total_amazon_fee: toNum((totalRow as any)?.amazon_fee),
+        total_cous: toNum((totalRow as any)?.cost_of_unit_sold),
+
+        advertising_total: advertisingTotal,
+        advertising_total_final: advertisingTotalFinal,
+
+        otherwplatform:
+          toNum((totalRow as any)?.platform_fee),
+
         taxncredit: toNum((totalRow as any)?.tex_and_credits),
-        cm2_profit: summary.cm2_profit,
+
+        // CM1 Profit
+        profit: cm1Profit,
         total_profit: cm1Profit,
+
+        // CM2 Profit
+        cm2_profit: cm2ProfitTotal,
+        cm2_profit_total: cm2ProfitTotal,
+
+        tacos: calculateTacos(netSales, advertisingTotalFinal),
       },
     ];
   };
@@ -4814,6 +4897,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const totalRow = getSkuTotalRow(rows);
 
     if (!totalRow) return [];
+
+    const advertisingTotal = Math.abs(
+      toNum((totalRow as any)?.advertising_total)
+    );
 
     const advertisingTotalFinal = Math.abs(
       toNum(
@@ -4839,7 +4926,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         total_amazon_fee: toNum((totalRow as any)?.amazon_fee),
         total_cous: toNum((totalRow as any)?.cost_of_unit_sold),
 
-        advertising_total: advertisingTotalFinal,
+        advertising_total: advertisingTotal,
         advertising_total_final: advertisingTotalFinal,
 
         otherwplatform:

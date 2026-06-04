@@ -44,10 +44,11 @@ type CircleChartProps = {
   pnlRowFromSku?: UploadRow | null;
 
   // Optional fallback
-summaryFromSku?: CircleSummary | null;
+  summaryFromSku?: CircleSummary | null;
 };
 
 type CircleSummary = {
+  total_sales?: number;
   advertising_total?: number;
   cm2_profit?: number;
   total_amazon_fee?: number;
@@ -69,7 +70,7 @@ type UploadRow = {
 
 type UploadHistoryResponse = {
   uploads?: unknown[];
-summary?: CircleSummary;
+  summary?: CircleSummary;
 };
 
 const COLORS = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
@@ -192,6 +193,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
     if (pnlRowFromSku) {
       setUploadsData({
         summary: {
+          total_sales: toNum(pnlRowFromSku.total_sales),
           total_cous: toNum(pnlRowFromSku.total_cous),
           total_amazon_fee: toNum(pnlRowFromSku.total_amazon_fee),
           taxncredit: toNum(pnlRowFromSku.taxncredit),
@@ -264,19 +266,19 @@ const CircleChart: React.FC<CircleChartProps> = ({
     };
 
     fetchUploadHistory();
-}, [
-  isDemoMode,
-  pnlRowFromSku,
-  summaryFromSku,
-  month,
-  year,
-  range,
-  selectedQuarter,
-  countryName,
-  normalizedHomeCurrency,
-  homeCurrency,
-  isGlobalPage,
-]);
+  }, [
+    isDemoMode,
+    pnlRowFromSku,
+    summaryFromSku,
+    month,
+    year,
+    range,
+    selectedQuarter,
+    countryName,
+    normalizedHomeCurrency,
+    homeCurrency,
+    isGlobalPage,
+  ]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -292,6 +294,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
     }
 
     const s = uploadsData.summary;
+
+    const netSales = Math.abs(toNum(s.total_sales));
 
     const labelsRaw = [
       "COGS",
@@ -331,7 +335,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
           spacing: 0,
           hoverOffset: 4,
           offset: 0,
-        },
+          netSales,
+        } as any,
       ],
     };
 
@@ -370,15 +375,12 @@ const CircleChart: React.FC<CircleChartProps> = ({
             label: (ctx: TooltipItem<"pie">) => {
               const value = Math.abs(Number(ctx.raw ?? 0));
               const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-                | { data: number[] }
+                | { data: number[]; netSales?: number }
                 | undefined;
 
-              const total = (ds?.data ?? []).reduce(
-                (acc, v) => acc + Math.abs(Number(v || 0)),
-                0
-              );
+              const netSales = Math.abs(Number(ds?.netSales ?? 0));
 
-              const pct = total ? (value / total) * 100 : 0;
+              const pct = netSales ? (value / netSales) * 100 : 0;
               const label = ctx.label ? `${ctx.label}: ` : "";
 
               return `${label}${currencySymbol}${Math.round(value).toLocaleString(undefined, {
@@ -398,7 +400,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const ds = chartData.datasets[0] as any;
 
     const values = ((ds?.data || []) as number[]).map((v) => Math.abs(toNum(v)));
-    const total = values.reduce((a, b) => a + b, 0);
+    const netSales = Math.abs(toNum(ds?.netSales));
     const colors = (ds?.backgroundColor as string[]) || COLORS;
 
     const truncate = (s: string) =>
@@ -406,7 +408,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
     return labels.map((label, i) => {
       const value = values[i] ?? 0;
-      const pct = total ? (value / total) * 100 : 0;
+      const pct = netSales ? (value / netSales) * 100 : 0;
 
       return {
         label: truncate(label),

@@ -86,11 +86,22 @@ type UploadRow = {
   total_sales: number;
   total_amazon_fee: number;
   total_cous: number;
+
   advertising_total: number;
+  advertising_total_final?: number;
+
   otherwplatform: number;
   taxncredit?: number;
-  cm2_profit: number;
+
+  // CM1 Profit
+  profit?: number;
   total_profit: number;
+
+  // CM2 Profit
+  cm2_profit: number;
+  cm2_profit_total?: number;
+
+  tacos?: number;
 };
 
 type BargraphProps = {
@@ -244,10 +255,17 @@ const Bargraph: React.FC<BargraphProps> = ({
     COGS: "total_cous",
     "Amazon Fees": "total_amazon_fee",
     "Taxes & Credits": "taxncredit",
-    "CM1 Profit": "total_profit",
-    "Advertising Cost": "advertising_total",
+
+    // CM1 Profit should map to profit
+    "CM1 Profit": "profit",
+
+    // Advertising Cost should map to advertising_total_final
+    "Advertising Cost": "advertising_total_final",
+
     Other: "otherwplatform",
-    "CM2 Profit": "cm2_profit",
+
+    // CM2 Profit should map to cm2_profit_total
+    "CM2 Profit": "cm2_profit_total",
   };
 
   const colorMapping: Record<
@@ -351,8 +369,28 @@ const Bargraph: React.FC<BargraphProps> = ({
 
       let computedValues = computedMetricsToShow.map((label) => {
         if (isPreviewMode) return 0;
+        if (!monthData) return 0;
+
+        if (label === "CM1 Profit") {
+          return Number(monthData.profit ?? monthData.total_profit ?? 0);
+        }
+
+        if (label === "Advertising Cost") {
+          return Math.abs(
+            Number(monthData.advertising_total_final ?? monthData.advertising_total ?? 0)
+          );
+        }
+
+        if (label === "Other") {
+          return Math.abs(Number(monthData.otherwplatform ?? 0));
+        }
+
+        if (label === "CM2 Profit") {
+          return Number(monthData.cm2_profit_total ?? monthData.cm2_profit ?? 0);
+        }
+
         const field = metricMapping[label];
-        return monthData ? Number(monthData?.[field] ?? 0) : 0;
+        return Number(monthData?.[field] ?? 0);
       });
 
       const zero = computedValues.every((v) => v === 0);
