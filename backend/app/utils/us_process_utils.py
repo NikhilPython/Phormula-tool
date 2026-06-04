@@ -495,6 +495,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
@@ -566,6 +567,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         EXCLUDE_TYPES = {
@@ -1675,6 +1677,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
@@ -1748,6 +1751,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         EXCLUDE_TYPES = {
@@ -2364,6 +2368,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
@@ -2437,6 +2442,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         EXCLUDE_TYPES = {

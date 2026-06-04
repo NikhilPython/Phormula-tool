@@ -1252,9 +1252,7 @@ def finances_monthly_transactions():
         else:
             ui_country = "us"
 
-    # add this
-    if ui_country in ("us", "usa", "united_states"):
-        transaction_status = "RELEASED"
+    
 
     if run_upload and not ui_country:
         return jsonify({"success": False, "error": "country is required when run_upload_pipeline=true"}), 400
@@ -2487,6 +2485,7 @@ def finances_mtd_transactions():
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
         lost_mask = df_all["description"].fillna("").astype(str).str.strip().isin(LOST_DESCRIPTIONS)
 
@@ -2571,6 +2570,7 @@ def finances_mtd_transactions():
             "MISSING_FROM_INBOUND",
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
+            "FREE_REPLACEMENT_REFUND_ITEMS",
         }
 
         EXCLUDE_TYPES = {

@@ -1404,6 +1404,12 @@ def skutableprofit():
 
                 final_data.append(row_dict)
 
+            brand_spend_total = 0.0
+            dealsvouchar_ads_total = 0.0
+            total_ads_spend = 0.0
+            advertising_total = 0.0
+            advertising_total_final = 0.0
+
             if ads_rows:
                 def get_total_ads_row(ads_rows):
                     for ads_row in ads_rows:
@@ -1436,46 +1442,76 @@ def skutableprofit():
                     and str(row.get("product_name") or "").strip().lower() != "total"
                 )
 
-                # Get total ads_spend from ads table TOTAL row
                 total_ads_spend = _get_ads_spend(ads_total_row)
 
-                # If ads table TOTAL row has no ads_spend, use product-wise total
                 if total_ads_spend == 0:
                     total_ads_spend = sku_ads_total
 
                 advertising_total = brand_spend_total + dealsvouchar_ads_total
                 advertising_total_final = advertising_total + total_ads_spend
 
-                for row_dict in final_data:
-                    sku = str(row_dict.get("sku") or "").strip().lower()
-                    product_name = str(row_dict.get("product_name") or "").strip().lower()
 
-                    if sku == "total" or product_name == "total":
-                        profit = safe_float(row_dict.get("profit"))
-                        net_sales = safe_float(row_dict.get("net_sales"))
-                        total_quantity = safe_float(row_dict.get("total_quantity"))
-                        platform_fee = safe_float(row_dict.get("platform_fee"))
+            # This part must run even when ads_rows is empty
+            for row_dict in final_data:
+                sku = str(row_dict.get("sku") or "").strip().lower()
+                product_name = str(row_dict.get("product_name") or "").strip().lower()
 
+                if sku == "total" or product_name == "total":
+                    profit = safe_float(row_dict.get("profit"))
+                    net_sales = safe_float(row_dict.get("net_sales"))
+                    total_quantity = safe_float(row_dict.get("total_quantity"))
+                    platform_fee = safe_float(row_dict.get("platform_fee"))
+                    shipment_fees = safe_float(row_dict.get("shipment_fees"))
+
+                    if ads_tbl_name:
                         cm2_profit = profit - total_ads_spend
-                        acos = safe_divide(total_ads_spend, net_sales) * 100
-                        cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
-                        cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
+                        ads_for_acos = total_ads_spend
 
-                        cm2_profit_total = cm2_profit - advertising_total - platform_fee
+                        platform_fee_abs = abs(safe_float(row_dict.get("platform_fee")))
 
-                        row_dict["ads_spend"] = round(total_ads_spend, 2)
-                        row_dict["cm2_profit"] = round(cm2_profit, 2)
-                        row_dict["acos"] = round(acos, 2)
-                        row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
-                        row_dict["cm2_profit_per_unit"] = round(cm2_profit_per_unit, 2)
+                        cm2_profit_total = (
+                            cm2_profit
+                            - advertising_total
+                            - platform_fee_abs
+                        )
+                    else:
+                        advertising_total_from_main = safe_float(row_dict.get("advertising_total"))
+                        platform_fee_abs = abs(safe_float(row_dict.get("platform_fee")))
+                        shipment_fees_abs = abs(safe_float(row_dict.get("shipment_fees")))
 
-                        row_dict["brand_spend"] = round(brand_spend_total, 2)
-                        row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
+                        cm2_profit = (
+                            profit
+                            - advertising_total_from_main
+                            - platform_fee_abs
+                            - shipment_fees_abs
+                        )
+
+                        ads_for_acos = advertising_total_from_main
+                        cm2_profit_total = cm2_profit
+
+                    acos = safe_divide(ads_for_acos, net_sales) * 100
+                    cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
+                    cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
+
+                    row_dict["ads_spend"] = round(ads_for_acos, 2)
+                    row_dict["cm2_profit"] = round(cm2_profit, 2)
+                    row_dict["acos"] = round(acos, 2)
+                    row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
+                    row_dict["cm2_profit_per_unit"] = round(cm2_profit_per_unit, 2)
+
+                    row_dict["brand_spend"] = round(brand_spend_total, 2)
+                    row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
+
+                    if ads_tbl_name:
                         row_dict["advertising_total"] = round(advertising_total, 2)
                         row_dict["advertising_total_final"] = round(advertising_total_final, 2)
-                        row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
+                    else:
+                        row_dict["advertising_total"] = round(ads_for_acos, 2)
+                        row_dict["advertising_total_final"] = round(ads_for_acos, 2)
 
-                        break
+                    row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
+
+                    break
 
             return final_data
 
@@ -1735,6 +1771,7 @@ def get_table_data(file_name):
                 "WAREHOUSE_LOST",
                 "WAREHOUSE_DAMAGE",
                 "MISSING_FROM_INBOUND",
+                
             }
 
             exclude_qty_mask = desc_str.isin(EXCLUDE_QTY_DESCRIPTIONS)
