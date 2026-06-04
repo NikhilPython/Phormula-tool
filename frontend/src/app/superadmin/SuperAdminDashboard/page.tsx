@@ -168,13 +168,16 @@ export default function SuperAdminDashboardPage() {
       setFormulaUpdating(true);
       setShowFormulaCountryModal(false);
 
+      const transactionStatus =
+        selectedMarketplace.country === "us" ? "RELEASED,DEFERRED" : "RELEASED";
+
       const url =
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update` +
         `?country=${selectedMarketplace.country}` +
         `&marketplace_id=${selectedMarketplace.marketplace_id}` +
         `&store_in_db=true` +
         `&run_upload_pipeline=false` +
-        `&transaction_status=RELEASED`;
+        `&transaction_status=${encodeURIComponent(transactionStatus)}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -879,8 +882,8 @@ export default function SuperAdminDashboardPage() {
             <div className="space-y-3 px-6 py-5">
               <label
                 className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition ${selectedFormulaCountry === "uk"
-                    ? "border-[#5EA68E] bg-emerald-50"
-                    : "border-slate-200 bg-white"
+                  ? "border-[#5EA68E] bg-emerald-50"
+                  : "border-slate-200 bg-white"
                   }`}
               >
                 <div>
@@ -902,8 +905,8 @@ export default function SuperAdminDashboardPage() {
 
               <label
                 className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition ${selectedFormulaCountry === "us"
-                    ? "border-[#5EA68E] bg-emerald-50"
-                    : "border-slate-200 bg-white"
+                  ? "border-[#5EA68E] bg-emerald-50"
+                  : "border-slate-200 bg-white"
                   }`}
               >
                 <div>
