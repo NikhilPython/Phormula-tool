@@ -1281,6 +1281,15 @@ def _get_ads_spend(ads_dict):
         else ads_dict.get("product_spend")
     )
 
+def _get_dealsvouchar_ads(row):
+    return abs(safe_float(
+        row.get("dealsvouchar_ads")
+        if row.get("dealsvouchar_ads") is not None
+        else row.get("dealsvoucher_ads")
+        if row.get("dealsvoucher_ads") is not None
+        else row.get("deals_voucher_ads")
+    ))
+
 @product_bp.route('/skutableprofit', methods=['GET'])
 def skutableprofit():
     auth_header = request.headers.get('Authorization')
@@ -1427,13 +1436,7 @@ def skutableprofit():
 
                 brand_spend_total = safe_float(ads_total_row.get("brand_spend"))
 
-                dealsvouchar_ads_total = abs(safe_float(
-                    ads_total_row.get("dealsvouchar_ads")
-                    if ads_total_row.get("dealsvouchar_ads") is not None
-                    else ads_total_row.get("dealsvoucher_ads")
-                    if ads_total_row.get("dealsvoucher_ads") is not None
-                    else ads_total_row.get("deals_voucher_ads")
-                ))
+                dealsvouchar_ads_total = _get_dealsvouchar_ads(ads_total_row)
 
                 sku_ads_total = sum(
                     safe_float(row.get("ads_spend"))
@@ -1463,6 +1466,11 @@ def skutableprofit():
                     platform_fee = safe_float(row_dict.get("platform_fee"))
                     shipment_fees = safe_float(row_dict.get("shipment_fees"))
 
+                    main_dealsvouchar_ads = _get_dealsvouchar_ads(row_dict)
+
+                    if main_dealsvouchar_ads != 0:
+                        dealsvouchar_ads_total = main_dealsvouchar_ads
+
                     if ads_tbl_name:
                         cm2_profit = profit - total_ads_spend
                         ads_for_acos = total_ads_spend
@@ -1475,7 +1483,19 @@ def skutableprofit():
                             - platform_fee_abs
                         )
                     else:
+                        main_visible_ads = abs(safe_float(row_dict.get("visible_ads")))
+                        main_dealsvouchar_ads = _get_dealsvouchar_ads(row_dict)
+                        main_brand_spend = abs(safe_float(row_dict.get("brand_spend")))
+
                         advertising_total_from_main = safe_float(row_dict.get("advertising_total"))
+
+                        if advertising_total_from_main == 0:
+                            advertising_total_from_main = (
+                                main_visible_ads
+                                + main_dealsvouchar_ads
+                                + main_brand_spend
+                            )
+
                         platform_fee_abs = abs(safe_float(row_dict.get("platform_fee")))
                         shipment_fees_abs = abs(safe_float(row_dict.get("shipment_fees")))
 
@@ -1488,6 +1508,11 @@ def skutableprofit():
 
                         ads_for_acos = advertising_total_from_main
                         cm2_profit_total = cm2_profit
+
+                        brand_spend_total = main_brand_spend
+                        dealsvouchar_ads_total = main_dealsvouchar_ads
+                        advertising_total = advertising_total_from_main
+                        advertising_total_final = advertising_total_from_main
 
                     acos = safe_divide(ads_for_acos, net_sales) * 100
                     cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
