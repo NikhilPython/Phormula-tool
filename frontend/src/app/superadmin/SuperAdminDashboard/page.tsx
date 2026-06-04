@@ -176,7 +176,7 @@ export default function SuperAdminDashboardPage() {
         `?country=${selectedMarketplace.country}` +
         `&marketplace_id=${selectedMarketplace.marketplace_id}` +
         `&store_in_db=true` +
-        `&run_upload_pipeline=false` +
+        `&run_upload_pipeline=true` +
         `&transaction_status=${encodeURIComponent(transactionStatus)}`;
 
       const response = await fetch(url, {

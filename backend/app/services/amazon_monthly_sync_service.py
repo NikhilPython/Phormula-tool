@@ -53,16 +53,22 @@ def sync_monthly_transactions_for_user(
             "marketplace_id": marketplace_id,
         }
 
-    # set client from saved connection
+    if not au or not au.refresh_token:
+        return {
+            "success": False,
+            "error": "Amazon account not connected for this marketplace",
+            "status": "no_refresh_token",
+            "marketplace_id": marketplace_id,
+        }
+
     amazon_client.refresh_token = au.refresh_token
 
-    if au.region:
-        amazon_client.region = au.region
-
     if marketplace_id:
-        amazon_client.marketplace_id = marketplace_id
+        amazon_client.set_marketplace(marketplace_id)
     elif au.marketplace_id:
-        amazon_client.marketplace_id = au.marketplace_id
+        amazon_client.set_marketplace(au.marketplace_id)
+    elif au.region:
+        amazon_client.set_region(au.region)
 
     posted_after, posted_before = _month_date_range_utc(year, month)
 
