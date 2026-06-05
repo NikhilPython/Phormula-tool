@@ -97,7 +97,7 @@ export type TableRow = {
   net_sales_delta?: number;
   net_sales_delta_percentage?: number;
 
-  quantity?: number; // may exist from backend
+  quantity?: number;
   total_quantity?: number;
 
   asp?: number;
@@ -192,7 +192,9 @@ type Totals = {
   shipment_charges: number;
   reimbursement_vs_sales: number;
   cm2_profit: number;
+  cm2_profit_total: number;
   cm2_margins: number;
+  cm2_profit_per: number;
   acos: number;
   rembursment_vs_cm2_margins: number;
   profit: number;
@@ -201,13 +203,7 @@ type Totals = {
   net_reimbursement: number;
   ads_spend: number;
   brand_spend: number;
-  cm2_profit_total: number;
 };
-
-// type JwtPayload = {
-//   user_id?: string | number;
-//   [k: string]: unknown;
-// };
 
 /* ---------- Helpers ---------- */
 
@@ -298,10 +294,9 @@ function normalizeRows(data: any[]): TableRow[] {
       product_name: isTotalRow ? "Total" : productName,
       sku: row.sku ?? "-",
 
-      // ✅ make sure quantity exists for export + consistency
-      quantity: toNumber(row.quantity),                 // Units Sold
-      return_quantity: toNumber(row.return_quantity),   // Return units
-      total_quantity: toNumber(row.total_quantity),     // Net units sold (backend)
+      quantity: toNumber(row.quantity),
+      return_quantity: toNumber(row.return_quantity),
+      total_quantity: toNumber(row.total_quantity),
 
       // Units (UI derived)
       units_sold: toNumber(row.quantity),
@@ -364,7 +359,13 @@ function normalizeRows(data: any[]): TableRow[] {
       cm2_profit: toNumber(row.cm2_profit),
       cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
-      // Summary row CM2 Margins should use backend cm2_margins first
+      cm2_profit_per: toNumber(
+        row.cm2_profit_per ??
+        row.cm2_profit_percentage ??
+        row.cm2_profit_percent ??
+        row.cm2_profit_percentage_value
+      ),
+
       cm2_margins: toNumber(
         row.cm2_margins ??
         row.cm2_profit_percentage ??
@@ -372,11 +373,9 @@ function normalizeRows(data: any[]): TableRow[] {
         row.cm2_profit_percentage_value
       ),
 
-      // Keep cm2_profit_per separate only if you need that 42.36 value elsewhere
       cm2_profit_percentage: toNumber(
         row.cm2_profit_per ??
         row.cm2_profit_percentage ??
-        row.cm2_margins ??
         row.cm2_profit_percent ??
         row.cm2_profit_percentage_value
       ),
@@ -417,6 +416,13 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     totalRow.cm2_profit_percentage_value
   );
 
+  const cm2ProfitPerValue = toNumber(
+    totalRow.cm2_profit_per ??
+    totalRow.cm2_profit_percentage ??
+    totalRow.cm2_profit_percent ??
+    totalRow.cm2_profit_percentage_value
+  );
+
   return {
     ads_spend: toNumber(totalRow.ads_spend),
 
@@ -449,11 +455,13 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     cm2_profit: toNumber(totalRow.cm2_profit),
     cm2_profit_total: toNumber(totalRow.cm2_profit_total ?? totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
+    cm2_profit_per: cm2ProfitPerValue,
     acos: toNumber(totalRow.acos),
     rembursment_vs_cm2_margins: toNumber(totalRow.rembursment_vs_cm2_margins),
     net_reimbursement: netReimbursement,
     profit: toNumber(totalRow.Profit ?? totalRow.profit),
     net_sales: toNumber(totalRow.Net_Sales ?? totalRow.net_sales),
+
   };
 }
 
@@ -553,11 +561,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
   };
 
   const getCm2Percentage = (row: Partial<TableRow>) => {
+    const isTotal =
+      String((row as any)?.product_name ?? "").trim().toLowerCase() === "total" ||
+      String((row as any)?.sku ?? "").trim().toLowerCase() === "total";
+
     const backendValue = toNumber(
-      (row as any).cm2_margins ??
-      (row as any).cm2_profit_percentage ??
-      (row as any).cm2_profit_percent ??
-      (row as any).cm2_profit_percentage_value
+      isTotal
+        ? (
+          (row as any).cm2_profit_per ??
+          (row as any).cm2_profit_percentage ??
+          (row as any).cm2_profit_percent ??
+          (row as any).cm2_profit_percentage_value
+        )
+        : (
+          (row as any).cm2_margins ??
+          (row as any).cm2_profit_percentage ??
+          (row as any).cm2_profit_percent ??
+          (row as any).cm2_profit_percentage_value
+        )
     );
 
     if (backendValue) return backendValue;
