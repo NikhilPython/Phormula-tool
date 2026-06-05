@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useState, useRef, useEffect } from "react";
+import React, { memo, useState, useRef } from "react";
 import {
   getISTDayInfo,
   getPrevMonthShortLabel,
@@ -60,7 +59,7 @@ const currencySymbolMap: Record<CurrencyCode, string> = {
 
 const toApostropheLabel = (s: string) => s.replace(" ", "'");
 
-export default function SalesTargetCard({
+function SalesTargetCard({
   data,
   homeCurrency,
   convertToHomeCurrency,
@@ -84,35 +83,7 @@ export default function SalesTargetCard({
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
-
-
-  // const [extraBottom, setExtraBottom] = useState(20);
-
-  // useEffect(() => {
-  //   const mq = window.matchMedia("(min-width: 1536px)"); 
-
-  //   const update = () => {
-  //     setExtraBottom(mq.matches ? 20 : 8);
-  //   };
-
-  //   update();
-  //   mq.addEventListener("change", update);
-  //   return () => mq.removeEventListener("change", update);
-  // }, []);
-
-  const [extraBottom, setExtraBottom] = useState(4);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1536px)");
-
-    const update = () => {
-      setExtraBottom(mq.matches ? 10 : 2);
-    };
-
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
+  const extraBottom = 10;
 
   const computedMtdHome = convertToHomeCurrency(data.mtdUSD ?? 0, homeCurrency);
   const computedLastMonthTotalHome = convertToHomeCurrency(
@@ -423,7 +394,7 @@ export default function SalesTargetCard({
     Math.abs(lastMonthTotalHomeFinal) > 0
       ? (reimbPrev / Math.abs(lastMonthTotalHomeFinal)) * 100
       : 0;
-      
+
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
   const formatWithCurrencySpace = (value: number) => {
@@ -456,7 +427,7 @@ export default function SalesTargetCard({
   return (
     <>
 
-      <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
+      <div className="rounded-xl border p-3 2xl:p-5 shadow-sm min-h-[430px] lg:h-full flex flex-col bg-white">
         {/* Legend */}
         <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
           <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
@@ -793,3 +764,6 @@ export default function SalesTargetCard({
     </>
   );
 }
+
+
+export default memo(SalesTargetCard);
