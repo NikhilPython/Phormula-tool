@@ -1600,6 +1600,18 @@ def get_current_global_data_for_live_bi(user_id: int):
         return float(
             pd.to_numeric(df[col], errors="coerce").fillna(0).sum()
         ) * float(rate)
+    
+    global_product_spend = (
+        gt_money_total(uk_gt, "product_spend", uk_to_usd_rate)
+        + gt_money_total(us_gt, "product_spend", 1)
+    )
+
+    global_display_spend = (
+        gt_money_total(uk_gt, "display_spend", uk_to_usd_rate)
+        + gt_money_total(us_gt, "display_spend", 1)
+    )
+
+    global_ads_spend = global_product_spend + global_display_spend
 
     global_brand_spend = (
         gt_money_total(uk_gt, "brand_spend", uk_to_usd_rate)
@@ -1925,12 +1937,12 @@ def get_current_global_data_for_live_bi(user_id: int):
         errors="coerce"
     ).fillna(0.0)
 
-    # CM1 Profit = Net Sales - COGS - Marketplace Fees + Other Transactions
+    # CM1 Profit = Net Sales - COGS - Marketplace Fees + Tax and Credits
     global_df["profit"] = (
         pd.to_numeric(global_df["net_sales"], errors="coerce").fillna(0.0)
         - pd.to_numeric(global_df["cogs"], errors="coerce").fillna(0.0)
         - pd.to_numeric(global_df["marketplace_fees"], errors="coerce").fillna(0.0)
-        + pd.to_numeric(global_df["other"], errors="coerce").fillna(0.0)
+        + pd.to_numeric(global_df["tax_and_credits"], errors="coerce").fillna(0.0)
     ).round(2)
 
     # CM2 Profit = CM1 Profit - Ads Spend
@@ -2043,11 +2055,12 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     # Global total CM1 Profit
+    # CM1 = Net Sales - COGS - Marketplace Fees + Tax and Credits
     total_row["profit"] = round(
         float(total_row.get("net_sales", 0.0) or 0.0)
         - float(total_row.get("cogs", 0.0) or 0.0)
         - float(total_row.get("marketplace_fees", 0.0) or 0.0)
-        + float(total_row.get("other", 0.0) or 0.0),
+        + float(total_row.get("tax_and_credits", 0.0) or 0.0),
         2,
     )
 
@@ -2069,11 +2082,11 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
     total_row["sales_mix"] = 100.0 if total_net_sales else 0.0
 
-    total_row["acos"] = round(
-        (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
-        if total_net_sales else 0,
-        2
-    )
+    # total_row["acos"] = round(
+    #     (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
+    #     if total_net_sales else 0,
+    #     2
+    # )
 
     total_row["country"] = "global"
     total_row["month"] = month_name
@@ -2084,6 +2097,17 @@ def get_current_global_data_for_live_bi(user_id: int):
     amazon_fees = (
         abs(float(total_row.get("selling_fees", 0.0) or 0.0))
         + abs(float(total_row.get("fba_fees", 0.0) or 0.0))
+    )
+
+    total_row["product_spend"] = round(global_product_spend, 2)
+    total_row["display_spend"] = round(global_display_spend, 2)
+    total_row["ads_spend"] = round(global_ads_spend, 2)
+    total_row["ads_spend_raw"] = round(global_ads_spend, 2)
+
+    total_row["acos"] = round(
+        (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
+        if total_net_sales else 0,
+        2
     )
 
     total_row["brand_spend"] = round(global_brand_spend, 2)
@@ -2098,10 +2122,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         2,
     )
 
-    product_ads_total = (
-        abs(float(total_row.get("product_spend", 0.0) or 0.0))
-        + abs(float(total_row.get("display_spend", 0.0) or 0.0))
-    )
+    product_ads_total = abs(float(total_row.get("ads_spend", 0.0) or 0.0))
 
     cost_ads_total = (
         abs(float(total_row.get("brand_spend", 0.0) or 0.0))
@@ -2191,10 +2212,15 @@ def get_current_global_data_for_live_bi(user_id: int):
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(float(total_row.get("platform_fee", 0.0) or 0.0), 2),
         "advertising_fees": round(total_ads, 2),
+        "ads_spend": round(float(total_row.get("ads_spend", 0.0) or 0.0), 2),
+        "product_spend": round(float(total_row.get("product_spend", 0.0) or 0.0), 2),
+        "display_spend": round(float(total_row.get("display_spend", 0.0) or 0.0), 2),
+        "brand_spend": round(float(total_row.get("brand_spend", 0.0) or 0.0), 2),
         "net_sales": round(total_net_sales, 2),
         "gross_sales": round(float(total_row.get("gross_sales", 0.0) or 0.0), 2),
         "asp": round(float(total_row.get("asp", 0.0) or 0.0), 2),
         "profit": round(float(total_row.get("profit", 0.0) or 0.0), 2),
+        "tax_and_credits": round(float(total_row.get("tax_and_credits", 0.0) or 0.0), 2),
         "cm2_profit": round(total_cm2_profit, 2),
         "profit_percentage": round(
             (total_cm2_profit / total_net_sales * 100) if total_net_sales else 0,
