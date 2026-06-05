@@ -9079,6 +9079,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
     //     : monthlySkuwiseRowsForTable;
 
 
+    const liveBiGraphLoading =
+        !shouldShowDummyUi &&
+        biUiLoading &&
+        !finalBiDailySeriesHome;
+
     const previousSkuwiseRowsForDelta = useMemo(() => {
         if (platform === "global") {
             return Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
@@ -10633,7 +10638,8 @@ ${pageLoading
                                                     <LiveBiLineGraph
                                                         dailySeries={finalBiDailySeriesHome}
                                                         periods={finalBiPeriods}
-                                                        loading={!shouldShowDummyUi && biUiLoading}
+                                                        loading={liveBiGraphLoading}
+                                                        isRefreshing={!shouldShowDummyUi && biUiLoading && !!finalBiDailySeriesHome}
                                                         error={shouldShowDummyUi ? null : biError}
                                                         selectedStartDay={selectedStartDay}
                                                         selectedEndDay={selectedEndDay}
