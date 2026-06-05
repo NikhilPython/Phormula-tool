@@ -25,6 +25,11 @@ QUARTER_MONTHS = {
     "quarter4": ["october", "november", "december"]
 }
 
+MONTHS = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december"
+]
+
 # Quarter mapping for Q1, Q2, Q3, Q4 format
 QUARTER_MAPPING = {
     "Q1": "quarter1",
@@ -229,6 +234,53 @@ def fetch_data_from_table(table_name):
     finally:
         if conn:
             conn.close()
+
+def fetch_yearly_data_from_monthly_tables(user_id, country, year, months_to_process=None):
+    """
+    For yearly pie-chart, do not use skuwiseyearly table.
+    Combine available monthly SKU-wise tables.
+
+    Returns:
+        combined_df
+        used_tables
+        processed_months
+    """
+    if not year:
+        return None, [], []
+
+    year = str(year).strip()
+    country = str(country).strip().lower()
+
+    months = months_to_process if months_to_process is not None else MONTHS
+
+    all_dfs = []
+    used_tables = []
+    processed_months = []
+
+    for month_name in months:
+        month_clean = str(month_name).strip().lower()
+
+        table_name = build_skuwise_table_name(
+            user_id=user_id,
+            country=country,
+            month=month_clean,
+            year=year
+        )
+
+        df = fetch_data_from_table(table_name)
+
+        if df is not None and not df.empty:
+            all_dfs.append(df)
+            used_tables.append(table_name)
+            processed_months.append(month_clean.title())
+
+    if not all_dfs:
+        return None, used_tables, processed_months
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    return combined_df, used_tables, processed_months
+
 
 def prepare_pie_chart_data(df):
     """Prepare data for pie chart - top 5 products + others"""
@@ -523,17 +575,17 @@ def generate_pie_chart():
             or (month_str and year_str and not quarter and not is_quarter_format(month_str))
         )
 
+        current_processed_months = []
+        current_used_tables = []
+
         if table_type == 'auto':
-            # ✅ IMPORTANT:
-            # If user explicitly passes month + year, do not use "best available" fallback.
-            # Fetch only the exact monthly table for that month/year.
+            # Monthly request: fetch exact monthly table only
             if is_monthly_request:
                 if not month_str or not year_str:
                     return jsonify({
                         "error": "month and year are required for monthly pie chart"
                     }), 400
 
-                # If frontend sends month number like "4", convert to "april"
                 if month_str.isdigit():
                     month_str = datetime(2000, int(month_str), 1).strftime("%B").lower()
 
@@ -543,6 +595,8 @@ def generate_pie_chart():
 
                 if df is not None and not df.empty:
                     used_table = table_name
+                    current_used_tables = [table_name]
+                    current_processed_months = [month_str.title()]
                 else:
                     return jsonify({
                         "error": "No data available for selected month and year",
@@ -556,8 +610,30 @@ def generate_pie_chart():
                         }
                     }), 404
 
+            # Yearly request: combine available monthly tables only
+            elif rt == "yearly" or (year_str and not month and not quarter):
+                df, current_used_tables, current_processed_months = fetch_yearly_data_from_monthly_tables(
+                    user_id=user_id,
+                    country=country,
+                    year=year_str
+                )
+
+                if df is not None and not df.empty:
+                    used_table = ", ".join(current_used_tables)
+                else:
+                    return jsonify({
+                        "error": "No monthly data available for selected yearly range",
+                        "tables_checked": current_used_tables,
+                        "parameters": {
+                            "user_id": user_id,
+                            "country": country,
+                            "year": year_str,
+                            "range_type": range_type
+                        }
+                    }), 404
+
             else:
-                # Keep existing auto behavior for quarterly/yearly
+                # Keep existing auto behavior for quarterly
                 df, used_table = _fetch_best_table_auto(
                     user_id,
                     country,
@@ -566,6 +642,9 @@ def generate_pie_chart():
                     quarter,
                     range_type
                 )
+
+                if used_table:
+                    current_used_tables = [used_table]
 
         else:
             table_names = get_table_name_by_type(
@@ -636,20 +715,36 @@ def generate_pie_chart():
                     mode="quarterly",
                 )
 
+          
             # YEARLY previous
             elif rt == "yearly" or (year and not month and not quarter):
                 if not year:
                     return jsonify({'error': 'year is required for yearly previous comparison'}), 400
 
                 prev_y = _prev_year(year)
-                prev_period_meta = {"type": "yearly", "year": prev_y}
 
-                prev_df, prev_table, prev_candidates = _fetch_best_table_for_mode(
+                # Use the same months that were actually available in current year.
+                # Example: current 2026 has Jan-May, previous 2025 should also use Jan-May.
+                previous_months_to_process = [
+                    str(m).strip().lower()
+                    for m in current_processed_months
+                ]
+
+                prev_period_meta = {
+                    "type": "yearly",
+                    "year": prev_y,
+                    "months_used": current_processed_months
+                }
+
+                prev_df, prev_used_tables, prev_processed_months = fetch_yearly_data_from_monthly_tables(
                     user_id=user_id,
                     country=country,
                     year=prev_y,
-                    mode="yearly",
+                    months_to_process=previous_months_to_process
                 )
+
+                prev_table = ", ".join(prev_used_tables) if prev_used_tables else None
+                prev_candidates = prev_used_tables
 
             # MONTHLY previous
             else:
@@ -725,10 +820,12 @@ def generate_pie_chart():
                 'labels': labels,
                 'values': values,
                 'total_products': len(df),
-                'top_5_count': min(5, len(df)),
-                'others_count': max(0, len(df) - 5),
+                'top_5_count': min(5, len(labels)),
+                'others_count': 1 if 'Others' in labels else 0,
                 'total_profit': sum(values),
                 'table_used': used_table,
+                'tables_used': current_used_tables,
+                'processed_months': current_processed_months,
                 'title': title,
                 'is_global_data': ('global' in used_table.lower()) if used_table else False,
 
@@ -737,6 +834,7 @@ def generate_pie_chart():
                     "available": bool(prev_labels),
                     "period": prev_period_meta,
                     "table_used": prev_table,
+                    "tables_used": prev_candidates,
                     "labels": prev_labels,
                     "values": prev_values,
                     "total_profit": sum(prev_values) if prev_values else 0,
