@@ -190,9 +190,16 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
   const options: ChartOptions<"bar"> = {
     interaction: {
-      mode: "nearest",
-      intersect: true,
+      mode: "index",
+      intersect: false,
+      axis: "x",
     },
+
+    hover: {
+      mode: "index",
+      intersect: false,
+    },
+
     responsive: true,
     maintainAspectRatio: false,
 
@@ -212,6 +219,8 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
         },
       },
       tooltip: {
+        mode: "index",
+        intersect: false,
         callbacks: {
           label: (context) => {
             const v = Number(context.raw ?? 0);
@@ -219,6 +228,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
             const prefix = yTitle
               ? `${dsLabel} - ${yTitle}`
               : dsLabel || "Value";
+
             return `${prefix}: ${v.toLocaleString()}`;
           },
         },
@@ -265,7 +275,10 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
             if (parts.length >= 2) {
               const mid = Math.ceil(parts.length / 2);
-              return [parts.slice(0, mid).join(" "), parts.slice(mid).join(" ")];
+              return [
+                parts.slice(0, mid).join(" "),
+                parts.slice(mid).join(" "),
+              ];
             }
 
             return label;
