@@ -1538,11 +1538,28 @@ def get_current_global_data_for_live_bi(user_id: int):
     # SPLIT GRAND TOTAL ROWS SAFELY
     # -------------------------------------------------------------------------
     def split_grand_total(df):
-        if df is None or df.empty or "sku" not in df.columns:
-            return pd.DataFrame(), df if df is not None else pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame(), pd.DataFrame()
 
-        gt = df[df["sku"].astype(str).str.upper() == "GRAND_TOTAL"].copy()
-        body = df[df["sku"].astype(str).str.upper() != "GRAND_TOTAL"].copy()
+        df = df.copy()
+
+        if "sku" not in df.columns:
+            df["sku"] = ""
+
+        if "product_name" not in df.columns:
+            df["product_name"] = ""
+
+        sku_upper = df["sku"].fillna("").astype(str).str.strip().str.upper()
+        product_lower = df["product_name"].fillna("").astype(str).str.strip().str.lower()
+
+        total_mask = (
+            sku_upper.isin(["GRAND_TOTAL", "TOTAL"])
+            | product_lower.isin(["grand total", "total"])
+        )
+
+        gt = df[total_mask].copy()
+        body = df[~total_mask].copy()
+
         return gt, body
 
     # remove old grand total before combining
@@ -1610,7 +1627,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "promotional_rebates", "promotional_rebates_tax",
         "marketplace_facilitator_tax", "selling_fees", "fba_fees",
         "marketplace_fees",
-        "other", "gross_sales", "cogs", "profit", "net_sales",
+        "other", "gross_sales", "cogs", "profit", "net_sales","asp", 
         "ads_spend", "product_spend", "display_spend", "brand_spend",
         "platform_fee", "platform_fee_inventory_storage",
         "platformfeenew", "dealsvouchar_ads", "shipment_fees",
@@ -1747,6 +1764,27 @@ def get_current_global_data_for_live_bi(user_id: int):
                 df["sales_mix"] = 0.0
 
         return df
+    
+    def _recalc_asp_after_currency_conversion(df):
+        if df is None or df.empty:
+            return df
+
+        df = df.copy()
+
+        for col in ["net_sales", "total_quantity", "quantity", "return_quantity"]:
+            if col not in df.columns:
+                df[col] = 0.0
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+        net_units = df["total_quantity"].where(
+            df["total_quantity"] != 0,
+            (df["quantity"] - df["return_quantity"]).clip(lower=0)
+        )
+
+        df["asp"] = df["net_sales"] / net_units.replace(0, pd.NA)
+        df["asp"] = pd.to_numeric(df["asp"], errors="coerce").fillna(0.0)
+
+        return df
 
     us_response_df = _add_country_growth_fields(us_response_df)
     uk_response_df = _add_country_growth_fields(uk_response_df)
@@ -1807,6 +1845,23 @@ def get_current_global_data_for_live_bi(user_id: int):
         frames_to_combine.append(uk_df)
 
     combined_df = pd.concat(frames_to_combine, ignore_index=True)
+
+    if not combined_df.empty:
+        if "sku" not in combined_df.columns:
+            combined_df["sku"] = ""
+
+        if "product_name" not in combined_df.columns:
+            combined_df["product_name"] = ""
+
+        sku_upper = combined_df["sku"].fillna("").astype(str).str.strip().str.upper()
+        product_lower = combined_df["product_name"].fillna("").astype(str).str.strip().str.lower()
+
+        combined_df = combined_df[
+            ~(
+                sku_upper.isin(["GRAND_TOTAL", "TOTAL"])
+                | product_lower.isin(["grand total", "total"])
+            )
+        ].copy()
 
     if "product_name" not in combined_df.columns:
         combined_df["product_name"] = ""
