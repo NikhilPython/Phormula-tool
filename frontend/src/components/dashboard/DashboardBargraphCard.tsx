@@ -33,7 +33,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   const normalizedLabels = useMemo(() => labels ?? [], [labels]);
 
   const shouldShowAsPositiveBar = (label: string) => {
-    return ["Tax & Credits"].includes(label);
+    return ["Tax & Credits", "Others", "Other Charges"].includes(label);
   };
 
   const normalizeBarValue = (label: string, value: unknown) => {
