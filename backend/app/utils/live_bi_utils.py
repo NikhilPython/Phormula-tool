@@ -1233,6 +1233,10 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["description"] = df.get("description", "").fillna("").astype(str)
     df["type"] = df.get("type", "").fillna("").astype(str)
 
+    # Quantity should only count shipment rows
+    is_shipment = df["type"].str.strip().str.lower().eq("shipment")
+    df["quantity_filtered"] = df["quantity"].where(is_shipment, 0)
+
     # ----------------------------
     # Fee extraction (LIVEORDERS-SPECIFIC)
     # ----------------------------
@@ -1298,7 +1302,7 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         df_sku.groupby("sku", as_index=False)
           .agg(
               product_name=("product_name", "first"),
-              quantity=("quantity", "sum"),
+              quantity=("quantity_filtered", "sum"),
               net_sales=("net_sales", "sum"),
               product_sales=("product_sales", "sum"),
               gross_sales=("gross_sales", "sum"),  # ✅ NEW
@@ -1326,8 +1330,8 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["date_only"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date
     df = df.dropna(subset=["date_only"])
 
-    daily_qty = df.groupby("date_only", as_index=False)["quantity"].sum()
-    qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity"])}
+    daily_qty = df.groupby("date_only", as_index=False)["quantity_filtered"].sum()
+    qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity_filtered"])}
 
     daily_ns = df.groupby("date_only", as_index=False)["net_sales"].sum()
     ns_map = {d: float(v) for d, v in zip(daily_ns["date_only"], daily_ns["net_sales"])}
