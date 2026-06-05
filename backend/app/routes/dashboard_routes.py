@@ -1573,64 +1573,196 @@ def cashflow():
         with engine.connect() as conn:
             return pd.read_sql(text(f'SELECT * FROM "{table_name}"'), conn)
 
-    def get_upload_values(user_id_value, process_month, year_value, record_country):
-        upload_values_query = text("""
-            SELECT otherwplatform, taxncredit
-            FROM upload_history
-            WHERE user_id = :user_id
-              AND LOWER(month) = LOWER(:month)
-              AND year = :year
-              AND LOWER(country) = LOWER(:country)
-            LIMIT 1
-        """)
+    # def get_upload_values(user_id_value, process_month, year_value, record_country):
+    #     upload_values_query = text("""
+    #         SELECT otherwplatform, taxncredit
+    #         FROM upload_history
+    #         WHERE user_id = :user_id
+    #           AND LOWER(month) = LOWER(:month)
+    #           AND year = :year
+    #           AND LOWER(country) = LOWER(:country)
+    #         LIMIT 1
+    #     """)
 
-        row = db_session.execute(upload_values_query, {
-            'user_id': user_id_value,
-            'month': process_month,
-            'year': year_value,
-            'country': record_country
-        }).fetchone()
+    #     row = db_session.execute(upload_values_query, {
+    #         'user_id': user_id_value,
+    #         'month': process_month,
+    #         'year': year_value,
+    #         'country': record_country
+    #     }).fetchone()
 
-        otherwplatform = float(row[0] or 0) if row else 0
-        taxncredit = float(row[1] or 0) if row else 0
+    #     otherwplatform = float(row[0] or 0) if row else 0
+    #     taxncredit = float(row[1] or 0) if row else 0
 
-        return otherwplatform, taxncredit
+    #     return otherwplatform, taxncredit
+
+    # def extract_totals(cashflow_df: pd.DataFrame):
+    #     if cashflow_df.empty:
+    #         return None, []
+
+    #     if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
+    #         cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
+
+    #     if 'cm2_profit' not in cashflow_df.columns and 'profit' in cashflow_df.columns:
+    #         cashflow_df['cm2_profit'] = cashflow_df['profit']
+
+    #     numeric_cols = [
+    #         'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
+    #         'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
+    #         'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
+    #     ]
+
+    #     for col in numeric_cols:
+    #         if col in cashflow_df.columns:
+    #             cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
+
+    #     total_row = find_total_row(cashflow_df)
+    #     source_df = total_row if total_row is not None and not total_row.empty else cashflow_df
+
+    #     def get_total(col):
+    #         if col not in source_df.columns:
+    #             return 0
+    #         if total_row is not None and not total_row.empty:
+    #             return float(source_df[col].iloc[0])
+    #         return float(source_df[col].sum())
+
+    #     totals = {
+    #         'net_sales': get_total('net_sales'),
+    #         'gross_sales': get_total('gross_sales'),
+    #         'promotional_rebates': get_total('promotional_rebates'),
+    #         'quantity_total': get_total('total_quantity'),
+    #         'advertising_total': get_total('advertising_total'),
+    #         'selling_fees': get_total('selling_fees'),
+    #         'fba_fees': get_total('fba_fees'),
+    #         'amazon_fee': get_total('amazon_fee'),
+    #         'cm2_profit': get_total('cm2_profit'),
+    #         'cost_of_unit_sold': get_total('cost_of_unit_sold'),
+    #         'rembursement_fee': get_total('rembursement_fee'),
+    #         'taxncredit': 0,
+    #         'otherwplatform': 0,
+    #         'cashflow': 0,
+    #     }
+
+    #     totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+
+    #     if 'date' in cashflow_df.columns:
+    #         cashflow_df = cashflow_df.drop(columns=['date'])
+
+    #     numeric_columns = cashflow_df.select_dtypes(include=['number']).columns
+    #     for col in numeric_columns:
+    #         cashflow_df[col] = cashflow_df[col].astype(float).round(2)
+
+    #     data_records = []
+    #     for record in cashflow_df.to_dict(orient='records'):
+    #         clean_record = {}
+    #         for key, value in record.items():
+    #             if pd.isna(value) or value is None:
+    #                 clean_record[key] = 0
+    #             elif isinstance(value, str):
+    #                 clean_record[key] = value
+    #             else:
+    #                 try:
+    #                     clean_record[key] = float(value)
+    #                 except Exception:
+    #                     clean_record[key] = str(value)
+    #         data_records.append(clean_record)
+
+    #     return totals, data_records
 
     def extract_totals(cashflow_df: pd.DataFrame):
         if cashflow_df.empty:
             return None, []
 
+        column_map = {
+            'net_sales': 'net_sales',
+            'gross_sales': 'gross_sales',
+            'advertising_total': 'advertising_total',
+            'amazon_fee': 'amazon_fee',
+            'cm2_profit': 'cm2_profit',
+            'cost_of_unit_sold': 'cost_of_unit_sold',
+            'otherwplatform': 'platform_fee',
+            'taxncredit': 'tex_and_credits',
+            'rembursement_fee': 'rembursement_fee',
+            'quantity_total': 'total_quantity',
+            'selling_fees': 'selling_fees',
+            'fba_fees': 'fba_fees',
+            'promotional_rebates': 'promotional_rebates'
+        }
+
+        # Optional backward compatibility
         if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
             cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
 
         if 'cm2_profit' not in cashflow_df.columns and 'profit' in cashflow_df.columns:
             cashflow_df['cm2_profit'] = cashflow_df['profit']
 
-        numeric_cols = [
-            'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
-            'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
-            'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
-        ]
+        debug_cols = {
+            'amazon_fee': 'amazon_fee',
+            'otherwplatform': 'platform_fee'
+        }
 
-        for col in numeric_cols:
-            if col in cashflow_df.columns:
-                cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
+        print("\n========== CASHFLOW DEBUG: ORIGINAL VALUES ==========")
+        for response_key, table_col in debug_cols.items():
+            if table_col in cashflow_df.columns:
+                print(f"\nColumn mapping: response_key={response_key}, table_col={table_col}")
+                print("Original values with original sign:")
+                print(cashflow_df[table_col].to_string(index=False))
+            else:
+                print(f"\nMissing column: response_key={response_key}, table_col={table_col}")
+
+        # Convert mapped table columns to numeric
+        for response_key, table_col in column_map.items():
+            if table_col in cashflow_df.columns:
+                cashflow_df[table_col] = pd.to_numeric(
+                    cashflow_df[table_col],
+                    errors='coerce'
+                ).fillna(0)
 
         total_row = find_total_row(cashflow_df)
         source_df = total_row if total_row is not None and not total_row.empty else cashflow_df
 
-        def get_total(col):
-            if col not in source_df.columns:
+        print("\n========== CASHFLOW DEBUG: AGGREGATION CHECK ==========")
+        print("Using total row:", total_row is not None and not total_row.empty)
+
+        if total_row is not None and not total_row.empty:
+            if 'product_name' in total_row.columns:
+                print("Matched product_name:", total_row['product_name'].to_string(index=False))
+            if 'sku' in total_row.columns:
+                print("Matched sku:", total_row['sku'].to_string(index=False))
+
+        for response_key, table_col in debug_cols.items():
+            if table_col in cashflow_df.columns:
+                sku_sum_value = float(cashflow_df[table_col].sum() or 0)
+
+                if total_row is not None and not total_row.empty:
+                    total_row_value = float(total_row[table_col].iloc[0] or 0)
+                else:
+                    total_row_value = None
+
+                print(f"\n{table_col} check:")
+                print(f"SKU rows sum value: {sku_sum_value}")
+                print(f"Total row value: {total_row_value}")
+                print(
+                    "Final value used:",
+                    total_row_value if total_row_value is not None else sku_sum_value
+                )
+
+        def get_total(response_key):
+            table_col = column_map.get(response_key)
+
+            if not table_col or table_col not in source_df.columns:
                 return 0
+
             if total_row is not None and not total_row.empty:
-                return float(source_df[col].iloc[0])
-            return float(source_df[col].sum())
+                return float(source_df[table_col].iloc[0] or 0)
+
+            return float(source_df[table_col].sum() or 0)
 
         totals = {
             'net_sales': get_total('net_sales'),
             'gross_sales': get_total('gross_sales'),
             'promotional_rebates': get_total('promotional_rebates'),
-            'quantity_total': get_total('total_quantity'),
+            'quantity_total': get_total('quantity_total'),
             'advertising_total': get_total('advertising_total'),
             'selling_fees': get_total('selling_fees'),
             'fba_fees': get_total('fba_fees'),
@@ -1638,8 +1770,8 @@ def cashflow():
             'cm2_profit': get_total('cm2_profit'),
             'cost_of_unit_sold': get_total('cost_of_unit_sold'),
             'rembursement_fee': get_total('rembursement_fee'),
-            'taxncredit': 0,
-            'otherwplatform': 0,
+            'taxncredit': get_total('taxncredit'),
+            'otherwplatform': get_total('otherwplatform'),
             'cashflow': 0,
         }
 
@@ -1665,6 +1797,7 @@ def cashflow():
                         clean_record[key] = float(value)
                     except Exception:
                         clean_record[key] = str(value)
+
             data_records.append(clean_record)
 
         return totals, data_records
@@ -1699,13 +1832,26 @@ def cashflow():
         for key in target:
             target[key] += source.get(key, 0)
 
-    def compute_cashflow_summary(user_id_value, year_value, country_value, period_type_value, month_name_value=None):
+    def compute_cashflow_summary(
+        user_id_value,
+        year_value,
+        country_value,
+        period_type_value,
+        month_name_value=None,
+        custom_months_to_process=None
+    ):
         combined_totals = empty_totals()
         all_cashflow_data = []
+        processed_months = []
 
-        months_to_process = get_months_to_process(period_type_value, month_name_value)
+        months_to_process = (
+            custom_months_to_process
+            if custom_months_to_process is not None
+            else get_months_to_process(period_type_value, month_name_value)
+        )
+
         if not months_to_process:
-            return combined_totals, [], {}
+            return combined_totals, [], {'processed_months': []}
 
         countries_with_data = get_countries_with_data(
             user_id_value=user_id_value,
@@ -1728,8 +1874,15 @@ def cashflow():
                 )
 
                 if not table_name:
-                    print(f"Cashflow monthly table not found: country={record_country}, month={process_month}, year={year_value}")
+                    if period_type_value == 'monthly':
+                        print(
+                            f"Cashflow monthly table not found: "
+                            f"country={record_country}, month={process_month}, year={year_value}"
+                        )
                     continue
+
+                if process_month not in processed_months:
+                    processed_months.append(process_month)
 
                 try:
                     cashflow_df = load_table_dataframe(table_name)
@@ -1737,17 +1890,6 @@ def cashflow():
 
                     if totals is None:
                         continue
-
-                    otherwplatform, taxncredit = get_upload_values(
-                        user_id_value=user_id_value,
-                        process_month=process_month,
-                        year_value=year_value,
-                        record_country=record_country
-                    )
-
-                    totals['otherwplatform'] = otherwplatform
-                    totals['taxncredit'] = taxncredit
-                    totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
 
                     totals = convert_uk_to_usd_if_needed(
                         totals=totals,
@@ -1786,13 +1928,18 @@ def cashflow():
         for key in combined_totals:
             combined_totals[key] = round(combined_totals[key], 2)
 
-        meta = {}
+        meta = {
+            'processed_months': processed_months
+        }
+
         if period_type_value == 'monthly':
             meta['month'] = month_name_value
+
         elif period_type_value == 'quarterly' or period_type_value in QUARTER_MONTHS:
-            meta['quarter_months'] = months_to_process
+            meta['quarter_months'] = processed_months
+
         elif period_type_value == 'yearly':
-            meta['year_months'] = months_to_process
+            meta['year_months'] = processed_months
 
         return combined_totals, all_cashflow_data, meta
 
@@ -1846,14 +1993,22 @@ def cashflow():
 
         previous_summary = None
         try:
+            previous_custom_months = None
+
+            if period_type == 'yearly':
+                previous_custom_months = meta.get('processed_months', [])
+
             prev_totals, _, _ = compute_cashflow_summary(
                 user_id_value=user_id,
                 year_value=prev_year,
                 country_value=country,
                 period_type_value=prev_period_type,
-                month_name_value=prev_month_name
+                month_name_value=prev_month_name,
+                custom_months_to_process=previous_custom_months
             )
+
             previous_summary = prev_totals
+
         except Exception as e:
             print(f"Previous cashflow summary error: {e}")
             previous_summary = None
