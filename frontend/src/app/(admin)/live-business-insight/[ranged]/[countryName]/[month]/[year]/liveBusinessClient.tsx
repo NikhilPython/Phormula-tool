@@ -447,6 +447,52 @@ export default function LiveBusinessClient({
     };
   }, [displayCurrency]);
 
+  const formatDisplayAmountNoDecimals = useMemo(() => {
+    return (value: number | null | undefined) => {
+      const n = toNumberSafe(value ?? 0);
+
+      switch (displayCurrency) {
+        case "USD":
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(n);
+
+        case "GBP":
+          return new Intl.NumberFormat("en-GB", {
+            style: "currency",
+            currency: "GBP",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(n);
+
+        case "CAD":
+          return new Intl.NumberFormat("en-CA", {
+            style: "currency",
+            currency: "CAD",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(n);
+
+        case "INR":
+          return new Intl.NumberFormat("en-IN", {
+            style: "currency",
+            currency: "INR",
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(n);
+
+        default:
+          return n.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          });
+      }
+    };
+  }, [displayCurrency]);
+
   const detectCurrencyFromMetric = (raw: string): CurrencyCode => {
     const v = String(raw || "").trim().toUpperCase();
 
@@ -478,11 +524,22 @@ export default function LiveBusinessClient({
 
       const fromCurrency = detectCurrencyFromMetric(mainPart);
       const converted = convertToDisplayCurrency(numeric, fromCurrency);
-      const formatted = formatDisplayAmount(converted);
+
+      const normalizedLabel = label.trim().toLowerCase();
+
+      const formatted =
+        normalizedLabel === "net sales" || normalizedLabel === "cm1 profit"
+          ? formatDisplayAmountNoDecimals(converted)
+          : formatDisplayAmount(converted);
 
       return `${formatted}${percentPart ? ` ${percentPart}` : ""}`;
     };
-  }, [convertToDisplayCurrency, formatDisplayAmount, sourceCurrency]);
+  }, [
+    convertToDisplayCurrency,
+    formatDisplayAmount,
+    formatDisplayAmountNoDecimals,
+    sourceCurrency,
+  ]);
 
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
     top_80_skus: [],
@@ -3325,12 +3382,17 @@ export default function LiveBusinessClient({
   const formatGlobalMetricValue = (
     value: number,
     growth: number,
-    type: "money" | "number" = "money"
+    type: "money" | "number" = "money",
+    label?: string
   ) => {
+    const normalizedLabel = String(label || "").trim().toLowerCase();
+
     const main =
       type === "number"
         ? Number(value || 0).toLocaleString()
-        : formatDisplayAmount(Number(value || 0));
+        : normalizedLabel === "net sales" || normalizedLabel === "cm1 profit"
+          ? formatDisplayAmountNoDecimals(Number(value || 0))
+          : formatDisplayAmount(Number(value || 0));
 
     return `${main} ${formatGrowth(growth)}`;
   };
@@ -3497,7 +3559,9 @@ export default function LiveBusinessClient({
           label: "Net sales",
           value: formatGlobalMetricValue(
             Number(row.net_sales_curr || row.net_sales_month2 || row.net_sales || 0),
-            getGrowthValue(row, "Net Sales Growth (%)")
+            getGrowthValue(row, "Net Sales Growth (%)"),
+            "money",
+            "Net sales"
           ),
         },
         {
@@ -3511,7 +3575,9 @@ export default function LiveBusinessClient({
           label: "CM1 profit",
           value: formatGlobalMetricValue(
             Number(row.profit_curr || row.profit_month2 || row.profit || 0),
-            getGrowthValue(row, "CM1 Profit Impact (%)")
+            getGrowthValue(row, "CM1 Profit Impact (%)"),
+            "money",
+            "CM1 profit"
           ),
         },
         {
