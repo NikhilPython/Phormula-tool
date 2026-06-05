@@ -45,6 +45,7 @@ type Props = {
   }
   | null;
   loading?: boolean;
+  isRefreshing?: boolean;
   error?: string | null;
 
   selectedStartDay?: number | null;
@@ -203,7 +204,7 @@ const LiveLineChart: React.FC<{
   const option: EChartsOption = useMemo(
     () => ({
       color: ["#CECBC7", "#ED9F50"],
-
+      animation: false,
       tooltip: {
         trigger: "axis",
         textStyle: { fontSize: tooltipFontSize },
@@ -328,7 +329,7 @@ const LiveLineChart: React.FC<{
           smooth: true,
           connectNulls: false,
           data: prevSeriesData,
-
+          animation: false,
           lineStyle: { width: 2 },
 
           showSymbol: true,
@@ -344,7 +345,7 @@ const LiveLineChart: React.FC<{
           smooth: true,
           connectNulls: false,
           data: currSeriesData,
-
+          animation: false,
           lineStyle: { width: 2 },
 
           showSymbol: true,
@@ -402,6 +403,8 @@ const LiveLineChart: React.FC<{
       ) : (
         <ReactECharts
           option={option}
+          notMerge={false}
+          lazyUpdate={true}
           style={{ width: "100%", height: isCompactView ? 244 : 260 }}
           onChartReady={(instance) => {
             echartsInstanceRef.current = instance as EChartsType;
@@ -419,6 +422,7 @@ export default function LiveBiLineChartPanel({
   dailySeries,
   periods,
   loading,
+  isRefreshing,
   error,
   selectedStartDay,
   selectedEndDay,
@@ -491,7 +495,7 @@ export default function LiveBiLineChartPanel({
         </div>
       </div>
 
-      <div style={{ marginTop: "-5px" }} className="min-h-[260px]">
+      <div style={{ marginTop: "-5px" }} className="relative min-h-[260px]">
         {loading ? (
           <div className="flex items-center justify-center h-[260px]">
             <Loader className="bg-[transparent]" />
@@ -499,16 +503,24 @@ export default function LiveBiLineChartPanel({
         ) : error ? (
           <div className="text-sm text-red-500">{error}</div>
         ) : dailySeries ? (
-          <LiveLineChart
-            dataPrev={dailySeries.previous || []}
-            dataCurr={dailySeries.current_mtd || []}
-            metric={chartMetric}
-            prevLabel={prevLegend}
-            currLabel={currLegend}
-            currencySymbol={currencySymbol}
-            selectedStartDay={selectedStartDay}
-            selectedEndDay={selectedEndDay}
-          />
+          <>
+            <LiveLineChart
+              dataPrev={dailySeries.previous || []}
+              dataCurr={dailySeries.current_mtd || []}
+              metric={chartMetric}
+              prevLabel={prevLegend}
+              currLabel={currLegend}
+              currencySymbol={currencySymbol}
+              selectedStartDay={selectedStartDay}
+              selectedEndDay={selectedEndDay}
+            />
+
+            {isRefreshing && (
+              <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/80 px-2 py-1 text-[10px] text-gray-500 shadow-sm">
+                Refreshing…
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-sm text-gray-500">No daily data available.</div>
         )}

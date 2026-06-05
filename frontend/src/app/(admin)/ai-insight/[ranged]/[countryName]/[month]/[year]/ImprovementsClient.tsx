@@ -22,8 +22,6 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import introJs from 'intro.js';
-import 'intro.js/introjs.css';
 import DataTable, { ColumnDef, Row } from '@/components/ui/table/DataTable';
 import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
@@ -875,55 +873,6 @@ const MonthsforBI: React.FC = () => {
   // =========================
   // PREVIEW / DUMMY DATA
   // =========================
-
-
-
-
-
-
-
-  useEffect(() => {
-    if (!introReady) return;
-
-    const done = localStorage.getItem('bi_intro_done');
-    if (done) return;
-
-    // 🔥 SAFETY: agar koi purana instance ho
-    introJs().exit();
-
-    const intro = introJs();
-    intro.setOptions({
-      showProgress: true,
-      showBullets: false,
-      exitOnOverlayClick: false,
-      scrollToElement: false, // 🔥 IMPORTANT
-      steps: [
-        {
-          element: '#intro-year1',
-          intro: 'Select the year you want to analyze.',
-        },
-        {
-          element: '#intro-month1',
-          intro: 'Choose the corresponding month for that year.',
-        },
-        {
-          element: '#intro-compare',
-          intro: 'Click Compare to view insights and performance trends.',
-        },
-      ],
-
-    });
-
-    intro.oncomplete(() => localStorage.setItem('bi_intro_done', '1'));
-    intro.onexit(() => localStorage.setItem('bi_intro_done', '1'));
-
-    intro.start();
-  }, [introReady]);
-
-
-
-
-
 
   const toggleTotalsMetric = (key: string) => {
     const selectedCount = Object.values(selectedTotals).filter(Boolean).length;
@@ -2765,13 +2714,11 @@ const MonthsforBI: React.FC = () => {
             padding: 10,
             callbacks: {
               label: (tooltipItem: any) => {
-                const label = tooltipItem.dataset.label || "";
-                const value = tooltipItem.raw as number;
-                return `${label}: ${currency}${Number(value ?? 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`;
-              },
+  const label = tooltipItem.dataset.label || "";
+  const value = Number(tooltipItem.raw ?? 0);
+
+  return `${label}: ${currency}${Math.round(value).toLocaleString()}`;
+},
             },
           },
         },

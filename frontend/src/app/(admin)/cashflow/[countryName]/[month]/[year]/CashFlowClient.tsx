@@ -713,57 +713,75 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     allValuesZero;
 
   const getLineChartData = () => {
-  let sourceMonths: string[] = [];
-  const datasets: any[] = [];
+    let sourceMonths: string[] = [];
+    const datasets: any[] = [];
 
-  if (periodType === "quarterly" && selectedQuarter) {
-    const qMonths = quarterMapping[selectedQuarter] || [];
+    if (periodType === "quarterly" && selectedQuarter) {
+      const qMonths = quarterMapping[selectedQuarter] || [];
 
-    // Only show months that were actually fetched
-    sourceMonths = qMonths.filter((monthName) => {
-      return quarterlyMonthlyData[monthName];
+      // Only show months that were actually fetched
+      sourceMonths = qMonths.filter((monthName) => {
+        return quarterlyMonthlyData[monthName];
+      });
+    } else if (periodType === "yearly") {
+      // Only show months that were actually fetched, but keep calendar order
+      sourceMonths = monthsList.filter((monthName) => {
+        return allYearlyData[monthName];
+      });
+    }
+
+    const labels = sourceMonths.map((m) =>
+      isMobile ? shortMonthMap[m] || m : m
+    );
+
+    columnsToDisplay2.forEach((key) => {
+      if (!selectedGraphs[key]) return;
+
+      const dataSource =
+        periodType === "quarterly" ? quarterlyMonthlyData : allYearlyData;
+
+      const ds = sourceMonths.map((monthName) => {
+        const md = dataSource[monthName];
+        const value = Number(md?.[key] ?? 0);
+
+        return ["amazon_fee", "advertising_total", "otherwplatform"].includes(key)
+          ? Math.abs(value)
+          : value;
+      });
+
+      const label = labelMap[key];
+
+      datasets.push({
+        label,
+        metricKey: key,
+        data: ds,
+        borderColor: colorMapping[label],
+        backgroundColor: colorMapping[label],
+        borderWidth: 2,
+        fill: false,
+        tension: 0.35,
+        cubicInterpolationMode: "monotone",
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      });
     });
-  } else if (periodType === "yearly") {
-    // Only show months that were actually fetched, but keep calendar order
-    sourceMonths = monthsList.filter((monthName) => {
-      return allYearlyData[monthName];
-    });
-  }
 
-  const labels = sourceMonths.map((m) =>
-    isMobile ? shortMonthMap[m] || m : m
-  );
+    return { labels, datasets };
+  };
 
-  columnsToDisplay2.forEach((key) => {
-    if (!selectedGraphs[key]) return;
+  const expensePositiveKeys = [
+    "amazon_fee",
+    "advertising_total",
+    "otherwplatform",
+  ] as const;
 
-    const dataSource =
-      periodType === "quarterly" ? quarterlyMonthlyData : allYearlyData;
+  const getChartDisplayValue = (key: keyof SummaryShape) => {
+    const value = Number(getSafeValue(key));
 
-    const ds = sourceMonths.map((monthName) => {
-      const md = dataSource[monthName];
-      return Number(md?.[key] ?? 0);
-    });
-
-    const label = labelMap[key];
-
-    datasets.push({
-      label,
-      metricKey: key,
-      data: ds,
-      borderColor: colorMapping[label],
-      backgroundColor: colorMapping[label],
-      borderWidth: 2,
-      fill: false,
-      tension: 0.35,
-      cubicInterpolationMode: "monotone",
-      pointRadius: 3,
-      pointHoverRadius: 5,
-    });
-  });
-
-  return { labels, datasets };
-};
+    return expensePositiveKeys.includes(key as any)
+      ? Math.abs(value)
+      : value;
+  };
 
   const getFilteredBarChartData = () => {
     const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
@@ -778,7 +796,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       datasets: [
         {
           label: "Amount",
-          data: filteredKeys.map((k) => Number(getSafeValue(k))),
+          data: filteredKeys.map((k) => getChartDisplayValue(k)),
           backgroundColor: filteredKeys.map(
             (k) => colorMapping[labelMap[k]] || "#999"
           ),
@@ -803,7 +821,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         callbacks: {
           label: (tooltipItem: any) => {
             const label = tooltipItem.label || "";
-            return `${label}: ${formatCurrencyValue(tooltipItem.raw, currencySymbol)}`;
+            return `${label}: ${formatCurrencyValue(Math.abs(Number(tooltipItem.raw)), currencySymbol)}`;
           },
         },
       },

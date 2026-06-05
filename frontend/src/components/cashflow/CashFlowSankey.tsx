@@ -174,8 +174,7 @@ const CashFlowSankey: React.FC<Props> = ({
     (data.amazon_fee || 0);
 
   const prevMarketplaceFees =
-    (previous_summary?.amazon_fee || 0) +
-    (previous_summary?.otherwplatform || 0);
+    (previous_summary?.amazon_fee || 0);
 
 
 
@@ -532,12 +531,19 @@ const CashFlowSankey: React.FC<Props> = ({
         {cards.map((c) => {
           const p = getChangePercent(c.value, c.prev);
 
+          const shouldShowPositive =
+            c.label === "Marketplace Fees" || c.label === "Promotional Discount";
+
+          const displayValue = shouldShowPositive
+            ? Math.abs(c.value || 0)
+            : c.value;
+
           const currentValue =
             c.label === "Units" ? (
               formatInteger(c.value)
             ) : c.isDiscount ? (
               <>
-                {formatCurrencyRoundedWithSign(-(Math.abs(c.value || 0)))}
+                {formatCurrencyRoundedWithSign(Math.abs(c.value || 0))}
                 <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                   (
                   {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
@@ -546,10 +552,17 @@ const CashFlowSankey: React.FC<Props> = ({
               </>
             ) : (
               <>
-                {c.isCurrency ? formatCurrencyByLabel(c.label, c.value) : formatNumber(c.value)}
+                {c.isCurrency
+                  ? formatCurrencyByLabel(c.label, displayValue)
+                  : formatNumber(displayValue)}
+
                 {perUnitCards.includes(c.label) && (
                   <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-                    ({formatCurrencyRoundedWithSign(Number(getPerUnitValue(c.value, data.quantity_total)))} / Unit)
+                    (
+                    {formatCurrencyRoundedWithSign(
+                      Number(getPerUnitValue(displayValue, data.quantity_total))
+                    )}{" "}
+                    / Unit)
                   </span>
                 )}
               </>
@@ -562,13 +575,25 @@ const CashFlowSankey: React.FC<Props> = ({
             : c.label === "Units"
               ? formatInteger(c.prev)
               : c.isDiscount
-                ? formatCurrencyRoundedWithSign(-(Math.abs(c.prev || 0)))
-                : `${c.isCurrency ? formatCurrencyByLabel(c.label, c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
+                ? formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))
+                : `${c.isCurrency
+                  ? formatCurrencyByLabel(
+                    c.label,
+                    c.label === "Marketplace Fees" ? Math.abs(c.prev || 0) : c.prev
+                  )
+                  : formatNumber(c.prev)
+                }${perUnitCards.includes(c.label)
                   ? ` (${formatCurrencyRoundedWithSign(
-                    Number(getPerUnitValue(c.prev, previous_summary?.quantity_total))
+                    Number(
+                      getPerUnitValue(
+                        c.label === "Marketplace Fees" ? Math.abs(c.prev || 0) : c.prev,
+                        previous_summary?.quantity_total
+                      )
+                    )
                   )} / Unit)`
                   : ""
                 }`;
+                
           const comparisons = [
             {
               label: `${formatPrevLabel(previousLabel || "Previous")}`,
