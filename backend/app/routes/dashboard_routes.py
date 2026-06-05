@@ -1758,6 +1758,8 @@ def cashflow():
 
             return float(source_df[table_col].sum() or 0)
 
+        amazon_fee_value = get_total('amazon_fee')
+
         totals = {
             'net_sales': get_total('net_sales'),
             'gross_sales': get_total('gross_sales'),
@@ -1766,12 +1768,20 @@ def cashflow():
             'advertising_total': get_total('advertising_total'),
             'selling_fees': get_total('selling_fees'),
             'fba_fees': get_total('fba_fees'),
-            'amazon_fee': get_total('amazon_fee'),
+
+            # amazon_fee is stored positive in SKU monthly table,
+            # but it should behave like a fee/deduction in the response.
+            'amazon_fee': -abs(amazon_fee_value),
+
             'cm2_profit': get_total('cm2_profit'),
             'cost_of_unit_sold': get_total('cost_of_unit_sold'),
             'rembursement_fee': get_total('rembursement_fee'),
             'taxncredit': get_total('taxncredit'),
+
+            # platform_fee already has correct original sign in table.
+            # Do not force it negative.
             'otherwplatform': get_total('otherwplatform'),
+
             'cashflow': 0,
         }
 
