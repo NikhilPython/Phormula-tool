@@ -5881,6 +5881,30 @@ export default function DashboardPage() {
         );
     }, [monthlySkuwiseRows]);
 
+    const getNetUnits = (row: any) =>
+        toNumber(
+            row?.total_quantity ??
+            row?.net_quantity ??
+            (
+                toNumber(row?.quantity) -
+                toNumber(row?.return_quantity ?? row?.returns_quantity ?? row?.return_qty)
+            )
+        );
+
+    const mtdUnitsCurrent = useMemo(() => {
+        return getNetUnits(grandTotalRowRaw ?? grandTotalRowDisplay ?? {});
+    }, [grandTotalRowRaw, grandTotalRowDisplay]);
+
+    const mtdUnitsPrevious = useMemo(() => {
+        return toNumber(
+            data?.previous_period?.totals?.total_quantity ??
+            data?.previous_period?.totals?.net_quantity ??
+            prev.quantity
+        );
+    }, [data, prev.quantity]);
+
+    const mtdUnitsDelta = safeDeltaPct(mtdUnitsCurrent, mtdUnitsPrevious);
+
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
         return computePlSummaryTotals(data, monthlySkuwiseRows, platform);
     }, [data, monthlySkuwiseRows, platform]);
@@ -6442,8 +6466,8 @@ export default function DashboardPage() {
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
 
         return {
-            units: toNumber(globalGrand.quantity),
-            prevUnits: toNumber(prevDerived.quantity),
+            units: getNetUnits(globalGrand),
+            prevUnits: toNumber(prevDerived.total_quantity ?? prevDerived.net_quantity ?? prevDerived.quantity),
 
             grossSales: toNumber(globalGrand.gross_sales),
             prevGrossSales: toNumber(prevDerived.gross_sales),
@@ -8614,19 +8638,19 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? dummyStatData.units.current
                 : isStickyGlobal
                     ? stickyTableTotals.units
-                    : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)),
+                    : (useBiForAmazonCards ? biCardKpis.curr.units : mtdUnitsCurrent),
 
             previous: shouldShowDummyUi
                 ? dummyStatData.units.previous
                 : isStickyGlobal
                     ? stickyPreviousTotals.units
-                    : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity),
+                    : (useBiForAmazonCards ? biCardKpis.prev.units : mtdUnitsPrevious),
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.units.deltaPct
                 : isStickyGlobal
                     ? safeDeltaPct(stickyTableTotals.units, stickyPreviousTotals.units)
-                    : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct),
+                    : (useBiForAmazonCards ? biCardKpis.deltas.units : mtdUnitsDelta),
 
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
@@ -9761,8 +9785,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 : previousSkuwiseGlobalData?.aligned_totals_us || {};
 
         return {
-            units: toNumber(currentGrand.quantity),
-            prevUnits: toNumber(prevDerived.quantity),
+            units: getNetUnits(currentGrand),
+            prevUnits: toNumber(
+                prevDerived.total_quantity ??
+                prevDerived.net_quantity ??
+                prevDerived.quantity
+            ),
 
             grossSales: toNumber(currentGrand.gross_sales),
             prevGrossSales: toNumber(prevDerived.gross_sales),
@@ -10414,17 +10442,17 @@ ${pageLoading
                                                     current={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.units.current
-                                                            : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0))
+                                                            : (useBiForAmazonCards ? biCardKpis.curr.units : mtdUnitsCurrent)
                                                     }
                                                     previous={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.units.previous
-                                                            : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity)
+                                                            : (useBiForAmazonCards ? biCardKpis.prev.units : mtdUnitsPrevious)
                                                     }
                                                     deltaPct={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.units.deltaPct
-                                                            : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct)
+                                                            : (useBiForAmazonCards ? biCardKpis.deltas.units : mtdUnitsDelta)
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={fmtInt}
