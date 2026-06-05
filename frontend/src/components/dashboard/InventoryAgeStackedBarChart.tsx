@@ -82,40 +82,50 @@ const InventoryAgeStackedBarChart: React.FC<InventoryAgeStackedBarChartProps> = 
                     label: "0-90",
                     data: data.map((row) => row.age0to90),
                     backgroundColor: "#7B9A6D",
+                    hoverBackgroundColor: "#6F8F61",
                     borderRadius: 4,
                     borderWidth: 0,
+                    hoverBorderWidth: 2,
                     stack: "inventoryAge",
                 },
                 {
                     label: "91-180",
                     data: data.map((row) => row.age91to180),
                     backgroundColor: "#B8C78C",
+                    hoverBackgroundColor: "#AABD7B",
                     borderRadius: 4,
                     borderWidth: 0,
+                    hoverBorderWidth: 2,
                     stack: "inventoryAge",
                 },
                 {
                     label: "181-270",
                     data: data.map((row) => row.age181to270),
                     backgroundColor: "#FDD36F",
+                    hoverBackgroundColor: "#F6C85D",
                     borderRadius: 4,
                     borderWidth: 0,
+                    hoverBorderWidth: 2,
                     stack: "inventoryAge",
                 },
                 {
                     label: "271-365",
                     data: data.map((row) => row.age271to365),
                     backgroundColor: "#ED9F50",
+                    hoverBackgroundColor: "#E8913D",
                     borderRadius: 4,
                     borderWidth: 0,
+                    hoverBorderWidth: 2,
                     stack: "inventoryAge",
                 },
                 {
                     label: "365+",
                     data: data.map((row) => row.age365plus),
                     backgroundColor: "#B75A5A",
+                    hoverBackgroundColor: "#A94D4D",
                     borderRadius: 4,
                     borderWidth: 0,
+                    hoverBorderWidth: 2,
                     stack: "inventoryAge",
                 },
             ],
@@ -128,8 +138,17 @@ const InventoryAgeStackedBarChart: React.FC<InventoryAgeStackedBarChartProps> = 
         maintainAspectRatio: false,
 
         interaction: {
-            mode: "nearest",
-            intersect: true,
+            mode: "index",
+            intersect: false,
+        },
+
+        hover: {
+            mode: "index",
+            intersect: false,
+        },
+
+        animation: {
+            duration: 250,
         },
 
         layout: {
@@ -149,12 +168,29 @@ const InventoryAgeStackedBarChart: React.FC<InventoryAgeStackedBarChartProps> = 
                     boxHeight: 12,
                 },
             },
+
             tooltip: {
+                mode: "index",
+                intersect: false,
+
                 callbacks: {
+                    title: (items) => {
+                        const index = items?.[0]?.dataIndex ?? 0;
+                        const row = data[index];
+
+                        return row?.productName || row?.sku || "";
+                    },
+
                     label: (context) => {
                         const value = Number(context.raw ?? 0);
-                        return `${context.dataset.label}: ${value.toLocaleString("en-IN")} units`;
+
+                        if (!value) return "";
+
+                        return `${context.dataset.label}: ${value.toLocaleString(
+                            "en-IN"
+                        )} units`;
                     },
+
                     footer: (items) => {
                         const index = items?.[0]?.dataIndex ?? 0;
                         const row = data[index];
@@ -165,13 +201,18 @@ const InventoryAgeStackedBarChart: React.FC<InventoryAgeStackedBarChartProps> = 
                             row.age0to90 +
                             row.age91to180 +
                             row.age181to270 +
-                            row.age271to365 +
-                            row.age365plus;
+                            row.age365plus +
+                            row.age271to365;
 
                         return `Total: ${total.toLocaleString("en-IN")} units`;
                     },
                 },
+
+                filter: (tooltipItem) => {
+                    return Number(tooltipItem.raw ?? 0) > 0;
+                },
             },
+
             title: {
                 display: false,
             },
@@ -211,6 +252,7 @@ const InventoryAgeStackedBarChart: React.FC<InventoryAgeStackedBarChartProps> = 
                     },
                 },
             },
+
             y: {
                 stacked: true,
                 beginAtZero: true,
