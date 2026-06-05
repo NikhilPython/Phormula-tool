@@ -2133,16 +2133,24 @@ def get_current_global_data_for_live_bi(user_id: int):
     shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
-    total_cm2_profit = float(total_row.get("cm2_profit", 0.0) or 0.0)
-
-    total_cm2_profit = (
+    # Productwise CM2 Profit
+    # CM2 Profit = CM1 Profit - Ads Spend
+    cm2_profit_productwise = (
         float(total_row.get("profit", 0.0) or 0.0)
-        - float(product_ads_total + cost_ads_total)
-        - other_transactions_total
-        - shipment_charges_total
+        - float(total_row.get("ads_spend", 0.0) or 0.0)
     )
 
-    total_row["cm2_profit"] = round(total_cm2_profit, 2)
+    # Global Total CM2 Profit
+    # total_cm2_profit = cm2_profit - brand_spend - dealsvouchar_ads - abs(platform_fee) - shipment_fees
+    total_cm2_profit = (
+        cm2_profit_productwise
+        - abs(float(total_row.get("brand_spend", 0.0) or 0.0))
+        - abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
+        - abs(float(total_row.get("platform_fee", 0.0) or 0.0))
+        - abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
+    )
+
+    total_row["cm2_profit"] = round(cm2_profit_productwise, 2)
     total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
 
     total_cm2_margins = (
