@@ -1884,9 +1884,24 @@ def get_current_global_data_for_live_bi(user_id: int):
         - pd.to_numeric(global_df["ads_spend"], errors="coerce").fillna(0.0)
     ).round(2)
 
+    def _net_units_for_asp(row):
+        total_quantity = float(row.get("total_quantity", 0) or 0)
+
+        if total_quantity:
+            return total_quantity
+
+        quantity = float(row.get("quantity", 0) or 0)
+        return_quantity = float(row.get("return_quantity", 0) or 0)
+
+        return max(quantity - return_quantity, 0)
+
+
     global_df["asp"] = global_df.apply(
-        lambda r: float(r["net_sales"]) / float(r["quantity"])
-        if float(r.get("quantity", 0) or 0) else 0,
+        lambda r: (
+            float(r.get("net_sales", 0) or 0) / _net_units_for_asp(r)
+            if _net_units_for_asp(r)
+            else 0
+        ),
         axis=1
     )
 
@@ -1954,7 +1969,15 @@ def get_current_global_data_for_live_bi(user_id: int):
     for col in total_sum_cols:
         total_row[col] = float(global_df[col].sum()) if col in global_df.columns else 0
 
-    total_qty = float(total_row.get("quantity", 0) or 0)
+    total_qty = float(total_row.get("total_quantity", 0) or 0)
+
+    if not total_qty:
+        total_qty = max(
+            float(total_row.get("quantity", 0) or 0)
+            - float(total_row.get("return_quantity", 0) or 0),
+            0
+        )
+
     total_net_sales = float(total_row.get("net_sales", 0) or 0)
 
     # Global total Other Transactions = sum of country-wise Other Transactions
@@ -2392,8 +2415,38 @@ def finances_mtd_transactions():
 
     gross_sales_total = float(totals.get("gross_sales", 0.0))
     net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
+
     qty_total = float(totals.get("quantity", 0.0)) or 0.0
-    asp = (net_sales / qty_total) if qty_total else 0.0
+    return_qty_total = 0.0
+
+    df_all_for_asp = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+
+    if not df_all_for_asp.empty and "quantity" in df_all_for_asp.columns:
+        for col in ["description", "type", "transaction_type"]:
+            if col not in df_all_for_asp.columns:
+                df_all_for_asp[col] = ""
+
+        desc_lower = df_all_for_asp["description"].fillna("").astype(str).str.lower()
+        type_lower = df_all_for_asp["type"].fillna("").astype(str).str.lower()
+        transaction_type_lower = df_all_for_asp["transaction_type"].fillna("").astype(str).str.lower()
+
+        return_mask = (
+            desc_lower.str.contains("refund|return", case=False, na=False, regex=True)
+            | type_lower.str.contains("refund|return", case=False, na=False, regex=True)
+            | transaction_type_lower.str.contains("refund|return", case=False, na=False, regex=True)
+        )
+
+        return_qty_total = float(
+            pd.to_numeric(df_all_for_asp.loc[return_mask, "quantity"], errors="coerce")
+            .fillna(0.0)
+            .abs()
+            .sum()
+        )
+
+    net_qty_total = max(qty_total - return_qty_total, 0.0)
+
+    asp = (net_sales / net_qty_total) if net_qty_total else 0.0
+
     profit_total = float(totals.get("profit", 0.0))
 
     # ---------------- platform + advertising fees (dashboard) ----------------
@@ -3250,9 +3303,10 @@ def finances_mtd_transactions():
 
         for col, val in derived_totals.items():
             if col not in [
+                "asp",          # do not overwrite total row ASP
                 "platform_fee",
-                "profit",       # keep CM1 = Net Sales - COGS - Marketplace Fees + Other
-                "cm2_profit",   # keep CM2 = CM1 Profit - Ads Spend
+                "profit",
+                "cm2_profit",
                 "total_ads",
                 "total_cm2_profit",
                 "total_cm2_margins",

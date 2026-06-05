@@ -1515,14 +1515,32 @@ def skutableprofit():
                         advertising_total_final = advertising_total_from_main
 
                     acos = safe_divide(ads_for_acos, net_sales) * 100
+
+                    # OLD logic - do not change this
                     cm2_profit_per = safe_divide(cm2_profit, net_sales) * 100
                     cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
+
+                    # NEW logic only for cm2_margins when ads table exists
+                    if ads_tbl_name:
+                        cm2_margins_value = safe_divide(cm2_profit_total, net_sales) * 100
+                    else:
+                        cm2_margins_value = safe_float(row_dict.get("cm2_margins"))
 
                     row_dict["ads_spend"] = round(ads_for_acos, 2)
                     row_dict["cm2_profit"] = round(cm2_profit, 2)
                     row_dict["acos"] = round(acos, 2)
                     row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
                     row_dict["cm2_profit_per_unit"] = round(cm2_profit_per_unit, 2)
+
+                    if ads_tbl_name:
+                        row_dict["cm2_margins"] = round(cm2_margins_value, 2)
+                        row_dict["cm2_profit_percentage"] = round(cm2_margins_value, 2)
+
+                        rembursement_fee = safe_float(row_dict.get("rembursement_fee"))
+                        row_dict["rembursment_vs_cm2_margins"] = round(
+                            safe_divide(rembursement_fee, cm2_profit_total) * 100,
+                            2
+                        )
 
                     row_dict["brand_spend"] = round(brand_spend_total, 2)
                     row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
