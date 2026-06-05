@@ -741,6 +741,9 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const tableBodyCell =
     "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-center min-w-0 whitespace-nowrap";
 
+  const tableSkuCell =
+    "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-center min-w-0 whitespace-normal break-words";
+
   const tableBodyTextCell =
     "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-left min-w-0 whitespace-normal break-words";
 
@@ -936,14 +939,14 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[260px] ${tableHeaderCell} text-left`}
+                        className={`sticky top-0 z-30 w-[200px] ${tableHeaderCell} text-left`}
                       >
                         Product Name
                       </th>
 
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[150px] ${tableHeaderCell}`}
+                        className={`sticky top-0 z-30 w-[220px] ${tableHeaderCell}`}
                       >
                         SKU
                       </th>
@@ -1001,7 +1004,19 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                           </div>
                         </td>
 
-                        <td className={tableBodyCell}>{row.sku}</td>
+                        <td className={tableSkuCell}>
+                          <div className="max-w-[150px] whitespace-normal break-words leading-snug mx-auto">
+                            {String(row.sku)
+                              .split(",")
+                              .map((sku, index, arr) => (
+                                <React.Fragment key={`${sku}-${index}`}>
+                                  {sku.trim()}
+                                  {index < arr.length - 1 && ","}
+                                  {index < arr.length - 1 && <br />}
+                                </React.Fragment>
+                              ))}
+                          </div>
+                        </td>
                         <td className={tableBodyCell}>{row.sold1}</td>
                         <td className={tableBodyCell}>{row.sold2}</td>
                         <td className={tableBodyCell}>{row.sold3}</td>
