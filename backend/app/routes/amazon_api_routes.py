@@ -1633,6 +1633,11 @@ def get_current_global_data_for_live_bi(user_id: int):
         + gt_money_total(us_gt, "dealsvouchar_ads", 1)
     )
 
+    global_misc_transaction = (
+        gt_money_total(uk_gt, "misc_transaction", uk_to_usd_rate)
+        + gt_money_total(us_gt, "misc_transaction", 1)
+    )
+
     money_cols = [
         "product_sales", "product_sales_tax", "postage_credits",
         "gift_wrap_credits", "shipping_credits_tax", "giftwrap_credits_tax",
@@ -1646,7 +1651,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
         "tax", "credits", "tax_and_credits", "lost_total",
-        "ads_sale_amount"
+        "ads_sale_amount" "misc_transaction",
     ]
 
     def recalc_response_grand_total(row_df):
@@ -1916,6 +1921,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "ads_spend",
         "product_spend",
         "display_spend",
+        "misc_transaction",
     ]:
         if col not in global_df.columns:
             global_df[col] = 0.0
@@ -2114,6 +2120,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["platform_fee_inventory_storage"] = round(global_platform_fee_inventory_storage, 2)
     total_row["platformfeenew"] = round(global_platformfeenew, 2)
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
+    total_row["misc_transaction"] = round(global_misc_transaction, 2)
 
     total_row["platform_fee"] = round(
         abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
@@ -2133,16 +2140,24 @@ def get_current_global_data_for_live_bi(user_id: int):
     shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
-    total_cm2_profit = float(total_row.get("cm2_profit", 0.0) or 0.0)
-
-    total_cm2_profit = (
+    # Productwise CM2 Profit
+    # CM2 Profit = CM1 Profit - Ads Spend
+    cm2_profit_productwise = (
         float(total_row.get("profit", 0.0) or 0.0)
-        - float(product_ads_total + cost_ads_total)
-        - other_transactions_total
-        - shipment_charges_total
+        - float(total_row.get("ads_spend", 0.0) or 0.0)
     )
 
-    total_row["cm2_profit"] = round(total_cm2_profit, 2)
+    # Global Total CM2 Profit
+    # total_cm2_profit = cm2_profit - brand_spend - dealsvouchar_ads - abs(platform_fee) - shipment_fees
+    total_cm2_profit = (
+        cm2_profit_productwise
+        - abs(float(total_row.get("brand_spend", 0.0) or 0.0))
+        - abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
+        - abs(float(total_row.get("platform_fee", 0.0) or 0.0))
+        - abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
+    )
+
+    total_row["cm2_profit"] = round(cm2_profit_productwise, 2)
     total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
 
     total_cm2_margins = (
@@ -2213,6 +2228,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "platform_fee": round(float(total_row.get("platform_fee", 0.0) or 0.0), 2),
         "advertising_fees": round(total_ads, 2),
         "ads_spend": round(float(total_row.get("ads_spend", 0.0) or 0.0), 2),
+        "misc_transaction": round(float(total_row.get("misc_transaction", 0.0) or 0.0), 2),
         "product_spend": round(float(total_row.get("product_spend", 0.0) or 0.0), 2),
         "display_spend": round(float(total_row.get("display_spend", 0.0) or 0.0), 2),
         "brand_spend": round(float(total_row.get("brand_spend", 0.0) or 0.0), 2),

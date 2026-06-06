@@ -394,6 +394,24 @@ const splitMetricValue = (value: string) => {
   return { main, delta, deltaColor };
 };
 
+const formatRecommendationCardMainValue = (label: string, main: string) => {
+  const normalizedLabel = label.trim().toLowerCase();
+
+  // Only round these 2 metrics
+  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+    return main;
+  }
+
+  const currencyMatch = main.match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+
+  const numberPart = main.replace(/[^0-9.-]/g, "");
+  const numberValue = Number(numberPart);
+
+  if (!Number.isFinite(numberValue)) return main;
+
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
 
 const monthNameToNumber = (m: string): string => {
   const idx = monthIndexMap[(m || "").toLowerCase()];
@@ -873,6 +891,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         <div className="flex flex-col leading-tight">
                           {(() => {
                             const { main, delta, deltaColor } = splitMetricValue(m.value);
+                            const displayMain = formatRecommendationCardMainValue(m.label, main);
 
                             return (
                               <>
@@ -881,7 +900,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                                   className="text-sm font-bold 2xl:text-lg"
                                   style={{ color: "#414042" }}
                                 >
-                                  {main}
+                                  {displayMain}
                                 </span>
 
                                 {delta && (
@@ -1309,11 +1328,12 @@ const ProductInsightsSection = ({
 
                       {(() => {
                         const { main, delta, deltaColor } = splitMetricValue(m.value);
+                        const displayMain = formatRecommendationCardMainValue(m.label, main);
 
                         return (
                           <div className="mt-1 flex flex-col min-[1700px]:flex-row  2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0">
                             <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
-                              {main}
+                              {displayMain}
                             </span>
 
                             {delta ? (
