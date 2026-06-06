@@ -1651,7 +1651,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
         "tax", "credits", "tax_and_credits", "lost_total",
-        "ads_sale_amount" "misc_transaction",
+        "ads_sale_amount", "misc_transaction",
     ]
 
     def recalc_response_grand_total(row_df):
@@ -1675,12 +1675,27 @@ def get_current_global_data_for_live_bi(user_id: int):
         net_sales = float(row_df.iloc[0].get("net_sales", 0.0) or 0.0)
         profit = float(row_df.iloc[0].get("profit", 0.0) or 0.0)
 
-        other_transactions_total = (
-            abs(float(row_df.iloc[0].get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
+        ads_spend = (
+            abs(float(row_df.iloc[0].get("product_spend", 0.0) or 0.0))
+            + abs(float(row_df.iloc[0].get("display_spend", 0.0) or 0.0))
         )
 
-        total_cm2_profit = profit - total_ads - other_transactions_total
+        cm2_profit_productwise = profit - ads_spend
+
+        other_transactions_total = (
+            abs(float(row_df.iloc[0].get("misc_transaction", 0.0) or 0.0))
+            + abs(float(row_df.iloc[0].get("lost_total", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("platform_fee_inventory_storage", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
+        )
+
+        total_cm2_profit = (
+            cm2_profit_productwise
+            - abs(float(row_df.iloc[0].get("brand_spend", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("dealsvouchar_ads", 0.0) or 0.0))
+            - abs(other_transactions_total)
+            - abs(float(row_df.iloc[0].get("shipment_fees", 0.0) or 0.0))
+        )
 
         row_df.loc[:, "total_ads"] = round(total_ads, 2)
         row_df.loc[:, "advertising_fees"] = round(total_ads, 2)
@@ -1711,13 +1726,8 @@ def get_current_global_data_for_live_bi(user_id: int):
             2
         )
 
-        platform_fee = (
-            abs(float(row_df.iloc[0].get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
-            - abs(float(row_df.iloc[0].get("lost_total", 0.0) or 0.0))
-        )
-
-        row_df.loc[:, "platform_fee"] = round(platform_fee, 2)
+        row_df.loc[:, "cm2_profit"] = round(cm2_profit_productwise, 2)
+        row_df.loc[:, "platform_fee"] = round(-other_transactions_total, 2)
 
         return row_df
 
@@ -2122,12 +2132,14 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
     total_row["misc_transaction"] = round(global_misc_transaction, 2)
 
-    total_row["platform_fee"] = round(
-        abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
-        + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-        - abs(float(total_row.get("lost_total", 0.0) or 0.0)),
-        2,
+    other_transactions_total = (
+        abs(float(total_row.get("misc_transaction", 0.0) or 0.0))
+        + abs(float(total_row.get("lost_total", 0.0) or 0.0))
+        - abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+        - abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
     )
+
+    total_row["platform_fee"] = round(-other_transactions_total, 2)
 
     product_ads_total = abs(float(total_row.get("ads_spend", 0.0) or 0.0))
 
@@ -2136,7 +2148,6 @@ def get_current_global_data_for_live_bi(user_id: int):
         + abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
     )
 
-    other_transactions_total = float(total_row.get("platform_fee", 0.0) or 0.0)
     shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
@@ -2237,7 +2248,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "asp": round(float(total_row.get("asp", 0.0) or 0.0), 2),
         "profit": round(float(total_row.get("profit", 0.0) or 0.0), 2),
         "tax_and_credits": round(float(total_row.get("tax_and_credits", 0.0) or 0.0), 2),
-        "cm2_profit": round(total_cm2_profit, 2),
+        "cm2_profit": round(cm2_profit_productwise, 2),
         "profit_percentage": round(
             (total_cm2_profit / total_net_sales * 100) if total_net_sales else 0,
             2
@@ -3285,13 +3296,18 @@ def finances_mtd_transactions():
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
 
-        total_row["platform_fee"] = round(
-            abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
-            + abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
-            - abs(float(total_row.get("lost_total", 0.0) or 0.0))
-            - abs(float(total_row.get("misc_transaction", 0.0) or 0.0)),
-            2,
+        # Other Transactions:
+        # Misc Transactions (+) + Reimbursement for lost Inventory (+)
+        # - Inventory Storage Fees (-) - Other Platform Fees (-)
+        other_transactions_value = (
+            abs(float(total_row.get("misc_transaction", 0.0) or 0.0))
+            + abs(float(total_row.get("lost_total", 0.0) or 0.0))
+            - abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            - abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
         )
+
+        # Keep platform_fee negative because later total_cm2_profit subtracts abs(platform_fee)
+        total_row["platform_fee"] = round(-other_transactions_value, 2)
 
         total_row["ad_type"] = "All"
 
@@ -3328,18 +3344,46 @@ def finances_mtd_transactions():
             + abs(float(total_row.get("display_spend", 0.0) or 0.0))
         )
 
-        # Other Transactions / Platform Fee should always be treated as a cost
-        other_transactions_total = abs(float(total_row.get("platform_fee", 0.0) or 0.0))
+        # Productwise CM2 Profit
+        # CM2 Profit = CM1 Profit - Ads Spend
+        cm2_profit_productwise = (
+            float(total_row.get("profit", 0.0) or 0.0)
+            - float(total_row.get("ads_spend", 0.0) or 0.0)
+        )
 
-        # Shipment Charges should also reduce CM2
+        total_row["cm2_profit"] = round(cm2_profit_productwise, 2)
+
+        # Productwise CM2 Profit
+        # CM2 Profit = CM1 Profit - Ads Spend
+        cm2_profit_productwise = (
+            float(total_row.get("profit", 0.0) or 0.0)
+            - float(total_row.get("ads_spend", 0.0) or 0.0)
+        )
+
+        total_row["cm2_profit"] = round(cm2_profit_productwise, 2)
+
+        # Other Transactions:
+        # Misc Transactions (+) + Reimbursement for lost Inventory (+)
+        # - Inventory Storage Fees (-) - Other Platform Fees (-)
+        other_transactions_total = (
+            abs(float(total_row.get("misc_transaction", 0.0) or 0.0))
+            + abs(float(total_row.get("lost_total", 0.0) or 0.0))
+            - abs(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0))
+            - abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
+        )
+
+        # keep UI platform_fee negative, same as global
+        total_row["platform_fee"] = round(-other_transactions_total, 2)
+
         shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
 
-        # Correct CM2:
-        # CM2 = CM1 Profit - Total Ads - Other Transactions - Shipment Charges
+        # Total CM2 Profit:
+        # total_cm2_profit = cm2_profit - brand_spend - dealsvouchar_ads - abs(platform_fee) - shipment_fees
         total_cm2_profit = (
-            float(total_row.get("profit", 0.0) or 0.0)
-            - float(product_ads_total + cost_ads_total)
-            - other_transactions_total
+            cm2_profit_productwise
+            - abs(float(total_row.get("brand_spend", 0.0) or 0.0))
+            - abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
+            - abs(float(total_row.get("platform_fee", 0.0) or 0.0))
             - shipment_charges_total
         )
 
