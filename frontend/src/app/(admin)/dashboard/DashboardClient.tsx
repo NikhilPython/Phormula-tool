@@ -6516,9 +6516,9 @@ export default function DashboardPage() {
     ]);
 
     const stickyTableTotals = useMemo(() => {
-        const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? {};
+    const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? grandTotalRowDisplay ?? {};
 
-        const units = toNumber(row.quantity);
+    const units = getNetUnits(row);
         const netSales = toNumber(row.net_sales);
         const asp = toNumber(row.asp);
 
@@ -6580,12 +6580,13 @@ export default function DashboardPage() {
             cm2MarginPct,
         };
     }, [
-        platform,
-        grandTotalRowRaw,
-        plSummaryTotals.advertising_total,
-        plSummaryTotals.acos,
-        plSummaryTotals.cm2_profit,
-    ]);
+    platform,
+    grandTotalRowRaw,
+    grandTotalRowDisplay,
+    plSummaryTotals.advertising_total,
+    plSummaryTotals.acos,
+    plSummaryTotals.cm2_profit,
+]);
 
     const stickyPreviousTotals = useMemo(() => {
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
