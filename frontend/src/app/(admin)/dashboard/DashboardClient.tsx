@@ -6024,12 +6024,14 @@ export default function DashboardPage() {
     // Prefer backend CM2 first.
     // Fallback to old formula only if backend CM2 is missing.
     const rawCm2Profit =
-        toNumber(
-            grandTotalRowRaw?.total_cm2_profit ??
-            grandTotalRowRaw?.cm2_profit ??
-            plSummaryTotals?.cm2_profit ??
-            0
-        ) || (rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee));
+    toNumber(
+        grandTotalRowRaw?.total_cm2_profit ??
+        grandTotalRowDisplay?.total_cm2_profit ??
+        plSummaryTotals?.cm2_profit ??
+        grandTotalRowRaw?.cm2_profit ??
+        grandTotalRowDisplay?.cm2_profit ??
+        0
+    ) || (rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee));
 
     const rawCm2Margins = toNumber(
         grandTotalRowRaw?.total_cm2_margins ??
@@ -6139,9 +6141,17 @@ export default function DashboardPage() {
         );
 
         const cm2 = convertToDisplayCurrency(
-            toNumberSafe(derived?.cm2_profit ?? grandTotalRowRaw?.cm2_profit ?? 0),
-            sourceCurrency
-        );
+    toNumberSafe(
+        grandTotalRowRaw?.total_cm2_profit ??
+        grandTotalRowDisplay?.total_cm2_profit ??
+        derived?.total_cm2_profit ??
+        derived?.cm2_profit ??
+        grandTotalRowRaw?.cm2_profit ??
+        grandTotalRowDisplay?.cm2_profit ??
+        0
+    ),
+    sourceCurrency
+);
 
         return [
             { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
@@ -7618,7 +7628,18 @@ export default function DashboardPage() {
 
         if (idxAds !== -1) copy[idxAds] = Number(adsSpendTotal ?? 0);
         if (idxOthers !== -1) copy[idxOthers] = Math.abs(Number(platformFee ?? 0));
-        if (idxCm2 !== -1) copy[idxCm2] = Number(cm2Profit ?? 0);
+        if (idxCm2 !== -1) {
+    copy[idxCm2] = Number(
+        toNumberSafe(
+            totalRow?.total_cm2_profit ??
+            grandTotalRowRaw?.total_cm2_profit ??
+            grandTotalRowDisplay?.total_cm2_profit ??
+            cm2Profit ??
+            totalRow?.cm2_profit ??
+            0
+        )
+    );
+}
 
         return copy;
     }, [
@@ -7636,6 +7657,8 @@ export default function DashboardPage() {
         adsSpendTotal,
         platformFee,
         cm2Profit,
+        grandTotalRowRaw?.total_cm2_profit,
+        grandTotalRowDisplay?.total_cm2_profit,
     ]);
 
     const targetKpisFromBi = useMemo(() => {
