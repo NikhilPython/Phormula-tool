@@ -289,6 +289,17 @@ def build_table_name(user_id: int, country: str, period: str, timeline: str, yea
 
     raise ValueError("Invalid period")
 
+def build_ads_table_name(user_id: int, country: str, timeline: str, year: int) -> str:
+    """
+    Ads table naming pattern used by skutableprofit:
+    skuwisemonthly_{user_id}_{country}_{month}_{year}
+    Example:
+    skuwisemonthly_2_uk_may_2026
+    """
+    mn = month_name_from_timeline(timeline)
+    return f"skuwisemonthly_{user_id}_{str(country).lower()}_{mn}_{year}".lower()
+
+
 def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, year: int) -> pd.DataFrame:
     table = build_table_name(user_id, country, period, timeline, year)
     query = f'SELECT * FROM public."{table}"'
@@ -298,6 +309,20 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     except Exception as e:
         
         return pd.DataFrame()
+
+def fetch_ads_table(user_id: int, country: str, timeline: str, year: int) -> pd.DataFrame:
+    """
+    Fetches the separate ads table if it exists.
+    Returns empty DataFrame if table does not exist.
+    """
+    table = build_ads_table_name(user_id, country, timeline, year)
+    query = f'SELECT * FROM public."{table}"'
+
+    try:
+        return pd.read_sql(query, phormula_engine)
+    except Exception:
+        return pd.DataFrame()
+
 
 def build_rolling_monthly_series(
     user_id: int,
@@ -316,6 +341,15 @@ def build_rolling_monthly_series(
             period="monthly",
             timeline=str(m),
             year=y
+        )
+
+        df = apply_advertising_total_final_from_ads_table(
+            df,
+            user_id=user_id,
+            country=country,
+            period="monthly",
+            timeline=str(m),
+            year=y,
         )
 
         if df.empty:
@@ -782,6 +816,223 @@ def _total_value(df_total: pd.DataFrame, col: str):
         return None
     return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
 
+def safe_float(v):
+    try:
+        if v is None:
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _get_ads_spend_from_row(row: dict) -> float:
+    """
+    Same purpose as _get_ads_spend() in skutableprofit.
+    Adjust column names here if your ads table uses different names.
+    """
+    for col in ["ads_spend", "total_ads_spend", "visible_ads"]:
+        if col in row:
+            return abs(safe_float(row.get(col)))
+    return 0.0
+
+
+def _get_dealsvouchar_ads_from_row(row: dict) -> float:
+    """
+    Same purpose as _get_dealsvouchar_ads() in skutableprofit.
+    Includes spelling variants.
+    """
+    for col in [
+        "dealsvouchar_ads",
+        "deals_voucher_ads",
+        "dealsvoucher_ads",
+        "deals_vouchar_ads",
+    ]:
+        if col in row:
+            return abs(safe_float(row.get(col)))
+    return 0.0
+
+
+def _advertising_total_final_value(df_total: pd.DataFrame):
+    """
+    Reads advertising_total_final if present.
+    Falls back to advertising_total for old tables.
+    """
+    final_val = _total_value(df_total, "advertising_total_final")
+
+    if final_val is not None:
+        return final_val
+
+    return _total_value(df_total, "advertising_total")
+
+
+def get_ads_total_row(df_ads: pd.DataFrame) -> dict:
+    """
+    Finds total row from ads table.
+    Same idea as skutableprofit:
+    - prefer sku == total
+    - else product_name == total
+    - else use last row
+    """
+    if df_ads.empty:
+        return {}
+
+    df = df_ads.copy()
+
+    if "sku" in df.columns:
+        total_rows = df[
+            df["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+        ]
+        if not total_rows.empty:
+            return total_rows.iloc[0].to_dict()
+
+    if "product_name" in df.columns:
+        total_rows = df[
+            df["product_name"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+        ]
+        if not total_rows.empty:
+            return total_rows.iloc[0].to_dict()
+
+    return df.iloc[-1].to_dict()
+
+def apply_advertising_total_final_from_ads_table(
+    df_main: pd.DataFrame,
+    *,
+    user_id: int,
+    country: str,
+    period: str,
+    timeline: str,
+    year: int,
+) -> pd.DataFrame:
+    """
+    Replicates skutableprofit advertising_total_final logic for AI summary.
+
+    If ads table exists:
+        advertising_total = brand_spend + dealsvouchar_ads
+        advertising_total_final = advertising_total + total_ads_spend
+
+    If ads table does not exist:
+        advertising_total_final = main advertising_total
+        fallback = visible_ads + dealsvouchar_ads + brand_spend
+
+    Important:
+    For AI/comparison compatibility, this also overwrites advertising_total
+    inside the copied dataframe with advertising_total_final.
+    """
+    if df_main.empty:
+        return df_main
+
+    df = df_main.copy()
+
+    if "advertising_total_final" not in df.columns:
+        df["advertising_total_final"] = None
+
+    if "advertising_total" not in df.columns:
+        df["advertising_total"] = 0.0
+
+    # Ads table exists only for monthly data.
+    if period != "monthly":
+        df["advertising_total_final"] = df["advertising_total_final"].fillna(
+            df["advertising_total"]
+        )
+        df["advertising_total"] = df["advertising_total_final"]
+        return df
+
+    df = _normalize_sku_col(df)
+
+    if "sku" not in df.columns:
+        return df
+
+    total_mask = df["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+
+    if not total_mask.any():
+        return df
+
+    total_idx = df[total_mask].index[0]
+
+    df_ads = fetch_ads_table(
+        user_id=user_id,
+        country=country,
+        timeline=timeline,
+        year=year,
+    )
+
+    # --------------------------------------------------
+    # Case 1: No ads table
+    # --------------------------------------------------
+    if df_ads.empty:
+        main_total = df.loc[total_idx].to_dict()
+
+        advertising_total_from_main = safe_float(main_total.get("advertising_total"))
+
+        if advertising_total_from_main == 0:
+            visible_ads = abs(safe_float(main_total.get("visible_ads")))
+            dealsvouchar_ads = _get_dealsvouchar_ads_from_row(main_total)
+            brand_spend = abs(safe_float(main_total.get("brand_spend")))
+
+            advertising_total_from_main = (
+                visible_ads
+                + dealsvouchar_ads
+                + brand_spend
+            )
+
+        advertising_total_from_main = round(advertising_total_from_main, 2)
+
+        df.loc[total_idx, "advertising_total_final"] = advertising_total_from_main
+
+        # Important: AI currently reads advertising_total in many places.
+        df.loc[total_idx, "advertising_total"] = advertising_total_from_main
+
+        return df
+
+    # --------------------------------------------------
+    # Case 2: Ads table exists
+    # --------------------------------------------------
+    ads_total_row = get_ads_total_row(df_ads)
+
+    brand_spend_total = abs(safe_float(ads_total_row.get("brand_spend")))
+    dealsvouchar_ads_total = _get_dealsvouchar_ads_from_row(ads_total_row)
+    total_ads_spend = _get_ads_spend_from_row(ads_total_row)
+
+    # Fallback: if total ads spend is 0, sum SKU-level ads_spend.
+    if total_ads_spend == 0 and "ads_spend" in df_ads.columns:
+        ads_detail = df_ads.copy()
+
+        if "sku" in ads_detail.columns:
+            ads_detail = ads_detail[
+                ~ads_detail["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+            ]
+
+        if "product_name" in ads_detail.columns:
+            ads_detail = ads_detail[
+                ~ads_detail["product_name"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+            ]
+
+        total_ads_spend = pd.to_numeric(
+            ads_detail["ads_spend"],
+            errors="coerce"
+        ).fillna(0).abs().sum()
+
+    advertising_total = brand_spend_total + dealsvouchar_ads_total
+    advertising_total_final = advertising_total + total_ads_spend
+
+    advertising_total = round(advertising_total, 2)
+    advertising_total_final = round(advertising_total_final, 2)
+
+    df.loc[total_idx, "brand_spend"] = round(brand_spend_total, 2)
+    df.loc[total_idx, "dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
+
+    # Keep original meaning available if needed:
+    # advertising_total = brand_spend + dealsvouchar_ads
+    df.loc[total_idx, "advertising_total_original"] = advertising_total
+
+    # Important: AI should receive the final advertising value.
+    df.loc[total_idx, "advertising_total"] = advertising_total_final
+    df.loc[total_idx, "advertising_total_final"] = advertising_total_final
+
+    return df
+
+
+
 def compute_period_absolute_changes(df_current_total, df_prev_total):
     def diff(col):
         cur = _total_value(df_current_total, col)
@@ -817,6 +1068,19 @@ def compute_period_absolute_changes(df_current_total, df_prev_total):
 
 
 
+# def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
+#     snapshot = {}
+#     if df_total.empty:
+#         return snapshot
+
+#     for col in MOVEMENT_COLUMNS:
+#         if col in df_total.columns:
+#             val = _total_value(df_total, col)
+#             if val is not None:
+#                 snapshot[col] = float(val)
+
+#     return snapshot
+
 def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
     snapshot = {}
     if df_total.empty:
@@ -828,8 +1092,12 @@ def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
             if val is not None:
                 snapshot[col] = float(val)
 
-    return snapshot
+    advertising_final = _advertising_total_final_value(df_total)
+    if advertising_final is not None:
+        snapshot["advertising_total"] = float(advertising_final)
+        snapshot["advertising_total_final"] = float(advertising_final)
 
+    return snapshot
 
 
 METRIC_COLUMNS = {
@@ -853,6 +1121,7 @@ METRIC_COLUMNS = {
 
 
     "advertising_total",
+    "advertising_total_final",
 
     "lost_total",
     "rembursement_fee",
@@ -941,6 +1210,60 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
 
     return out
 
+# def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     Aggregates monthly total rows into one synthetic total row.
+
+#     Used only for yearly partial-period comparison:
+#     Jan-Apr current year vs Jan-Apr previous year.
+
+#     Additive metrics are summed.
+#     Non-additive metrics are recalculated.
+#     """
+
+#     if df_total_rows.empty:
+#         return pd.DataFrame()
+
+#     df = df_total_rows.copy()
+
+#     for col in MOVEMENT_COLUMNS:
+#         if col in df.columns:
+#             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+#     row = {"sku": "total"}
+
+#     # Sum additive metrics
+#     for col in METRIC_COLUMNS:
+#         if col in df.columns:
+#             row[col] = float(df[col].sum())
+
+#     total_units = row.get("total_quantity", 0)
+#     net_sales = row.get("net_sales", 0)
+#     cm1_profit = row.get("profit", 0)
+#     cm2_profit = row.get("cm2_profit", 0)
+#     advertising = row.get("advertising_total", 0)
+
+#     # Recalculate non-additive metrics
+#     row["asp"] = round(net_sales / total_units, 2) if total_units else None
+
+#     row["unit_wise_profitability"] = (
+#         round(cm1_profit / total_units, 2) if total_units else None
+#     )
+
+#     row["profit_percentage"] = (
+#         round((cm1_profit / net_sales) * 100, 2) if net_sales else None
+#     )
+
+#     row["cm2_profit_percentage"] = (
+#         round((cm2_profit / net_sales) * 100, 2) if net_sales else None
+#     )
+
+#     row["acos"] = (
+#         round((advertising / net_sales) * 100, 2) if net_sales else None
+#     )
+
+#     return pd.DataFrame([row])
+
 def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregates monthly total rows into one synthetic total row.
@@ -968,11 +1291,20 @@ def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.Dat
         if col in df.columns:
             row[col] = float(df[col].sum())
 
+    # Backward compatibility for old monthly tables
+    if "advertising_total_final" not in row and "advertising_total" in row:
+        row["advertising_total_final"] = row["advertising_total"]
+
     total_units = row.get("total_quantity", 0)
     net_sales = row.get("net_sales", 0)
     cm1_profit = row.get("profit", 0)
     cm2_profit = row.get("cm2_profit", 0)
-    advertising = row.get("advertising_total", 0)
+
+    # Use final advertising value for yearly ACOS
+    advertising = row.get(
+        "advertising_total_final",
+        row.get("advertising_total", 0)
+    )
 
     # Recalculate non-additive metrics
     row["asp"] = round(net_sales / total_units, 2) if total_units else None
@@ -995,11 +1327,90 @@ def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.Dat
 
     return pd.DataFrame([row])
 
+
+# def aggregate_monthly_tables_for_yearly_comparison_generic(
+#     *,
+#     user_id: int,
+#     year: int,
+#     fetch_monthly_func,
+# ) -> dict:
+#     """
+#     Finds monthly tables available in selected year,
+#     then aggregates those same months for selected year and previous year.
+
+#     Example:
+#     If selected year has Jan-Apr data,
+#     compare Jan-Apr selected year vs Jan-Apr previous year.
+#     """
+
+#     available_months = []
+
+#     current_detail_frames = []
+#     current_total_frames = []
+
+#     prev_detail_frames = []
+#     prev_total_frames = []
+
+#     for m in range(1, 13):
+#         df_cur = fetch_monthly_func(
+#             user_id=user_id,
+#             timeline=str(m),
+#             year=year,
+#         )
+
+#         if df_cur.empty:
+#             continue
+
+#         available_months.append(m)
+
+#         cur_detail, cur_total = _split_total_row(df_cur)
+
+#         if not cur_detail.empty:
+#             current_detail_frames.append(cur_detail)
+
+#         if not cur_total.empty:
+#             current_total_frames.append(cur_total)
+
+#         df_prev = fetch_monthly_func(
+#             user_id=user_id,
+#             timeline=str(m),
+#             year=year - 1,
+#         )
+
+#         prev_detail, prev_total = _split_total_row(df_prev)
+
+#         if not prev_detail.empty:
+#             prev_detail_frames.append(prev_detail)
+
+#         if not prev_total.empty:
+#             prev_total_frames.append(prev_total)
+
+#     def concat_or_empty(frames):
+#         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+#     current_detail_all = concat_or_empty(current_detail_frames)
+#     current_total_all = concat_or_empty(current_total_frames)
+
+#     prev_detail_all = concat_or_empty(prev_detail_frames)
+#     prev_total_all = concat_or_empty(prev_total_frames)
+
+#     return {
+#         "available_months": available_months,
+#         "df_current_detail": current_detail_all,
+#         "df_current_total": aggregate_total_rows_for_partial_year(current_total_all),
+#         "df_prev_detail": prev_detail_all,
+#         "df_prev_total": aggregate_total_rows_for_partial_year(prev_total_all),
+#         "sku_current": compute_sku_precalc(current_detail_all),
+#         "sku_prev": compute_sku_precalc(prev_detail_all),
+#     }
+
 def aggregate_monthly_tables_for_yearly_comparison_generic(
     *,
     user_id: int,
     year: int,
     fetch_monthly_func,
+    country: str | None = None,
+    apply_ads_final: bool = False,
 ) -> dict:
     """
     Finds monthly tables available in selected year,
@@ -1008,6 +1419,10 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
     Example:
     If selected year has Jan-Apr data,
     compare Jan-Apr selected year vs Jan-Apr previous year.
+
+    If apply_ads_final=True and country is provided:
+    - Applies advertising_total_final logic month by month
+    - Then aggregates yearly partial totals
     """
 
     available_months = []
@@ -1024,6 +1439,17 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
             timeline=str(m),
             year=year,
         )
+
+        # ✅ Apply ads-table final advertising logic for current year month
+        if apply_ads_final and country:
+            df_cur = apply_advertising_total_final_from_ads_table(
+                df_cur,
+                user_id=user_id,
+                country=country,
+                period="monthly",
+                timeline=str(m),
+                year=year,
+            )
 
         if df_cur.empty:
             continue
@@ -1043,6 +1469,17 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
             timeline=str(m),
             year=year - 1,
         )
+
+        # ✅ Apply ads-table final advertising logic for previous year same month
+        if apply_ads_final and country:
+            df_prev = apply_advertising_total_final_from_ads_table(
+                df_prev,
+                user_id=user_id,
+                country=country,
+                period="monthly",
+                timeline=str(m),
+                year=year - 1,
+            )
 
         prev_detail, prev_total = _split_total_row(df_prev)
 
@@ -1070,6 +1507,7 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
         "sku_current": compute_sku_precalc(current_detail_all),
         "sku_prev": compute_sku_precalc(prev_detail_all),
     }
+
 
 def fetch_inventory_aged_by_user(user_id: int, country: str | None = None) -> pd.DataFrame:
     currency = None
@@ -2078,6 +2516,16 @@ def get_or_create_summary(
     # CURRENT DATA
     # ============================================================
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+
+    df_current = apply_advertising_total_final_from_ads_table(
+        df_current,
+        user_id=user_id,
+        country=country,
+        period=period,
+        timeline=timeline,
+        year=year,
+    )
+
     df_current_detail, df_current_total = _split_total_row(df_current)
 
     sku_current = compute_sku_precalc(df_current_detail)
@@ -2212,6 +2660,8 @@ def get_or_create_summary(
         yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
             user_id=user_id,
             year=year,
+            country=country,
+            apply_ads_final=True,
             fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
                 user_id=user_id,
                 country=country,
@@ -2233,6 +2683,16 @@ def get_or_create_summary(
         (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
 
         df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+
+        df_prev = apply_advertising_total_final_from_ads_table(
+            df_prev,
+            user_id=user_id,
+            country=country,
+            period=p_period,
+            timeline=p_timeline,
+            year=p_year,
+        )
+
         df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
         df_current_total_for_comparison = df_current_total
@@ -2767,7 +3227,7 @@ def build_global_numeric_metrics(
         "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
         "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
         "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
-        "advertising": _total_value(df_current_total_for_comparison, "advertising_total"),
+        "advertising": _advertising_total_final_value(df_current_total_for_comparison),
         "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
         "acos": _total_value(df_current_total_for_comparison, "acos"),
     }
@@ -2779,7 +3239,7 @@ def build_global_numeric_metrics(
         "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
         "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
         "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
-        "advertising": _total_value(df_prev_total_for_comparison, "advertising_total"),
+        "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
         "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
         "acos": _total_value(df_prev_total_for_comparison, "acos"),
     }
@@ -2969,7 +3429,7 @@ def build_country_usd_numeric_metrics(
             "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
             "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
             "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
-            "advertising": _total_value(df_current_total_for_comparison, "advertising_total"),
+            "advertising": _advertising_total_final_value(df_current_total_for_comparison),
             "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
             "acos": _total_value(df_current_total_for_comparison, "acos"),
         }
@@ -2981,7 +3441,7 @@ def build_country_usd_numeric_metrics(
             "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
             "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
             "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
-            "advertising": _total_value(df_prev_total_for_comparison, "advertising_total"),
+            "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
             "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
             "acos": _total_value(df_prev_total_for_comparison, "acos"),
         }
