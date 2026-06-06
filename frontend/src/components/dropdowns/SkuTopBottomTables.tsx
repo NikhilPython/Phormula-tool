@@ -5,6 +5,7 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 
 type TopBottomRow = {
   product_name: string;
+  sku?: string;
   profit: string;
   profitMix: string;
   salesMix: string;
@@ -76,6 +77,35 @@ const DEMO_TOP_BOTTOM_DATA: TopBottomData = {
   totals: EMPTY_TOTALS,
 };
 
+const isMissingName = (value: unknown) => {
+  if (value === undefined || value === null) return true;
+
+  const text = String(value).trim().toLowerCase();
+
+  return (
+    text === "" ||
+    text === "0" ||
+    text === "0.0" ||
+    text === "0.00" ||
+    text === "nan" ||
+    text === "none" ||
+    text === "null" ||
+    text === "undefined"
+  );
+};
+
+const getDisplayProductName = (item: TopBottomRow) => {
+  if (!isMissingName(item.product_name)) {
+    return item.product_name;
+  }
+
+  if (!isMissingName(item.sku)) {
+    return String(item.sku);
+  }
+
+  return "-";
+};
+
 const SkuTopBottomTables: React.FC<Props> = ({
   topData,
   bottomData,
@@ -142,11 +172,11 @@ const SkuTopBottomTables: React.FC<Props> = ({
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
                       <span
-                        title={item.product_name}
-                        className="block truncate whitespace-nowrap overflow-hidden"
-                      >
-                        {item.product_name || "-"}
-                      </span>
+  title={getDisplayProductName(item)}
+  className="block truncate whitespace-nowrap overflow-hidden"
+>
+  {getDisplayProductName(item)}
+</span>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       {formatRoundedValue(item.profit)}
@@ -218,11 +248,11 @@ const SkuTopBottomTables: React.FC<Props> = ({
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
                       <span
-                        title={item.product_name}
-                        className="block truncate whitespace-nowrap overflow-hidden"
-                      >
-                        {item.product_name || "-"}
-                      </span>
+  title={getDisplayProductName(item)}
+  className="block truncate whitespace-nowrap overflow-hidden"
+>
+  {getDisplayProductName(item)}
+</span>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       {item.profit}

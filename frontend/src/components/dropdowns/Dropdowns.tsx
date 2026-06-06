@@ -2945,19 +2945,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const bottom5 = sortByProfitAsc.slice(0, 5);
 
     const mapRows = (arr: TableRow[]) =>
-      arr.map((item) => {
-        const netUnits = num(item.net_units_sold);
-        const profit = num(item.profit);
-        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
+  arr.map((item) => {
+    const netUnits = num(item.net_units_sold);
+    const profit = num(item.profit);
+    const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
 
-        return {
-          product_name: String((item as any).product_name || (item as any).sku || "-"),
-          profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          profitMix: num(item.profit_mix).toFixed(2),
-          salesMix: num(item.sales_mix).toFixed(2),
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        };
-      });
+    const skuValue =
+      (item as any).sku ??
+      (item as any).SKU ??
+      (item as any).Sku ??
+      (item as any).seller_sku ??
+      (item as any).sellerSku ??
+      (item as any).asin ??
+      (item as any).ASIN;
+
+    return {
+      // product_name raw bhejo, yaha SKU fallback mat lagao
+      // child component decide karega: agar product_name "0" hai to sku dikhana hai
+      product_name: String((item as any).product_name ?? ""),
+
+      // ye important hai, isi wajah se child me "-" ki jagah SKU aayega
+      sku: String(skuValue ?? ""),
+
+      profit: profit.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      profitMix: num(item.profit_mix).toFixed(2),
+      salesMix: num(item.sales_mix).toFixed(2),
+      cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    };
+  });
 
     const totalsFor = (arr: TableRow[]) => {
       const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
