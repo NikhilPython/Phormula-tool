@@ -1379,6 +1379,7 @@ def get_gbp_to_usd_rate(month_value, year_value):
                 }
             ).scalar()
 
+        print("GBP_TO_USD_RATE:", month_value, year_value, rate)
         return float(rate or 1)
 
     except Exception as e:
@@ -1700,6 +1701,14 @@ def cashflow():
             'otherwplatform': 'platform_fee'
         }
 
+        print("\n========== CASHFLOW DEBUG: ORIGINAL VALUES ==========")
+        for response_key, table_col in debug_cols.items():
+            if table_col in cashflow_df.columns:
+                print(f"\nColumn mapping: response_key={response_key}, table_col={table_col}")
+                print("Original values with original sign:")
+                print(cashflow_df[table_col].to_string(index=False))
+            else:
+                print(f"\nMissing column: response_key={response_key}, table_col={table_col}")
 
         # Convert mapped table columns to numeric
         for response_key, table_col in column_map.items():
@@ -1712,6 +1721,14 @@ def cashflow():
         total_row = find_total_row(cashflow_df)
         source_df = total_row if total_row is not None and not total_row.empty else cashflow_df
 
+        print("\n========== CASHFLOW DEBUG: AGGREGATION CHECK ==========")
+        print("Using total row:", total_row is not None and not total_row.empty)
+
+        if total_row is not None and not total_row.empty:
+            if 'product_name' in total_row.columns:
+                print("Matched product_name:", total_row['product_name'].to_string(index=False))
+            if 'sku' in total_row.columns:
+                print("Matched sku:", total_row['sku'].to_string(index=False))
 
         for response_key, table_col in debug_cols.items():
             if table_col in cashflow_df.columns:
@@ -1721,6 +1738,14 @@ def cashflow():
                     total_row_value = float(total_row[table_col].iloc[0] or 0)
                 else:
                     total_row_value = None
+
+                print(f"\n{table_col} check:")
+                print(f"SKU rows sum value: {sku_sum_value}")
+                print(f"Total row value: {total_row_value}")
+                print(
+                    "Final value used:",
+                    total_row_value if total_row_value is not None else sku_sum_value
+                )
 
         def get_total(response_key):
             table_col = column_map.get(response_key)
@@ -1858,7 +1883,13 @@ def cashflow():
                     month_name_value=process_month
                 )
 
-                
+                if not table_name:
+                    if period_type_value == 'monthly':
+                        print(
+                            f"Cashflow monthly table not found: "
+                            f"country={record_country}, month={process_month}, year={year_value}"
+                        )
+                    continue
 
                 if process_month not in processed_months:
                     processed_months.append(process_month)
@@ -1891,6 +1922,7 @@ def cashflow():
                         country_data_records = data_records
 
                 except Exception as e:
+                    print(f"Cashflow error reading {record_country} {process_month}: {e}")
                     continue
 
             if any(float(v or 0) != 0 for v in country_totals.values()):
