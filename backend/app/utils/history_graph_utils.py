@@ -127,28 +127,57 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
     if not table_exists(conn, table):
         return None
 
-    if country == "global":
-        q = text(f"""
-            SELECT *
-            FROM public.{table}
-            WHERE EXTRACT(MONTH FROM NULLIF(NULLIF(date_time, '0'), '')::timestamp) = :month
-              AND EXTRACT(YEAR FROM NULLIF(NULLIF(date_time, '0'), '')::timestamp) = :year
-        """)
-        df = pd.read_sql(q, conn, params={"month": month, "year": year})
-    else:
-        q = text(f"""
-            SELECT *
-            FROM public.{table}
-        """)
-        df = pd.read_sql(q, conn)
+    # ✅ Use quoted table name for safety
+    q = text(f'SELECT * FROM public."{table}"')
+    df = pd.read_sql(q, conn)
 
     if df.empty:
         return None
 
-    df["__day__"] = pd.to_datetime(df["date_time"], errors="coerce").dt.date
-    df = df.dropna(subset=["__day__"])
+    # ✅ Fix US date_time like:
+    # 2026-03-31 23:57:12 PDT
+    # 2026-03-01 00:03:31 PST
+    date_str = (
+        df["date_time"]
+        .astype(str)
+        .str.strip()
+        .str.replace(
+            r"\s+(PST|PDT|UTC|GMT|EST|EDT|CST|CDT|MST|MDT)$",
+            "",
+            regex=True
+        )
+    )
 
-    df["__ship_qty__"] = pd.to_numeric(df.get("quantity"), errors="coerce").fillna(0)
+    # ✅ pandas 2.x: supports mixed date formats
+    df["__dt__"] = pd.to_datetime(
+        date_str,
+        errors="coerce",
+        format="mixed"
+    )
+
+    # ✅ Keep only requested month/year
+    df = df[
+        (df["__dt__"].dt.month == int(month)) &
+        (df["__dt__"].dt.year == int(year))
+    ]
+
+    if df.empty:
+        last_day = calendar.monthrange(int(year), int(month))[1]
+        full_days = list(range(1, last_day + 1))
+        return {
+            "xType": "day",
+            "x": full_days,
+            "net_sales": [0.0] * len(full_days),
+            "units": [0.0] * len(full_days),
+        }
+
+    df["__day__"] = df["__dt__"].dt.date
+
+    df["__ship_qty__"] = pd.to_numeric(
+        df.get("quantity"),
+        errors="coerce"
+    ).fillna(0)
+
     df.loc[
         ~df.get("type", "").astype(str).str.contains("Shipment", case=False, na=False),
         "__ship_qty__"
@@ -156,7 +185,7 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
 
     rows = []
     for day, g in df.groupby("__day__", sort=True):
-        net_sales_total, _, _ = uk_sales(g)
+        net_sales_total, _, _ = uk_sales(g)  # keep same formula for now
         units_total = float(g["__ship_qty__"].sum())
 
         rows.append({
@@ -165,7 +194,7 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
             "units": units_total
         })
 
-    last_day = calendar.monthrange(year, month)[1]
+    last_day = calendar.monthrange(int(year), int(month))[1]
     full_days = list(range(1, last_day + 1))
 
     if not rows:
@@ -182,15 +211,13 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
     ns_map = dict(zip(out["day_num"].tolist(), out["net_sales"].tolist()))
     un_map = dict(zip(out["day_num"].tolist(), out["units"].tolist()))
 
-    net_sales_full = [float(ns_map.get(d, 0.0)) for d in full_days]
-    units_full = [float(un_map.get(d, 0.0)) for d in full_days]
-
     return {
         "xType": "day",
         "x": full_days,
-        "net_sales": net_sales_full,
-        "units": units_full,
+        "net_sales": [float(ns_map.get(d, 0.0)) for d in full_days],
+        "units": [float(un_map.get(d, 0.0)) for d in full_days],
     }
+
 
 def fetch_month_totals(conn, user_id, country, month, year):
     country = str(country).strip().lower()

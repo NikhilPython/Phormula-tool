@@ -1891,7 +1891,6 @@ def cashflow():
                         country_data_records = data_records
 
                 except Exception as e:
-                    print(f"Cashflow error reading {record_country} {process_month}: {e}")
                     continue
 
             if any(float(v or 0) != 0 for v in country_totals.values()):
