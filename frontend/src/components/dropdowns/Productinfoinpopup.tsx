@@ -416,7 +416,7 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
   // ========= RENDER =========
   return (
     <div
-      className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center"
+      className="fixed inset-0 z-[9999] h-full bg-black/50 flex items-center justify-center"
       onClick={onClose}
     >
       <div
@@ -449,7 +449,7 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
                   <span className="text-[#5EA68E] font-extrabold capitalize">
                     {productname}
                   </span>{" "}
-                  <span className="text-[#5EA68E] font-bold">
+                  <span className="text-[#5EA68E] font-extrabold">
                     - {selectedPageCountryLabel}
                   </span>{" "}
                   <span className="text-[#5EA68E] font-extrabold">
