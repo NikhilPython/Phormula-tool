@@ -2516,11 +2516,21 @@ export default function DashboardPage() {
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
 
+    // useEffect(() => {
+    //     if (activeTab === "summary") {
+    //         setSummaryLoading(true);
+    //     }
+    // }, [activeTab]);
+
     useEffect(() => {
-        if (activeTab === "summary") {
+        if (activeTab !== "summary") return;
+
+        if (shouldShowDummyUi || liveBiPayload) {
+            setSummaryLoading(false);
+        } else {
             setSummaryLoading(true);
         }
-    }, [activeTab]);
+    }, [activeTab, shouldShowDummyUi, liveBiPayload]);
 
     // useEffect(() => {
     //     fetchMonthlySp();
@@ -3387,126 +3397,126 @@ export default function DashboardPage() {
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
-    const fetchBiSeries = useCallback(
-        async (startDay?: number | null, endDay?: number | null) => {
-            if (isMonthYearNA) {
-                setBiError(null);
-                setBiLoading(false);
-                setBiStatus("ready");
-                setBiDailySeries(null);
-                setBiPeriods(null);
-                setBiAlignedTotals(null);
-                setLiveBiPayload(null);
-                return;
-            }
+    // const fetchBiSeries = useCallback(
+    //     async (startDay?: number | null, endDay?: number | null) => {
+    //         if (isMonthYearNA) {
+    //             setBiError(null);
+    //             setBiLoading(false);
+    //             setBiStatus("ready");
+    //             setBiDailySeries(null);
+    //             setBiPeriods(null);
+    //             setBiAlignedTotals(null);
+    //             setLiveBiPayload(null);
+    //             return;
+    //         }
 
-            if (!showLiveBI) return;
+    //         if (!showLiveBI) return;
 
-            const normalized = (biCountryName || "").toLowerCase();
+    //         const normalized = (biCountryName || "").toLowerCase();
 
-            if (!normalized) return;
+    //         if (!normalized) return;
 
-            // Safety: only global page can call countryName=global
-            if (normalized === "global" && platform !== "global") return;
+    //         // Safety: only global page can call countryName=global
+    //         if (normalized === "global" && platform !== "global") return;
 
-            // Safety: countrywise pages should never accidentally call global
-            if (platform !== "global" && normalized === "global") return;
+    //         // Safety: countrywise pages should never accidentally call global
+    //         if (platform !== "global" && normalized === "global") return;
 
-            setBiError(null);
-            setBiLoading(true);
-            setBiStatus("loading");
+    //         setBiError(null);
+    //         setBiLoading(true);
+    //         setBiStatus("loading");
 
-            try {
-                const token =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //         try {
+    //             const token =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                const params = new URLSearchParams({
-                    countryName: normalized,
-                    ranged: "MTD",
-                    month: currMonthName.toLowerCase(),
-                    year: String(currYear),
-                    generate_ai_insights: aiRequestedRef.current ? "true" : "false",
-                });
+    //             const params = new URLSearchParams({
+    //                 countryName: normalized,
+    //                 ranged: "MTD",
+    //                 month: currMonthName.toLowerCase(),
+    //                 year: String(currYear),
+    //                 generate_ai_insights: aiRequestedRef.current ? "true" : "false",
+    //             });
 
-                const finalStartDay = startDay ?? 1;
-                const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
+    //             const finalStartDay = startDay ?? 1;
+    //             const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
 
-                params.set("start_day", String(finalStartDay));
-                params.set("end_day", String(finalEndDay));
+    //             params.set("start_day", String(finalStartDay));
+    //             params.set("end_day", String(finalEndDay));
 
-                let attempts = 0;
-                const maxAttempts = 10;
+    //             let attempts = 0;
+    //             const maxAttempts = 10;
 
-                while (attempts < maxAttempts) {
-                    const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                    });
+    //             while (attempts < maxAttempts) {
+    //                 const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
+    //                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    //                 });
 
-                    if (res.status === 202) {
-                        setBiStatus("processing");
-                        attempts += 1;
-                        await sleep(3000);
-                        continue;
-                    }
+    //                 if (res.status === 202) {
+    //                     setBiStatus("processing");
+    //                     attempts += 1;
+    //                     await sleep(3000);
+    //                     continue;
+    //                 }
 
-                    if (!res.ok) {
-                        throw new Error(`BI failed: ${res.status}`);
-                    }
+    //                 if (!res.ok) {
+    //                     throw new Error(`BI failed: ${res.status}`);
+    //                 }
 
-                    const json: BiApiResponse = await res.json();
+    //                 const json: BiApiResponse = await res.json();
 
-                    setLiveBiPayload(json);
-                    setBiPeriods(json?.periods || null);
-                    setBiDailySeries(json?.daily_series || null);
+    //                 setLiveBiPayload(json);
+    //                 setBiPeriods(json?.periods || null);
+    //                 setBiDailySeries(json?.daily_series || null);
 
-                    const alignedFromNested = json?.aligned_totals;
-                    const alignedFromTopLevel: BiAlignedTotals = {
-                        total_current_advertising: (json as any)?.total_current_advertising,
-                        total_previous_advertising: (json as any)?.total_previous_advertising,
+    //                 const alignedFromNested = json?.aligned_totals;
+    //                 const alignedFromTopLevel: BiAlignedTotals = {
+    //                     total_current_advertising: (json as any)?.total_current_advertising,
+    //                     total_previous_advertising: (json as any)?.total_previous_advertising,
 
-                        total_current_net_sales: (json as any)?.total_current_net_sales,
-                        total_previous_net_sales: (json as any)?.total_previous_net_sales,
-                        total_previous_net_sales_full_month:
-                            (json as any)?.total_previous_net_sales_full_month,
+    //                     total_current_net_sales: (json as any)?.total_current_net_sales,
+    //                     total_previous_net_sales: (json as any)?.total_previous_net_sales,
+    //                     total_previous_net_sales_full_month:
+    //                         (json as any)?.total_previous_net_sales_full_month,
 
-                        total_current_platform_fees: (json as any)?.total_current_platform_fees,
-                        total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
+    //                     total_current_platform_fees: (json as any)?.total_current_platform_fees,
+    //                     total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
 
-                        total_current_profit: (json as any)?.total_current_profit,
-                        total_previous_profit: (json as any)?.total_previous_profit,
+    //                     total_current_profit: (json as any)?.total_current_profit,
+    //                     total_previous_profit: (json as any)?.total_previous_profit,
 
-                        // ✅ add these
-                        current_cm2_profit: (json as any)?.current_cm2_profit,
-                        previous_cm2_profit: (json as any)?.previous_cm2_profit,
+    //                     // ✅ add these
+    //                     current_cm2_profit: (json as any)?.current_cm2_profit,
+    //                     previous_cm2_profit: (json as any)?.previous_cm2_profit,
 
-                        total_current_profit_cm2: (json as any)?.total_current_profit_cm2,
-                        total_previous_profit_cm2: (json as any)?.total_previous_profit_cm2,
+    //                     total_current_profit_cm2: (json as any)?.total_current_profit_cm2,
+    //                     total_previous_profit_cm2: (json as any)?.total_previous_profit_cm2,
 
-                        total_current_profit_percentage: (json as any)?.total_current_profit_percentage,
-                        total_previous_profit_percentage: (json as any)?.total_previous_profit_percentage,
+    //                     total_current_profit_percentage: (json as any)?.total_current_profit_percentage,
+    //                     total_previous_profit_percentage: (json as any)?.total_previous_profit_percentage,
 
-                        total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
-                        total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
-                    };
+    //                     total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
+    //                     total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
+    //                 };
 
-                    setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
-                    setBiStatus("ready");
-                    return;
-                }
+    //                 setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
+    //                 setBiStatus("ready");
+    //                 return;
+    //             }
 
-                throw new Error("Live BI is still processing. Max retry limit reached.");
-            } catch (e: any) {
-                setBiPeriods(null);
-                setBiDailySeries(null);
-                setBiAlignedTotals(null);
-                setBiStatus("error");
-                setBiError(e?.message || "Failed to load BI series");
-            } finally {
-                setBiLoading(false);
-            }
-        },
-        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA, platform, dashboardAllowedDay]
-    );
+    //             throw new Error("Live BI is still processing. Max retry limit reached.");
+    //         } catch (e: any) {
+    //             setBiPeriods(null);
+    //             setBiDailySeries(null);
+    //             setBiAlignedTotals(null);
+    //             setBiStatus("error");
+    //             setBiError(e?.message || "Failed to load BI series");
+    //         } finally {
+    //             setBiLoading(false);
+    //         }
+    //     },
+    //     [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA, platform, dashboardAllowedDay]
+    // );
 
     const fetchPreviousSkuwiseGlobal = useCallback(async (
         startDay: number | null = selectedStartDay,
@@ -3708,10 +3718,16 @@ export default function DashboardPage() {
             await fetchAmazon();
 
             if (showLiveBI) {
-                setStep(1, "MTD Fetching", 78, "Fetching Live BI data...");
-                await fetchBiSeries(selectedStartDay, selectedEndDay);
+                setStep(1, "MTD Fetching", 78, "Fetching Live BI data.");
+
+                await fetchLiveBiPayload({
+                    startDay: selectedStartDay,
+                    endDay: selectedEndDay,
+                    generateInsights: false,
+                    skipLoader: true,
+                });
             } else {
-                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping...");
+                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping.");
             }
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -3783,7 +3799,8 @@ export default function DashboardPage() {
         fetchPrevTargetSummary,
         fetchPreviousSkuwiseGlobal,
         fetchAmazon,
-        fetchBiSeries,
+        // fetchBiSeries,
+        fetchLiveBiPayload,
         fetchShopify,
         fetchShopifyPrev,
         fetchInventory,
@@ -11409,7 +11426,7 @@ ${pageLoading
 
                                         await fetchLiveBiPayload({
                                             generateInsights: true,
-                                            skipLoader: true, // ✅ prevents dashboard/page loaders
+                                            skipLoader: true,
                                         });
                                     }}
                                 />

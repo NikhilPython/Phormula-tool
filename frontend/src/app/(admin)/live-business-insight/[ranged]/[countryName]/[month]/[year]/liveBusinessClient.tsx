@@ -634,7 +634,10 @@ export default function LiveBusinessClient({
     profit_priority?: string;
   } | null>(null);
 
-  const [pageLoading, setPageLoading] = useState<boolean>(true);
+  // const [pageLoading, setPageLoading] = useState<boolean>(true);
+  const [pageLoading, setPageLoading] = useState<boolean>(
+    disableAutoFetch ? !initialData : true
+  );
   const [recDrawerOpen, setRecDrawerOpen] = useState(false);
   const [selectedRec, setSelectedRec] = useState<{
     productName: string;
@@ -1278,12 +1281,12 @@ export default function LiveBusinessClient({
     setSkuInsights(liveInsights);
   };
 
-  useEffect(() => {
-    if (initialData) {
-      hydrateFromPayload(initialData);
-      setPageLoading(false);
-    }
-  }, [initialData]);
+  // useEffect(() => {
+  //   if (initialData) {
+  //     hydrateFromPayload(initialData);
+  //     setPageLoading(false);
+  //   }
+  // }, [initialData]);
 
   // =========================
   // Initial load (cached + live)
@@ -1410,18 +1413,32 @@ export default function LiveBusinessClient({
     }
   };
 
-  useEffect(() => {
-    if (initialData) {
-      hydrateFromPayload(initialData);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData]);
+  // useEffect(() => {
+  //   if (initialData) {
+  //     hydrateFromPayload(initialData);
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [initialData]);
 
   // useEffect(() => {
   //   if (!normalizedCountry || normalizedCountry === 'global') return;
   //   fetchLiveBi(false);
   //   // eslint-disable-next-line react-hooks/exhaustive-deps
   // }, [normalizedCountry, ranged, month, year]);
+
+  useEffect(() => {
+    if (!initialData) {
+      if (disableAutoFetch) {
+        setPageLoading(true);
+      }
+      return;
+    }
+
+    hydrateFromPayload(initialData);
+    setPageLoading(false);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData, disableAutoFetch]);
 
   useEffect(() => {
     if (disableAutoFetch) return;
