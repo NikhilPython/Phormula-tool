@@ -4,12 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useParams, useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
-import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
-import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
-import { IoDownload } from "react-icons/io5";
-import { BsStars } from "react-icons/bs";
 import { FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import * as echarts from 'echarts';
 import { Line } from "react-chartjs-2";
@@ -25,9 +19,6 @@ import {
 import DataTable, { ColumnDef, Row } from '@/components/ui/table/DataTable';
 import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
-import { AnimatePresence, motion } from "framer-motion";
-import { AiButton } from '@/components/ui/button/AiButton';
-import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import { IoMdLock } from "react-icons/io";
 import SkuAnalysisSection from '@/components/businessInsight/SkuAnalysisSection';
 

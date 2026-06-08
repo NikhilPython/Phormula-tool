@@ -893,7 +893,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                 {modalOpen && (
                                     <>
                                         <motion.div
-                                            className="fixed inset-0 z-[999999] bg-black/40"
+                                            className="fixed inset-0 z-[999999] h-full bg-black/40"
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             exit={{ opacity: 0 }}
@@ -901,59 +901,62 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                         />
 
                                         <motion.aside
-                                            className="fixed right-0 top-0 z-[1000000] flex h-screen w-[95vw] max-w-[720px] flex-col bg-white shadow-2xl"
+                                            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] sm:w-[75vw] md-[60vw] lg:w-[50vw] min-[1700px]:w-[50vw] bg-white shadow-2xl"
                                             initial={{ x: 520 }}
                                             animate={{ x: 0 }}
                                             exit={{ x: 520 }}
                                             transition={{ type: "tween", duration: 0.25 }}
                                         >
-                                            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-4">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-sm text-slate-500">Detailed View</div>
+                                            <div className="flex h-full flex-col gap-4">
+<div className="shrink-0 border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-2xl font-semibold leading-tight text-[#414042]">
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            <PageBreadcrumb
+                                                                pageTitle="Detailed View - "
+                                                                variant="page"
+                                                                textSize="2xl"
+                                                            />
+                                                            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                                                                {insightData.product_name || selectedSku}
+                                                            </span>
+                                                        </div>
 
-                                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
-                                                            {countryName ? String(countryName).toUpperCase() : "—"}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="text-lg font-semibold text-slate-900">
-                                                        {insightData.product_name || selectedSku}
                                                     </div>
                                                 </div>
 
                                                 <button
                                                     onClick={() => setModalOpen(false)}
-                                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                                                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-lg leading-none text-slate-500 hover:bg-slate-50"
                                                 >
-                                                    ✕
+                                                    ×
                                                 </button>
                                             </div>
 
-                                            <div className="flex-1 space-y-5 overflow-y-auto p-4">
+                                            <div className="flex-1 overflow-y-auto px-4  space-y-6">
                                                 {objectiveObj && (
                                                     <div className="space-y-2">
-                                                        <div className="text-sm font-semibold text-slate-800">Objectives</div>
+                                                        <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">Objectives</div>
 
-                                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                                <div className="text-xs text-slate-500">Primary Focus</div>
-                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                <div className="2xl:text-sm text-xs text-slate-500">Primary Focus</div>
+                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
                                                                     {objectiveObj?.growth_intent || "balanced"}
                                                                 </div>
                                                             </div>
 
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                                <div className="text-xs text-slate-500">Profit Strategy</div>
-                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
+                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                <div className="2xl:text-sm text-xs text-slate-500">Profit Strategy</div>
+                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
                                                                     {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
                                                                         "protect growth"}
                                                                 </div>
                                                             </div>
 
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                                <div className="text-xs text-slate-500">Inventory Dilution</div>
-                                                                <div className="mt-1 capitalize text-sm font-bold text-slate-800">
+                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                <div className="2xl:text-sm text-xs text-slate-500">Inventory Dilution</div>
+                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
                                                                     {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
                                                                 </div>
                                                             </div>
@@ -962,16 +965,16 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                 )}
 
                                                 <div className="space-y-2">
-                                                    <div className="text-sm font-semibold text-slate-800">
+                                                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
                                                         Recommendations
                                                     </div>
 
                                                     {recoBullets.length > 0 && (
                                                         <div>
-                                                            <div className="mb-1 text-xs font-semibold text-blue-900">
-                                                                💡 Action
+                                                            <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                                                                Action
                                                             </div>
-                                                            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
+                                                            <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
                                                                 {recoBullets.map((pt, i) => (
                                                                     <li key={i}>{pt}</li>
                                                                 ))}
@@ -981,10 +984,10 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                                                     {inventoryRecoBullets.length > 0 && (
                                                         <div>
-                                                            <div className="mb-1 text-xs font-semibold text-amber-900">
-                                                                📦 Inventory
+                                                            <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                                                                Inventory
                                                             </div>
-                                                            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
+                                                            <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
                                                                 {inventoryRecoBullets.map((pt, i) => (
                                                                     <li key={i}>{pt}</li>
                                                                 ))}
@@ -993,14 +996,14 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                     )}
 
                                                     {!recoBullets.length && !inventoryRecoBullets.length && (
-                                                        <div className="text-xs text-slate-500">
+                                                        <div className="text-sm text-slate-500">
                                                             No recommendation available.
                                                         </div>
                                                     )}
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <div className="rounded-lg border border-[#e5e7eb] p-2">
+                                                    <div className="">
                                                         <Productinfoinpopup
                                                             productname={insightData.product_name}
                                                             countryName={countryName}
@@ -1010,14 +1013,18 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                                                 {journeyBullets.length > 0 && (
                                                     <div className="space-y-2">
-                                                        <div className="text-sm font-semibold text-slate-800">
-                                                            Product Journey
-                                                        </div>
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                    <PageBreadcrumb
+                      pageTitle="Product Journey"
+                      variant="page"
+                      textSize="lg"
+                    />
+                  </div>
 
-                                                        <ul className="space-y-2 text-xs text-slate-700 2xl:text-sm">
+                                                        <ul className="space-y-2 2xl:text-sm text-xs text-[#414042]">
                                                             {journeyBullets.map((j, i) => (
                                                                 <li key={i} className="flex gap-2">
-                                                                    <span className="mt-[2px] text-slate-400">→</span>
+                                                                    <span className="text-slate-400 mt-[2px]">→</span>
                                                                     <span>{j}</span>
                                                                 </li>
                                                             ))}
@@ -1025,6 +1032,8 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                     </div>
                                                 )}
                                             </div>
+                                            </div>
+                                            
                                         </motion.aside>
                                     </>
                                 )}
