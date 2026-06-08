@@ -61,6 +61,7 @@ import { IoMdLock } from "react-icons/io";
 import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
+import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -1803,6 +1804,25 @@ export default function DashboardPage() {
 
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
+
+    type MetricItem = {
+        label: string;
+        value: string;
+        color?: string;
+    };
+
+    type SelectedRec = {
+        productName: string;
+        metrics: MetricItem[];
+        journeyPoints: string[];
+        recommendationPoints: string[];
+        advertisingPoints?: string[];
+        inventoryPoints?: string[];
+        showChart?: boolean;
+    } | null;
+
+    const [recDrawerOpen, setRecDrawerOpen] = useState(false);
+    const [selectedRec, setSelectedRec] = useState<SelectedRec>(null);
 
     const normalizePieName = (name: any) =>
         normalizeProductDisplayName(String(name || "Unknown"))
@@ -6024,14 +6044,14 @@ export default function DashboardPage() {
     // Prefer backend CM2 first.
     // Fallback to old formula only if backend CM2 is missing.
     const rawCm2Profit =
-    toNumber(
-        grandTotalRowRaw?.total_cm2_profit ??
-        grandTotalRowDisplay?.total_cm2_profit ??
-        plSummaryTotals?.cm2_profit ??
-        grandTotalRowRaw?.cm2_profit ??
-        grandTotalRowDisplay?.cm2_profit ??
-        0
-    ) || (rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee));
+        toNumber(
+            grandTotalRowRaw?.total_cm2_profit ??
+            grandTotalRowDisplay?.total_cm2_profit ??
+            plSummaryTotals?.cm2_profit ??
+            grandTotalRowRaw?.cm2_profit ??
+            grandTotalRowDisplay?.cm2_profit ??
+            0
+        ) || (rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee));
 
     const rawCm2Margins = toNumber(
         grandTotalRowRaw?.total_cm2_margins ??
@@ -6141,17 +6161,17 @@ export default function DashboardPage() {
         );
 
         const cm2 = convertToDisplayCurrency(
-    toNumberSafe(
-        grandTotalRowRaw?.total_cm2_profit ??
-        grandTotalRowDisplay?.total_cm2_profit ??
-        derived?.total_cm2_profit ??
-        derived?.cm2_profit ??
-        grandTotalRowRaw?.cm2_profit ??
-        grandTotalRowDisplay?.cm2_profit ??
-        0
-    ),
-    sourceCurrency
-);
+            toNumberSafe(
+                grandTotalRowRaw?.total_cm2_profit ??
+                grandTotalRowDisplay?.total_cm2_profit ??
+                derived?.total_cm2_profit ??
+                derived?.cm2_profit ??
+                grandTotalRowRaw?.cm2_profit ??
+                grandTotalRowDisplay?.cm2_profit ??
+                0
+            ),
+            sourceCurrency
+        );
 
         return [
             { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
@@ -6516,9 +6536,9 @@ export default function DashboardPage() {
     ]);
 
     const stickyTableTotals = useMemo(() => {
-    const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? grandTotalRowDisplay ?? {};
+        const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? grandTotalRowDisplay ?? {};
 
-    const units = getNetUnits(row);
+        const units = getNetUnits(row);
         const netSales = toNumber(row.net_sales);
         const asp = toNumber(row.asp);
 
@@ -6580,13 +6600,13 @@ export default function DashboardPage() {
             cm2MarginPct,
         };
     }, [
-    platform,
-    grandTotalRowRaw,
-    grandTotalRowDisplay,
-    plSummaryTotals.advertising_total,
-    plSummaryTotals.acos,
-    plSummaryTotals.cm2_profit,
-]);
+        platform,
+        grandTotalRowRaw,
+        grandTotalRowDisplay,
+        plSummaryTotals.advertising_total,
+        plSummaryTotals.acos,
+        plSummaryTotals.cm2_profit,
+    ]);
 
     const stickyPreviousTotals = useMemo(() => {
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
@@ -7630,17 +7650,17 @@ export default function DashboardPage() {
         if (idxAds !== -1) copy[idxAds] = Number(adsSpendTotal ?? 0);
         if (idxOthers !== -1) copy[idxOthers] = Math.abs(Number(platformFee ?? 0));
         if (idxCm2 !== -1) {
-    copy[idxCm2] = Number(
-        toNumberSafe(
-            totalRow?.total_cm2_profit ??
-            grandTotalRowRaw?.total_cm2_profit ??
-            grandTotalRowDisplay?.total_cm2_profit ??
-            cm2Profit ??
-            totalRow?.cm2_profit ??
-            0
-        )
-    );
-}
+            copy[idxCm2] = Number(
+                toNumberSafe(
+                    totalRow?.total_cm2_profit ??
+                    grandTotalRowRaw?.total_cm2_profit ??
+                    grandTotalRowDisplay?.total_cm2_profit ??
+                    cm2Profit ??
+                    totalRow?.cm2_profit ??
+                    0
+                )
+            );
+        }
 
         return copy;
     }, [
@@ -9555,6 +9575,487 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummyLiveBusinessClientData
         : liveBiPayload;
 
+    const cleanDrawerPoint = (value: string) =>
+        String(value || "")
+            .replace(/^\s*[-•]\s*/, "")
+            .replace(/^\s*\d+\.\s*-\s*/, "")
+            .replace(/^\s*\d+\.\s*/, "")
+            .trim();
+
+    const toDrawerPoints = (value: unknown): string[] => {
+        if (!value) return [];
+
+        const rawItems = Array.isArray(value) ? value : [String(value)];
+
+        return rawItems
+            .flatMap((item) =>
+                String(item || "")
+                    .replace(/\\n/g, "\n")
+                    .split(/\r?\n+/)
+                    .flatMap((line) => line.split(/\s+(?=[-•]\s+)/g))
+                    .flatMap((line) =>
+                        line.split(
+                            /(?<=[.!?])\s+(?=(?:From|Between|In|This|Long-term|ASP|Units|CM1|Net|Inventory)\b)/g
+                        )
+                    )
+            )
+            .map(cleanDrawerPoint)
+            .filter(Boolean);
+    };
+
+    const extractDrawerSections = (text: string) => {
+        const raw = String(text || "").trim();
+
+        const getBlock = (label: string, nextLabels: string[]) => {
+            const next = nextLabels
+                .map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+                .join("|");
+
+            const re = new RegExp(
+                `${label}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*(?:${next})\\s*:|$)`,
+                "i"
+            );
+
+            const match = raw.match(re);
+            return (match?.[1] || "").trim();
+        };
+
+        const journeyText = getBlock("Product\\s*Journey", [
+            "Recommendation",
+            "Advertising",
+            "Inventory",
+        ]);
+
+        const recText = getBlock("Recommendation", [
+            "Advertising",
+            "Inventory",
+            "Product\\s*Journey",
+        ]);
+
+        const adsText = getBlock("Advertising", [
+            "Inventory",
+            "Recommendation",
+            "Product\\s*Journey",
+        ]);
+
+        const invText = getBlock("Inventory", [
+            "Advertising",
+            "Recommendation",
+            "Product\\s*Journey",
+        ]);
+
+        return {
+            journeyPoints: toDrawerPoints(journeyText),
+            recommendationPoints: toDrawerPoints(recText),
+            advertisingPoints: toDrawerPoints(adsText),
+            inventoryPoints: toDrawerPoints(invText),
+        };
+    };
+
+    const normalizeDrawerKey = (value: any) =>
+        String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, " ");
+
+    const getDrawerGrowth = (row: any, ...keys: string[]) => {
+        for (const key of keys) {
+            const raw = row?.[key];
+            const value = typeof raw === "object" ? raw?.value : raw;
+            const n = Number(value);
+            if (Number.isFinite(n)) return n;
+        }
+        return 0;
+    };
+
+    const formatDrawerGrowth = (value: number) => {
+        const sign = value > 0 ? "+" : "";
+        return `${sign}${value.toFixed(2)}%`;
+    };
+
+    const formatDrawerMetricValue = (
+        actualValue: number,
+        growthValue: number,
+        type: "money" | "number" = "money",
+        sourceCurrencyForValue: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency
+    ) => {
+        const mainValue =
+            type === "number"
+                ? Number(actualValue || 0).toLocaleString()
+                : formatDisplayAmount(
+                    convertToDisplayCurrency(Number(actualValue || 0), sourceCurrencyForValue)
+                );
+
+        return `${mainValue} (${formatDrawerGrowth(growthValue)})`;
+    };
+
+    const getLiveBiProductRows = useCallback(() => {
+        const cat = (finalLiveBiPayload as any)?.categorized_growth || {};
+
+        return [
+            ...(cat.top_80_skus || []),
+            ...(cat.new_skus || []),
+            ...(cat.reviving_skus || []),
+            ...(cat.new_or_reviving_skus || []),
+            ...(cat.other_skus || []),
+        ];
+    }, [finalLiveBiPayload]);
+
+    const findLiveBiRowForPnlRow = useCallback(
+        (row: MonthlySkuwiseTableRow) => {
+            const sku = normalizeDrawerKey(row?.sku);
+            const name = normalizeDrawerKey(row?.product_name);
+
+            return getLiveBiProductRows().find((item: any) => {
+                const itemSku = normalizeDrawerKey(item?.sku);
+                const itemName = normalizeDrawerKey(item?.product_name);
+
+                return (
+                    (!!sku && sku !== "others" && itemSku === sku) ||
+                    (!!name && itemName === name) ||
+                    (!!name && itemName.includes(name)) ||
+                    (!!itemName && name.includes(itemName))
+                );
+            });
+        },
+        [getLiveBiProductRows]
+    );
+
+    const buildDrawerMetricsForPnlRow = useCallback(
+        (pnlRow: MonthlySkuwiseTableRow, liveRow?: any): MetricItem[] => {
+            const source = liveRow || pnlRow;
+
+            const units =
+                Number(
+                    source?.quantity_curr ??
+                    source?.quantity_month2 ??
+                    source?.total_quantity ??
+                    source?.quantity ??
+                    0
+                ) || 0;
+
+            const netSales =
+                Number(
+                    source?.net_sales_curr ??
+                    source?.net_sales_month2 ??
+                    source?.net_sales ??
+                    0
+                ) || 0;
+
+            const asp =
+                Number(source?.asp_curr ?? source?.asp_month2 ?? source?.asp ?? 0) || 0;
+
+            const cm1Profit =
+                Number(
+                    source?.profit_curr ??
+                    source?.profit_month2 ??
+                    source?.profit ??
+                    source?.cm1_profit ??
+                    0
+                ) || 0;
+
+            const cm1ProfitPerUnit =
+                Number(
+                    source?.unit_wise_profitability_curr ??
+                    source?.unit_wise_profitability_month2 ??
+                    source?.unit_wise_profitability ??
+                    source?.cm1_profit_per_unit ??
+                    0
+                ) || 0;
+
+            const unitGrowth = getDrawerGrowth(source, "Unit Growth", "Unit Growth (%)");
+            const salesGrowth = getDrawerGrowth(
+                source,
+                "Sales Growth",
+                "Net Sales Growth",
+                "Net Sales Growth (%)"
+            );
+            const aspGrowth = getDrawerGrowth(source, "ASP Growth", "ASP Growth (%)");
+            const profitGrowth = getDrawerGrowth(
+                source,
+                "CM1 Profit Impact",
+                "CM1 Profit Impact (%)"
+            );
+            const profitPerUnitGrowth = getDrawerGrowth(
+                source,
+                "Profit Per Unit",
+                "Profit Per Unit (%)"
+            );
+
+            const valueCurrency: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency;
+
+            return [
+                {
+                    label: "Units",
+                    value: formatDrawerMetricValue(units, unitGrowth, "number", valueCurrency),
+                    color: unitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                },
+                {
+                    label: "Net sales",
+                    value: formatDrawerMetricValue(netSales, salesGrowth, "money", valueCurrency),
+                    color: salesGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                },
+                {
+                    label: "ASP",
+                    value: formatDrawerMetricValue(asp, aspGrowth, "money", valueCurrency),
+                    color: aspGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                },
+                {
+                    label: "CM1 profit",
+                    value: formatDrawerMetricValue(cm1Profit, profitGrowth, "money", valueCurrency),
+                    color: profitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                },
+                {
+                    label: "CM1 profit per unit",
+                    value: formatDrawerMetricValue(
+                        cm1ProfitPerUnit,
+                        profitPerUnitGrowth,
+                        "money",
+                        valueCurrency
+                    ),
+                    color: profitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                },
+            ];
+        },
+        [platform, biSourceCurrency, convertToDisplayCurrency, formatDisplayAmount]
+    );
+
+    const findLiveBiInsightForPnlRow = useCallback(
+        (row: MonthlySkuwiseTableRow, liveRow?: any) => {
+            const payload: any = finalLiveBiPayload || {};
+            const insights = payload.ai_insights || payload.insights || {};
+
+            const sku = normalizeDrawerKey(row?.sku || liveRow?.sku);
+            const name = normalizeDrawerKey(row?.product_name || liveRow?.product_name);
+
+            const directBySku = Object.entries(insights).find(([key]) => {
+                return normalizeDrawerKey(key) === sku;
+            });
+
+            if (directBySku) return directBySku[1] as any;
+
+            const byProductName = Object.values(insights).find((item: any) => {
+                const product = normalizeDrawerKey(item?.product_name);
+                return (
+                    product === name ||
+                    (!!product && product.includes(name)) ||
+                    (!!name && name.includes(product))
+                );
+            });
+
+            if (byProductName) return byProductName as any;
+
+            return null;
+        },
+        [finalLiveBiPayload]
+    );
+
+    const findRecommendedActionTextForPnlRow = useCallback(
+        (row: MonthlySkuwiseTableRow, liveRow?: any) => {
+            const payload: any = finalLiveBiPayload || {};
+            const recommended = payload.recommended_actions_mtd || {};
+
+            const targetName = normalizeDrawerKey(
+                row?.product_name || liveRow?.product_name || row?.sku
+            );
+
+            const targetSku = normalizeDrawerKey(row?.sku || liveRow?.sku);
+
+            const flattenActionValues = (value: any): string[] => {
+                if (!value) return [];
+
+                if (typeof value === "string") return [value];
+
+                if (Array.isArray(value)) {
+                    return value.flatMap(flattenActionValues);
+                }
+
+                if (typeof value === "object") {
+                    return Object.values(value).flatMap(flattenActionValues);
+                }
+
+                return [];
+            };
+
+            const actionTexts = flattenActionValues(recommended);
+
+            return (
+                actionTexts.find((text) => {
+                    const firstLine = String(text || "")
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .filter(Boolean)[0];
+
+                    const normalizedFirstLine = normalizeDrawerKey(firstLine);
+                    const normalizedFullText = normalizeDrawerKey(text);
+
+                    return (
+                        (!!targetName &&
+                            (normalizedFirstLine === targetName ||
+                                normalizedFirstLine.includes(targetName) ||
+                                targetName.includes(normalizedFirstLine))) ||
+                        (!!targetSku && normalizedFullText.includes(targetSku))
+                    );
+                }) || ""
+            );
+        },
+        [finalLiveBiPayload]
+    );
+
+    const findGlobalJourneyForPnlRow = useCallback(
+        (row: MonthlySkuwiseTableRow, liveRow?: any) => {
+            const journeys = (finalLiveBiPayload as any)?.product_journey || {};
+            const name = normalizeDrawerKey(row?.product_name || liveRow?.product_name);
+
+            const direct = Object.entries(journeys).find(([key, value]: [string, any]) => {
+                const keyName = normalizeDrawerKey(key);
+                const productName = normalizeDrawerKey(value?.product_name);
+
+                return (
+                    keyName === name ||
+                    productName === name ||
+                    (!!productName && productName.includes(name)) ||
+                    (!!name && productName && name.includes(productName))
+                );
+            });
+
+            return direct?.[1] as any;
+        },
+        [finalLiveBiPayload]
+    );
+
+    const getFirstCountryActionForDrawer = (journey: any, country: "uk" | "us" | "ca" | "india") => {
+        const blocks = journey?.[country] || {};
+        return Object.values(blocks || {})[0] as any;
+    };
+
+    const openPnlSkuDrawer = useCallback(
+        (row: MonthlySkuwiseTableRow) => {
+            const name = String(row?.product_name || "").trim().toLowerCase();
+            const sku = String(row?.sku || "").trim().toUpperCase();
+
+            if (
+                row.isTotal ||
+                row.isOthers ||
+                sku === "GRAND_TOTAL" ||
+                sku === "TOTAL" ||
+                name === "grand total" ||
+                name === "total" ||
+                name === "others"
+            ) {
+                return;
+            }
+
+            const liveRow = findLiveBiRowForPnlRow(row);
+            const insight = findLiveBiInsightForPnlRow(row, liveRow);
+            const productName =
+                liveRow?.product_name ||
+                insight?.product_name ||
+                row.product_name ||
+                row.sku ||
+                "Details";
+
+            let journeyPoints: string[] = [];
+            let recommendationPoints: string[] = [];
+            let advertisingPoints: string[] = [];
+            let inventoryPoints: string[] = [];
+
+            const recommendedActionText = findRecommendedActionTextForPnlRow(row, liveRow);
+            const parsedRecommendedAction = extractDrawerSections(recommendedActionText);
+
+            if (platform === "global") {
+                const journey = insight?.raw_global_journey || findGlobalJourneyForPnlRow(row, liveRow);
+
+                const countryActions = [
+                    ["UK", getFirstCountryActionForDrawer(journey, "uk")],
+                    ["US", getFirstCountryActionForDrawer(journey, "us")],
+                    ["CA", getFirstCountryActionForDrawer(journey, "ca")],
+                    ["India", getFirstCountryActionForDrawer(journey, "india")],
+                ] as const;
+
+                journeyPoints = Array.isArray(journey?.journey_comparison)
+                    ? journey.journey_comparison
+                    : toDrawerPoints(insight?.product_journey);
+
+                recommendationPoints = countryActions
+                    .map(([country, action]) =>
+                        action?.recommendation ? `${country}: ${action.recommendation}` : ""
+                    )
+                    .filter(Boolean);
+
+                advertisingPoints = countryActions
+                    .map(([country, action]) =>
+                        action?.ads_recommendation ? `${country}: ${action.ads_recommendation}` : ""
+                    )
+                    .filter(Boolean);
+
+                inventoryPoints = countryActions
+                    .map(([country, action]) =>
+                        action?.inventory_recommendation
+                            ? `${country}: ${action.inventory_recommendation}`
+                            : ""
+                    )
+                    .filter(Boolean);
+
+                // fallback from recommended_actions_mtd
+                if (!journeyPoints.length) {
+                    journeyPoints = parsedRecommendedAction.journeyPoints;
+                }
+
+                if (!recommendationPoints.length) {
+                    recommendationPoints = parsedRecommendedAction.recommendationPoints;
+                }
+
+                if (!advertisingPoints.length) {
+                    advertisingPoints = parsedRecommendedAction.advertisingPoints;
+                }
+
+                if (!inventoryPoints.length) {
+                    inventoryPoints = parsedRecommendedAction.inventoryPoints;
+                }
+            } else {
+                journeyPoints =
+                    toDrawerPoints(insight?.product_journey).length > 0
+                        ? toDrawerPoints(insight?.product_journey)
+                        : parsedRecommendedAction.journeyPoints;
+
+                recommendationPoints =
+                    toDrawerPoints(insight?.recommendation).length > 0
+                        ? toDrawerPoints(insight?.recommendation)
+                        : parsedRecommendedAction.recommendationPoints;
+
+                advertisingPoints =
+                    toDrawerPoints(insight?.advertising).length > 0
+                        ? toDrawerPoints(insight?.advertising)
+                        : parsedRecommendedAction.advertisingPoints;
+
+                inventoryPoints =
+                    toDrawerPoints(insight?.inventory_recommendation).length > 0
+                        ? toDrawerPoints(insight?.inventory_recommendation)
+                        : parsedRecommendedAction.inventoryPoints;
+            }
+
+            setSelectedRec({
+                productName,
+                metrics: buildDrawerMetricsForPnlRow(row, liveRow),
+                journeyPoints,
+                recommendationPoints,
+                advertisingPoints,
+                inventoryPoints,
+                showChart: true,
+            });
+
+            setRecDrawerOpen(true);
+        },
+        [
+            platform,
+            findLiveBiRowForPnlRow,
+            findLiveBiInsightForPnlRow,
+            findGlobalJourneyForPnlRow,
+            findRecommendedActionTextForPnlRow,
+            buildDrawerMetricsForPnlRow,
+        ]
+    );
 
     const currentInventoryExportRows = useMemo(() => {
         const rowsToUse = finalInventoryRows || [];
@@ -11076,15 +11577,20 @@ ${pageLoading
 
                                                     if (row.isOthers) {
                                                         return (
-                                                            <span className="inline-block w-full truncate text-[#60a68e]">
+                                                            <span
+                                                                className="inline-block w-full truncate font-semibold text-[#60a68e]"
+                                                                title="Aggregated remaining products"
+                                                            >
                                                                 Others
                                                             </span>
                                                         );
                                                     }
 
                                                     return (
-                                                        <div
-                                                            className="flex w-full items-center justify-between gap-3 text-[#60a68e]"
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openPnlSkuDrawer(row)}
+                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e] underline-offset-2 hover:underline"
                                                             title={String(row.product_name || "")}
                                                         >
                                                             <span className="min-w-0 truncate">
@@ -11092,7 +11598,7 @@ ${pageLoading
                                                             </span>
 
                                                             {renderLiveNetSalesDelta(row)}
-                                                        </div>
+                                                        </button>
                                                     );
                                                 }
 
@@ -11436,6 +11942,17 @@ ${pageLoading
                     </div>
                 )}
             </PreviewLockedSection>
+
+            <SkuRecommendationDrawer
+                open={recDrawerOpen}
+                onClose={() => setRecDrawerOpen(false)}
+                selectedRec={selectedRec}
+                objectiveContext={(finalLiveBiPayload as any)?.objective_context || null}
+                countryName={countryName}
+                sourceCountryName={countryName}
+                displayCurrency={displayCurrency}
+            />
+
         </div >
 
     );
