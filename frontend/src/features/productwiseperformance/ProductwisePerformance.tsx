@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import "@/lib/chartSetup";
 import {
   Chart as ChartJS,
@@ -274,11 +274,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const params = useParams();
   const router = useRouter();
 
-  const searchParams = useSearchParams();
-  const queryProductName = normalizeProductSlug(
-    searchParams.get("product") || undefined
-  );
-
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
@@ -313,9 +308,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     if (!embedded) return;
 
     setSelectedProductName(
-      isPreviewMode
-        ? queryProductName || initialProductName || "Demo Product"
-        : queryProductName || initialProductName || ""
+      isPreviewMode ? (initialProductName || "Demo Product") : initialProductName
     );
     setSelectedSku(null);
     setSkuInsights({});
@@ -323,7 +316,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   }, [
     embedded,
     initialProductName,
-    queryProductName,
     rangeProp,
     selectedMonthProp,
     selectedQuarterProp,
@@ -333,12 +325,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   ]);
 
   const productname = isPreviewMode
-    ? embedded
-      ? selectedProductName || queryProductName || initialProductName || "Demo Product"
-      : "Demo Product"
+    ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
     : embedded
-      ? selectedProductName || queryProductName || initialProductName || ""
-      : queryProductName || initialProductName || urlProductName || "";
+      ? selectedProductName || ""
+      : initialProductName || urlProductName || "";
 
   const countryName = embedded ? countryNameProp : routeCountryName;
 
@@ -549,43 +539,32 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   };
 
   const handleProductSelect = (nextProductName: string) => {
-    setSelectedProductName(nextProductName);
+    if (embedded) {
+      setSelectedProductName(nextProductName);
+      return;
+    }
 
-    const selectedCountry = normalizeCountryKey(countryName || "global");
+    const base = "/skuwiseprofit";
+    const slug = toSlug(nextProductName);
 
-    let monthForUrl = selectedMonth;
-    let yearForUrl = selectedYear;
+    let month = selectedMonth;
+    let year = selectedYear;
 
-    if ((!monthForUrl || !yearForUrl) && typeof window !== "undefined") {
+    if ((!month || !year) && typeof window !== "undefined") {
       try {
         const raw = localStorage.getItem("latestFetchedPeriod");
         if (raw) {
           const parsed = JSON.parse(raw) as {
             month?: string;
-            year?: string | number;
+            year?: string;
           };
-
-          if (!monthForUrl && parsed.month) {
-            monthForUrl = String(parsed.month).toLowerCase();
-          }
-
-          if (!yearForUrl && parsed.year) {
-            yearForUrl = Number(parsed.year);
-          }
+          if (!month && parsed.month) month = parsed.month.toLowerCase();
+          if (!year && parsed.year) year = Number(parsed.year);
         }
       } catch { }
     }
 
-    const monthLabel = monthForUrl
-      ? cap(String(monthForUrl).toLowerCase())
-      : "";
-
-    const to =
-      `/pnl-dashboard/YTD/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(
-        monthLabel
-      )}/${encodeURIComponent(String(yearForUrl || ""))}` +
-      `?product=${encodeURIComponent(nextProductName)}&tab=skuwise-profit#skuwise-profit`;
-
+    const to = `${base}/${slug}/${countryName ?? ""}/${month || ""}/${year || ""}`;
     router.push(to);
   };
 

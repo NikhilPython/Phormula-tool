@@ -2751,74 +2751,44 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const hasHash = !!window.location.hash;
-    const hasTabQuery = !!searchParams.get("tab");
-
-    if (hasHash || hasTabQuery) return;
-
+    if (typeof window !== "undefined" && window.location.hash) return;
     setActiveTab("graphs");
-  }, [
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    countryName,
-    searchParams,
-  ]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const applyRequestedTab = (rawHash?: string) => {
+    const applyHash = (rawHash?: string) => {
       const hash = (rawHash ?? window.location.hash).replace("#", "");
-      const tabFromQuery = searchParams.get("tab");
+      if (!hash) return;
 
-      const requestedTabKey = tabFromQuery || hash;
-      if (!requestedTabKey) return;
-
-      const targetTab =
-        HASH_TO_FINANCE_TAB[requestedTabKey] ||
-        (requestedTabKey === "skuwiseProfit" ? "skuwiseProfit" : null);
-
+      const targetTab = HASH_TO_FINANCE_TAB[hash];
       if (!targetTab) return;
 
-      const targetHash =
-        requestedTabKey === "skuwiseProfit"
-          ? "skuwise-profit"
-          : requestedTabKey;
-
-      setPendingHash(targetHash);
+      setPendingHash(hash);
       setActiveTab(targetTab);
     };
 
     const onHashChange = () => {
-      applyRequestedTab(window.location.hash);
+      applyHash(window.location.hash);
     };
 
     const onCustomHashNavigate = (event: Event) => {
       const customEvent = event as CustomEvent<{ hash?: string }>;
       if (!customEvent.detail?.hash) return;
-      applyRequestedTab(`#${customEvent.detail.hash}`);
+      applyHash(`#${customEvent.detail.hash}`);
     };
 
-    applyRequestedTab(window.location.hash);
+    applyHash(window.location.hash);
 
     window.addEventListener("hashchange", onHashChange);
-    window.addEventListener(
-      "page-hash-navigate",
-      onCustomHashNavigate as EventListener
-    );
+    window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
 
     return () => {
       window.removeEventListener("hashchange", onHashChange);
-      window.removeEventListener(
-        "page-hash-navigate",
-        onCustomHashNavigate as EventListener
-      );
+      window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
     };
-  }, [searchParams]);
+  }, []);
 
   useEffect(() => {
     if (!pendingHash) return;
@@ -2877,11 +2847,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return map;
   }, [displaySkuRows]);
 
-  const [selectedAiProductBlock, setSelectedAiProductBlock] =
-    useState<ProductInsightBlock | null>(null);
 
-  const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
-    useState<any>(null);
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
     setFocusedChart((prev) => (prev === which ? null : which));
@@ -2896,6 +2862,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
+  const aiRequestIdRef = useRef(0);
+  const uploadHistoryRequestIdRef = useRef(0);
+
+  const [selectedAiProductBlock, setSelectedAiProductBlock] =
+    useState<ProductInsightBlock | null>(null);
+
+  const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
+    useState<any>(null);
 
   const aiProductBlocks = useMemo(() => {
     return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
@@ -2951,13 +2925,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     },
     [aiProductBlocks, aiSkuActions, nameToSkuMap]
   );
-
-  const aiRequestIdRef = useRef(0);
-  const uploadHistoryRequestIdRef = useRef(0);
-
-  // const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
-  // const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
-  // const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -3834,19 +3801,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const mapGlobalAiResponseToPanel = (data: any): AiPanelData => {
     const globalAi = data?.global_ai ?? {};
-    const comparison = data?.comparison ?? {};
 
-    const periodLabel =
-      comparison?.period_label ||
-      String(data?.year || selectedYear || "Selected Period");
+    const comparison = data?.comparison;
+    const periodLabel = comparison?.period_label || "Selected Period";
 
     const getPreviousComparisonLabel = () => {
       if (comparison?.previous_period_label) return comparison.previous_period_label;
       if (comparison?.previous_label) return comparison.previous_label;
 
       const period = String(comparison?.period || "").toLowerCase();
-      const currentPeriodLabel = String(periodLabel || "");
+      const currentPeriodLabel = String(comparison?.period_label || "");
 
+      // Monthly: April 2026 -> March 2026
       const monthYearMatch = currentPeriodLabel.match(/^([A-Za-z]+)\s+(\d{4})$/);
 
       if (period === "monthly" && monthYearMatch) {
@@ -3866,11 +3832,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return "Previous Month";
       }
 
+      // Quarterly: Q2 2026 -> Q1 2026
       const quarterYearMatch = currentPeriodLabel.match(/^(Q[1-4])\s+(\d{4})$/i);
 
       if (period === "quarterly" && quarterYearMatch) {
         const currentQuarter = quarterYearMatch[1].toUpperCase();
         const yearNum = Number(quarterYearMatch[2]);
+
         const quarterOrder = ["Q1", "Q2", "Q3", "Q4"];
         const currentIndex = quarterOrder.indexOf(currentQuarter);
 
@@ -3884,6 +3852,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return "Previous Quarter";
       }
 
+      // Yearly: 2026 -> 2025
       if (period === "yearly" && /^\d{4}$/.test(currentPeriodLabel)) {
         return String(Number(currentPeriodLabel) - 1);
       }
@@ -3893,40 +3862,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const previousLabel = getPreviousComparisonLabel();
 
-    const sectionsFromMarkdown = parseMdSections(data?.summary);
-    const fallbackOverallSummary =
-      sectionsFromMarkdown["OVERALL SUMMARY"]?.join(" ") || "";
-
-    const globalSummary =
-      globalAi?.global_summary ||
-      fallbackOverallSummary ||
-      "";
-
-    const countryComparison =
-      globalAi?.country_comparison ||
-      sectionsFromMarkdown["COUNTRY COMPARISON"] ||
-      [];
 
     const summaryBullets = [
       `Global Business Summary (${periodLabel} vs ${previousLabel})`,
-      globalSummary,
-      ...countryComparison,
+      globalAi?.global_summary || data?.summary || "",
+      ...(globalAi?.uk_vs_us_comparison ?? []),
     ].filter(Boolean);
 
     return {
       summaryBullets,
-
       skuInsightsBullets: [
         ...buildGlobalProductInsightLines(data),
         ...buildOtherSkusInsightLines(data, currencySymbol, "global"),
       ],
-
       recommendationBullets: [],
-
       inventoryBullets: buildGlobalInventoryLines(data),
-
       recommendationsMap: buildGlobalRecommendationsMap(data),
-
       objective: {
         country: "global",
         growth_intent:
@@ -3945,10 +3896,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           data?.objectives?.us?.time_horizon ||
           "1_month",
       },
-
       rawSummary: data?.summary ?? globalAi?.global_summary ?? null,
       rawRecommendations: null,
-
       portfolioRecommendation:
         globalAi?.global_overall_recommendation ||
         data?.overall_recommendation ||
@@ -5270,12 +5219,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const hash = FINANCE_TAB_TO_HASH[tab];
     if (!hash) return;
 
-    const url = new URL(window.location.href);
-
-    url.searchParams.set("tab", hash);
-    url.hash = hash;
-
-    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    const nextUrl = `${window.location.pathname}#${hash}`;
 
     if (isDemoMode) {
       window.history.replaceState(null, "", nextUrl);
@@ -5294,6 +5238,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
   };
+
+
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
@@ -6436,20 +6382,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
             <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
               <SKUtable
-                range={range}
-                month={selectedMonth}
-                quarter={selectedQuarter}
+                range={range || "yearly"}
+                month={range === "monthly" ? selectedMonth : ""}
+                quarter={range === "quarterly" ? selectedQuarter : ""}
                 year={selectedYear}
-                countryName={countryName}
-                homeCurrency={homeCurrency}
+                countryName={isDemoMode ? "global" : initialCountryName}
+                homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                 rows={displaySkuRows}
                 loading={displaySkuLoading}
                 error={displaySkuError}
                 noDataFound={displaySkuNoDataFound}
-                userMeta={userData}
+                userMeta={{
+                  brand_name: userData?.brand_name,
+                  company_name: userData?.company_name,
+                }}
                 onExportPayloadChange={handleSkuExportPayloadChange}
-
-                // ✅ this makes Product Name open AI drawer
                 onProductDetailClick={openAiProductDrawerByName}
               />
 
@@ -6464,6 +6411,43 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
 
           )}
+
+          {/* {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+              {(() => {
+                const productWiseRange =
+                  range === "quarterly" ? "quarterly" : "yearly";
+
+                return (
+                  <ProductwisePerformance
+                    key={[
+                      initialCountryName,
+                      productWiseRange,
+                      selectedQuarter,
+                      selectedYear,
+                      defaultTopProductName,
+                      isDemoMode ? "demo" : "live",
+                    ].join("-")}
+                    embedded
+                    countryNameProp={isDemoMode ? "global" : initialCountryName}
+                    rangeProp={productWiseRange}
+                    selectedMonthProp={isDemoMode ? "NA" : ""}
+                    selectedQuarterProp={
+                      isDemoMode
+                        ? ""
+                        : productWiseRange === "quarterly"
+                          ? selectedQuarter
+                          : ""
+                    }
+                    selectedYearProp={
+                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+                    }
+                    initialProductName={defaultTopProductName || "Demo Product A"}
+                  />
+                );
+              })()}
+            </div>
+          )} */}
 
           {activeTab === "skuwiseProfit" && allDropdownsSelected && (
             <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
@@ -6598,7 +6582,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         block={selectedAiProductBlock}
         objective={aiPanel?.objective}
         recObj={selectedAiProductRecObj}
-        countryName={countryName}
+        countryName={isDemoMode ? "global" : initialCountryName}
         range={range}
         year={selectedYear}
         month={range === "monthly" ? selectedMonth : ""}

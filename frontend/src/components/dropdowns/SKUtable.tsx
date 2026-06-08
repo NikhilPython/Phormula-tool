@@ -64,6 +64,7 @@ type SKUtableProps = {
   year: string | number;
   countryName: string;
   homeCurrency?: string;
+
   rows: TableRow[];
   loading?: boolean;
   error?: string | null;
@@ -72,10 +73,13 @@ type SKUtableProps = {
     brand_name?: string;
     company_name?: string;
   } | null;
+
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
   disableInternalFade?: boolean;
+
+  // ✅ New: parent drawer opener
   onProductDetailClick?: (productName: string) => void;
 };
 
@@ -485,6 +489,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   onDownload,
   disableInternalFade = false,
   onProductDetailClick,
+  // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   // const [showModal, setShowModal] = useState(false);
@@ -2110,8 +2115,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
         </div>
       </div> */}
-      {/* 
-      {showModal && selectedProduct && (
+
+      {/* {showModal && selectedProduct && (
         <Productinfoinpopup
           productname={selectedProduct}
           countryName={countryName}
