@@ -908,132 +908,131 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                             transition={{ type: "tween", duration: 0.25 }}
                                         >
                                             <div className="flex h-full flex-col gap-4">
-<div className="shrink-0 border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="truncate text-2xl font-semibold leading-tight text-[#414042]">
-                                                        <div className="flex items-center gap-1 flex-wrap">
-                                                            <PageBreadcrumb
-                                                                pageTitle="Detailed View - "
-                                                                variant="page"
-                                                                textSize="2xl"
+                                                <div className="shrink-0 border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-2xl font-semibold leading-tight text-[#414042]">
+                                                            <div className="flex items-center gap-1 flex-wrap">
+                                                                <PageBreadcrumb
+                                                                    pageTitle="Detailed View - "
+                                                                    variant="page"
+                                                                    textSize="2xl"
+                                                                />
+                                                                <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                                                                    {insightData.product_name || selectedSku}
+                                                                </span>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => setModalOpen(false)}
+                                                        className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-lg leading-none text-slate-500 hover:bg-slate-50"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+
+                                                <div className="flex-1 overflow-y-auto px-4  space-y-6">
+                                                    {objectiveObj && (
+                                                        <div className="space-y-2">
+                                                            <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">Objectives</div>
+
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                    <div className="2xl:text-sm text-xs text-slate-500">Primary Focus</div>
+                                                                    <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
+                                                                        {objectiveObj?.growth_intent || "balanced"}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                    <div className="2xl:text-sm text-xs text-slate-500">Profit Strategy</div>
+                                                                    <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
+                                                                        {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
+                                                                            "protect growth"}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                    <div className="2xl:text-sm text-xs text-slate-500">Inventory Dilution</div>
+                                                                    <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
+                                                                        {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="space-y-2">
+                                                        <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                                                            Recommendations
+                                                        </div>
+
+                                                        {recoBullets.length > 0 && (
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                                                                    Action
+                                                                </div>
+                                                                <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
+                                                                    {recoBullets.map((pt, i) => (
+                                                                        <li key={i}>{pt}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+
+                                                        {inventoryRecoBullets.length > 0 && (
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                                                                    Inventory
+                                                                </div>
+                                                                <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
+                                                                    {inventoryRecoBullets.map((pt, i) => (
+                                                                        <li key={i}>{pt}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+
+                                                        {!recoBullets.length && !inventoryRecoBullets.length && (
+                                                            <div className="text-sm text-slate-500">
+                                                                No recommendation available.
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <div className="">
+                                                            <Productinfoinpopup
+                                                                productname={insightData.product_name}
+                                                                countryName={countryName}
                                                             />
-                                                            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                                                                {insightData.product_name || selectedSku}
-                                                            </span>
-                                                        </div>
-
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={() => setModalOpen(false)}
-                                                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-lg leading-none text-slate-500 hover:bg-slate-50"
-                                                >
-                                                    ×
-                                                </button>
-                                            </div>
-
-                                            <div className="flex-1 overflow-y-auto px-4  space-y-6">
-                                                {objectiveObj && (
-                                                    <div className="space-y-2">
-                                                        <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">Objectives</div>
-
-                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                                                                <div className="2xl:text-sm text-xs text-slate-500">Primary Focus</div>
-                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
-                                                                    {objectiveObj?.growth_intent || "balanced"}
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                                                                <div className="2xl:text-sm text-xs text-slate-500">Profit Strategy</div>
-                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
-                                                                    {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
-                                                                        "protect growth"}
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                                                                <div className="2xl:text-sm text-xs text-slate-500">Inventory Dilution</div>
-                                                                <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
-                                                                    {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
-                                                                </div>
-                                                            </div>
                                                         </div>
                                                     </div>
-                                                )}
 
-                                                <div className="space-y-2">
-                                                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
-                                                        Recommendations
-                                                    </div>
-
-                                                    {recoBullets.length > 0 && (
-                                                        <div>
-                                                            <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                                                                Action
+                                                    {journeyBullets.length > 0 && (
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-1 flex-wrap">
+                                                                <PageBreadcrumb
+                                                                    pageTitle="Product Journey"
+                                                                    variant="page"
+                                                                    textSize="lg"
+                                                                />
                                                             </div>
-                                                            <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
-                                                                {recoBullets.map((pt, i) => (
-                                                                    <li key={i}>{pt}</li>
+
+                                                            <ul className="list-disc list-outside space-y-2 pl-5 text-xs text-[#414042] 2xl:text-sm">
+                                                                {journeyBullets.map((j, i) => (
+                                                                    <li key={i}>
+                                                                        <span>{j}</span>
+                                                                    </li>
                                                                 ))}
                                                             </ul>
                                                         </div>
                                                     )}
-
-                                                    {inventoryRecoBullets.length > 0 && (
-                                                        <div>
-                                                            <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                                                                Inventory
-                                                            </div>
-                                                            <ul className="list-disc space-y-1 pl-5 2xl:text-sm text-xs text-[#414042]">
-                                                                {inventoryRecoBullets.map((pt, i) => (
-                                                                    <li key={i}>{pt}</li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    )}
-
-                                                    {!recoBullets.length && !inventoryRecoBullets.length && (
-                                                        <div className="text-sm text-slate-500">
-                                                            No recommendation available.
-                                                        </div>
-                                                    )}
                                                 </div>
-
-                                                <div className="space-y-2">
-                                                    <div className="">
-                                                        <Productinfoinpopup
-                                                            productname={insightData.product_name}
-                                                            countryName={countryName}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {journeyBullets.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        <div className="flex items-center gap-1 flex-wrap">
-                    <PageBreadcrumb
-                      pageTitle="Product Journey"
-                      variant="page"
-                      textSize="lg"
-                    />
-                  </div>
-
-                                                        <ul className="space-y-2 2xl:text-sm text-xs text-[#414042]">
-                                                            {journeyBullets.map((j, i) => (
-                                                                <li key={i} className="flex gap-2">
-                                                                    <span className="text-slate-400 mt-[2px]">→</span>
-                                                                    <span>{j}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                )}
                                             </div>
-                                            </div>
-                                            
+
                                         </motion.aside>
                                     </>
                                 )}
