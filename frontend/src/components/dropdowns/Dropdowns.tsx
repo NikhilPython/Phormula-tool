@@ -2877,7 +2877,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return map;
   }, [displaySkuRows]);
 
+  const [selectedAiProductBlock, setSelectedAiProductBlock] =
+    useState<ProductInsightBlock | null>(null);
 
+  const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
+    useState<any>(null);
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
     setFocusedChart((prev) => (prev === which ? null : which));
@@ -2891,6 +2895,62 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   );
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
+
+
+  const aiProductBlocks = useMemo(() => {
+    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
+  }, [aiPanel?.skuInsightsBullets]);
+
+  const aiSkuActions = useMemo(() => {
+    const recommendationsMap = aiPanel?.recommendationsMap;
+
+    return (
+      (recommendationsMap as any)?.sku_actions ??
+      (recommendationsMap as any)?.recommendations ??
+      recommendationsMap ??
+      {}
+    );
+  }, [aiPanel?.recommendationsMap]);
+
+  const openAiProductDrawerByName = useCallback(
+    (productName: string) => {
+      const cleanName = String(productName || "").trim();
+      if (!cleanName) return;
+
+      const normalizedClickedName = normalizeKey(cleanName);
+
+      const block =
+        aiProductBlocks.find(
+          (b) => normalizeKey(b.name) === normalizedClickedName
+        ) ||
+        aiProductBlocks.find((b) => {
+          const normalizedBlockName = normalizeKey(b.name);
+
+          return (
+            normalizedBlockName.includes(normalizedClickedName) ||
+            normalizedClickedName.includes(normalizedBlockName)
+          );
+        });
+
+      if (!block) {
+        console.warn("No AI insight block found for product:", cleanName);
+        return;
+      }
+
+      const mappedSku = nameToSkuMap?.[normalizeKey(block.name)];
+      const skuKey = block.skuKey || mappedSku;
+
+      const recObj =
+        (skuKey && (aiSkuActions as any)[skuKey]) ||
+        (aiSkuActions as any)[block.name] ||
+        (aiSkuActions as any)[block.name.trim()] ||
+        null;
+
+      setSelectedAiProductRecObj(recObj);
+      setSelectedAiProductBlock(block);
+    },
+    [aiProductBlocks, aiSkuActions, nameToSkuMap]
+  );
 
   const aiRequestIdRef = useRef(0);
   const uploadHistoryRequestIdRef = useRef(0);
@@ -3774,18 +3834,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const mapGlobalAiResponseToPanel = (data: any): AiPanelData => {
     const globalAi = data?.global_ai ?? {};
+    const comparison = data?.comparison ?? {};
 
-    const comparison = data?.comparison;
-    const periodLabel = comparison?.period_label || "Selected Period";
+    const periodLabel =
+      comparison?.period_label ||
+      String(data?.year || selectedYear || "Selected Period");
 
     const getPreviousComparisonLabel = () => {
       if (comparison?.previous_period_label) return comparison.previous_period_label;
       if (comparison?.previous_label) return comparison.previous_label;
 
       const period = String(comparison?.period || "").toLowerCase();
-      const currentPeriodLabel = String(comparison?.period_label || "");
+      const currentPeriodLabel = String(periodLabel || "");
 
-      // Monthly: April 2026 -> March 2026
       const monthYearMatch = currentPeriodLabel.match(/^([A-Za-z]+)\s+(\d{4})$/);
 
       if (period === "monthly" && monthYearMatch) {
@@ -3805,13 +3866,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return "Previous Month";
       }
 
-      // Quarterly: Q2 2026 -> Q1 2026
       const quarterYearMatch = currentPeriodLabel.match(/^(Q[1-4])\s+(\d{4})$/i);
 
       if (period === "quarterly" && quarterYearMatch) {
         const currentQuarter = quarterYearMatch[1].toUpperCase();
         const yearNum = Number(quarterYearMatch[2]);
-
         const quarterOrder = ["Q1", "Q2", "Q3", "Q4"];
         const currentIndex = quarterOrder.indexOf(currentQuarter);
 
@@ -3825,7 +3884,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return "Previous Quarter";
       }
 
-      // Yearly: 2026 -> 2025
       if (period === "yearly" && /^\d{4}$/.test(currentPeriodLabel)) {
         return String(Number(currentPeriodLabel) - 1);
       }
@@ -3835,22 +3893,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const previousLabel = getPreviousComparisonLabel();
 
+    const sectionsFromMarkdown = parseMdSections(data?.summary);
+    const fallbackOverallSummary =
+      sectionsFromMarkdown["OVERALL SUMMARY"]?.join(" ") || "";
+
+    const globalSummary =
+      globalAi?.global_summary ||
+      fallbackOverallSummary ||
+      "";
+
+    const countryComparison =
+      globalAi?.country_comparison ||
+      sectionsFromMarkdown["COUNTRY COMPARISON"] ||
+      [];
 
     const summaryBullets = [
       `Global Business Summary (${periodLabel} vs ${previousLabel})`,
-      globalAi?.global_summary || data?.summary || "",
-      ...(globalAi?.uk_vs_us_comparison ?? []),
+      globalSummary,
+      ...countryComparison,
     ].filter(Boolean);
 
     return {
       summaryBullets,
+
       skuInsightsBullets: [
         ...buildGlobalProductInsightLines(data),
         ...buildOtherSkusInsightLines(data, currencySymbol, "global"),
       ],
+
       recommendationBullets: [],
+
       inventoryBullets: buildGlobalInventoryLines(data),
+
       recommendationsMap: buildGlobalRecommendationsMap(data),
+
       objective: {
         country: "global",
         growth_intent:
@@ -3869,8 +3945,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           data?.objectives?.us?.time_horizon ||
           "1_month",
       },
+
       rawSummary: data?.summary ?? globalAi?.global_summary ?? null,
       rawRecommendations: null,
+
       portfolioRecommendation:
         globalAi?.global_overall_recommendation ||
         data?.overall_recommendation ||
@@ -6358,24 +6436,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
             <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
               <SKUtable
-                range={range || "yearly"}
-                month={range === "monthly" ? selectedMonth : ""}
-                quarter={range === "quarterly" ? selectedQuarter : ""}
+                range={range}
+                month={selectedMonth}
+                quarter={selectedQuarter}
                 year={selectedYear}
-                countryName={isDemoMode ? "global" : initialCountryName}
-                homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                countryName={countryName}
+                homeCurrency={homeCurrency}
                 rows={displaySkuRows}
                 loading={displaySkuLoading}
                 error={displaySkuError}
                 noDataFound={displaySkuNoDataFound}
-                userMeta={{
-                  brand_name: userData?.brand_name,
-                  company_name: userData?.company_name,
-                }}
+                userMeta={userData}
                 onExportPayloadChange={handleSkuExportPayloadChange}
-                // metricSortMetrics={["units", "sales", "profit", "marketplace_fees"]}
-                // hideDownloadButton
-                disableInternalFade={shouldShowPreviewData}
+
+                // ✅ this makes Product Name open AI drawer
+                onProductDetailClick={openAiProductDrawerByName}
               />
 
               {!displaySkuNoDataFound && displaySkuRows.length > 0 && (
@@ -6513,6 +6588,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           country={adsCountry}
         />
       )}
+
+      <RightProductDrawer
+        open={!!selectedAiProductBlock}
+        onClose={() => {
+          setSelectedAiProductBlock(null);
+          setSelectedAiProductRecObj(null);
+        }}
+        block={selectedAiProductBlock}
+        objective={aiPanel?.objective}
+        recObj={selectedAiProductRecObj}
+        countryName={countryName}
+        range={range}
+        year={selectedYear}
+        month={range === "monthly" ? selectedMonth : ""}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={
+          aiPanel?.summaryBullets?.[0]
+            ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+            : ""
+        }
+      />
     </div>
   );
 

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 // import { jwtDecode } from "jwt-decode";
 import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
-import Productinfoinpopup from "./Productinfoinpopup";
+// import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { SkuExportPayload } from "@/lib/utils/exportTypes";
@@ -64,7 +64,6 @@ type SKUtableProps = {
   year: string | number;
   countryName: string;
   homeCurrency?: string;
-
   rows: TableRow[];
   loading?: boolean;
   error?: string | null;
@@ -73,11 +72,11 @@ type SKUtableProps = {
     brand_name?: string;
     company_name?: string;
   } | null;
-  // metricSortMetrics?: MetricSortKey[];
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
   disableInternalFade?: boolean;
+  onProductDetailClick?: (productName: string) => void;
 };
 
 type TopBottomRow = {
@@ -485,10 +484,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
   hideDownloadButton = false,
   onDownload,
   disableInternalFade = false,
-  // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
+  onProductDetailClick,
 }) => {
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  // const [showModal, setShowModal] = useState(false);
   const [showModal2, setShowModal2] = useState(false);
   const [mainColCount, setMainColCount] = useState(0);
   const [anyGroupExpanded, setAnyGroupExpanded] = useState(false);
@@ -1553,10 +1552,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const bottomData = useMemo(() => buildTopBottom(tableData, "bottom"), [tableData, buildTopBottom]);
 
   /* --------- UI handlers --------- */
-  const handleProductClick = useCallback((product: string) => {
-    setSelectedProduct(product);
-    setShowModal(true);
-  }, []);
+  const handleProductClick = useCallback(
+    (product: string) => {
+      const cleanProduct = String(product || "").trim();
+
+      if (!cleanProduct) return;
+
+      onProductDetailClick?.(cleanProduct);
+    },
+    [onProductDetailClick]
+  );
 
   const handleDownloadExcel = useCallback(async () => {
     const model = buildSkuSheetModel({ allRows: true });
@@ -2105,7 +2110,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
         </div>
       </div> */}
-
+      {/* 
       {showModal && selectedProduct && (
         <Productinfoinpopup
           productname={selectedProduct}
@@ -2114,7 +2119,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           year={year}
           onClose={() => setShowModal(false)}
         />
-      )}
+      )} */}
     </>
   );
 };
