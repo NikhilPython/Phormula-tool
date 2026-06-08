@@ -2106,7 +2106,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         </div>
       </div> */}
 
-      {/* {showModal && selectedProduct && (
+      {showModal && selectedProduct && (
         <Productinfoinpopup
           productname={selectedProduct}
           countryName={countryName}
@@ -2114,7 +2114,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           year={year}
           onClose={() => setShowModal(false)}
         />
-      )} */}
+      )}
     </>
   );
 };

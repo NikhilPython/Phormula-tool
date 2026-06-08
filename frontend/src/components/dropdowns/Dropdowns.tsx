@@ -2751,44 +2751,74 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash) return;
+    if (typeof window === "undefined") return;
+
+    const hasHash = !!window.location.hash;
+    const hasTabQuery = !!searchParams.get("tab");
+
+    if (hasHash || hasTabQuery) return;
+
     setActiveTab("graphs");
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    searchParams,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const applyHash = (rawHash?: string) => {
+    const applyRequestedTab = (rawHash?: string) => {
       const hash = (rawHash ?? window.location.hash).replace("#", "");
-      if (!hash) return;
+      const tabFromQuery = searchParams.get("tab");
 
-      const targetTab = HASH_TO_FINANCE_TAB[hash];
+      const requestedTabKey = tabFromQuery || hash;
+      if (!requestedTabKey) return;
+
+      const targetTab =
+        HASH_TO_FINANCE_TAB[requestedTabKey] ||
+        (requestedTabKey === "skuwiseProfit" ? "skuwiseProfit" : null);
+
       if (!targetTab) return;
 
-      setPendingHash(hash);
+      const targetHash =
+        requestedTabKey === "skuwiseProfit"
+          ? "skuwise-profit"
+          : requestedTabKey;
+
+      setPendingHash(targetHash);
       setActiveTab(targetTab);
     };
 
     const onHashChange = () => {
-      applyHash(window.location.hash);
+      applyRequestedTab(window.location.hash);
     };
 
     const onCustomHashNavigate = (event: Event) => {
       const customEvent = event as CustomEvent<{ hash?: string }>;
       if (!customEvent.detail?.hash) return;
-      applyHash(`#${customEvent.detail.hash}`);
+      applyRequestedTab(`#${customEvent.detail.hash}`);
     };
 
-    applyHash(window.location.hash);
+    applyRequestedTab(window.location.hash);
 
     window.addEventListener("hashchange", onHashChange);
-    window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+    window.addEventListener(
+      "page-hash-navigate",
+      onCustomHashNavigate as EventListener
+    );
 
     return () => {
       window.removeEventListener("hashchange", onHashChange);
-      window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+      window.removeEventListener(
+        "page-hash-navigate",
+        onCustomHashNavigate as EventListener
+      );
     };
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!pendingHash) return;
@@ -2945,40 +2975,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const bottom5 = sortByProfitAsc.slice(0, 5);
 
     const mapRows = (arr: TableRow[]) =>
-  arr.map((item) => {
-    const netUnits = num(item.net_units_sold);
-    const profit = num(item.profit);
-    const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
+      arr.map((item) => {
+        const netUnits = num(item.net_units_sold);
+        const profit = num(item.profit);
+        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
 
-    const skuValue =
-      (item as any).sku ??
-      (item as any).SKU ??
-      (item as any).Sku ??
-      (item as any).seller_sku ??
-      (item as any).sellerSku ??
-      (item as any).asin ??
-      (item as any).ASIN;
+        const skuValue =
+          (item as any).sku ??
+          (item as any).SKU ??
+          (item as any).Sku ??
+          (item as any).seller_sku ??
+          (item as any).sellerSku ??
+          (item as any).asin ??
+          (item as any).ASIN;
 
-    return {
-      // product_name raw bhejo, yaha SKU fallback mat lagao
-      // child component decide karega: agar product_name "0" hai to sku dikhana hai
-      product_name: String((item as any).product_name ?? ""),
+        return {
+          // product_name raw bhejo, yaha SKU fallback mat lagao
+          // child component decide karega: agar product_name "0" hai to sku dikhana hai
+          product_name: String((item as any).product_name ?? ""),
 
-      // ye important hai, isi wajah se child me "-" ki jagah SKU aayega
-      sku: String(skuValue ?? ""),
+          // ye important hai, isi wajah se child me "-" ki jagah SKU aayega
+          sku: String(skuValue ?? ""),
 
-      profit: profit.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      profitMix: num(item.profit_mix).toFixed(2),
-      salesMix: num(item.sales_mix).toFixed(2),
-      cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    };
-  });
+          profit: profit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+          profitMix: num(item.profit_mix).toFixed(2),
+          salesMix: num(item.sales_mix).toFixed(2),
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+        };
+      });
 
     const totalsFor = (arr: TableRow[]) => {
       const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
@@ -5162,7 +5192,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const hash = FINANCE_TAB_TO_HASH[tab];
     if (!hash) return;
 
-    const nextUrl = `${window.location.pathname}#${hash}`;
+    const url = new URL(window.location.href);
+
+    url.searchParams.set("tab", hash);
+    url.hash = hash;
+
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
 
     if (isDemoMode) {
       window.history.replaceState(null, "", nextUrl);
@@ -5181,8 +5216,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
   };
-
-
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
@@ -6356,43 +6389,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
 
           )}
-
-          {/* {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-              {(() => {
-                const productWiseRange =
-                  range === "quarterly" ? "quarterly" : "yearly";
-
-                return (
-                  <ProductwisePerformance
-                    key={[
-                      initialCountryName,
-                      productWiseRange,
-                      selectedQuarter,
-                      selectedYear,
-                      defaultTopProductName,
-                      isDemoMode ? "demo" : "live",
-                    ].join("-")}
-                    embedded
-                    countryNameProp={isDemoMode ? "global" : initialCountryName}
-                    rangeProp={productWiseRange}
-                    selectedMonthProp={isDemoMode ? "NA" : ""}
-                    selectedQuarterProp={
-                      isDemoMode
-                        ? ""
-                        : productWiseRange === "quarterly"
-                          ? selectedQuarter
-                          : ""
-                    }
-                    selectedYearProp={
-                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
-                    }
-                    initialProductName={defaultTopProductName || "Demo Product A"}
-                  />
-                );
-              })()}
-            </div>
-          )} */}
 
           {activeTab === "skuwiseProfit" && allDropdownsSelected && (
             <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">

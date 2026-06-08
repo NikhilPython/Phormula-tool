@@ -90,6 +90,12 @@ const formatCountryLabel = (country: string) => {
   return country.toUpperCase();
 };
 
+const toNumber = (value: any) => {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
 const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
   productname = "Menthol",
   onClose,
@@ -202,10 +208,24 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
         );
       });
 
-      const ordered =
-        nonGlobal.length > 0
-          ? [globalKey, ...nonGlobal]
-          : apiCountries;
+      const selectedPageCountry = normalizeCountryKey(countryName);
+
+      let ordered: string[] = [];
+
+      if (selectedPageCountry === "global") {
+        const ukKey = apiCountries.find((k) => normalizeCountryKey(k) === "uk");
+        const usKey = apiCountries.find((k) => normalizeCountryKey(k) === "us");
+
+        ordered = [
+          globalKey,
+          ...(ukKey ? [ukKey] : []),
+          ...(usKey ? [usKey] : []),
+        ];
+      } else {
+        ordered = apiCountries.filter(
+          (k) => normalizeCountryKey(k) === selectedPageCountry
+        );
+      }
 
       setCountryOrder(ordered);
 
@@ -245,8 +265,16 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
 
     // Months from all non-global connected countries (or from global if none)
     const allMonths = new Set<string>();
+    const selectedPageCountry = normalizeCountryKey(countryName);
+
     const baseCountries =
-      nonGlobal.length > 0 ? nonGlobal : apiCountries;
+      selectedPageCountry === "global"
+        ? nonGlobal.filter((k) =>
+          ["uk", "us"].includes(normalizeCountryKey(k))
+        )
+        : apiCountries.filter(
+          (k) => normalizeCountryKey(k) === selectedPageCountry
+        );
 
     baseCountries.forEach((country) => {
       (data.data![country] || []).forEach((entry) => {
@@ -282,9 +310,8 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
         point[country] = found ? Number(found.net_sales) : 0;
       });
 
-      // 🔹 GLOBAL = sum of all connected non-global countries for that month
-      if (nonGlobal.length > 0) {
-        const sum = nonGlobal.reduce(
+      if (selectedPageCountry === "global" && baseCountries.length > 0) {
+        const sum = baseCountries.reduce(
           (total, country) => total + (point[country] as number || 0),
           0
         );
@@ -316,37 +343,42 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
     const raw = prepareChartData();
     if (!raw || raw.length === 0) return null;
 
-    const labels = raw.map((r: any) => r.month);
+    const activeCountries = countryOrder.filter(
+      (country) => selectedCountries[country]
+    );
 
-    const datasets = countryOrder
-      .filter((country) => selectedCountries[country])
-      .map((country) => {
-        const normalized = normalizeCountryKey(country);
-        const color = getCountryColor(normalized);
+    const filteredRaw = raw.filter((row: any) =>
+      activeCountries.some((country) => toNumber(row[country]) !== 0)
+    );
 
-        return {
-          label: formatCountryLabel(normalized),
-          data: raw.map((r: any) => (r[country] as number) || 0),
+    if (!filteredRaw.length) return null;
 
-          // ✅ force chart to follow metric color
-          borderColor: color,
-          backgroundColor: color,
-          pointBackgroundColor: color,
-          pointBorderColor: color,
-          hoverBackgroundColor: color,
-          hoverBorderColor: color,
+    const labels = filteredRaw.map((r: any) => r.month);
 
-          tension: 0.35,
-          pointRadius: 3,
-          fill: false,
-        };
-      });
+    const datasets = activeCountries.map((country) => {
+      const normalized = normalizeCountryKey(country);
+      const color = getCountryColor(normalized);
 
+      return {
+        label: formatCountryLabel(normalized),
+        data: filteredRaw.map((r: any) => (r[country] as number) || 0),
 
+        borderColor: color,
+        backgroundColor: color,
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        hoverBackgroundColor: color,
+        hoverBorderColor: color,
+
+        tension: 0.35,
+        pointRadius: 3,
+        fill: false,
+      };
+    });
 
     if (!datasets.length) return null;
     return { labels, datasets };
-  }, [data, selectedCountries, countryOrder, connectedCountries]);
+  }, [data, selectedCountries, countryOrder, connectedCountries, countryName]);
 
   const chartOptions = {
     responsive: true,
@@ -376,6 +408,10 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
 
   const titleSuffix =
     timeRange === "Yearly" ? `YTD ${selectedYear}` : `Q${selectedQuarter}'${selectedYear}`;
+
+  const selectedPageCountryLabel = formatCountryLabel(
+    normalizeCountryKey(countryName)
+  );
 
   // ========= RENDER =========
   return (
@@ -409,9 +445,15 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex-1">
                 <h3 className="m-0 text-xl font-bold text-[#414042]">
-                  Net Sales Trend –{" "}
+                  Net Sales Trend -{" "}
                   <span className="text-[#5EA68E] font-extrabold capitalize">
-                    {productname} ({titleSuffix})
+                    {productname}
+                  </span>{" "}
+                  <span className="text-[#5EA68E] font-bold">
+                    - {selectedPageCountryLabel}
+                  </span>{" "}
+                  <span className="text-[#5EA68E] font-extrabold">
+                    ({titleSuffix})
                   </span>
                 </h3>
                 <p className="mt-1 text-xs sm:text-sm text-gray-500">
@@ -498,78 +540,45 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
             {/* CTA */}
             {!isImprovementsPage && (
               <div className="flex justify-end">
-                <Button 
-                size="sm"
-           onClick={() => {
-  let lastFetchedMonth = month;
-  let lastFetchedYear = String(year);
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    let lastFetchedMonth = month;
+                    let lastFetchedYear = String(year);
 
-  if (typeof window !== "undefined") {
-    const raw = window.localStorage.getItem("latestFetchedPeriod");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as { month?: string; year?: string | number };
-        if (parsed.month) lastFetchedMonth = String(parsed.month).toLowerCase();
-        if (parsed.year) lastFetchedYear = String(parsed.year);
-      } catch {}
-    }
-  }
+                    if (typeof window !== "undefined") {
+                      const raw = window.localStorage.getItem("latestFetchedPeriod");
+                      if (raw) {
+                        try {
+                          const parsed = JSON.parse(raw) as {
+                            month?: string;
+                            year?: string | number;
+                          };
 
-  // ✅ Use lastFetchedMonth as the month param (don’t pass month twice)
-  router.push(
-    `/skuwiseprofit/${encodeURIComponent(productname)}/${encodeURIComponent(
-      countryName
-    )}/${encodeURIComponent(lastFetchedMonth)}/${encodeURIComponent(lastFetchedYear)}`
-  );
-}}
->
+                          if (parsed.month) lastFetchedMonth = String(parsed.month);
+                          if (parsed.year) lastFetchedYear = String(parsed.year);
+                        } catch { }
+                      }
+                    }
+
+                    const selectedCountry = normalizeCountryKey(countryName);
+                    const selectedMonthForUrl =
+                      lastFetchedMonth.charAt(0).toUpperCase() +
+                      lastFetchedMonth.slice(1).toLowerCase();
+
+                    const productQuery = encodeURIComponent(productname);
+                    const targetUrl =
+                      `/pnl-dashboard/YTD/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(
+                        selectedMonthForUrl
+                      )}/${encodeURIComponent(lastFetchedYear)}` +
+                      `?product=${productQuery}&tab=skuwise-profit#skuwise-profit`;
+
+                    window.open(targetUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
                   Check Full Performance
                   <i className="fa-solid fa-arrow-up-right-from-square" />
-                </Button >
-                {/* <button
-                    className="inline-flex justify-center items-center rounded-md bg-slate-800 px-4 py-2 font-semibold text-amber-100 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                    onClick={() => {
-                      // 🔹 Read last fetched month/year from localStorage
-                      let lastFetchedMonth = month;
-                      let lastFetchedYear = String(year);
-
-                      if (typeof window !== "undefined") {
-                        const raw = window.localStorage.getItem("latestFetchedPeriod");
-                        if (raw) {
-                          try {
-                            const parsed = JSON.parse(raw) as {
-                              month?: string;
-                              year?: string | number;
-                            };
-
-                            if (parsed.month) {
-                              // store as slug just like AmazonFinancialDashboard does (e.g. "september")
-                              lastFetchedMonth = String(parsed.month).toLowerCase();
-                            }
-                            if (parsed.year) {
-                              lastFetchedYear = String(parsed.year);
-                            }
-                          } catch {
-                            // ignore parse errors and just fall back to current month/year
-                          }
-                        }
-                      }
-
-                      // 🔹 Now push with extra params for last fetched period
-                      router.push(
-                        `/skuwiseprofit/${encodeURIComponent(
-                          productname
-                        )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-                          month
-                        )}/${encodeURIComponent(
-                          lastFetchedMonth
-                        )}/${encodeURIComponent(lastFetchedYear)}`
-                      );
-                    }}
-                  >
-                    Check Full Performance
-                    <i className="fa-solid fa-arrow-up-right-from-square" />
-                  </button> */}
+                </Button>
               </div>
             )}
 
