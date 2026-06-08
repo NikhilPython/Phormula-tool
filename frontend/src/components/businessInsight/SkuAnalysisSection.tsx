@@ -942,15 +942,20 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                                                     <div className="2xl:text-sm text-xs text-slate-500">Primary Focus</div>
                                                                     <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
-                                                                        {objectiveObj?.growth_intent || "balanced"}
+                                                                        {(objectiveObj?.growth_intent || "balanced")
+                                                                            .replaceAll("_", " ")
+                                                                            .toLowerCase()
+                                                                            .replace(/^\w/, (c) => c.toUpperCase())}
                                                                     </div>
                                                                 </div>
 
                                                                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                                                     <div className="2xl:text-sm text-xs text-slate-500">Profit Strategy</div>
                                                                     <div className="2xl:text-base text-sm font-semibold text-[#414042] mt-1">
-                                                                        {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
-                                                                            "protect growth"}
+                                                                        {(objectiveObj?.profit_priority || "protect growth")
+                                                                            .replaceAll("_", " ")
+                                                                            .toLowerCase()
+                                                                            .replace(/^\w/, (c) => c.toUpperCase())}
                                                                     </div>
                                                                 </div>
 
