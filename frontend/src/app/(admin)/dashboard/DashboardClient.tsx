@@ -3047,6 +3047,54 @@ export default function DashboardPage() {
         },
         [displayCurrency]
     );
+
+    const formatDisplayAmountNoDecimals = useCallback(
+        (value: number | null | undefined) => {
+            const n = Math.round(toNumberSafe(value ?? 0));
+
+            switch (displayCurrency) {
+                case "USD":
+                    return new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    }).format(n);
+
+                case "GBP":
+                    return new Intl.NumberFormat("en-GB", {
+                        style: "currency",
+                        currency: "GBP",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    }).format(n);
+
+                case "CAD":
+                    return new Intl.NumberFormat("en-CA", {
+                        style: "currency",
+                        currency: "CAD",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    }).format(n);
+
+                case "INR":
+                    return new Intl.NumberFormat("en-IN", {
+                        style: "currency",
+                        currency: "INR",
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    }).format(n);
+
+                default:
+                    return n.toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    });
+            }
+        },
+        [displayCurrency]
+    );
+
     const formatAdsNumber = (value: number) =>
         Number.isFinite(value)
             ? value.toLocaleString("en-GB", {
@@ -9684,14 +9732,20 @@ Keep enough stock for validation but avoid over-committing too early.`,
         actualValue: number,
         growthValue: number,
         type: "money" | "number" = "money",
-        sourceCurrencyForValue: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency
+        sourceCurrencyForValue: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency,
+        noDecimals: boolean = false
     ) => {
+        const convertedValue = convertToDisplayCurrency(
+            Number(actualValue || 0),
+            sourceCurrencyForValue
+        );
+
         const mainValue =
             type === "number"
                 ? Number(actualValue || 0).toLocaleString()
-                : formatDisplayAmount(
-                    convertToDisplayCurrency(Number(actualValue || 0), sourceCurrencyForValue)
-                );
+                : noDecimals
+                    ? formatDisplayAmountNoDecimals(convertedValue)
+                    : formatDisplayAmount(convertedValue);
 
         return `${mainValue} (${formatDrawerGrowth(growthValue)})`;
     };
@@ -9799,7 +9853,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 },
                 {
                     label: "Net sales",
-                    value: formatDrawerMetricValue(netSales, salesGrowth, "money", valueCurrency),
+                    value: formatDrawerMetricValue(
+                        netSales,
+                        salesGrowth,
+                        "money",
+                        valueCurrency,
+                        true
+                    ),
                     color: salesGrowth < 0 ? "#FF5C5C" : "#5EA68E",
                 },
                 {
@@ -9809,7 +9869,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 },
                 {
                     label: "CM1 profit",
-                    value: formatDrawerMetricValue(cm1Profit, profitGrowth, "money", valueCurrency),
+                    value: formatDrawerMetricValue(
+                        cm1Profit,
+                        profitGrowth,
+                        "money",
+                        valueCurrency,
+                        true
+                    ),
                     color: profitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
                 },
                 {
@@ -9824,7 +9890,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 },
             ];
         },
-        [platform, biSourceCurrency, convertToDisplayCurrency, formatDisplayAmount]
+        [
+            platform,
+            biSourceCurrency,
+            convertToDisplayCurrency,
+            formatDisplayAmount,
+            formatDisplayAmountNoDecimals,
+        ]
     );
 
     const findLiveBiInsightForPnlRow = useCallback(
@@ -11597,7 +11669,7 @@ ${pageLoading
                                                         <button
                                                             type="button"
                                                             onClick={() => openPnlSkuDrawer(row)}
-                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e] underline-offset-2 hover:underline"
+                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e] "
                                                             title={String(row.product_name || "")}
                                                         >
                                                             <span className="min-w-0 truncate">
