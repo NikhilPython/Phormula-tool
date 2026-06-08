@@ -2516,21 +2516,11 @@ export default function DashboardPage() {
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
 
-    // useEffect(() => {
-    //     if (activeTab === "summary") {
-    //         setSummaryLoading(true);
-    //     }
-    // }, [activeTab]);
-
     useEffect(() => {
-        if (activeTab !== "summary") return;
-
-        if (shouldShowDummyUi || liveBiPayload) {
-            setSummaryLoading(false);
-        } else {
+        if (activeTab === "summary") {
             setSummaryLoading(true);
         }
-    }, [activeTab, shouldShowDummyUi, liveBiPayload]);
+    }, [activeTab]);
 
     // useEffect(() => {
     //     fetchMonthlySp();
