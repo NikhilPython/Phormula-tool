@@ -329,8 +329,18 @@ type DailyPoint = {
 type ApiDailySeries = {
     previous?: DailyPoint[];
     current_mtd?: DailyPoint[];
+
     previous_global?: DailyPoint[];
     current_mtd_global?: DailyPoint[];
+
+    previous_uk?: DailyPoint[];
+    current_mtd_uk?: DailyPoint[];
+
+    previous_us?: DailyPoint[];
+    current_mtd_us?: DailyPoint[];
+
+    previous_ca?: DailyPoint[];
+    current_mtd_ca?: DailyPoint[];
 };
 
 type GraphDailySeries = {
@@ -3143,15 +3153,65 @@ export default function DashboardPage() {
         const fromCurrency: CurrencyCode =
             platform === "global" ? "USD" : biDataCurrency;
 
-        const currentSource: DailyPoint[] =
-            platform === "global"
-                ? biDailySeries.current_mtd_global || biDailySeries.current_mtd || []
-                : biDailySeries.current_mtd || [];
+        const filterSeriesByCountry = (
+            rows: DailyPoint[] | undefined,
+            country: "uk" | "us" | "ca"
+        ) => {
+            return (rows || []).filter((row: any) => {
+                const rowCountry = String(
+                    row?.source_country || row?.country || ""
+                ).toLowerCase();
 
-        const previousSource: DailyPoint[] =
-            platform === "global"
-                ? biDailySeries.previous_global || biDailySeries.previous || []
-                : biDailySeries.previous || [];
+                return rowCountry === country;
+            });
+        };
+
+        const getCurrentSource = (): DailyPoint[] => {
+            if (platform !== "global") {
+                return biDailySeries.current_mtd || [];
+            }
+
+            if (globalMtdView === "uk") {
+                return (
+                    biDailySeries.current_mtd_uk ||
+                    filterSeriesByCountry(biDailySeries.current_mtd, "uk")
+                );
+            }
+
+            if (globalMtdView === "us") {
+                return (
+                    biDailySeries.current_mtd_us ||
+                    filterSeriesByCountry(biDailySeries.current_mtd, "us")
+                );
+            }
+
+            return biDailySeries.current_mtd_global || biDailySeries.current_mtd || [];
+        };
+
+        const getPreviousSource = (): DailyPoint[] => {
+            if (platform !== "global") {
+                return biDailySeries.previous || [];
+            }
+
+            if (globalMtdView === "uk") {
+                return (
+                    biDailySeries.previous_uk ||
+                    filterSeriesByCountry(biDailySeries.previous, "uk")
+                );
+            }
+
+            if (globalMtdView === "us") {
+                return (
+                    biDailySeries.previous_us ||
+                    filterSeriesByCountry(biDailySeries.previous, "us")
+                );
+            }
+
+            return biDailySeries.previous_global || biDailySeries.previous || [];
+        };
+
+        const currentSource = getCurrentSource();
+        const previousSource = getPreviousSource();
 
         const convPoint = (p: DailyPoint): DailyPoint => ({
             ...p,
@@ -3196,10 +3256,7 @@ export default function DashboardPage() {
         };
 
         return {
-            // keep previous full series so x-axis stays normal
             previous: previousSource.map(convPoint),
-
-            // keep current full series, but hide future current values
             current_mtd: currentSource.map(blankFutureCurrentPoint),
         };
     }, [
@@ -3207,6 +3264,7 @@ export default function DashboardPage() {
         convertToDisplayCurrency,
         biDataCurrency,
         platform,
+        globalMtdView,
         isCurrentPointAllowed,
     ]);
 
