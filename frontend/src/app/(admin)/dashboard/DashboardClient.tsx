@@ -1866,7 +1866,14 @@ export default function DashboardPage() {
         [platform, previousSkuwiseGlobalData]
     );
 
-    const [globalMtdCountry, setGlobalMtdCountry] = useState<"uk" | "us">("uk");
+    type GlobalMtdView = "global" | "uk" | "us";
+
+    const [globalMtdView, setGlobalMtdView] = useState<GlobalMtdView>("global");
+
+    const globalMtdCountry = useMemo<"uk" | "us">(() => {
+        return globalMtdView === "us" ? "us" : "uk";
+    }, [globalMtdView]);
+
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
     const [fxReady, setFxReady] = useState(false);
     const [globalCountryPayloads, setGlobalCountryPayloads] = useState<{
@@ -2281,10 +2288,10 @@ export default function DashboardPage() {
         return `${selected.time} ${selected.abbreviation || ""}`.trim();
     }, [countryTime]);
 
-    const globalMtdCountryOptions = useMemo(() => {
-        // ✅ Preview / dummy mode should still show UK/US toggle + cards
+    const globalMtdViewOptions = useMemo(() => {
         if (shouldShowDummyUi) {
             return [
+                { value: "global" as const, label: "Global" },
                 { value: "uk" as const, label: "UK" },
                 { value: "us" as const, label: "US" },
             ];
@@ -2296,7 +2303,9 @@ export default function DashboardPage() {
                 .filter(Boolean)
         );
 
-        const options: { value: "uk" | "us"; label: string }[] = [];
+        const options: { value: GlobalMtdView; label: string }[] = [
+            { value: "global", label: "Global" },
+        ];
 
         if (connected.has("uk")) {
             options.push({ value: "uk", label: "UK" });
@@ -2310,16 +2319,16 @@ export default function DashboardPage() {
     }, [amazonConnections, shouldShowDummyUi]);
 
     useEffect(() => {
-        if (!globalMtdCountryOptions.length) return;
+        if (!globalMtdViewOptions.length) return;
 
-        const selectedStillAvailable = globalMtdCountryOptions.some(
-            (option) => option.value === globalMtdCountry
+        const selectedStillAvailable = globalMtdViewOptions.some(
+            (option) => option.value === globalMtdView
         );
 
         if (!selectedStillAvailable) {
-            setGlobalMtdCountry(globalMtdCountryOptions[0].value);
+            setGlobalMtdView(globalMtdViewOptions[0].value);
         }
-    }, [globalMtdCountryOptions, globalMtdCountry]);
+    }, [globalMtdViewOptions, globalMtdView]);
 
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
@@ -10845,152 +10854,6 @@ ${pageLoading
                         <div
                             className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-auto min-h-0 lg:h-full lg:min-h-full ${leftColumnHeightClass ?? ""}`}
                         >
-                            {!isCountryMode && hasGlobalCard && (
-                                <div className="flex">
-                                    <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
-                                        <div className="mb-4 flex items-center justify-between gap-3">
-                                            <div className="min-w-0 shrink-0">
-                                                <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
-                                            </div>
-
-                                        </div>
-
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
-
-                                            <AmazonStatCard
-                                                label="Units"
-                                                current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
-                                                previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.units.current, dummyStatData.units.previous)
-                                                        : safeDeltaPct(globalMtdCardData.units, globalMtdCardData.prevUnits)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtInt}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Gross Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
-                                                previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.grossSales.current, dummyStatData.grossSales.previous)
-                                                        : safeDeltaPct(globalMtdCardData.grossSales, globalMtdCardData.prevGrossSales)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Net Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
-                                                previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.netSales.current, dummyStatData.netSales.previous)
-                                                        : safeDeltaPct(globalMtdCardData.netSales, globalMtdCardData.prevNetSales)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="ASP"
-                                                current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
-                                                previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
-                                                        : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={formatDisplayAmount}
-                                                previousFormatter={formatDisplayAmount}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Cost of Ads"
-                                                current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
-                                                previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.costOfAds.current, dummyStatData.costOfAds.previous)
-                                                        : safeDeltaPct(globalMtdCardData.ads, globalMtdCardData.prevAds)
-                                                }
-                                                inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#C49466] border-t-4 border-t-[#C49466]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="TACoS"
-                                                current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
-                                                previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.tacos.current, dummyStatData.tacos.previous)
-                                                        : safeDeltaPct(globalMtdCardData.tacos, globalMtdCardData.prevTacos)
-                                                }
-                                                inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtPct2}
-                                                previousFormatter={fmtPct2}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="CM2 Profit"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.cm2Profit.current, dummyStatData.cm2Profit.previous)
-                                                        : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="CM2 Profit %"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? deltaPctPoints(dummyStatData.cm2ProfitPct.current, dummyStatData.cm2ProfitPct.previous)
-                                                        : deltaPctPoints(globalMtdCardData.cm2Pct, globalMtdCardData.prevCm2Pct)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtPct2}
-                                                previousFormatter={fmtPct2}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                                            />
-                                        </div>
-
-                                    </div>
-                                </div>
-                            )}
-
                             {/* AMAZON SECTION */}
                             {hasAmazonCard && (
 
@@ -11003,11 +10866,11 @@ ${pageLoading
                                             </div>
 
                                             {/* RIGHT: TOGGLE (only for global) */}
-                                            {platform === "global" && globalMtdCountryOptions.length > 1 && (
-                                                <SegmentedToggle<"uk" | "us">
-                                                    value={globalMtdCountry}
-                                                    options={globalMtdCountryOptions}
-                                                    onChange={setGlobalMtdCountry}
+                                            {platform === "global" && globalMtdViewOptions.length > 1 && (
+                                                <SegmentedToggle<GlobalMtdView>
+                                                    value={globalMtdView}
+                                                    options={globalMtdViewOptions}
+                                                    onChange={setGlobalMtdView}
                                                     compact
                                                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                                                 />
@@ -11040,9 +10903,142 @@ ${pageLoading
                                         </div>
 
                                         {platform === "global" ? (
-                                            <div className="space-y-4">
-                                                {renderCountryMtdCards(globalMtdCountry)}
-                                            </div>
+                                            globalMtdView === "global" ? (
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
+                                                    <AmazonStatCard
+                                                        label="Units"
+                                                        current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
+                                                        previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.units.current, dummyStatData.units.previous)
+                                                                : safeDeltaPct(globalMtdCardData.units, globalMtdCardData.prevUnits)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtInt}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Gross Sales"
+                                                        current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
+                                                        previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.grossSales.current, dummyStatData.grossSales.previous)
+                                                                : safeDeltaPct(globalMtdCardData.grossSales, globalMtdCardData.prevGrossSales)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Net Sales"
+                                                        current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
+                                                        previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.netSales.current, dummyStatData.netSales.previous)
+                                                                : safeDeltaPct(globalMtdCardData.netSales, globalMtdCardData.prevNetSales)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="ASP"
+                                                        current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
+                                                        previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
+                                                                : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={formatDisplayAmount}
+                                                        previousFormatter={formatDisplayAmount}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Cost of Ads"
+                                                        current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
+                                                        previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.costOfAds.current, dummyStatData.costOfAds.previous)
+                                                                : safeDeltaPct(globalMtdCardData.ads, globalMtdCardData.prevAds)
+                                                        }
+                                                        inverseDelta
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#C49466] border-t-4 border-t-[#C49466]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="TACoS"
+                                                        current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
+                                                        previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.tacos.current, dummyStatData.tacos.previous)
+                                                                : safeDeltaPct(globalMtdCardData.tacos, globalMtdCardData.prevTacos)
+                                                        }
+                                                        inverseDelta
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtPct2}
+                                                        previousFormatter={fmtPct2}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="CM2 Profit"
+                                                        current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
+                                                        previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.cm2Profit.current, dummyStatData.cm2Profit.previous)
+                                                                : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#A8BF7A] border-t-4 border-t-[#A8BF7A]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="CM2 Profit %"
+                                                        current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
+                                                        previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? deltaPctPoints(dummyStatData.cm2ProfitPct.current, dummyStatData.cm2ProfitPct.previous)
+                                                                : deltaPctPoints(globalMtdCardData.cm2Pct, globalMtdCardData.prevCm2Pct)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtPct2}
+                                                        previousFormatter={fmtPct2}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {renderCountryMtdCards(globalMtdView)}
+                                                </div>
+                                            )
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
 
@@ -11207,6 +11203,8 @@ ${pageLoading
                                             </div>
                                         )}
 
+                                        
+
                                     </div>
 
 
@@ -11367,6 +11365,7 @@ ${pageLoading
 
                             )}
                         </div>
+                        
 
                         {/* RIGHT COLUMN – Sales Target */}
                         <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
@@ -11445,7 +11444,7 @@ ${pageLoading
                     </div >
                 )}
 
-                {activeTab === "live" && platform === "global" && showLiveBI && (
+                {/* {activeTab === "live" && platform === "global" && showLiveBI && (
                     <div
                         id="ai-insights"
                         className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
@@ -11464,7 +11463,7 @@ ${pageLoading
                         </div>
                     </div>
                 )
-                }
+                } */}
 
                 {activeTab === "summary" && (
 
