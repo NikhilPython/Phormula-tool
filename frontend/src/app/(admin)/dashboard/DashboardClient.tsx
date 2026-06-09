@@ -11657,7 +11657,7 @@ ${pageLoading
                                                     if (row.isOthers) {
                                                         return (
                                                             <span
-                                                                className="inline-block w-full truncate font-semibold text-[#60a68e]"
+                                                                className="inline-block w-full truncate text-[#60a68e]"
                                                                 title="Aggregated remaining products"
                                                             >
                                                                 Others

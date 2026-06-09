@@ -532,7 +532,9 @@ const CashFlowSankey: React.FC<Props> = ({
           const p = getChangePercent(c.value, c.prev);
 
           const shouldShowPositive =
-            c.label === "Marketplace Fees" || c.label === "Promotional Discount";
+            c.label === "Marketplace Fees" ||
+            c.label === "Promotional Discount" ||
+            c.label === "Others";
 
           const displayValue = shouldShowPositive
             ? Math.abs(c.value || 0)
@@ -579,21 +581,25 @@ const CashFlowSankey: React.FC<Props> = ({
                 : `${c.isCurrency
                   ? formatCurrencyByLabel(
                     c.label,
-                    c.label === "Marketplace Fees" ? Math.abs(c.prev || 0) : c.prev
+                    ["Marketplace Fees", "Others"].includes(c.label)
+                      ? Math.abs(c.prev || 0)
+                      : c.prev
                   )
                   : formatNumber(c.prev)
                 }${perUnitCards.includes(c.label)
                   ? ` (${formatCurrencyRoundedWithSign(
                     Number(
                       getPerUnitValue(
-                        c.label === "Marketplace Fees" ? Math.abs(c.prev || 0) : c.prev,
+                        ["Marketplace Fees", "Others"].includes(c.label)
+                          ? Math.abs(c.prev || 0)
+                          : c.prev,
                         previous_summary?.quantity_total
                       )
                     )
                   )} / Unit)`
                   : ""
                 }`;
-                
+
           const comparisons = [
             {
               label: `${formatPrevLabel(previousLabel || "Previous")}`,
