@@ -105,21 +105,89 @@ const LiveLineChart: React.FC<{
   }, []);
 
   // ✅ x-axis days forced to selected range, otherwise fallback to data min/max
+  // const allDays = useMemo(() => {
+  //   if (rangeActive && s != null && e != null) {
+  //     return Array.from({ length: e - s + 1 }, (_, i) => s + i);
+  //   }
+
+  //   const prevDays = dataPrev.map((d) => getDay(d.date)).filter(Number.isFinite);
+  //   const currDays = dataCurr.map((d) => getDay(d.date)).filter(Number.isFinite);
+  //   const allDaysRaw = [...prevDays, ...currDays].sort((a, b) => a - b);
+
+  //   if (!allDaysRaw.length) return [];
+
+  //   const minDay = allDaysRaw[0];
+  //   const maxDay = allDaysRaw[allDaysRaw.length - 1];
+  //   return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
+  // }, [rangeActive, s, e, dataPrev, dataCurr]);
+
+  // ✅ x-axis should stop where current fetched MTD data stops.
+  // Do not extend to previous month's full 31 days.
   const allDays = useMemo(() => {
+    const hasRealMetricValue = (point: DailyPoint | undefined) => {
+      if (!point) return false;
+
+      const value =
+        metric === "quantity"
+          ? point.quantity
+          : point.net_sales;
+
+      return value !== undefined && value !== null && Number.isFinite(Number(value));
+    };
+
+    const currDays = dataCurr
+      .filter(hasRealMetricValue)
+      .map((d) => getDay(d.date))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+
+    const prevDays = dataPrev
+      .filter(hasRealMetricValue)
+      .map((d) => getDay(d.date))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+
+    // If user selected a date range, still never show beyond fetched current data.
     if (rangeActive && s != null && e != null) {
-      return Array.from({ length: e - s + 1 }, (_, i) => s + i);
+      const maxFetchedCurrentDay = currDays.length
+        ? currDays[currDays.length - 1]
+        : e;
+
+      const finalEndDay = Math.min(e, maxFetchedCurrentDay);
+
+      if (finalEndDay < s) return [];
+
+      return Array.from(
+        { length: finalEndDay - s + 1 },
+        (_, i) => s + i
+      );
     }
 
-    const prevDays = dataPrev.map((d) => getDay(d.date)).filter(Number.isFinite);
-    const currDays = dataCurr.map((d) => getDay(d.date)).filter(Number.isFinite);
-    const allDaysRaw = [...prevDays, ...currDays].sort((a, b) => a - b);
+    // Normal MTD view: use current fetched days only.
+    // This prevents previous month from stretching x-axis to 31.
+    if (currDays.length) {
+      const minDay = currDays[0];
+      const maxDay = currDays[currDays.length - 1];
 
-    if (!allDaysRaw.length) return [];
+      return Array.from(
+        { length: maxDay - minDay + 1 },
+        (_, i) => minDay + i
+      );
+    }
 
-    const minDay = allDaysRaw[0];
-    const maxDay = allDaysRaw[allDaysRaw.length - 1];
-    return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
-  }, [rangeActive, s, e, dataPrev, dataCurr]);
+    // Fallback only if current data is unavailable.
+    if (prevDays.length) {
+      const minDay = prevDays[0];
+      const maxDay = prevDays[prevDays.length - 1];
+
+      return Array.from(
+        { length: maxDay - minDay + 1 },
+        (_, i) => minDay + i
+      );
+    }
+
+    return [];
+  }, [rangeActive, s, e, dataPrev, dataCurr, metric]);
 
   const xAxis = useMemo(() => allDays.map(String), [allDays]);
 
