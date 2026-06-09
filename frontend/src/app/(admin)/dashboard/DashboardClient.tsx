@@ -10848,16 +10848,16 @@ ${pageLoading
                 {activeTab === "live" && (
                     <div
                         id="live-sales"
-                        className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start lg:items-stretch lg:auto-rows-fr"
+                        className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start"
                     >
                         {/* LEFT COLUMN */}
                         <div
-                            className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-auto min-h-0 lg:h-full lg:min-h-full ${leftColumnHeightClass ?? ""}`}
+                            className="col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 min-w-0 h-auto min-h-0"
                         >
                             {/* AMAZON SECTION */}
                             {hasAmazonCard && (
 
-                                <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
+                                <div className="flex flex-col gap-4 2xl:gap-4">
                                     {/* Amazon KPI Box */}
                                     <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
                                         <div className="mb-3 lg:mb-2 2xl:mb-4 flex items-center justify-between gap-2 sm:gap-3">
@@ -11203,7 +11203,7 @@ ${pageLoading
                                             </div>
                                         )}
 
-                                        
+
 
                                     </div>
 
@@ -11363,13 +11363,33 @@ ${pageLoading
                                 </div>
 
 
+
+
+                            )}
+                            {/* Performance Trend – directly below MTD Sales inside LEFT COLUMN */}
+                            {showLiveBI && (
+                                <div
+                                    id="ai-insights"
+                                    className="w-full max-w-full min-w-0 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                                >
+                                    <div className="w-full max-w-full min-w-0">
+                                        <LiveBiLineGraph
+                                            dailySeries={finalBiDailySeriesHome}
+                                            periods={finalBiPeriods}
+                                            loading={!shouldShowDummyUi && biUiLoading}
+                                            error={shouldShowDummyUi ? null : biError}
+                                            selectedStartDay={selectedStartDay}
+                                            selectedEndDay={selectedEndDay}
+                                            currencySymbol={currencySymbol}
+                                        />
+                                    </div>
+                                </div>
                             )}
                         </div>
-                        
 
                         {/* RIGHT COLUMN – Sales Target */}
-                        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
-                            <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
+                        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-start">
+                            <div className="grid gap-4 h-auto">
 
                                 {/* Top card */}
                                 <div className="w-full self-start">
