@@ -2215,6 +2215,20 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 "profit_mix": "mean",
                 "user_id": "first"
             }).reset_index()
+            # FIX: quarterly TOTAL net reimbursement should be net,
+            # not sum of monthly absolute reimbursement values.
+            total_mask = (
+                sku_grouped["product_name"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .eq("total")
+            )
+
+            sku_grouped.loc[total_mask, "rembursement_fee"] = (
+                pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
+                - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
+            ).abs()
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
@@ -2465,6 +2479,20 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "profit_mix": "mean",
                 "user_id": "first",
             }).reset_index()
+            # FIX: yearly TOTAL net reimbursement should be net,
+            # not sum of monthly absolute reimbursement values.
+            total_mask = (
+                sku_grouped["product_name"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .eq("total")
+            )
+
+            sku_grouped.loc[total_mask, "rembursement_fee"] = (
+                pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
+                - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
+            ).abs()
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
