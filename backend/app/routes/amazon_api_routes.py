@@ -25,6 +25,7 @@ _month_to_num,
 _month_to_date_range_utc_safe,
 compute_totals,
 compute_net_reimbursement_from_df, 
+compute_debt_payment_disbursement_from_df,
 upsert_liveorders_from_rows, 
 fetch_sku_price_map,
 fetch_conversion_rate,
@@ -1637,6 +1638,15 @@ def get_current_global_data_for_live_bi(user_id: int):
         gt_money_total(uk_gt, "misc_transaction", uk_to_usd_rate)
         + gt_money_total(us_gt, "misc_transaction", 1)
     )
+    global_debt_payment = (
+        gt_money_total(uk_gt, "debt_payment", uk_to_usd_rate)
+        + gt_money_total(us_gt, "debt_payment", 1)
+    )
+
+    global_disbursement = (
+        gt_money_total(uk_gt, "disbursement", uk_to_usd_rate)
+        + gt_money_total(us_gt, "disbursement", 1)
+    )
 
     money_cols = [
         "product_sales", "product_sales_tax", "postage_credits",
@@ -1651,7 +1661,8 @@ def get_current_global_data_for_live_bi(user_id: int):
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
         "tax", "credits", "tax_and_credits", "lost_total",
-        "ads_sale_amount", "misc_transaction",
+        "ads_sale_amount", "misc_transaction","debt_payment",
+        "disbursement",
     ]
 
     def recalc_response_grand_total(row_df):
@@ -2190,6 +2201,8 @@ def get_current_global_data_for_live_bi(user_id: int):
         2
     )
     total_row["current_net_reimbursement"] = round(global_current_net_reimbursement, 2)
+    total_row["debt_payment"] = round(global_debt_payment, 2)
+    total_row["disbursement"] = round(global_disbursement, 2)
 
     total_row["reimbursement_vs_cm2_margins"] = round(
         (global_current_net_reimbursement / total_cm2_profit * 100)
@@ -2254,6 +2267,8 @@ def get_current_global_data_for_live_bi(user_id: int):
             2
         ),
         "current_net_reimbursement": round(global_current_net_reimbursement, 2),
+        "debt_payment": round(float(total_row.get("debt_payment", 0.0) or 0.0), 2),
+        "disbursement": round(float(total_row.get("disbursement", 0.0) or 0.0), 2),
         "total_ads": round(total_ads, 2),
         "total_cm2_profit": round(total_cm2_profit, 2),
         "total_cm2_margins": round(total_cm2_margins, 2),
@@ -2782,6 +2797,14 @@ def finances_mtd_transactions():
     cm2_profit_dashboard = profit_total - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit_dashboard / net_sales * 100) if net_sales else 0.0
     current_net_reimbursement = compute_net_reimbursement_from_df(df_all) if not df_all.empty else 0.0
+    payment_breakup = (
+        compute_debt_payment_disbursement_from_df(df_all)
+        if not df_all.empty
+        else {"debt_payment": 0.0, "disbursement": 0.0}
+    )
+
+    debt_payment_total = payment_breakup["debt_payment"]
+    disbursement_total = payment_breakup["disbursement"]
     # ================= NEW CALCULATIONS =================
 
     total_ads = float(advertising_fee_total or 0.0)
@@ -2816,6 +2839,8 @@ def finances_mtd_transactions():
         "cm2_profit": round(cm2_profit_dashboard, 2),
         "profit_percentage": round(profit_percentage, 2),
         "current_net_reimbursement": round(float(current_net_reimbursement or 0.0), 2),
+        "debt_payment": round(float(debt_payment_total or 0.0), 2),
+        "disbursement": round(float(disbursement_total or 0.0), 2),
         # new columns
         "total_ads": round(total_ads, 2),
         "total_cm2_profit": round(total_cm2_profit, 2),
@@ -3404,6 +3429,8 @@ def finances_mtd_transactions():
         ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0
 
         total_row["total_ads"] = round(product_ads_total + cost_ads_total, 2)
+        total_row["debt_payment"] = round(float(debt_payment_total or 0.0), 2)
+        total_row["disbursement"] = round(float(disbursement_total or 0.0), 2)
         total_row["total_cm2_profit"] = round(total_cm2_profit, 2)
         total_row["total_cm2_margins"] = round(total_cm2_margins, 2)
         total_row["tacos_total_advertising_cost_of_sale"] = round(tacos, 2)
@@ -3429,6 +3456,8 @@ def finances_mtd_transactions():
             "cm2_profit",
             "profit_percentage",
             "current_net_reimbursement",
+            "debt_payment",
+            "disbursement",
             # new columns
             "total_ads",
             "total_cm2_profit",
