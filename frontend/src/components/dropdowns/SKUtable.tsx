@@ -2019,7 +2019,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       (countryName || "").toLowerCase() === "global"
                       ? [
                         {
-                          type: "fixed",
+                          type: "fixed" as const,
                           id: "ship",
                           label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
                           endValue: formatValue(totals.shipment_charges, "shipment_charges"),
