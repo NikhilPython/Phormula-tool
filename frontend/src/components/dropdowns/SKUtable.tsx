@@ -499,10 +499,8 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     cm2_profit_per: cm2ProfitPerValue,
     acos: toNumber(totalRow.acos),
     rembursment_vs_cm2_margins: toNumber(totalRow.rembursment_vs_cm2_margins),
-    net_reimbursement: netReimbursement,
     profit: toNumber(totalRow.Profit ?? totalRow.profit),
     net_sales: toNumber(totalRow.Net_Sales ?? totalRow.net_sales),
-
   };
 }
 
