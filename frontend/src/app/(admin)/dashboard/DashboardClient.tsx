@@ -129,7 +129,8 @@ type MonthlySkuwiseRow = {
     total_quantity?: number;
     asp: number;
     net_sales: number;
-
+    debt_payment?: number;
+    disbursement?: number;
     net_taxes?: number;
     other_transactions?: number;
     misc_transaction?: number;
@@ -187,6 +188,8 @@ type GrandTotalSkuwiseRow = Partial<MonthlySkuwiseRow> & {
     total_cm2_margins?: number;
     profit_percentage?: number;
     shipment_fees?: number;
+    debt_payment?: number;
+    disbursement?: number;
     current_net_reimbursement?: number;
     reimbursement_vs_sales?: number;
     reimbursement_vs_cm2_margins?: number;
@@ -209,6 +212,7 @@ type ProductwiseMoneyKey =
     | "asp"
     | "net_sales"
     | "net_taxes"
+
     | "other_transactions"
     | "cogs"
     | "fba_fees"
@@ -221,6 +225,9 @@ type ProductwiseMoneyKey =
     | "cm1_profit_per_unit"
     | "cm2_profit_per_unit"
     | "profit"
+    | "platformfeenew"
+    | "debt_payment"
+    | "disbursement"
     | "platform_fee"
     | "platform_fee_inventory_storage"
     | "lost_total"
@@ -564,6 +571,8 @@ type PlSummaryTotals = {
 
     rembursment_vs_cm2_margins: number;
     net_reimbursement: number;
+    debt_payment: number;
+    disbursement: number;
 
     profit: number;
     net_sales: number;
@@ -596,6 +605,8 @@ const ROUNDED_SUMMARY_KEYS = new Set<string>([
     "misc_transaction",
     "lost_total",
     "net_reimbursement",
+    "debt_payment",
+    "disbursement",
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
@@ -679,6 +690,9 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         ),
         net_reimbursement: netReimbursement,
 
+        debt_payment: toNumber(source?.debt_payment),
+        disbursement: toNumber(source?.disbursement),
+
         profit: toNumber(source?.Profit ?? source?.profit ?? source?.cm1_profit),
         net_sales: netSales,
     };
@@ -728,7 +742,10 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
         acos: toNumber(grand?.tacos_total_advertising_cost_of_sale),
 
         rembursment_vs_cm2_margins: toNumber(grand?.reimbursement_vs_cm2_margins),
+
         net_reimbursement: toNumber(grand?.current_net_reimbursement),
+        debt_payment: toNumber(grand?.debt_payment),
+        disbursement: toNumber(grand?.disbursement),
 
         profit: toNumber(grand?.profit),
         net_sales: toNumber(grand?.net_sales),
@@ -5745,6 +5762,8 @@ export default function DashboardPage() {
         "brand_spend",
         "dealsvouchar_ads",
         "platformfeenew",
+        "debt_payment",
+        "disbursement",
     ];
 
     const normalizeProductwiseRow = (raw: any): MonthlySkuwiseRow => {
@@ -12020,6 +12039,33 @@ ${pageLoading
                                                             },
                                                         ],
                                                     },
+
+                                                    {
+                                                        id: "net_reimbursement",
+                                                        label: "Net Reimbursement",
+                                                        endValue: formatSummaryValue(reimbursementForSummary, "net_reimbursement"),
+                                                        defaultCollapsed: true,
+                                                        children: [
+                                                            {
+                                                                id: "net_reimbursement_debt_payment",
+                                                                label: (
+                                                                    <>
+                                                                        Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                                                                    </>
+                                                                ),
+                                                                midValue: formatSummaryValue(plSummaryTotals.debt_payment, "debt_payment"),
+                                                            },
+                                                            {
+                                                                id: "net_reimbursement_disbursement",
+                                                                label: (
+                                                                    <>
+                                                                        Disbursement <strong className="text-green-500">(+)</strong>
+                                                                    </>
+                                                                ),
+                                                                midValue: formatSummaryValue(plSummaryTotals.disbursement, "disbursement"),
+                                                            },
+                                                        ],
+                                                    },
                                                 ],
 
                                                 fixedRows: [
@@ -12054,14 +12100,14 @@ ${pageLoading
                                                         endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`
                                                     },
 
-                                                    {
-                                                        id: "net_reimbursement",
-                                                        label: "Net Reimbursement",
-                                                        endValue: formatSummaryValue(
-                                                            plSummaryTotals.net_reimbursement,
-                                                            "net_reimbursement"
-                                                        ),
-                                                    },
+                                                    // {
+                                                    //     id: "net_reimbursement",
+                                                    //     label: "Net Reimbursement",
+                                                    //     endValue: formatSummaryValue(
+                                                    //         plSummaryTotals.net_reimbursement,
+                                                    //         "net_reimbursement"
+                                                    //     ),
+                                                    // },
                                                     {
                                                         id: "rv_cm2",
                                                         label: "Reimbursement vs CM2 Margins",
