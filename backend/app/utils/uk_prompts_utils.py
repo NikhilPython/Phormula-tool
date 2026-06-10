@@ -18,10 +18,23 @@ The data you receive:
 - Does NOT require recalculation, validation, or reconciliation.
 - period_absolute_changes:
   Precomputed absolute deltas for the selected period vs comparison period.
+
+  It may also include:
+  - current_values:
+    Deterministic current-period total portfolio values.
+  - previous_values:
+    Deterministic comparison-period total portfolio values.
+
 - period_pct_changes:
   Precomputed percentage changes for the selected reporting period.
   This is the single deterministic source of truth for percentage
   movement across MONTHLY, QUARTERLY, and YEARLY analysis.
+
+  For advertising spend specifically:
+  - current advertising spend = period_absolute_changes.current_values.advertising
+  - previous advertising spend = period_absolute_changes.previous_values.advertising
+  - advertising percentage change = period_pct_changes.advertising
+  - ACOS change = period_pct_changes.acos
 
 
 

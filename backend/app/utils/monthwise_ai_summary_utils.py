@@ -1156,37 +1156,135 @@ def get_metric_columns(df: pd.DataFrame) -> list[str]:
 def compute_sku_precalc(df: pd.DataFrame) -> dict:
     if df.empty:
         return {}
+
     df = _normalize_sku_col(df)
+
     if "sku" not in df.columns:
         return {}
 
+    df = df.copy()
+
+    # -------------------------------------------------
+    # Numeric cleanup
+    # -------------------------------------------------
+    comparable_cols = (
+        set(METRIC_COLUMNS)
+        | set(PERCENTAGE_COLUMNS)
+        | set(NON_ADDITIVE_COMPARABLE)
+    )
+
+    for c in df.columns:
+        if c.lower() in comparable_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+    # -------------------------------------------------
+    # Aggregate only additive metrics
+    # -------------------------------------------------
     num_cols = get_metric_columns(df)
 
-    # Metrics that should NOT be summed at SKU level
-    non_additive_cols = {"asp"}
+    non_additive_cols = {
+        "asp",
+        "unit_wise_profitability",
+        "profit_percentage",
+        "cm2_profit_percentage",
+        "acos",
+        "sales_mix",
+        "profit_mix",
+    }
 
     other_cols = [
         c for c in df.columns
-        if c not in num_cols and c not in non_additive_cols and c != "sku"
+        if c not in num_cols
+        and c.lower() not in non_additive_cols
+        and c != "sku"
     ]
 
     agg = {c: "sum" for c in num_cols}
-
-    # SKU-level ASP should be kept as-is (not summed)
-    if "asp" in df.columns:
-        agg["asp"] = "first"
 
     for c in other_cols:
         agg[c] = "first"
 
     g = df.groupby("sku", dropna=False).agg(agg).reset_index()
 
-    out = {}
-    for r in g.to_dict(orient="records"):
+    # -------------------------------------------------
+    # Recalculate non-additive SKU metrics after grouping
+    # -------------------------------------------------
 
+    # ASP = net sales / units
+    if "net_sales" in g.columns and "total_quantity" in g.columns:
+        g["asp"] = np.where(
+            g["total_quantity"] != 0,
+            (g["net_sales"] / g["total_quantity"]).round(2),
+            None
+        )
+
+    # CM1 profit per unit = profit / units
+    if "profit" in g.columns and "total_quantity" in g.columns:
+        g["unit_wise_profitability"] = np.where(
+            g["total_quantity"] != 0,
+            (g["profit"] / g["total_quantity"]).round(2),
+            None
+        )
+
+    # CM1 profit percentage = profit / net sales
+    if "profit" in g.columns and "net_sales" in g.columns:
+        g["profit_percentage"] = np.where(
+            g["net_sales"] != 0,
+            ((g["profit"] / g["net_sales"]) * 100).round(2),
+            None
+        )
+
+    # CM2 profit percentage = cm2 profit / net sales
+    if "cm2_profit" in g.columns and "net_sales" in g.columns:
+        g["cm2_profit_percentage"] = np.where(
+            g["net_sales"] != 0,
+            ((g["cm2_profit"] / g["net_sales"]) * 100).round(2),
+            None
+        )
+
+    # ACOS = advertising / net sales
+    advertising_col = None
+
+    if "advertising_total_final" in g.columns:
+        advertising_col = "advertising_total_final"
+    elif "advertising_total" in g.columns:
+        advertising_col = "advertising_total"
+
+    if advertising_col and "net_sales" in g.columns:
+        g["acos"] = np.where(
+            g["net_sales"] != 0,
+            ((g[advertising_col] / g["net_sales"]) * 100).round(2),
+            None
+        )
+
+    # Sales mix = SKU net sales / total net sales
+    if "net_sales" in g.columns:
+        total_net_sales = g["net_sales"].sum()
+
+        g["sales_mix"] = np.where(
+            total_net_sales != 0,
+            ((g["net_sales"] / total_net_sales) * 100).round(2),
+            None
+        )
+
+    # Profit mix = SKU CM1 profit / total CM1 profit
+    if "profit" in g.columns:
+        total_profit = g["profit"].sum()
+
+        g["profit_mix"] = np.where(
+            total_profit != 0,
+            ((g["profit"] / total_profit) * 100).round(2),
+            None
+        )    
+
+    # -------------------------------------------------
+    # Convert grouped dataframe to expected dict shape
+    # -------------------------------------------------
+    out = {}
+
+    for r in g.to_dict(orient="records"):
         sku = str(r["sku"])
 
-        # ✅ product_name fallback logic
         raw_name = r.get("product_name")
         product_name = (
             str(raw_name).strip()
@@ -1195,7 +1293,7 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
         )
 
         out[sku] = {
-            "product_name": product_name  # 👈 ADD THIS
+            "product_name": product_name
         }
 
         for col in g.columns:
@@ -1203,6 +1301,7 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
                 continue
 
             val = r[col]
+
             if isinstance(val, (int, float)) and pd.notna(val):
                 out[sku][col.lower()] = round(float(val), 2)
             else:
@@ -1210,59 +1309,7 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
 
     return out
 
-# def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.DataFrame:
-#     """
-#     Aggregates monthly total rows into one synthetic total row.
 
-#     Used only for yearly partial-period comparison:
-#     Jan-Apr current year vs Jan-Apr previous year.
-
-#     Additive metrics are summed.
-#     Non-additive metrics are recalculated.
-#     """
-
-#     if df_total_rows.empty:
-#         return pd.DataFrame()
-
-#     df = df_total_rows.copy()
-
-#     for col in MOVEMENT_COLUMNS:
-#         if col in df.columns:
-#             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-#     row = {"sku": "total"}
-
-#     # Sum additive metrics
-#     for col in METRIC_COLUMNS:
-#         if col in df.columns:
-#             row[col] = float(df[col].sum())
-
-#     total_units = row.get("total_quantity", 0)
-#     net_sales = row.get("net_sales", 0)
-#     cm1_profit = row.get("profit", 0)
-#     cm2_profit = row.get("cm2_profit", 0)
-#     advertising = row.get("advertising_total", 0)
-
-#     # Recalculate non-additive metrics
-#     row["asp"] = round(net_sales / total_units, 2) if total_units else None
-
-#     row["unit_wise_profitability"] = (
-#         round(cm1_profit / total_units, 2) if total_units else None
-#     )
-
-#     row["profit_percentage"] = (
-#         round((cm1_profit / net_sales) * 100, 2) if net_sales else None
-#     )
-
-#     row["cm2_profit_percentage"] = (
-#         round((cm2_profit / net_sales) * 100, 2) if net_sales else None
-#     )
-
-#     row["acos"] = (
-#         round((advertising / net_sales) * 100, 2) if net_sales else None
-#     )
-
-#     return pd.DataFrame([row])
 
 def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1291,20 +1338,40 @@ def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.Dat
         if col in df.columns:
             row[col] = float(df[col].sum())
 
-    # Backward compatibility for old monthly tables
-    if "advertising_total_final" not in row and "advertising_total" in row:
-        row["advertising_total_final"] = row["advertising_total"]
+    # -------------------------------------------------
+    # Advertising alignment for yearly partial aggregation
+    # -------------------------------------------------
+    # Monthly rows have already passed through:
+    # apply_advertising_total_final_from_ads_table()
+    #
+    # So here we only aggregate the already-corrected final ads value.
+    advertising_total_sum = (
+        float(df["advertising_total"].sum())
+        if "advertising_total" in df.columns
+        else 0.0
+    )
+
+    advertising_final_sum = (
+        float(df["advertising_total_final"].sum())
+        if "advertising_total_final" in df.columns
+        else 0.0
+    )
+
+    # Prefer final value when available.
+    # Fallback keeps old tables safe.
+    advertising = (
+        advertising_final_sum
+        if advertising_final_sum != 0
+        else advertising_total_sum
+    )
+
+    row["advertising_total"] = round(advertising, 2)
+    row["advertising_total_final"] = round(advertising, 2)
 
     total_units = row.get("total_quantity", 0)
     net_sales = row.get("net_sales", 0)
     cm1_profit = row.get("profit", 0)
     cm2_profit = row.get("cm2_profit", 0)
-
-    # Use final advertising value for yearly ACOS
-    advertising = row.get(
-        "advertising_total_final",
-        row.get("advertising_total", 0)
-    )
 
     # Recalculate non-additive metrics
     row["asp"] = round(net_sales / total_units, 2) if total_units else None
@@ -1961,10 +2028,15 @@ def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
     return output
 
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
-    
     ranked = []
 
+    # -------------------------------------------------
+    # Primary ranking: sales_mix
+    # -------------------------------------------------
     for sku, data in sku_current.items():
+        if not isinstance(data, dict):
+            continue
+
         sales_mix = data.get("sales_mix")
 
         if sales_mix is None:
@@ -1975,7 +2047,26 @@ def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -
         except (TypeError, ValueError):
             continue
 
-    # Sort descending
+    # -------------------------------------------------
+    # Fallback ranking: net_sales
+    # This prevents all products collapsing into Other SKUs
+    # if sales_mix is missing for any reason.
+    # -------------------------------------------------
+    if not ranked:
+        for sku, data in sku_current.items():
+            if not isinstance(data, dict):
+                continue
+
+            net_sales = data.get("net_sales")
+
+            if net_sales is None:
+                continue
+
+            try:
+                ranked.append((sku, float(net_sales)))
+            except (TypeError, ValueError):
+                continue
+
     ranked.sort(key=lambda x: x[1], reverse=True)
 
     if not ranked:
@@ -1984,16 +2075,26 @@ def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -
     cumulative = 0.0
     selected = []
 
-    for sku, mix in ranked:
-        cumulative += mix
+    using_sales_mix = any(
+        isinstance(data, dict) and data.get("sales_mix") is not None
+        for data in sku_current.values()
+    )
+
+    for sku, value in ranked:
         selected.append(sku)
 
-        if cumulative >= threshold:
-            break
+        if using_sales_mix:
+            cumulative += value
 
-    # 🎯 Decision logic
+            if cumulative >= threshold:
+                break
+
+        # If fallback is net_sales, just use top 5
+        else:
+            if len(selected) >= 5:
+                break
+
     if len(selected) < 5:
-        # Return top 5 by sales mix
         return [sku for sku, _ in ranked[:5]]
 
     return selected
@@ -2132,6 +2233,9 @@ def render_month_end_summary(
     strategy_actions: dict | None = None,
     portfolio_recommendation: str | None = None,
     remaining_agg: dict | None = None,
+
+    # ✅ NEW: all SKU individual insights
+    all_sku_mom: dict | None = None,
 ) -> str:
     """
     Deterministic executive month-end / year-end summary renderer.
@@ -2372,8 +2476,90 @@ def render_month_end_summary(
                 lines.append(f"   - {point}")
 
         # --- Recommendation (optional) ---
+                # --- Recommendation (optional) ---
         if isinstance(remaining_rec, str) and remaining_rec.strip():
             lines.append(f"• Recommendation: {remaining_rec}")
+
+
+
+    # =========================================================
+    # ALL SKUs — INDIVIDUAL METRICS
+    # Does NOT change Top 80% / Other SKUs logic
+    # =========================================================
+    if all_sku_mom:
+
+        lines.append("\n## ALL SKU INDIVIDUAL INSIGHTS")
+
+        focus_set = set(str(s) for s in (focus_skus or []))
+
+        def _sku_sort_value(item):
+            sku, data = item
+            if not isinstance(data, dict):
+                return 0
+
+            net_sales = data.get("net_sales", {}) or {}
+            if not isinstance(net_sales, dict):
+                return 0
+
+            return net_sales.get("current") or 0
+
+        for sku, s in sorted(all_sku_mom.items(), key=_sku_sort_value, reverse=True):
+            if not isinstance(s, dict):
+                continue
+
+            sku_clean = str(sku).strip()
+
+            if sku_clean.lower() in TOTAL_LABELS:
+                continue
+
+            name = s.get("product_name", sku_clean)
+            sku_bucket = "Top 80% SKU" if sku_clean in focus_set else "Other SKU"
+
+            lines.append(f"\n{name}")
+            lines.append(f"• SKU: {sku_clean}")
+            lines.append(f"• Bucket: {sku_bucket}")
+
+            lines.append(
+                f"• ASP: {fmt_value_with_pct(s.get('asp'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• Units: {fmt_value_with_pct(s.get('total_quantity'), decimals=0)}"
+            )
+
+            lines.append(
+                f"• Net sales: {fmt_value_with_pct(s.get('net_sales'), is_currency=True, decimals=0)}"
+            )
+
+            lines.append(
+                f"• CM1 profit: {fmt_value_with_pct(s.get('profit'), is_currency=True, decimals=0)}"
+            )
+
+            lines.append(
+                f"• CM1 profit per unit: {fmt_value_with_pct(s.get('unit_wise_profitability'), is_currency=True)}"
+            )
+
+            # ✅ NEW: Individual journey + recommendation for every SKU
+            sku_data = sku_actions.get(sku_clean, {}) if isinstance(sku_actions, dict) else {}
+
+            journey = sku_data.get("journey_summary")
+            if isinstance(journey, list) and journey:
+                lines.append("• Product journey:")
+                for point in journey:
+                    if isinstance(point, str) and point.strip():
+                        lines.append(f"   - {point}")
+
+            recommendation = sku_data.get("recommendation")
+            if isinstance(recommendation, str) and recommendation.strip():
+                lines.append(f"• Recommendation: {recommendation}")
+
+            ads_rec = sku_data.get("ads_recommendation")
+            if isinstance(ads_rec, str) and ads_rec.strip():
+                lines.append(f"• Ads action: {ads_rec}")
+
+            inv_rec = sku_data.get("inventory_recommendation")
+            if isinstance(inv_rec, str) and inv_rec.strip():
+                lines.append(f"• Inventory action: {inv_rec}")
 
 
 
@@ -2679,6 +2865,51 @@ def get_or_create_summary(
         sku_current_for_comparison = yearly_compare["sku_current"]
         sku_prev = yearly_compare["sku_prev"]
 
+    ###############################################
+        # print("\n================ YEARLY COMPARE DEBUG ================")
+        # print("period:", period, "timeline:", timeline, "year:", year)
+        # print("comparison_months:", comparison_months)
+
+        # print("CURRENT yearly comparison total row:")
+        # print(
+        #     df_current_total_for_comparison[
+        #         [
+        #             c for c in [
+        #                 "advertising_total",
+        #                 "advertising_total_final",
+        #                 "net_sales",
+        #                 "acos"
+        #             ]
+        #             if c in df_current_total_for_comparison.columns
+        #         ]
+        #     ].to_dict(orient="records")
+        # )
+
+        # print("PREVIOUS yearly comparison total row:")
+        # print(
+        #     df_prev_total_for_comparison[
+        #         [
+        #             c for c in [
+        #                 "advertising_total",
+        #                 "advertising_total_final",
+        #                 "net_sales",
+        #                 "acos"
+        #             ]
+        #             if c in df_prev_total_for_comparison.columns
+        #         ]
+        #     ].to_dict(orient="records")
+        # )
+
+        # print(
+        #     "current ads final:",
+        #     _advertising_total_final_value(df_current_total_for_comparison)
+        # )
+        # print(
+        #     "previous ads final:",
+        #     _advertising_total_final_value(df_prev_total_for_comparison)
+        # )
+        # print("======================================================\n")    
+############################################################################################################################
     else:
         (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
 
@@ -2714,17 +2945,133 @@ def get_or_create_summary(
             df_current_total_for_comparison,
             df_prev_total_for_comparison,
         )
+#####################################################################################
+        # print("\n================ PERIOD CHANGE DEBUG ================")
+        # print("period_absolute_changes:", json.dumps(period_absolute_changes, indent=2))
+        # print("period_pct_changes:", json.dumps(period_pct_changes, indent=2))
+        # print(
+        #     "manual ads pct from final values:",
+        #     round(
+        #         (
+        #             _advertising_total_final_value(df_current_total_for_comparison)
+        #             - _advertising_total_final_value(df_prev_total_for_comparison)
+        #         )
+        #         / abs(_advertising_total_final_value(df_prev_total_for_comparison))
+        #         * 100,
+        #         2
+        #     )
+        #     if _advertising_total_final_value(df_prev_total_for_comparison) not in (None, 0)
+        #     else None
+        # )
+        # print("=====================================================\n")
+#######################################################################################
+
+        # -------------------------------------------------
+        # -------------------------------------------------
+        # Current / previous values for LLM context
+        # -------------------------------------------------
+        # For yearly:
+        #   - comparison values still come from monthly partial-year aggregation
+        #   - current display values should come from the selected yearly table
+        #
+        # This makes yearly current_values.advertising match the yearly table value
+        # e.g. 8046 instead of Jan-May monthly aggregation 7838.93.
+        # -------------------------------------------------
+
+        current_values_source = (
+            df_current_total
+            if period == "yearly"
+            else df_current_total_for_comparison
+        )
+
+        previous_values_source = df_prev_total_for_comparison
+
+        period_absolute_changes["current_values"] = {
+            "units": _total_value(current_values_source, "total_quantity"),
+            "net_sales": _total_value(current_values_source, "net_sales"),
+            "asp": _total_value(current_values_source, "asp"),
+            "cm1_profit": _total_value(current_values_source, "profit"),
+            "cm1_profit_per_unit": _total_value(
+                current_values_source,
+                "unit_wise_profitability"
+            ),
+            "cm2_profit": _total_value(current_values_source, "cm2_profit"),
+
+            # Important: final ads value
+            # For yearly this now comes from df_current_total, not monthly aggregation.
+            "advertising": _advertising_total_final_value(current_values_source),
+
+            "storage_fees": _total_value(
+                current_values_source,
+                "platform_fee_inventory_storage"
+            ),
+            "acos": _total_value(current_values_source, "acos"),
+        }
+
+        period_absolute_changes["previous_values"] = {
+            "units": _total_value(previous_values_source, "total_quantity"),
+            "net_sales": _total_value(previous_values_source, "net_sales"),
+            "asp": _total_value(previous_values_source, "asp"),
+            "cm1_profit": _total_value(previous_values_source, "profit"),
+            "cm1_profit_per_unit": _total_value(
+                previous_values_source,
+                "unit_wise_profitability"
+            ),
+            "cm2_profit": _total_value(previous_values_source, "cm2_profit"),
+
+            # Previous still comes from the comparison basis:
+            # same available months of previous year.
+            "advertising": _advertising_total_final_value(previous_values_source),
+
+            "storage_fees": _total_value(
+                previous_values_source,
+                "platform_fee_inventory_storage"
+            ),
+            "acos": _total_value(previous_values_source, "acos"),
+        }
+
+    # -------------------------------------------------
+    # Yearly advertising override
+    # -------------------------------------------------
+    # Because yearly current advertising should match the selected yearly table,
+    # recompute advertising deltas using the same current source.
+    # -------------------------------------------------
+
+    if period == "yearly":
+        current_ads = _advertising_total_final_value(current_values_source)
+        previous_ads = _advertising_total_final_value(previous_values_source)
+
+        if current_ads is not None and previous_ads is not None:
+            period_absolute_changes["advertising"] = round(
+                current_ads - previous_ads,
+                2
+            )
+
+        if current_ads is not None and previous_ads not in (None, 0):
+            period_pct_changes["advertising"] = round(
+                (current_ads - previous_ads) / abs(previous_ads) * 100,
+                2
+            )    
 
     sku_mom = compare_sku_metrics(
         sku_current_for_comparison,
         sku_prev,
     )
 
+    # ✅ NEW: keep full all-SKU metrics before any single-SKU filtering
+    all_sku_mom = dict(sku_mom or {})
+
+    # ✅ NEW: list of every real SKU for individual AI journeys/actions
+    all_individual_skus = [
+        str(sku)
+        for sku in all_sku_mom.keys()
+        if str(sku).strip().lower() not in TOTAL_LABELS
+    ]
 
     remaining_agg = build_remaining_skus_aggregate(
-    sku_current=sku_current,
-    sku_prev=sku_prev,
-    focus_skus=top_5_skus
+        sku_current=sku_current_for_comparison,
+        sku_prev=sku_prev,
+        focus_skus=top_5_skus
     )
 
     # -------------------------------------------------
@@ -2750,6 +3097,10 @@ def get_or_create_summary(
 
     if single_sku_mode:
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
+
+        # ✅ Do not show all SKU section in single SKU mode
+        all_sku_mom = {}
+        all_individual_skus = []
 
     # ============================================================
     # EXCEL-BASED SKU RECOMMENDATIONS
@@ -2791,20 +3142,54 @@ def get_or_create_summary(
             ),
         }
 
+        # analysis_raw = run_prompt_1_analysis(ai_payload)
+
+        # try:
+        #     analysis_insights = json.loads(analysis_raw)
+        # except Exception:
+        #     print("\n❌ Prompt-1 JSON PARSE FAILED")
+        #     analysis_insights = {}
+
+        print("\n================ AI PAYLOAD ADS DEBUG ================")
+        print("period_pct_changes sent to LLM:", json.dumps(period_pct_changes, indent=2))
+        print(
+            "period_absolute_changes sent to LLM:",
+            json.dumps(period_absolute_changes, indent=2)
+        )
+        print("======================================================\n")
+
         analysis_raw = run_prompt_1_analysis(ai_payload)
+
+        print("\n================ PROMPT 1 RAW OUTPUT DEBUG ================")
+        print(analysis_raw)
+        print("===========================================================\n")
 
         try:
             analysis_insights = json.loads(analysis_raw)
+
+            print("\n================ PARSED ANALYSIS ADS DEBUG ================")
+            print(
+                "parsed advertising:",
+                analysis_insights
+                .get("executive_summary_signals", {})
+                .get("cost_pressure", {})
+                .get("advertising", {})
+            )
+            print("===========================================================\n")
+
         except Exception:
             print("\n❌ Prompt-1 JSON PARSE FAILED")
             analysis_insights = {}
+#############################################################################################
 
+    
     # ============================================================
     portfolio_level_narrative = analysis_insights.get("executive_summary_signals", {})
 
     # ============================================================
     # PROMPT 2 (ALWAYS CALLED)
     # ============================================================
+    portfolio_recommendation = ""
     sku_actions = {}
     strategy_raw = ""
 
@@ -2812,8 +3197,12 @@ def get_or_create_summary(
 
         sku_time_series = {}
 
+        # ✅ For normal portfolio mode, generate journeys for all SKUs.
+        # ✅ For single SKU mode, keep only selected SKU.
+        prompt_skus = top_5_skus if single_sku_mode else all_individual_skus
+
         if analysis_anchor_year and analysis_anchor_month:
-            for sku in top_5_skus:
+            for sku in prompt_skus:
                 sku_time_series[sku] = build_rolling_sku_series(
                     user_id=user_id,
                     country=country,
@@ -2826,12 +3215,15 @@ def get_or_create_summary(
             analysis_insights=analysis_insights,
             sku_mom=sku_mom,
             objective_v2=objective_v2,
-            focus_skus=top_5_skus,
+
+            # ✅ Send all SKUs for individual journey/recommendation generation
+            focus_skus=prompt_skus,
+
             sku_time_series=sku_time_series,
             inventory_alerts=inventory_alerts,
             country=str(country).lower(),
             sku_inventory_flags=sku_inventory_flags,
-            remaining_skus_context=remaining_skus_context   # ✅ NEW
+            remaining_skus_context=remaining_skus_context
         )
        
 
@@ -2843,10 +3235,14 @@ def get_or_create_summary(
             ai_sku_actions = parsed.get("sku_actions") or {}
             sku_actions = {}
 
+
             # -------------------------------------------------
             # Merge AI outputs + Excel recommendation
+            # ✅ Now stores actions for all individual SKUs
             # -------------------------------------------------
-            for sku in top_5_skus:
+            action_skus = top_5_skus if single_sku_mode else all_individual_skus
+
+            for sku in action_skus:
                 ai_data = ai_sku_actions.get(sku, {}) or {}
 
                 sku_actions[sku] = {
@@ -2859,7 +3255,6 @@ def get_or_create_summary(
                     "ads_recommendation": ai_data.get("ads_recommendation", ""),
                     "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
                 }
-
             # ✅ Capture consolidated recommendation for remaining SKUs
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
             if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
@@ -2878,10 +3273,15 @@ def get_or_create_summary(
     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
     if not allow_recommendations:
 
-        # Remove SKU level recommendations
+        # Remove portfolio-level recommendation
+        portfolio_recommendation = ""
+
+        # Remove SKU-level recommendations/actions
         for key, value in sku_actions.items():
-            if isinstance(value, dict) and "recommendation" in value:
+            if isinstance(value, dict):
                 value["recommendation"] = ""
+                value["ads_recommendation"] = ""
+                value["inventory_recommendation"] = ""
 
         # Remove remaining SKUs recommendation text but keep card
         if "remaining_skus_recommendation" in sku_actions:
@@ -2889,6 +3289,24 @@ def get_or_create_summary(
 
     # final_text = strategy_raw if strategy_raw else analysis_raw
 
+    ######################################################################
+    # print("\n================ RENDER ADS DEBUG ================")
+    # print(
+    #     "renderer advertising object:",
+    #     analysis_insights
+    #     .get("executive_summary_signals", {})
+    #     .get("cost_pressure", {})
+    #     .get("advertising", {})
+    # )
+    # print(
+    #     "renderer storage object:",
+    #     analysis_insights
+    #     .get("executive_summary_signals", {})
+    #     .get("cost_pressure", {})
+    #     .get("storage_fees", {})
+    # )
+    # print("==================================================\n")
+##################################################################################
     final_text = render_month_end_summary(
     period=period,
     timeline=timeline,
@@ -2903,6 +3321,7 @@ def get_or_create_summary(
     currency_symbol="£" if country == "uk" else "$",
     strategy_actions=sku_actions,
     remaining_agg=remaining_agg,
+    all_sku_mom=all_sku_mom,
     )
 
 
@@ -2929,6 +3348,7 @@ def get_or_create_summary(
         "inventory_alerts": inventory_alerts if allow_inventory else {},
         "sku_current": sku_current,
         "sku_mom": sku_mom,
+        "all_sku_mom": all_sku_mom,
         "sku_yoy": None,
         "objective": objective_v2,
         "sku_actions": sku_actions,
@@ -3623,6 +4043,10 @@ def render_global_comparison_summary(
     year: int,
     remaining_agg: dict | None = None,
     available_countries: list[str] | None = None,
+
+    # ✅ NEW: all global SKU individual insights
+    all_sku_mom: dict | None = None,
+    focus_skus: list | None = None,
 ) -> str:
     """
     AI-written global summary renderer.
@@ -3850,6 +4274,65 @@ def render_global_comparison_summary(
 
             if global_actions.get("ads_recommendation"):
                 lines.append(f"   - Ads action: {global_actions['ads_recommendation']}")
+
+    # ============================================================
+    # GLOBAL ALL SKUs — INDIVIDUAL METRICS
+    # Does NOT change Global Product Journey / Other SKUs logic
+    # ============================================================
+    if all_sku_mom:
+
+        lines.append("")
+        lines.append("## ALL SKU INDIVIDUAL INSIGHTS")
+
+        focus_set = set(str(s) for s in (focus_skus or []))
+
+        def _sku_sort_value(item):
+            sku, data = item
+            if not isinstance(data, dict):
+                return 0
+
+            net_sales = data.get("net_sales", {}) or {}
+            if not isinstance(net_sales, dict):
+                return 0
+
+            return net_sales.get("current") or 0
+
+        for sku, s in sorted(all_sku_mom.items(), key=_sku_sort_value, reverse=True):
+            if not isinstance(s, dict):
+                continue
+
+            sku_clean = str(sku).strip()
+
+            if sku_clean.lower() in TOTAL_LABELS:
+                continue
+
+            name = s.get("product_name", sku_clean)
+            sku_bucket = "Top 80% SKU" if sku_clean in focus_set else "Other SKU"
+
+            lines.append("")
+            lines.append(name)
+            lines.append(f"• SKU: {sku_clean}")
+            lines.append(f"• Bucket: {sku_bucket}")
+
+            lines.append(
+                f"• ASP: {fmt_value_with_pct(s.get('asp'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• Units: {fmt_value_with_pct(s.get('total_quantity'), decimals=0)}"
+            )
+
+            lines.append(
+                f"• Net sales: {fmt_value_with_pct(s.get('net_sales'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• CM1 profit: {fmt_value_with_pct(s.get('profit'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• CM1 profit per unit: {fmt_value_with_pct(s.get('unit_wise_profitability'), is_currency=True)}"
+            )
 
     # ============================================================
     # AI GLOBAL OVERALL RECOMMENDATION
@@ -4094,6 +4577,11 @@ def get_or_create_global_summary(
         # ✅ ADD THESE FOR GLOBAL OTHER SKU CARD
         "focus_skus": global_numeric_metrics.get("focus_skus", []),
         "remaining_agg": global_numeric_metrics.get("remaining_agg", {}),
+
+        # ✅ NEW: all global SKUs individually for frontend
+        "all_sku_mom": key_metrics_by_product_name(
+            global_numeric_metrics.get("sku_mom", {})
+        ),
     }
 
     inventory_alerts_by_country = {
@@ -4205,6 +4693,10 @@ def get_or_create_global_summary(
         year=year,
         remaining_agg=global_numeric_metrics.get("remaining_agg", {}),
         available_countries=available_countries,
+
+        # ✅ NEW: all SKU individual global insights
+        all_sku_mom=global_numeric_metrics.get("sku_mom", {}),
+        focus_skus=global_numeric_metrics.get("focus_skus", []),
     )
 
     # ============================================================
