@@ -995,7 +995,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
 
                   {block.journeyBullets?.length ? (
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 2xl:text-sm">
+                    <ol className="list-decimal pl-3 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
                       {block.journeyBullets.map((p, i) => (
                         <li key={i}>
                           {p
@@ -1004,7 +1004,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             .replace(/^-+\s*/, "")}
                         </li>
                       ))}
-                    </ul>
+                    </ol>
                   ) : (
                     <div className="text-xs text-charcoal-500 2xl:text-sm">—</div>
                   )}

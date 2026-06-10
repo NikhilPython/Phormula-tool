@@ -1958,8 +1958,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 summary={{
                   enabled: !noDataFound && mainColCount > 0,
 
-                  sections: [
+                  rows: [
                     {
+                      type: "section",
                       id: "ads",
                       label: "Cost of Advertisement",
                       endValue: formatValue(totals.advertising_total, "advertising_total"),
@@ -1979,6 +1980,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     },
 
                     {
+                      type: "section",
                       id: "other",
                       label: "Other Transactions",
                       endValue: formatValue(totals.other_transactions, "other_transactions"),
@@ -2015,7 +2017,40 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       ],
                     },
 
+                    ...((countryName || "").toLowerCase() === "us" ||
+                      (countryName || "").toLowerCase() === "global"
+                      ? [
+                        {
+                          type: "fixed",
+                          id: "ship",
+                          label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
+                        },
+                      ]
+                      : []),
+
                     {
+                      type: "fixed",
+                      id: "cm2_profit",
+                      label: "CM2 Profit/Loss",
+                      endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+                    },
+                    {
+                      type: "fixed",
+                      id: "cm2_margins",
+                      label: "CM2 Margins",
+                      endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
+                    },
+                    {
+                      type: "fixed",
+                      id: "tacos",
+                      label: "TACoS (Total Advertising Cost of Sale)",
+                      endValue: `${formatValue(frontendTacos, "acos")}`,
+                    },
+
+                    // ✅ Now Net Reimbursement appears below TACoS and remains collapsible
+                    {
+                      type: "section",
                       id: "net_reimb",
                       label: "Net Reimbursement",
                       endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
@@ -2041,46 +2076,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         },
                       ],
                     },
-                  ],
-
-                  fixedRows: [
-                    ...((countryName || "").toLowerCase() === "us" ||
-                      (countryName || "").toLowerCase() === "global"
-                      ? [
-                        {
-                          id: "ship",
-                          label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
-                        },
-                      ]
-                      : []),
 
                     {
-                      id: "cm2_profit",
-                      label: "CM2 Profit/Loss",
-                      endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
-                    },
-                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}` },
-
-                    // ✅ TACoS first
-                    {
-                      id: "tacos",
-                      label: "TACoS (Total Advertising Cost of Sale)",
-                      endValue: `${formatValue(frontendTacos, "acos")}`,
-                    },
-
-                    // ✅ then Net Reimbursement (below TACoS)
-                    // {
-                    //   id: "net_reimb",
-                    //   label: "Net Reimbursement",
-                    //   endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
-                    // },
-                    {
+                      type: "fixed",
                       id: "rv_cm2",
                       label: "Reimbursement vs CM2 Margins",
                       endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
                     },
                     {
+                      type: "fixed",
                       id: "rv_sales",
                       label: "Reimbursement vs Sales",
                       endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,

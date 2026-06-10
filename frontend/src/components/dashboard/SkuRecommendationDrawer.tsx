@@ -283,11 +283,11 @@ export default function SkuRecommendationDrawer({
                   </div>
 
                   {selectedRec?.journeyPoints?.length ? (
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 2xl:text-sm">
+                    <ol className="list-decimal pl-3 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
                       {selectedRec.journeyPoints.map((p, i) => (
                         <li key={i}>{p}</li>
                       ))}
-                    </ul>
+                    </ol>
                   ) : (
                     <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
                   )}

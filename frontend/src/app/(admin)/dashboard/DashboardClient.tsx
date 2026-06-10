@@ -11980,8 +11980,9 @@ ${pageLoading
                                             summary={{
                                                 enabled: finalMonthlySkuwiseRowsForTable.length > 0,
 
-                                                sections: [
+                                                rows: [
                                                     {
+                                                        type: "section",
                                                         id: "ads",
                                                         label: "Cost of Advertisement",
                                                         endValue: formatSummaryRounded(costOfAds),
@@ -12001,6 +12002,7 @@ ${pageLoading
                                                     },
 
                                                     {
+                                                        type: "section",
                                                         id: "other",
                                                         label: "Other Transactions",
                                                         endValue: formatSummaryRounded(platformFee),
@@ -12028,10 +12030,7 @@ ${pageLoading
                                                                 id: "other_3",
                                                                 label: (
                                                                     <>
-                                                                        Reimbursement for lost Inventory
-                                                                        {/* {totals.reimbursement_lost_inventory_units
-                                                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                                                                : " "} */}
+                                                                        Reimbursement for lost Inventory{" "}
                                                                         <strong className="text-green-500">(+)</strong>
                                                                     </>
                                                                 ),
@@ -12040,10 +12039,55 @@ ${pageLoading
                                                         ],
                                                     },
 
+                                                    ...(countryName === "us" || countryName === "global"
+                                                        ? [
+                                                            {
+                                                                type: "fixed" as const,
+                                                                id: "ship",
+                                                                label: (
+                                                                    <>
+                                                                        Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong>
+                                                                    </>
+                                                                ),
+                                                                endValue: formatSummaryValue(
+                                                                    plSummaryTotals.shipment_charges,
+                                                                    "shipment_charges"
+                                                                ),
+                                                            },
+                                                        ]
+                                                        : []),
+
                                                     {
+                                                        type: "fixed",
+                                                        id: "cm2_profit",
+                                                        label: "CM2 Profit/Loss",
+                                                        endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+                                                    },
+                                                    {
+                                                        type: "fixed",
+                                                        id: "cm2_margins",
+                                                        label: "CM2 Margins",
+                                                        endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
+                                                    },
+                                                    {
+                                                        type: "fixed",
+                                                        id: "tacos",
+                                                        label: "TACoS (Total Advertising Cost of Sale)",
+                                                        endValue: `${formatSummaryValue(
+                                                            tacosFromDisplayedCardsForSummary,
+                                                            "acos"
+                                                        )}%`,
+                                                    },
+
+                                                    // Net Reimbursement below TACoS and still collapsible
+                                                    {
+                                                        type: "section",
                                                         id: "net_reimbursement",
                                                         label: "Net Reimbursement",
-                                                        endValue: formatSummaryValue(reimbursementForSummary, "net_reimbursement"),
+                                                        endValue: formatSummaryValue(
+                                                            reimbursementForSummary,
+                                                            "net_reimbursement"
+                                                        ),
                                                         defaultCollapsed: true,
                                                         children: [
                                                             {
@@ -12053,7 +12097,10 @@ ${pageLoading
                                                                         Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
                                                                     </>
                                                                 ),
-                                                                midValue: formatSummaryValue(plSummaryTotals.debt_payment, "debt_payment"),
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.debt_payment,
+                                                                    "debt_payment"
+                                                                ),
                                                             },
                                                             {
                                                                 id: "net_reimbursement_disbursement",
@@ -12062,65 +12109,34 @@ ${pageLoading
                                                                         Disbursement <strong className="text-green-500">(+)</strong>
                                                                     </>
                                                                 ),
-                                                                midValue: formatSummaryValue(plSummaryTotals.disbursement, "disbursement"),
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.disbursement,
+                                                                    "disbursement"
+                                                                ),
                                                             },
                                                         ],
                                                     },
-                                                ],
-
-                                                fixedRows: [
-                                                    ...(countryName === "us" || countryName === "global"
-                                                        ? [
-                                                            {
-                                                                id: "ship",
-                                                                label: (
-                                                                    <>
-                                                                        Shipment Charges <strong>(-)</strong>
-                                                                    </>
-                                                                ),
-                                                                endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
-                                                            },
-                                                        ]
-                                                        : []),
 
                                                     {
-                                                        id: "cm2_profit",
-                                                        label: "CM2 Profit/Loss",
-                                                        endValue: Math.round(totalRowCm2Profit).toLocaleString(),
-                                                    },
-                                                    {
-                                                        id: "cm2_margins",
-                                                        label: "CM2 Margins",
-                                                        endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
-                                                    },
-
-                                                    {
-                                                        id: "tacos",
-                                                        label: "TACoS (Total Advertising Cost of Sale)",
-                                                        endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`
-                                                    },
-
-                                                    // {
-                                                    //     id: "net_reimbursement",
-                                                    //     label: "Net Reimbursement",
-                                                    //     endValue: formatSummaryValue(
-                                                    //         plSummaryTotals.net_reimbursement,
-                                                    //         "net_reimbursement"
-                                                    //     ),
-                                                    // },
-                                                    {
+                                                        type: "fixed",
                                                         id: "rv_cm2",
                                                         label: "Reimbursement vs CM2 Margins",
                                                         endValue: `${formatSummaryValue(
-                                                            reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
+                                                            reimbursementVsCm2PctForSummary,
+                                                            "rembursment_vs_cm2_margins"
+                                                        )}%`,
                                                     },
                                                     {
+                                                        type: "fixed",
                                                         id: "rv_sales",
                                                         label: "Reimbursement vs Sales",
                                                         endValue: `${formatSummaryValue(
-                                                            reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
+                                                            reimbursementVsSalesPctForSummary,
+                                                            "reimbursement_vs_sales"
+                                                        )}%`,
                                                     },
                                                 ],
+
                                                 valueCols: 2,
                                             }}
                                         />
