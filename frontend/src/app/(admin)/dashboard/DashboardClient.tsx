@@ -11268,11 +11268,10 @@ ${pageLoading
 
 
                                     {/* Live BI graph */}
-                                    {showLiveBI && isCountryMode && (
+                                    {/* {showLiveBI && isCountryMode && (
                                         <div className="w-full rounded-xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
                                             <div className="w-full max-w-full min-w-0">
 
-                                                {/* ✅ CASE 1: 202 → processing */}
                                                 {!shouldShowDummyUi && biStatus === "processing" && (
                                                     <div className="flex justify-center items-center py-10">
                                                         <Loader className="bg-transparent" />
@@ -11285,14 +11284,13 @@ ${pageLoading
                                                     </div>
                                                 )}
 
-                                                {/* ✅ CASE 2: 200 but empty */}
                                                 {!shouldShowDummyUi && biStatus === "ready" && !biDailySeriesHome && (
                                                     <div className="text-center py-10 text-sm text-gray-500">
                                                         No data available for the selected period
                                                     </div>
                                                 )}
 
-                                                {/* ✅ CASE 3: 200 + data */}
+                                              
                                                 {(shouldShowDummyUi || biStatus === "ready") && finalBiDailySeriesHome && (
 
                                                     <LiveBiLineGraph
@@ -11310,9 +11308,7 @@ ${pageLoading
 
                                             </div>
                                         </div>
-                                    )}
-
-
+                                    )} */}
                                 </div>
 
                             )}
@@ -11419,18 +11415,14 @@ ${pageLoading
 
                                     />
                                 </div>
-
-
-
-
                             )}
-                            {/* Performance Trend – directly below MTD Sales inside LEFT COLUMN */}
+
                             {showLiveBI && (
                                 <div
                                     id="ai-insights"
                                     className="w-full max-w-full min-w-0 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                                 >
-                                    <div className="w-full max-w-full min-w-0">
+                                    <div className="w-full max-w-full min-w-0 h-full">
                                         <LiveBiLineGraph
                                             dailySeries={finalBiDailySeriesHome}
                                             periods={finalBiPeriods}
@@ -11521,27 +11513,6 @@ ${pageLoading
                         </aside>
                     </div >
                 )}
-
-                {/* {activeTab === "live" && platform === "global" && showLiveBI && (
-                    <div
-                        id="ai-insights"
-                        className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-                    >
-                        <div className="w-full max-w-full min-w-0">
-                            <LiveBiLineGraph
-                                dailySeries={finalBiDailySeriesHome}
-                                periods={finalBiPeriods}
-                                loading={!shouldShowDummyUi && biUiLoading}
-                                error={shouldShowDummyUi ? null : biError}
-                                selectedStartDay={selectedStartDay}
-                                selectedEndDay={selectedEndDay}
-                                currencySymbol={currencySymbol}
-                            />
-
-                        </div>
-                    </div>
-                )
-                } */}
 
                 {activeTab === "summary" && (
 

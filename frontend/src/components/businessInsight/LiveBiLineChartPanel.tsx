@@ -473,7 +473,7 @@ const LiveLineChart: React.FC<{
           option={option}
           notMerge={false}
           lazyUpdate={true}
-          style={{ width: "100%", height: isCompactView ? 244 : 260 }}
+          style={{ width: "100%", height: isCompactView ? 244 : 270 }}
           onChartReady={(instance) => {
             echartsInstanceRef.current = instance as EChartsType;
             try {
