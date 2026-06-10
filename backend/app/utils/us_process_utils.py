@@ -149,6 +149,8 @@ def process_skuwise_us_data(user_id, country, month, year):
                 cm2_profit_percentage REAL,
                 cm2_margins REAL,
                 acos REAL,
+                debt_payment REAL,
+                disbursement REAL,
                 rembursement_fee REAL,
                 rembursment_vs_cm2_margins REAL,
                 reimbursement_vs_sales REAL,
@@ -225,7 +227,8 @@ def process_skuwise_us_data(user_id, country, month, year):
                 cm2_profit_percentage REAL,
                 cm2_margins REAL,
                 acos REAL,
-
+                debt_payment REAL,
+                disbursement REAL,
                 rembursement_fee REAL,
                 rembursment_vs_cm2_margins REAL,
                 reimbursement_vs_sales REAL,
@@ -430,8 +433,12 @@ def process_skuwise_us_data(user_id, country, month, year):
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
         # ---------- main totals ----------
+        debt_payment_total = abs(sum_total_where_desc_contains(df, ["DebtPayment"]))
         disbursement_total = abs(sum_total_where_desc_contains(df, ["Disbursement"]))
+
         rembursement_fee_col_sum = safe_series(df, "net_reimbursement").sum()
+
+        # keep existing reimbursement logic unchanged
         rembursement_fee = disbursement_total + rembursement_fee_col_sum
 
         shipment_keywords = [
@@ -1134,6 +1141,8 @@ def process_skuwise_us_data(user_id, country, month, year):
         ) * 100 if sum_row["Net Sales"] != 0 else 0
         sum_row["shipment_charges"] = float(sku_grouped["shipment_charges"].sum())
         sum_row["shipment_fees"] = abs(shipment_fees)
+        sum_row["debt_payment"] = abs(debt_payment_total)
+        sum_row["disbursement"] = abs(disbursement_total)
         sum_row["rembursement_fee"] = abs(rembursement_fee)
         sum_row["visible_ads"] = visible_ads_total
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
@@ -1365,8 +1374,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "shipment_charges", "shipment_fees",
 
             "cm2_profit", "cm2_profit_percentage", "cm2_margins", "acos",
-
-            "rembursement_fee", "rembursment_vs_cm2_margins",
+            "debt_payment", "disbursement", "rembursement_fee", "rembursment_vs_cm2_margins",
             "reimbursement_vs_sales",
 
             "sales_mix", "profit_mix",
@@ -1409,7 +1417,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage","shipment_fees",
-            "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos", "rembursement_fee",
+            "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos", "debt_payment", "disbursement","rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix","month", "year", "country", "user_id"
         ]
@@ -1460,7 +1468,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage","shipment_fees",
-            "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos", "rembursement_fee",
+            "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos","debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix"
         ]
@@ -1619,7 +1627,9 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             & (df["sku"].str.lower() != "none")
         ].copy()
 
+        debt_payment_total = abs(sum_total_where_desc_contains(df, ["DebtPayment"]))
         disbursement_total = abs(sum_total_where_desc_contains(df, ["Disbursement"]))
+
         rembursement_fee = disbursement_total + safe_series(df, "net_reimbursement").sum()
 
         shipment_keywords = [
@@ -2069,6 +2079,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
         sum_row["shipment_charges"] = float(sku_grouped["shipment_charges"].sum())
         sum_row["shipment_fees"] = abs(shipment_fees)
+        sum_row["debt_payment"] = abs(debt_payment_total)
+        sum_row["disbursement"] = abs(disbursement_total)
         sum_row["rembursement_fee"] = abs(rembursement_fee)
         sum_row["visible_ads"] = visible_ads_total
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
@@ -2112,7 +2124,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
             "shipment_fees", "cm2_profit", "cm2_profit_percentage",
-            "cm2_margins", "acos", "rembursement_fee",
+            "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix", "year", "country", "user_id"
         ]
@@ -2167,6 +2179,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "cm2_profit_percentage": Float,
             "cm2_margins": Float,
             "acos": Float,
+            "debt_payment": Float,
+            "disbursement": Float,
             "rembursement_fee": Float,
             "rembursment_vs_cm2_margins": Float,
             "reimbursement_vs_sales": Float,
@@ -2310,7 +2324,9 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             & (df["sku"].str.lower() != "none")
         ].copy()
 
+        debt_payment_total = abs(sum_total_where_desc_contains(df, ["DebtPayment"]))
         disbursement_total = abs(sum_total_where_desc_contains(df, ["Disbursement"]))
+
         rembursement_fee = disbursement_total + safe_series(df, "net_reimbursement").sum()
 
         shipment_keywords = [
@@ -2757,6 +2773,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
         sum_row["shipment_charges"] = float(sku_grouped["shipment_charges"].sum())
         sum_row["shipment_fees"] = abs(shipment_fees)
+        sum_row["debt_payment"] = abs(debt_payment_total)
+        sum_row["disbursement"] = abs(disbursement_total)
         sum_row["rembursement_fee"] = abs(rembursement_fee)
         sum_row["visible_ads"] = visible_ads_total
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
@@ -2800,7 +2818,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
             "shipment_fees", "cm2_profit", "cm2_profit_percentage",
-            "cm2_margins", "acos", "rembursement_fee",
+            "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix", "year", "country", "user_id"
         ]
@@ -2862,6 +2880,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "cm2_profit_percentage": Float,
             "cm2_margins": Float,
             "acos": Float,
+            "debt_payment": Float,
+            "disbursement": Float,
             "rembursement_fee": Float,
             "rembursment_vs_cm2_margins": Float,
             "reimbursement_vs_sales": Float,

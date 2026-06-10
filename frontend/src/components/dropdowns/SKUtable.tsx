@@ -107,11 +107,14 @@ export type TableRow = {
   ASP?: number;
 
   ads_spend?: number;
+  product_spend?: number;
+  display_spend?: number;
   brand_spend?: number;
   cm2_profit_total?: number;
   cm2_profit_per?: number;
   cm2_profit_per_unit?: number;
-
+  debt_payment?: number;
+  disbursement?: number;
   gross_sales?: number;
   product_sales?: number;
   refund_sales?: number;
@@ -204,7 +207,11 @@ type Totals = {
   net_sales: number;
   lost_total: number;
   net_reimbursement: number;
+  debt_payment: number;
+  disbursement: number;
   ads_spend: number;
+  product_spend: number;
+  display_spend: number;
   brand_spend: number;
 };
 
@@ -252,6 +259,10 @@ const toNumber = (v: any) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   const n = Number(String(v).replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : 0;
+};
+
+const formatRoundedPlain = (value: unknown) => {
+  return Math.round(Math.abs(toNumber(value ?? 0))).toLocaleString();
 };
 
 const isNumericKey = (k: string, v: any) => typeof v === "number" || (!isNaN(Number(v)) && v !== null && v !== "");
@@ -313,6 +324,10 @@ function normalizeRows(data: any[]): TableRow[] {
       net_sales: toNumber(row.net_sales),
       lost_total: toNumber(row.lost_total),
 
+      reimbursement_vs_sales: toNumber(row.reimbursement_vs_sales),
+      debt_payment: toNumber(row.debt_payment),
+      disbursement: toNumber(row.disbursement),
+
       // Costs / Fees
       cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
       shipment_charges: toNumber(row.shipment_charges ?? row.shipment_fees),
@@ -342,13 +357,32 @@ function normalizeRows(data: any[]): TableRow[] {
       unit_wise_profitability: toNumber(row.unit_wise_profitability),
 
       // CM2 / Ads
+      product_spend: toNumber(
+        row.product_spend ??
+        row.sponsored_product ??
+        row.Sponsored_Product
+      ),
+
+      display_spend: toNumber(
+        row.display_spend ??
+        row.sponsored_display ??
+        row.Sponsored_Display
+      ),
+
+      brand_spend: toNumber(
+        row.brand_spend ??
+        row.sponsored_brand ??
+        row.Sponsored_Brand
+      ),
+
       ads_spend: toNumber(row.ads_spend),
+
       advertising_total: toNumber(row.advertising_total),
       advertising_total_final: toNumber(
         row.advertising_total_final ?? row.advertising_total
       ),
 
-      brand_spend: toNumber(row.brand_spend),
+
       visible_ads: toNumber(row.visible_ads),
 
       dealsvouchar_ads: toNumber(
@@ -428,16 +462,20 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
 
   return {
     ads_spend: toNumber(totalRow.ads_spend),
+    product_spend: toNumber(totalRow.product_spend),
+    display_spend: toNumber(totalRow.display_spend),
+    brand_spend: toNumber(totalRow.brand_spend),
 
-    // summary row value: 3,086.90
     advertising_total: toNumber(totalRow.advertising_total),
 
+    net_reimbursement: netReimbursement,
+    debt_payment: toNumber(totalRow.debt_payment),
+    disbursement: toNumber(totalRow.disbursement),
     // final card / TACoS value: 21,138.82
     advertising_total_final: toNumber(
       totalRow.advertising_total_final ?? totalRow.advertising_total
     ),
 
-    brand_spend: toNumber(totalRow.brand_spend),
     visible_ads: toNumber(totalRow.visible_ads),
 
     dealsvouchar_ads: toNumber(
@@ -461,10 +499,8 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     cm2_profit_per: cm2ProfitPerValue,
     acos: toNumber(totalRow.acos),
     rembursment_vs_cm2_margins: toNumber(totalRow.rembursment_vs_cm2_margins),
-    net_reimbursement: netReimbursement,
     profit: toNumber(totalRow.Profit ?? totalRow.profit),
     net_sales: toNumber(totalRow.Net_Sales ?? totalRow.net_sales),
-
   };
 }
 
@@ -1049,6 +1085,44 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ...(hasCm2Data
       ? [
         {
+          id: "ads_spend_breakdown",
+          label: "Ads Spend",
+          info: <InfoTip text="Ads Spend" />,
+          collapsedCols: [
+            {
+              key: "ads_spend",
+              label: "Total",
+              align: "center",
+              sortable: true,
+              width: "8%",
+            },
+          ],
+          expandedCols: [
+            {
+              key: "product_spend",
+              label: "Sponsored Product",
+              align: "center",
+              sortable: true,
+              width: "8%",
+            },
+            {
+              key: "display_spend",
+              label: "Sponsored Display",
+              align: "center",
+              sortable: true,
+              width: "8%",
+            },
+            {
+              key: "ads_spend",
+              label: "Total",
+              align: "center",
+              sortable: true,
+              width: "8%",
+            },
+          ],
+        } as ColGroup<TableRow>,
+
+        {
           id: "cm2_profit_breakdown",
           label: "CM2 Profit",
           collapsedCols: [
@@ -1102,12 +1176,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
       },
       ...(hasCm2Data
         ? [
-          {
-            key: "ads_spend",
-            label: "Ads Spend",
-            align: "center" as const,
-            width: "7%",
-          },
+          // {
+          //   key: "ads_spend",
+          //   label: "Ads Spend",
+          //   align: "center" as const,
+          //   width: "7%",
+          // },
           {
             key: "acos",
             label: "ACoS %",
@@ -1158,6 +1232,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
       ...(hasCm2Data
         ? [
+          { key: "product_spend", label: "Sponsored Product", align: "center" as const },
+          { key: "display_spend", label: "Sponsored Display", align: "center" as const },
           { key: "ads_spend", label: "Ads Spend", align: "center" as const },
           { key: "acos", label: "ACoS %", align: "center" as const },
           { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
@@ -1227,6 +1303,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "other_transactions",
         "profit",
         "advertising_total",
+        "product_spend",
+        "display_spend",
         "visible_ads",
         "dealsvouchar_ads",
         "inventory_storage_fees",
@@ -1240,6 +1318,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "cm2_profit_total",
         "cm2_profit",
         "unit_wise_cm2_profitability",
+        "debt_payment",
+        "disbursement",
       ]);
 
       let formatted;
@@ -1306,6 +1386,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "lost_total",
         "advertising_total",
         "ads_spend",
+        "product_spend",
+        "display_spend",
         "brand_spend",
       ]),
     []
@@ -1720,7 +1802,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "cm2_profit") return toNumber((row as any).cm2_profit);
                   if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
                   if (colKey === "acos") return getAcosPercentage(row);
-
+                  if (colKey === "product_spend") return toNumber((row as any).product_spend);
+                  if (colKey === "display_spend") return toNumber((row as any).display_spend);
+                  if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
                   return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
@@ -1744,7 +1828,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   ...(hasCm2Data
                     ? [
-                      { type: "single" as const, key: "ads_spend" },
+                      { type: "group" as const, id: "ads_spend_breakdown" },
                       { type: "single" as const, key: "acos" },
                       { type: "group" as const, id: "cm2_profit_breakdown" },
                     ]
@@ -1758,7 +1842,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,
                   profit_breakdown: true,
-                  ...(hasCm2Data ? { cm2_profit_breakdown: true } : {}),
+                  ...(hasCm2Data
+                    ? {
+                      ads_spend_breakdown: true,
+                      cm2_profit_breakdown: true,
+                    }
+                    : {}),
                 }}
                 toggleGroupByColKey={{
                   net_units_sold: "units_breakdown",
@@ -1766,7 +1855,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   amazon_fee: "amazon_breakdown",
                   other_transactions: "other_transactions_breakdown",
                   profit: "profit_breakdown",
-                  ...(hasCm2Data ? { cm2_profit: "cm2_profit_breakdown" } : {}),
+                  ...(hasCm2Data
+                    ? {
+                      ads_spend: "ads_spend_breakdown",
+                      product_spend: "ads_spend_breakdown",
+                      display_spend: "ads_spend_breakdown",
+                      cm2_profit: "cm2_profit_breakdown",
+                    }
+                    : {}),
                 }}
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
@@ -1844,13 +1940,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return formatValue(getAcosPercentage(row), "acos");
                   }
 
+                  // ✅ round Ads Spend expanded columns without decimals
+                  if (
+                    colKey === "product_spend" ||
+                    colKey === "display_spend" ||
+                    colKey === "brand_spend" ||
+                    colKey === "ads_spend"
+                  ) {
+                    return formatRoundedPlain((row as any)[colKey]);
+                  }
+
                   return formatValue((row as any)[colKey], colKey);
+
                 }}
                 summary={{
                   enabled: !noDataFound && mainColCount > 0,
 
-                  sections: [
+                  rows: [
                     {
+                      type: "section",
                       id: "ads",
                       label: "Cost of Advertisement",
                       endValue: formatValue(totals.advertising_total, "advertising_total"),
@@ -1870,6 +1978,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     },
 
                     {
+                      type: "section",
                       id: "other",
                       label: "Other Transactions",
                       endValue: formatValue(totals.other_transactions, "other_transactions"),
@@ -1905,13 +2014,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         },
                       ],
                     },
-                  ],
 
-                  fixedRows: [
                     ...((countryName || "").toLowerCase() === "us" ||
                       (countryName || "").toLowerCase() === "global"
                       ? [
                         {
+                          type: "fixed" as const,
                           id: "ship",
                           label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
                           endValue: formatValue(totals.shipment_charges, "shipment_charges"),
@@ -1920,31 +2028,61 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       : []),
 
                     {
+                      type: "fixed",
                       id: "cm2_profit",
                       label: "CM2 Profit/Loss",
                       endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
                     },
-                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}` },
-
-                    // ✅ TACoS first
                     {
+                      type: "fixed",
+                      id: "cm2_margins",
+                      label: "CM2 Margins",
+                      endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
+                    },
+                    {
+                      type: "fixed",
                       id: "tacos",
                       label: "TACoS (Total Advertising Cost of Sale)",
                       endValue: `${formatValue(frontendTacos, "acos")}`,
                     },
 
-                    // ✅ then Net Reimbursement (below TACoS)
+                    // ✅ Now Net Reimbursement appears below TACoS and remains collapsible
                     {
+                      type: "section",
                       id: "net_reimb",
                       label: "Net Reimbursement",
                       endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "net_reimb_debt_payment",
+                          label: (
+                            <>
+                              Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.debt_payment, "debt_payment"),
+                        },
+                        {
+                          id: "net_reimb_disbursement",
+                          label: (
+                            <>
+                              Disbursement <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.disbursement, "disbursement"),
+                        },
+                      ],
                     },
+
                     {
+                      type: "fixed",
                       id: "rv_cm2",
                       label: "Reimbursement vs CM2 Margins",
                       endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
                     },
                     {
+                      type: "fixed",
                       id: "rv_sales",
                       label: "Reimbursement vs Sales",
                       endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,

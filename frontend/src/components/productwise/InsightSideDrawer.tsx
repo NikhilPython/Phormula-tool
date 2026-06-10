@@ -73,7 +73,7 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
 
   if (!insightData) return null;
 
-    const formatPerfMonth = (month?: string) => {
+  const formatPerfMonth = (month?: string) => {
     if (!month) return "-";
 
     const fullNames = [
@@ -210,12 +210,12 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
                     ].map((b, i) => (
                       <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <div className="text-xs text-slate-500">{b.label}</div>
-<div className="text-xs text-slate-500">
-  {formatPerfMonth(b.data?.month)}
-</div>
-<div className="text-sm font-bold text-slate-900 mt-1">
-  {formatPerfValue(b.label, b.data?.value)}
-</div>
+                        <div className="text-xs text-slate-500">
+                          {formatPerfMonth(b.data?.month)}
+                        </div>
+                        <div className="text-sm font-bold text-slate-900 mt-1">
+                          {formatPerfValue(b.label, b.data?.value)}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -276,21 +276,20 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
                   </div>
                 )}
               </div>
-              
+
 
               {/* 5) Product Journey ✅ FIXED */}
               {journeyBullets.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-sm font-semibold text-slate-800">Product Journey</div>
 
-                  <ul className="space-y-2 text-xs text-slate-700">
+                  <ol className="list-decimal list-outside space-y-2 pl-5 text-xs text-slate-700 marker:text-slate-400 marker:font-semibold">
                     {journeyBullets.map((j: string, i: number) => (
-                      <li key={i} className="flex gap-2">
-                        <span className="text-slate-400 mt-[2px]">→</span>
+                      <li key={i}>
                         <span>{j}</span>
                       </li>
                     ))}
-                  </ul>
+                  </ol>
                 </div>
               )}
             </div>

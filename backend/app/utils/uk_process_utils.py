@@ -130,6 +130,19 @@ def get_previous_month_year(month, year):
     prev_month = MONTHS_REVERSE_MAP[prev_month_num]
     return prev_month, year
 
+def ensure_payment_columns(conn, table_name: str):
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS debt_payment DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS disbursement DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
+
 def process_skuwise_data(user_id, country, month, year):
     engine = create_engine(db_url)
     engine1 = create_engine(db_url1)
@@ -279,12 +292,30 @@ def process_skuwise_data(user_id, country, month, year):
         if "advertising_cost" not in df.columns:
             df["advertising_cost"] = 0.0
 
-        # Robust "Transfer" filter
         type_str = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip()
+        desc_str_payment = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
+
         transfer_df = df[type_str.isin(["Transfer", "DebtRecovery"])]
+
+        # existing reimbursement_fee logic - do not change
         rembursement_fee_desc_sum = abs(transfer_df["total"].sum()) if "total" in transfer_df else 0
         rembursement_fee_col_sum = df["net_reimbursement"].sum() if "net_reimbursement" in df.columns else 0
         rembursement_fee = rembursement_fee_desc_sum + rembursement_fee_col_sum
+
+        # new separate columns
+        debt_payment_total = abs(
+            pd.to_numeric(
+                df.loc[desc_str_payment.eq("DebtPayment"), "total"],
+                errors="coerce"
+            ).fillna(0).sum()
+        ) if "total" in df.columns else 0
+
+        disbursement_total = abs(
+            pd.to_numeric(
+                df.loc[desc_str_payment.eq("Disbursement"), "total"],
+                errors="coerce"
+            ).fillna(0).sum()
+        ) if "total" in df.columns else 0
 
         # Convert numeric columns (only those present)
         numeric_columns = [
@@ -958,6 +989,8 @@ def process_skuwise_data(user_id, country, month, year):
         # these will already be merged; keep initialization for schema safety (won't hurt)
         sku_grouped["platform_fee"] = sku_grouped.get("platform_fee", 0).fillna(0)
         sku_grouped["rembursement_fee"] = 0
+        sku_grouped["debt_payment"] = 0.0
+        sku_grouped["disbursement"] = 0.0
         # advertising_total merged above; ensure present
         if "advertising_total" in sku_grouped.columns:
             sku_grouped["advertising_total"] = pd.to_numeric(
@@ -1176,6 +1209,8 @@ def process_skuwise_data(user_id, country, month, year):
             2
         )
         sum_row["rembursement_fee"] = abs(rembursement_fee) 
+        sum_row["debt_payment"] = abs(float(debt_payment_total))
+        sum_row["disbursement"] = abs(float(disbursement_total))
         sum_row["advertising_total"]= abs(advertising_total)
         sum_row["reimbursement_vs_sales"]= abs(reimbursement_vs_sales)
         sum_row["cm2_profit"]= cm2_profit
@@ -1412,6 +1447,8 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
+                    debt_payment REAL,
+                    disbursement REAL,
                     rembursement_fee REAL,
                     reimbursement_vs_sales REAL,
                     cm2_margins REAL,
@@ -1475,6 +1512,8 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
+                    debt_payment REAL,
+                    disbursement REAL,
                     rembursement_fee REAL,
                     rembursment_vs_cm2_margins REAL,
                     reimbursement_vs_sales REAL,
@@ -1485,6 +1524,7 @@ def process_skuwise_data(user_id, country, month, year):
             """))
 
         for tbl in (target_table2, target_table_usd_roll):
+            ensure_payment_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                     id SERIAL PRIMARY KEY,
@@ -1528,6 +1568,8 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
+                    debt_payment REAL,
+                    disbursement REAL,
                     rembursement_fee REAL,
                     reimbursement_vs_sales REAL,
                     cm2_margins REAL,
@@ -1588,7 +1630,7 @@ def process_skuwise_data(user_id, country, month, year):
             'marketplace_facilitator_tax', 'shipping_credits_tax', 'giftwrap_credits_tax',
             'shipping_credits', 'gift_wrap_credits', 'net_sales', 'net_taxes', 'net_credits',
             'profit', 'profit_percentage', 'amazon_fee', 'cost_of_unit_sold',
-            'other_transaction_fees', 'platform_fee', 'shipment_charges', 'rembursement_fee',
+            'other_transaction_fees', 'platform_fee', 'shipment_charges', 'debt_payment','disbursement','rembursement_fee',
             'advertising_total', 'reimbursement_vs_sales', 'cm2_profit', 'cm2_margins', 'acos',
             'rembursment_vs_cm2_margins', 'total', 'profit_change','unit_wise_profitability', 
             'unit_wise_profitability_percentage', 'asp', 'sales_percentage',
@@ -1639,6 +1681,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         # USD table (schema aligned)
         for tbl in [target_table_us, target_table_ind, target_table_can, target_table_gbp]:
+            ensure_payment_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                     id SERIAL PRIMARY KEY,
@@ -1682,6 +1725,8 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
+                    debt_payment REAL,
+                    disbursement REAL,
                     rembursement_fee REAL,
                     reimbursement_vs_sales REAL,
                     cm2_margins REAL,
@@ -1794,7 +1839,7 @@ def process_skuwise_data(user_id, country, month, year):
             "net_taxes","net_credits","misc_transaction","other_transaction_fees","profit","unit_wise_profitability",
             "profit_percentage","visible_ads","dealsvouchar_ads","advertising_total","platformfeenew",
             "platform_fee", "platform_fee_inventory_storage","cm2_profit","cm2_profit_percentage",
-            "acos","rembursement_fee","rembursment_vs_cm2_margins","reimbursement_vs_sales","lost_total",
+            "acos","debt_payment","disbursement","rembursement_fee","rembursment_vs_cm2_margins","reimbursement_vs_sales","lost_total",
             "sales_mix","profit_mix","user_id"
         ]
 
@@ -2056,6 +2101,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
         ]
 
         for source_table, logical_country in config_list:
+            ensure_payment_columns(conn, source_table)
+            conn.commit()
+
             quarter_table = f"{quarter_key}_{user_id}_{logical_country}_{year}_table"
 
             month_params = {f"m{i}": m for i, m in enumerate(months_for_quarter)}
@@ -2107,6 +2155,8 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                        "cm2_profit",
                        "cm2_profit_percentage",
                        "acos",
+                       "debt_payment",
+                       "disbursement",
                        "rembursement_fee",
                        "rembursment_vs_cm2_margins",
                        "reimbursement_vs_sales",
@@ -2155,6 +2205,8 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 "cm2_profit": "sum",
                 "cm2_profit_percentage": "mean",
                 "acos": "mean",
+                "debt_payment": "sum",
+                "disbursement": "sum",
                 "rembursement_fee": "sum",
                 "rembursment_vs_cm2_margins": "mean",
                 "reimbursement_vs_sales": "mean",
@@ -2163,6 +2215,20 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 "profit_mix": "mean",
                 "user_id": "first"
             }).reset_index()
+            # FIX: quarterly TOTAL net reimbursement should be net,
+            # not sum of monthly absolute reimbursement values.
+            total_mask = (
+                sku_grouped["product_name"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .eq("total")
+            )
+
+            sku_grouped.loc[total_mask, "rembursement_fee"] = (
+                pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
+                - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
+            ).abs()
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
@@ -2252,6 +2318,8 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                         cm2_profit_percentage DOUBLE PRECISION,
                         cm2_margins DOUBLE PRECISION,
                         acos DOUBLE PRECISION,
+                        debt_payment DOUBLE PRECISION,
+                        disbursement DOUBLE PRECISION,
                         rembursement_fee DOUBLE PRECISION,
                         rembursment_vs_cm2_margins DOUBLE PRECISION,
                         reimbursement_vs_sales DOUBLE PRECISION,
@@ -2308,6 +2376,9 @@ def process_yearly_skuwise_data(user_id, country, year):
 
     try:
         for source_table, logical_country in config_list:
+            ensure_payment_columns(conn, source_table)
+            conn.commit()
+
             quarter_table = f"skuwiseyearly_{user_id}_{logical_country}_{year}_table"
 
             yearly_query = f"""
@@ -2343,6 +2414,8 @@ def process_yearly_skuwise_data(user_id, country, year):
                        "cm2_profit",
                        "cm2_profit_percentage",
                        "acos",
+                       "debt_payment",
+                       "disbursement",
                        "rembursement_fee",
                        "rembursment_vs_cm2_margins",
                        "reimbursement_vs_sales",
@@ -2396,6 +2469,8 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "cm2_profit": "sum",
                 "cm2_profit_percentage": "mean",
                 "acos": "mean",
+                "debt_payment": "sum",
+                "disbursement": "sum",
                 "rembursement_fee": "sum",
                 "rembursment_vs_cm2_margins": "mean",
                 "reimbursement_vs_sales": "mean",
@@ -2404,6 +2479,20 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "profit_mix": "mean",
                 "user_id": "first",
             }).reset_index()
+            # FIX: yearly TOTAL net reimbursement should be net,
+            # not sum of monthly absolute reimbursement values.
+            total_mask = (
+                sku_grouped["product_name"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .eq("total")
+            )
+
+            sku_grouped.loc[total_mask, "rembursement_fee"] = (
+                pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
+                - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
+            ).abs()
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
@@ -2492,6 +2581,8 @@ def process_yearly_skuwise_data(user_id, country, year):
                     cm2_profit_percentage DOUBLE PRECISION,
                     cm2_margins DOUBLE PRECISION,
                     acos DOUBLE PRECISION,
+                    debt_payment DOUBLE PRECISION,
+                    disbursement DOUBLE PRECISION,
                     rembursement_fee DOUBLE PRECISION,
                     rembursment_vs_cm2_margins DOUBLE PRECISION,
                     reimbursement_vs_sales DOUBLE PRECISION,

@@ -1290,7 +1290,7 @@ const AppSidebar: React.FC = () => {
       {/* Navigation Sections */}
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-4 min-[1700px]:gap-1">
             {visibleSections.map((section) => {
               const resolvedSubPaths = section.subItems.map((sub) =>
                 typeof sub.path === "function"

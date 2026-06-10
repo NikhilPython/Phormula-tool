@@ -1026,13 +1026,13 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                                 />
                                                             </div>
 
-                                                            <ul className="list-disc list-outside space-y-2 pl-5 text-xs text-[#414042] 2xl:text-sm">
+                                                            <ol className="list-decimal list-outside space-y-2 pl-3 text-xs text-[#414042] 2xl:text-sm marker:font-semibold">
                                                                 {journeyBullets.map((j, i) => (
                                                                     <li key={i}>
                                                                         <span>{j}</span>
                                                                     </li>
                                                                 ))}
-                                                            </ul>
+                                                            </ol>
                                                         </div>
                                                     )}
                                                 </div>

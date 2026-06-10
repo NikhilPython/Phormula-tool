@@ -2885,6 +2885,46 @@ def compute_net_reimbursement_from_df(df: pd.DataFrame) -> float:
     net = disb - abs(debt)
     return float(net or 0.0)
 
+def compute_debt_payment_disbursement_from_df(df: pd.DataFrame) -> dict:
+    """
+    Separate TOTAL-only values:
+    debt_payment = abs(sum total where description = DebtPayment)
+    disbursement = abs(sum total where description = Disbursement)
+    """
+    if df is None or df.empty:
+        return {
+            "debt_payment": 0.0,
+            "disbursement": 0.0,
+        }
+
+    tmp = df.copy()
+
+    for col, default in [("type", ""), ("description", ""), ("total", 0.0)]:
+        if col not in tmp.columns:
+            tmp[col] = default
+
+    t = tmp["type"].astype(str).str.strip().str.lower()
+    d = tmp["description"].astype(str).str.strip().str.lower()
+    total = safe_num(tmp["total"])
+
+    debt_payment = float(
+        total[
+            (d == "debtpayment")
+            | ((t == "debtrecovery") & (d == "debtpayment"))
+        ].sum()
+    )
+
+    disbursement = float(
+        total[
+            (d == "disbursement")
+            | ((t == "transfer") & (d == "disbursement"))
+        ].sum()
+    )
+
+    return {
+        "debt_payment": abs(debt_payment),
+        "disbursement": abs(disbursement),
+    }
 
 def previous_month_full_range(now_utc: datetime) -> tuple[date, date]:
     # previous month/year

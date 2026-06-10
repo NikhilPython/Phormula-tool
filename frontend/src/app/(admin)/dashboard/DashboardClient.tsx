@@ -129,7 +129,8 @@ type MonthlySkuwiseRow = {
     total_quantity?: number;
     asp: number;
     net_sales: number;
-
+    debt_payment?: number;
+    disbursement?: number;
     net_taxes?: number;
     other_transactions?: number;
     misc_transaction?: number;
@@ -153,6 +154,7 @@ type MonthlySkuwiseRow = {
     lost_total?: number;
     other?: number;
     product_spend?: number;
+    display_spend?: number;
     brand_spend?: number;
     dealsvouchar_ads?: number;
     platformfeenew?: number;
@@ -161,7 +163,6 @@ type MonthlySkuwiseRow = {
     net_sales_delta?: number;
     net_sales_delta_percentage?: number | null;
 
-    // ✅ add these grand total fields
     total_cm2_profit?: number;
     total_cm2_margins?: number;
     tacos_total_advertising_cost_of_sale?: number;
@@ -187,6 +188,8 @@ type GrandTotalSkuwiseRow = Partial<MonthlySkuwiseRow> & {
     total_cm2_margins?: number;
     profit_percentage?: number;
     shipment_fees?: number;
+    debt_payment?: number;
+    disbursement?: number;
     current_net_reimbursement?: number;
     reimbursement_vs_sales?: number;
     reimbursement_vs_cm2_margins?: number;
@@ -209,6 +212,7 @@ type ProductwiseMoneyKey =
     | "asp"
     | "net_sales"
     | "net_taxes"
+
     | "other_transactions"
     | "cogs"
     | "fba_fees"
@@ -221,12 +225,16 @@ type ProductwiseMoneyKey =
     | "cm1_profit_per_unit"
     | "cm2_profit_per_unit"
     | "profit"
+    | "platformfeenew"
+    | "debt_payment"
+    | "disbursement"
     | "platform_fee"
     | "platform_fee_inventory_storage"
     | "lost_total"
     | "other"
     | "misc_transaction"
     | "product_spend"
+    | "display_spend"
     | "brand_spend"
     | "dealsvouchar_ads"
     | "platformfeenew";
@@ -329,8 +337,18 @@ type DailyPoint = {
 type ApiDailySeries = {
     previous?: DailyPoint[];
     current_mtd?: DailyPoint[];
+
     previous_global?: DailyPoint[];
     current_mtd_global?: DailyPoint[];
+
+    previous_uk?: DailyPoint[];
+    current_mtd_uk?: DailyPoint[];
+
+    previous_us?: DailyPoint[];
+    current_mtd_us?: DailyPoint[];
+
+    previous_ca?: DailyPoint[];
+    current_mtd_ca?: DailyPoint[];
 };
 
 type GraphDailySeries = {
@@ -464,6 +482,28 @@ const normalizeProductDisplayName = (value: any) => {
         .join("");
 };
 
+const formatPlainAmount = (value: unknown) => {
+    const n = toNumberSafe(value ?? 0);
+
+    if (Number.isInteger(n)) {
+        return String(n);
+    }
+
+    return n.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    });
+};
+
+const formatRoundedNumber = (value: unknown) => {
+    const n = toNumberSafe(value ?? 0);
+
+    return Math.round(n).toLocaleString("en-GB", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    });
+};
+
 const getRegionDateFromTimestamp = (
     timestamp: number | string | Date,
     region: RegionKey
@@ -531,6 +571,8 @@ type PlSummaryTotals = {
 
     rembursment_vs_cm2_margins: number;
     net_reimbursement: number;
+    debt_payment: number;
+    disbursement: number;
 
     profit: number;
     net_sales: number;
@@ -563,6 +605,8 @@ const ROUNDED_SUMMARY_KEYS = new Set<string>([
     "misc_transaction",
     "lost_total",
     "net_reimbursement",
+    "debt_payment",
+    "disbursement",
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
@@ -646,6 +690,9 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         ),
         net_reimbursement: netReimbursement,
 
+        debt_payment: toNumber(source?.debt_payment),
+        disbursement: toNumber(source?.disbursement),
+
         profit: toNumber(source?.Profit ?? source?.profit ?? source?.cm1_profit),
         net_sales: netSales,
     };
@@ -695,7 +742,10 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
         acos: toNumber(grand?.tacos_total_advertising_cost_of_sale),
 
         rembursment_vs_cm2_margins: toNumber(grand?.reimbursement_vs_cm2_margins),
+
         net_reimbursement: toNumber(grand?.current_net_reimbursement),
+        debt_payment: toNumber(grand?.debt_payment),
+        disbursement: toNumber(grand?.disbursement),
 
         profit: toNumber(grand?.profit),
         net_sales: toNumber(grand?.net_sales),
@@ -1790,6 +1840,7 @@ export default function DashboardPage() {
             tax_and_credits: true,
             profit: true,
             cm2_profit: true,
+            ads_spend: true,
         }),
         []
     );
@@ -1866,7 +1917,14 @@ export default function DashboardPage() {
         [platform, previousSkuwiseGlobalData]
     );
 
-    const [globalMtdCountry, setGlobalMtdCountry] = useState<"uk" | "us">("uk");
+    type GlobalMtdView = "global" | "uk" | "us";
+
+    const [globalMtdView, setGlobalMtdView] = useState<GlobalMtdView>("global");
+
+    const globalMtdCountry = useMemo<"uk" | "us">(() => {
+        return globalMtdView === "us" ? "us" : "uk";
+    }, [globalMtdView]);
+
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
     const [fxReady, setFxReady] = useState(false);
     const [globalCountryPayloads, setGlobalCountryPayloads] = useState<{
@@ -2281,10 +2339,10 @@ export default function DashboardPage() {
         return `${selected.time} ${selected.abbreviation || ""}`.trim();
     }, [countryTime]);
 
-    const globalMtdCountryOptions = useMemo(() => {
-        // ✅ Preview / dummy mode should still show UK/US toggle + cards
+    const globalMtdViewOptions = useMemo(() => {
         if (shouldShowDummyUi) {
             return [
+                { value: "global" as const, label: "Global" },
                 { value: "uk" as const, label: "UK" },
                 { value: "us" as const, label: "US" },
             ];
@@ -2296,7 +2354,9 @@ export default function DashboardPage() {
                 .filter(Boolean)
         );
 
-        const options: { value: "uk" | "us"; label: string }[] = [];
+        const options: { value: GlobalMtdView; label: string }[] = [
+            { value: "global", label: "Global" },
+        ];
 
         if (connected.has("uk")) {
             options.push({ value: "uk", label: "UK" });
@@ -2310,16 +2370,16 @@ export default function DashboardPage() {
     }, [amazonConnections, shouldShowDummyUi]);
 
     useEffect(() => {
-        if (!globalMtdCountryOptions.length) return;
+        if (!globalMtdViewOptions.length) return;
 
-        const selectedStillAvailable = globalMtdCountryOptions.some(
-            (option) => option.value === globalMtdCountry
+        const selectedStillAvailable = globalMtdViewOptions.some(
+            (option) => option.value === globalMtdView
         );
 
         if (!selectedStillAvailable) {
-            setGlobalMtdCountry(globalMtdCountryOptions[0].value);
+            setGlobalMtdView(globalMtdViewOptions[0].value);
         }
-    }, [globalMtdCountryOptions, globalMtdCountry]);
+    }, [globalMtdViewOptions, globalMtdView]);
 
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
@@ -3134,15 +3194,65 @@ export default function DashboardPage() {
         const fromCurrency: CurrencyCode =
             platform === "global" ? "USD" : biDataCurrency;
 
-        const currentSource: DailyPoint[] =
-            platform === "global"
-                ? biDailySeries.current_mtd_global || biDailySeries.current_mtd || []
-                : biDailySeries.current_mtd || [];
+        const filterSeriesByCountry = (
+            rows: DailyPoint[] | undefined,
+            country: "uk" | "us" | "ca"
+        ) => {
+            return (rows || []).filter((row: any) => {
+                const rowCountry = String(
+                    row?.source_country || row?.country || ""
+                ).toLowerCase();
 
-        const previousSource: DailyPoint[] =
-            platform === "global"
-                ? biDailySeries.previous_global || biDailySeries.previous || []
-                : biDailySeries.previous || [];
+                return rowCountry === country;
+            });
+        };
+
+        const getCurrentSource = (): DailyPoint[] => {
+            if (platform !== "global") {
+                return biDailySeries.current_mtd || [];
+            }
+
+            if (globalMtdView === "uk") {
+                return (
+                    biDailySeries.current_mtd_uk ||
+                    filterSeriesByCountry(biDailySeries.current_mtd, "uk")
+                );
+            }
+
+            if (globalMtdView === "us") {
+                return (
+                    biDailySeries.current_mtd_us ||
+                    filterSeriesByCountry(biDailySeries.current_mtd, "us")
+                );
+            }
+
+            return biDailySeries.current_mtd_global || biDailySeries.current_mtd || [];
+        };
+
+        const getPreviousSource = (): DailyPoint[] => {
+            if (platform !== "global") {
+                return biDailySeries.previous || [];
+            }
+
+            if (globalMtdView === "uk") {
+                return (
+                    biDailySeries.previous_uk ||
+                    filterSeriesByCountry(biDailySeries.previous, "uk")
+                );
+            }
+
+            if (globalMtdView === "us") {
+                return (
+                    biDailySeries.previous_us ||
+                    filterSeriesByCountry(biDailySeries.previous, "us")
+                );
+            }
+
+            return biDailySeries.previous_global || biDailySeries.previous || [];
+        };
+
+        const currentSource = getCurrentSource();
+        const previousSource = getPreviousSource();
 
         const convPoint = (p: DailyPoint): DailyPoint => ({
             ...p,
@@ -3187,10 +3297,7 @@ export default function DashboardPage() {
         };
 
         return {
-            // keep previous full series so x-axis stays normal
             previous: previousSource.map(convPoint),
-
-            // keep current full series, but hide future current values
             current_mtd: currentSource.map(blankFutureCurrentPoint),
         };
     }, [
@@ -3198,6 +3305,7 @@ export default function DashboardPage() {
         convertToDisplayCurrency,
         biDataCurrency,
         platform,
+        globalMtdView,
         isCurrentPointAllowed,
     ]);
 
@@ -5594,8 +5702,28 @@ export default function DashboardPage() {
                 lost_total: Number(r.lost_total ?? 0),
                 other: Number(r.other ?? 0),
 
-                product_spend: Number(r.product_spend ?? 0),
-                brand_spend: Number(r.brand_spend ?? 0),
+                product_spend: Number(
+                    r.product_spend ??
+                    r.sponsored_product ??
+                    r.Sponsored_Product ??
+                    0
+                ),
+
+                display_spend: Number(
+                    r.display_spend ??
+                    r.sponsored_display ??
+                    r.Sponsored_Display ??
+                    0
+                ),
+
+                brand_spend: Number(
+                    r.brand_spend ??
+                    r.display_brand ??
+                    r.Display_brand ??
+                    r.sponsored_brand ??
+                    r.Sponsored_Brand ??
+                    0
+                ),
                 dealsvouchar_ads: Number(r.dealsvouchar_ads ?? 0),
                 platformfeenew: Number(r.platformfeenew ?? 0),
 
@@ -5630,9 +5758,12 @@ export default function DashboardPage() {
         "lost_total",
         "other",
         "product_spend",
+        "display_spend",
         "brand_spend",
         "dealsvouchar_ads",
         "platformfeenew",
+        "debt_payment",
+        "disbursement",
     ];
 
     const normalizeProductwiseRow = (raw: any): MonthlySkuwiseRow => {
@@ -5646,8 +5777,33 @@ export default function DashboardPage() {
             tax + credits
         );
 
+        // ✅ Add this here, before return
+        const productSpend = toNumberSafe(
+            raw?.product_spend ??
+            raw?.sponsored_product ??
+            raw?.Sponsored_Product ??
+            0
+        );
+
+        const displaySpend = toNumberSafe(
+            raw?.display_spend ??
+            raw?.sponsored_display ??
+            raw?.Sponsored_Display ??
+            0
+        );
+
+        const brandSpend = toNumberSafe(
+            raw?.brand_spend ??
+            raw?.display_brand ??
+            raw?.Display_brand ??
+            raw?.sponsored_brand ??
+            raw?.Sponsored_Brand ??
+            0
+        );
+
         return {
             ...raw,
+
             quantity: toNumberSafe(raw?.quantity),
 
             return_quantity: toNumberSafe(
@@ -5677,7 +5833,15 @@ export default function DashboardPage() {
             cogs: toNumberSafe(raw?.cogs),
             fba_fees: toNumberSafe(raw?.fba_fees),
             selling_fees: toNumberSafe(raw?.selling_fees),
-            ads_spend: toNumberSafe(raw?.ads_spend),
+
+            // ✅ Use normalized values here
+            product_spend: productSpend,
+            display_spend: displaySpend,
+            brand_spend: brandSpend,
+
+            // ✅ Total Ads = SP + SD + SB
+            ads_spend: productSpend + displaySpend + brandSpend,
+
             acos: toNumberSafe(raw?.acos),
             cm2_profit: toNumberSafe(raw?.cm2_profit),
             cm1_profit_per: toNumberSafe(raw?.cm1_profit_per),
@@ -5690,8 +5854,7 @@ export default function DashboardPage() {
             platform_fee_inventory_storage: toNumberSafe(raw?.platform_fee_inventory_storage),
             lost_total: toNumberSafe(raw?.lost_total),
             other: toNumberSafe(raw?.other),
-            product_spend: toNumberSafe(raw?.product_spend),
-            brand_spend: toNumberSafe(raw?.brand_spend),
+
             dealsvouchar_ads: toNumberSafe(raw?.dealsvouchar_ads),
             platformfeenew: toNumberSafe(raw?.platformfeenew),
         };
@@ -5904,6 +6067,7 @@ export default function DashboardPage() {
             lost_total: rows.reduce((s, r) => s + toNumberSafe(r.lost_total), 0),
             other: rows.reduce((s, r) => s + toNumberSafe(r.other), 0),
             product_spend: rows.reduce((s, r) => s + toNumberSafe(r.product_spend), 0),
+            display_spend: rows.reduce((s, r) => s + toNumberSafe(r.display_spend), 0),
             brand_spend: rows.reduce((s, r) => s + toNumberSafe(r.brand_spend), 0),
             dealsvouchar_ads: rows.reduce((s, r) => s + toNumberSafe(r.dealsvouchar_ads), 0),
             platformfeenew: rows.reduce((s, r) => s + toNumberSafe(r.platformfeenew), 0),
@@ -6413,6 +6577,10 @@ export default function DashboardPage() {
 
                 case "sku":
                     return String(row.sku || "").toLowerCase();
+                case "product_spend":
+                case "display_spend":
+                case "brand_spend":
+                    return toNumber((row as any)[key]);
 
                 default:
                     return toNumber((row as any)[key]);
@@ -6469,6 +6637,21 @@ export default function DashboardPage() {
                     ? rest.reduce((acc, r) => acc + (Number(r.asp) || 0), 0) / rest.length
                     : 0;
 
+        const othersProductSpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.product_spend ?? 0),
+            0
+        );
+
+        const othersDisplaySpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.display_spend ?? 0),
+            0
+        );
+
+        const othersAdsSpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.ads_spend ?? 0),
+            0
+        );
+
         const othersRow: MonthlySkuwiseTableRow = {
             sno: 10,
             sku: "OTHERS",
@@ -6504,7 +6687,11 @@ export default function DashboardPage() {
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
 
-            ads_spend: sum("ads_spend"),
+            ads_spend: othersAdsSpend,
+            product_spend: othersProductSpend,
+            display_spend: othersDisplaySpend,
+            brand_spend: sum("brand_spend"),
+
             acos: othersNetSales
                 ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100
                 : 0,
@@ -6517,8 +6704,9 @@ export default function DashboardPage() {
             lost_total: sum("lost_total"),
             other: sum("other"),
 
-            product_spend: sum("product_spend"),
-            brand_spend: sum("brand_spend"),
+            // product_spend: sum("product_spend"),
+            // display_spend: sum("display_spend" as keyof MonthlySkuwiseRow),
+            // brand_spend: sum("brand_spend"),
             dealsvouchar_ads: sum("dealsvouchar_ads"),
             platformfeenew: sum("platformfeenew"),
 
@@ -6945,6 +7133,48 @@ export default function DashboardPage() {
                 },
             ],
         },
+        {
+            id: "ads_spend",
+            label: "Ads Spend",
+            info: <InfoTip text={TERM_DEFINITIONS.ads_spend} />,
+
+            collapsedCols: [
+                {
+                    key: "ads_spend",
+                    label: "Total",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                    render: (row: MonthlySkuwiseTableRow) =>
+                        formatDisplayAmount(toNumberSafe(row.ads_spend)),
+                },
+            ],
+
+            expandedCols: [
+                {
+                    key: "product_spend",
+                    label: "Sponsored Product",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+                {
+                    key: "display_spend",
+                    label: "Sponsored Display",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+                {
+                    key: "ads_spend",
+                    label: "Total",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+            ],
+        },
+
         {
             id: "cm2_profit",
             label: "CM2 Profit",
@@ -7626,14 +7856,18 @@ export default function DashboardPage() {
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
     const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
+
     const ADS_SIGN_MINUS = new Set([
         "return_quantity",
         "ads_spend",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
         "cogs",
         "fba_fees",
         "selling_fees",
         "marketplace_total",
-        "tax"
+        "tax",
     ]);
 
     const getAdsSignForCol = useCallback((colKey: string) => {
@@ -10839,162 +11073,16 @@ ${pageLoading
                 {activeTab === "live" && (
                     <div
                         id="live-sales"
-                        className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start lg:items-stretch lg:auto-rows-fr"
+                        className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start"
                     >
                         {/* LEFT COLUMN */}
                         <div
-                            className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-auto min-h-0 lg:h-full lg:min-h-full ${leftColumnHeightClass ?? ""}`}
+                            className="col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 min-w-0 h-auto min-h-0"
                         >
-                            {!isCountryMode && hasGlobalCard && (
-                                <div className="flex">
-                                    <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
-                                        <div className="mb-4 flex items-center justify-between gap-3">
-                                            <div className="min-w-0 shrink-0">
-                                                <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
-                                            </div>
-
-                                        </div>
-
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
-
-                                            <AmazonStatCard
-                                                label="Units"
-                                                current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
-                                                previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.units.current, dummyStatData.units.previous)
-                                                        : safeDeltaPct(globalMtdCardData.units, globalMtdCardData.prevUnits)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtInt}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Gross Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
-                                                previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.grossSales.current, dummyStatData.grossSales.previous)
-                                                        : safeDeltaPct(globalMtdCardData.grossSales, globalMtdCardData.prevGrossSales)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Net Sales"
-                                                current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
-                                                previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.netSales.current, dummyStatData.netSales.previous)
-                                                        : safeDeltaPct(globalMtdCardData.netSales, globalMtdCardData.prevNetSales)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="ASP"
-                                                current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
-                                                previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
-                                                        : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={formatDisplayAmount}
-                                                previousFormatter={formatDisplayAmount}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="Cost of Ads"
-                                                current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
-                                                previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.costOfAds.current, dummyStatData.costOfAds.previous)
-                                                        : safeDeltaPct(globalMtdCardData.ads, globalMtdCardData.prevAds)
-                                                }
-                                                inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#C49466] border-t-4 border-t-[#C49466]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="TACoS"
-                                                current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
-                                                previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.tacos.current, dummyStatData.tacos.previous)
-                                                        : safeDeltaPct(globalMtdCardData.tacos, globalMtdCardData.prevTacos)
-                                                }
-                                                inverseDelta
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtPct2}
-                                                previousFormatter={fmtPct2}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="CM2 Profit"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? safeDeltaPct(dummyStatData.cm2Profit.current, dummyStatData.cm2Profit.previous)
-                                                        : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
-                                            />
-
-                                            <AmazonStatCard
-                                                label="CM2 Profit %"
-                                                current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
-                                                previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
-                                                deltaPct={
-                                                    shouldShowDummyUi
-                                                        ? deltaPctPoints(dummyStatData.cm2ProfitPct.current, dummyStatData.cm2ProfitPct.previous)
-                                                        : deltaPctPoints(globalMtdCardData.cm2Pct, globalMtdCardData.prevCm2Pct)
-                                                }
-                                                loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                formatter={fmtPct2}
-                                                previousFormatter={fmtPct2}
-                                                bottomLabel={prevLabel}
-                                                className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                                            />
-                                        </div>
-
-                                    </div>
-                                </div>
-                            )}
-
                             {/* AMAZON SECTION */}
                             {hasAmazonCard && (
 
-                                <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
+                                <div className="flex flex-col gap-4 2xl:gap-4">
                                     {/* Amazon KPI Box */}
                                     <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
                                         <div className="mb-3 lg:mb-2 2xl:mb-4 flex items-center justify-between gap-2 sm:gap-3">
@@ -11003,11 +11091,11 @@ ${pageLoading
                                             </div>
 
                                             {/* RIGHT: TOGGLE (only for global) */}
-                                            {platform === "global" && globalMtdCountryOptions.length > 1 && (
-                                                <SegmentedToggle<"uk" | "us">
-                                                    value={globalMtdCountry}
-                                                    options={globalMtdCountryOptions}
-                                                    onChange={setGlobalMtdCountry}
+                                            {platform === "global" && globalMtdViewOptions.length > 1 && (
+                                                <SegmentedToggle<GlobalMtdView>
+                                                    value={globalMtdView}
+                                                    options={globalMtdViewOptions}
+                                                    onChange={setGlobalMtdView}
                                                     compact
                                                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                                                 />
@@ -11040,9 +11128,142 @@ ${pageLoading
                                         </div>
 
                                         {platform === "global" ? (
-                                            <div className="space-y-4">
-                                                {renderCountryMtdCards(globalMtdCountry)}
-                                            </div>
+                                            globalMtdView === "global" ? (
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
+                                                    <AmazonStatCard
+                                                        label="Units"
+                                                        current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
+                                                        previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.units.current, dummyStatData.units.previous)
+                                                                : safeDeltaPct(globalMtdCardData.units, globalMtdCardData.prevUnits)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtInt}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Gross Sales"
+                                                        current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
+                                                        previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.grossSales.current, dummyStatData.grossSales.previous)
+                                                                : safeDeltaPct(globalMtdCardData.grossSales, globalMtdCardData.prevGrossSales)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Net Sales"
+                                                        current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
+                                                        previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.netSales.current, dummyStatData.netSales.previous)
+                                                                : safeDeltaPct(globalMtdCardData.netSales, globalMtdCardData.prevNetSales)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="ASP"
+                                                        current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
+                                                        previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
+                                                                : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={formatDisplayAmount}
+                                                        previousFormatter={formatDisplayAmount}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="Cost of Ads"
+                                                        current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
+                                                        previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.costOfAds.current, dummyStatData.costOfAds.previous)
+                                                                : safeDeltaPct(globalMtdCardData.ads, globalMtdCardData.prevAds)
+                                                        }
+                                                        inverseDelta
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#C49466] border-t-4 border-t-[#C49466]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="TACoS"
+                                                        current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
+                                                        previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.tacos.current, dummyStatData.tacos.previous)
+                                                                : safeDeltaPct(globalMtdCardData.tacos, globalMtdCardData.prevTacos)
+                                                        }
+                                                        inverseDelta
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtPct2}
+                                                        previousFormatter={fmtPct2}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="CM2 Profit"
+                                                        current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
+                                                        previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.cm2Profit.current, dummyStatData.cm2Profit.previous)
+                                                                : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#A8BF7A] border-t-4 border-t-[#A8BF7A]"
+                                                    />
+
+                                                    <AmazonStatCard
+                                                        label="CM2 Profit %"
+                                                        current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
+                                                        previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? deltaPctPoints(dummyStatData.cm2ProfitPct.current, dummyStatData.cm2ProfitPct.previous)
+                                                                : deltaPctPoints(globalMtdCardData.cm2Pct, globalMtdCardData.prevCm2Pct)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={fmtPct2}
+                                                        previousFormatter={fmtPct2}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {renderCountryMtdCards(globalMtdView)}
+                                                </div>
+                                            )
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
 
@@ -11207,16 +11428,17 @@ ${pageLoading
                                             </div>
                                         )}
 
+
+
                                     </div>
 
 
 
                                     {/* Live BI graph */}
-                                    {showLiveBI && isCountryMode && (
+                                    {/* {showLiveBI && isCountryMode && (
                                         <div className="w-full rounded-xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
                                             <div className="w-full max-w-full min-w-0">
 
-                                                {/* ✅ CASE 1: 202 → processing */}
                                                 {!shouldShowDummyUi && biStatus === "processing" && (
                                                     <div className="flex justify-center items-center py-10">
                                                         <Loader className="bg-transparent" />
@@ -11229,14 +11451,13 @@ ${pageLoading
                                                     </div>
                                                 )}
 
-                                                {/* ✅ CASE 2: 200 but empty */}
                                                 {!shouldShowDummyUi && biStatus === "ready" && !biDailySeriesHome && (
                                                     <div className="text-center py-10 text-sm text-gray-500">
                                                         No data available for the selected period
                                                     </div>
                                                 )}
 
-                                                {/* ✅ CASE 3: 200 + data */}
+                                              
                                                 {(shouldShowDummyUi || biStatus === "ready") && finalBiDailySeriesHome && (
 
                                                     <LiveBiLineGraph
@@ -11254,9 +11475,7 @@ ${pageLoading
 
                                             </div>
                                         </div>
-                                    )}
-
-
+                                    )} */}
                                 </div>
 
                             )}
@@ -11363,14 +11582,31 @@ ${pageLoading
 
                                     />
                                 </div>
+                            )}
 
-
+                            {showLiveBI && (
+                                <div
+                                    id="ai-insights"
+                                    className="w-full max-w-full min-w-0 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                                >
+                                    <div className="w-full max-w-full min-w-0 h-full">
+                                        <LiveBiLineGraph
+                                            dailySeries={finalBiDailySeriesHome}
+                                            periods={finalBiPeriods}
+                                            loading={!shouldShowDummyUi && biUiLoading}
+                                            error={shouldShowDummyUi ? null : biError}
+                                            selectedStartDay={selectedStartDay}
+                                            selectedEndDay={selectedEndDay}
+                                            currencySymbol={currencySymbol}
+                                        />
+                                    </div>
+                                </div>
                             )}
                         </div>
 
                         {/* RIGHT COLUMN – Sales Target */}
-                        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
-                            <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
+                        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-start">
+                            <div className="grid gap-4 h-auto">
 
                                 {/* Top card */}
                                 <div className="w-full self-start">
@@ -11444,27 +11680,6 @@ ${pageLoading
                         </aside>
                     </div >
                 )}
-
-                {activeTab === "live" && platform === "global" && showLiveBI && (
-                    <div
-                        id="ai-insights"
-                        className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-                    >
-                        <div className="w-full max-w-full min-w-0">
-                            <LiveBiLineGraph
-                                dailySeries={finalBiDailySeriesHome}
-                                periods={finalBiPeriods}
-                                loading={!shouldShowDummyUi && biUiLoading}
-                                error={shouldShowDummyUi ? null : biError}
-                                selectedStartDay={selectedStartDay}
-                                selectedEndDay={selectedEndDay}
-                                currencySymbol={currencySymbol}
-                            />
-
-                        </div>
-                    </div>
-                )
-                }
 
                 {activeTab === "summary" && (
 
@@ -11611,7 +11826,7 @@ ${pageLoading
                                                 { type: "group", id: "marketplace_fees" },
                                                 { type: "group", id: "tax_and_credits" },
                                                 { type: "group", id: "profit" },
-                                                { type: "single", key: "ads_spend" },
+                                                { type: "group", id: "ads_spend" },
                                                 { type: "single", key: "acos" },
                                                 { type: "group", id: "cm2_profit" },
 
@@ -11657,7 +11872,7 @@ ${pageLoading
                                                     if (row.isOthers) {
                                                         return (
                                                             <span
-                                                                className="inline-block w-full truncate font-semibold text-[#60a68e]"
+                                                                className="inline-block w-full truncate text-[#60a68e]"
                                                                 title="Aggregated remaining products"
                                                             >
                                                                 Others
@@ -11715,6 +11930,28 @@ ${pageLoading
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return formatAdType((row as any).ad_type);
                                                 }
+                                                if (
+                                                    colKey === "product_spend" ||
+                                                    colKey === "display_spend" ||
+                                                    colKey === "brand_spend"
+                                                ) {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
+                                                if (colKey === "ads_spend") {
+                                                    const v = Number(row.ads_spend ?? 0);
+
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
                                                 if (colKey === "ads_spend")
                                                     return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
                                                 if (colKey === "acos") {
@@ -11743,8 +11980,9 @@ ${pageLoading
                                             summary={{
                                                 enabled: finalMonthlySkuwiseRowsForTable.length > 0,
 
-                                                sections: [
+                                                rows: [
                                                     {
+                                                        type: "section",
                                                         id: "ads",
                                                         label: "Cost of Advertisement",
                                                         endValue: formatSummaryRounded(costOfAds),
@@ -11764,6 +12002,7 @@ ${pageLoading
                                                     },
 
                                                     {
+                                                        type: "section",
                                                         id: "other",
                                                         label: "Other Transactions",
                                                         endValue: formatSummaryRounded(platformFee),
@@ -11791,10 +12030,7 @@ ${pageLoading
                                                                 id: "other_3",
                                                                 label: (
                                                                     <>
-                                                                        Reimbursement for lost Inventory
-                                                                        {/* {totals.reimbursement_lost_inventory_units
-                                                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                                                                : " "} */}
+                                                                        Reimbursement for lost Inventory{" "}
                                                                         <strong className="text-green-500">(+)</strong>
                                                                     </>
                                                                 ),
@@ -11802,61 +12038,105 @@ ${pageLoading
                                                             },
                                                         ],
                                                     },
-                                                ],
 
-                                                fixedRows: [
                                                     ...(countryName === "us" || countryName === "global"
                                                         ? [
                                                             {
+                                                                type: "fixed" as const,
                                                                 id: "ship",
                                                                 label: (
                                                                     <>
-                                                                        Shipment Charges <strong>(-)</strong>
+                                                                        Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong>
                                                                     </>
                                                                 ),
-                                                                endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+                                                                endValue: formatSummaryValue(
+                                                                    plSummaryTotals.shipment_charges,
+                                                                    "shipment_charges"
+                                                                ),
                                                             },
                                                         ]
                                                         : []),
 
                                                     {
+                                                        type: "fixed",
                                                         id: "cm2_profit",
                                                         label: "CM2 Profit/Loss",
                                                         endValue: Math.round(totalRowCm2Profit).toLocaleString(),
                                                     },
                                                     {
+                                                        type: "fixed",
                                                         id: "cm2_margins",
                                                         label: "CM2 Margins",
                                                         endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
                                                     },
-
                                                     {
+                                                        type: "fixed",
                                                         id: "tacos",
                                                         label: "TACoS (Total Advertising Cost of Sale)",
-                                                        endValue: `${formatSummaryValue(tacosFromDisplayedCardsForSummary, "acos")}%`
+                                                        endValue: `${formatSummaryValue(
+                                                            tacosFromDisplayedCardsForSummary,
+                                                            "acos"
+                                                        )}%`,
                                                     },
 
+                                                    // Net Reimbursement below TACoS and still collapsible
                                                     {
+                                                        type: "section",
                                                         id: "net_reimbursement",
                                                         label: "Net Reimbursement",
                                                         endValue: formatSummaryValue(
-                                                            plSummaryTotals.net_reimbursement,
+                                                            reimbursementForSummary,
                                                             "net_reimbursement"
                                                         ),
+                                                        defaultCollapsed: true,
+                                                        children: [
+                                                            {
+                                                                id: "net_reimbursement_debt_payment",
+                                                                label: (
+                                                                    <>
+                                                                        Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                                                                    </>
+                                                                ),
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.debt_payment,
+                                                                    "debt_payment"
+                                                                ),
+                                                            },
+                                                            {
+                                                                id: "net_reimbursement_disbursement",
+                                                                label: (
+                                                                    <>
+                                                                        Disbursement <strong className="text-green-500">(+)</strong>
+                                                                    </>
+                                                                ),
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.disbursement,
+                                                                    "disbursement"
+                                                                ),
+                                                            },
+                                                        ],
                                                     },
+
                                                     {
+                                                        type: "fixed",
                                                         id: "rv_cm2",
                                                         label: "Reimbursement vs CM2 Margins",
                                                         endValue: `${formatSummaryValue(
-                                                            reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
+                                                            reimbursementVsCm2PctForSummary,
+                                                            "rembursment_vs_cm2_margins"
+                                                        )}%`,
                                                     },
                                                     {
+                                                        type: "fixed",
                                                         id: "rv_sales",
                                                         label: "Reimbursement vs Sales",
                                                         endValue: `${formatSummaryValue(
-                                                            reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
+                                                            reimbursementVsSalesPctForSummary,
+                                                            "reimbursement_vs_sales"
+                                                        )}%`,
                                                     },
                                                 ],
+
                                                 valueCols: 2,
                                             }}
                                         />

@@ -85,13 +85,30 @@ export type SummarySection<RowT> = {
   defaultCollapsed?: boolean;
 };
 
-export type SummaryBlock<RowT> = {
-  enabled?: boolean;
-  sections?: SummarySection<RowT>[];
-  fixedRows?: SummaryRow<RowT>[];
-  valueCols?: 2;
+export type SummaryFixedItem<RowT> = SummaryRow<RowT> & {
+  type: "fixed";
 };
 
+export type SummarySectionItem<RowT> = SummarySection<RowT> & {
+  type: "section";
+};
+
+export type SummaryOrderedItem<RowT> =
+  | SummaryFixedItem<RowT>
+  | SummarySectionItem<RowT>;
+
+export type SummaryBlock<RowT> = {
+  enabled?: boolean;
+
+  // old support
+  sections?: SummarySection<RowT>[];
+  fixedRows?: SummaryRow<RowT>[];
+
+  // new ordered support
+  rows?: SummaryOrderedItem<RowT>[];
+
+  valueCols?: 2;
+};
 
 /* ---------------- Utils ---------------- */
 
@@ -175,9 +192,16 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
-    (summary?.sections || []).forEach((s) => {
+
+    const sectionRows =
+      summary?.rows?.filter((row): row is SummarySectionItem<RowT> => row.type === "section") ??
+      summary?.sections ??
+      [];
+
+    sectionRows.forEach((s) => {
       base[s.id] = s.defaultCollapsed ?? true;
     });
+
     return base;
   });
 
@@ -681,97 +705,119 @@ export default function GroupedCollapsibleTable<RowT>({
       );
     });
 
-  const renderSummaryFooter = () =>
-    summary?.enabled !== false &&
-      (summary?.sections?.length || summary?.fixedRows?.length) ? (
+  const renderSummaryFooter = () => {
+    const summaryRows =
+      summary?.rows ??
+      [
+        ...(summary?.sections || []).map((section) => ({
+          ...section,
+          type: "section" as const,
+        })),
+        ...(summary?.fixedRows || []).map((row) => ({
+          ...row,
+          type: "fixed" as const,
+        })),
+      ];
+
+    if (summary?.enabled === false || summaryRows.length === 0) {
+      return null;
+    }
+
+    return (
       <tfoot>
-        {(summary.sections || []).map((sec) => {
-          const isCollapsed = summaryCollapsed[sec.id] ?? true;
+        {summaryRows.map((item) => {
+          if (item.type === "section") {
+            const sec = item;
+            const isCollapsed = summaryCollapsed[sec.id] ?? true;
+
+            return (
+              <React.Fragment key={sec.id}>
+                <tr
+                  onClick={() => toggleSummary(sec.id)}
+                  role="button"
+                  className="cursor-pointer font-semibold bg-gray-50"
+                  title="Click to expand/collapse"
+                >
+                  <td
+                    colSpan={labelColSpan}
+                    className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span className="rounded border border-gray-400 px-1 text-xs">
+                        {isCollapsed ? "+" : "−"}
+                      </span>
+                      {sec.label}
+                    </span>
+                  </td>
+
+                  <td
+                    colSpan={midColSpan}
+                    className="border border-gray-300 px-2 sm:px-3 py-3"
+                  />
+
+                  <td
+                    colSpan={endColSpan}
+                    className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+                  >
+                    {sec.endValue}
+                  </td>
+                </tr>
+
+                {!isCollapsed &&
+                  sec.children.map((ch) => (
+                    <tr key={ch.id}>
+                      <td
+                        colSpan={labelColSpan}
+                        className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right"
+                      >
+                        {ch.label}
+                      </td>
+
+                      <td
+                        colSpan={midColSpan}
+                        className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+                      >
+                        {ch.midValue ?? ""}
+                      </td>
+
+                      <td
+                        colSpan={endColSpan}
+                        className="border border-gray-300 px-2 sm:px-3 py-3"
+                      />
+                    </tr>
+                  ))}
+              </React.Fragment>
+            );
+          }
+
+          const r = item;
 
           return (
-            <React.Fragment key={sec.id}>
-              <tr
-                onClick={() => toggleSummary(sec.id)}
-                role="button"
-                className="cursor-pointer font-semibold bg-gray-50"
-                title="Click to expand/collapse"
+            <tr key={r.id}>
+              <td
+                colSpan={labelColSpan}
+                className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
               >
-                <td
-                  colSpan={labelColSpan}
-                  className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <span className="rounded border border-gray-400 px-1 text-xs">
-                      {isCollapsed ? "+" : "−"}
-                    </span>
-                    {sec.label}
-                  </span>
-                </td>
+                {r.label}
+              </td>
 
-                <td
-                  colSpan={midColSpan}
-                  className="border border-gray-300 px-2 sm:px-3 py-3"
-                />
+              <td
+                colSpan={midColSpan}
+                className="border border-gray-300 px-2 sm:px-3 py-3"
+              />
 
-                <td
-                  colSpan={endColSpan}
-                  className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
-                >
-                  {sec.endValue}
-                </td>
-              </tr>
-
-              {!isCollapsed &&
-                sec.children.map((ch) => (
-                  <tr key={ch.id}>
-                    <td
-                      colSpan={labelColSpan}
-                      className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right"
-                    >
-                      {ch.label}
-                    </td>
-
-                    <td
-                      colSpan={midColSpan}
-                      className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
-                    >
-                      {ch.midValue ?? ""}
-                    </td>
-
-                    <td
-                      colSpan={endColSpan}
-                      className="border border-gray-300 px-2 sm:px-3 py-3"
-                    />
-                  </tr>
-                ))}
-            </React.Fragment>
+              <td
+                colSpan={endColSpan}
+                className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+              >
+                {r.endValue ?? ""}
+              </td>
+            </tr>
           );
         })}
-
-        {(summary.fixedRows || []).map((r) => (
-          <tr key={r.id}>
-            <td
-              colSpan={labelColSpan}
-              className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
-            >
-              {r.label}
-            </td>
-
-            <td
-              colSpan={midColSpan}
-              className="border border-gray-300 px-2 sm:px-3 py-3"
-            />
-
-            <td
-              colSpan={endColSpan}
-              className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
-            >
-              {r.endValue ?? ""}
-            </td>
-          </tr>
-        ))}
       </tfoot>
-    ) : null;
+    );
+  };
 
   /**
    * Scroll mode:

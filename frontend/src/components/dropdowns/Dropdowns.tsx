@@ -995,7 +995,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
 
                   {block.journeyBullets?.length ? (
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 2xl:text-sm">
+                    <ol className="list-decimal pl-3 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
                       {block.journeyBullets.map((p, i) => (
                         <li key={i}>
                           {p
@@ -1004,7 +1004,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             .replace(/^-+\s*/, "")}
                         </li>
                       ))}
-                    </ul>
+                    </ol>
                   ) : (
                     <div className="text-xs text-charcoal-500 2xl:text-sm">—</div>
                   )}
@@ -1663,15 +1663,29 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     return null;
   }
 
+  const cleanedSummaryLines = (summaryBullets || [])
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
 
-  const narrativeInsights = summaryBullets.filter((l) => !l.includes(":"));
+  const summaryTitleLine = cleanedSummaryLines[0] || "";
 
-  const summaryBulletPoints = splitSummaryIntoBulletPoints(
-    narrativeInsights.slice(1)
-  );
+  const summaryBodyLines = cleanedSummaryLines
+    .slice(1)
+    .filter((line) => {
+      const value = line.trim();
 
-  const drawerPeriodText =
-    narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
+      // remove markdown headings / metadata only, not real summary sentences
+      if (/^##\s+/i.test(value)) return false;
+      if (/^period\s*:/i.test(value)) return false;
+
+      return true;
+    });
+
+  const summaryBulletPoints = splitSummaryIntoBulletPoints(summaryBodyLines);
+
+  const drawerPeriodText = summaryTitleLine
+    ? formatSummaryPeriod(summaryTitleLine)
+    : "";
 
   const hasNoAiData =
     !summaryBullets.length &&
@@ -1682,16 +1696,16 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   return (
     <div className="flex flex-col gap-5">
       <div className="w-full space-y-4">
-        {!hasNoAiData && (narrativeInsights.length > 0 || objective) && (
+        {!hasNoAiData && (summaryTitleLine || summaryBulletPoints.length > 0 || objective) && (
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
-            {narrativeInsights.length > 0 && (
+            {(summaryTitleLine || summaryBulletPoints.length > 0) && (
               <div className="xl:col-span-7 rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full">
                 <div className="space-y-3 h-full">
                   <h2 className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-charcoal-500 font-bold leading-snug">
-                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                    {summaryTitleLine?.split("(")[0]?.trim()}
                     <span className="text-[#5EA68E] font-bold ml-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {formatSummaryPeriod(narrativeInsights[0])}
+                      {formatSummaryPeriod(summaryTitleLine)}
                     </span>
                   </h2>
 
