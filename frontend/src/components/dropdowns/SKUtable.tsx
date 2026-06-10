@@ -113,7 +113,8 @@ export type TableRow = {
   cm2_profit_total?: number;
   cm2_profit_per?: number;
   cm2_profit_per_unit?: number;
-
+  debt_payment?: number;
+  disbursement?: number;
   gross_sales?: number;
   product_sales?: number;
   refund_sales?: number;
@@ -206,6 +207,8 @@ type Totals = {
   net_sales: number;
   lost_total: number;
   net_reimbursement: number;
+  debt_payment: number;
+  disbursement: number;
   ads_spend: number;
   product_spend: number;
   display_spend: number;
@@ -320,6 +323,10 @@ function normalizeRows(data: any[]): TableRow[] {
       refund_sales: toNumber(row.refund_sales),
       net_sales: toNumber(row.net_sales),
       lost_total: toNumber(row.lost_total),
+
+      reimbursement_vs_sales: toNumber(row.reimbursement_vs_sales),
+      debt_payment: toNumber(row.debt_payment),
+      disbursement: toNumber(row.disbursement),
 
       // Costs / Fees
       cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
@@ -461,6 +468,9 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
 
     advertising_total: toNumber(totalRow.advertising_total),
 
+    net_reimbursement: netReimbursement,
+    debt_payment: toNumber(totalRow.debt_payment),
+    disbursement: toNumber(totalRow.disbursement),
     // final card / TACoS value: 21,138.82
     advertising_total_final: toNumber(
       totalRow.advertising_total_final ?? totalRow.advertising_total
@@ -1310,6 +1320,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "cm2_profit_total",
         "cm2_profit",
         "unit_wise_cm2_profitability",
+        "debt_payment",
+        "disbursement",
       ]);
 
       let formatted;
@@ -2002,6 +2014,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         },
                       ],
                     },
+
+                    {
+                      id: "net_reimb",
+                      label: "Net Reimbursement",
+                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "net_reimb_debt_payment",
+                          label: (
+                            <>
+                              Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.debt_payment, "debt_payment"),
+                        },
+                        {
+                          id: "net_reimb_disbursement",
+                          label: (
+                            <>
+                              Disbursement <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.disbursement, "disbursement"),
+                        },
+                      ],
+                    },
                   ],
 
                   fixedRows: [
@@ -2031,11 +2070,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     },
 
                     // ✅ then Net Reimbursement (below TACoS)
-                    {
-                      id: "net_reimb",
-                      label: "Net Reimbursement",
-                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
-                    },
+                    // {
+                    //   id: "net_reimb",
+                    //   label: "Net Reimbursement",
+                    //   endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                    // },
                     {
                       id: "rv_cm2",
                       label: "Reimbursement vs CM2 Margins",
