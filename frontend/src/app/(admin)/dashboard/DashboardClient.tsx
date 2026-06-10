@@ -153,6 +153,7 @@ type MonthlySkuwiseRow = {
     lost_total?: number;
     other?: number;
     product_spend?: number;
+    display_spend?: number;
     brand_spend?: number;
     dealsvouchar_ads?: number;
     platformfeenew?: number;
@@ -161,7 +162,6 @@ type MonthlySkuwiseRow = {
     net_sales_delta?: number;
     net_sales_delta_percentage?: number | null;
 
-    // ✅ add these grand total fields
     total_cm2_profit?: number;
     total_cm2_margins?: number;
     tacos_total_advertising_cost_of_sale?: number;
@@ -227,6 +227,7 @@ type ProductwiseMoneyKey =
     | "other"
     | "misc_transaction"
     | "product_spend"
+    | "display_spend"
     | "brand_spend"
     | "dealsvouchar_ads"
     | "platformfeenew";
@@ -472,6 +473,28 @@ const normalizeProductDisplayName = (value: any) => {
                 .join("'");
         })
         .join("");
+};
+
+const formatPlainAmount = (value: unknown) => {
+    const n = toNumberSafe(value ?? 0);
+
+    if (Number.isInteger(n)) {
+        return String(n);
+    }
+
+    return n.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    });
+};
+
+const formatRoundedNumber = (value: unknown) => {
+    const n = toNumberSafe(value ?? 0);
+
+    return Math.round(n).toLocaleString("en-GB", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    });
 };
 
 const getRegionDateFromTimestamp = (
@@ -1800,6 +1823,7 @@ export default function DashboardPage() {
             tax_and_credits: true,
             profit: true,
             cm2_profit: true,
+            ads_spend: true,
         }),
         []
     );
@@ -5661,8 +5685,28 @@ export default function DashboardPage() {
                 lost_total: Number(r.lost_total ?? 0),
                 other: Number(r.other ?? 0),
 
-                product_spend: Number(r.product_spend ?? 0),
-                brand_spend: Number(r.brand_spend ?? 0),
+                product_spend: Number(
+                    r.product_spend ??
+                    r.sponsored_product ??
+                    r.Sponsored_Product ??
+                    0
+                ),
+
+                display_spend: Number(
+                    r.display_spend ??
+                    r.sponsored_display ??
+                    r.Sponsored_Display ??
+                    0
+                ),
+
+                brand_spend: Number(
+                    r.brand_spend ??
+                    r.display_brand ??
+                    r.Display_brand ??
+                    r.sponsored_brand ??
+                    r.Sponsored_Brand ??
+                    0
+                ),
                 dealsvouchar_ads: Number(r.dealsvouchar_ads ?? 0),
                 platformfeenew: Number(r.platformfeenew ?? 0),
 
@@ -5697,6 +5741,7 @@ export default function DashboardPage() {
         "lost_total",
         "other",
         "product_spend",
+        "display_spend",
         "brand_spend",
         "dealsvouchar_ads",
         "platformfeenew",
@@ -5713,8 +5758,33 @@ export default function DashboardPage() {
             tax + credits
         );
 
+        // ✅ Add this here, before return
+        const productSpend = toNumberSafe(
+            raw?.product_spend ??
+            raw?.sponsored_product ??
+            raw?.Sponsored_Product ??
+            0
+        );
+
+        const displaySpend = toNumberSafe(
+            raw?.display_spend ??
+            raw?.sponsored_display ??
+            raw?.Sponsored_Display ??
+            0
+        );
+
+        const brandSpend = toNumberSafe(
+            raw?.brand_spend ??
+            raw?.display_brand ??
+            raw?.Display_brand ??
+            raw?.sponsored_brand ??
+            raw?.Sponsored_Brand ??
+            0
+        );
+
         return {
             ...raw,
+
             quantity: toNumberSafe(raw?.quantity),
 
             return_quantity: toNumberSafe(
@@ -5744,7 +5814,15 @@ export default function DashboardPage() {
             cogs: toNumberSafe(raw?.cogs),
             fba_fees: toNumberSafe(raw?.fba_fees),
             selling_fees: toNumberSafe(raw?.selling_fees),
-            ads_spend: toNumberSafe(raw?.ads_spend),
+
+            // ✅ Use normalized values here
+            product_spend: productSpend,
+            display_spend: displaySpend,
+            brand_spend: brandSpend,
+
+            // ✅ Total Ads = SP + SD + SB
+            ads_spend: productSpend + displaySpend + brandSpend,
+
             acos: toNumberSafe(raw?.acos),
             cm2_profit: toNumberSafe(raw?.cm2_profit),
             cm1_profit_per: toNumberSafe(raw?.cm1_profit_per),
@@ -5757,8 +5835,7 @@ export default function DashboardPage() {
             platform_fee_inventory_storage: toNumberSafe(raw?.platform_fee_inventory_storage),
             lost_total: toNumberSafe(raw?.lost_total),
             other: toNumberSafe(raw?.other),
-            product_spend: toNumberSafe(raw?.product_spend),
-            brand_spend: toNumberSafe(raw?.brand_spend),
+
             dealsvouchar_ads: toNumberSafe(raw?.dealsvouchar_ads),
             platformfeenew: toNumberSafe(raw?.platformfeenew),
         };
@@ -5971,6 +6048,7 @@ export default function DashboardPage() {
             lost_total: rows.reduce((s, r) => s + toNumberSafe(r.lost_total), 0),
             other: rows.reduce((s, r) => s + toNumberSafe(r.other), 0),
             product_spend: rows.reduce((s, r) => s + toNumberSafe(r.product_spend), 0),
+            display_spend: rows.reduce((s, r) => s + toNumberSafe(r.display_spend), 0),
             brand_spend: rows.reduce((s, r) => s + toNumberSafe(r.brand_spend), 0),
             dealsvouchar_ads: rows.reduce((s, r) => s + toNumberSafe(r.dealsvouchar_ads), 0),
             platformfeenew: rows.reduce((s, r) => s + toNumberSafe(r.platformfeenew), 0),
@@ -6480,6 +6558,10 @@ export default function DashboardPage() {
 
                 case "sku":
                     return String(row.sku || "").toLowerCase();
+                case "product_spend":
+                case "display_spend":
+                case "brand_spend":
+                    return toNumber((row as any)[key]);
 
                 default:
                     return toNumber((row as any)[key]);
@@ -6536,6 +6618,21 @@ export default function DashboardPage() {
                     ? rest.reduce((acc, r) => acc + (Number(r.asp) || 0), 0) / rest.length
                     : 0;
 
+        const othersProductSpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.product_spend ?? 0),
+            0
+        );
+
+        const othersDisplaySpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.display_spend ?? 0),
+            0
+        );
+
+        const othersAdsSpend = rest.reduce(
+            (acc, r) => acc + toNumberSafe(r.ads_spend ?? 0),
+            0
+        );
+
         const othersRow: MonthlySkuwiseTableRow = {
             sno: 10,
             sku: "OTHERS",
@@ -6571,7 +6668,11 @@ export default function DashboardPage() {
             cm2_profit_per: 0,
             cm2_profit_per_unit: 0,
 
-            ads_spend: sum("ads_spend"),
+            ads_spend: othersAdsSpend,
+            product_spend: othersProductSpend,
+            display_spend: othersDisplaySpend,
+            brand_spend: sum("brand_spend"),
+
             acos: othersNetSales
                 ? (Math.abs(sum("ads_spend")) / Math.abs(othersNetSales)) * 100
                 : 0,
@@ -6584,8 +6685,9 @@ export default function DashboardPage() {
             lost_total: sum("lost_total"),
             other: sum("other"),
 
-            product_spend: sum("product_spend"),
-            brand_spend: sum("brand_spend"),
+            // product_spend: sum("product_spend"),
+            // display_spend: sum("display_spend" as keyof MonthlySkuwiseRow),
+            // brand_spend: sum("brand_spend"),
             dealsvouchar_ads: sum("dealsvouchar_ads"),
             platformfeenew: sum("platformfeenew"),
 
@@ -7012,6 +7114,48 @@ export default function DashboardPage() {
                 },
             ],
         },
+        {
+            id: "ads_spend",
+            label: "Ads Spend",
+            info: <InfoTip text={TERM_DEFINITIONS.ads_spend} />,
+
+            collapsedCols: [
+                {
+                    key: "ads_spend",
+                    label: "Total",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                    render: (row: MonthlySkuwiseTableRow) =>
+                        formatDisplayAmount(toNumberSafe(row.ads_spend)),
+                },
+            ],
+
+            expandedCols: [
+                {
+                    key: "product_spend",
+                    label: "Sponsored Product",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+                {
+                    key: "display_spend",
+                    label: "Sponsored Display",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+                {
+                    key: "ads_spend",
+                    label: "Total",
+                    align: "center" as const,
+                    sortable: true,
+                    width: "8%",
+                },
+            ],
+        },
+
         {
             id: "cm2_profit",
             label: "CM2 Profit",
@@ -7693,14 +7837,18 @@ export default function DashboardPage() {
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
     const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
+
     const ADS_SIGN_MINUS = new Set([
         "return_quantity",
         "ads_spend",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
         "cogs",
         "fba_fees",
         "selling_fees",
         "marketplace_total",
-        "tax"
+        "tax",
     ]);
 
     const getAdsSignForCol = useCallback((colKey: string) => {
@@ -11659,7 +11807,7 @@ ${pageLoading
                                                 { type: "group", id: "marketplace_fees" },
                                                 { type: "group", id: "tax_and_credits" },
                                                 { type: "group", id: "profit" },
-                                                { type: "single", key: "ads_spend" },
+                                                { type: "group", id: "ads_spend" },
                                                 { type: "single", key: "acos" },
                                                 { type: "group", id: "cm2_profit" },
 
@@ -11763,6 +11911,28 @@ ${pageLoading
                                                     if (row.isOthers || row.isTotal) return "-";
                                                     return formatAdType((row as any).ad_type);
                                                 }
+                                                if (
+                                                    colKey === "product_spend" ||
+                                                    colKey === "display_spend" ||
+                                                    colKey === "brand_spend"
+                                                ) {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
+                                                if (colKey === "ads_spend") {
+                                                    const v = Number(row.ads_spend ?? 0);
+
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
                                                 if (colKey === "ads_spend")
                                                     return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
                                                 if (colKey === "acos") {
