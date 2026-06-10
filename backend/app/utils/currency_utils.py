@@ -230,6 +230,13 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     for col in quantity_cols + money_cols + non_convert_money_cols:
         total_row[col] = pd.to_numeric(total_base_df[col], errors="coerce").fillna(0).sum()
 
+    # FIX: global TOTAL net reimbursement should be net,
+    # not sum of monthly absolute reimbursement values.
+    total_row["rembursement_fee"] = abs(
+        float(total_row.get("disbursement", 0) or 0)
+        - float(total_row.get("debt_payment", 0) or 0)
+    )
+
     total_net_sales = float(total_row["net_sales"] or 0)
     total_quantity = float(total_row["quantity"] or 0)
     total_profit_value = float(total_row["profit"] or 0)
