@@ -130,6 +130,19 @@ def get_previous_month_year(month, year):
     prev_month = MONTHS_REVERSE_MAP[prev_month_num]
     return prev_month, year
 
+def ensure_payment_columns(conn, table_name: str):
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS debt_payment DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS disbursement DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
+
 def process_skuwise_data(user_id, country, month, year):
     engine = create_engine(db_url)
     engine1 = create_engine(db_url1)
@@ -1511,6 +1524,7 @@ def process_skuwise_data(user_id, country, month, year):
             """))
 
         for tbl in (target_table2, target_table_usd_roll):
+            ensure_payment_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                     id SERIAL PRIMARY KEY,
@@ -1667,6 +1681,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         # USD table (schema aligned)
         for tbl in [target_table_us, target_table_ind, target_table_can, target_table_gbp]:
+            ensure_payment_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                     id SERIAL PRIMARY KEY,
@@ -2086,6 +2101,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
         ]
 
         for source_table, logical_country in config_list:
+            ensure_payment_columns(conn, source_table)
+            conn.commit()
+
             quarter_table = f"{quarter_key}_{user_id}_{logical_country}_{year}_table"
 
             month_params = {f"m{i}": m for i, m in enumerate(months_for_quarter)}
@@ -2344,6 +2362,9 @@ def process_yearly_skuwise_data(user_id, country, year):
 
     try:
         for source_table, logical_country in config_list:
+            ensure_payment_columns(conn, source_table)
+            conn.commit()
+
             quarter_table = f"skuwiseyearly_{user_id}_{logical_country}_{year}_table"
 
             yearly_query = f"""
