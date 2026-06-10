@@ -1281,6 +1281,13 @@ def _get_ads_spend(ads_dict):
         else ads_dict.get("product_spend")
     )
 
+def _get_product_spend(ads_dict):
+    return safe_float(ads_dict.get("product_spend"))
+
+
+def _get_display_spend(ads_dict):
+    return safe_float(ads_dict.get("display_spend"))
+
 def _get_dealsvouchar_ads(row):
     return abs(safe_float(
         row.get("dealsvouchar_ads")
@@ -1383,6 +1390,9 @@ def skutableprofit():
                 product_name = str(row_dict.get("product_name") or "").strip().lower()
 
                 ads_spend = 0.0
+                product_spend = 0.0
+                display_spend = 0.0
+
 
                 # Match by SKU first, then product_name
                 ads_dict = None
@@ -1395,6 +1405,8 @@ def skutableprofit():
 
                 if ads_dict:
                     ads_spend = _get_ads_spend(ads_dict)
+                    product_spend = _get_product_spend(ads_dict)
+                    display_spend = _get_display_spend(ads_dict)
 
                 profit = safe_float(row_dict.get("profit"))
                 net_sales = safe_float(row_dict.get("net_sales"))
@@ -1406,6 +1418,8 @@ def skutableprofit():
                 cm2_profit_per_unit = safe_divide(cm2_profit, total_quantity)
 
                 row_dict["ads_spend"] = round(ads_spend, 2)
+                row_dict["product_spend"] = round(product_spend, 2)
+                row_dict["display_spend"] = round(display_spend, 2)
                 row_dict["cm2_profit"] = round(cm2_profit, 2)
                 row_dict["acos"] = round(acos, 2)
                 row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
@@ -1416,6 +1430,8 @@ def skutableprofit():
             brand_spend_total = 0.0
             dealsvouchar_ads_total = 0.0
             total_ads_spend = 0.0
+            product_spend_total = 0.0
+            display_spend_total = 0.0
             advertising_total = 0.0
             advertising_total_final = 0.0
 
@@ -1446,6 +1462,8 @@ def skutableprofit():
                 )
 
                 total_ads_spend = _get_ads_spend(ads_total_row)
+                product_spend_total = _get_product_spend(ads_total_row)
+                display_spend_total = _get_display_spend(ads_total_row)
 
                 if total_ads_spend == 0:
                     total_ads_spend = sku_ads_total
@@ -1527,6 +1545,8 @@ def skutableprofit():
                         cm2_margins_value = safe_float(row_dict.get("cm2_margins"))
 
                     row_dict["ads_spend"] = round(ads_for_acos, 2)
+                    row_dict["product_spend"] = round(product_spend_total, 2)
+                    row_dict["display_spend"] = round(display_spend_total, 2)
                     row_dict["cm2_profit"] = round(cm2_profit, 2)
                     row_dict["acos"] = round(acos, 2)
                     row_dict["cm2_profit_per"] = round(cm2_profit_per, 2)
