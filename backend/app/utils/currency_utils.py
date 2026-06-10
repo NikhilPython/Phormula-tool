@@ -69,7 +69,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_fee",
         "platform_fee_inventory_storage", "shipment_fees", "cm2_profit",
-        "cm2_profit_percentage", "acos", "rembursement_fee",
+        "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
     ]
@@ -83,7 +83,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "profit", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_fee",
-        "platform_fee_inventory_storage", "cm2_profit", "rembursement_fee"
+        "platform_fee_inventory_storage", "cm2_profit", "debt_payment", "disbursement","rembursement_fee"
     ]
 
     # US-only column, do NOT currency convert
@@ -108,6 +108,9 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
             df.rename(columns={
                 "reimbursement_fee": "rembursement_fee",
+                "debtpayment": "debt_payment",
+                "debt_payment_total": "debt_payment",
+                "disbursement_total": "disbursement",
                 "visible_ads_cost": "visible_ads",
                 "visible_ads_amount": "visible_ads",
                 "ads_spend": "advertising_total",
@@ -299,6 +302,8 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             cm2_profit DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,
             acos DOUBLE PRECISION,
+            debt_payment DOUBLE PRECISION,
+            disbursement DOUBLE PRECISION,
             rembursement_fee DOUBLE PRECISION,
             rembursment_vs_cm2_margins DOUBLE PRECISION,
             reimbursement_vs_sales DOUBLE PRECISION,
