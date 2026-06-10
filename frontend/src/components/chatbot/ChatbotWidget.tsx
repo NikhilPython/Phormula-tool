@@ -172,18 +172,31 @@ export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
       {open && (
         <div className="fixed inset-0 z-[10000] pointer-events-none">
           <div
-            className="
-              pointer-events-auto
-              fixed bottom-20 right-4
-              w-[360px] sm:w-[380px]
-              h-[520px]
-              bg-white
-              rounded-2xl
-              shadow-[0_20px_50px_rgba(0,0,0,0.25)]
-              flex flex-col
-              animate-chat-open
-            "
-          >
+  className="
+    pointer-events-auto
+    fixed
+
+    right-4
+    bottom-20
+
+    w-[min(380px,calc(100vw-2rem))]
+    h-[min(520px,calc(100dvh-6rem))]
+    max-h-[calc(100dvh-6rem)]
+
+    max-sm:right-3
+    max-sm:left-3
+    max-sm:bottom-20
+    max-sm:w-auto
+    max-sm:h-[calc(100dvh-6rem)]
+
+    bg-white
+    rounded-2xl
+    shadow-[0_20px_50px_rgba(0,0,0,0.25)]
+    flex flex-col
+    overflow-hidden
+    animate-chat-open
+  "
+>
             <div
               style={{
                 background:
