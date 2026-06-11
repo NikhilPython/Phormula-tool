@@ -1788,6 +1788,77 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
 
     return output
 
+# def build_remaining_skus_aggregate(
+#     sku_current: dict,
+#     sku_prev: dict,
+#     focus_skus: list[str],
+# ) -> dict:
+
+#     focus_set = set(str(s) for s in (focus_skus or []))
+
+#     remaining = [
+#         sku for sku in (set(sku_current.keys()) | set(sku_prev.keys()))
+#         if str(sku) not in focus_set
+#         and str(sku).strip().lower() not in TOTAL_LABELS
+#     ]
+
+#     if not remaining:
+#         return {}
+
+#     def sum_metric(source: dict, metric: str) -> float:
+#         total = 0.0
+#         for sku in remaining:
+#             try:
+#                 total += float(source.get(sku, {}).get(metric, 0.0) or 0.0)
+#             except (TypeError, ValueError):
+#                 continue
+#         return round(total, 2)
+
+#     # --- additive ---
+#     cur_units = sum_metric(sku_current, "total_quantity")
+#     prev_units = sum_metric(sku_prev, "total_quantity")
+
+#     cur_sales = sum_metric(sku_current, "net_sales")
+#     prev_sales = sum_metric(sku_prev, "net_sales")
+
+#     cur_profit = sum_metric(sku_current, "profit")
+#     prev_profit = sum_metric(sku_prev, "profit")
+
+#     # --- recalculated ---
+#     cur_asp = round(cur_sales / cur_units, 2) if cur_units else None
+#     prev_asp = round(prev_sales / prev_units, 2) if prev_units else None
+
+#     cur_ppu = round(cur_profit / cur_units, 2) if cur_units else None
+#     prev_ppu = round(prev_profit / prev_units, 2) if prev_units else None
+
+#     def mk(cur, prev):
+#         if cur is None or prev is None:
+#             return {
+#                 "current": cur,
+#                 "previous": prev,
+#                 "delta": None,
+#                 "delta_pct": None
+#             }
+
+#         delta = round(cur - prev, 2)
+#         pct = round((delta / prev) * 100, 2) if prev != 0 else None
+
+#         return {
+#             "current": round(cur, 2),
+#             "previous": round(prev, 2),
+#             "delta": delta,
+#             "delta_pct": pct
+#         }
+
+#     return {
+#         "product_name": "Other SKUs",
+#         "total_quantity": mk(cur_units, prev_units),
+#         "net_sales": mk(cur_sales, prev_sales),
+#         "profit": mk(cur_profit, prev_profit),
+#         "asp": mk(cur_asp, prev_asp),
+#         "unit_wise_profitability": mk(cur_ppu, prev_ppu),
+#     }
+
 def build_remaining_skus_aggregate(
     sku_current: dict,
     sku_prev: dict,
@@ -1804,6 +1875,29 @@ def build_remaining_skus_aggregate(
 
     if not remaining:
         return {}
+
+    # ✅ NEW: capture product names/SKUs that are inside Other SKUs
+    included_products = []
+
+    for sku in remaining:
+        cur_data = sku_current.get(sku, {}) or {}
+        prev_data = sku_prev.get(sku, {}) or {}
+
+        product_name = (
+            cur_data.get("product_name")
+            or prev_data.get("product_name")
+            or sku
+        )
+
+        included_products.append({
+            "sku": str(sku),
+            "product_name": str(product_name).strip() or str(sku)
+        })
+
+    included_products = sorted(
+        included_products,
+        key=lambda x: x["product_name"].lower()
+    )
 
     def sum_metric(source: dict, metric: str) -> float:
         total = 0.0
@@ -1852,6 +1946,11 @@ def build_remaining_skus_aggregate(
 
     return {
         "product_name": "Other SKUs",
+
+        # ✅ NEW
+        "included_products": included_products,
+        "included_product_count": len(included_products),
+
         "total_quantity": mk(cur_units, prev_units),
         "net_sales": mk(cur_sales, prev_sales),
         "profit": mk(cur_profit, prev_profit),
@@ -2447,6 +2546,24 @@ def render_month_end_summary(
     if remaining_agg:
 
         lines.append("\nOther SKUs")
+
+        # ✅ NEW: show which products are included in Other SKUs
+        included_products = remaining_agg.get("included_products", [])
+
+        if isinstance(included_products, list) and included_products:
+            lines.append("• Products included:")
+
+            for item in included_products:
+                if not isinstance(item, dict):
+                    continue
+
+                product_name = item.get("product_name")
+                sku = item.get("sku")
+
+                if product_name and sku:
+                    lines.append(f"   - {product_name} ({sku})")
+                elif product_name:
+                    lines.append(f"   - {product_name}")
 
         # --- Aggregated Metrics ---
         lines.append(
@@ -3349,6 +3466,7 @@ def get_or_create_summary(
         "sku_current": sku_current,
         "sku_mom": sku_mom,
         "all_sku_mom": all_sku_mom,
+        "remaining_agg": remaining_agg,
         "sku_yoy": None,
         "objective": objective_v2,
         "sku_actions": sku_actions,
@@ -4222,6 +4340,24 @@ def render_global_comparison_summary(
     if remaining_agg:
         lines.append("")
         lines.append("## OTHER SKUs")
+
+        # ✅ NEW: show which products are included in Global Other SKUs
+        included_products = remaining_agg.get("included_products", [])
+
+        if isinstance(included_products, list) and included_products:
+            lines.append("• Products included:")
+
+            for item in included_products:
+                if not isinstance(item, dict):
+                    continue
+
+                product_name = item.get("product_name")
+                sku = item.get("sku")
+
+                if product_name and sku:
+                    lines.append(f"   - {product_name} ({sku})")
+                elif product_name:
+                    lines.append(f"   - {product_name}")
 
         lines.append(
             f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
