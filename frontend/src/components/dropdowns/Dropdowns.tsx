@@ -141,6 +141,8 @@ type AiPanelData = {
   rawRecommendations?: string | null;
   remainingSkusRecommendation?: string;
   portfolioRecommendation?: string | null;
+
+  otherSkuIncludedProducts?: OtherSkuItem[];
 };
 
 type JwtPayload = {
@@ -418,6 +420,11 @@ const monthNameToNumber = (m: string): string => {
   return typeof idx === "number" ? String(idx + 1) : "";
 };
 
+type OtherSkuItem = {
+  product_name: string;
+  sku: string;
+};
+
 type ProductInsightBlock = {
   name: string;
   skuKey?: string;
@@ -426,6 +433,7 @@ type ProductInsightBlock = {
   recommendationBullets: string[];
   inventoryBullets: string[];
   isOtherSkus?: boolean;
+  includedSkus?: OtherSkuItem[];
 };
 
 
@@ -444,6 +452,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   };
 
   let inJourney = false;
+  let inIncludedSkus = false;
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -490,15 +499,54 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
         recommendationBullets: [],
         inventoryBullets: [],
         isOtherSkus: isOther,
+        includedSkus: [],
       };
 
       inJourney = false;
+      inIncludedSkus = false;
       continue;
     }
 
     if (!current) continue;
 
+    const lowerLine = line.toLowerCase();
+
+    if (
+      lowerLine.startsWith("included skus") ||
+      lowerLine.startsWith("products included")
+    ) {
+      inJourney = false;
+      inIncludedSkus = true;
+      continue;
+    }
+
+    if (inIncludedSkus) {
+      const lowerLine = line.toLowerCase();
+
+      const isNextSection =
+        lowerLine.startsWith("product journey") ||
+        lowerLine.startsWith("recommendation:") ||
+        lowerLine.startsWith("inventory action:") ||
+        lowerLine.startsWith("ads action:");
+
+      if (!isNextSection) {
+        const match = line.match(/^(.+?)\s*\(([^)]+)\)$/);
+
+        if (match) {
+          current.includedSkus?.push({
+            product_name: match[1].trim(),
+            sku: match[2].trim(),
+          });
+        }
+
+        continue;
+      }
+
+      inIncludedSkus = false;
+    }
+
     if (line.toLowerCase().startsWith("product journey")) {
+      inIncludedSkus = false;
       inJourney = true;
       continue;
     }
@@ -669,7 +717,10 @@ const buildOtherSkusInsightLines = (
   countryName = "global"
 ): string[] => {
   const otherComparison = apiData?.global_ai?.other_skus_comparison;
-  const remainingAgg = apiData?.metrics?.remaining_agg;
+
+  const remainingAgg =
+    apiData?.metrics?.remaining_agg ||
+    apiData?.remaining_agg;
 
   if (!otherComparison && !remainingAgg) return [];
 
@@ -688,6 +739,15 @@ const buildOtherSkusInsightLines = (
     otherComparison?.product_name ||
     remainingAgg?.product_name ||
     "Other SKUs";
+
+  const includedSkuLines = Array.isArray(remainingAgg?.included_products)
+    ? [
+      "Included SKUs",
+      ...remainingAgg.included_products.map(
+        (p: any) => `- ${p.product_name} (${p.sku})`
+      ),
+    ]
+    : [];
 
   return [
     productName,
@@ -717,6 +777,8 @@ const buildOtherSkusInsightLines = (
       currencySymbol
     )} ${formatPct(remainingAgg?.unit_wise_profitability?.delta_pct)}`,
 
+    ...includedSkuLines,
+
     "Product Journey",
 
     ...journeyLines.map((line: string) => `- ${line}`),
@@ -729,6 +791,22 @@ const buildOtherSkusInsightLines = (
       ? `Inventory Action: ${actionObj.inventory_recommendation}`
       : "",
   ].filter(Boolean);
+};
+
+const getOtherSkuIncludedProducts = (data: any): OtherSkuItem[] => {
+  const includedProducts =
+    data?.remaining_agg?.included_products ||
+    data?.metrics?.remaining_agg?.included_products ||
+    [];
+
+  if (!Array.isArray(includedProducts)) return [];
+
+  return includedProducts
+    .map((p: any) => ({
+      product_name: String(p?.product_name || "").trim(),
+      sku: String(p?.sku || "").trim(),
+    }))
+    .filter((p) => p.product_name && p.sku);
 };
 
 const formatMetricValueWithDelta = (
@@ -1022,6 +1100,48 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
                 </div>
 
+                {/* {block.isOtherSkus && block.includedSkus?.length ? (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                      Other SKUs include these products
+                    </div>
+
+                    <div className="">
+                      <ul className="grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-2 list-disc pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                        {block.includedSkus.map((item, index) => (
+                          <li key={`${item.product_name}-${index}`} className="leading-relaxed">
+                            {item.product_name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : null} */}
+
+                {block.isOtherSkus && block.includedSkus?.length ? (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                      Other SKUs include these SKUs
+                    </div>
+
+                    <div className="">
+                      <div className="flex flex-wrap gap-2">
+                        {block.includedSkus.map((item) => (
+                          <div
+                            key={item.sku}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-700 2xl:text-xs"
+                            title={item.product_name}
+                          >
+                            <span className="font-semibold text-slate-800">
+                              {item.product_name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div>
                   <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
                     Recommendations
@@ -1214,6 +1334,7 @@ const ProductInsightsSection = ({
   countryName,
   drawerPeriodText,
   selectedMonth,
+  otherSkuIncludedProducts,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
@@ -1226,6 +1347,7 @@ const ProductInsightsSection = ({
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
   countryName: string;
+  otherSkuIncludedProducts?: OtherSkuItem[];
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
@@ -1238,19 +1360,35 @@ const ProductInsightsSection = ({
 
   const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
 
+  const enrichedBlocks = useMemo(() => {
+    return (blocks || []).map((b) => {
+      const isOther =
+        b.isOtherSkus || b.name.trim().toLowerCase() === "other skus";
+
+      if (!isOther) return b;
+
+      return {
+        ...b,
+        isOtherSkus: true,
+        includedSkus:
+          b.includedSkus?.length
+            ? b.includedSkus
+            : otherSkuIncludedProducts || [],
+      };
+    });
+  }, [blocks, otherSkuIncludedProducts]);
+
   const sortedBlocks = useMemo(() => {
-    return [...blocks].sort((a, b) => {
+    return [...enrichedBlocks].sort((a, b) => {
       const aIsOther = a.isOtherSkus || a.name.trim().toLowerCase() === "other skus";
       const bIsOther = b.isOtherSkus || b.name.trim().toLowerCase() === "other skus";
 
-      // Always keep Other SKUs at the end
       if (aIsOther && !bIsOther) return 1;
       if (!aIsOther && bIsOther) return -1;
 
-      // Sort all normal products by Net Sales descending
       return getBlockNetSales(b) - getBlockNetSales(a);
     });
-  }, [blocks]);
+  }, [enrichedBlocks]);
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
@@ -1654,6 +1792,7 @@ type AiSingleInsightCardProps = {
   } | null;
 
   currencySymbol?: string;
+  otherSkuIncludedProducts?: OtherSkuItem[];
 };
 
 const formatSummaryPeriod = (text?: string) => {
@@ -1726,6 +1865,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   homeCurrency,
   targetSummary,
   currencySymbol = "$",
+  otherSkuIncludedProducts,
 }) => {
   const router = useRouter();
 
@@ -1858,6 +1998,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 homeCurrency={homeCurrency}
                 countryName={countryName}
                 drawerPeriodText={drawerPeriodText}
+                otherSkuIncludedProducts={otherSkuIncludedProducts}
               />
             </div>
           </div>
@@ -4022,6 +4163,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         globalAi?.global_overall_recommendation ||
         data?.overall_recommendation ||
         null,
+
+      otherSkuIncludedProducts: getOtherSkuIncludedProducts(data),
     };
   };
 
@@ -4136,6 +4279,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           typeof data.recommendations === "string" ? data.recommendations : null,
         remainingSkusRecommendation,
         portfolioRecommendation: data.portfolio_recommendation ?? null,
+
+        otherSkuIncludedProducts: getOtherSkuIncludedProducts(data),
       });
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return;
@@ -6490,6 +6635,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     portfolioRecommendation={aiPanel?.portfolioRecommendation}
                     targetSummary={targetSummary}
                     currencySymbol={currencySymbol}
+                    otherSkuIncludedProducts={aiPanel?.otherSkuIncludedProducts}
                   />
                 </>
               )}
@@ -6531,43 +6677,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
 
           )}
-
-          {/* {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-              {(() => {
-                const productWiseRange =
-                  range === "quarterly" ? "quarterly" : "yearly";
-
-                return (
-                  <ProductwisePerformance
-                    key={[
-                      initialCountryName,
-                      productWiseRange,
-                      selectedQuarter,
-                      selectedYear,
-                      defaultTopProductName,
-                      isDemoMode ? "demo" : "live",
-                    ].join("-")}
-                    embedded
-                    countryNameProp={isDemoMode ? "global" : initialCountryName}
-                    rangeProp={productWiseRange}
-                    selectedMonthProp={isDemoMode ? "NA" : ""}
-                    selectedQuarterProp={
-                      isDemoMode
-                        ? ""
-                        : productWiseRange === "quarterly"
-                          ? selectedQuarter
-                          : ""
-                    }
-                    selectedYearProp={
-                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
-                    }
-                    initialProductName={defaultTopProductName || "Demo Product A"}
-                  />
-                );
-              })()}
-            </div>
-          )} */}
 
           {activeTab === "skuwiseProfit" && allDropdownsSelected && (
             <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
