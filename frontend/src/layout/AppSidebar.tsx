@@ -1221,7 +1221,7 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 left-0 bg-white text-gray-900 h-screen overflow-y-auto transition-all duration-300 ease-in-out z-[1100]
-        px-3 sm:px-4 lg:px-1 xl:px-1.5 2xl:px-4
+     ${showText ? "px-3 sm:px-4 lg:px-3 xl:px-4" : "px-0"}
         ${isMobileOpen
           ? "w-full"
           : showText
@@ -1233,12 +1233,15 @@ const AppSidebar: React.FC = () => {
       `}
     >
       {/* Logo + toggle */}
-      <div className="py-4 sm:py-5 lg:py-6 flex items-center justify-between">
-        <Link
-          href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`}
-          className="flex items-center gap-2"
-        >
-          {showText ? (
+      <div
+        className={`py-4 sm:py-5 lg:py-6 flex items-center ${showText ? "justify-between" : "justify-center"
+          }`}
+      >
+        {showText && (
+          <Link
+            href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`}
+            className="flex items-center gap-2"
+          >
             <Image
               className="dark:hidden hidden lg:block"
               src="/images/logo/Logo_Phormula.png"
@@ -1246,13 +1249,13 @@ const AppSidebar: React.FC = () => {
               width={132}
               height={36}
             />
-          ) : null}
-        </Link>
+          </Link>
+        )}
 
         <button
           type="button"
           onClick={handleToggle}
-          className="flex items-center justify-center w-8 h-8 2xl:w-9 2xl:h-9 rounded-lg border border-gray-200"
+          className="flex shrink-0 items-center justify-center w-8 h-8 2xl:w-9 2xl:h-9 rounded-lg border border-gray-200"
           aria-label="Toggle sidebar"
         >
           {showText ? (
