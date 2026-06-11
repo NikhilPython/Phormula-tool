@@ -2404,77 +2404,77 @@ def render_month_end_summary(
         if isinstance(takeaway, str) and takeaway.strip():
             lines.append(takeaway)
 
-        # Units
-        u = es.get("units", {})
-        units_label = "Units sold (YoY)" if is_yearly else "Units sold"
-        lines.append(
-            f"• {units_label}: {fmt_pct(u.get('pct_change'))}"
-            f"{severity_suffix(u.get('severity'), period=period)}"
-        )
+        # # Units
+        # u = es.get("units", {})
+        # units_label = "Units sold (YoY)" if is_yearly else "Units sold"
+        # lines.append(
+        #     f"• {units_label}: {fmt_pct(u.get('pct_change'))}"
+        #     f"{severity_suffix(u.get('severity'), period=period)}"
+        # )
 
-        # Net Sales
-        ns = es.get("net_sales", {})
-        ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
-        lines.append(
-            f"• {ns_label}: {fmt_pct(ns.get('pct_change'))}"
-            f"{severity_suffix(ns.get('severity'), period=period)}"
-        )
+        # # Net Sales
+        # ns = es.get("net_sales", {})
+        # ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
+        # lines.append(
+        #     f"• {ns_label}: {fmt_pct(ns.get('pct_change'))}"
+        #     f"{severity_suffix(ns.get('severity'), period=period)}"
+        # )
 
-        # ASP
-        asp = es.get("asp", {})
-        asp_label = "ASP (YoY)" if is_yearly else "ASP"
-        lines.append(
-            f"• {asp_label}: {fmt_pct(asp.get('pct_change'))}"
-            f"{severity_suffix(asp.get('severity'), period=period)}"
-        )
+        # # ASP
+        # asp = es.get("asp", {})
+        # asp_label = "ASP (YoY)" if is_yearly else "ASP"
+        # lines.append(
+        #     f"• {asp_label}: {fmt_pct(asp.get('pct_change'))}"
+        #     f"{severity_suffix(asp.get('severity'), period=period)}"
+        # )
 
-        # CM1 Profit
-        cm1 = es.get("cm1_profit", {})
-        cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
-        lines.append(
-            f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))}"
-            f"{severity_suffix(cm1.get('severity'), period=period)}"
-        )
+        # # CM1 Profit
+        # cm1 = es.get("cm1_profit", {})
+        # cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
+        # lines.append(
+        #     f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))}"
+        #     f"{severity_suffix(cm1.get('severity'), period=period)}"
+        # )
 
-        # CM1 Profit per Unit
-        ppu = es.get("cm1_profit_per_unit", {})
-        ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
-        lines.append(
-            f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))}"
-            f"{severity_suffix(ppu.get('severity'), period=period)}"
-        )
+        # # CM1 Profit per Unit
+        # ppu = es.get("cm1_profit_per_unit", {})
+        # ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
+        # lines.append(
+        #     f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))}"
+        #     f"{severity_suffix(ppu.get('severity'), period=period)}"
+        # )
 
-        # Advertising
-        cp = es.get("cost_pressure", {})
-        ad = cp.get("advertising", {})
-        lines.append(
-            f"• Advertising spends: {fmt_pct(ad.get('pct_change'))}"
-            f"{severity_suffix(ad.get('severity'), period=period)}, "
-            f"ACOS change: {fmt_pct(ad.get('acos_delta'))}"
-        )
+        # # Advertising
+        # cp = es.get("cost_pressure", {})
+        # ad = cp.get("advertising", {})
+        # lines.append(
+        #     f"• Advertising spends: {fmt_pct(ad.get('pct_change'))}"
+        #     f"{severity_suffix(ad.get('severity'), period=period)}, "
+        #     f"ACOS change: {fmt_pct(ad.get('acos_delta'))}"
+        # )
 
-        # Storage
-        st = cp.get("storage_fees", {})
-        lines.append(
-            f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))}"
-            f"{severity_suffix(st.get('severity'), period=period)}"
-        )
+        # # Storage
+        # st = cp.get("storage_fees", {})
+        # lines.append(
+        #     f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))}"
+        #     f"{severity_suffix(st.get('severity'), period=period)}"
+        # )
 
-        # CM2 Profit
-        cm2 = es.get("cm2_profit", {})
-        cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
-        lines.append(
-            f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))}"
-            f"{severity_suffix(cm2.get('severity'), period=period)}"
-        )
+        # # CM2 Profit
+        # cm2 = es.get("cm2_profit", {})
+        # cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
+        # lines.append(
+        #     f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))}"
+        #     f"{severity_suffix(cm2.get('severity'), period=period)}"
+        # )
 
-        # Reimbursements
-        reimb = es.get("reimbursements", {})
-        if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
-            lines.append(
-                f"• Amazon reimbursements for lost inventory: "
-                f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
-            )
+        # # Reimbursements
+        # reimb = es.get("reimbursements", {})
+        # if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
+        #     lines.append(
+        #         f"• Amazon reimbursements for lost inventory: "
+        #         f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
+        #     )
 
     # =========================================================
     # PORTFOLIO RECOMMENDATION
@@ -2547,25 +2547,10 @@ def render_month_end_summary(
 
         lines.append("\nOther SKUs")
 
-        # ✅ NEW: show which products are included in Other SKUs
-        included_products = remaining_agg.get("included_products", [])
-
-        if isinstance(included_products, list) and included_products:
-            lines.append("• Products included:")
-
-            for item in included_products:
-                if not isinstance(item, dict):
-                    continue
-
-                product_name = item.get("product_name")
-                sku = item.get("sku")
-
-                if product_name and sku:
-                    lines.append(f"   - {product_name} ({sku})")
-                elif product_name:
-                    lines.append(f"   - {product_name}")
-
         # --- Aggregated Metrics ---
+        # IMPORTANT:
+        # Keep ASP immediately after "Other SKUs".
+        # Frontend parser expects product title -> metric line.
         lines.append(
             f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
         )
@@ -2586,14 +2571,31 @@ def render_month_end_summary(
             f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
         )
 
+        # ✅ Product names should come AFTER metrics
+        included_products = remaining_agg.get("included_products", [])
+
+        if isinstance(included_products, list) and included_products:
+            lines.append("• Products included:")
+
+            for item in included_products:
+                if not isinstance(item, dict):
+                    continue
+
+                product_name = item.get("product_name")
+                sku = item.get("sku")
+
+                if product_name and sku:
+                    lines.append(f"   - {product_name} ({sku})")
+                elif product_name:
+                    lines.append(f"   - {product_name}")
+
         # --- Journey ---
         if isinstance(remaining_journey, list) and remaining_journey:
             lines.append("• Product journey:")
             for point in remaining_journey:
                 lines.append(f"   - {point}")
 
-        # --- Recommendation (optional) ---
-                # --- Recommendation (optional) ---
+        # --- Recommendation ---
         if isinstance(remaining_rec, str) and remaining_rec.strip():
             lines.append(f"• Recommendation: {remaining_rec}")
 
