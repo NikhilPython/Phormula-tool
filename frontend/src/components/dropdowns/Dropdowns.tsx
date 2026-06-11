@@ -463,6 +463,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
     const isProductHeader =
       !isMetric(line) &&
       !line.toLowerCase().startsWith("recommendation:") &&
+      !line.toLowerCase().startsWith("ads action:") &&
       !line.toLowerCase().startsWith("product journey") &&
       !line.toLowerCase().startsWith("inventory action:") &&
       !!nextLine &&
@@ -509,6 +510,13 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
+    if (line.toLowerCase().startsWith("ads action:")) {
+      inJourney = false;
+      const ads = line.replace(/^ads action:\s*/i, "").trim();
+      if (ads) current.recommendationBullets.push(ads);
+      continue;
+    }
+
     if (line.toLowerCase().startsWith("inventory action:")) {
       inJourney = false;
       const inv = line.replace(/^inventory action:\s*/i, "").trim();
@@ -529,7 +537,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
-    // journey bullets
     if (inJourney) {
       const cleaned = line.replace(/^-+\s*/, "").trim();
       if (cleaned) current.journeyBullets.push(cleaned);
@@ -540,7 +547,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   pushCurrent();
   return blocks;
 };
-
 
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
   if (!md) return {};
@@ -725,6 +731,97 @@ const buildOtherSkusInsightLines = (
   ].filter(Boolean);
 };
 
+const formatMetricValueWithDelta = (
+  current: any,
+  deltaPct: any,
+  type: "money" | "number",
+  currencySymbol = "$"
+) => {
+  const value = toNum(current);
+
+  const main =
+    type === "money"
+      ? formatMoney(value, currencySymbol)
+      : Math.round(value).toLocaleString();
+
+  const delta =
+    deltaPct === null || deltaPct === undefined || !Number.isFinite(Number(deltaPct))
+      ? ""
+      : ` (${Number(deltaPct) >= 0 ? "+" : ""}${Number(deltaPct).toFixed(2)}%)`;
+
+  return `${main}${delta}`;
+};
+
+const buildDrawerBlockFromSkuRow = (
+  sku: string,
+  row: any,
+  recObj: any,
+  currencySymbol = "$"
+): ProductInsightBlock => {
+  const name = String(row?.product_name || sku).trim();
+
+  return {
+    name,
+    skuKey: sku,
+    metrics: [
+      {
+        label: "Units",
+        value: formatMetricValueWithDelta(
+          row?.total_quantity?.current ?? row?.quantity?.current,
+          row?.total_quantity?.delta_pct ?? row?.quantity?.delta_pct,
+          "number",
+          currencySymbol
+        ),
+      },
+      {
+        label: "Net sales",
+        value: formatMetricValueWithDelta(
+          row?.net_sales?.current,
+          row?.net_sales?.delta_pct,
+          "money",
+          currencySymbol
+        ),
+      },
+      {
+        label: "ASP",
+        value: formatMetricValueWithDelta(
+          row?.asp?.current,
+          row?.asp?.delta_pct,
+          "money",
+          currencySymbol
+        ),
+      },
+      {
+        label: "CM1 profit",
+        value: formatMetricValueWithDelta(
+          row?.profit?.current,
+          row?.profit?.delta_pct,
+          "money",
+          currencySymbol
+        ),
+      },
+      {
+        label: "CM1 profit per unit",
+        value: formatMetricValueWithDelta(
+          row?.unit_wise_profitability?.current,
+          row?.unit_wise_profitability?.delta_pct,
+          "money",
+          currencySymbol
+        ),
+      },
+    ],
+    journeyBullets: Array.isArray(recObj?.journey_summary)
+      ? recObj.journey_summary
+      : [],
+    recommendationBullets: recObj?.recommendation
+      ? [recObj.recommendation]
+      : [],
+    inventoryBullets: recObj?.inventory_recommendation
+      ? [recObj.inventory_recommendation]
+      : [],
+    isOtherSkus: name.toLowerCase() === "other skus",
+  };
+};
 
 const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?: string) => {
   const yy = String(year || "").slice(-2);
@@ -2901,32 +2998,41 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [aiPanel?.recommendationsMap]);
 
   const openAiProductDrawerByName = useCallback(
-    (productName: string) => {
+    (productName: string, sku?: string) => {
       const cleanName = String(productName || "").trim();
-      if (!cleanName) return;
+      const cleanSku = String(sku || "").trim();
+
+      if (!cleanName && !cleanSku) return;
 
       const normalizedClickedName = normalizeKey(cleanName);
 
       const block =
+        // 1. Best match: exact SKU
+        (cleanSku
+          ? aiProductBlocks.find(
+            (b) =>
+              String(b.skuKey || "").trim().toLowerCase() ===
+              cleanSku.toLowerCase()
+          )
+          : undefined) ||
+
+        // 2. Exact product name only
         aiProductBlocks.find(
           (b) => normalizeKey(b.name) === normalizedClickedName
-        ) ||
-        aiProductBlocks.find((b) => {
-          const normalizedBlockName = normalizeKey(b.name);
-
-          return (
-            normalizedBlockName.includes(normalizedClickedName) ||
-            normalizedClickedName.includes(normalizedBlockName)
-          );
-        });
+        );
 
       if (!block) {
-        console.warn("No AI insight block found for product:", cleanName);
+        console.warn("No AI insight block found for:", {
+          productName: cleanName,
+          sku: cleanSku,
+        });
         return;
       }
 
-      const mappedSku = nameToSkuMap?.[normalizeKey(block.name)];
-      const skuKey = block.skuKey || mappedSku;
+      const skuKey =
+        block.skuKey ||
+        cleanSku ||
+        nameToSkuMap?.[normalizeKey(block.name)];
 
       const recObj =
         (skuKey && (aiSkuActions as any)[skuKey]) ||

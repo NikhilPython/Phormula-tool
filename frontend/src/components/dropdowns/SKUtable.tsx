@@ -79,8 +79,7 @@ type SKUtableProps = {
   onDownload?: () => void;
   disableInternalFade?: boolean;
 
-  // ✅ New: parent drawer opener
-  onProductDetailClick?: (productName: string) => void;
+  onProductDetailClick?: (productName: string, sku?: string) => void;
 };
 
 type TopBottomRow = {
@@ -1640,14 +1639,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   /* --------- UI handlers --------- */
   const handleProductClick = useCallback(
-    (product: string) => {
-      const cleanProduct = String(product || "").trim();
+    (row: TableRow) => {
+      const cleanProduct = getDisplayProductNameFromRow(row).trim();
+      const cleanSku = String(row?.sku || "").trim();
 
       if (!cleanProduct) return;
 
-      onProductDetailClick?.(cleanProduct);
+      onProductDetailClick?.(cleanProduct, cleanSku);
     },
-    [onProductDetailClick]
+    [onProductDetailClick, getDisplayProductNameFromRow]
   );
 
   const handleDownloadExcel = useCallback(async () => {
@@ -1901,7 +1901,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     if (!isTotal) {
                       return (
                         <div
-                          onClick={() => handleProductClick(String(displayName || ""))}
+                          onClick={() => handleProductClick(row)}
                           className="flex w-full cursor-pointer items-center justify-between gap-3 text-[#60a68e]"
                           title={String(displayName || "")}
                         >
