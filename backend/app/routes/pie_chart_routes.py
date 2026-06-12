@@ -1,6 +1,7 @@
 from flask import request, jsonify, send_file, Blueprint
 import os
 import psycopg2
+from psycopg2 import sql
 import pandas as pd
 import matplotlib.pyplot as plt
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -195,6 +196,85 @@ def check_table_exists(cursor, table_name):
     except Exception as e:
         print(f"Error checking table existence: {e}")
         return False
+    
+def check_column_exists(cursor, table_name, column_name):
+    """Check if a column exists in a table"""
+    try:
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = %s
+                AND column_name = %s
+            );
+        """, (table_name, column_name))
+        return cursor.fetchone()[0]
+    except Exception as e:
+        print(f"Error checking column existence: {e}")
+        return False
+
+
+def build_monthly_cm2_table_name(user_id, country, month, year):
+    """
+    Build table name for monthly cm2_profit lookup.
+
+    Expected format:
+    skuwisemonthly_{user_id}_{country}_{month}_{year}
+    """
+    return f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}_{str(year)}".lower()
+
+
+def fetch_cm2_profit_from_monthly_table(table_name):
+    """
+    Fetch productwise cm2_profit from monthly SKU-wise table.
+    If table/column/data is missing, return None and do not affect existing response.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    try:
+        cursor = conn.cursor()
+
+        if not check_table_exists(cursor, table_name):
+            return None
+
+        if not check_column_exists(cursor, table_name, "cm2_profit"):
+            return None
+
+        query = sql.SQL("""
+            SELECT product_name, cm2_profit
+            FROM {}
+            WHERE cm2_profit IS NOT NULL
+            AND product_name IS NOT NULL
+            AND LOWER(TRIM(product_name)) != 'total'
+            ORDER BY cm2_profit DESC
+        """).format(sql.Identifier(table_name))
+
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        if not rows:
+            return None
+
+        cm2_data = []
+        for product_name, cm2_profit in rows:
+            cm2_data.append({
+                "product_name": str(product_name).strip(),
+                "cm2_profit": float(cm2_profit) if cm2_profit is not None else None
+            })
+
+        return cm2_data
+
+    except Exception as e:
+        print(f"Error fetching cm2_profit from {table_name}: {e}")
+        return None
+
+    finally:
+        if conn:
+            conn.close()
+
+
 
 def fetch_data_from_table(table_name):
     """Fetch product data from specified table"""
@@ -683,6 +763,28 @@ def generate_pie_chart():
                     'range_type': range_type
                 }
             }), 404
+        
+        # ---------------- Optional monthly cm2_profit lookup ----------------
+        current_cm2_profit = None
+        cm2_profit_table_used = None
+
+        if is_monthly_request and month_str and year_str:
+            cm2_month_str = str(month_str).strip().lower()
+
+            if cm2_month_str.isdigit():
+                cm2_month_str = datetime(2000, int(cm2_month_str), 1).strftime("%B").lower()
+
+            cm2_table_name = build_monthly_cm2_table_name(
+                user_id=user_id,
+                country=country,
+                month=cm2_month_str,
+                year=year_str
+            )
+
+            current_cm2_profit = fetch_cm2_profit_from_monthly_table(cm2_table_name)
+
+            if current_cm2_profit:
+                cm2_profit_table_used = cm2_table_name
 
         # ---------------- Prepare CURRENT pie data ----------------
         labels, values = prepare_pie_chart_data(df)
@@ -844,6 +946,9 @@ def generate_pie_chart():
                 "compare_top5": compare,
             }
         }
+        if current_cm2_profit:
+            response_data['data']['cm2_profit'] = current_cm2_profit
+            response_data['data']['cm2_profit_table_used'] = cm2_profit_table_used        
 
         if response_format == 'image':
             response_data['data']['chart_image'] = f"data:image/png;base64,{chart_base64}"
