@@ -1596,45 +1596,78 @@ const SKUtable: React.FC<SKUtableProps> = ({
     (data: TableRow[], mode: "top" | "bottom"): TopBottomData => {
       const rows = rowsExcludingSpecial(data);
 
+      const getProfitValue = (row: TableRow) => {
+        return hasCm2Data
+          ? toNumber(row.cm2_profit ?? row.cm2_profit_total)
+          : toNumber(row.profit);
+      };
+
+      const getPerUnitValue = (row: TableRow) => {
+        const units = toNumber(row.net_units_sold ?? row.total_quantity);
+
+        if (units <= 0) return 0;
+
+        return hasCm2Data
+          ? getProfitValue(row) / units
+          : toNumber(row.profit) / units;
+      };
+
       const sorted = [...rows].sort((a, b) => {
-        const ap = toNumber(a.profit);
-        const bp = toNumber(b.profit);
+        const ap = getProfitValue(a);
+        const bp = getProfitValue(b);
+
         return mode === "top" ? bp - ap : ap - bp;
       });
 
       const pick = sorted.slice(0, 5);
 
-      const totalProfit = pick.reduce((s, r) => s + toNumber(r.profit), 0);
+      const totalProfit = pick.reduce((s, r) => s + getProfitValue(r), 0);
       const totalProfitMix = pick.reduce((s, r) => s + toNumber(r.profit_mix), 0);
       const totalSalesMix = pick.reduce((s, r) => s + toNumber(r.sales_mix), 0);
 
-      const totalNetUnits = pick.reduce((s, r) => s + toNumber(r.net_units_sold), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+      const totalNetUnits = pick.reduce(
+        (s, r) => s + toNumber(r.net_units_sold ?? r.total_quantity),
+        0
+      );
+
+      const avgPerUnit = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
 
       const formatted = pick.map((item) => {
-        const netUnits = toNumber(item.net_units_sold);
-        const cm1PerUnit = netUnits > 0 ? toNumber(item.profit) / netUnits : 0;
+        const profitValue = getProfitValue(item);
+        const perUnitValue = getPerUnitValue(item);
 
         return {
           product_name: getDisplayProductNameFromRow(item),
-          profit: toNumber(item.profit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profit: profitValue.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
           profitMix: toNumber(item.profit_mix).toFixed(2),
           salesMix: toNumber(item.sales_mix).toFixed(2),
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          per_unit: perUnitValue.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
         };
       });
 
       return {
         rows: formatted,
         totals: {
-          profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profit: totalProfit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
           profitMix: totalProfitMix.toFixed(2),
           salesMix: totalSalesMix.toFixed(2),
-          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          avg_per_unit: avgPerUnit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
         },
       };
     },
-    [getDisplayProductNameFromRow]
+    [getDisplayProductNameFromRow, hasCm2Data]
   );
 
   const topData = useMemo(() => buildTopBottom(tableData, "top"), [tableData, buildTopBottom]);

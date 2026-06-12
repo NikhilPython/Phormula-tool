@@ -3478,35 +3478,90 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const computeTopBottom5 = (
     rows: TableRow[]
-  ): { topData: TopBottomData; bottomData: TopBottomData } => {
+  ): {
+    topData: TopBottomData;
+    bottomData: TopBottomData;
+    hasCm2Data: boolean;
+  } => {
     const clean = (rows || []).filter(Boolean);
 
     const num = (v: any) => {
       if (v === null || v === undefined) return 0;
-      if (typeof v === "number") return isFinite(v) ? v : 0;
-      const s = String(v).replace(/,/g, "").trim();
-      const n = Number(s);
-      return isFinite(n) ? n : 0;
+      if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+      const n = Number(String(v).replace(/,/g, "").trim());
+      return Number.isFinite(n) ? n : 0;
     };
 
     const lower = (v: any) => String(v || "").trim().toLowerCase();
 
     const withoutTotal = clean.filter((r) => {
-      const name = lower((r as any).product_name ?? (r as any).sku);
-      return name !== "total";
+      const name = lower((r as any).product_name);
+      const sku = lower((r as any).sku);
+
+      return (
+        name !== "total" &&
+        sku !== "total" &&
+        name !== "others" &&
+        sku !== "others"
+      );
     });
 
-    const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
-    const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
+    const topBottomHasCm2Data = (() => {
+      const currentRange = String(range || "").trim().toLowerCase();
+
+      if (currentRange === "yearly" || currentRange === "quarterly") {
+        return false;
+      }
+
+      return withoutTotal.some((row: any) => {
+        const adsSpend = num(row.ads_spend ?? row.advertising_total);
+        const backendAcos = num(row.acos);
+        const netSales = num(row.net_sales);
+
+        const acos =
+          backendAcos || (netSales !== 0 ? (adsSpend / netSales) * 100 : 0);
+
+        const cm1Profit = num(row.profit);
+        const cm2Profit = num(row.cm2_profit ?? row.cm2_profit_total);
+
+        return (
+          adsSpend !== 0 ||
+          acos !== 0 ||
+          Math.abs(cm2Profit - cm1Profit) > 0.01
+        );
+      });
+    })();
+
+    const getProfitValue = (row: TableRow) => {
+      return topBottomHasCm2Data
+        ? num((row as any).cm2_profit ?? (row as any).cm2_profit_total)
+        : num((row as any).profit);
+    };
+
+    const getPerUnitValue = (row: TableRow) => {
+      const units = num(
+        (row as any).net_units_sold ?? (row as any).total_quantity
+      );
+
+      return units > 0 ? getProfitValue(row) / units : 0;
+    };
+
+    const sortByProfitDesc = [...withoutTotal].sort(
+      (a, b) => getProfitValue(b) - getProfitValue(a)
+    );
+
+    const sortByProfitAsc = [...withoutTotal].sort(
+      (a, b) => getProfitValue(a) - getProfitValue(b)
+    );
 
     const top5 = sortByProfitDesc.slice(0, 5);
     const bottom5 = sortByProfitAsc.slice(0, 5);
 
     const mapRows = (arr: TableRow[]) =>
       arr.map((item) => {
-        const netUnits = num(item.net_units_sold);
-        const profit = num(item.profit);
-        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
+        const profitValue = getProfitValue(item);
+        const perUnitValue = getPerUnitValue(item);
 
         const skuValue =
           (item as any).sku ??
@@ -3518,20 +3573,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           (item as any).ASIN;
 
         return {
-          // product_name raw bhejo, yaha SKU fallback mat lagao
-          // child component decide karega: agar product_name "0" hai to sku dikhana hai
           product_name: String((item as any).product_name ?? ""),
-
-          // ye important hai, isi wajah se child me "-" ki jagah SKU aayega
           sku: String(skuValue ?? ""),
 
-          profit: profit.toLocaleString(undefined, {
+          profit: profitValue.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           }),
-          profitMix: num(item.profit_mix).toFixed(2),
-          salesMix: num(item.sales_mix).toFixed(2),
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+
+          profitMix: num((item as any).profit_mix).toFixed(2),
+          salesMix: num((item as any).sales_mix).toFixed(2),
+
+          per_unit: perUnitValue.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           }),
@@ -3539,29 +3592,60 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       });
 
     const totalsFor = (arr: TableRow[]) => {
-      const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
-      const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
-      const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
-      const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+      const totalProfit = arr.reduce((s, r) => s + getProfitValue(r), 0);
+
+      const totalProfitMix = arr.reduce(
+        (s, r) => s + num((r as any).profit_mix),
+        0
+      );
+
+      const totalSalesMix = arr.reduce(
+        (s, r) => s + num((r as any).sales_mix),
+        0
+      );
+
+      const totalNetUnits = arr.reduce(
+        (s, r) =>
+          s + num((r as any).net_units_sold ?? (r as any).total_quantity),
+        0
+      );
+
+      const avgPerUnit = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
 
       return {
-        profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        profit: totalProfit.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
         profitMix: totalProfitMix.toFixed(2),
         salesMix: totalSalesMix.toFixed(2),
-        avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        avg_per_unit: avgPerUnit.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
       };
     };
 
     return {
-      topData: { rows: mapRows(top5), totals: totalsFor(top5) },
-      bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
+      topData: {
+        rows: mapRows(top5),
+        totals: totalsFor(top5),
+      },
+      bottomData: {
+        rows: mapRows(bottom5),
+        totals: totalsFor(bottom5),
+      },
+      hasCm2Data: topBottomHasCm2Data,
     };
   };
 
-  const { topData, bottomData } = useMemo(
+  const {
+    topData,
+    bottomData,
+    hasCm2Data: topBottomHasCm2Data,
+  } = useMemo(
     () => computeTopBottom5(displaySkuRows),
-    [displaySkuRows]
+    [displaySkuRows, range]
   );
 
   const defaultTopProductName = useMemo(() => {
@@ -6978,7 +7062,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   topData={topData}
                   bottomData={bottomData}
                   currencySymbol={currencySymbol}
-                  previewMode={shouldShowPreviewData}
+                  previewMode={isDemoMode}
+                  hasCm2Data={topBottomHasCm2Data}
                 />
               )}
             </div>
