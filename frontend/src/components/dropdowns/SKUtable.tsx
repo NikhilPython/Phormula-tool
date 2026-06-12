@@ -1271,6 +1271,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "net_reimbursement",
     "reimbursement_vs_sales",
     "rembursment_vs_cm2_margins",
+    "other_transactions",
   ]);
 
   const formatValue = useCallback(
@@ -1483,7 +1484,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
           ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
           : []),
 
-        { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: 1 },
+        {
+          product_name: "Other Transactions",
+          profit: Number(totals.other_transactions || 0),
+          __bold: 1,
+        },
         { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
         { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
         { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
@@ -2058,7 +2063,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                           id: "net_reimb_debt_payment",
                           label: (
                             <>
-                              Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                              Charged <strong className="text-[#ff5c5c]">(-)</strong>
                             </>
                           ),
                           midValue: formatValue(totals.debt_payment, "debt_payment"),

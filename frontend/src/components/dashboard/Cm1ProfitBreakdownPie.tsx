@@ -67,8 +67,7 @@ export default function Cm1ProfitBreakdownPie({
   const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
 
   const activeData = profitPieType === "cm1" ? data : cm2Data;
-  const activeTitle =
-    profitPieType === "cm1" ? "CM1 Profit Breakdown" : "CM2 Profit Breakdown";
+  const activeTitle ="Profit Breakdown";
 
   const showDelta = profitPieType === "cm1";
 
