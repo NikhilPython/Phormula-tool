@@ -180,6 +180,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const [isLaptop, setIsLaptop] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
+  const [activeMetric, setActiveMetric] = useState<CmMetric>(metric);
+
   const chartRef = useRef<any>(null);
 
   const exportChartBase64 = () => {
@@ -437,66 +439,66 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         // Prefer compare_top5 (it has current + previous)
         const rows = Array.isArray(payload.compare_top5) ? payload.compare_top5 : [];
 
-       let built: CmPieSlice[] = [];
+        let built: CmPieSlice[] = [];
 
-// ✅ CM2 must use payload.cm2_profit first.
-// Do this BEFORE compare_top5, because compare_top5 is CM1 data.
-if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
-  built = buildSlicesFromCm2Profit(payload.cm2_profit);
-} else if (
-  Array.isArray(payload.current_data) &&
-  Array.isArray(payload.previous_data)
-) {
-  built = buildSlicesFromCurrentPreviousData(
-    payload.current_data,
-    payload.previous_data,
-    metric
-  );
-} else {
-  const rows = Array.isArray(payload.compare_top5)
-    ? payload.compare_top5
-    : [];
+        // ✅ CM2 must use payload.cm2_profit first.
+        // Do this BEFORE compare_top5, because compare_top5 is CM1 data.
+        if (activeMetric === "cm2" && Array.isArray(payload.cm2_profit)) {
+          built = buildSlicesFromCm2Profit(payload.cm2_profit);
+        } else if (
+          Array.isArray(payload.current_data) &&
+          Array.isArray(payload.previous_data)
+        ) {
+          built = buildSlicesFromCurrentPreviousData(
+            payload.current_data,
+            payload.previous_data,
+            activeMetric
+          );
+        } else {
+          const rows = Array.isArray(payload.compare_top5)
+            ? payload.compare_top5
+            : [];
 
-  if (rows.length) {
-    const currentValues = rows.map((r) =>
-      Math.abs(toNum(r.current_profit))
-    );
+          if (rows.length) {
+            const currentValues = rows.map((r) =>
+              Math.abs(toNum(r.current_profit))
+            );
 
-    const totalCurrent = currentValues.reduce((a, b) => a + b, 0);
+            const totalCurrent = currentValues.reduce((a, b) => a + b, 0);
 
-    built = rows.map((r) => {
-      const cur = Math.abs(toNum(r.current_profit));
-      const prev = Math.abs(toNum(r.previous_profit));
-      const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
-      const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
+            built = rows.map((r) => {
+              const cur = Math.abs(toNum(r.current_profit));
+              const prev = Math.abs(toNum(r.previous_profit));
+              const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
+              const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
 
-      return {
-        name: r.product,
-        value: cur,
-        prevValue: prev,
-        pct,
-        deltaPct,
-      };
-    });
-  } else if (Array.isArray(payload.labels) && Array.isArray(payload.values)) {
-    const labels = payload.labels as string[];
-    const values = (payload.values || []).map((v) => Math.abs(toNum(v)));
-    const totalCurrent = values.reduce((a, b) => a + b, 0);
+              return {
+                name: r.product,
+                value: cur,
+                prevValue: prev,
+                pct,
+                deltaPct,
+              };
+            });
+          } else if (Array.isArray(payload.labels) && Array.isArray(payload.values)) {
+            const labels = payload.labels as string[];
+            const values = (payload.values || []).map((v) => Math.abs(toNum(v)));
+            const totalCurrent = values.reduce((a, b) => a + b, 0);
 
-    built = labels.map((label, i) => {
-      const cur = values[i] ?? 0;
-      const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
+            built = labels.map((label, i) => {
+              const cur = values[i] ?? 0;
+              const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
 
-      return {
-        name: label,
-        value: cur,
-        prevValue: 0,
-        pct,
-        deltaPct: null,
-      };
-    });
-  }
-}
+              return {
+                name: label,
+                value: cur,
+                prevValue: 0,
+                pct,
+                deltaPct: null,
+              };
+            });
+          }
+        }
         const isEmpty =
           built.length === 0 ||
           !built.some((s) => Number(s.value) > 0);
@@ -532,7 +534,7 @@ if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
     normalizedHomeCurrency,
     homeCurrency,
     isGlobalPage,
-    metric,
+    activeMetric,
   ]);
 
   const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
@@ -593,15 +595,13 @@ if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
 
               const deltaText =
                 delta == null
-                  ? "—"
-                  : `${delta >= 0 ? "▲" : "▼"}${Math.abs(delta).toFixed(2)}%`;
-
-
+                  ? ""
+                  : ` (${delta >= 0 ? "▲" : "▼"}${Math.abs(delta).toFixed(2)}%)`;
 
               return `${slice?.name ?? ctx.label}: ${currencySymbol}${Math.round(val).toLocaleString(
                 undefined,
                 { maximumFractionDigits: 0 }
-              )} (${pct.toFixed(2)}%) (${deltaText})`;
+              )} (${pct.toFixed(2)}%)${deltaText}`;
             },
           },
         },
@@ -630,16 +630,27 @@ if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
       "relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col transition-opacity duration-300",
       disableInternalFade ? "pointer-events-none select-none opacity-45" : "opacity-100",
     ].join(" ")}>
-      <div className="mb-2 2xl:mb-1 w-fit mx-left md:mx-0">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadcrumb
           pageTitle={
-            metric === "cm2"
+            activeMetric === "cm2"
               ? "CM2 Profit Breakdown"
               : "CM1 Profit Breakdown"
           }
           variant="page"
           align="left"
           textSize="2xl"
+        />
+
+        <SegmentedToggle<CmMetric>
+          value={activeMetric}
+          onChange={setActiveMetric}
+          options={[
+            { value: "cm1", label: "CM1" },
+            { value: "cm2", label: "CM2" },
+          ]}
+          textSizeClass="text-xs 2xl:text-sm"
+          compact
         />
       </div>
 
@@ -754,24 +765,24 @@ if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
                             <div className="leading-[1.2]">
                               <span>({pct.toFixed(2)}%) </span>
                               {delta != null && (
-  <span
-    className={deltaClass}
-    style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 1,
-    }}
-  >
-    (
-    {delta >= 0 ? (
-      <DeltaUpIcon className="h-3 w-3" />
-    ) : (
-      <DeltaDownIcon className="h-3 w-3" />
-    )}
-    {Math.abs(delta).toFixed(2)}%
-    )
-  </span>
-)}
+                                <span
+                                  className={deltaClass}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                  }}
+                                >
+                                  (
+                                  {delta >= 0 ? (
+                                    <DeltaUpIcon className="h-3 w-3" />
+                                  ) : (
+                                    <DeltaDownIcon className="h-3 w-3" />
+                                  )}
+                                  {Math.abs(delta).toFixed(2)}%
+                                  )
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -794,25 +805,25 @@ if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
                                 maximumFractionDigits: 0,
                               })}{" "}
                               ({pct.toFixed(2)}%){" "}
-                              <span
-                                className={deltaClass}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 1,
-                                }}
-                              >
-                                (
-                                {delta == null ? (
-                                  "—"
-                                ) : delta >= 0 ? (
-                                  <DeltaUpIcon className="h-3 w-3" />
-                                ) : (
-                                  <DeltaDownIcon className="h-3 w-3" />
-                                )}
-                                {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
-                                )
-                              </span>
+                              {delta != null && (
+                                <span
+                                  className={deltaClass}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                  }}
+                                >
+                                  (
+                                  {delta >= 0 ? (
+                                    <DeltaUpIcon className="h-3 w-3" />
+                                  ) : (
+                                    <DeltaDownIcon className="h-3 w-3" />
+                                  )}
+                                  {Math.abs(delta).toFixed(2)}%
+                                  )
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

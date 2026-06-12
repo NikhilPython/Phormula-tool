@@ -6721,63 +6721,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           summaryFromSku={uploadsData?.summary ?? null}
                         />
 
-                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm1")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm1"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM1 Profit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm2")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm2"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM2 Profit
-                            </button>
-                          </div>
-
-                          {cmPieTab === "cm1" && (
-                            <CMchartofsku
-                              range="monthly"
-                              month={isDemoMode ? "NA" : selectedMonth}
-                              selectedQuarter={undefined}
-                              year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                              onExportBase64Ready={setProductWiseCm1PieBase64}
-                              disableInternalFade={isDemoMode}
-                              metric="cm1"
-                            />
-                          )}
-
-                          {cmPieTab === "cm2" && (
-                            <CMchartofsku
-                              range="monthly"
-                              month={isDemoMode ? "NA" : selectedMonth}
-                              selectedQuarter={undefined}
-                              year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                              onExportBase64Ready={setProductWiseCm2PieBase64}
-                              disableInternalFade={isDemoMode}
-                              metric="cm2"
-                            />
-                          )}
-                        </div>
+                        <CMchartofsku
+                          range="monthly"
+                          month={isDemoMode ? "NA" : selectedMonth}
+                          selectedQuarter={undefined}
+                          year={isDemoMode ? "NA" : selectedYear}
+                          countryName={isDemoMode ? "global" : initialCountryName}
+                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                          onExportBase64Ready={
+                            cmPieTab === "cm2"
+                              ? setProductWiseCm2PieBase64
+                              : setProductWiseCm1PieBase64
+                          }
+                          disableInternalFade={isDemoMode}
+                        />
                       </div>
                     </div>
                   )}
@@ -6905,63 +6862,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           summaryFromSku={uploadsData?.summary ?? null}
                         />
 
-                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm1")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm1"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM1 Profit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm2")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm2"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM2 Profit
-                            </button>
-                          </div>
-
-                          {cmPieTab === "cm1" && (
-                            <CMchartofsku
-                              range="quarterly"
-                              month={undefined}
-                              selectedQuarter={isDemoMode ? undefined : selectedQuarter}
-                              year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                              onExportBase64Ready={setProductWiseCm1PieBase64}
-                              disableInternalFade={isDemoMode}
-                              metric="cm1"
-                            />
-                          )}
-
-                          {cmPieTab === "cm2" && (
-                            <CMchartofsku
-                              range="quarterly"
-                              month={undefined}
-                              selectedQuarter={isDemoMode ? undefined : selectedQuarter}
-                              year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                              onExportBase64Ready={setProductWiseCm2PieBase64}
-                              disableInternalFade={isDemoMode}
-                              metric="cm2"
-                            />
-                          )}
-                        </div>
+                        <CMchartofsku
+                          range="quarterly"
+                          month={undefined}
+                          selectedQuarter={isDemoMode ? undefined : selectedQuarter}
+                          year={isDemoMode ? "NA" : selectedYear}
+                          countryName={isDemoMode ? "global" : initialCountryName}
+                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
+                          disableInternalFade={isDemoMode}
+                        />
                       </div>
                     </div>
                   )}
@@ -7087,65 +6997,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         summaryFromSku={uploadsData?.summary ?? null}
                       />
 
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                        {topBottomHasCm2Data && (
-                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm1")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm1"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM1 Profit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setCmPieTab("cm2")}
-                              className={[
-                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
-                                cmPieTab === "cm2"
-                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                              ].join(" ")}
-                            >
-                              CM2 Profit
-                            </button>
-                          </div>
-                        )}
-
-                        {cmPieTab === "cm1" && (
-                          <CMchartofsku
-                            range="yearly"
-                            month={undefined}
-                            selectedQuarter={undefined}
-                            year={isDemoMode ? "NA" : selectedYear}
-                            countryName={isDemoMode ? "global" : initialCountryName}
-                            homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                            onExportBase64Ready={setProductWiseCm1PieBase64}
-                            disableInternalFade={isDemoMode}
-                            metric="cm1"
-                          />
-                        )}
-
-                        {topBottomHasCm2Data && cmPieTab === "cm2" && (
-                          <CMchartofsku
-                            range="yearly"
-                            month={undefined}
-                            selectedQuarter={undefined}
-                            year={isDemoMode ? "NA" : selectedYear}
-                            countryName={isDemoMode ? "global" : initialCountryName}
-                            homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                            onExportBase64Ready={setProductWiseCm2PieBase64}
-                            disableInternalFade={isDemoMode}
-                            metric="cm2"
-                          />
-                        )}
-                      </div>
+                      <CMchartofsku
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
+                        year={isDemoMode ? "NA" : selectedYear}
+                        countryName={isDemoMode ? "global" : initialCountryName}
+                        homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                        disableInternalFade={isDemoMode}
+                      />
                     </div>
                   </div>
                 </>
