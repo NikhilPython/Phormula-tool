@@ -248,7 +248,6 @@ def get_month_tokens_present_for_year(conn, user_id, country, year):
 
 
 
-
 def aggregate_monthly_sku_rows(rows):
     grouped = {}
 
@@ -262,6 +261,11 @@ def aggregate_monthly_sku_rows(rows):
         "title"
     ]
 
+    derived_fields = {
+        "asp",
+        "average_selling_price",
+        "avg_selling_price"
+    }
 
     for row in rows:
         normalized_row = _normalize_sku_row(dict(row))
@@ -285,11 +289,38 @@ def aggregate_monthly_sku_rows(rows):
 
         if key not in grouped:
             grouped[key] = dict(normalized_row)
+
+            # Do not keep first month's ASP for the yearly previous period.
+            # It will be recalculated after all months are summed.
+            for field in derived_fields:
+                if field in grouped[key]:
+                    grouped[key][field] = 0
+
         else:
             for col, value in normalized_row.items():
+
+                # ASP is not additive, so do not sum it month-to-month.
+                if col in derived_fields:
+                    continue
+
                 if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
                     grouped[key][col] = (grouped[key].get(col) or 0) + (value or 0)
 
+    # Recalculate ASP from final aggregated totals.
+    # Formula: ASP = net_sales / total_quantity
+    for row in grouped.values():
+        net_sales = row.get("net_sales") or 0
+        total_quantity = row.get("total_quantity") or 0
+
+        asp = net_sales / total_quantity if total_quantity else 0
+
+        row["asp"] = asp
+
+        if "average_selling_price" in row:
+            row["average_selling_price"] = asp
+
+        if "avg_selling_price" in row:
+            row["avg_selling_price"] = asp
 
     return list(grouped.values())
 
