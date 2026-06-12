@@ -471,12 +471,17 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
     const isProductHeader =
       !isMetric(line) &&
+      !line.toLowerCase().startsWith("sku:") &&
+      !line.toLowerCase().startsWith("bucket:") &&
       !line.toLowerCase().startsWith("recommendation:") &&
       !line.toLowerCase().startsWith("ads action:") &&
       !line.toLowerCase().startsWith("product journey") &&
       !line.toLowerCase().startsWith("inventory action:") &&
       !!nextLine &&
-      isMetric(nextLine);
+      (
+        isMetric(nextLine) ||
+        nextLine.toLowerCase().startsWith("sku:")
+      );
 
     if (isProductHeader) {
       pushCurrent();
@@ -510,6 +515,15 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
     if (!current) continue;
 
     const lowerLine = line.toLowerCase();
+
+    if (lowerLine.startsWith("sku:")) {
+      current.skuKey = line.replace(/^sku:\s*/i, "").trim();
+      continue;
+    }
+
+    if (lowerLine.startsWith("bucket:")) {
+      continue;
+    }
 
     if (
       lowerLine.startsWith("included skus") ||
@@ -1411,16 +1425,123 @@ const ProductInsightsSection = ({
   }, [blocks, otherSkuIncludedProducts]);
 
   const sortedBlocks = useMemo(() => {
-    return [...enrichedBlocks].sort((a, b) => {
-      const aIsOther = a.isOtherSkus || a.name.trim().toLowerCase() === "other skus";
-      const bIsOther = b.isOtherSkus || b.name.trim().toLowerCase() === "other skus";
+    const deduped = new Map<string, ProductInsightBlock>();
 
-      if (aIsOther && !bIsOther) return 1;
-      if (!aIsOther && bIsOther) return -1;
+    const getResolvedSku = (block: ProductInsightBlock) => {
+      return (
+        String(block.skuKey || "").trim() ||
+        String(nameToSkuMap?.[normalizeKey(block.name)] || "").trim()
+      );
+    };
 
-      return getBlockNetSales(b) - getBlockNetSales(a);
-    });
-  }, [enrichedBlocks]);
+    const getBlockScore = (block: ProductInsightBlock) => {
+      return (
+        block.metrics.length * 5 +
+        block.journeyBullets.length +
+        block.recommendationBullets.length * 3 +
+        block.inventoryBullets.length * 2 +
+        (block.skuKey ? 10 : 0)
+      );
+    };
+
+    for (const block of enrichedBlocks || []) {
+      const isOther =
+        block.isOtherSkus ||
+        normalizeKey(block.name) === "other skus" ||
+        normalizeKey(block.name) === "others";
+
+      const resolvedSku = getResolvedSku(block);
+
+      const key = isOther
+        ? "other-skus"
+        : resolvedSku
+          ? `sku-${resolvedSku.toLowerCase()}`
+          : `name-${normalizeKey(block.name)}`;
+
+      const normalizedBlock: ProductInsightBlock = {
+        ...block,
+        skuKey: resolvedSku || block.skuKey,
+        name: isOther ? "Other SKUs" : block.name,
+        isOtherSkus: isOther,
+      };
+
+      const existing = deduped.get(key);
+
+      if (!existing) {
+        deduped.set(key, normalizedBlock);
+        continue;
+      }
+
+      // Merge duplicate SKU blocks instead of showing both cards
+      deduped.set(key, {
+        ...existing,
+        ...normalizedBlock,
+
+        // keep richer arrays
+        metrics:
+          normalizedBlock.metrics.length >= existing.metrics.length
+            ? normalizedBlock.metrics
+            : existing.metrics,
+
+        journeyBullets:
+          normalizedBlock.journeyBullets.length >= existing.journeyBullets.length
+            ? normalizedBlock.journeyBullets
+            : existing.journeyBullets,
+
+        recommendationBullets:
+          normalizedBlock.recommendationBullets.length >= existing.recommendationBullets.length
+            ? normalizedBlock.recommendationBullets
+            : existing.recommendationBullets,
+
+        inventoryBullets:
+          normalizedBlock.inventoryBullets.length >= existing.inventoryBullets.length
+            ? normalizedBlock.inventoryBullets
+            : existing.inventoryBullets,
+
+        includedSkus:
+          normalizedBlock.includedSkus?.length
+            ? normalizedBlock.includedSkus
+            : existing.includedSkus,
+
+        skuKey: normalizedBlock.skuKey || existing.skuKey,
+        name: existing.name || normalizedBlock.name,
+      });
+
+      // If one version is clearly richer overall, prefer its base fields
+      if (getBlockScore(normalizedBlock) > getBlockScore(existing)) {
+        const merged = deduped.get(key)!;
+        deduped.set(key, {
+          ...normalizedBlock,
+          metrics: merged.metrics,
+          journeyBullets: merged.journeyBullets,
+          recommendationBullets: merged.recommendationBullets,
+          inventoryBullets: merged.inventoryBullets,
+          includedSkus: merged.includedSkus,
+        });
+      }
+    }
+
+    const uniqueBlocks = Array.from(deduped.values());
+
+    const otherBlock = uniqueBlocks.find(
+      (b) =>
+        b.isOtherSkus ||
+        normalizeKey(b.name) === "other skus" ||
+        normalizeKey(b.name) === "others"
+    );
+
+    const topFive = uniqueBlocks
+      .filter(
+        (b) =>
+          !b.isOtherSkus &&
+          normalizeKey(b.name) !== "other skus" &&
+          normalizeKey(b.name) !== "others"
+      )
+      .sort((a, b) => getBlockNetSales(b) - getBlockNetSales(a))
+      .slice(0, 5);
+
+    return otherBlock ? [...topFive, otherBlock] : topFive;
+  }, [enrichedBlocks, nameToSkuMap]);
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
@@ -1625,7 +1746,7 @@ const ProductInsightsSection = ({
 
           return (
             <motion.div
-              key={idx}
+              key={b.isOtherSkus ? "other-skus" : b.skuKey || normalizeKey(b.name)}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: idx * 0.06 }}
@@ -4360,7 +4481,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
-      const productLines = sections["PRODUCT INSIGHTS"] ?? [];
+      const productLines = [
+        ...(sections["PRODUCT INSIGHTS"] ?? []),
+        ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
+      ];
 
       const { recommendationBullets, inventoryBullets, recommendationsMap } =
         extractRecoAndInventoryBullets(data.recommendations as any);
