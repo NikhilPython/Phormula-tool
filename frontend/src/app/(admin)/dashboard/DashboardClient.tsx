@@ -8879,15 +8879,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
             : 0;
 
     const stickyTargetTrendPct =
-        stickyTargetHome > 0
-            ? ((stats_mtdHome - stickyTargetProratedToDate) / stickyTargetHome) * 100
-            : 0;
+        shouldShowDummyUi
+            ? dummySalesTargetStats.targetTrendPct
+            : stickyTargetHome > 0
+                ? ((targets_mtdHome / stickyTargetHome) * 100) - rangeCompletedPct
+                : 0;
 
     const stickyTargetTrendPrevPct =
-        stickyTargetHome > 0
-            ? ((stats_lastMtdHome - stickyTargetProratedToDate) / stickyTargetHome) * 100
-            : 0;
-
+        shouldShowDummyUi
+            ? 0
+            : stickyTargetHome > 0
+                ? ((targets_lastMonthToDateHome / stickyTargetHome) * 100) - rangeCompletedPct
+                : 0;
 
     const prevMonthTargetHome = useMemo(() => {
         if (platform === "global") {
@@ -9196,14 +9199,20 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
         {
             label: "Target Trend",
-            current: shouldShowDummyUi ? 0 : (stats_targetTrendPct ?? 0),
-            previous: shouldShowDummyUi ? 0 : (stats_targetTrendPrevPct ?? 0),
+
+            current: stickyTargetTrendPct,
+
+            previous: stickyTargetTrendPrevPct,
+
             deltaPct: shouldShowDummyUi
-                ? deltaPctAbs(0, 0)
-                : deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
+                ? deltaPctAbs(dummySalesTargetStats.targetTrendPct, 0)
+                : deltaPctAbs(stickyTargetTrendPct, stickyTargetTrendPrevPct),
+
             loading: !shouldShowDummyUi && loading,
+
             formatter: fmtPct,
             previousFormatter: fmtPct,
+
             bottomLabel: "Last Month",
             className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
         },
@@ -9848,9 +9857,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ? dummySalesTargetStats.salesTrendPct
         : stats_salesTrendPct;
 
-    const finalStatsTargetTrendPct = shouldShowDummyUi
-        ? dummySalesTargetStats.targetTrendPct
-        : stats_targetTrendPct;
+    const finalStatsTargetTrendPct = stickyTargetTrendPct;
 
     const finalTargetsReimbursement = shouldShowDummyUi
         ? dummySalesTargetStats.reimbursement
