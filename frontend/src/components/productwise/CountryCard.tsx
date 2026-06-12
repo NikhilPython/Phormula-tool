@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import {
   CountryKey,
+  Range,
   formatMonthYear,
   getCountryColor,
   normalizeCountryKey,
@@ -15,6 +16,10 @@ interface CountryCardProps {
   homeCurrency: "USD" | "GBP" | "INR" | "CAD";
   activeCountry: string;
   isMultiCountry?: boolean;
+
+  // ✅ Add this
+  range?: Range;
+  selectedQuarter?: string;
 }
 
 const CountryCard: React.FC<CountryCardProps> = ({
@@ -24,6 +29,8 @@ const CountryCard: React.FC<CountryCardProps> = ({
   homeCurrency,
   activeCountry,
   isMultiCountry,
+  range = "yearly",
+  selectedQuarter = "",
 }) => {
   const formatAmount = (value: number) => {
     if (value == null) return "-";
@@ -86,6 +93,47 @@ const CountryCard: React.FC<CountryCardProps> = ({
   const backendKey = country.toLowerCase();
   const normalized = normalizeCountryKey(backendKey); // "global" | "uk" | "us" | "ca"
   const displayLabel = normalized === "global" ? "GLOBAL" : normalized.toUpperCase();
+  const getPeriodBadgeText = () => {
+  const yy = selectedYear ? String(selectedYear).slice(-2) : "";
+
+  if (range === "quarterly" && selectedQuarter) {
+    return `${selectedQuarter}'${yy}`;
+  }
+
+  if (range === "yearly" && selectedYear) {
+    return String(selectedYear);
+  }
+
+  if (range === "monthly" && selectedYear) {
+    return String(selectedYear);
+  }
+
+  if (range === "lifetime") {
+    return "Lifetime";
+  }
+
+  return selectedYear ? String(selectedYear) : "";
+};
+
+const periodBadgeText = getPeriodBadgeText();
+
+const periodLabel =
+  range === "quarterly"
+    ? "Quarterly"
+    : range === "yearly"
+      ? "Yearly"
+      : range === "monthly"
+        ? "Monthly"
+        : "Lifetime";
+
+const bestPerformanceTitle =
+  range === "quarterly"
+    ? `Best Performance in ${periodBadgeText}`
+    : range === "yearly"
+      ? `Best Performance in ${periodBadgeText}`
+      : range === "monthly"
+        ? `Best Performance in ${periodBadgeText}`
+        : "Best Performance";
   const colorKey = normalized;
 
   // ✅ Pastel tile colors (match your screenshot vibe)
@@ -149,16 +197,23 @@ const CountryCard: React.FC<CountryCardProps> = ({
   return (
     <div className=" rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="mb-4 flex items-center justify-between gap-2">
-        <h4 className="m-0 font-extrabold text-green-500 text-[clamp(14px,1.2vw,20px)] flex items-center gap-2">
-          <span
-            className="inline-block h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full"
-            style={{ backgroundColor: getCountryColor(colorKey) }}
-          />
-          <span className="text-charcoal-500 text-[clamp(14px,1.1vw,18px)]">
-            {displayLabel}
-          </span>
-        </h4>
-      </div>
+  <h4 className="m-0 font-extrabold text-green-500 text-[clamp(14px,1.2vw,20px)] flex items-center gap-2">
+    <span
+      className="inline-block h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full"
+      style={{ backgroundColor: getCountryColor(colorKey) }}
+    />
+
+    <span className="text-charcoal-500 text-[clamp(14px,1.1vw,18px)]">
+      {displayLabel}
+    </span>
+
+    {periodBadgeText && (
+  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+    {periodLabel} · {periodBadgeText}
+  </span>
+)}
+  </h4>
+</div>
 
       <div className="flex flex-col gap-4">
         {/* ✅ Stats grid with pastel tiles */}
@@ -188,7 +243,23 @@ const CountryCard: React.FC<CountryCardProps> = ({
           />
         </div>
 
-        <p className="m-0 text-[clamp(13px,1vw,16px)] font-bold">Best Performance</p>
+<div className="flex items-center justify-between gap-2">
+  <p className="m-0 text-[clamp(13px,1vw,16px)] font-bold">
+    {bestPerformanceTitle}
+  </p>
+
+  {range === "quarterly" && (
+  <span className="text-[11px] font-medium text-slate-500">
+    Best month within selected quarter
+  </span>
+)}
+
+{range === "yearly" && (
+  <span className="text-[11px] font-medium text-slate-500">
+    Best month within selected year
+  </span>
+)}
+</div>
 
         {/* Best Performance stays white with country-colored top border */}
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
@@ -203,7 +274,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
           >
 
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
-              Sales
+              Net Sales
             </p>
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
               {formatMonthYear(stats.maxSalesMonth.month, selectedYear || "")}
@@ -240,7 +311,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
             }}
           >
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
-              Profit
+             CM1 Profit
             </p>
 
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">

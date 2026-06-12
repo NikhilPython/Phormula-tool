@@ -3,6 +3,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 
 export interface BestPerfItem {
   month: string;
@@ -23,6 +24,20 @@ export interface SkuInsight {
   recommendation?: string;
   best_performance?: BestPerformance;
   product_journey?: string[];
+
+  // ✅ Dropdown drawer wale same metrics
+  metrics?: {
+    label: string;
+    value: string;
+    color?: string;
+  }[];
+
+  isOtherSkus?: boolean;
+  includedSkus?: {
+    product_name: string;
+    sku: string;
+  }[];
+
   [key: string]: any;
 }
 
@@ -54,6 +69,16 @@ const metricColors = [
   "border border-[#FDD36F] border-t-[#FDD36F]",
   "border border-[#75BBDA] border-t-[#75BBDA]",
   "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#C49466] border-t-[#C49466]",
+];
+
+const metricOrder = [
+  "units",
+  "net sales",
+  "asp",
+  "cm1 profit",
+  "cm1 profit per unit",
 ];
 
 const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
@@ -66,6 +91,7 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
   periodBadge,
   selectedYear,
   homeCurrency,
+  countryName,
 }) => {
   if (!open || !selectedSku) return null;
 
@@ -136,17 +162,52 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
     return "";
   };
 
-  const formatPerfValue = (label: string, value?: number) => {
-    if (typeof value !== "number") return "-";
+ const formatPerfValue = (label: string, value?: number) => {
+  if (typeof value !== "number") return "-";
 
-    const lower = label.toLowerCase();
+  const roundedValue = Math.round(value);
+  const lower = label.toLowerCase();
 
-    if (lower.includes("unit")) {
-      return value.toLocaleString();
-    }
+  if (lower.includes("unit")) {
+    return roundedValue.toLocaleString();
+  }
 
-    return `${getCurrencySymbol(homeCurrency)}${value.toLocaleString()}`;
-  };
+  return `${getCurrencySymbol(homeCurrency)}${roundedValue.toLocaleString()}`;
+};
+
+const splitMetricValue = (value: string) => {
+  const v = (value || "").trim();
+  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+
+  if (!m) {
+    return { main: v, delta: "", deltaColor: "" };
+  }
+
+  const main = m[1].trim();
+  const delta = m[2].trim();
+  const sign = m[3];
+
+  const deltaColor = sign === "+" ? "text-emerald-600" : "text-red-600";
+  return { main, delta, deltaColor };
+};
+
+const formatRecommendationCardMainValue = (label: string, main: string) => {
+  const normalizedLabel = label.trim().toLowerCase();
+
+  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+    return main;
+  }
+
+  const currencyMatch = main.match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+
+  const numberPart = main.replace(/[^0-9.-]/g, "");
+  const numberValue = Number(numberPart);
+
+  if (!Number.isFinite(numberValue)) return main;
+
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
 
   const journeyBullets = Array.isArray(insightData.product_journey)
     ? insightData.product_journey
@@ -154,15 +215,15 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
 
   const bestPerformanceCards = [
     {
-      label: "Sales",
-      data: insightData.best_performance?.sales,
-    },
-    {
       label: "Units",
       data: insightData.best_performance?.units,
     },
     {
-      label: "Profit",
+      label: "Net Sales",
+      data: insightData.best_performance?.sales,
+    },
+    {
+      label: "CM1 Profit",
       data: insightData.best_performance?.profit,
     },
   ];
@@ -183,6 +244,16 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
       value: insightData.objective?.inventory_clearance_priority ? "Yes" : "No",
     },
   ];
+
+  const sortedMetrics = [...(insightData.metrics || [])].sort((a, b) => {
+  const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+  const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+
+  const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+  const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+  return safeAIndex - safeBIndex;
+});
 
   return (
     <AnimatePresence>
@@ -206,32 +277,26 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
             <div className="flex h-full flex-col gap-4">
               {/* Header - same style as second drawer */}
               <div className="shrink-0 border-b border-slate-200 p-3 flex items-center justify-between gap-3">
-                <div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                   <div className="flex items-center gap-1 flex-wrap">
                     <PageBreadcrumb
                       pageTitle="AI Insight - "
                       variant="page"
                       textSize="2xl"
                     />
-
+                  </div>
                     <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
                       {insightData.product_name || selectedSku}
                     </span>
-                  </div>
-
-                  {(drawerPeriodText || periodBadge) && (
-                    <div className="mt-1">
-                      {drawerPeriodText ? (
-                        <span className="text-xs sm:text-sm 2xl:text-sm font-semibold text-[#5EA68E]">
+                 {drawerPeriodText ? (
+                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
                           {drawerPeriodText}
                         </span>
-                      ) : (
-                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] 2xl:text-xs text-slate-700">
+                      ) : periodBadge ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
                           {periodBadge}
                         </span>
-                      )}
-                    </div>
-                  )}
+                      ) : null}
                 </div>
 
                 <button
@@ -244,6 +309,64 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
 
               {/* Content - same spacing/text system as second drawer */}
               <div className="flex-1 overflow-y-auto space-y-6 px-3">
+
+                {/* Metrics */}
+{sortedMetrics.length > 0 && (
+  <div>
+    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+      Metrics
+    </div>
+
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+      {sortedMetrics.map((m, i) => (
+        <div
+          key={`${m.label}-${i}`}
+          className={`rounded-lg border border-t-4 ${
+            metricColors[i % metricColors.length]
+          } px-3 py-2`}
+        >
+          <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+            {m.label
+              .replace(/\b\w/g, (char) => char.toUpperCase())
+              .replace("Cm1", "CM1")}
+          </div>
+
+          <div className="flex flex-col leading-tight">
+            {(() => {
+              const { main, delta, deltaColor } = splitMetricValue(m.value);
+              const displayMain = formatRecommendationCardMainValue(
+                m.label,
+                main
+              );
+
+              return (
+                <>
+                  <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
+                    {displayMain}
+                  </span>
+
+                  {delta && (
+                    <span
+                      className="text-[10px] 2xl:text-xs font-semibold"
+                      style={{
+                        color:
+                          deltaColor === "text-emerald-600"
+                            ? "#5EA68E"
+                            : "#FF5C5C",
+                      }}
+                    >
+                      {delta}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
                 {/* Best Performance */}
                 {insightData.best_performance && (
                   <div>
@@ -335,6 +458,20 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
                       </ul>
                     </div>
                   )}
+                </div>
+
+                <div className="w-full">
+                  <Productinfoinpopup
+                    productname={
+                      insightData.isOtherSkus
+                        ? insightData.includedSkus?.[0]?.product_name ||
+                          insightData.product_name ||
+                          selectedSku
+                        : insightData.product_name || selectedSku
+                    }
+                    countryName={countryName || "global"}
+                    isOtherSkus={!!insightData.isOtherSkus}
+                  />
                 </div>
 
                 {/* Product Journey */}

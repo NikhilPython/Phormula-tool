@@ -51,6 +51,7 @@ interface ProductwisePerformanceProps {
   selectedQuarterProp?: string;
   selectedYearProp?: number | "";
   initialProductName?: string;
+  sharedInsightData?: SharedInsightData;
 }
 
 const toSlug = (name: string) => encodeURIComponent(name.trim());
@@ -155,6 +156,36 @@ type SkuInsightExtended = {
   recommendation?: string;
   best_performance?: BestPerformance;
   product_journey?: string[];
+
+  // ✅ Dropdown drawer wale same metrics
+  metrics?: ProductInsightMetric[];
+};
+
+type ProductInsightMetric = {
+  label: string;
+  value: string;
+  color?: string;
+};
+
+type ProductInsightBlockForDrawer = {
+  name: string;
+  skuKey?: string;
+  metrics: ProductInsightMetric[];
+  journeyBullets: string[];
+  recommendationBullets: string[];
+  inventoryBullets: string[];
+  isOtherSkus?: boolean;
+  includedSkus?: {
+    product_name: string;
+    sku: string;
+  }[];
+};
+
+type SharedInsightData = {
+  blocks: ProductInsightBlockForDrawer[];
+  objective?: Record<string, any> | null;
+  recommendationsMap?: Record<string, any>;
+  drawerPeriodText?: string;
 };
 
 const computeBestPerformance = (
@@ -258,6 +289,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   selectedQuarterProp,
   selectedYearProp,
   initialProductName = "",
+  sharedInsightData,
 }) => {
   const { homeCurrency, setHomeCurrency, formatHomeAmount } = useFx();
   const { data: userData } = useGetUserDataQuery();
@@ -568,6 +600,86 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     router.push(to);
   };
 
+  const normalizeTextKey = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s-]/g, "");
+
+const blockToSkuInsight = (
+  block: ProductInsightBlockForDrawer,
+  recObj: any,
+  fallbackObjective?: Record<string, any> | null,
+  bestPerformance?: BestPerformance
+): SkuInsightExtended => {
+  const recommendationText =
+    recObj?.recommendation ||
+    block.recommendationBullets?.join(" ") ||
+    "";
+
+  const inventoryText =
+    recObj?.inventory_recommendation ||
+    block.inventoryBullets?.join(" ") ||
+    "";
+
+  return {
+  product_name: block.name,
+  insight: block.journeyBullets?.join("\n") || "",
+  recommendation: recommendationText,
+  inventory_recommendation: inventoryText,
+  objective: recObj?.objective ?? fallbackObjective ?? null,
+  product_journey: block.journeyBullets || [],
+  best_performance: bestPerformance,
+
+  // ✅ Same Metrics from Dropdown drawer
+  metrics: block.metrics || [],
+};
+};
+
+const findSharedInsightBlock = (
+  identifier: string,
+  shared?: SharedInsightData
+) => {
+  if (!identifier || !shared?.blocks?.length) return null;
+
+  const normalizedIdentifier = normalizeTextKey(identifier);
+
+  return (
+    shared.blocks.find(
+      (b) =>
+        String(b.skuKey || "").trim().toLowerCase() ===
+        identifier.trim().toLowerCase()
+    ) ||
+    shared.blocks.find(
+      (b) => normalizeTextKey(b.name) === normalizedIdentifier
+    ) ||
+    null
+  );
+};
+
+const getSharedRecObj = (
+  block: ProductInsightBlockForDrawer,
+  shared?: SharedInsightData
+) => {
+  const map = shared?.recommendationsMap as any;
+
+  if (!map) return null;
+
+  const skuActions =
+    map?.sku_actions ??
+    map?.recommendations ??
+    map ??
+    {};
+
+  return (
+    (block.skuKey && skuActions[block.skuKey]) ||
+    skuActions[block.name] ||
+    skuActions[block.name?.trim?.()] ||
+    null
+  );
+};
+
   const handleViewBusinessInsights = async () => {
     const { key: identifier, isSku } = resolveProductKey(
       productname,
@@ -590,6 +702,33 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     setIsDrawerOpen(true);
     setInsightsError(null);
 
+    const sharedBlock = findSharedInsightBlock(identifier, sharedInsightData);
+
+if (sharedBlock) {
+  const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+
+  const bestPerformance = getBestPerformanceForCurrentView({
+    sourceData: sourceData as Record<string, any> | undefined,
+    countryForApi,
+    globalKey,
+  });
+
+  const sharedRecObj = getSharedRecObj(sharedBlock, sharedInsightData);
+
+  setSkuInsights({
+    [identifier]: blockToSkuInsight(
+      sharedBlock,
+      sharedRecObj,
+      sharedInsightData?.objective,
+      bestPerformance
+    ),
+  });
+
+  setSelectedSku(identifier);
+  setInsightsLoading(false);
+  return;
+}
+
     if (typeof window !== "undefined") {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -599,16 +738,17 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           };
 
           setSkuInsights({
-            [identifier]: {
-              product_name: parsed.product_name,
-              insight: parsed.insight,
-              inventory_recommendation: parsed.inventory_recommendation,
-              objective: parsed.objective ?? null,
-              recommendation: parsed.recommendation,
-              best_performance: parsed.best_performance,
-              product_journey: parsed.product_journey ?? [],
-            },
-          });
+  [identifier]: {
+    product_name: parsed.product_name,
+    insight: parsed.insight,
+    inventory_recommendation: parsed.inventory_recommendation,
+    objective: parsed.objective ?? null,
+    recommendation: parsed.recommendation,
+    best_performance: parsed.best_performance,
+    product_journey: parsed.product_journey ?? [],
+    metrics: parsed.metrics ?? [],
+  },
+});
 
           setSelectedSku(identifier);
           setInsightsLoading(false);
@@ -692,6 +832,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           best_performance: bestPerformance,
           product_journey: productJourney,
           cachedAt: Date.now(),
+          
         })
       );
     } catch (e: any) {
@@ -1319,7 +1460,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                 enableFeedback={false}
                 selectedYear={selectedYear}
                 homeCurrency={homeCurrency}
-                drawerPeriodText={getHeadingPeriod()}
+                drawerPeriodText={sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
+                 countryName={(countryName || platformCountryName || "global").toLowerCase()}
               />
 
               {isDrawerOpen && insightsError && (
@@ -1332,14 +1474,18 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                 <div className="grid gap-4 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
                   {visibleCountryCards.map((card) => (
                     <CountryCard
-                      key={card.country.toLowerCase()}
-                      country={card.country}
-                      stats={card.stats}
-                      selectedYear={selectedYear}
-                      homeCurrency={homeCurrency}
-                      activeCountry={(countryName || "global").toLowerCase()}
-                      isMultiCountry={isMultiCountry}
-                    />
+  key={card.country.toLowerCase()}
+  country={card.country}
+  stats={card.stats}
+  selectedYear={selectedYear}
+  homeCurrency={homeCurrency}
+  activeCountry={(countryName || "global").toLowerCase()}
+  isMultiCountry={isMultiCountry}
+
+  // ✅ Add this
+  range={range}
+  selectedQuarter={selectedQuarter}
+/>
                   ))}
                 </div>
               </div>

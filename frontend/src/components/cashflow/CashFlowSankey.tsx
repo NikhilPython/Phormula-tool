@@ -101,6 +101,27 @@ const CashFlowSankey: React.FC<Props> = ({
     return Number(val) < 0 ? `-${currency}${absVal}` : `${currency}${absVal}`;
   };
 
+  const formatCompactCurrencyWithSign = (val?: number) => {
+    if (val === undefined || val === null || Number.isNaN(Number(val))) return "-";
+
+    const num = Number(val);
+    const absNum = Math.abs(num);
+    const compactValue = new Intl.NumberFormat(undefined, {
+      notation: "compact",
+      maximumFractionDigits: absNum >= 1000 ? 1 : 0,
+    }).format(absNum);
+
+    return num < 0 ? `-${currency}${compactValue}` : `${currency}${compactValue}`;
+  };
+
+  const formatSankeyAmount = (val?: number) =>
+    isMobile || isTablet || isLaptop
+      ? formatCompactCurrencyWithSign(val)
+      : formatCurrencyRoundedWithSign(val);
+
+  const formatSankeyPercent = (val: number) =>
+    val.toFixed(isMobile || isTablet ? 1 : 2);
+
   const isPreviewSankey =
     !data ||
     Object.values(data).every(
@@ -121,26 +142,40 @@ const CashFlowSankey: React.FC<Props> = ({
 
   const sankeyCols = {
     label: isMobile
-      ? 76
+      ? 58
       : isTablet
-        ? 92
+        ? 82
         : isLaptop
-          ? 105
+          ? 96
           : isXL
-            ? 135
-            : 150,
-    sign: isMobile ? 14 : isTablet ? 16 : isLaptop ? 18 : 20,
+            ? 126
+            : 145,
+    sign: isMobile ? 13 : isTablet ? 15 : isLaptop ? 16 : 18,
     amount: isMobile
-      ? 54
+      ? 58
       : isTablet
-        ? 70
+        ? 68
         : isLaptop
-          ? 82
+          ? 76
           : isXL
-            ? 96
+            ? 92
             : 110,
-    pct: isMobile ? 0 : isTablet ? 0 : isLaptop ? 0 : isXL ? 42 : 52,
+    pct: isMobile ? 48 : isTablet ? 54 : isLaptop ? 58 : isXL ? 64 : 72,
   };
+
+  const sankeyLabelWidth =
+    sankeyCols.label + sankeyCols.sign + sankeyCols.amount + sankeyCols.pct + 12;
+
+  // Keep enough right-side room for labels, amount and percent on every screen.
+  const sankeyChartRight = isMobile
+    ? "48%"
+    : isTablet
+      ? "46%"
+      : isLaptop
+        ? "43%"
+        : isXL
+          ? "38%"
+          : "34%";
 
   const formatNumber = (val?: number) =>
     val !== undefined
@@ -413,7 +448,7 @@ const CashFlowSankey: React.FC<Props> = ({
         layout: "none",
 
         left: isMobile ? "1%" : isTablet ? "1%" : isLaptop ? "2%" : "2%",
-        right: isMobile ? "30%" : isTablet ? "34%" : isLaptop ? "38%" : isXL ? "28%" : "24%",
+        right: sankeyChartRight,
         top: "6%",
         bottom: "6%",
 
@@ -424,15 +459,7 @@ const CashFlowSankey: React.FC<Props> = ({
           show: true,
           position: "right",
           overflow: "truncate",
-          width: isMobile
-            ? 120
-            : is2XL
-              ? 250
-              : isLaptop
-                ? 128
-                : isXL
-                  ? 190
-                  : 175,
+          width: sankeyLabelWidth,
           formatter: (n: any) => {
             if (isPreviewSankey) {
               return `{label|${n.name}}`;
@@ -450,13 +477,14 @@ const CashFlowSankey: React.FC<Props> = ({
             const showSign = row.name !== "Cash Generated";
             const signKey = row.sign === "+" ? "signPlus" : "signMinus";
 
-            const formatted = formatCurrencyWithSign(row.value);
+            const formatted = formatSankeyAmount(Math.abs(row.value));
+            const percentText = formatSankeyPercent(pct);
 
             return (
               `{label|${row.name}}` +
               (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
               `{amount|${formatted}}` +
-              `${!isMobile && !isXL && !isLaptop ? `{pct|(${pct.toFixed(2)}%)}` : ""}`
+              `{pct|(${percentText}%)} `
             );
           },
           rich: {

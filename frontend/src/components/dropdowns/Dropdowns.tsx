@@ -1203,7 +1203,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     </div>
                   ) : null}
 
-                  {adsRecoBullets.length ? (
+                  {/* {adsRecoBullets.length ? (
                     <div className="mt-2">
                       <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
                         Advertising
@@ -1214,7 +1214,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         ))}
                       </ul>
                     </div>
-                  ) : null}
+                  ) : null} */}
 
                   {inventoryRecoBullets.length ? (
                     <div className="mt-2">
@@ -7103,31 +7103,41 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     : "";
 
                 return (
-                  <ProductwisePerformance
-                    key={[
-                      initialCountryName,
-                      productWiseRange,
-                      selectedQuarter,
-                      selectedYear,
-                      productWiseInitialProductName || "no-product",
-                      isDemoMode ? "demo" : "live",
-                    ].join("-")}
-                    embedded
-                    countryNameProp={isDemoMode ? "global" : initialCountryName}
-                    rangeProp={productWiseRange}
-                    selectedMonthProp={isDemoMode ? "NA" : ""}
-                    selectedQuarterProp={
-                      isDemoMode
-                        ? ""
-                        : productWiseRange === "quarterly"
-                          ? selectedQuarter
-                          : ""
-                    }
-                    selectedYearProp={
-                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
-                    }
-                    initialProductName={productWiseInitialProductName}
-                  />
+                 <ProductwisePerformance
+  key={[
+    initialCountryName,
+    productWiseRange,
+    selectedQuarter,
+    selectedYear,
+    productWiseInitialProductName || "no-product",
+    isDemoMode ? "demo" : "live",
+  ].join("-")}
+  embedded
+  countryNameProp={isDemoMode ? "global" : initialCountryName}
+  rangeProp={productWiseRange}
+  selectedMonthProp={isDemoMode ? "NA" : ""}
+  selectedQuarterProp={
+    isDemoMode
+      ? ""
+      : productWiseRange === "quarterly"
+        ? selectedQuarter
+        : ""
+  }
+  selectedYearProp={
+    isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+  }
+  initialProductName={productWiseInitialProductName}
+
+  // ✅ Same source as Dropdown drawer
+  sharedInsightData={{
+    blocks: parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []),
+    objective: aiPanel?.objective ?? null,
+    recommendationsMap: aiPanel?.recommendationsMap,
+    drawerPeriodText: aiPanel?.summaryBullets?.[0]
+      ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+      : "",
+  }}
+/>
                 );
               })()}
             </div>
