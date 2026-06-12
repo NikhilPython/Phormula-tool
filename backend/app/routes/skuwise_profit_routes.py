@@ -135,6 +135,211 @@ def resolve_product_sku_for_country(conn, user_id, product_name, country):
 
     return row[0] if row and row[0] else None
 
+def get_monthly_total_net_sales_and_profit(conn, inspector, all_tables, user_id, country, month_name, year):
+    """
+    Returns total account net_sales and profit for a country/month/year.
+    Used to calculate Other SKUs sales_mix and profit_mix.
+    """
+    country = normalize_sku_country(country)
+
+    if country not in ("uk", "us"):
+        return 0.0, 0.0
+
+    table_pattern = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
+
+    matching_tables = [
+        table for table in all_tables
+        if table.lower() == table_pattern.lower()
+    ]
+
+    if not matching_tables:
+        return 0.0, 0.0
+
+    table_name = matching_tables[0]
+
+    try:
+        columns = [col["name"] for col in inspector.get_columns(table_name)]
+
+        if "net_sales" not in columns or "profit" not in columns:
+            return 0.0, 0.0
+
+        # Prefer Total row if available
+        if "product_name" in columns:
+            total_query = text(f"""
+                SELECT net_sales, profit
+                FROM "{table_name}"
+                WHERE LOWER(TRIM(product_name)) = 'total'
+                LIMIT 1
+            """)
+
+            total_row = conn.execute(total_query).fetchone()
+
+            if total_row:
+                return float(total_row[0] or 0), float(total_row[1] or 0)
+
+        # Fallback: sum all non-total rows
+        query = text(f"""
+            SELECT
+                COALESCE(SUM(net_sales), 0) AS total_net_sales,
+                COALESCE(SUM(profit), 0) AS total_profit
+            FROM "{table_name}"
+            WHERE LOWER(TRIM(COALESCE(product_name, ''))) != 'total'
+        """)
+
+        row = conn.execute(query).fetchone()
+
+        return float(row[0] or 0), float(row[1] or 0)
+
+    except Exception as e:
+        print(f"Error calculating monthly total for {table_name}: {str(e)}")
+        return 0.0, 0.0
+
+def get_exact_other_skus_month_row(
+    conn,
+    inspector,
+    all_tables,
+    user_id,
+    country,
+    month_name,
+    month_num,
+    year,
+    product_names,
+    home_currency,
+):
+    """
+    Aggregate only the exact product names shown in Other SKUs chips.
+    This fixes mismatch where graph was using all SKUs except one anchor SKU.
+    """
+    sku_country = normalize_sku_country(country)
+
+    if sku_country not in ("uk", "us"):
+        return None
+
+    if not product_names:
+        return None
+
+    table_pattern = f"skuwisemonthly_{user_id}_{sku_country}_{month_name}{year}"
+
+    matching_tables = [
+        table for table in all_tables
+        if table.lower() == table_pattern.lower()
+    ]
+
+    if not matching_tables:
+        return {
+            "month": month_name.capitalize(),
+            "month_num": month_num,
+            "year": int(year),
+            "net_sales": 0,
+            "quantity": 0,
+            "profit": 0,
+            "asp": 0,
+            "sales_mix": 0,
+            "profit_mix": 0,
+            "unit_wise_profitability": 0,
+        }
+
+    table_name = matching_tables[0]
+
+    try:
+        columns = [col["name"] for col in inspector.get_columns(table_name)]
+
+        required_cols = {
+            "product_name",
+            "net_sales",
+            "total_quantity",
+            "profit",
+            "asp",
+        }
+
+        if not required_cols.issubset(columns):
+            return None
+
+        placeholders = ", ".join([f":p{i}" for i in range(len(product_names))])
+
+        params = {
+            f"p{i}": product_names[i].strip().lower()
+            for i in range(len(product_names))
+        }
+
+        query = text(f"""
+            SELECT
+                COALESCE(SUM(net_sales), 0) AS net_sales,
+                COALESCE(SUM(total_quantity), 0) AS total_quantity,
+                COALESCE(SUM(profit), 0) AS profit
+            FROM "{table_name}"
+            WHERE LOWER(TRIM(product_name)) IN ({placeholders})
+        """)
+
+        row = conn.execute(query, params).fetchone()
+
+        other_net_sales = float(row[0] or 0)
+        other_quantity = float(row[1] or 0)
+        other_profit = float(row[2] or 0)
+
+        # Currency conversion for UK/US if needed
+        source_currency = country_currency_map.get(sku_country)
+        target_currency = (home_currency or "").lower()
+
+        conversion_rate = 1.0
+
+        if source_currency and target_currency:
+            with admin_engine.connect() as conn1:
+                conversion_rate = get_conversion_rate(
+                    conn1,
+                    source_currency,
+                    target_currency,
+                    month_name,
+                    year
+                )
+
+        other_net_sales *= conversion_rate
+        other_profit *= conversion_rate
+
+        asp = other_net_sales / other_quantity if other_quantity else 0
+        unit_wise_profitability = other_profit / other_quantity if other_quantity else 0
+
+        total_net_sales, total_profit = get_monthly_total_net_sales_and_profit(
+            conn=conn,
+            inspector=inspector,
+            all_tables=all_tables,
+            user_id=user_id,
+            country=sku_country,
+            month_name=month_name,
+            year=year
+        )
+
+        total_net_sales *= conversion_rate
+        total_profit *= conversion_rate
+
+        sales_mix = (
+            (other_net_sales / total_net_sales) * 100
+            if total_net_sales
+            else 0
+        )
+
+        profit_mix = (
+            (other_profit / total_profit) * 100
+            if total_profit
+            else 0
+        )
+
+        return {
+            "month": month_name.capitalize(),
+            "month_num": month_num,
+            "year": int(year),
+            "net_sales": other_net_sales,
+            "quantity": other_quantity,
+            "profit": other_profit,
+            "asp": asp,
+            "sales_mix": sales_mix,
+            "profit_mix": profit_mix,
+            "unit_wise_profitability": unit_wise_profitability,
+        }
+
+    except Exception as e:
+        print(f"Exact Other SKUs aggregate error for {table_name}: {str(e)}")
+        return None
 
 @skuwise_bp.route('/ProductwisePerformance', methods=['POST'])
 def productwise_performance():
@@ -160,6 +365,14 @@ def productwise_performance():
         year = data.get('year', datetime.now().year)
         quarter = data.get('quarter')
         home_currency = (data.get('home_currency') or 'USD').lower()
+
+        # ✅ NEW: exact products shown under Other SKUs chips
+        other_sku_product_names = data.get("other_sku_product_names") or []
+        other_sku_product_names = [
+            str(p).strip()
+            for p in other_sku_product_names
+            if str(p).strip()
+        ]
 
         requested_countries = get_countries_for_currency(home_currency)
 
@@ -335,6 +548,36 @@ def productwise_performance():
                 try:
                     sku_country = normalize_sku_country(country)
 
+                    # ✅ BEST PATH:
+                    # If frontend sends exact Other SKUs chip names,
+                    # aggregate those products directly.
+                    if other_sku_product_names and sku_country in ("uk", "us"):
+                        exact_other_rows = []
+
+                        for month in months_to_fetch:
+                            month_num = month_mapping[month]
+
+                            row = get_exact_other_skus_month_row(
+                                conn=conn,
+                                inspector=inspector,
+                                all_tables=all_tables,
+                                user_id=user_id,
+                                country=sku_country,
+                                month_name=month,
+                                month_num=month_num,
+                                year=year,
+                                product_names=other_sku_product_names,
+                                home_currency=home_currency,
+                            )
+
+                            if row:
+                                exact_other_rows.append(row)
+
+                        exact_other_rows.sort(key=lambda x: x["month_num"])
+                        other_skus_graph_data[country] = exact_other_rows
+                        continue
+
+                    # fallback old behavior
                     selected_sku = resolve_product_sku_for_country(
                         conn=conn,
                         user_id=user_id,
@@ -361,28 +604,71 @@ def productwise_performance():
                             month_mapping[m] for m in months_to_fetch
                         }
 
-                        other_skus_graph_data[country] = [
-                            {
+                        other_rows = []
+
+                        for item in other_series:
+                            item_year = int(item["year"])
+                            item_month_num = str(item["month"]).zfill(2)
+
+                            if item_year != int(year):
+                                continue
+
+                            if item_month_num not in allowed_month_nums:
+                                continue
+
+                            month_name = datetime(
+                                item_year,
+                                int(item["month"]),
+                                1
+                            ).strftime("%B").lower()
+
+                            other_net_sales = float(item.get("net_sales") or 0)
+                            other_profit = float(item.get("cm1_profit") or 0)
+
+                            total_net_sales, total_profit = get_monthly_total_net_sales_and_profit(
+                                conn=conn,
+                                inspector=inspector,
+                                all_tables=all_tables,
+                                user_id=user_id,
+                                country=sku_country,
+                                month_name=month_name,
+                                year=item_year
+                            )
+
+                            sales_mix = (
+                                (other_net_sales / total_net_sales) * 100
+                                if total_net_sales
+                                else 0
+                            )
+
+                            profit_mix = (
+                                (other_profit / total_profit) * 100
+                                if total_profit
+                                else 0
+                            )
+
+                            other_rows.append({
                                 "month": datetime(
-                                    int(item["year"]),
+                                    item_year,
                                     int(item["month"]),
                                     1
                                 ).strftime("%B"),
-                                "month_num": str(item["month"]).zfill(2),
-                                "year": item["year"],
+                                "month_num": item_month_num,
+                                "year": item_year,
 
-                                "net_sales": item.get("net_sales") or 0,
+                                "net_sales": other_net_sales,
                                 "quantity": item.get("units") or 0,
-                                "profit": item.get("cm1_profit") or 0,
+                                "profit": other_profit,
                                 "asp": item.get("asp") or 0,
-                                "sales_mix": item.get("sales_mix") or 0,
-                                "profit_mix": item.get("profit_mix") or 0,
+
+                                # ✅ calculated here
+                                "sales_mix": sales_mix,
+                                "profit_mix": profit_mix,
+
                                 "unit_wise_profitability": item.get("unit_wise_profitability") or 0,
-                            }
-                            for item in other_series
-                            if int(item["year"]) == int(year)
-                            and str(item["month"]).zfill(2) in allowed_month_nums
-                        ]
+                            })
+
+                        other_skus_graph_data[country] = other_rows
                     else:
                         other_skus_graph_data[country] = []
 

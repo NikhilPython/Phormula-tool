@@ -75,9 +75,10 @@ interface ProductinfoinpopupProps {
   sourceCountryName?: string;
   displayCurrency?: CurrencyCode;
   onClose?: () => void;
+  isOtherSkus?: boolean;
 
   // ✅ NEW
-  isOtherSkus?: boolean;
+  otherSkuProductNames?: string[];
 }
 
 const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
@@ -86,6 +87,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   sourceCountryName,
   displayCurrency,
   isOtherSkus = false,
+  otherSkuProductNames = [],
 }) => {
   const params = useParams();
   const pathname = usePathname();
@@ -298,6 +300,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             quarter: null,
             countries: countriesToRequest,
             home_currency: chartCurrency,
+
+            // ✅ NEW
+            other_sku_product_names: isOtherSkus ? otherSkuProductNames : [],
           };
 
           const response = await fetch(
