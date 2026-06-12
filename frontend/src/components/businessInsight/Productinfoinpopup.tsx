@@ -62,6 +62,10 @@ interface ApiMonthRow {
 interface ApiResponse {
   success: boolean;
   data?: Record<string, any>;
+
+  // ✅ NEW: backend returns this for Other SKUs graph
+  other_skus_graph_data?: Record<string, any>;
+
   message?: string;
 }
 
@@ -71,6 +75,9 @@ interface ProductinfoinpopupProps {
   sourceCountryName?: string;
   displayCurrency?: CurrencyCode;
   onClose?: () => void;
+
+  // ✅ NEW
+  isOtherSkus?: boolean;
 }
 
 const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
@@ -78,6 +85,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   countryName = "global",
   sourceCountryName,
   displayCurrency,
+  isOtherSkus = false,
 }) => {
   const params = useParams();
   const pathname = usePathname();
@@ -316,6 +324,13 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           }
 
           const json: ApiResponse = await response.json();
+          console.log("ProductwisePerformance graph response", {
+            productname,
+            isOtherSkus,
+            year: yr,
+            normalData: json.data,
+            otherSkusData: json.other_skus_graph_data,
+          });
           return { year: yr, json };
         })
       );
@@ -369,7 +384,15 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       };
 
       for (const { year: responseYear, json } of responses) {
-        if (!json?.success || !json?.data) continue;
+        if (!json?.success) continue;
+
+        // ✅ For Other SKUs, read aggregate data.
+        // ✅ For normal products, keep old data source.
+        const responseData = isOtherSkus
+          ? json.other_skus_graph_data
+          : json.data;
+
+        if (!responseData) continue;
 
         (["uk", "global", "us", "ca"] as CountryKey[]).forEach((country) => {
           const keys = backendKeysFor(country);
@@ -377,7 +400,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           let rows: ApiMonthRow[] = [];
 
           for (const key of keys) {
-            const candidate = normalizeRows(json.data?.[key]);
+            const candidate = normalizeRows(responseData?.[key]);
             if (candidate.length) {
               rows = candidate;
               break;
@@ -486,7 +509,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   useEffect(() => {
     fetchJourneyData();
-  }, [productname, chartCurrency]);
+  }, [productname, chartCurrency, isOtherSkus]);
 
   const visibleCountries: CountryKey[] =
     scope === "uk"
@@ -542,19 +565,19 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   const allLabels = trimmedJourneyData.labels;
 
-const formatCountry = (c: string) => {
-  const upperCaseCountries = ["uk", "us", "ca"];
+  const formatCountry = (c: string) => {
+    const upperCaseCountries = ["uk", "us", "ca"];
 
-  if (!c) return "";
+    if (!c) return "";
 
-  const normalized = c.toLowerCase();
+    const normalized = c.toLowerCase();
 
-  if (upperCaseCountries.includes(normalized)) {
-    return normalized.toUpperCase();
-  }
+    if (upperCaseCountries.includes(normalized)) {
+      return normalized.toUpperCase();
+    }
 
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-};
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
 
   const chartJSData = useMemo(() => {
     const labels = allLabels;

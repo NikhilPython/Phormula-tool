@@ -932,6 +932,23 @@ type RightProductDrawerProps = {
   range: RangeType;
   quarter?: string;
   drawerPeriodText?: string;
+
+  // ✅ ADD THIS
+  currencySymbol?: string;
+
+  // ✅ NEW: ProductwisePerformance graph data
+  perfLoading?: boolean;
+  perfError?: string | null;
+  perfData?: {
+    rows: {
+      x: string;
+      selectedValue?: number;
+      otherValue?: number;
+      value?: number;
+    }[];
+  } | null;
+  perfMetric?: "net_sales" | "units";
+  onPerfMetricChange?: (metric: "net_sales" | "units") => void;
 };
 
 const metricColors = [
@@ -962,6 +979,13 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   range,
   quarter,
   drawerPeriodText,
+  currencySymbol,
+  // ✅ NEW
+  perfLoading = false,
+  perfError = null,
+  perfData = null,
+  perfMetric = "net_sales",
+  onPerfMetricChange,
 }) => {
   const inventoryText =
     recObj?.inventory_recommendation || block?.inventoryBullets?.join(" ");
@@ -969,7 +993,11 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const inventoryRecoBullets = toBullets(inventoryText);
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
   const periodBadge = getPeriodBadge(range, year, month, quarter);
-  const shouldHideGraphForOtherSkus = !!block?.isOtherSkus;
+
+  const drawerCurrencySymbol =
+    currencySymbol || getCurrencySymbol(countryName || "");
+
+  const isOtherSkusBlock = !!block?.isOtherSkus;
   const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -1192,15 +1220,17 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                       <div className="text-xs text-charcoal-500 2xl:text-sm">—</div>
                     )}
                 </div>
-
-                {!shouldHideGraphForOtherSkus && (
-                  <div className="w-full">
-                    <Productinfoinpopup
-                      productname={block.name}
-                      countryName={countryName}
-                    />
-                  </div>
-                )}
+                <div className="w-full">
+                  <Productinfoinpopup
+                    productname={
+                      block.isOtherSkus
+                        ? block.includedSkus?.[0]?.product_name || block.name
+                        : block.name
+                    }
+                    countryName={countryName}
+                    isOtherSkus={!!block.isOtherSkus}
+                  />
+                </div>
 
                 <div className="pb-4">
                   <div className="flex items-center gap-1 flex-wrap">
@@ -1332,6 +1362,7 @@ const ProductInsightsSection = ({
   selectedQuarter,
   homeCurrency,
   countryName,
+  currencySymbol,
   drawerPeriodText,
   selectedMonth,
   otherSkuIncludedProducts,
@@ -1347,6 +1378,7 @@ const ProductInsightsSection = ({
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
   countryName: string;
+  currencySymbol?: string;
   otherSkuIncludedProducts?: OtherSkuItem[];
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
@@ -1392,6 +1424,14 @@ const ProductInsightsSection = ({
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
+  const resolvedCurrencySymbol =
+    currencySymbol ||
+    getCurrencySymbol(
+      countryName.toLowerCase() === "global"
+        ? homeCurrency || "usd"
+        : countryName
+    );
+
   const skuActions =
     (recommendationsMap as any)?.sku_actions ??
     (recommendationsMap as any)?.recommendations ??
@@ -1399,10 +1439,8 @@ const ProductInsightsSection = ({
     {};
 
   useEffect(() => {
-
     if (!hasBlocks) return;
     if (!selectedBlock) return;
-    if (selectedBlock.isOtherSkus) return;
 
     const ac = new AbortController();
 
@@ -1412,33 +1450,68 @@ const ProductInsightsSection = ({
         setPerfError(null);
         setPerfData(null);
 
-        const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null;
+
         if (!token) throw new Error("Missing token");
 
-        const productKeyForApi = selectedBlock.name;
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            country: countryName,
-            product_name: selectedBlock.name,
-            time_range: "Yearly",
-            year: Number(selectedYear),
-            quarter: undefined,
-            home_currency: homeCurrency,
-          }),
-          cache: "no-store",
-          signal: ac.signal,
-        });
+        const isOtherSkusBlock =
+          selectedBlock.isOtherSkus ||
+          selectedBlock.name.trim().toLowerCase() === "other skus";
+
+        /**
+         * IMPORTANT:
+         * For Other SKUs, backend still needs a real product_name
+         * so it can resolve SKU and calculate other_skus_graph_data.
+         *
+         * We use first non-Other product as anchor.
+         */
+        const anchorProductName =
+          isOtherSkusBlock
+            ? sortedBlocks.find(
+              (b) =>
+                !b.isOtherSkus &&
+                b.name.trim().toLowerCase() !== "other skus"
+            )?.name
+            : selectedBlock.name;
+
+        if (!anchorProductName) {
+          setPerfData({ rows: [] });
+          return;
+        }
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              country: countryName,
+              product_name: anchorProductName,
+              time_range: "Yearly",
+              year: Number(selectedYear),
+              quarter: undefined,
+              home_currency: homeCurrency,
+            }),
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
 
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
 
-        const pickSeries = (j: any) => {
-          const d = j?.data;
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to fetch product performance");
+        }
+
+        const pickSeries = (j: any, key: "data" | "other_skus_graph_data") => {
+          const d = j?.[key];
+
           if (!d || typeof d !== "object") return null;
 
           const country = (countryName || "").toLowerCase();
@@ -1446,29 +1519,56 @@ const ProductInsightsSection = ({
 
           if (country && country !== "global") {
             const match =
-              keys.find(k => k.toLowerCase() === country) ||
-              keys.find(k => k.toLowerCase().startsWith(country + "_")) ||
-              keys.find(k => k.toLowerCase().startsWith(country));
+              keys.find((k) => k.toLowerCase() === country) ||
+              keys.find((k) => k.toLowerCase().startsWith(country + "_")) ||
+              keys.find((k) => k.toLowerCase().startsWith(country));
 
             if (match) return d[match];
           }
 
-          const g = keys.find(k => k.toLowerCase().startsWith("global"));
-          return g ? d[g] : d[keys[0]];
+          const globalMatch = keys.find((k) =>
+            k.toLowerCase().startsWith("global")
+          );
+
+          return globalMatch ? d[globalMatch] : d[keys[0]];
         };
 
-        const rows = pickSeries(json);
+        const selectedRows = pickSeries(json, "data") || [];
+        const otherRows = pickSeries(json, "other_skus_graph_data") || [];
 
-        setPerfData({
-          rows: Array.isArray(rows)
-            ? rows.map((r: any) => ({
-              x: r?.month ?? r?.label ?? "-",
-              y: perfMetric === "units"
-                ? toNum(r?.quantity ?? r?.units ?? 0)
-                : toNum(r?.net_sales ?? 0),
-            }))
-            : [],
+        const rows = selectedRows.map((selectedRow: any) => {
+          const otherRow = Array.isArray(otherRows)
+            ? otherRows.find(
+              (x: any) =>
+                String(x?.month_num) === String(selectedRow?.month_num) &&
+                String(x?.year) === String(selectedRow?.year)
+            )
+            : null;
+
+          return {
+            x: selectedRow?.month ?? selectedRow?.label ?? "-",
+
+            selectedValue:
+              perfMetric === "units"
+                ? toNum(selectedRow?.quantity ?? selectedRow?.units ?? 0)
+                : toNum(selectedRow?.net_sales ?? 0),
+
+            otherValue:
+              perfMetric === "units"
+                ? toNum(otherRow?.quantity ?? otherRow?.units ?? 0)
+                : toNum(otherRow?.net_sales ?? 0),
+
+            value: isOtherSkusBlock
+              ? perfMetric === "units"
+                ? toNum(otherRow?.quantity ?? otherRow?.units ?? 0)
+                : toNum(otherRow?.net_sales ?? 0)
+              : perfMetric === "units"
+                ? toNum(selectedRow?.quantity ?? selectedRow?.units ?? 0)
+                : toNum(selectedRow?.net_sales ?? 0),
+          };
         });
+
+        setPerfData({ rows });
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setPerfError(e?.message || "Failed to load product chart");
@@ -1480,15 +1580,13 @@ const ProductInsightsSection = ({
     return () => ac.abort();
   }, [
     selectedBlock,
-    range,
+    hasBlocks,
+    sortedBlocks,
     selectedYear,
-    selectedQuarter,
     homeCurrency,
-    nameToSkuMap,
     countryName,
     perfMetric,
   ]);
-
   if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
@@ -1600,6 +1698,8 @@ const ProductInsightsSection = ({
         onClose={() => {
           setSelectedBlock(null);
           setSelectedRecObj(null);
+          setPerfData(null);
+          setPerfError(null);
         }}
         block={selectedBlock}
         objective={objective}
@@ -1610,6 +1710,14 @@ const ProductInsightsSection = ({
         month={range === "monthly" ? (selectedMonth ?? "") : ""}
         quarter={range === "quarterly" ? selectedQuarter : ""}
         drawerPeriodText={drawerPeriodText}
+        currencySymbol={resolvedCurrencySymbol}
+
+        // ✅ NEW
+        perfLoading={perfLoading}
+        perfError={perfError}
+        perfData={perfData}
+        perfMetric={perfMetric}
+        onPerfMetricChange={setPerfMetric}
       />
     </div>
   );
@@ -1997,6 +2105,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 selectedMonth={range === "monthly" ? selectedMonth : ""}
                 homeCurrency={homeCurrency}
                 countryName={countryName}
+                currencySymbol={currencySymbol}
                 drawerPeriodText={drawerPeriodText}
                 otherSkuIncludedProducts={otherSkuIncludedProducts}
               />

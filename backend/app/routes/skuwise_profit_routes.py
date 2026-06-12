@@ -15,7 +15,8 @@ from app.utils.monthwise_ai_summary_utils import (
     build_sku_inventory_flags,
     fetch_inventory_aged_by_user,
     get_or_create_summary,
-    get_or_create_global_summary
+    get_or_create_global_summary,
+    build_remaining_skus_time_series, 
 )
 from app.models.user_models import UserObjective
 
@@ -98,6 +99,43 @@ country_currency_map = {
 }
 
 
+def normalize_sku_country(country):
+    country = (country or "").lower()
+
+    if country.startswith("uk"):
+        return "uk"
+
+    if country.startswith("us"):
+        return "us"
+
+    return country
+
+
+def resolve_product_sku_for_country(conn, user_id, product_name, country):
+    """
+    ProductwisePerformance receives product_name,
+    but Other SKUs aggregation must exclude by SKU.
+    """
+    sku_country = normalize_sku_country(country)
+
+    if sku_country not in ("uk", "us"):
+        return None
+
+    table_name = f"sku_{user_id}_data_table"
+    sku_column = "sku_uk" if sku_country == "uk" else "sku_us"
+
+    query = text(f"""
+        SELECT {sku_column}
+        FROM "{table_name}"
+        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+        LIMIT 1
+    """)
+
+    row = conn.execute(query, {"product_name": product_name}).fetchone()
+
+    return row[0] if row and row[0] else None
+
+
 @skuwise_bp.route('/ProductwisePerformance', methods=['POST'])
 def productwise_performance():
     try:
@@ -149,6 +187,7 @@ def productwise_performance():
             months_to_fetch = list(month_mapping.keys())
 
         result_data = {}
+        other_skus_graph_data = {}
 
         with user_engine.connect() as conn:
             inspector = inspect(conn)
@@ -289,13 +328,81 @@ def productwise_performance():
                 country_data.sort(key=lambda x: x['month_num'])
                 result_data[country] = country_data
 
+                # =====================================================
+                # Other SKUs graph data
+                # Uses monthwise_ai_summary_utils aggregate series
+                # =====================================================
+                try:
+                    sku_country = normalize_sku_country(country)
+
+                    selected_sku = resolve_product_sku_for_country(
+                        conn=conn,
+                        user_id=user_id,
+                        product_name=product_name,
+                        country=sku_country
+                    )
+
+                    if selected_sku and sku_country in ("uk", "us"):
+                        if time_range == "Quarterly" and quarter and months_to_fetch:
+                            anchor_month = int(month_mapping[months_to_fetch[-1]])
+                        else:
+                            anchor_month = 12
+
+                        other_series = build_remaining_skus_time_series(
+                            user_id=int(user_id),
+                            country=sku_country,
+                            focus_skus=[str(selected_sku)],
+                            anchor_year=int(year),
+                            anchor_month=anchor_month,
+                            months=24
+                        )
+
+                        allowed_month_nums = {
+                            month_mapping[m] for m in months_to_fetch
+                        }
+
+                        other_skus_graph_data[country] = [
+                            {
+                                "month": datetime(
+                                    int(item["year"]),
+                                    int(item["month"]),
+                                    1
+                                ).strftime("%B"),
+                                "month_num": str(item["month"]).zfill(2),
+                                "year": item["year"],
+
+                                "net_sales": item.get("net_sales") or 0,
+                                "quantity": item.get("units") or 0,
+                                "profit": item.get("cm1_profit") or 0,
+                                "asp": item.get("asp") or 0,
+                                "sales_mix": item.get("sales_mix") or 0,
+                                "profit_mix": item.get("profit_mix") or 0,
+                                "unit_wise_profitability": item.get("unit_wise_profitability") or 0,
+                            }
+                            for item in other_series
+                            if int(item["year"]) == int(year)
+                            and str(item["month"]).zfill(2) in allowed_month_nums
+                        ]
+                    else:
+                        other_skus_graph_data[country] = []
+
+                except Exception as e:
+                    print(f"Other SKUs graph error for {country}: {str(e)}")
+                    other_skus_graph_data[country] = []
+
         return jsonify({
             'success': True,
             'product_name': product_name,
             'time_range': time_range,
             'year': year,
             'quarter': quarter if time_range == 'Quarterly' else None,
+
+            # Selected product graph data
             'data': result_data,
+
+            # Other SKUs aggregate graph data
+            'other_skus_graph_data': other_skus_graph_data,
+
             'available_countries': list(result_data.keys())
         })
 
