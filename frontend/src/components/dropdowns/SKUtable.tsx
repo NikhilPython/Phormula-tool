@@ -1316,8 +1316,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "ads_spend",
         "brand_spend",
         "cm2_profit_total",
-        "cm2_profit",
-        "unit_wise_cm2_profitability",
         "debt_payment",
         "disbursement",
       ]);

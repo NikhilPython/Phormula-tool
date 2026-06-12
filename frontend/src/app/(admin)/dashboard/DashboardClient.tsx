@@ -10709,6 +10709,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     />
 
                     <AmazonStatCard
+                        label="ASP"
+                        current={c.asp}
+                        previous={c.prevAsp}
+                        deltaPct={safeDeltaPct(c.asp, c.prevAsp)}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
+                        bottomLabel={prevLabel}
+                        className="border-[#B75A5A] border-t-4"
+                        loading={!shouldShowDummyUi && (loading || biLoading)}
+                    />
+
+                    <AmazonStatCard
                         label="Gross Sales"
                         current={c.grossSales}
                         previous={c.prevGrossSales}
@@ -10732,17 +10744,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         loading={!shouldShowDummyUi && (loading || biLoading)}
                     />
 
-                    <AmazonStatCard
-                        label="ASP"
-                        current={c.asp}
-                        previous={c.prevAsp}
-                        deltaPct={safeDeltaPct(c.asp, c.prevAsp)}
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
-                        bottomLabel={prevLabel}
-                        className="border-[#B75A5A] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
+
 
                     <AmazonStatCard
                         label="Cost of Ads"
@@ -10815,6 +10817,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     />
 
                     <AmazonStatCard
+                        label="ASP"
+                        current={c.asp}
+                        previous={c.prevAsp}
+                        deltaPct={null}
+                        formatter={formatDisplayAmount}
+                        previousFormatter={formatDisplayAmount}
+                        bottomLabel={prevLabel}
+                        className="border-[#B75A5A] border-t-4"
+                        loading={!shouldShowDummyUi && loading}
+                    />
+
+                    <AmazonStatCard
                         label="Gross Sales"
                         current={c.grossSales}
                         previous={c.prevGrossSales}
@@ -10838,17 +10852,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         loading={!shouldShowDummyUi && loading}
                     />
 
-                    <AmazonStatCard
-                        label="ASP"
-                        current={c.asp}
-                        previous={c.prevAsp}
-                        deltaPct={null}
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
-                        bottomLabel={prevLabel}
-                        className="border-[#B75A5A] border-t-4"
-                        loading={!shouldShowDummyUi && loading}
-                    />
+
 
                     <AmazonStatCard
                         label="Cost of Ads"
@@ -11150,6 +11154,23 @@ ${pageLoading
                                                     />
 
                                                     <AmazonStatCard
+                                                        label="ASP"
+                                                        current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
+                                                        previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
+                                                        deltaPct={
+                                                            shouldShowDummyUi
+                                                                ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
+                                                                : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
+                                                        }
+                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
+                                                        formatter={formatDisplayAmount}
+                                                        previousFormatter={formatDisplayAmount}
+                                                        bottomLabel={prevLabel}
+                                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+                                                    />
+
+
+                                                    <AmazonStatCard
                                                         label="Gross Sales"
                                                         current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
                                                         previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
@@ -11181,21 +11202,6 @@ ${pageLoading
                                                         className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                     />
 
-                                                    <AmazonStatCard
-                                                        label="ASP"
-                                                        current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
-                                                        previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
-                                                        deltaPct={
-                                                            shouldShowDummyUi
-                                                                ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
-                                                                : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
-                                                        }
-                                                        loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                        formatter={formatDisplayAmount}
-                                                        previousFormatter={formatDisplayAmount}
-                                                        bottomLabel={prevLabel}
-                                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                                    />
 
                                                     <AmazonStatCard
                                                         label="Cost of Ads"
@@ -11295,6 +11301,34 @@ ${pageLoading
                                                 />
 
                                                 <AmazonStatCard
+                                                    label="ASP"
+                                                    current={
+                                                        shouldShowDummyUi
+                                                            ? dummyStatData.asp.current
+                                                            : showLiveBI && rangeActive
+                                                                ? biCardKpis.curr.asp
+                                                                : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
+                                                    }
+                                                    previous={
+                                                        shouldShowDummyUi
+                                                            ? dummyStatData.asp.previous
+                                                            : showLiveBI && rangeActive
+                                                                ? biCardKpis.prev.asp
+                                                                : convertToDisplayCurrency(prev.asp, amazonDataCurrency)
+                                                    }
+                                                    deltaPct={
+                                                        shouldShowDummyUi
+                                                            ? dummyStatData.asp.deltaPct
+                                                            : (useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct)
+                                                    }
+                                                    loading={!shouldShowDummyUi && (loading || biLoading)}
+                                                    formatter={formatDisplayAmount}
+                                                    previousFormatter={formatDisplayAmount}
+                                                    bottomLabel={prevLabel}
+                                                    className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+                                                />
+
+                                                <AmazonStatCard
                                                     label="Gross Sales"
                                                     current={
                                                         shouldShowDummyUi
@@ -11352,33 +11386,7 @@ ${pageLoading
                                                     className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                 />
 
-                                                <AmazonStatCard
-                                                    label="ASP"
-                                                    current={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.asp.current
-                                                            : showLiveBI && rangeActive
-                                                                ? biCardKpis.curr.asp
-                                                                : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
-                                                    }
-                                                    previous={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.asp.previous
-                                                            : showLiveBI && rangeActive
-                                                                ? biCardKpis.prev.asp
-                                                                : convertToDisplayCurrency(prev.asp, amazonDataCurrency)
-                                                    }
-                                                    deltaPct={
-                                                        shouldShowDummyUi
-                                                            ? dummyStatData.asp.deltaPct
-                                                            : (useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct)
-                                                    }
-                                                    loading={!shouldShowDummyUi && (loading || biLoading)}
-                                                    formatter={formatDisplayAmount}
-                                                    previousFormatter={formatDisplayAmount}
-                                                    bottomLabel={prevLabel}
-                                                    className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                                />
+
 
                                                 <AmazonStatCard
                                                     label="Cost of Ads"
