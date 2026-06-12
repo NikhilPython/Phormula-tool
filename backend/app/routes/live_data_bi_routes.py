@@ -1190,6 +1190,10 @@ def live_mtd_vs_previous():
                 current_month=ranges["meta"]["current_month"],
             )
 
+            # print("\n========== PROMPT 1 PAYLOAD_AI ==========")
+            # print(json.dumps(payload_ai, indent=2, default=str))
+            # print("========== END PROMPT 1 PAYLOAD_AI ==========\n")
+
             # -------------------------------------------------
             # GLOBAL: Country split for deeper UK vs US summary
             # -------------------------------------------------
@@ -1644,9 +1648,9 @@ def live_mtd_vs_previous():
 
                     global_strategy_parsed = json.loads(global_strategy_raw) if global_strategy_raw else {}
 
-                    print("[DEBUG] global_strategy_parsed keys:", global_strategy_parsed.keys())
-                    print("[DEBUG] remaining_skus_recommendation:", global_strategy_parsed.get("remaining_skus_recommendation"))
-                    print("[DEBUG] remaining_skus_journey_summary:", global_strategy_parsed.get("remaining_skus_journey_summary"))
+                    # print("[DEBUG] global_strategy_parsed keys:", global_strategy_parsed.keys())
+                    # print("[DEBUG] remaining_skus_recommendation:", global_strategy_parsed.get("remaining_skus_recommendation"))
+                    # print("[DEBUG] remaining_skus_journey_summary:", global_strategy_parsed.get("remaining_skus_journey_summary"))
 
                 except Exception as e:
                     print("[AI ERROR] Global portfolio strategy generation failed:", e)
@@ -2551,6 +2555,29 @@ def live_mtd_vs_previous():
                 summary_out = cached_ai["summary"]
                 strategy_parsed = cached_ai["strategy"]
 
+            # else:
+
+            #     # ---------------------------
+            #     # PROMPT-1 (ANALYSIS)
+            #     # ---------------------------
+            #     analysis = run_live_prompt_1_analysis(payload_ai)
+
+            #     # ---------------------------
+            #     # PROMPT-1.5 (EXECUTIVE SUMMARY)
+            #     # ---------------------------
+            #     summary_out = run_live_prompt_1_5_summary(
+            #         analysis_output=analysis,
+            #         numeric_context={
+            #             "periods": payload_ai["periods"],
+            #             "pct_changes": payload_ai["pct_changes"],
+            #             "selling_costs": payload_ai["selling_costs"],
+            #             "roas": payload_ai["roas"],
+            #             "movement_context": payload_ai["movement_context"],
+            #             "currency": payload_ai["currency"],
+            #         },
+            #         user_objective=user_objective,
+            #     )
+
             else:
 
                 # ---------------------------
@@ -2558,19 +2585,30 @@ def live_mtd_vs_previous():
                 # ---------------------------
                 analysis = run_live_prompt_1_analysis(payload_ai)
 
+                # print("\n========== PAYLOAD GOING TO AI ==========")
+                # print(json.dumps(payload_ai, indent=2, default=str))
+                # print("========== END PAYLOAD GOING TO AI ==========\n")
+
+
                 # ---------------------------
                 # PROMPT-1.5 (EXECUTIVE SUMMARY)
                 # ---------------------------
+                summary_numeric_context = {
+                    "periods": payload_ai["periods"],
+                    "pct_changes": payload_ai["pct_changes"],
+                    "selling_costs": payload_ai["selling_costs"],
+                    "roas": payload_ai["roas"],
+                    "movement_context": payload_ai["movement_context"],
+                    "currency": payload_ai["currency"],
+                }
+
+                # print("\n========== PROMPT 1.5 NUMERIC CONTEXT ==========")
+                # print(json.dumps(summary_numeric_context, indent=2, default=str))
+                # print("========== END PROMPT 1.5 NUMERIC CONTEXT ==========\n")
+
                 summary_out = run_live_prompt_1_5_summary(
                     analysis_output=analysis,
-                    numeric_context={
-                        "periods": payload_ai["periods"],
-                        "pct_changes": payload_ai["pct_changes"],
-                        "selling_costs": payload_ai["selling_costs"],
-                        "roas": payload_ai["roas"],
-                        "movement_context": payload_ai["movement_context"],
-                        "currency": payload_ai["currency"],
-                    },
+                    numeric_context=summary_numeric_context,
                     user_objective=user_objective,
                 )
 
@@ -2641,6 +2679,10 @@ def live_mtd_vs_previous():
                 "profit_per_unit": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
             }
         })
+            
+        # print("\n========== SKU LIVE CONTEXT GOING TO STRATEGY AI ==========")
+        # print(json.dumps(sku_live_context, indent=2, default=str))
+        # print("========== END SKU LIVE CONTEXT ==========\n")    
 
         # -------------------------------------------------
         # EXCEL-BASED LIVE SKU RECOMMENDATIONS
@@ -2727,6 +2769,49 @@ def live_mtd_vs_previous():
             except Exception as e:
                 print("[WARN] Failed to build time series for", sku, e)
 
+        # # -------------------------------------------------
+        # # 🔥 BUILD REMAINING SKU TIME SERIES (Other SKUs)
+        # # -------------------------------------------------
+        # remaining_series = []
+
+        # try:
+        #     remaining_series = build_remaining_skus_time_series(
+        #         user_id=user_id,
+        #         country=country,
+        #         focus_skus=[r.get("sku") for r in top_80_skus],
+        #         anchor_year=anchor_year,
+        #         anchor_month=anchor_month,
+        #         months=24,
+        #     )
+        # except Exception as e:
+        #     print("[WARN] Remaining SKU series failed:", e)        
+
+
+        # # ---------------------------------------
+        # # STRATEGY ENGINE (SAFE WRAPPED)
+        # # ---------------------------------------
+
+        # if not cached_ai:
+
+        #     try:
+
+        #         strategy_raw = run_prompt_2_strategy(
+        #             analysis_insights=analysis,
+        #             objective_v2=user_objective,
+        #             focus_skus=[r.get("sku") for r in top_80_skus],
+        #             sku_time_series=sku_time_series,
+        #             inventory_alerts=payload_ai.get("inventory_signals", {}),
+        #             sku_inventory_flags=sku_inventory_flags,
+        #             country=country,
+        #             sku_ads_context=sku_ads_context,
+        #             sku_live_context=sku_live_context,
+        #             ads_monthly=ads_monthly,
+        #             remaining_skus_context={
+        #                 "aggregated_metrics": remaining_growth_row,
+        #                 "time_series": remaining_series
+        #             } if remaining_growth_row else {},
+        #         )
+
         # -------------------------------------------------
         # 🔥 BUILD REMAINING SKU TIME SERIES (Other SKUs)
         # -------------------------------------------------
@@ -2753,22 +2838,39 @@ def live_mtd_vs_previous():
 
             try:
 
-                strategy_raw = run_prompt_2_strategy(
-                    analysis_insights=analysis,
-                    objective_v2=user_objective,
-                    focus_skus=[r.get("sku") for r in top_80_skus],
-                    sku_time_series=sku_time_series,
-                    inventory_alerts=payload_ai.get("inventory_signals", {}),
-                    sku_inventory_flags=sku_inventory_flags,
-                    country=country,
-                    sku_ads_context=sku_ads_context,
-                    sku_live_context=sku_live_context,
-                    ads_monthly=ads_monthly,
-                    remaining_skus_context={
+                strategy_debug_payload = {
+                    "analysis_insights": analysis,
+                    "objective_v2": user_objective,
+                    "focus_skus": [r.get("sku") for r in top_80_skus],
+                    "sku_time_series": sku_time_series,
+                    "inventory_alerts": payload_ai.get("inventory_signals", {}),
+                    "sku_inventory_flags": sku_inventory_flags,
+                    "country": country,
+                    "sku_ads_context": sku_ads_context,
+                    "sku_live_context": sku_live_context,
+                    "ads_monthly": ads_monthly,
+                    "remaining_skus_context": {
                         "aggregated_metrics": remaining_growth_row,
-                        "time_series": remaining_series
+                        "time_series": remaining_series,
                     } if remaining_growth_row else {},
-                )
+                }
+
+                # print("\n========== PROMPT 2 STRATEGY PAYLOAD ==========")
+                # print(json.dumps(strategy_debug_payload, indent=2, default=str))
+                # print("========== END PROMPT 2 STRATEGY PAYLOAD ==========\n")
+
+                strategy_raw = run_prompt_2_strategy(**strategy_debug_payload)
+
+                if strategy_raw:
+                    strategy_parsed = json.loads(strategy_raw)
+                else:
+                    strategy_parsed = {}
+
+            except Exception as e:
+
+                print("[AI ERROR] Strategy generation failed:", e)
+
+                strategy_parsed = {}
 
                 if strategy_raw:
                     strategy_parsed = json.loads(strategy_raw)

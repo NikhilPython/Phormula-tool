@@ -3261,40 +3261,40 @@ def get_or_create_summary(
             ),
         }
 
-        # analysis_raw = run_prompt_1_analysis(ai_payload)
-
-        # try:
-        #     analysis_insights = json.loads(analysis_raw)
-        # except Exception:
-        #     print("\n❌ Prompt-1 JSON PARSE FAILED")
-        #     analysis_insights = {}
-
-        print("\n================ AI PAYLOAD ADS DEBUG ================")
-        print("period_pct_changes sent to LLM:", json.dumps(period_pct_changes, indent=2))
-        print(
-            "period_absolute_changes sent to LLM:",
-            json.dumps(period_absolute_changes, indent=2)
-        )
-        print("======================================================\n")
-
         analysis_raw = run_prompt_1_analysis(ai_payload)
-
-        print("\n================ PROMPT 1 RAW OUTPUT DEBUG ================")
-        print(analysis_raw)
-        print("===========================================================\n")
 
         try:
             analysis_insights = json.loads(analysis_raw)
+        except Exception:
+            print("\n❌ Prompt-1 JSON PARSE FAILED")
+            analysis_insights = {}
 
-            print("\n================ PARSED ANALYSIS ADS DEBUG ================")
-            print(
-                "parsed advertising:",
-                analysis_insights
-                .get("executive_summary_signals", {})
-                .get("cost_pressure", {})
-                .get("advertising", {})
-            )
-            print("===========================================================\n")
+        # print("\n================ AI PAYLOAD ADS DEBUG ================")
+        # print("period_pct_changes sent to LLM:", json.dumps(period_pct_changes, indent=2))
+        # print(
+        #     "period_absolute_changes sent to LLM:",
+        #     json.dumps(period_absolute_changes, indent=2)
+        # )
+        # print("======================================================\n")
+
+        # analysis_raw = run_prompt_1_analysis(ai_payload)
+
+        # print("\n================ PROMPT 1 RAW OUTPUT DEBUG ================")
+        # print(analysis_raw)
+        # print("===========================================================\n")
+
+        # try:
+        #     analysis_insights = json.loads(analysis_raw)
+
+        #     print("\n================ PARSED ANALYSIS ADS DEBUG ================")
+        #     print(
+        #         "parsed advertising:",
+        #         analysis_insights
+        #         .get("executive_summary_signals", {})
+        #         .get("cost_pressure", {})
+        #         .get("advertising", {})
+        #     )
+        #     print("===========================================================\n")
 
         except Exception:
             print("\n❌ Prompt-1 JSON PARSE FAILED")

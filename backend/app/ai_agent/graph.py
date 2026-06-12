@@ -163,6 +163,27 @@ class RequestPlanModel(BaseModel):
     future_event_month: Optional[int] = Field(default=None, ge=1, le=12)
     target_sales: Optional[float] = None
 
+class FollowupResolutionModel(BaseModel):
+    is_followup: bool = False
+    reuse_previous_period: bool = False
+    metric_name: Optional[str] = None
+    analysis_type: Optional[str] = None
+    answer_shape: Optional[str] = None
+    ranking_direction: Optional[str] = None
+    dimension: Optional[str] = None
+    top_n: Optional[int] = None
+    reason: Optional[str] = None
+
+class CompositeResolutionModel(BaseModel):
+    is_composite: bool = False
+    base_metric_name: Optional[str] = None
+    contribution_metric_name: Optional[str] = None
+    extreme_type: Optional[str] = None
+    extreme_rank: Optional[int] = None
+    dimension: Optional[str] = None
+    top_n: Optional[int] = None
+    reason: Optional[str] = None
+
 
 @dataclass
 class RequestPlan:
@@ -205,21 +226,7 @@ class SimpleGraph:
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
-# def _extract_requested_countries(query: str) -> List[str]:
-#     q = _normalize(query)
 
-#     countries = []
-
-#     if re.search(r"\buk\b|\bunited kingdom\b", q):
-#         countries.append("uk")
-
-#     if re.search(r"\bus\b|\busa\b|\bunited states\b", q):
-#         countries.append("us")
-
-#     if "both countries" in q or "both country" in q:
-#         countries = ["uk", "us"]
-
-#     return list(dict.fromkeys(countries))
 
 def _extract_requested_countries(query: str) -> List[str]:
     q = _normalize(query)
@@ -594,6 +601,13 @@ def _build_tool_plan(state: AgentState) -> List[str]:
 
     if state.get("target_countries") and len(state.get("target_countries") or []) > 1:
         return ["multi_country"]
+    
+    # -------- 🔥 COMPOSITE PRIORITY --------
+    # Handles queries like:
+    # "Which product contributed most to the second highest profit month?"
+    if state.get("analysis_type") == "ranked_extreme_contribution":
+        logger.info("[ROUTE_FIX] ranked extreme contribution → ranked_extreme_contribution tool")
+        return ["ranked_extreme_contribution"]
 
     # -------- 🔥 EXTREME PRIORITY --------
     if state.get("answer_shape") == "extreme":
@@ -2151,12 +2165,173 @@ def _compute_multi_country(state: AgentState) -> AgentState:
 
     return state
 
+def _ordinal_label(n: int) -> str:
+    try:
+        n = int(n)
+    except Exception:
+        return "selected"
+
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+    return f"{n}{suffix}"
+
+
+def _compute_ranked_extreme_contribution(state: AgentState) -> AgentState:
+    engine = state["engine"]
+
+    base_metric_name = state.get("base_metric_name") or state.get("metric_name") or "profit"
+    contribution_metric_name = state.get("metric_name") or base_metric_name
+
+    payload = state.get("period_payload") or {"type": "latest_month"}
+
+    extreme_type = state.get("extreme_type") or "max"
+    extreme_rank = int(state.get("extreme_rank") or 1)
+    top_n = int(state.get("top_n") or 1)
+
+    # -------- GET MONTH WINDOW --------
+    if payload.get("type") == "last_n_months":
+        months = _last_n_window(
+            engine,
+            state["user_id"],
+            state["country"],
+            payload.get("n", 12),
+        )
+
+    elif payload.get("type") == "single":
+        months = [
+            SimpleNamespace(
+                month=payload["month"],
+                year=payload["year"],
+                label=datetime(payload["year"], payload["month"], 1).strftime("%b %Y"),
+            )
+        ]
+
+    elif payload.get("type") == "range":
+        dfs = fetch_period_dfs(
+            engine,
+            state["user_id"],
+            state["country"],
+            payload["start_month"],
+            payload["start_year"],
+            payload["end_month"],
+            payload["end_year"],
+            skip_missing=True,
+        )
+        months = [mk for mk, _ in dfs]
+
+    else:
+        latest = latest_available_month(
+            engine,
+            state["user_id"],
+            state["country"],
+        )
+        months = [latest]
+
+    if not months:
+        state["analysis_result"] = {
+            "type": "invalid",
+            "message": "No months found for the selected period.",
+        }
+        return state
+
+    # -------- RANK MONTHS BY BASE METRIC --------
+    month_scores = []
+
+    for mk in months:
+        result_month = get_metric_for_month(
+            engine,
+            state["user_id"],
+            state["country"],
+            base_metric_name,
+            mk.month,
+            mk.year,
+        )
+
+        month_scores.append({
+            "month": mk.month,
+            "year": mk.year,
+            "period_label": getattr(
+                mk,
+                "label",
+                datetime(mk.year, mk.month, 1).strftime("%b %Y"),
+            ),
+            "value": float(result_month.get("total", 0.0) or 0.0),
+        })
+
+    month_scores = sorted(
+        month_scores,
+        key=lambda x: x["value"],
+        reverse=(extreme_type != "min"),
+    )
+
+    if extreme_rank > len(month_scores):
+        extreme_rank = len(month_scores)
+
+    selected_month = month_scores[extreme_rank - 1]
+
+    logger.info(
+        f"[RANKED_EXTREME_SELECTED] "
+        f"rank={extreme_rank}, "
+        f"month={selected_month['month']}, "
+        f"year={selected_month['year']}, "
+        f"value={selected_month['value']}"
+    )
+
+    # -------- RANK PRODUCTS INSIDE SELECTED MONTH --------
+    contribution_result = get_metric_for_month(
+        engine,
+        state["user_id"],
+        state["country"],
+        contribution_metric_name,
+        selected_month["month"],
+        selected_month["year"],
+    )
+
+    ranked = rank_skus(
+        contribution_result,
+        direction="top",
+        limit=top_n,
+    )
+
+    state["current_metrics"] = {
+        "metric": contribution_metric_name,
+        "base_metric": base_metric_name,
+        "period_label": selected_month["period_label"],
+        "month": selected_month["month"],
+        "year": selected_month["year"],
+        "total": contribution_result.get("total", 0.0),
+        "selected_month_rank": extreme_rank,
+        "selected_month_value": selected_month["value"],
+    }
+
+    state["analysis_result"] = {
+        "type": "ranking",
+        "metric": contribution_metric_name,
+        "base_metric": base_metric_name,
+        "period_label": selected_month["period_label"],
+        "per_sku": ranked,
+        "total": contribution_result.get("total", 0.0),
+        "ranking_direction": "top",
+        "context": {
+            "type": "ranked_extreme_contribution",
+            "extreme_type": extreme_type,
+            "extreme_rank": extreme_rank,
+            "selected_month": selected_month,
+        },
+    }
+
+    return state
+
 
 def _execute_tool(state: AgentState, tool_name: str) -> AgentState:
     registry: Dict[str, Callable[[AgentState], AgentState]] = {
         "event_plan": _run_event_planner,
         "summary": _compute_summary,
         "ranking": _compute_ranking,
+        "ranked_extreme_contribution": _compute_ranked_extreme_contribution,
         "extreme": _compute_extreme,
         "multi_month": _compute_multi_month,
         "decision": _compute_decision,
@@ -2343,22 +2518,7 @@ def _send_email_if_requested(state: AgentState) -> AgentState:
 
     return state
 
-# def humanize_metric(metric: str) -> str:
-#     if not metric:
-#         return ""
-#     metric = str(metric).lower()
 
-#     replacements = {
-#         "acos": "ACOS",
-#         "asp": "ASP",
-#         "roi": "ROI",
-#         "cpc": "CPC",
-#     }
-
-#     if metric in replacements:
-#         return replacements[metric]
-
-#     return metric.replace("_", " ").title()
 
 def humanize_metric(metric: str) -> str:
     if not metric:
@@ -3037,6 +3197,22 @@ def _render_response(state: AgentState) -> AgentState:
         rows = sorted(rows, key=lambda x: x.get("__metric__", 0), reverse=True)
 
         header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
+
+        context = analysis.get("context") or {}
+
+        if context.get("type") == "ranked_extreme_contribution":
+            selected_month = context.get("selected_month") or {}
+            extreme_rank = context.get("extreme_rank") or 1
+            base_metric = analysis.get("base_metric") or metric_name
+
+            header = (
+                f"Top products for {metric_name} in "
+                f"{_ordinal_label(extreme_rank)} highest {base_metric} month "
+                f"({selected_month.get('period_label', period_label)}):"
+            )
+        else:
+            header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
+
         lines = [header, ""]
 
         for idx, row in enumerate(rows, 1):
@@ -3263,6 +3439,208 @@ def _restore_memory_email(state: AgentState, plan: RequestPlan, history: List[Di
 
     return state
 
+FOLLOWUP_RESOLUTION_PROMPT = """
+You are resolving whether the user's latest question is a follow-up to the previous analytics answer.
+
+You will receive:
+1. Latest user query
+2. Previous analysis metadata
+
+Decide if the latest query depends on the previous answer's time period or context.
+
+Rules:
+- If the user asks a continuation question like asking for drivers, SKUs, products, contributors, reasons, breakdown, or details of the previous result, mark is_followup=true.
+- If the latest query does not mention a clear new time period, and it depends on the previous result, set reuse_previous_period=true.
+- Do NOT rely on exact wording. Infer intent semantically.
+- If the user asks which SKU/product contributed most to sales, use:
+  metric_name = net_sales
+  analysis_type = absolute
+  answer_shape = ranking
+  ranking_direction = top
+  dimension = sku
+  top_n = 1
+- If the user asks for top/bottom products, use answer_shape=ranking.
+- If the user asks for a breakdown, use analysis_type=breakdown.
+- If unsure, keep fields null rather than guessing.
+
+Return only structured fields.
+"""
+
+
+def _resolve_followup_with_llm(
+    state: AgentState,
+    history: List[Dict[str, Any]]
+) -> Optional[FollowupResolutionModel]:
+    if not planner_llm:
+        return None
+
+    try:
+        last_meta = load_last_analysis_from_history(history)
+    except Exception:
+        logger.exception("[FOLLOWUP_RESOLUTION] Failed to load last analysis")
+        return None
+
+    if not last_meta:
+        logger.info("[FOLLOWUP_RESOLUTION] No previous analysis found")
+        return None
+
+    try:
+        resolver = planner_llm.with_structured_output(FollowupResolutionModel)
+
+        payload = {
+            "latest_user_query": state.get("user_query"),
+            "previous_current_metrics": last_meta.get("current_metrics"),
+            "previous_analysis_result": last_meta.get("analysis_result"),
+            "previous_metric_name": last_meta.get("metric_name"),
+            "previous_period_parsed": last_meta.get("period_parsed"),
+        }
+
+        result = resolver.invoke(
+            FOLLOWUP_RESOLUTION_PROMPT
+            + "\n\nInput:\n"
+            + json.dumps(payload, default=str)
+        )
+
+        logger.info(
+            f"[FOLLOWUP_RESOLUTION] "
+            f"is_followup={result.is_followup}, "
+            f"reuse_previous_period={result.reuse_previous_period}, "
+            f"metric={result.metric_name}, "
+            f"analysis_type={result.analysis_type}, "
+            f"answer_shape={result.answer_shape}, "
+            f"reason={result.reason}"
+        )
+
+        return result
+
+    except Exception:
+        logger.exception("[FOLLOWUP_RESOLUTION] LLM resolver failed")
+        return None
+
+
+def _previous_single_period_from_history(
+    history: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    try:
+        last_meta = load_last_analysis_from_history(history)
+    except Exception:
+        logger.exception("[FOLLOWUP_PERIOD] Failed to load last analysis")
+        return None
+
+    if not last_meta:
+        return None
+
+    current = last_meta.get("current_metrics") or {}
+    analysis = last_meta.get("analysis_result") or {}
+    parsed = last_meta.get("period_parsed") or {}
+
+    month = (
+        current.get("month")
+        or analysis.get("month")
+        or parsed.get("month")
+    )
+
+    year = (
+        current.get("year")
+        or analysis.get("year")
+        or parsed.get("year")
+    )
+
+    if not month or not year:
+        logger.info("[FOLLOWUP_PERIOD] No single month/year found in previous result")
+        return None
+
+    try:
+        return {
+            "type": "single",
+            "month": int(month),
+            "year": int(year),
+        }
+    except Exception:
+        logger.exception("[FOLLOWUP_PERIOD] Invalid previous month/year")
+        return None
+
+
+COMPOSITE_RESOLUTION_PROMPT = """
+You are detecting multi-step analytics questions.
+
+A multi-step analytics question asks for one calculation first, then asks for a product/SKU ranking, breakdown, or contribution inside that result.
+
+Examples:
+- Which product contributed most to the second highest profit month?
+- Which SKU drove the lowest sales month?
+- Top product in the highest profit month.
+- Which product contributed most during the best sales month?
+- Which SKU contributed most in the worst profit month?
+
+If the query asks for:
+1. a highest/lowest/best/worst/second highest/third highest month or period
+AND
+2. product/SKU contribution/ranking/breakdown inside that selected month or period
+
+then set is_composite=true.
+
+Rules:
+- base_metric_name is the metric used to select the month or period.
+- contribution_metric_name is the metric used to rank products/SKUs inside that month.
+- Usually contribution_metric_name is the same as base_metric_name.
+- If the user asks for profit contribution, use profit.
+- If the user asks for sales/revenue contribution, use net_sales.
+- extreme_type should be max for highest/best/top, min for lowest/worst/bottom.
+- extreme_rank should be 1 for highest/best, 2 for second highest/second best, 3 for third highest/third best.
+- dimension should be sku when the user asks for product/SKU contribution.
+- top_n should be 1 when the user asks "which product", "which SKU", or "most".
+- If it is not a multi-step question, set is_composite=false.
+
+Return only structured fields.
+"""
+
+
+def _resolve_composite_with_llm(state: AgentState) -> Optional[CompositeResolutionModel]:
+    if not planner_llm:
+        return None
+
+    try:
+        resolver = planner_llm.with_structured_output(CompositeResolutionModel)
+
+        payload = {
+            "latest_user_query": state.get("user_query"),
+            "planner_state": {
+                "metric_name": state.get("metric_name"),
+                "metric_names": state.get("metric_names"),
+                "analysis_type": state.get("analysis_type"),
+                "answer_shape": state.get("answer_shape"),
+                "dimension": state.get("dimension"),
+                "ranking_direction": state.get("ranking_direction"),
+                "extreme_type": state.get("extreme_type"),
+            },
+        }
+
+        result = resolver.invoke(
+            COMPOSITE_RESOLUTION_PROMPT
+            + "\n\nInput:\n"
+            + json.dumps(payload, default=str)
+        )
+
+        logger.info(
+            f"[COMPOSITE_RESOLUTION] "
+            f"is_composite={result.is_composite}, "
+            f"base_metric={result.base_metric_name}, "
+            f"contribution_metric={result.contribution_metric_name}, "
+            f"extreme_type={result.extreme_type}, "
+            f"extreme_rank={result.extreme_rank}, "
+            f"dimension={result.dimension}, "
+            f"top_n={result.top_n}, "
+            f"reason={result.reason}"
+        )
+
+        return result
+
+    except Exception:
+        logger.exception("[COMPOSITE_RESOLUTION] LLM resolver failed")
+        return None
+
+
 
 def _invoke_agent(state: AgentState) -> AgentState:
     try:
@@ -3328,6 +3706,9 @@ def _invoke_agent(state: AgentState) -> AgentState:
             f"product_query={plan.product_query}, product_queries={plan.product_queries}, "
             f"answer_shape={plan.answer_shape}, reasoning_mode={plan.reasoning_mode}"
         )
+        # -------- 🔥 LLM-BASED FOLLOW-UP RESOLUTION --------
+        followup_resolution = _resolve_followup_with_llm(state, history)
+        composite_resolution = _resolve_composite_with_llm(state)
 
         # -------- MEMORY RESTORE --------
         restored = _restore_memory_email(state, plan, history)
@@ -3375,6 +3756,58 @@ def _invoke_agent(state: AgentState) -> AgentState:
         state["last_event_month"] = plan.last_event_month
         state["future_event_month"] = plan.future_event_month
         state["target_sales"] = plan.target_sales
+
+        # -------- 🔥 APPLY LLM FOLLOW-UP OVERRIDES --------
+        if followup_resolution and followup_resolution.is_followup:
+            logger.info("[FOLLOWUP_APPLY] Applying follow-up resolution")
+
+            if followup_resolution.metric_name:
+                state["metric_name"] = followup_resolution.metric_name
+                state["metric_names"] = [followup_resolution.metric_name]
+
+            if followup_resolution.analysis_type:
+                state["analysis_type"] = followup_resolution.analysis_type
+
+            if followup_resolution.answer_shape:
+                state["answer_shape"] = followup_resolution.answer_shape
+
+            if followup_resolution.ranking_direction:
+                state["ranking_direction"] = followup_resolution.ranking_direction
+
+            if followup_resolution.dimension:
+                state["dimension"] = followup_resolution.dimension
+
+            if followup_resolution.top_n:
+                state["top_n"] = followup_resolution.top_n
+
+        # -------- 🔥 APPLY COMPOSITE OVERRIDES --------
+        if composite_resolution and composite_resolution.is_composite:
+            logger.info("[COMPOSITE_APPLY] Applying composite resolution")
+
+            state["analysis_type"] = "ranked_extreme_contribution"
+
+            state["base_metric_name"] = (
+                composite_resolution.base_metric_name
+                or state.get("metric_name")
+                or "profit"
+            )
+
+            state["metric_name"] = (
+                composite_resolution.contribution_metric_name
+                or composite_resolution.base_metric_name
+                or state.get("metric_name")
+                or "profit"
+            )
+
+            state["metric_names"] = [state["metric_name"]]
+            state["answer_shape"] = "ranking"
+            state["ranking_direction"] = "top"
+            state["dimension"] = composite_resolution.dimension or "sku"
+            state["subject_scope"] = "product"
+
+            state["extreme_type"] = composite_resolution.extreme_type or "max"
+            state["extreme_rank"] = composite_resolution.extreme_rank or 1
+            state["top_n"] = composite_resolution.top_n or 1
 
         if state["intent"] in {"chat", "explain", "clarify"}:
             logger.info(f"[SHORT-CIRCUIT] intent={state['intent']}")
@@ -3427,14 +3860,31 @@ def _invoke_agent(state: AgentState) -> AgentState:
         logger.info("[ENGINE] Database engine initialized")
 
         # -------- PERIOD PARSING --------
-        state["period_parsed"] = parse_period(q_lower)
-        logger.info(f"[PERIOD_PARSED] {state['period_parsed']}")
+        parsed_period = parse_period(q_lower)
+        logger.info(f"[PERIOD_PARSED_RAW] {parsed_period}")
+
+        inherited_period = None
+
+        if (
+            followup_resolution
+            and followup_resolution.is_followup
+            and followup_resolution.reuse_previous_period
+        ):
+            inherited_period = _previous_single_period_from_history(history)
+
+        if inherited_period:
+            state["period_parsed"] = inherited_period
+            logger.info(f"[PERIOD_INHERITED] {state['period_parsed']}")
+        else:
+            state["period_parsed"] = parsed_period
+            logger.info(f"[PERIOD_PARSED] {state['period_parsed']}")
 
         if state["period_parsed"].get("type") in {"single", "range", "comparison"}:
             state["period_payload"] = state["period_parsed"]
         else:
             state["period_payload"] = _prepare_period_payload(
-                state["period_parsed"], state["analysis_type"]
+                state["period_parsed"],
+                state["analysis_type"]
             )
 
         logger.info(f"[PERIOD_PAYLOAD] {state['period_payload']}")

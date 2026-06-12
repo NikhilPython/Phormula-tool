@@ -855,14 +855,21 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         name_df = pd.DataFrame(columns=["sku", "product_name"])
 
     # ---- sales, credits, profit per SKU via formula_utils ----
-    _, sales_by, _ = uk_sales(df)
+    # ---- net_sales per SKU: product_sales + promotional_rebates ----
+    df["net_sales"] = (
+        safe_num(df.get("product_sales", 0.0))
+        + safe_num(df.get("promotional_rebates", 0.0))
+    )
+
+    sales_by = (
+        df.groupby("sku", as_index=False)["net_sales"]
+        .sum()
+        .rename(columns={"net_sales": "sales_metric"})
+    )
+
+    # ---- credits, profit per SKU via formula_utils ----
     _, credits_by, _ = uk_credits(df)
     _, profit_by, _ = uk_profit(df)
-
-    if sales_by is not None and not sales_by.empty:
-        sales_by = sales_by.rename(columns={"__metric__": "sales_metric"})
-    else:
-        sales_by = pd.DataFrame(columns=["sku", "sales_metric"])
 
     if credits_by is not None and not credits_by.empty:
         credits_by = credits_by.rename(columns={"__metric__": "credits_metric"})
@@ -1097,8 +1104,15 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             ).sum()) if len(day_sku) else 0.0
 
             # sales/profit based on SKU rows (keeps your earlier behavior)
-            net_sales, _, _ = uk_sales(day_sku if len(day_sku) else day_all)
-            profit, _, _ = uk_profit(day_sku if len(day_sku) else day_all)
+            # ✅ net_sales same as other route: product_sales + promotional_rebates
+            sales_df = day_sku if len(day_sku) else day_all
+
+            net_sales = float((
+                safe_num(sales_df.get("product_sales", 0.0))
+                + safe_num(sales_df.get("promotional_rebates", 0.0))
+            ).sum())
+
+            profit, _, _ = uk_profit(sales_df)
 
             # ✅ FIXED: fees computed on ALL rows using hist classifier (NOT uk_platform_fee/uk_advertising)
             platform_fee_total, advertising_total = _calc_fees_from_hist(day_all)
@@ -1141,27 +1155,28 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     table_live = "liveorders"
 
     query_live = text(f"""
-        SELECT
-            sku,
-            quantity,
-            cogs,
-            product_sales,
-            promotional_rebates,
-            gross_sales,              -- ✅ NEW (read from DB)
-            profit,
-            total,
-            purchase_date,
-            order_status,
-            description,
-            type,
-            other_transaction_fees,
-            other
-        FROM {table_live}
-        WHERE user_id = :user_id
-            AND purchase_date >= :start_date
-            AND purchase_date < :end_date_plus_one
-            AND marketplace = :marketplace
-    """)
+    SELECT
+        sku,
+        quantity,
+        cogs,
+        product_sales,
+        promotional_rebates,
+        gross_sales,              -- ✅ NEW (read from DB)
+        profit,
+        total,
+        purchase_date,
+        order_status,
+        description,
+        type,
+        bucket,
+        other_transaction_fees,
+        other
+    FROM {table_live}
+    WHERE user_id = :user_id
+        AND purchase_date >= :start_date
+        AND purchase_date < :end_date_plus_one
+        AND marketplace = :marketplace
+""")
 
     marketplace_name = "Amazon.com" if country == "us" else "Amazon.co.uk"
 
@@ -1230,12 +1245,29 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
 
     df["total"] = safe_num(df.get("total", 0))
 
-    df["description"] = df.get("description", "").fillna("").astype(str)
-    df["type"] = df.get("type", "").fillna("").astype(str)
+    for col in ["description", "type", "bucket"]:
+        if col not in df.columns:
+            df[col] = ""
 
-    # Quantity should only count shipment rows
-    is_shipment = df["type"].str.strip().str.lower().eq("shipment")
-    df["quantity_filtered"] = df["quantity"].where(is_shipment, 0)
+    df["description"] = df["description"].fillna("").astype(str)
+    df["type"] = df["type"].fillna("").astype(str)
+    df["bucket"] = df["bucket"].fillna("").astype(str)
+
+    # Quantity should count sales rows only.
+    # Same refund/return detection logic as SKU-wise monthly table,
+    # using bucket instead of transaction_type in liveorders.
+    desc_lower = df["description"].str.lower()
+    type_lower = df["type"].str.lower()
+    bucket_lower = df["bucket"].str.lower()
+
+    return_mask = (
+        desc_lower.str.contains("refund|return", case=False, na=False, regex=True)
+        | type_lower.str.contains("refund|return", case=False, na=False, regex=True)
+        | bucket_lower.str.contains("refund|return", case=False, na=False, regex=True)
+    )
+
+    df["quantity_filtered"] = 0.0
+    df.loc[~return_mask, "quantity_filtered"] = df.loc[~return_mask, "quantity"].abs()
 
     # ----------------------------
     # Fee extraction (LIVEORDERS-SPECIFIC)
