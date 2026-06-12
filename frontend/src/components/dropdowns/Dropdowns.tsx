@@ -471,12 +471,17 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
     const isProductHeader =
       !isMetric(line) &&
+      !line.toLowerCase().startsWith("sku:") &&
+      !line.toLowerCase().startsWith("bucket:") &&
       !line.toLowerCase().startsWith("recommendation:") &&
       !line.toLowerCase().startsWith("ads action:") &&
       !line.toLowerCase().startsWith("product journey") &&
       !line.toLowerCase().startsWith("inventory action:") &&
       !!nextLine &&
-      isMetric(nextLine);
+      (
+        isMetric(nextLine) ||
+        nextLine.toLowerCase().startsWith("sku:")
+      );
 
     if (isProductHeader) {
       pushCurrent();
@@ -510,6 +515,15 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
     if (!current) continue;
 
     const lowerLine = line.toLowerCase();
+
+    if (lowerLine.startsWith("sku:")) {
+      current.skuKey = line.replace(/^sku:\s*/i, "").trim();
+      continue;
+    }
+
+    if (lowerLine.startsWith("bucket:")) {
+      continue;
+    }
 
     if (
       lowerLine.startsWith("included skus") ||
@@ -1378,17 +1392,73 @@ const ProductInsightsSection = ({
     });
   }, [blocks, otherSkuIncludedProducts]);
 
-  const sortedBlocks = useMemo(() => {
-    return [...enrichedBlocks].sort((a, b) => {
-      const aIsOther = a.isOtherSkus || a.name.trim().toLowerCase() === "other skus";
-      const bIsOther = b.isOtherSkus || b.name.trim().toLowerCase() === "other skus";
+const sortedBlocks = useMemo(() => {
+  const deduped = new Map<string, ProductInsightBlock>();
 
-      if (aIsOther && !bIsOther) return 1;
-      if (!aIsOther && bIsOther) return -1;
+  for (const block of enrichedBlocks || []) {
+    const isOther =
+      block.isOtherSkus ||
+      normalizeKey(block.name) === "other skus" ||
+      normalizeKey(block.name) === "others";
 
-      return getBlockNetSales(b) - getBlockNetSales(a);
-    });
-  }, [enrichedBlocks]);
+    const key = isOther
+      ? "other-skus"
+      : block.skuKey
+        ? `sku-${block.skuKey.trim().toLowerCase()}`
+        : `name-${normalizeKey(block.name)}`;
+
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, {
+        ...block,
+        name: isOther ? "Other SKUs" : block.name,
+        isOtherSkus: isOther,
+      });
+      continue;
+    }
+
+    // Prefer the richer block if duplicate product appears from both sections
+    const existingScore =
+      existing.metrics.length +
+      existing.journeyBullets.length +
+      existing.recommendationBullets.length;
+
+    const blockScore =
+      block.metrics.length +
+      block.journeyBullets.length +
+      block.recommendationBullets.length;
+
+    if (blockScore > existingScore) {
+      deduped.set(key, {
+        ...block,
+        name: isOther ? "Other SKUs" : block.name,
+        isOtherSkus: isOther,
+      });
+    }
+  }
+
+  const uniqueBlocks = Array.from(deduped.values());
+
+  const otherBlock = uniqueBlocks.find(
+    (b) =>
+      b.isOtherSkus ||
+      normalizeKey(b.name) === "other skus" ||
+      normalizeKey(b.name) === "others"
+  );
+
+  const topFive = uniqueBlocks
+    .filter(
+      (b) =>
+        !b.isOtherSkus &&
+        normalizeKey(b.name) !== "other skus" &&
+        normalizeKey(b.name) !== "others"
+    )
+    .sort((a, b) => getBlockNetSales(b) - getBlockNetSales(a))
+    .slice(0, 5);
+
+  return otherBlock ? [...topFive, otherBlock] : topFive;
+}, [enrichedBlocks]);
 
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
@@ -4251,7 +4321,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
-      const productLines = sections["PRODUCT INSIGHTS"] ?? [];
+      const productLines = [
+        ...(sections["PRODUCT INSIGHTS"] ?? []),
+        ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
+      ];
 
       const { recommendationBullets, inventoryBullets, recommendationsMap } =
         extractRecoAndInventoryBullets(data.recommendations as any);
