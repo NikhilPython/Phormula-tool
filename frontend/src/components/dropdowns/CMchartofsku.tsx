@@ -12,22 +12,26 @@ import {
   TooltipItem,
 } from "chart.js";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 type Range = "monthly" | "quarterly" | "yearly";
 type Quarter = "Q1" | "Q2" | "Q3" | "Q4";
 
+type CmMetric = "cm1" | "cm2";
 type CmChartOfSkuProps = {
   range: Range;
   month?: string;
   year: number | string;
   selectedQuarter?: Quarter;
-  userId?: string | number; // kept for signature compatibility
+  userId?: string | number;
   countryName: string;
   homeCurrency?: string;
   onExportBase64Ready?: (base64: string | null) => void;
   disableInternalFade?: boolean;
+
+  metric?: CmMetric;
 };
 
 type CompareTop5Item = {
@@ -36,10 +40,30 @@ type CompareTop5Item = {
   previous_profit: number | string;
 };
 
+type ApiSkuRow = {
+  product_name?: string;
+  sku?: string;
+  profit?: number | string;
+  cm2_profit?: number | string;
+};
+
+type Cm2ProfitItem = {
+  product_name: string;
+  cm2_profit: number | string;
+};
+
 type PieChartPayload = {
   compare_top5?: CompareTop5Item[];
   labels?: string[];
   values?: Array<number | string>;
+
+  // CM1/current-vs-previous row format
+  current_data?: ApiSkuRow[];
+  previous_data?: ApiSkuRow[];
+
+  // CM2 format from your /pie-chart response
+  cm2_profit?: Cm2ProfitItem[];
+
   error?: string;
 };
 
@@ -118,11 +142,12 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   month,
   year,
   selectedQuarter,
-  userId, // unused
+  userId,
   countryName,
   homeCurrency,
   onExportBase64Ready,
   disableInternalFade = false,
+  metric = "cm1",
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
@@ -199,6 +224,149 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   const [slices, setSlices] = useState<CmPieSlice[]>([]);
 
+  const getMetricValue = (row: ApiSkuRow, selectedMetric: CmMetric) => {
+    return selectedMetric === "cm2"
+      ? toNum(row.cm2_profit)
+      : toNum(row.profit);
+  };
+
+  const isTotalOrEmptyRow = (row: ApiSkuRow) => {
+    const name = String(row.product_name || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+      !name ||
+      name === "total" ||
+      sku === "total" ||
+      name === "others" ||
+      sku === "others"
+    );
+  };
+
+  const buildSlicesFromCurrentPreviousData = (
+    currentData: ApiSkuRow[],
+    previousData: ApiSkuRow[],
+    selectedMetric: CmMetric
+  ): CmPieSlice[] => {
+    const previousMap = new Map<string, ApiSkuRow>();
+
+    previousData
+      .filter((row) => !isTotalOrEmptyRow(row))
+      .forEach((row) => {
+        const key = String(row.sku || row.product_name || "").trim().toLowerCase();
+        if (key) previousMap.set(key, row);
+      });
+
+    const currentRows = currentData
+      .filter((row) => !isTotalOrEmptyRow(row))
+      .map((row) => {
+        const key = String(row.sku || row.product_name || "").trim().toLowerCase();
+        const previousRow = previousMap.get(key);
+
+        const currentValue = getMetricValue(row, selectedMetric);
+        const previousValue = previousRow
+          ? getMetricValue(previousRow, selectedMetric)
+          : 0;
+
+        return {
+          name: String(row.product_name || row.sku || "-"),
+          value: currentValue,
+          prevValue: previousValue,
+        };
+      })
+      .filter((row) => Number.isFinite(row.value) && row.value !== 0)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+    const top5 = currentRows.slice(0, 5);
+    const remaining = currentRows.slice(5);
+
+    const othersValue = remaining.reduce((sum, row) => sum + row.value, 0);
+    const othersPrevValue = remaining.reduce((sum, row) => sum + row.prevValue, 0);
+
+    const finalRows =
+      remaining.length > 0
+        ? [
+          ...top5,
+          {
+            name: "Others",
+            value: othersValue,
+            prevValue: othersPrevValue,
+          },
+        ]
+        : top5;
+
+    const totalCurrent = finalRows.reduce(
+      (sum, row) => sum + Math.abs(row.value),
+      0
+    );
+
+    return finalRows.map((row) => {
+      const currentAbs = Math.abs(row.value);
+      const previousAbs = Math.abs(row.prevValue);
+
+      return {
+        name: row.name,
+        value: currentAbs,
+        prevValue: previousAbs,
+        pct: totalCurrent ? (currentAbs / totalCurrent) * 100 : 0,
+        deltaPct:
+          previousAbs === 0
+            ? null
+            : ((currentAbs - previousAbs) / previousAbs) * 100,
+      };
+    });
+  };
+
+  const buildSlicesFromCm2Profit = (
+    cm2Rows: Cm2ProfitItem[]
+  ): CmPieSlice[] => {
+    const rows = cm2Rows
+      .map((row) => ({
+        name: String(row.product_name || "").trim(),
+        value: toNum(row.cm2_profit),
+        prevValue: 0,
+      }))
+      .filter((row) => row.name && Number.isFinite(row.value) && row.value !== 0)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+    const top5 = rows.slice(0, 5);
+    const remaining = rows.slice(5);
+
+    const othersValue = remaining.reduce((sum, row) => sum + row.value, 0);
+
+    const finalRows =
+      remaining.length > 0
+        ? [
+          ...top5,
+          {
+            name: "Others",
+            value: othersValue,
+            prevValue: 0,
+          },
+        ]
+        : top5;
+
+    const totalCurrent = finalRows.reduce(
+      (sum, row) => sum + Math.abs(row.value),
+      0
+    );
+
+    return finalRows.map((row) => {
+      const currentAbs = Math.abs(row.value);
+
+      return {
+        name: row.name,
+        value: currentAbs,
+        prevValue: 0,
+        pct: totalCurrent ? (currentAbs / totalCurrent) * 100 : 0,
+
+        // Your response does not provide previous CM2 values,
+        // so do not show CM1 delta percentages for CM2.
+        deltaPct: null,
+      };
+    });
+  };
+
   useEffect(() => {
     if (isDemoMode) {
       setSlices(DEMO_SLICES);
@@ -269,45 +437,66 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         // Prefer compare_top5 (it has current + previous)
         const rows = Array.isArray(payload.compare_top5) ? payload.compare_top5 : [];
 
-        let built: CmPieSlice[] = [];
+       let built: CmPieSlice[] = [];
 
-        if (rows.length) {
-          const currentValues = rows.map((r) => Math.abs(toNum(r.current_profit)));
-          const totalCurrent = currentValues.reduce((a, b) => a + b, 0);
+// ✅ CM2 must use payload.cm2_profit first.
+// Do this BEFORE compare_top5, because compare_top5 is CM1 data.
+if (metric === "cm2" && Array.isArray(payload.cm2_profit)) {
+  built = buildSlicesFromCm2Profit(payload.cm2_profit);
+} else if (
+  Array.isArray(payload.current_data) &&
+  Array.isArray(payload.previous_data)
+) {
+  built = buildSlicesFromCurrentPreviousData(
+    payload.current_data,
+    payload.previous_data,
+    metric
+  );
+} else {
+  const rows = Array.isArray(payload.compare_top5)
+    ? payload.compare_top5
+    : [];
 
-          built = rows.map((r) => {
-            const cur = Math.abs(toNum(r.current_profit));
-            const prev = Math.abs(toNum(r.previous_profit));
-            const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
-            const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
+  if (rows.length) {
+    const currentValues = rows.map((r) =>
+      Math.abs(toNum(r.current_profit))
+    );
 
-            return {
-              name: r.product,
-              value: cur,
-              prevValue: prev,
-              pct,
-              deltaPct,
-            };
-          });
-        } else if (Array.isArray(payload.labels) && Array.isArray(payload.values)) {
-          // fallback if backend returns only labels/values
-          const labels = payload.labels as string[];
-          const values = (payload.values || []).map((v) => Math.abs(toNum(v)));
-          const totalCurrent = values.reduce((a, b) => a + b, 0);
+    const totalCurrent = currentValues.reduce((a, b) => a + b, 0);
 
-          built = labels.map((label, i) => {
-            const cur = values[i] ?? 0;
-            const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
-            return {
-              name: label,
-              value: cur,
-              prevValue: 0,
-              pct,
-              deltaPct: null,
-            };
-          });
-        }
+    built = rows.map((r) => {
+      const cur = Math.abs(toNum(r.current_profit));
+      const prev = Math.abs(toNum(r.previous_profit));
+      const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
+      const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
 
+      return {
+        name: r.product,
+        value: cur,
+        prevValue: prev,
+        pct,
+        deltaPct,
+      };
+    });
+  } else if (Array.isArray(payload.labels) && Array.isArray(payload.values)) {
+    const labels = payload.labels as string[];
+    const values = (payload.values || []).map((v) => Math.abs(toNum(v)));
+    const totalCurrent = values.reduce((a, b) => a + b, 0);
+
+    built = labels.map((label, i) => {
+      const cur = values[i] ?? 0;
+      const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
+
+      return {
+        name: label,
+        value: cur,
+        prevValue: 0,
+        pct,
+        deltaPct: null,
+      };
+    });
+  }
+}
         const isEmpty =
           built.length === 0 ||
           !built.some((s) => Number(s.value) > 0);
@@ -343,6 +532,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     normalizedHomeCurrency,
     homeCurrency,
     isGlobalPage,
+    metric,
   ]);
 
   const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
@@ -442,7 +632,11 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     ].join(" ")}>
       <div className="mb-2 2xl:mb-1 w-fit mx-left md:mx-0">
         <PageBreadcrumb
-          pageTitle="CM1 Profit Breakdown"
+          pageTitle={
+            metric === "cm2"
+              ? "CM2 Profit Breakdown"
+              : "CM1 Profit Breakdown"
+          }
           variant="page"
           align="left"
           textSize="2xl"
@@ -559,25 +753,25 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                             {/* line 3 */}
                             <div className="leading-[1.2]">
                               <span>({pct.toFixed(2)}%) </span>
-                              <span
-                                className={deltaClass}
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 1,
-                                }}
-                              >
-                                (
-                                {delta == null ? (
-                                  "—"
-                                ) : delta >= 0 ? (
-                                  <DeltaUpIcon className="h-3 w-3" />
-                                ) : (
-                                  <DeltaDownIcon className="h-3 w-3" />
-                                )}
-                                {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
-                                )
-                              </span>
+                              {delta != null && (
+  <span
+    className={deltaClass}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 1,
+    }}
+  >
+    (
+    {delta >= 0 ? (
+      <DeltaUpIcon className="h-3 w-3" />
+    ) : (
+      <DeltaDownIcon className="h-3 w-3" />
+    )}
+    {Math.abs(delta).toFixed(2)}%
+    )
+  </span>
+)}
                             </div>
                           </div>
 

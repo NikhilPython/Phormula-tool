@@ -3173,6 +3173,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
   );
 
+  const [cmPieTab, setCmPieTab] = useState<"cm1" | "cm2">("cm1");
+
   const [allDropdownsSelected, setAllDropdownsSelected] = useState(() => {
     if (isDemoMode) return true;
 
@@ -3458,6 +3460,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
 
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
+  const [productWiseCm2PieBase64, setProductWiseCm2PieBase64] =
+    useState<string | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   const [primaryGoal, setPrimaryGoal] = useState("");
@@ -3476,6 +3480,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     width: 0,
   });
 
+  const emptyTopBottomData: TopBottomData = {
+    rows: [],
+    totals: {
+      profit: "0.00",
+      profitMix: "0.00",
+      salesMix: "0.00",
+      avg_per_unit: "0.00",
+    },
+  };
+
   const computeTopBottom5 = (
     rows: TableRow[]
   ): {
@@ -3484,6 +3498,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     hasCm2Data: boolean;
   } => {
     const clean = (rows || []).filter(Boolean);
+
+    if (!clean.length) {
+      return {
+        topData: emptyTopBottomData,
+        bottomData: emptyTopBottomData,
+        hasCm2Data: false,
+      };
+    }
 
     const num = (v: any) => {
       if (v === null || v === undefined) return 0;
@@ -3532,6 +3554,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         );
       });
     })();
+
+
 
     const getProfitValue = (row: TableRow) => {
       return topBottomHasCm2Data
@@ -3648,9 +3672,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     [displaySkuRows, range]
   );
 
+  useEffect(() => {
+    if (!topBottomHasCm2Data) {
+      setCmPieTab("cm1");
+    }
+  }, [topBottomHasCm2Data]);
+
   const defaultTopProductName = useMemo(() => {
-    const first = topData?.rows?.[0];
-    return first?.product_name?.trim() || "";
+    const rows = Array.isArray(topData?.rows) ? topData.rows : [];
+    const first = rows[0];
+
+    return String(first?.product_name || "").trim();
   }, [topData]);
 
   useEffect(() => {
@@ -3660,6 +3692,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setSkuExportPayload(null);
     setExpenseBreakdownPieBase64(null);
     setProductWiseCm1PieBase64(null);
+    setProductWiseCm2PieBase64(null);
     setPerformanceTrendBase64(null);
     setTrendExportApi(null);
 
@@ -6688,15 +6721,63 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           summaryFromSku={uploadsData?.summary ?? null}
                         />
 
-                        <CMchartofsku
-                          range="monthly"
-                          month={isDemoMode ? "NA" : selectedMonth}
-                          selectedQuarter={undefined}
-                          year={isDemoMode ? "NA" : selectedYear}
-                          countryName={isDemoMode ? "global" : initialCountryName}
-                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                          onExportBase64Ready={setProductWiseCm1PieBase64}
-                        />
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm1")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm1"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM1 Profit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm2")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm2"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM2 Profit
+                            </button>
+                          </div>
+
+                          {cmPieTab === "cm1" && (
+                            <CMchartofsku
+                              range="monthly"
+                              month={isDemoMode ? "NA" : selectedMonth}
+                              selectedQuarter={undefined}
+                              year={isDemoMode ? "NA" : selectedYear}
+                              countryName={isDemoMode ? "global" : initialCountryName}
+                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              onExportBase64Ready={setProductWiseCm1PieBase64}
+                              disableInternalFade={isDemoMode}
+                              metric="cm1"
+                            />
+                          )}
+
+                          {cmPieTab === "cm2" && (
+                            <CMchartofsku
+                              range="monthly"
+                              month={isDemoMode ? "NA" : selectedMonth}
+                              selectedQuarter={undefined}
+                              year={isDemoMode ? "NA" : selectedYear}
+                              countryName={isDemoMode ? "global" : initialCountryName}
+                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              onExportBase64Ready={setProductWiseCm2PieBase64}
+                              disableInternalFade={isDemoMode}
+                              metric="cm2"
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -6824,15 +6905,63 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           summaryFromSku={uploadsData?.summary ?? null}
                         />
 
-                        <CMchartofsku
-                          range="quarterly"
-                          month={undefined}
-                          selectedQuarter={isDemoMode ? undefined : selectedQuarter}
-                          year={isDemoMode ? "NA" : selectedYear}
-                          countryName={isDemoMode ? "global" : initialCountryName}
-                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                          onExportBase64Ready={setProductWiseCm1PieBase64}
-                        />
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm1")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm1"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM1 Profit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm2")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm2"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM2 Profit
+                            </button>
+                          </div>
+
+                          {cmPieTab === "cm1" && (
+                            <CMchartofsku
+                              range="quarterly"
+                              month={undefined}
+                              selectedQuarter={isDemoMode ? undefined : selectedQuarter}
+                              year={isDemoMode ? "NA" : selectedYear}
+                              countryName={isDemoMode ? "global" : initialCountryName}
+                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              onExportBase64Ready={setProductWiseCm1PieBase64}
+                              disableInternalFade={isDemoMode}
+                              metric="cm1"
+                            />
+                          )}
+
+                          {cmPieTab === "cm2" && (
+                            <CMchartofsku
+                              range="quarterly"
+                              month={undefined}
+                              selectedQuarter={isDemoMode ? undefined : selectedQuarter}
+                              year={isDemoMode ? "NA" : selectedYear}
+                              countryName={isDemoMode ? "global" : initialCountryName}
+                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              onExportBase64Ready={setProductWiseCm2PieBase64}
+                              disableInternalFade={isDemoMode}
+                              metric="cm2"
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -6958,16 +7087,65 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         summaryFromSku={uploadsData?.summary ?? null}
                       />
 
-                      <CMchartofsku
-                        range="yearly"
-                        month={undefined}
-                        selectedQuarter={undefined}
-                        year={isDemoMode ? "NA" : selectedYear}
-                        countryName={isDemoMode ? "global" : initialCountryName}
-                        homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                        onExportBase64Ready={setProductWiseCm1PieBase64}
-                        disableInternalFade={isDemoMode}
-                      />
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                        {topBottomHasCm2Data && (
+                          <div className="flex gap-2 border-b border-slate-200 px-4 pt-4">
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm1")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm1"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM1 Profit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setCmPieTab("cm2")}
+                              className={[
+                                "rounded-t-lg px-4 py-2 text-sm font-semibold transition",
+                                cmPieTab === "cm2"
+                                  ? "bg-[#5EA68E] text-[#F8EDCE]"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                              ].join(" ")}
+                            >
+                              CM2 Profit
+                            </button>
+                          </div>
+                        )}
+
+                        {cmPieTab === "cm1" && (
+                          <CMchartofsku
+                            range="yearly"
+                            month={undefined}
+                            selectedQuarter={undefined}
+                            year={isDemoMode ? "NA" : selectedYear}
+                            countryName={isDemoMode ? "global" : initialCountryName}
+                            homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                            onExportBase64Ready={setProductWiseCm1PieBase64}
+                            disableInternalFade={isDemoMode}
+                            metric="cm1"
+                          />
+                        )}
+
+                        {topBottomHasCm2Data && cmPieTab === "cm2" && (
+                          <CMchartofsku
+                            range="yearly"
+                            month={undefined}
+                            selectedQuarter={undefined}
+                            year={isDemoMode ? "NA" : selectedYear}
+                            countryName={isDemoMode ? "global" : initialCountryName}
+                            homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                            onExportBase64Ready={setProductWiseCm2PieBase64}
+                            disableInternalFade={isDemoMode}
+                            metric="cm2"
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </>
@@ -7103,41 +7281,41 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     : "";
 
                 return (
-                 <ProductwisePerformance
-  key={[
-    initialCountryName,
-    productWiseRange,
-    selectedQuarter,
-    selectedYear,
-    productWiseInitialProductName || "no-product",
-    isDemoMode ? "demo" : "live",
-  ].join("-")}
-  embedded
-  countryNameProp={isDemoMode ? "global" : initialCountryName}
-  rangeProp={productWiseRange}
-  selectedMonthProp={isDemoMode ? "NA" : ""}
-  selectedQuarterProp={
-    isDemoMode
-      ? ""
-      : productWiseRange === "quarterly"
-        ? selectedQuarter
-        : ""
-  }
-  selectedYearProp={
-    isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
-  }
-  initialProductName={productWiseInitialProductName}
+                  <ProductwisePerformance
+                    key={[
+                      initialCountryName,
+                      productWiseRange,
+                      selectedQuarter,
+                      selectedYear,
+                      productWiseInitialProductName || "no-product",
+                      isDemoMode ? "demo" : "live",
+                    ].join("-")}
+                    embedded
+                    countryNameProp={isDemoMode ? "global" : initialCountryName}
+                    rangeProp={productWiseRange}
+                    selectedMonthProp={isDemoMode ? "NA" : ""}
+                    selectedQuarterProp={
+                      isDemoMode
+                        ? ""
+                        : productWiseRange === "quarterly"
+                          ? selectedQuarter
+                          : ""
+                    }
+                    selectedYearProp={
+                      isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
+                    }
+                    initialProductName={productWiseInitialProductName}
 
-  // ✅ Same source as Dropdown drawer
-  sharedInsightData={{
-    blocks: parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []),
-    objective: aiPanel?.objective ?? null,
-    recommendationsMap: aiPanel?.recommendationsMap,
-    drawerPeriodText: aiPanel?.summaryBullets?.[0]
-      ? formatSummaryPeriod(aiPanel.summaryBullets[0])
-      : "",
-  }}
-/>
+                    // ✅ Same source as Dropdown drawer
+                    sharedInsightData={{
+                      blocks: parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []),
+                      objective: aiPanel?.objective ?? null,
+                      recommendationsMap: aiPanel?.recommendationsMap,
+                      drawerPeriodText: aiPanel?.summaryBullets?.[0]
+                        ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+                        : "",
+                    }}
+                  />
                 );
               })()}
             </div>
