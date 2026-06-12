@@ -1244,6 +1244,11 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     }
                     countryName={countryName}
                     isOtherSkus={!!block.isOtherSkus}
+                    otherSkuProductNames={
+                      block.isOtherSkus
+                        ? (block.includedSkus || []).map((item) => item.product_name)
+                        : []
+                    }
                   />
                 </div>
 
