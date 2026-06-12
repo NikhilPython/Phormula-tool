@@ -223,11 +223,20 @@ def build_monthly_cm2_table_name(user_id, country, month, year):
     """
     return f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}_{str(year)}".lower()
 
-
-def fetch_cm2_profit_from_monthly_table(table_name):
+def fetch_cm2_profit_from_monthly_table(ads_table_name, profit_table_name):
     """
-    Fetch productwise cm2_profit from monthly SKU-wise table.
-    If table/column/data is missing, return None and do not affect existing response.
+    Fetch productwise CM2 profit for monthly request.
+
+    New logic:
+        cm2_profit = profit from normal monthly table - ads_spend from underscore monthly table
+
+    ads_table_name format:
+        skuwisemonthly_{user_id}_{country}_{month}_{year}
+
+    profit_table_name format:
+        skuwisemonthly_{user_id}_{country}_{month}{year}
+
+    If required table/column/data is missing, return None so existing functionality is not affected.
     """
     conn = get_db_connection()
     if not conn:
@@ -236,20 +245,41 @@ def fetch_cm2_profit_from_monthly_table(table_name):
     try:
         cursor = conn.cursor()
 
-        if not check_table_exists(cursor, table_name):
+        # Check both tables exist
+        if not check_table_exists(cursor, ads_table_name):
             return None
 
-        if not check_column_exists(cursor, table_name, "cm2_profit"):
+        if not check_table_exists(cursor, profit_table_name):
+            return None
+
+        # Check required columns exist
+        if not check_column_exists(cursor, ads_table_name, "ads_spend"):
+            return None
+
+        if not check_column_exists(cursor, profit_table_name, "profit"):
+            return None
+
+        if not check_column_exists(cursor, ads_table_name, "product_name"):
+            return None
+
+        if not check_column_exists(cursor, profit_table_name, "product_name"):
             return None
 
         query = sql.SQL("""
-            SELECT product_name, cm2_profit
-            FROM {}
-            WHERE cm2_profit IS NOT NULL
-            AND product_name IS NOT NULL
-            AND LOWER(TRIM(product_name)) != 'total'
+            SELECT 
+                p.product_name,
+                COALESCE(p.profit, 0) - COALESCE(a.ads_spend, 0) AS cm2_profit
+            FROM {} p
+            LEFT JOIN {} a
+                ON LOWER(TRIM(p.product_name)) = LOWER(TRIM(a.product_name))
+            WHERE p.profit IS NOT NULL
+            AND p.product_name IS NOT NULL
+            AND LOWER(TRIM(p.product_name)) != 'total'
             ORDER BY cm2_profit DESC
-        """).format(sql.Identifier(table_name))
+        """).format(
+            sql.Identifier(profit_table_name),
+            sql.Identifier(ads_table_name)
+        )
 
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -267,14 +297,12 @@ def fetch_cm2_profit_from_monthly_table(table_name):
         return cm2_data
 
     except Exception as e:
-        print(f"Error fetching cm2_profit from {table_name}: {e}")
+        print(f"Error fetching calculated cm2_profit from {profit_table_name} and {ads_table_name}: {e}")
         return None
 
     finally:
         if conn:
             conn.close()
-
-
 
 def fetch_data_from_table(table_name):
     """Fetch product data from specified table"""
@@ -781,7 +809,17 @@ def generate_pie_chart():
                 year=year_str
             )
 
-            current_cm2_profit = fetch_cm2_profit_from_monthly_table(cm2_table_name)
+            profit_table_name = build_skuwise_table_name(
+                user_id=user_id,
+                country=country,
+                month=cm2_month_str,
+                year=year_str
+            )
+
+            current_cm2_profit = fetch_cm2_profit_from_monthly_table(
+                ads_table_name=cm2_table_name,
+                profit_table_name=profit_table_name
+            )
 
             if current_cm2_profit:
                 cm2_profit_table_used = cm2_table_name
