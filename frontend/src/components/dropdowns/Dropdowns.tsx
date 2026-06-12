@@ -38,6 +38,7 @@ import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessMo
 type Summary = {
   unit_sold: number;
   total_sales: number;
+  asp?: number;
   gross_sales?: number;
   total_product_sales?: number;
   total_expense: number;
@@ -2593,6 +2594,7 @@ const DEMO_SUMMARY: Summary = {
   gross_sales: 0,
   total_product_sales: 0,
   total_expense: 0,
+  asp: 0,
   cm2_profit: 0,
   cm2_profit_total: 0,
   cm2_margins: 0,
@@ -2615,6 +2617,7 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     otherwplatform: 0,
     advertising_total: 0,
     total_amazon_fee: 0,
+    asp: 0,
   },
   lastQuarter: {
     unit_sold: 0,
@@ -2627,6 +2630,7 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     otherwplatform: 0,
     advertising_total: 0,
     total_amazon_fee: 0,
+    asp: 0,
   },
   lastYear: {
     unit_sold: 0,
@@ -2639,6 +2643,7 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     otherwplatform: 0,
     advertising_total: 0,
     total_amazon_fee: 0,
+    asp: 0,
   },
 };
 
@@ -3613,6 +3618,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const zeroData: Summary = {
     unit_sold: 0,
     total_sales: 0,
+    asp: 0,
     gross_sales: 0,
     total_product_sales: 0,
     total_expense: 0,
@@ -3757,6 +3763,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return {
       unit_sold: toNum(row?.total_quantity),
       total_sales: netSales,
+      asp: toNum(row?.asp),
       gross_sales: toNum(row?.gross_sales),
       total_product_sales: toNum(row?.gross_sales),
 
@@ -6004,6 +6011,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 const formatWholeMoney = (val: number) =>
                   formatMoney(roundMoney(val), { decimals: 0 });
 
+                const formatAspMoney = (val: number) =>
+                  formatMoney(toNum(val), { decimals: 2 });
+
                 const isSummaryZero =
                   summary.unit_sold === 0 &&
                   summary.total_sales === 0 &&
@@ -6098,6 +6108,63 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       deltaClassName,
                     };
                   });
+                };
+
+                const getAspComparisons = (): ComparisonItem[] => {
+                  const current = toNum(summary?.asp);
+                  const yNum = Number(selectedYear);
+
+                  const prevMonth = comparisons?.lastMonth
+                    ? toNum(comparisons.lastMonth.asp)
+                    : undefined;
+
+                  const prevQuarter = comparisons?.lastQuarter
+                    ? toNum(comparisons.lastQuarter.asp)
+                    : undefined;
+
+                  const prevYear = comparisons?.lastYear
+                    ? toNum(comparisons.lastYear.asp)
+                    : undefined;
+
+                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
+                    if (typeof prevVal !== "number" || !Number.isFinite(prevVal)) {
+                      return { label, value: undefined, diffPct: null };
+                    }
+
+                    const diffPct =
+                      prevVal === 0 ? null : ((current - prevVal) / Math.abs(prevVal)) * 100;
+
+                    return {
+                      label,
+                      value: prevVal,
+                      diffPct,
+                    };
+                  };
+
+                  if (range === "monthly") {
+                    const label =
+                      selectedMonth && yNum
+                        ? getPrevMonthLabel(selectedMonth, yNum)
+                        : "Prev month";
+
+                    return [makeItem(label, prevMonth)];
+                  }
+
+                  if (range === "quarterly") {
+                    const label =
+                      selectedQuarter && yNum
+                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                        : "Prev quarter";
+
+                    return [makeItem(label, prevQuarter)];
+                  }
+
+                  if (range === "yearly") {
+                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
+                    return [makeItem(label, prevYear)];
+                  }
+
+                  return [];
                 };
 
                 // ---------- Gross Sales comparisons ----------
@@ -6281,17 +6348,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     comparisons: buildComparisonsRows("unit_sold", formatUnits),
                   },
                   {
-                    key: "grossSales",
-                    title: "Gross Sales",
-                    value: renderMoneyWithPerUnit(
-                      roundMoney(getGrossSales(summary)),
-                      summary.unit_sold,
-                      true,
-                      0
-                    ),
+                    key: "asp",
+                    title: "ASP",
+
+                    // ✅ Shows decimals, e.g. £9.92 instead of £10
+                    value: formatAspMoney(summary?.asp ?? 0),
+
                     className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+
                     comparisons: (() => {
-                      const items = getGrossSalesComparisons();
+                      const items = getAspComparisons();
 
                       return items.map((item) => {
                         const hasValue = typeof item.value === "number" && !isNaN(item.value);
@@ -6309,7 +6375,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                         return {
                           label: item.label,
-                          valueText: hasValue ? formatWholeMoney(item.value!) : "-",
+
+                          // ✅ Previous ASP also shows decimals
+                          valueText: hasValue ? formatAspMoney(item.value!) : "-",
+
                           deltaText,
                           deltaClassName,
                         };

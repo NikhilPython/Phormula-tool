@@ -8997,44 +8997,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
             bottomLabel: prevLabel,
             className: "bg-white border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
         },
-
-        {
-            label: "Net Sales",
-            current: shouldShowDummyUi
-                ? dummyStatData.netSales.current
-                : isStickyGlobal
-                    ? stickyTableTotals.netSales
-                    : (showLiveBI && rangeActive
-                        ? biCardKpis.curr.netSales
-                        : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
-
-            previous: shouldShowDummyUi
-                ? dummyStatData.netSales.previous
-                : isStickyGlobal
-                    ? stickyPreviousTotals.netSales
-                    : (showLiveBI && rangeActive
-                        ? biCardKpis.prev.netSales
-                        : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency)),
-
-            deltaPct: shouldShowDummyUi
-                ? dummyStatData.netSales.deltaPct
-                : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.netSales, stickyPreviousTotals.netSales)
-                    : (useBiForAmazonCards
-                        ? biCardKpis.deltas.netSales
-                        : deltas.netSalesPct),
-
-            loading: !shouldShowDummyUi && (
-                isStickyGlobal
-                    ? (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)
-                    : (loading || biLoading)
-            ),
-            formatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
-            previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-        },
-
         {
             label: "ASP",
             current: shouldShowDummyUi
@@ -9071,7 +9033,42 @@ Keep enough stock for validation but avoid over-committing too early.`,
             bottomLabel: prevLabel,
             className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
         },
+        {
+            label: "Net Sales",
+            current: shouldShowDummyUi
+                ? dummyStatData.netSales.current
+                : isStickyGlobal
+                    ? stickyTableTotals.netSales
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.curr.netSales
+                        : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
 
+            previous: shouldShowDummyUi
+                ? dummyStatData.netSales.previous
+                : isStickyGlobal
+                    ? stickyPreviousTotals.netSales
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.prev.netSales
+                        : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency)),
+
+            deltaPct: shouldShowDummyUi
+                ? dummyStatData.netSales.deltaPct
+                : isStickyGlobal
+                    ? safeDeltaPct(stickyTableTotals.netSales, stickyPreviousTotals.netSales)
+                    : (useBiForAmazonCards
+                        ? biCardKpis.deltas.netSales
+                        : deltas.netSalesPct),
+
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)
+                    : (loading || biLoading)
+            ),
+            formatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
+            previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+        },
         {
             label: "Cost of Ads",
             current: shouldShowDummyUi
