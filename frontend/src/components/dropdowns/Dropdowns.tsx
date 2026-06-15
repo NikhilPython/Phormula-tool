@@ -312,7 +312,7 @@ const computeDefaultMonthlyPeriod = () => {
   const lastCompleted = getLastCompletedMonth();
 
   return {
-    month: lastCompleted.month,
+    month: lastCompleted.month.toLowerCase(),
     year: lastCompleted.year,
   };
 };
@@ -3802,7 +3802,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (v === "monthly") {
       const defaultMonthly = computeDefaultMonthlyPeriod();
 
-      setSelectedMonth(defaultMonthly.month);
+      setSelectedMonth(defaultMonthly.month.toLowerCase());
       setSelectedQuarter("");
       setSelectedYear(defaultMonthly.year);
     }
@@ -5093,7 +5093,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setSelectedYear(getInitialSelectedYear());
 
     if (routeRange === "monthly") {
-      setSelectedMonth(initialMonth || computeDefaultMonthlyPeriod().month);
+      setSelectedMonth(
+        (initialMonth || computeDefaultMonthlyPeriod().month).toLowerCase()
+      );
       setSelectedQuarter("");
       return;
     }
