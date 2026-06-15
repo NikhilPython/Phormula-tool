@@ -3,9 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaSearch, FaLongArrowAltRight } from "react-icons/fa";
-import { Settings, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import Image from "next/image";
 import Loader from "@/components/loader/Loader";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import SummaryMetricCardLarge from "../ViewUserPage/SummaryMetricCardLarge";
@@ -47,8 +46,8 @@ type ApiError = {
 type StatusFilter = "all" | "active" | "inactive";
 
 export default function SuperAdminDashboardPage() {
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [formulaUpdating, setFormulaUpdating] = useState<boolean>(false);
+  // const [showSettings, setShowSettings] = useState<boolean>(false);
+  // const [formulaUpdating, setFormulaUpdating] = useState<boolean>(false);
   const [emailInput, setEmailInput] = useState<string>("");
   const [searchResult, setSearchResult] = useState<DashboardResponse | null>(null);
   const [defaultData, setDefaultData] = useState<DashboardResponse | null>(null);
@@ -58,8 +57,8 @@ export default function SuperAdminDashboardPage() {
   const [showSearch, setShowSearch] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
-  const [showFormulaCountryModal, setShowFormulaCountryModal] = useState(false);
-  const [selectedFormulaCountry, setSelectedFormulaCountry] = useState<"uk" | "us">("uk");
+  // const [showFormulaCountryModal, setShowFormulaCountryModal] = useState(false);
+  // const [selectedFormulaCountry, setSelectedFormulaCountry] = useState<"uk" | "us">("uk");
   const router = useRouter();
 
   const finishLoadingWithMinDelay = (startedAt: number) => {
@@ -142,102 +141,102 @@ export default function SuperAdminDashboardPage() {
     setUsersData(defaultData?.users || []);
   }, [defaultData]);
 
-  const handleFormulaUpdate = async (country: "uk" | "us") => {
-    const token = localStorage.getItem("superadmin_token");
+  // const handleFormulaUpdate = async (country: "uk" | "us") => {
+  //   const token = localStorage.getItem("superadmin_token");
 
-    if (!token) {
-      toast.error("Superadmin token not found. Please login again.");
-      router.push("/superadmin/CDPAdminConsole");
-      return;
-    }
+  //   if (!token) {
+  //     toast.error("Superadmin token not found. Please login again.");
+  //     router.push("/superadmin/CDPAdminConsole");
+  //     return;
+  //   }
 
-    const marketplaces = {
-      uk: {
-        country: "uk",
-        marketplace_id: "A1F83G8C2ARO7P",
-      },
-      us: {
-        country: "us",
-        marketplace_id: "ATVPDKIKX0DER",
-      },
-    };
+  //   const marketplaces = {
+  //     uk: {
+  //       country: "uk",
+  //       marketplace_id: "A1F83G8C2ARO7P",
+  //     },
+  //     us: {
+  //       country: "us",
+  //       marketplace_id: "ATVPDKIKX0DER",
+  //     },
+  //   };
 
-    const selectedMarketplace = marketplaces[country];
+  //   const selectedMarketplace = marketplaces[country];
 
-    try {
-      setFormulaUpdating(true);
-      setShowFormulaCountryModal(false);
+  //   try {
+  //     setFormulaUpdating(true);
+  //     setShowFormulaCountryModal(false);
 
-      const transactionStatus =
-        selectedMarketplace.country === "us" ? "RELEASED,DEFERRED" : "RELEASED";
+  //     const transactionStatus =
+  //       selectedMarketplace.country === "us" ? "RELEASED,DEFERRED" : "RELEASED";
 
-      const url =
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update` +
-        `?country=${selectedMarketplace.country}` +
-        `&marketplace_id=${selectedMarketplace.marketplace_id}` +
-        `&store_in_db=true` +
-        `&run_upload_pipeline=true` +
-        `&transaction_status=${encodeURIComponent(transactionStatus)}`;
+  //     const url =
+  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update` +
+  //       `?country=${selectedMarketplace.country}` +
+  //       `&marketplace_id=${selectedMarketplace.marketplace_id}` +
+  //       `&store_in_db=true` +
+  //       `&run_upload_pipeline=true` +
+  //       `&transaction_status=${encodeURIComponent(transactionStatus)}`;
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+  //     const response = await fetch(url, {
+  //       method: "GET",
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //         "Content-Type": "application/json",
+  //       },
+  //     });
 
-      const json = await response.json().catch(() => ({}));
+  //     const json = await response.json().catch(() => ({}));
 
-      if (!response.ok || !json?.success) {
-        throw new Error(
-          json?.error ||
-          json?.message ||
-          `Formula update failed for ${selectedMarketplace.country.toUpperCase()}`
-        );
-      }
+  //     if (!response.ok || !json?.success) {
+  //       throw new Error(
+  //         json?.error ||
+  //         json?.message ||
+  //         `Formula update failed for ${selectedMarketplace.country.toUpperCase()}`
+  //       );
+  //     }
 
-      toast.success(
-        `Formula update completed for ${selectedMarketplace.country.toUpperCase()}. Runs: ${json.total_month_runs || 0
-        }, Success: ${json.success_count || 0}, Failed: ${json.failed_count || 0
-        }, Skipped: ${json.total_skipped_old_months || 0}`
-      );
+  //     toast.success(
+  //       `Formula update completed for ${selectedMarketplace.country.toUpperCase()}. Runs: ${json.total_month_runs || 0
+  //       }, Success: ${json.success_count || 0}, Failed: ${json.failed_count || 0
+  //       }, Skipped: ${json.total_skipped_old_months || 0}`
+  //     );
 
-      console.log("Formula update result:", json);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Formula update failed";
-      toast.error(msg);
-    } finally {
-      setFormulaUpdating(false);
-    }
-  };
+  //     console.log("Formula update result:", json);
+  //   } catch (error) {
+  //     const msg = error instanceof Error ? error.message : "Formula update failed";
+  //     toast.error(msg);
+  //   } finally {
+  //     setFormulaUpdating(false);
+  //   }
+  // };
 
-  const handleLogout = async () => {
-    setShowSettings(false);
+  // const handleLogout = async () => {
+  //   setShowSettings(false);
 
-    const token = localStorage.getItem("superadmin_token");
+  //   const token = localStorage.getItem("superadmin_token");
 
-    try {
-      if (token) {
-        await toast.promise(
-          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_logout`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          {
-            loading: "Logging you out…",
-            success: "Logged out successfully.",
-            error: "Logout failed. Please try again.",
-          }
-        );
-      } else {
-        toast.info("You’re already logged out.");
-      }
-    } finally {
-      localStorage.removeItem("superadmin_token");
-      router.push("/superadmin/CDPAdminConsole");
-    }
-  };
+  //   try {
+  //     if (token) {
+  //       await toast.promise(
+  //         fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_logout`, {
+  //           method: "POST",
+  //           headers: { Authorization: `Bearer ${token}` },
+  //         }),
+  //         {
+  //           loading: "Logging you out…",
+  //           success: "Logged out successfully.",
+  //           error: "Logout failed. Please try again.",
+  //         }
+  //       );
+  //     } else {
+  //       toast.info("You’re already logged out.");
+  //     }
+  //   } finally {
+  //     localStorage.removeItem("superadmin_token");
+  //     router.push("/superadmin/CDPAdminConsole");
+  //   }
+  // };
 
   const handleEmailSearch = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -612,103 +611,8 @@ export default function SuperAdminDashboardPage() {
     });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-slate-100 p-4 sm:p-6">
-      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#5EA68E] to-[#1f5274] rounded-lg shadow-lg">
-        <div className="mx-auto px-4 sm:px-6 mb-6">
-          <div className="flex items-center justify-between gap-3 py-3 sm:py-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Image
-                width={220}
-                height={40}
-                src="/images/auth/Phormula.png"
-                alt="Phormula"
-                priority
-                className="2xl:w-[220px] 2xl:h-[50px] xl:w-[150px] w-auto"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setShowSearch((s) => !s)}
-                className="md:hidden inline-flex items-center justify-center rounded-lg px-3 py-2 text-white bg-white/10 hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/30"
-              >
-                <FaSearch />
-              </button>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowSettings((s) => !s)}
-                  className="inline-flex items-center justify-center rounded-lg p-3 text-white bg-white/10 hover:bg-white/20 font-medium shadow focus:outline-none focus:ring-4 focus:ring-white/30"
-                  aria-label="Open settings"
-                >
-                  <Settings size={20} />
-                </button>
-
-                {showSettings && (
-                  <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-lg bg-white text-slate-800 shadow-2xl ring-1 ring-black/5 overflow-hidden">
-                    <button
-                      onClick={() =>
-                        router.push("/superadmin/Superadminchangepassword")
-                      }
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b"
-                    >
-                      Change Password
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setShowSettings(false);
-                        setSelectedFormulaCountry("uk");
-                        setShowFormulaCountryModal(true);
-                      }}
-                      disabled={formulaUpdating}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {formulaUpdating ? "Updating Formula..." : "Formula Update"}
-                    </button>
-
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {showSearch && (
-            <form onSubmit={handleEmailSearch} className="md:hidden pb-3">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={emailInput}
-                  onChange={handleSearchInputChange}
-                  placeholder="Search email, brand..."
-                  className="w-full rounded-lg bg-white/95 text-slate-800 placeholder:text-slate-400 border border-white/40 focus:border-white focus:ring-4 focus:ring-white/20 px-4 py-2.5 shadow"
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="absolute right-1.5 top-1.5 inline-flex items-center justify-center px-3 py-1.5 rounded-md text-white bg-[linear-gradient(135deg,#5EA68E,#1f5274)] hover:opacity-90 focus:outline-none"
-                >
-                  Go
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      </header>
-
-      <div className="flex justify-between items-start py-5">
-        <h1 className="truncate text-lg sm:text-2xl font-semibold tracking-tight text-[#414042]">
-          Super Admin Dashboard
-        </h1>
-
+    <>
+      <div className="flex justify-end pb-5">
         <form
           onSubmit={handleEmailSearch}
           className="hidden md:flex items-center gap-2"
@@ -719,7 +623,7 @@ export default function SuperAdminDashboardPage() {
               value={emailInput}
               onChange={handleSearchInputChange}
               placeholder="Search email, brand..."
-              className="w-[280px] lg:w-[360px] rounded-lg bg-white/95 text-slate-800 placeholder:text-slate-400 border border-white/40 focus:border-white focus:ring-4 focus:ring-white/20 px-4 py-2.5 shadow"
+              className="w-[280px] lg:w-[360px] rounded-lg bg-white text-slate-800 placeholder:text-slate-400 border border-slate-200 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 px-4 py-2.5 shadow"
             />
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
               <FaSearch />
@@ -729,12 +633,33 @@ export default function SuperAdminDashboardPage() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-semibold text-[#f8edce] bg-[#37455F] hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/30 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#37455F] px-4 py-2.5 font-semibold text-[#f8edce] hover:opacity-90 disabled:opacity-60"
           >
             Search
           </button>
         </form>
       </div>
+
+      {showSearch && (
+        <form onSubmit={handleEmailSearch} className="mb-5 md:hidden">
+          <div className="relative">
+            <input
+              type="text"
+              value={emailInput}
+              onChange={handleSearchInputChange}
+              placeholder="Search email, brand..."
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-slate-800 shadow placeholder:text-slate-400 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="absolute right-1.5 top-1.5 inline-flex items-center justify-center rounded-md bg-[#37455F] px-3 py-1.5 text-white hover:opacity-90"
+            >
+              Go
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="space-y-4 mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -775,7 +700,7 @@ export default function SuperAdminDashboardPage() {
 
       <div className="mx-auto">
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 px-4 py-3">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
             {error}
           </div>
         )}
@@ -786,12 +711,12 @@ export default function SuperAdminDashboardPage() {
           <div className="space-y-8">
             {searchResult ? (
               <section>
-                <h3 className="text-xl font-semibold text-slate-700 mb-3">
+                <h3 className="mb-3 text-xl font-semibold text-slate-700">
                   Search Results for:{" "}
                   <span className="text-slate-900">{emailInput}</span>
                 </h3>
 
-                <div className="overflow-x-auto bg-white rounded-xl shadow ring-1 ring-slate-200">
+                <div className="overflow-x-auto rounded-xl bg-white shadow ring-1 ring-slate-200">
                   <table className="min-w-[1100px] w-full table-auto">
                     <thead className="bg-slate-50">
                       <tr>
@@ -828,7 +753,7 @@ export default function SuperAdminDashboardPage() {
             ) : (
               defaultData && (
                 <section>
-                  <div className="overflow-x-auto bg-white rounded-xl shadow ring-1 ring-slate-200">
+                  <div className="overflow-x-auto rounded-xl bg-white shadow ring-1 ring-slate-200">
                     <table className="min-w-[1100px] w-full table-auto">
                       <thead className="bg-slate-50">
                         <tr>
@@ -867,90 +792,6 @@ export default function SuperAdminDashboardPage() {
           </div>
         )}
       </div>
-      {showFormulaCountryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
-            <div className="border-b px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-800">
-                Formula Update
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Select country for formula update
-              </p>
-            </div>
-
-            <div className="space-y-3 px-6 py-5">
-              <label
-                className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition ${selectedFormulaCountry === "uk"
-                  ? "border-[#5EA68E] bg-emerald-50"
-                  : "border-slate-200 bg-white"
-                  }`}
-              >
-                <div>
-                  <p className="font-medium text-slate-800">UK</p>
-                  <p className="text-xs text-slate-500">
-                    Marketplace: A1F83G8C2ARO7P
-                  </p>
-                </div>
-
-                <input
-                  type="radio"
-                  name="formula_country"
-                  value="uk"
-                  checked={selectedFormulaCountry === "uk"}
-                  onChange={() => setSelectedFormulaCountry("uk")}
-                  className="h-4 w-4 accent-[#5EA68E]"
-                />
-              </label>
-
-              <label
-                className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition ${selectedFormulaCountry === "us"
-                  ? "border-[#5EA68E] bg-emerald-50"
-                  : "border-slate-200 bg-white"
-                  }`}
-              >
-                <div>
-                  <p className="font-medium text-slate-800">US</p>
-                  <p className="text-xs text-slate-500">
-                    Marketplace: ATVPDKIKX0DER
-                  </p>
-                </div>
-
-                <input
-                  type="radio"
-                  name="formula_country"
-                  value="us"
-                  checked={selectedFormulaCountry === "us"}
-                  onChange={() => setSelectedFormulaCountry("us")}
-                  className="h-4 w-4 accent-[#5EA68E]"
-                />
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setShowFormulaCountryModal(false)}
-                disabled={formulaUpdating}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleFormulaUpdate(selectedFormulaCountry)}
-                disabled={formulaUpdating}
-                className="rounded-lg bg-[#37455F] px-4 py-2 text-sm font-semibold text-[#f8edce] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {formulaUpdating
-                  ? "Updating..."
-                  : `Update ${selectedFormulaCountry.toUpperCase()}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
