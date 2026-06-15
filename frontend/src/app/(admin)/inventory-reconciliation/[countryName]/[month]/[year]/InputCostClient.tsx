@@ -118,7 +118,8 @@ const toNum = (v: any) => {
 const sum = (row: AnyRow, keys: string[]) => keys.reduce((acc, k) => acc + toNum(row?.[k]), 0);
 
 // localStorage keys
-const seedKey = (country: string, year: string) => `ledgerSeeded:${country}:${year}`;
+const seedKey = (country: string, year: string, marketplaceId?: string | null) =>
+  `ledgerSeeded:${country}:${marketplaceId || "no-marketplace"}:${year}`;
 
 const isTotalRow = (row: AnyRow) => {
   const msku = String(row?.msku || "").trim().toUpperCase();
@@ -679,59 +680,23 @@ export default function InventoryReconciliationPage({ params }: Params) {
     setShowAllLostCompRows(false);
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
-  const COUNTRY_MARKETPLACE_INDEX: Record<string, number> = {
-    uk: 0,
-    gb: 0,
-    us: 1,
-    usa: 1,
+  const MARKETPLACE_ID_BY_COUNTRY: Record<string, string> = {
+    uk: "A1F83G8C2ARO7P",
+    gb: "A1F83G8C2ARO7P",
+
+    us: "ATVPDKIKX0DER",
+    usa: "ATVPDKIKX0DER",
   };
 
   const marketplaceId = useMemo(() => {
-    const ids = (userData as any)?.marketplace_ids || [];
-    const idx = COUNTRY_MARKETPLACE_INDEX[countryName];
+    const normalizedCountry = String(countryName || "").trim().toLowerCase();
 
-    return typeof idx === "number" ? ids[idx] : ids[0];
-  }, [userData, countryName]);
+    return MARKETPLACE_ID_BY_COUNTRY[normalizedCountry] || null;
+  }, [countryName]);
 
   const [breakupPie, setBreakupPie] = useState<PieDatum[]>([]);
   const [ageingPie, setAgeingPie] = useState<PieDatum[]>([]);
   const [pieLoading, setPieLoading] = useState(false);
-
-  useEffect(() => {
-    if (pageLoading) return;
-    if (!hasValidPeriod) {
-      setBreakupPie([]);
-      setAgeingPie([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    const run = async () => {
-      setPieLoading(true);
-      try {
-        await Promise.all([fetchInventoryBreakup(), fetchInventoryAgeing()]);
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) {
-          // fail silently or show modal (your choice)
-          // setModalMessage((e as any)?.message || "Pie fetch failed");
-          // setShowModal(true);
-          setBreakupPie([]);
-          setAgeingPie([]);
-        }
-      } finally {
-        if (!cancelled) setPieLoading(false);
-      }
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-    // ✅ refetch when user changes filters
-  }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
 
   useEffect(() => {
     if (pageLoading) return;
@@ -1183,39 +1148,31 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   /* ================= 1) SEED ONCE ================= */
   async function seedAmazonLedgerOnce(year: string) {
-    // if already seeded for this (country+year), skip
-    const k = seedKey(countryName, year);
-    if (localStorage.getItem(k) === '1') return;
+    if (!marketplaceId) {
+      throw new Error(`No marketplace ID found for country: ${countryName}`);
+    }
+
+    const k = seedKey(countryName, year, marketplaceId);
+    if (localStorage.getItem(k) === "1") return;
 
     setSeeding(true);
+
     try {
       const url = `${AMAZON_LEDGER_SEED}?${buildQuery({
         year,
-        store_in_db: 'true',
-        // optional:
-        // keep_first_last: 'false'
+        country: countryName,
+        marketplace_id: marketplaceId,
+        store_in_db: "true",
       })}`;
 
       const res = await fetch(url, { headers: authHeaders() });
       const json = await res.json();
 
       if (!res.ok || json?.success === false) {
-        throw new Error(json?.error || 'Failed to seed Amazon ledger into DB');
+        throw new Error(json?.error || "Failed to seed Amazon ledger into DB");
       }
 
-      // mark seeded so next page load doesn't hit Amazon again
-      localStorage.setItem(k, '1');
-
-      // store latestFetchedPeriod (optional)
-      try {
-        localStorage.setItem(
-          'latestFetchedPeriod',
-          JSON.stringify({
-            month: selectedMonth,
-            year: String(year),
-          })
-        );
-      } catch { }
+      localStorage.setItem(k, "1");
 
       return json;
     } finally {
@@ -1428,6 +1385,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   // Seed once per year (only when year changes or first time) + fetch DB
   useEffect(() => {
     if (pageLoading) return;
+    if (!marketplaceId) return;
 
     if (!hasValidPeriod) {
       setRows([]);
@@ -1458,7 +1416,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
 
     void doSeedThenFetch();
-  }, [selectedYear, countryName, pageLoading]);
+  }, [selectedYear, countryName, marketplaceId, pageLoading]);
 
   // When filters change (range/month/quarter/year), DO NOT seed again. Only DB fetch.
   useEffect(() => {
@@ -2498,7 +2456,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
         {activeView === "table" && (
           <div
             className={[
-              "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+              "mt-5 w-full rounded-xl border border-gray-200 bg-white",
               "overflow-x-auto",
               "[-webkit-overflow-scrolling:touch]",
             ].join(" ")}
