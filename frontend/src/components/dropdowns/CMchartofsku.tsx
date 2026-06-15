@@ -30,8 +30,10 @@ type CmChartOfSkuProps = {
   homeCurrency?: string;
   onExportBase64Ready?: (base64: string | null) => void;
   disableInternalFade?: boolean;
-
   metric?: CmMetric;
+  // Whether CM2 chart data exists for this period.
+  // Tabs remain visible; this only controls CM2 empty state.
+  showCm2Toggle?: boolean;
 };
 
 type CompareTop5Item = {
@@ -148,6 +150,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   onExportBase64Ready,
   disableInternalFade = false,
   metric = "cm1",
+  showCm2Toggle = false,
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
@@ -181,8 +184,9 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const [isDesktop, setIsDesktop] = useState(false);
 
   const [activeMetric, setActiveMetric] = useState<CmMetric>(metric);
-
+  const isCm2Unavailable = activeMetric === "cm2" && !showCm2Toggle;
   const chartRef = useRef<any>(null);
+  const requestIdRef = useRef(0);
 
   const exportChartBase64 = () => {
     try {
@@ -370,13 +374,28 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   };
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    const ac = new AbortController();
+
+    const isLatestRequest = () => requestId === requestIdRef.current;
+
     if (isDemoMode) {
       setSlices(DEMO_SLICES);
       setLoading(false);
       setError(null);
       setNoDataFound(false);
-      return;
+      return () => ac.abort();
     }
+
+    if (isCm2Unavailable) {
+      setSlices([]);
+      setLoading(false);
+      setError(null);
+      setNoDataFound(true);
+      onExportBase64Ready?.(null);
+      return () => ac.abort();
+    }
+
     async function fetchData() {
       setLoading(true);
       setError(null);
@@ -408,10 +427,13 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           {
             method: "GET",
             headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: ac.signal,
           }
         );
 
         const raw = (await res.json()) as PieChartApiResponse;
+
+        if (!isLatestRequest()) return;
 
         if (!res.ok) {
           const msg =
@@ -421,9 +443,6 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           throw new Error(msg);
         }
 
-        // ✅ Support BOTH shapes:
-        // 1) { compare_top5: [...] }
-        // 2) { success: true, data: { compare_top5: [...] } }
         const payload: PieChartPayload = (raw as any)?.data ?? (raw as any) ?? {};
 
         const noDataPhrase = "no data found in any of the available tables";
@@ -436,14 +455,18 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           return;
         }
 
-        // Prefer compare_top5 (it has current + previous)
-        const rows = Array.isArray(payload.compare_top5) ? payload.compare_top5 : [];
-
         let built: CmPieSlice[] = [];
 
-        // ✅ CM2 must use payload.cm2_profit first.
-        // Do this BEFORE compare_top5, because compare_top5 is CM1 data.
-        if (activeMetric === "cm2" && Array.isArray(payload.cm2_profit)) {
+        // IMPORTANT:
+        // If CM2 is selected, never fall back to CM1 data.
+        if (activeMetric === "cm2") {
+          if (!showCm2Toggle || !Array.isArray(payload.cm2_profit)) {
+            setSlices([]);
+            setNoDataFound(true);
+            setError(null);
+            return;
+          }
+
           built = buildSlicesFromCm2Profit(payload.cm2_profit);
         } else if (
           Array.isArray(payload.current_data) &&
@@ -452,7 +475,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           built = buildSlicesFromCurrentPreviousData(
             payload.current_data,
             payload.previous_data,
-            activeMetric
+            "cm1"
           );
         } else {
           const rows = Array.isArray(payload.compare_top5)
@@ -499,6 +522,9 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             });
           }
         }
+
+        if (!isLatestRequest()) return;
+
         const isEmpty =
           built.length === 0 ||
           !built.some((s) => Number(s.value) > 0);
@@ -513,18 +539,28 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         setSlices(built);
         setNoDataFound(false);
       } catch (e) {
+        if ((e as any)?.name === "AbortError") return;
+        if (!isLatestRequest()) return;
+
         const msg = e instanceof Error ? e.message : "Unknown error";
         setError(msg);
         setSlices([]);
         setNoDataFound(true);
       } finally {
-        setLoading(false);
+        if (isLatestRequest()) {
+          setLoading(false);
+        }
       }
     }
 
     fetchData();
+
+    return () => {
+      ac.abort();
+    };
   }, [
     isDemoMode,
+    isCm2Unavailable,
     range,
     month,
     year,
@@ -535,6 +571,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     homeCurrency,
     isGlobalPage,
     activeMetric,
+    showCm2Toggle,
+    onExportBase64Ready,
   ]);
 
   const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
@@ -569,8 +607,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   const showEmptyState =
     !loading &&
-    !isDemoMode &&   // 🚀 THIS FIX
-    (noDataFound || !chartData);
+    !isDemoMode &&
+    (isCm2Unavailable || noDataFound || !chartData);
 
   const options = useMemo<ChartOptions<"pie">>(() => {
     return {
@@ -632,11 +670,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     ].join(" ")}>
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadcrumb
-          pageTitle={
-            activeMetric === "cm2"
-              ? "CM2 Profit Breakdown"
-              : "CM1 Profit Breakdown"
-          }
+          pageTitle="Profit Breakdown"
           variant="page"
           align="left"
           textSize="2xl"
@@ -676,7 +710,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         <div className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px]" />
       )}
 
-      {!showEmptyState && !isDemoMode && chartData && (
+      {!showEmptyState && !isDemoMode && !isCm2Unavailable && chartData && (
         <div
           className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px]"
         >
@@ -684,6 +718,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             {/* LEFT: PIE */}
             <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
               <Pie
+                key={`${activeMetric}-${range}-${month ?? ""}-${selectedQuarter ?? ""}-${year}-${showCm2Toggle}`}
                 ref={chartRef}
                 data={chartData}
                 options={options}

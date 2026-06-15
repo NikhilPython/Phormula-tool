@@ -1996,7 +1996,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     {
                       type: "section",
                       id: "ads",
-                      label: "Cost of Advertisement",
+                      label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
                       endValue: formatValue(totals.advertising_total, "advertising_total"),
                       defaultCollapsed: true,
                       children: [

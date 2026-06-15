@@ -6728,12 +6728,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           year={isDemoMode ? "NA" : selectedYear}
                           countryName={isDemoMode ? "global" : initialCountryName}
                           homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-                          onExportBase64Ready={
-                            cmPieTab === "cm2"
-                              ? setProductWiseCm2PieBase64
-                              : setProductWiseCm1PieBase64
-                          }
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
                           disableInternalFade={isDemoMode}
+                          showCm2Toggle={topBottomHasCm2Data}
                         />
                       </div>
                     </div>
@@ -6871,6 +6868,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                           onExportBase64Ready={setProductWiseCm1PieBase64}
                           disableInternalFade={isDemoMode}
+                          showCm2Toggle={topBottomHasCm2Data}
                         />
                       </div>
                     </div>
@@ -7006,6 +7004,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                         onExportBase64Ready={setProductWiseCm1PieBase64}
                         disableInternalFade={isDemoMode}
+                        showCm2Toggle={topBottomHasCm2Data}
                       />
                     </div>
                   </div>

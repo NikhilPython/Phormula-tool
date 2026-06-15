@@ -11996,7 +11996,7 @@ ${pageLoading
                                                     {
                                                         type: "section",
                                                         id: "ads",
-                                                        label: "Cost of Advertisement",
+                                                        label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                         endValue: formatSummaryRounded(costOfAds),
                                                         defaultCollapsed: true,
                                                         children: [
@@ -12106,7 +12106,7 @@ ${pageLoading
                                                                 id: "net_reimbursement_debt_payment",
                                                                 label: (
                                                                     <>
-                                                                        Debt Payment <strong className="text-[#ff5c5c]">(-)</strong>
+                                                                        Charged <strong className="text-[#ff5c5c]">(-)</strong>
                                                                     </>
                                                                 ),
                                                                 midValue: formatSummaryValue(

@@ -129,12 +129,7 @@ export default function UserDropdown() {
           <span className="font-bold inline-flex items-center gap-2">
             <i>{userFromStore?.name}!</i>
 
-            <div
-              onClick={toggleUserDropdown}
-              className="cursor-pointer flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 2xl:w-8 2xl:h-8 rounded-full bg-blue-700 text-yellow-200 text-xs font-semibold leading-none"
-            >
-              {initials}
-            </div>
+
 
             {showIntegrationButton && <IntegrationToggleButton />}
 
@@ -144,6 +139,13 @@ export default function UserDropdown() {
               onToggle={toggleNotificationDropdown}
               onClose={closeAllDropdowns}
             />
+
+            <div
+              onClick={toggleUserDropdown}
+              className="cursor-pointer flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 2xl:w-8 2xl:h-8 rounded-full bg-blue-700 text-yellow-200 text-xs font-semibold leading-none"
+            >
+              {initials}
+            </div>
           </span>
         </span>
       </div>
@@ -183,11 +185,10 @@ export default function UserDropdown() {
                   router.push(`/profile/${currentCountryName}/${month || "NA"}/${year || "NA"}?addMember=true`);
                 }}
                 tag="button"
-                className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${
-                  isNAMonthYear
+                className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${isNAMonthYear
                     ? "cursor-not-allowed text-gray-400 opacity-50 "
                     : "text-gray-700 hover:bg-gray-100 hover:text-gray-700"
-                }`}
+                  }`}
               >
                 Add Members
               </DropdownItem>
