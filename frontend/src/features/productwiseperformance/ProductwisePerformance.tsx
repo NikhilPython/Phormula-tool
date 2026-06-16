@@ -188,63 +188,6 @@ type SharedInsightData = {
   drawerPeriodText?: string;
 };
 
-const computeBestPerformance = (
-  monthly: MonthDatum[] = []
-): BestPerformance | undefined => {
-  if (!monthly.length) return undefined;
-
-  const bestSales = monthly.reduce(
-    (best, m) => (m.net_sales > best.net_sales ? m : best),
-    monthly[0]
-  );
-  const bestUnits = monthly.reduce(
-    (best, m) => (m.quantity > best.quantity ? m : best),
-    monthly[0]
-  );
-  const bestProfit = monthly.reduce(
-    (best, m) => (m.profit > best.profit ? m : best),
-    monthly[0]
-  );
-
-  return {
-    sales: { month: bestSales.month, value: bestSales.net_sales },
-    units: { month: bestUnits.month, value: bestUnits.quantity },
-    profit: { month: bestProfit.month, value: bestProfit.profit },
-  };
-};
-
-const findCountryKeyFor = (
-  sourceData: Record<string, any>,
-  target: string
-) => {
-  return resolveSourceDataKey(sourceData, target);
-};
-
-const getBestPerformanceForCurrentView = ({
-  sourceData,
-  countryForApi,
-  globalKey,
-}: {
-  sourceData: Record<string, any> | undefined;
-  countryForApi: string;
-  globalKey: CountryKey;
-}): BestPerformance | undefined => {
-  if (!sourceData) return undefined;
-
-  const resolvedKey =
-    countryForApi === "global"
-      ? resolveSourceDataKey(sourceData, globalKey) ||
-      resolveSourceDataKey(sourceData, "global")
-      : resolveSourceDataKey(sourceData, countryForApi);
-
-  const monthly: MonthDatum[] =
-    resolvedKey && Array.isArray(sourceData[resolvedKey])
-      ? sourceData[resolvedKey]
-      : [];
-
-  return computeBestPerformance(monthly);
-};
-
 const currencySymbolFromCode = (code: string) => {
   const c = (code || "").toUpperCase();
   if (c === "USD") return "$";
@@ -483,42 +426,60 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     }
   }, [embedded, internalSelectedMonth]);
 
-  useEffect(() => {
-    if (!isDrawerOpen || !selectedSku) return;
+ useEffect(() => {
+  if (!isDrawerOpen || !selectedSku) return;
 
-    const countryForApi = (platformCountryName || "global").toLowerCase();
-    const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+  const currentInsight = skuInsights[selectedSku];
+  const productName =
+    currentInsight?.product_name ||
+    productname ||
+    selectedSku;
 
-    const freshBestPerformance = getBestPerformanceForCurrentView({
-      sourceData: sourceData as Record<string, any> | undefined,
-      countryForApi,
-      globalKey,
-    });
+  if (!productName) return;
 
-    setSkuInsights((prev) => {
-      const current = prev[selectedSku];
-      if (!current) return prev;
+  const ac = new AbortController();
 
-      return {
-        ...prev,
-        [selectedSku]: {
-          ...current,
-          best_performance: freshBestPerformance,
-        },
-      };
-    });
-  }, [
-    isDrawerOpen,
-    selectedSku,
-    data,
-    globalKey,
-    range,
-    selectedYear,
-    selectedQuarter,
-    selectedMonth,
-    platformCountryName,
-    isPreviewMode,
-  ]);
+  const loadBestPerformance = async () => {
+    try {
+      const countryForApi = (platformCountryName || countryName || "global").toLowerCase();
+
+      const bestPerformance = await fetchProductBestPerformance({
+        productName,
+        country: countryForApi,
+        homeCurrency: viewCurrency,
+        signal: ac.signal,
+      });
+
+      setSkuInsights((prev) => {
+        const current = prev[selectedSku];
+        if (!current) return prev;
+
+        return {
+          ...prev,
+          [selectedSku]: {
+            ...current,
+            best_performance: bestPerformance,
+          },
+        };
+      });
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      console.error("ProductBestPerformance Error:", e);
+    }
+  };
+
+  loadBestPerformance();
+
+  return () => ac.abort();
+}, [
+  isDrawerOpen,
+  selectedSku,
+  skuInsights,
+  productname,
+  platformCountryName,
+  countryName,
+  viewCurrency,
+]);
 
   useEffect(() => {
     setSelectedCountries((prev) => {
@@ -680,6 +641,78 @@ const getSharedRecObj = (
   );
 };
 
+const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerformance | undefined => {
+  if (!apiBestPerformance) return undefined;
+
+  return {
+    sales: apiBestPerformance?.net_sales
+      ? {
+          month: String(apiBestPerformance.net_sales.month || ""),
+          value: Number(apiBestPerformance.net_sales.net_sales ?? 0),
+        }
+      : undefined,
+
+    units: apiBestPerformance?.units
+      ? {
+          month: String(apiBestPerformance.units.month || ""),
+          value: Number(apiBestPerformance.units.units ?? 0),
+        }
+      : undefined,
+
+    profit: apiBestPerformance?.cm1_profit
+      ? {
+          month: String(apiBestPerformance.cm1_profit.month || ""),
+          value: Number(apiBestPerformance.cm1_profit.cm1_profit ?? 0),
+        }
+      : undefined,
+  };
+};
+
+const fetchProductBestPerformance = async ({
+  productName,
+  country,
+  homeCurrency,
+  signal,
+}: {
+  productName: string;
+  country: string;
+  homeCurrency?: string;
+  signal?: AbortSignal;
+}): Promise<BestPerformance | undefined> => {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("jwtToken")
+      : null;
+
+  if (!token) throw new Error("Missing token");
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        product_name: productName,
+        country,
+        home_currency: homeCurrency,
+      }),
+      cache: "no-store",
+      signal,
+    }
+  );
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(json?.error || "Failed to fetch best performance");
+  }
+
+  return mapApiBestPerformanceToDrawerShape(json?.best_performance);
+};
+
   const handleViewBusinessInsights = async () => {
     const { key: identifier, isSku } = resolveProductKey(
       productname,
@@ -705,24 +738,17 @@ const getSharedRecObj = (
     const sharedBlock = findSharedInsightBlock(identifier, sharedInsightData);
 
 if (sharedBlock) {
-  const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
-
-  const bestPerformance = getBestPerformanceForCurrentView({
-    sourceData: sourceData as Record<string, any> | undefined,
-    countryForApi,
-    globalKey,
-  });
 
   const sharedRecObj = getSharedRecObj(sharedBlock, sharedInsightData);
 
   setSkuInsights({
-    [identifier]: blockToSkuInsight(
-      sharedBlock,
-      sharedRecObj,
-      sharedInsightData?.objective,
-      bestPerformance
-    ),
-  });
+  [identifier]: blockToSkuInsight(
+    sharedBlock,
+    sharedRecObj,
+    sharedInsightData?.objective,
+    undefined
+  ),
+});
 
   setSelectedSku(identifier);
   setInsightsLoading(false);
@@ -744,7 +770,7 @@ if (sharedBlock) {
     inventory_recommendation: parsed.inventory_recommendation,
     objective: parsed.objective ?? null,
     recommendation: parsed.recommendation,
-    best_performance: parsed.best_performance,
+   best_performance: undefined,
     product_journey: parsed.product_journey ?? [],
     metrics: parsed.metrics ?? [],
   },
@@ -801,12 +827,6 @@ if (sharedBlock) {
 
       const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
-      const bestPerformance = getBestPerformanceForCurrentView({
-        sourceData: sourceData as Record<string, any> | undefined,
-        countryForApi,
-        globalKey,
-      });
-
       setSkuInsights({
         [identifier]: {
           product_name: returnedName,
@@ -814,7 +834,7 @@ if (sharedBlock) {
           inventory_recommendation: inventoryRec,
           objective,
           recommendation,
-          best_performance: bestPerformance,
+         best_performance: undefined,
           product_journey: productJourney,
         },
       });
@@ -829,7 +849,7 @@ if (sharedBlock) {
           inventory_recommendation: inventoryRec,
           objective,
           recommendation,
-          best_performance: bestPerformance,
+          best_performance: undefined,
           product_journey: productJourney,
           cachedAt: Date.now(),
           

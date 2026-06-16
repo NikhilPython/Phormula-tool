@@ -32,7 +32,7 @@ ChartJS.register(
 );
 
 type CountryKey = "uk" | "global" | "us" | "ca";
-type TrendTab = "sales_cm1" | "units_asp" | "mix";
+type TrendTab = "sales_cm1" | "units_asp" | "mix" | "inventory_units";
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
 interface ProductMetricPoint {
@@ -43,6 +43,7 @@ interface ProductMetricPoint {
   asp: number;
   sales_mix: number;
   profit_mix: number;
+  inventory_units: number;
 }
 
 interface ApiMonthRow {
@@ -57,6 +58,7 @@ interface ApiMonthRow {
   asp?: number;
   sales_mix?: number;
   profit_mix?: number;
+  inventory_units?: number;
 }
 
 interface ApiResponse {
@@ -169,6 +171,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       asp: "#B75A5A",
       sales_mix: "#3A8EA4",
       profit_mix: "#ED9F50",
+      inventory_units: "#7B9A6D",
     };
 
     return colors[metric] || "#6b7280";
@@ -198,23 +201,23 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }).format(value);
   };
 
-  const formatAsp = (value: number) => {
-    const locale =
-      chartCurrency === "GBP"
-        ? "en-GB"
-        : chartCurrency === "CAD"
-          ? "en-CA"
-          : chartCurrency === "INR"
-            ? "en-IN"
-            : "en-US";
+ const formatAsp = (value: number) => {
+  const locale =
+    chartCurrency === "GBP"
+      ? "en-GB"
+      : chartCurrency === "CAD"
+        ? "en-CA"
+        : chartCurrency === "INR"
+          ? "en-IN"
+          : "en-US";
 
-    return new Intl.NumberFormat(locale, {
-      style: "currency",
-      currency: chartCurrency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: chartCurrency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+};
 
   const formatPercent = (value: number) => {
     return `${Number(value || 0).toFixed(2)}%`;
@@ -352,6 +355,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           asp: Map<string, number>;
           sales_mix: Map<string, number>;
           profit_mix: Map<string, number>;
+          inventory_units: Map<string, number>;
         }
       > = {
         uk: {
@@ -361,6 +365,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           asp: new Map(),
           sales_mix: new Map(),
           profit_mix: new Map(),
+          inventory_units: new Map(),
         },
         global: {
           net_sales: new Map(),
@@ -369,6 +374,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           asp: new Map(),
           sales_mix: new Map(),
           profit_mix: new Map(),
+          inventory_units: new Map(),
         },
         us: {
           net_sales: new Map(),
@@ -377,6 +383,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           asp: new Map(),
           sales_mix: new Map(),
           profit_mix: new Map(),
+          inventory_units: new Map(),
         },
         ca: {
           net_sales: new Map(),
@@ -385,6 +392,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           asp: new Map(),
           sales_mix: new Map(),
           profit_mix: new Map(),
+          inventory_units: new Map(),
         },
       };
 
@@ -426,11 +434,16 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             const netSales = Number(row.net_sales ?? 0);
             const cm1Profit = Number(row.cm1_profit ?? row.cm1 ?? row.profit ?? 0);
             const unitsRaw = Number(row.quantity ?? row.units_sold ?? row.units ?? 0);
+            const inventoryUnitsRaw = Number(row.inventory_units ?? 0);
             const asp = Number(row.asp ?? 0);
 
             valueMaps[country].net_sales.set(label, Number.isFinite(netSales) ? netSales : 0);
             valueMaps[country].cm1_profit.set(label, Number.isFinite(cm1Profit) ? cm1Profit : 0);
             valueMaps[country].units_sold.set(label, Number.isFinite(unitsRaw) ? unitsRaw : 0);
+            valueMaps[country].inventory_units.set(
+              label,
+              Number.isFinite(inventoryUnitsRaw) ? inventoryUnitsRaw : 0
+            );
             valueMaps[country].asp.set(label, Number.isFinite(asp) ? asp : 0);
             valueMaps[country].sales_mix.set(label, Number(row.sales_mix ?? 0));
             valueMaps[country].profit_mix.set(label, Number(row.profit_mix ?? 0));
@@ -457,6 +470,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             asp: valueMaps.uk.asp.get(label) ?? 0,
             sales_mix: valueMaps.uk.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.uk.profit_mix.get(label) ?? 0,
+            inventory_units: valueMaps.uk.inventory_units.get(label) ?? 0,
           };
         }),
         global: months.map((m) => {
@@ -469,6 +483,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             asp: valueMaps.global.asp.get(label) ?? 0,
             sales_mix: valueMaps.global.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.global.profit_mix.get(label) ?? 0,
+            inventory_units: valueMaps.global.inventory_units.get(label) ?? 0,
           };
         }),
         us: months.map((m) => {
@@ -481,6 +496,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             asp: valueMaps.us.asp.get(label) ?? 0,
             sales_mix: valueMaps.us.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.us.profit_mix.get(label) ?? 0,
+            inventory_units: valueMaps.us.inventory_units.get(label) ?? 0,
           };
         }),
         ca: months.map((m) => {
@@ -493,6 +509,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             asp: valueMaps.ca.asp.get(label) ?? 0,
             sales_mix: valueMaps.ca.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.ca.profit_mix.get(label) ?? 0,
+            inventory_units: valueMaps.ca.inventory_units.get(label) ?? 0,
           };
         }),
       };
@@ -551,6 +568,13 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           return Number(point.units_sold || 0) > 0 || Number(point.asp || 0) > 0;
         }
 
+        if (activeTab === "inventory_units") {
+  return (
+    Number(point.inventory_units || 0) > 0 ||
+    Number(point.units_sold || 0) > 0
+  );
+}
+
         if (activeTab === "mix") {
           return Number(point.sales_mix || 0) > 0 || Number(point.profit_mix || 0) > 0;
         }
@@ -602,6 +626,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         tension: 0.35,
         pointRadius: 3,
         pointHoverRadius: 5,
+        pointHitRadius: 12,
         fill: false,
         borderDash: [],
         borderWidth: 2,
@@ -618,6 +643,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         backgroundColor: getMetricColor("cm1_profit"),
         tension: 0.35,
         pointRadius: 3,
+        pointHitRadius: 12,
         pointHoverRadius: 5,
         fill: false,
         borderDash: [],
@@ -631,6 +657,49 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       };
     }
 
+    if (activeTab === "inventory_units") {
+  const inventoryDatasets = activeCountries.map((country) => ({
+    label: `${formatCountry(country)} Inventory Units`,
+    data: labels.map((label) => {
+      const found = journeyData[country]?.find((d) => d.month === label);
+      return found ? found.inventory_units : 0;
+    }),
+    borderColor: getMetricColor("inventory_units"),
+    backgroundColor: getMetricColor("inventory_units"),
+    tension: 0.35,
+    pointRadius: 3,
+    pointHitRadius: 12,
+    pointHoverRadius: 5,
+    fill: false,
+    borderDash: [],
+    borderWidth: 2,
+    yAxisID: "y",
+  }));
+
+  const unitDatasets = activeCountries.map((country) => ({
+    label: `${formatCountry(country)} Units`,
+    data: labels.map((label) => {
+      const found = journeyData[country]?.find((d) => d.month === label);
+      return found ? found.units_sold : 0;
+    }),
+    borderColor: getMetricColor("units_sold"),
+    backgroundColor: getMetricColor("units_sold"),
+    tension: 0.35,
+    pointRadius: 3,
+    pointHitRadius: 12,
+    pointHoverRadius: 5,
+    fill: false,
+    borderDash: [],
+    borderWidth: 2,
+    yAxisID: "y1",
+  }));
+
+  return {
+    labels,
+    datasets: [...inventoryDatasets, ...unitDatasets],
+  };
+}
+
     if (activeTab === "units_asp") {
       const unitDatasets = activeCountries.map((country) => ({
         label: `${formatCountry(country)} Units`,
@@ -642,6 +711,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         backgroundColor: getMetricColor("units_sold"),
         tension: 0.35,
         pointRadius: 3,
+        pointHitRadius: 12,
         pointHoverRadius: 5,
         fill: false,
         borderDash: [],
@@ -659,6 +729,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         backgroundColor: getMetricColor("asp"),
         tension: 0.35,
         pointRadius: 3,
+        pointHitRadius: 12,
         pointHoverRadius: 5,
         fill: false,
         borderDash: [],
@@ -682,6 +753,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       backgroundColor: getMetricColor("sales_mix"),
       tension: 0.35,
       pointRadius: 3,
+      pointHitRadius: 12,
       pointHoverRadius: 5,
       fill: false,
       borderDash: [],
@@ -690,7 +762,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }));
 
     const profitMixDatasets = activeCountries.map((country) => ({
-      label: `${formatCountry(country)} Profit Mix`,
+      label: `${formatCountry(country)} CM1 Profit Mix`,
       data: labels.map((label) => {
         const found = journeyData[country]?.find((d) => d.month === label);
         return found ? found.profit_mix : 0;
@@ -699,6 +771,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       backgroundColor: getMetricColor("profit_mix"),
       tension: 0.35,
       pointRadius: 3,
+      pointHitRadius: 12,
       pointHoverRadius: 5,
       fill: false,
       borderDash: [],
@@ -723,32 +796,79 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      interaction: {
+      mode: "index",
+      intersect: false,
+    },
+    hover: {
+      mode: "index",
+      intersect: false,
+    },
       plugins: {
         legend: {
           display: false,
         },
         tooltip: {
-          callbacks: {
-            label: (context: any) => {
-              const value = context.parsed.y;
-              const label = String(context.dataset.label || "").toLowerCase();
+  enabled: true,
+  mode: "index",
+  intersect: false,
+  backgroundColor: "#ffffff",
+  titleColor: "#414042",
+  bodyColor: "#414042",
+  borderColor: "#D1D5DB",
+  borderWidth: 1,
+  cornerRadius: 6,
+  padding: 12,
+  displayColors: true,
+  boxWidth: 10,
+  boxHeight: 10,
+  usePointStyle: false,
+  titleFont: {
+    size: 14,
+    weight: "bold",
+  },
+  bodyFont: {
+    size: 13,
+    weight: "normal",
+  },
+  callbacks: {
+    title: (items: any[]) => {
+      const label = items?.[0]?.label || "";
+      return label;
+    },
 
-              if (label.includes("units")) {
-                return `${context.dataset.label}: ${formatUnits(value)}`;
-              }
+    label: (context: any) => {
+      const value = Number(context.parsed.y || 0);
+      const datasetLabel = String(context.dataset.label || "");
+      const lowerLabel = datasetLabel.toLowerCase();
 
-              if (label.includes("asp")) {
-                return `${context.dataset.label}: ${formatAsp(value)}`;
-              }
+      if (lowerLabel.includes("asp")) {
+        return `${datasetLabel}: ${formatAsp(value)}`;
+      }
 
-              if (label.includes("mix")) {
-                return `${context.dataset.label}: ${formatPercent(value)}`;
-              }
+      if (lowerLabel.includes("mix")) {
+        return `${datasetLabel}: ${formatPercent(value)}`;
+      }
 
-              return `${context.dataset.label}: ${formatCurrency(value)}`;
-            },
-          },
-        },
+      if (lowerLabel.includes("units")) {
+        return `${datasetLabel}: ${formatUnits(value)}`;
+      }
+
+      return `${datasetLabel}: ${formatCurrency(value)}`;
+    },
+
+    labelColor: (context: any) => {
+      const color = context.dataset.borderColor || "#414042";
+
+      return {
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: 2,
+        borderRadius: 2,
+      };
+    },
+  },
+},
         zoom: {
           limits: {
             x: {
@@ -796,11 +916,13 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           title: {
             display: true,
             text:
-              activeTab === "units_asp"
-                ? "Units (in nos.)"
-                : activeTab === "mix"
-                  ? "Mix (%)"
-                  : `Amount (${currencySymbol})`,
+  activeTab === "units_asp"
+    ? "Units (in nos.)"
+    : activeTab === "inventory_units"
+      ? "Inventory Units"
+      : activeTab === "mix"
+        ? "Mix (%)"
+        : `Amount (${currencySymbol})`,
           },
           min: 0,
           ticks: {
@@ -808,29 +930,39 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             font: {
               size: isSmallScreen ? 10 : 12,
             },
-            callback: (value: number) => {
-              if (activeTab === "units_asp") return formatUnits(value);
-              if (activeTab === "mix") return formatPercent(value);
-              return formatCurrency(value);
-            },
+           callback: (value: number) => {
+  if (activeTab === "units_asp" || activeTab === "inventory_units") {
+    return formatUnits(value);
+  }
+
+  if (activeTab === "mix") return formatPercent(value);
+
+  return formatCurrency(value);
+},
           },
         },
         y1: {
-          display: activeTab === "units_asp",
+          display: activeTab === "units_asp" || activeTab === "inventory_units",
           position: "right",
           min: 0,
           grid: {
             drawOnChartArea: false,
           },
           title: {
-            display: activeTab === "units_asp",
-            text: `ASP (${currencySymbol})`,
+            display: activeTab === "units_asp" || activeTab === "inventory_units",
+text:
+  activeTab === "inventory_units"
+    ? "Units (in nos.)"
+    : `ASP (${currencySymbol})`,
           },
           ticks: {
             font: {
               size: isSmallScreen ? 10 : 12,
             },
-            callback: (value: number) => formatAsp(Number(value)),
+            callback: (value: number) => {
+  if (activeTab === "inventory_units") return formatUnits(Number(value));
+  return formatAsp(Number(value));
+},
           },
         },
       },
@@ -885,10 +1017,11 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     textSizeClass="text-[10px] sm:text-xs"
                     className="w-full sm:w-auto"
                     options={[
-                      { value: "sales_cm1", label: "Sales & CM1 Profit" },
-                      { value: "units_asp", label: "Units & ASP" },
-                      { value: "mix", label: "Sales Mix & Profit Mix" },
-                    ]}
+  { value: "sales_cm1", label: "Sales & CM1 Profit" },
+  { value: "units_asp", label: "Units & ASP" },
+  { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
+  { value: "inventory_units", label: "Inventory & Units" },
+]}
                   />
                 </div>
               </div>
@@ -943,10 +1076,23 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
-                    <span>Profit Mix</span>
+                    <span>CM1 Profit Mix</span>
                   </div>
                 </>
               )}
+
+              {activeTab === "inventory_units" && (
+  <>
+    <div className="flex items-center gap-2">
+      <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
+      <span>Inventory Units</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <span className="h-0 w-9 border-t-2 border-[#FDD36F]" />
+      <span>Units</span>
+    </div>
+  </>
+)}
             </div>
           </div>
         </div>

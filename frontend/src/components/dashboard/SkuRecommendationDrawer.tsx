@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
@@ -17,6 +17,20 @@ type MetricItem = {
   label: string;
   value: string;
   color?: string;
+};
+
+type BestPerformanceMetric = {
+  month?: string;
+  year?: string | number;
+  cm1_profit?: number;
+  net_sales?: number;
+  units?: number;
+};
+
+type ProductBestPerformanceData = {
+  cm1_profit?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  units?: BestPerformanceMetric;
 };
 
 type SelectedRec = {
@@ -84,6 +98,72 @@ const metricOrder = [
   "cm1 profit per unit",
 ];
 
+
+const toNum = (v: any) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  const n = Number(String(v).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+const currencyCodeToSymbol = (code?: CurrencyCode | string) => {
+  const c = String(code || "").toUpperCase();
+
+  if (c === "USD") return "$";
+  if (c === "GBP") return "£";
+  if (c === "CAD") return "C$";
+  if (c === "INR") return "₹";
+
+  return "";
+};
+
+const formatMoneyNoDecimal = (value: any, currency?: CurrencyCode | string) => {
+  const symbol = currencyCodeToSymbol(currency);
+  const n = Math.round(toNum(value));
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatUnitsNoDecimal = (value: any) => {
+  return Math.round(toNum(value)).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+};
+
+const formatBestPerformancePeriod = (
+  month?: string,
+  year?: string | number
+) => {
+  if (!month) return "-";
+
+  const monthMap: Record<string, string> = {
+    january: "Jan",
+    february: "Feb",
+    march: "Mar",
+    april: "Apr",
+    may: "May",
+    june: "Jun",
+    july: "Jul",
+    august: "Aug",
+    september: "Sep",
+    october: "Oct",
+    november: "Nov",
+    december: "Dec",
+  };
+
+  const shortMonth =
+    monthMap[String(month).toLowerCase()] || String(month).slice(0, 3);
+
+  const shortYear = year ? String(year).slice(-2) : "";
+
+  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
 export default function SkuRecommendationDrawer({
   open,
   onClose,
@@ -93,6 +173,10 @@ export default function SkuRecommendationDrawer({
   sourceCountryName,
   displayCurrency,
 }: Props) {
+  const [bestPerformanceLoading, setBestPerformanceLoading] = useState(false);
+const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
+const [bestPerformanceData, setBestPerformanceData] =
+  useState<ProductBestPerformanceData | null>(null);
   const sortedMetrics = [...(selectedRec?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -116,6 +200,91 @@ export default function SkuRecommendationDrawer({
     ...(selectedRec?.recommendationPoints || []).filter((p) => /inventory/i.test(p)),
     ...(selectedRec?.advertisingPoints || []).filter((p) => /inventory/i.test(p)),
   ];
+
+  useEffect(() => {
+  if (!open) return;
+  if (!selectedRec?.productName) return;
+
+  const productName = String(selectedRec.productName || "").trim();
+
+  if (!productName) return;
+
+  const lowerName = productName.toLowerCase();
+
+  if (
+    lowerName === "total" ||
+    lowerName === "grand total" ||
+    lowerName === "others" ||
+    lowerName === "other skus"
+  ) {
+    setBestPerformanceData(null);
+    setBestPerformanceError(null);
+    setBestPerformanceLoading(false);
+    return;
+  }
+
+  const ac = new AbortController();
+
+  const fetchBestPerformance = async () => {
+    try {
+      setBestPerformanceLoading(true);
+      setBestPerformanceError(null);
+      setBestPerformanceData(null);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      if (!token) throw new Error("Missing token");
+
+      const apiCountry = String(sourceCountryName || countryName || "global")
+        .trim()
+        .toLowerCase();
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: apiCountry,
+            home_currency: displayCurrency || "USD",
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to fetch best performance");
+      }
+
+      setBestPerformanceData(json?.best_performance ?? null);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setBestPerformanceError(e?.message || "Failed to load best performance");
+    } finally {
+      setBestPerformanceLoading(false);
+    }
+  };
+
+  fetchBestPerformance();
+
+  return () => ac.abort();
+}, [
+  open,
+  selectedRec?.productName,
+  countryName,
+  sourceCountryName,
+  displayCurrency,
+]);
 
   if (!open || !selectedRec) return null;
 
@@ -214,6 +383,82 @@ export default function SkuRecommendationDrawer({
                     ))}
                   </div>
                 </div>
+
+                <div>
+  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+    Best Performance
+  </div>
+
+  {bestPerformanceLoading ? (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      Loading best performance...
+    </div>
+  ) : bestPerformanceError ? (
+    <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+      {bestPerformanceError}
+    </div>
+  ) : bestPerformanceData ? (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {[
+        {
+          label: "Units",
+          value: formatUnitsNoDecimal(bestPerformanceData?.units?.units),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.units?.month,
+            bestPerformanceData?.units?.year
+          ),
+        },
+        {
+          label: "Net Sales",
+          value: formatMoneyNoDecimal(
+            bestPerformanceData?.net_sales?.net_sales,
+            displayCurrency
+          ),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.net_sales?.month,
+            bestPerformanceData?.net_sales?.year
+          ),
+        },
+        {
+          label: "CM1 Profit",
+          value: formatMoneyNoDecimal(
+            bestPerformanceData?.cm1_profit?.cm1_profit,
+            displayCurrency
+          ),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.cm1_profit?.month,
+            bestPerformanceData?.cm1_profit?.year
+          ),
+        },
+      ].map((card, index) => (
+        <div
+          key={card.label}
+          className={`rounded-lg border border-t-4 ${
+            metricColors[index % metricColors.length]
+          } px-3 py-2`}
+        >
+          <div className="text-[10px] 2xl:text-xs text-charcoal-400">
+            {card.label}
+          </div>
+
+          <div className="flex flex-col leading-tight">
+            <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+              {card.period}
+            </span>
+
+            <span className="mt-2 text-sm 2xl:text-lg font-bold text-[#414042]">
+              {card.value}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      —
+    </div>
+  )}
+</div>
 
                 <div>
                   <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">

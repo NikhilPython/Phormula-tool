@@ -400,7 +400,7 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
                 )}
 
                 {/* Objectives */}
-                {insightData.objective && (
+                {/* {insightData.objective && (
                   <div>
                     <div className="text-xs sm:text-sm 2xl:text-lg font-semibold text-charcoal-700 mb-2">
                       Objectives
@@ -423,7 +423,7 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
                       ))}
                     </div>
                   </div>
-                )}
+                )} */}
 
                 {/* Recommendations */}
                 <div>

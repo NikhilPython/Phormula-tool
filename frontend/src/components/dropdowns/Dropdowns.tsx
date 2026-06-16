@@ -726,6 +726,41 @@ const formatMoney = (v: any, symbol = "$") => {
   })}`;
 };
 
+const formatMoneyNoDecimal = (v: any, symbol = "$") => {
+  const n = Math.round(toNum(v));
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatBestPerformancePeriod = (month?: string, year?: string | number) => {
+  if (!month) return "-";
+
+  const monthMap: Record<string, string> = {
+    january: "Jan",
+    february: "Feb",
+    march: "Mar",
+    april: "Apr",
+    may: "May",
+    june: "Jun",
+    july: "Jul",
+    august: "Aug",
+    september: "Sep",
+    october: "Oct",
+    november: "Nov",
+    december: "Dec",
+  };
+
+  const shortMonth =
+    monthMap[String(month).toLowerCase()] || String(month).slice(0, 3);
+
+  const shortYear = year ? String(year).slice(-2) : "";
+
+  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
 const buildOtherSkusInsightLines = (
   apiData: any,
   currencySymbol = "$",
@@ -935,6 +970,20 @@ const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?
   return "";
 };
 
+type BestPerformanceMetric = {
+  month?: string;
+  year?: string | number;
+  cm1_profit?: number;
+  net_sales?: number;
+  units?: number;
+};
+
+type ProductBestPerformanceData = {
+  cm1_profit?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  units?: BestPerformanceMetric;
+};
+
 type RightProductDrawerProps = {
   open: boolean;
   onClose: () => void;
@@ -964,6 +1013,9 @@ type RightProductDrawerProps = {
   } | null;
   perfMetric?: "net_sales" | "units";
   onPerfMetricChange?: (metric: "net_sales" | "units") => void;
+  bestPerformanceLoading?: boolean;
+bestPerformanceError?: string | null;
+bestPerformanceData?: ProductBestPerformanceData | null;
 };
 
 const metricColors = [
@@ -1001,6 +1053,9 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   perfData = null,
   perfMetric = "net_sales",
   onPerfMetricChange,
+  bestPerformanceLoading = false,
+bestPerformanceError = null,
+bestPerformanceData = null,
 }) => {
   const inventoryText =
     recObj?.inventory_recommendation || block?.inventoryBullets?.join(" ");
@@ -1142,6 +1197,80 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     ))}
                   </div>
                 </div>
+
+                <div>
+  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+    Best Performance
+  </div>
+
+  {bestPerformanceLoading ? (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      Loading best performance...
+    </div>
+  ) : bestPerformanceError ? (
+    <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+      {bestPerformanceError}
+    </div>
+  ) : bestPerformanceData ? (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+     {[
+  {
+    label: "Units",
+    value: Math.round(toNum(bestPerformanceData?.units?.units)).toLocaleString(),
+    period: formatBestPerformancePeriod(
+      bestPerformanceData?.units?.month,
+      bestPerformanceData?.units?.year
+    ),
+  },
+  {
+    label: "Net Sales",
+    value: formatMoneyNoDecimal(
+      bestPerformanceData?.net_sales?.net_sales,
+      drawerCurrencySymbol
+    ),
+    period: formatBestPerformancePeriod(
+      bestPerformanceData?.net_sales?.month,
+      bestPerformanceData?.net_sales?.year
+    ),
+  },
+  {
+    label: "CM1 Profit",
+    value: formatMoneyNoDecimal(
+      bestPerformanceData?.cm1_profit?.cm1_profit,
+      drawerCurrencySymbol
+    ),
+    period: formatBestPerformancePeriod(
+      bestPerformanceData?.cm1_profit?.month,
+      bestPerformanceData?.cm1_profit?.year
+    ),
+  },
+].map((m, i) => (
+        <div
+          key={m.label}
+          className={`rounded-lg border border-t-4 ${metricColors[i % metricColors.length]} px-3 py-2`}
+        >
+          <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+            {m.label}
+          </div>
+
+         <div className="flex flex-col leading-tight">
+  <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+    {m.period}
+  </span>
+
+  <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
+    {m.value}
+  </span>
+</div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      —
+    </div>
+  )}
+</div>
 
                 {/* {block.isOtherSkus && block.includedSkus?.length ? (
                   <div>
@@ -1403,6 +1532,10 @@ const ProductInsightsSection = ({
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+  const [bestPerformanceLoading, setBestPerformanceLoading] = useState(false);
+const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
+const [bestPerformanceData, setBestPerformanceData] =
+  useState<ProductBestPerformanceData | null>(null);
 
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState<string | null>(null);
@@ -1714,6 +1847,85 @@ const ProductInsightsSection = ({
     countryName,
     perfMetric,
   ]);
+
+  useEffect(() => {
+  if (!hasBlocks) return;
+  if (!selectedBlock) return;
+
+  const ac = new AbortController();
+
+  const fetchBestPerformance = async () => {
+    try {
+      setBestPerformanceLoading(true);
+      setBestPerformanceError(null);
+      setBestPerformanceData(null);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      if (!token) throw new Error("Missing token");
+
+      const isOtherSkusBlock =
+        selectedBlock.isOtherSkus ||
+        selectedBlock.name.trim().toLowerCase() === "other skus";
+
+      const productName =
+        isOtherSkusBlock
+          ? sortedBlocks.find(
+              (b) =>
+                !b.isOtherSkus &&
+                b.name.trim().toLowerCase() !== "other skus"
+            )?.name
+          : selectedBlock.name;
+
+      if (!productName) return;
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: countryName,
+            home_currency: homeCurrency || resolvedCurrencySymbol,
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to fetch best performance");
+      }
+
+      setBestPerformanceData(json?.best_performance ?? null);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setBestPerformanceError(e?.message || "Failed to load best performance");
+    } finally {
+      setBestPerformanceLoading(false);
+    }
+  };
+
+  fetchBestPerformance();
+
+  return () => ac.abort();
+}, [
+  selectedBlock,
+  hasBlocks,
+  sortedBlocks,
+  countryName,
+  homeCurrency,
+  resolvedCurrencySymbol,
+]);
   if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
@@ -1821,31 +2033,34 @@ const ProductInsightsSection = ({
       </div>
 
       <RightProductDrawer
-        open={!!selectedBlock}
-        onClose={() => {
-          setSelectedBlock(null);
-          setSelectedRecObj(null);
-          setPerfData(null);
-          setPerfError(null);
-        }}
-        block={selectedBlock}
-        objective={objective}
-        recObj={selectedRecObj}
-        countryName={countryName}
-        range={range}
-        year={selectedYear}
-        month={range === "monthly" ? (selectedMonth ?? "") : ""}
-        quarter={range === "quarterly" ? selectedQuarter : ""}
-        drawerPeriodText={drawerPeriodText}
-        currencySymbol={resolvedCurrencySymbol}
-
-        // ✅ NEW
-        perfLoading={perfLoading}
-        perfError={perfError}
-        perfData={perfData}
-        perfMetric={perfMetric}
-        onPerfMetricChange={setPerfMetric}
-      />
+  open={!!selectedBlock}
+  onClose={() => {
+    setSelectedBlock(null);
+    setSelectedRecObj(null);
+    setPerfData(null);
+    setPerfError(null);
+    setBestPerformanceData(null);
+    setBestPerformanceError(null);
+  }}
+  block={selectedBlock}
+  objective={objective}
+  recObj={selectedRecObj}
+  countryName={countryName}
+  range={range}
+  year={selectedYear}
+  month={range === "monthly" ? (selectedMonth ?? "") : ""}
+  quarter={range === "quarterly" ? selectedQuarter : ""}
+  drawerPeriodText={drawerPeriodText}
+  currencySymbol={resolvedCurrencySymbol}
+  perfLoading={perfLoading}
+  perfError={perfError}
+  perfData={perfData}
+  perfMetric={perfMetric}
+  onPerfMetricChange={setPerfMetric}
+  bestPerformanceLoading={bestPerformanceLoading}
+  bestPerformanceError={bestPerformanceError}
+  bestPerformanceData={bestPerformanceData}
+/>
     </div>
   );
 };
@@ -3364,6 +3579,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
     useState<any>(null);
+    const [aiBestPerformanceLoading, setAiBestPerformanceLoading] = useState(false);
+const [aiBestPerformanceError, setAiBestPerformanceError] = useState<string | null>(null);
+const [aiBestPerformanceData, setAiBestPerformanceData] =
+  useState<ProductBestPerformanceData | null>(null);
 
   const aiProductBlocks = useMemo(() => {
     return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
@@ -3428,6 +3647,86 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     },
     [aiProductBlocks, aiSkuActions, nameToSkuMap]
   );
+
+  useEffect(() => {
+  if (!selectedAiProductBlock) return;
+
+  const ac = new AbortController();
+
+  const fetchBestPerformance = async () => {
+    try {
+      setAiBestPerformanceLoading(true);
+      setAiBestPerformanceError(null);
+      setAiBestPerformanceData(null);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      if (!token) throw new Error("Missing token");
+
+      const isOtherSkusBlock =
+        selectedAiProductBlock.isOtherSkus ||
+        selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
+
+      const productName =
+        isOtherSkusBlock
+          ? aiProductBlocks.find(
+              (b) =>
+                !b.isOtherSkus &&
+                b.name.trim().toLowerCase() !== "other skus"
+            )?.name
+          : selectedAiProductBlock.name;
+
+      if (!productName) return;
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: countryName,
+            home_currency:
+              countryName.toLowerCase() === "global"
+                ? homeCurrency
+                : currencySymbol,
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to fetch best performance");
+      }
+
+      setAiBestPerformanceData(json?.best_performance ?? null);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setAiBestPerformanceError(e?.message || "Failed to load best performance");
+    } finally {
+      setAiBestPerformanceLoading(false);
+    }
+  };
+
+  fetchBestPerformance();
+
+  return () => ac.abort();
+}, [
+  selectedAiProductBlock,
+  aiProductBlocks,
+  countryName,
+  homeCurrency,
+  currencySymbol,
+]);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -7245,25 +7544,31 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       )}
 
       <RightProductDrawer
-        open={!!selectedAiProductBlock}
-        onClose={() => {
-          setSelectedAiProductBlock(null);
-          setSelectedAiProductRecObj(null);
-        }}
-        block={selectedAiProductBlock}
-        objective={aiPanel?.objective}
-        recObj={selectedAiProductRecObj}
-        countryName={isDemoMode ? "global" : initialCountryName}
-        range={range}
-        year={selectedYear}
-        month={range === "monthly" ? selectedMonth : ""}
-        quarter={range === "quarterly" ? selectedQuarter : ""}
-        drawerPeriodText={
-          aiPanel?.summaryBullets?.[0]
-            ? formatSummaryPeriod(aiPanel.summaryBullets[0])
-            : ""
-        }
-      />
+  open={!!selectedAiProductBlock}
+  onClose={() => {
+    setSelectedAiProductBlock(null);
+    setSelectedAiProductRecObj(null);
+    setAiBestPerformanceData(null);
+    setAiBestPerformanceError(null);
+  }}
+  block={selectedAiProductBlock}
+  objective={aiPanel?.objective}
+  recObj={selectedAiProductRecObj}
+  countryName={countryName}
+  range={range}
+  year={selectedYear}
+  month={range === "monthly" ? selectedMonth : ""}
+  quarter={range === "quarterly" ? selectedQuarter : ""}
+  drawerPeriodText={
+    aiPanel?.summaryBullets?.[0]
+      ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+      : ""
+  }
+  currencySymbol={currencySymbol}
+  bestPerformanceLoading={aiBestPerformanceLoading}
+  bestPerformanceError={aiBestPerformanceError}
+  bestPerformanceData={aiBestPerformanceData}
+/>
     </div>
   );
 

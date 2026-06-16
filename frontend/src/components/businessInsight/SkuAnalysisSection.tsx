@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BsStars } from "react-icons/bs";
 import { FaArrowUp, FaArrowDown } from "react-icons/fa";
@@ -96,6 +96,26 @@ type TableRow = Row & {
     __isOthers?: boolean;
 };
 
+type BestPerformanceMetric = {
+  month?: string;
+  year?: string | number;
+  cm1_profit?: number;
+  net_sales?: number;
+  units?: number;
+};
+
+type ProductBestPerformanceData = {
+  cm1_profit?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  units?: BestPerformanceMetric;
+};
+
+type MetricItem = {
+  label: string;
+  value: string;
+  color?: string;
+};
+
 type Props = {
     categorizedGrowth: CategorizedGrowth;
     month1: string;
@@ -167,6 +187,103 @@ const normalizeBullets = (raw?: string) => {
         .filter(Boolean);
 };
 
+const metricColors = [
+  "border border-[#FDD36F] border-t-[#FDD36F]",
+  "border border-[#75BBDA] border-t-[#75BBDA]",
+  "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#C49466] border-t-[#C49466]",
+];
+
+const metricOrder = [
+  "units",
+  "net sales",
+  "asp",
+  "cm1 profit",
+  "cm1 profit per unit",
+];
+
+const toNum = (v: any) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  const n = Number(String(v).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+const getCurrencySymbolFromCodeLocal = (code?: string) => {
+  const c = String(code || "").toUpperCase();
+
+  if (c === "GBP") return "£";
+  if (c === "USD") return "$";
+  if (c === "CAD") return "C$";
+  if (c === "EUR") return "€";
+  if (c === "INR") return "₹";
+
+  return c || "$";
+};
+
+const formatMoneyNoDecimal = (value: any, currencyCode?: string) => {
+  const symbol = getCurrencySymbolFromCodeLocal(currencyCode);
+  const n = Math.round(toNum(value));
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatUnitsNoDecimal = (value: any) => {
+  return Math.round(toNum(value)).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+};
+
+const formatBestPerformancePeriod = (
+  month?: string,
+  year?: string | number
+) => {
+  if (!month) return "-";
+
+  const monthMap: Record<string, string> = {
+    january: "Jan",
+    february: "Feb",
+    march: "Mar",
+    april: "Apr",
+    may: "May",
+    june: "Jun",
+    july: "Jul",
+    august: "Aug",
+    september: "Sep",
+    october: "Oct",
+    november: "Nov",
+    december: "Dec",
+  };
+
+  const shortMonth =
+    monthMap[String(month).toLowerCase()] || String(month).slice(0, 3);
+
+  const shortYear = year ? String(year).slice(-2) : "";
+
+  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
+const splitMetricValue = (value: string) => {
+  const v = String(value || "").trim();
+  const match = v.match(/^([^\(]+)\s*(\(.+\))?$/);
+
+  const main = match?.[1]?.trim() || v;
+  const delta = match?.[2] || "";
+  const isNegative = delta.includes("-");
+
+  return {
+    main,
+    delta,
+    deltaColor: isNegative ? "#FF5C5C" : "#5EA68E",
+  };
+};
+
 const SkuAnalysisSection: React.FC<Props> = ({
     categorizedGrowth,
     month1,
@@ -185,6 +302,12 @@ const SkuAnalysisSection: React.FC<Props> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<TabKey>("all_skus");
     const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(false);
+    const [selectedInsightItem, setSelectedInsightItem] = useState<SkuItem | null>(null);
+
+const [bestPerformanceLoading, setBestPerformanceLoading] = useState(false);
+const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
+const [bestPerformanceData, setBestPerformanceData] =
+  useState<ProductBestPerformanceData | null>(null);
 
     const [loadingInsight, setLoadingInsight] = useState(false);
     const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsight>>({});
@@ -384,6 +507,73 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
         return [...top5, others];
     }, [categorizedGrowth, activeTab, expandAllSkusOthers]);
+
+    const formatMetricValueWithGrowth = (
+  actualValue: any,
+  growthValue: any,
+  type: "money" | "number" = "money"
+) => {
+  const growth = Number(
+    typeof growthValue === "object" ? growthValue?.value : growthValue
+  );
+
+  const safeGrowth = Number.isFinite(growth) ? growth : 0;
+  const sign = safeGrowth > 0 ? "+" : "";
+
+  const main =
+    type === "number"
+      ? formatUnitsNoDecimal(actualValue)
+      : formatMoneyNoDecimal(actualValue, homeCurrencyCode);
+
+  return `${main} (${sign}${safeGrowth.toFixed(2)}%)`;
+};
+
+const buildMetricsForSku = (item?: SkuItem | null): MetricItem[] => {
+  if (!item) return [];
+
+  return [
+    {
+      label: "Units",
+      value: formatMetricValueWithGrowth(
+        item.total_quantity_month2,
+        item["Unit Growth"],
+        "number"
+      ),
+    },
+    {
+      label: "Net sales",
+      value: formatMetricValueWithGrowth(
+        item.net_sales_month2,
+        item["Net Sales Growth"],
+        "money"
+      ),
+    },
+    {
+      label: "ASP",
+      value: formatMetricValueWithGrowth(
+        item.asp_month2,
+        item["ASP Growth"],
+        "money"
+      ),
+    },
+    {
+      label: "CM1 profit",
+      value: formatMetricValueWithGrowth(
+        item.profit_month2,
+        item["CM1 Profit Impact"],
+        "money"
+      ),
+    },
+    {
+      label: "CM1 profit per unit",
+      value: formatMetricValueWithGrowth(
+        item.unit_wise_profitability_month2,
+        item["Profit Per Unit"],
+        "money"
+      ),
+    },
+  ];
+};
 
     const renderGrowthCell = (growth: any) => {
         const isObj = typeof growth === "object" && growth !== null && "value" in growth;
@@ -607,13 +797,16 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         <button
                             type="button"
                             className="font-semibold underline text-[#414042]"
-                            onClick={() => {
-                                setSelectedSku(entry[0]);
-                                setModalOpen(true);
-                                setFbType(null);
-                                setFbText("");
-                                setFbSuccess(false);
-                            }}
+                           onClick={() => {
+  setSelectedSku(entry[0]);
+  setSelectedInsightItem(item);
+  setModalOpen(true);
+  setFbType(null);
+  setFbText("");
+  setFbSuccess(false);
+  setBestPerformanceData(null);
+  setBestPerformanceError(null);
+}}
                         >
                             View Insights
                         </button>
@@ -638,6 +831,88 @@ const SkuAnalysisSection: React.FC<Props> = ({
     const hasAnyRows = (
         ["all_skus", "top_80_skus", "new_skus", "reviving_skus", "other_skus"] as TabKey[]
     ).some((k) => (categorizedGrowth[k] || []).length > 0);
+
+    useEffect(() => {
+  if (!modalOpen) return;
+
+  const productName = String(
+    selectedInsightItem?.product_name || selectedSku || ""
+  ).trim();
+
+  if (!productName) return;
+
+  const lowerName = productName.toLowerCase();
+
+  if (
+    lowerName === "total" ||
+    lowerName === "grand total" ||
+    lowerName === "others" ||
+    lowerName === "other skus"
+  ) {
+    setBestPerformanceData(null);
+    setBestPerformanceError(null);
+    setBestPerformanceLoading(false);
+    return;
+  }
+
+  const ac = new AbortController();
+
+  const fetchBestPerformance = async () => {
+    try {
+      setBestPerformanceLoading(true);
+      setBestPerformanceError(null);
+      setBestPerformanceData(null);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      if (!token) throw new Error("Missing token");
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: countryName || "global",
+            home_currency: homeCurrencyCode || "USD",
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to fetch best performance");
+      }
+
+      setBestPerformanceData(json?.best_performance ?? null);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setBestPerformanceError(e?.message || "Failed to load best performance");
+    } finally {
+      setBestPerformanceLoading(false);
+    }
+  };
+
+  fetchBestPerformance();
+
+  return () => ac.abort();
+}, [
+  modalOpen,
+  selectedSku,
+  selectedInsightItem?.product_name,
+  countryName,
+  homeCurrencyCode,
+]);
 
     if (!hasAnyRows) return null;
 
@@ -897,7 +1172,12 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             exit={{ opacity: 0 }}
-                                            onClick={() => setModalOpen(false)}
+                                            onClick={() => {
+  setModalOpen(false);
+  setSelectedInsightItem(null);
+  setBestPerformanceData(null);
+  setBestPerformanceError(null);
+}}
                                         />
 
                                         <motion.aside
@@ -926,7 +1206,12 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                     </div>
 
                                                     <button
-                                                        onClick={() => setModalOpen(false)}
+                                                        onClick={() => {
+  setModalOpen(false);
+  setSelectedInsightItem(null);
+  setBestPerformanceData(null);
+  setBestPerformanceError(null);
+}}
                                                         className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-lg leading-none text-slate-500 hover:bg-slate-50"
                                                     >
                                                         ×
@@ -934,6 +1219,139 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                 </div>
 
                                                 <div className="flex-1 overflow-y-auto px-4  space-y-6">
+
+                                                    {(() => {
+  const sortedMetrics = buildMetricsForSku(selectedInsightItem).sort((a, b) => {
+    const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+    const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+
+    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+    return safeAIndex - safeBIndex;
+  });
+
+  if (!sortedMetrics.length) return null;
+
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+        Metrics
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+        {sortedMetrics.map((m, i) => {
+          const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+          return (
+            <div
+              key={`${m.label}-${i}`}
+              className={`rounded-lg border border-t-4 ${
+                metricColors[i % metricColors.length]
+              } px-3 py-2`}
+            >
+              <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+                {m.label
+                  .replace(/\b\w/g, (char) => char.toUpperCase())
+                  .replace("Cm1", "CM1")}
+              </div>
+
+              <div className="flex flex-col leading-tight">
+                <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
+                  {main}
+                </span>
+
+                {delta ? (
+                  <span
+                    className="text-[10px] 2xl:text-xs font-semibold"
+                    style={{ color: deltaColor }}
+                  >
+                    {delta}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+})()}
+<div>
+  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+    Best Performance
+  </div>
+
+  {bestPerformanceLoading ? (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      Loading best performance...
+    </div>
+  ) : bestPerformanceError ? (
+    <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+      {bestPerformanceError}
+    </div>
+  ) : bestPerformanceData ? (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {[
+        {
+          label: "Units",
+          value: formatUnitsNoDecimal(bestPerformanceData?.units?.units),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.units?.month,
+            bestPerformanceData?.units?.year
+          ),
+        },
+        {
+          label: "Net Sales",
+          value: formatMoneyNoDecimal(
+            bestPerformanceData?.net_sales?.net_sales,
+            homeCurrencyCode
+          ),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.net_sales?.month,
+            bestPerformanceData?.net_sales?.year
+          ),
+        },
+        {
+          label: "CM1 Profit",
+          value: formatMoneyNoDecimal(
+            bestPerformanceData?.cm1_profit?.cm1_profit,
+            homeCurrencyCode
+          ),
+          period: formatBestPerformancePeriod(
+            bestPerformanceData?.cm1_profit?.month,
+            bestPerformanceData?.cm1_profit?.year
+          ),
+        },
+      ].map((card, index) => (
+        <div
+          key={card.label}
+          className={`rounded-lg border border-t-4 ${
+            metricColors[index % metricColors.length]
+          } px-3 py-2`}
+        >
+          <div className="text-[10px] 2xl:text-xs text-charcoal-400">
+            {card.label}
+          </div>
+
+          <div className="flex flex-col leading-tight">
+            <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+              {card.period}
+            </span>
+
+            <span className="mt-2 text-sm 2xl:text-lg font-bold text-[#414042]">
+              {card.value}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+      —
+    </div>
+  )}
+</div>
                                                     {objectiveObj && (
                                                         <div className="space-y-2">
                                                             <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">Objectives</div>

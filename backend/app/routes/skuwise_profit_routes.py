@@ -237,6 +237,7 @@ def resolve_product_sku_for_country(conn, user_id, product_name, country):
         SELECT {sku_column}
         FROM "{table_name}"
         WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+        OR LOWER(TRIM({sku_column})) = LOWER(TRIM(:product_name))
         LIMIT 1
     """)
 
@@ -596,10 +597,22 @@ def productwise_performance():
                                 print(f"Skipping table {table_name}: required columns missing")
                                 continue
 
+                            has_sku_col = 'sku' in columns
+
+                            where_condition = """
+                                LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                            """
+
+                            if has_sku_col:
+                                where_condition = """
+                                    LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                                    OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
+                                """
+
                             query = text(f"""
                                 SELECT net_sales, total_quantity, profit, asp, sales_mix, profit_mix, cost_of_unit_sold
                                 FROM "{table_name}"
-                                WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                                WHERE {where_condition}
                             """)
 
                             rows = conn.execute(
@@ -1399,6 +1412,8 @@ def product_best_performance():
                     if 'product_name' not in columns or 'net_sales' not in columns:
                         continue
 
+                    has_sku_col = 'sku' in columns
+
                     quantity_col = None
                     if 'total_quantity' in columns:
                         quantity_col = 'total_quantity'
@@ -1414,13 +1429,23 @@ def product_best_performance():
                     if not quantity_col or not profit_col:
                         continue
 
+                    where_condition = """
+                        LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                    """
+
+                    if has_sku_col:
+                        where_condition = """
+                            LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                            OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
+                        """
+
                     query = text(f"""
                         SELECT
                             COALESCE(SUM("{quantity_col}"), 0) AS units,
                             COALESCE(SUM(net_sales), 0) AS net_sales,
                             COALESCE(SUM("{profit_col}"), 0) AS cm1_profit
                         FROM "{table_name}"
-                        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                        WHERE {where_condition}
                     """)
 
                     row = conn.execute(query, {
