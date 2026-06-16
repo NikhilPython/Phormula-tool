@@ -838,6 +838,8 @@ def live_mtd_vs_previous():
         sku_strategy_actions = {}
         remaining_skus_reco = None
         remaining_skus_journey = None
+        remaining_skus_ads_reco = None
+        remaining_skus_inventory_reco = None
 
         payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
@@ -1190,10 +1192,7 @@ def live_mtd_vs_previous():
                 current_month=ranges["meta"]["current_month"],
             )
 
-            # print("\n========== PROMPT 1 PAYLOAD_AI ==========")
-            # print(json.dumps(payload_ai, indent=2, default=str))
-            # print("========== END PROMPT 1 PAYLOAD_AI ==========\n")
-
+           
             # -------------------------------------------------
             # GLOBAL: Country split for deeper UK vs US summary
             # -------------------------------------------------
@@ -2502,14 +2501,38 @@ def live_mtd_vs_previous():
             sku_to_product = {}
 
 
+        # ====================================================
+        # ✅ ALL SKUs FOR PRODUCT JOURNEY + RECOMMENDATIONS
+        # Includes top_80 + other + new + reviving.
+        # This does NOT change categorized_growth display buckets.
+        # ====================================================
+        all_skus_for_actions = []
+        _seen_action_skus = set()
+
+        for row in (
+            (top_80_skus or [])
+            + (other_skus or [])
+            + (new_skus or [])
+            + (reviving_skus or [])
+        ):
+            sku = str(row.get("sku") or "").strip()
+            if not sku or sku in _seen_action_skus:
+                continue
+
+            all_skus_for_actions.append(row)
+            _seen_action_skus.add(sku)
+
+
         # ---------------------------
         # BUILD PAYLOAD (NO AI HERE)
         # ---------------------------
         payload_ai = build_ai_summary(
             prev_totals,
             curr_totals,
-            top_80_skus,
-            # new_reviving,
+
+            # ✅ CHANGED: pass all SKU rows, not only top_80_skus
+            all_skus_for_actions,
+
             prev_label,
             curr_label,
             sku_context=sku_context,
@@ -2522,11 +2545,44 @@ def live_mtd_vs_previous():
             user_objective=user_objective,
             movement_context=movement_context,
             sku_to_product=sku_to_product, 
-            # ✅ NEW
             user_id=user_id,
             country=country,
             current_year=ranges["meta"]["current_year"],
             current_month=ranges["meta"]["current_month"],
+        )
+
+        # ====================================================
+        # ✅ ACTION SKU CONTEXT
+        # Source of truth from build_ai_summary()
+        # - focus_skus_for_cards = only 5 focus SKUs
+        # - all_action_skus = every SKU that should get journey + 3 recommendations
+        # - all_action_rows = full rows for those SKUs
+        # - remaining_growth_row = one aggregated Remaining SKUs row
+        # ====================================================
+        sku_tables_from_payload = payload_ai.get("sku_tables", {}) or {}
+        product_action_context = payload_ai.get("product_action_context", {}) or {}
+
+        focus_skus_for_cards = sku_tables_from_payload.get("focus_skus") or [
+            str(r.get("sku")).strip()
+            for r in (top_80_skus or [])
+            if r.get("sku")
+        ][:5]
+
+        all_action_skus = product_action_context.get("action_skus") or [
+            str(r.get("sku")).strip()
+            for r in (all_skus_for_actions or [])
+            if r.get("sku")
+        ]
+
+        all_action_rows = product_action_context.get("action_rows") or [
+            r for r in (all_skus_for_actions or [])
+            if r.get("sku")
+        ]
+
+        # Prefer the Remaining SKUs aggregate created inside build_ai_summary()
+        remaining_growth_row = (
+            sku_tables_from_payload.get("remaining_skus_aggregate")
+            or remaining_growth_row
         )
 
         # ====================================================
@@ -2550,7 +2606,7 @@ def live_mtd_vs_previous():
                 objective_hash=objective_hash,
             )
 
-            if cached_ai:
+            if False and cached_ai:
                 analysis = cached_ai["analysis"]
                 summary_out = cached_ai["summary"]
                 strategy_parsed = cached_ai["strategy"]
@@ -2633,7 +2689,7 @@ def live_mtd_vs_previous():
         # ---------------------------
         sku_live_context = []
 
-        for r in top_80_skus:
+        for r in all_action_rows:
             sku = r.get("sku")
             if not sku:
                 continue
@@ -2714,7 +2770,7 @@ def live_mtd_vs_previous():
             sku_inventory_flags = generate_sku_inventory_flags(
                 user_id=user_id,
                 country=country,
-                focus_skus=[r.get("sku") for r in top_80_skus],
+                focus_skus=all_action_skus,
             )
         except Exception as e:
             print("[WARN] Failed to build SKU inventory flags:", e)
@@ -2729,7 +2785,7 @@ def live_mtd_vs_previous():
 
         sku_ads_context = []
 
-        for r in top_80_skus:
+        for r in all_action_rows:
             sku = r.get("sku")
             if not sku:
                 continue
@@ -2753,7 +2809,7 @@ def live_mtd_vs_previous():
         # -------------------------------------------------
         sku_time_series = {}
 
-        for r in top_80_skus:
+        for r in all_action_rows:
             sku = r.get("sku")
             if not sku:
                 continue
@@ -2821,7 +2877,7 @@ def live_mtd_vs_previous():
             remaining_series = build_remaining_skus_time_series(
                 user_id=user_id,
                 country=country,
-                focus_skus=[r.get("sku") for r in top_80_skus],
+                focus_skus=focus_skus_for_cards,
                 anchor_year=anchor_year,
                 anchor_month=anchor_month,
                 months=24,
@@ -2841,7 +2897,10 @@ def live_mtd_vs_previous():
                 strategy_debug_payload = {
                     "analysis_insights": analysis,
                     "objective_v2": user_objective,
-                    "focus_skus": [r.get("sku") for r in top_80_skus],
+
+                    # ✅ Generate journey + recommendations for every action SKU
+                    "focus_skus": all_action_skus,
+
                     "sku_time_series": sku_time_series,
                     "inventory_alerts": payload_ai.get("inventory_signals", {}),
                     "sku_inventory_flags": sku_inventory_flags,
@@ -2849,12 +2908,23 @@ def live_mtd_vs_previous():
                     "sku_ads_context": sku_ads_context,
                     "sku_live_context": sku_live_context,
                     "ads_monthly": ads_monthly,
+
+                    # ✅ One aggregated Remaining SKUs card
                     "remaining_skus_context": {
                         "aggregated_metrics": remaining_growth_row,
                         "time_series": remaining_series,
+                        "included_products": (
+                            remaining_growth_row.get("included_products", [])
+                            if isinstance(remaining_growth_row, dict)
+                            else []
+                        ),
+                        "instruction": (
+                            "Generate journey and recommendations for the aggregated Remaining SKUs group. "
+                            "Return remaining_skus_journey_summary, remaining_skus_recommendation, "
+                            "remaining_skus_ads_recommendation, and remaining_skus_inventory_recommendation."
+                        ),
                     } if remaining_growth_row else {},
                 }
-
                 # print("\n========== PROMPT 2 STRATEGY PAYLOAD ==========")
                 # print(json.dumps(strategy_debug_payload, indent=2, default=str))
                 # print("========== END PROMPT 2 STRATEGY PAYLOAD ==========\n")
@@ -2900,7 +2970,25 @@ def live_mtd_vs_previous():
 
         # Safe extraction (always executes)
         portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
-        sku_strategy_actions = strategy_parsed.get("sku_actions", {})
+
+        raw_sku_strategy_actions = strategy_parsed.get("sku_actions", {}) or {}
+
+        # ====================================================
+        # ✅ FORCE STRATEGY OUTPUT FOR EVERY ACTION SKU
+        # Prompt-2 may return only 5 SKUs, but route must return all.
+        # ====================================================
+        sku_strategy_actions = {}
+
+        for sku in all_action_skus:
+            ai_action = raw_sku_strategy_actions.get(sku, {}) or {}
+
+            sku_strategy_actions[sku] = {
+                "journey_summary": ai_action.get("journey_summary", []),
+                "recommendation": ai_action.get("recommendation", ""),
+                "ads_recommendation": ai_action.get("ads_recommendation", ""),
+                "inventory_recommendation": ai_action.get("inventory_recommendation", ""),
+            }
+
         # -------------------------------------------------
         # Override AI recommendation with Excel logic
         # -------------------------------------------------
@@ -2910,13 +2998,16 @@ def live_mtd_vs_previous():
         remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
         remaining_skus_journey = strategy_parsed.get("remaining_skus_journey_summary")
 
+        remaining_skus_ads_reco = strategy_parsed.get("remaining_skus_ads_recommendation")
+        remaining_skus_inventory_reco = strategy_parsed.get("remaining_skus_inventory_recommendation")
+
         # ===========================
         # BUILD RECOMMENDED ACTIONS
         # ===========================
 
         recommended_actions_mtd = {}
 
-        for row in top_80_skus:
+        for row in all_action_rows:
             sku = row.get("sku")
             if not sku:
                 continue
@@ -2951,9 +3042,11 @@ def live_mtd_vs_previous():
             remaining_skus_block = render_live_recommended_action(
                 growth_row=remaining_growth_row,
                 recommendation=remaining_skus_reco,
+                ads_recommendation=remaining_skus_ads_reco,
+                inventory_recommendation=remaining_skus_inventory_reco,
                 journey_summary=remaining_skus_journey,
                 currency_symbol=currency["symbol"],
-            )    
+            )  
 
 
         # ===========================
@@ -3086,6 +3179,7 @@ def live_mtd_vs_previous():
         # FINAL RESPONSE PAYLOAD
         # ---------------------------
         response_payload = {
+           
             "message": "Live MTD vs previous-month-same-period comparison",
             "objective_context": {
                 "growth_intent": user_objective.get("growth_intent"),
@@ -3145,15 +3239,26 @@ def live_mtd_vs_previous():
             
             "ai_insights": insights,
             "overall_summary": overall_summary,
-            "overall_actions": overall_actions,
+           "overall_actions": overall_actions,
             "portfolio_recommendation": portfolio_recommendation,
 
-            # 🔥 SKU CARDS
+            # ✅ All raw SKU actions from Prompt-2
+            # Contains journey_summary, recommendation, ads_recommendation, inventory_recommendation
+            "sku_strategy_actions": sku_strategy_actions,
+
+            # ✅ SKU rendered cards
             "recommended_actions_mtd": recommended_actions_mtd,
+
+            # ✅ Focus/Action metadata for frontend
+            "focus_skus": focus_skus_for_cards,
+            "all_action_skus": all_action_skus,
 
             # 🔥 Remaining SKUs
             "remaining_skus_recommendation": remaining_skus_reco,
-            "remaining_skus_block": remaining_skus_block,   # ✅ ADD THIS
+            "remaining_skus_ads_recommendation": remaining_skus_ads_reco,
+            "remaining_skus_inventory_recommendation": remaining_skus_inventory_reco,
+            "remaining_skus_journey_summary": remaining_skus_journey,
+            "remaining_skus_block": remaining_skus_block,
         }
 
         # # ---------------------------

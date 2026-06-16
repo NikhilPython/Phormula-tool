@@ -782,16 +782,35 @@ time_horizon:
 
 
 5) focus_skus
-Top 5 SKUs ranked by current CM1 profit.
 
-6) remaining_skus
-All SKUs NOT included in focus_skus.
+IMPORTANT:
+In this system, focus_skus means the COMPLETE ACTION SKU LIST.
 
-You must generate ONE consolidated commercial recommendation
-covering the collective behavior of these remaining SKUs.
+It may include:
+- top SKUs
+- other SKUs
+- new SKUs
+- reviving SKUs
+- low-sales SKUs
+- zero-current-sales SKUs
 
-This is a portfolio-level micro-action,
-NOT individual SKU analysis.
+You MUST generate sku_actions for EVERY SKU in focus_skus.
+
+Do NOT treat focus_skus as only the Top 5 SKUs.
+Do NOT skip SKUs because they are small, low-sales, inactive, new, or outside top contribution.
+
+6) remaining_skus_context
+
+remaining_skus_context is optional.
+
+If present, it represents ONE aggregated Remaining SKUs group.
+This is separate from individual sku_actions.
+
+You must generate ONE consolidated recommendation and journey for this aggregated group using:
+- remaining_skus_recommendation
+- remaining_skus_journey_summary
+- remaining_skus_ads_recommendation
+- remaining_skus_inventory_recommendation
 
 
 ────────────────────────────────────────
@@ -1287,12 +1306,35 @@ Language rules:
 
 
 
-────────────────────────────────────────
 YOUR CORE RESPONSIBILITY
 ────────────────────────────────────────
 
 For EACH SKU in focus_skus, produce a structured
 commercial action plan following the STRICT structure defined below.
+
+CRITICAL:
+focus_skus is the COMPLETE ACTION SKU LIST.
+Every SKU in focus_skus MUST appear in sku_actions.
+
+You must not return actions only for the top 5 SKUs.
+You must not skip low-sales, other, new, reviving, inactive, or zero-current-sales SKUs.
+
+For every SKU, return:
+- journey_summary
+- recommendation
+- ads_recommendation
+- inventory_recommendation
+
+If sku_time_series is missing or sparse for a SKU:
+- still return journey_summary using sku_live_context
+- keep it concise
+- do not leave it empty
+
+If ads data is missing or zero:
+- still return ads_recommendation as "Monitor current advertising."
+
+If inventory data is missing:
+- return inventory_recommendation as "Inventory position is stable."
 
 You are producing executive-level commercial reasoning,
 not pricing commands.
@@ -1561,27 +1603,25 @@ Good examples (clear action):
 CONSOLIDATED ACTION FOR REMAINING SKUS (CRITICAL)
 ────────────────────────────────────────
 
-In addition to sku_actions for focus_skus,
-you MUST generate ONE extra field:
+If remaining_skus_context is provided,
+you MUST generate these extra fields:
 
 "remaining_skus_recommendation"
+"remaining_skus_journey_summary"
+"remaining_skus_ads_recommendation"
+"remaining_skus_inventory_recommendation"
 
 Definition:
-- A single consolidated commercial action
-  covering all SKUs not present in focus_skus.
-- No journey summary.
-- No SKU-level breakdown.
-- Maximum 2 SHORT sentences.
-- Must strictly follow:
-    • objective_v2 alignment
-    • inventory clearance override logic
-    • business_context influence
-    • recommendation language simplicity rules
-    • 1_month time horizon
+- These fields cover the aggregated Remaining SKUs group only.
+- This is separate from sku_actions.
+- Do not use this as a reason to skip individual SKUs in focus_skus.
+- Maximum 2 SHORT sentences for remaining_skus_recommendation.
+- remaining_skus_journey_summary must be a list.
+- remaining_skus_ads_recommendation must be maximum 1 short sentence.
+- remaining_skus_inventory_recommendation must be maximum 1 short sentence.
 
 Purpose:
-Provide clear tactical direction for the
-long-tail SKU portfolio that is not individually analyzed.
+Provide clear tactical direction for the aggregated Remaining SKUs group while still returning individual sku_actions for every SKU in focus_skus.
 
 
 ────────────────────────────────────────
@@ -2230,11 +2270,21 @@ Return EXACTLY:
     }
   },
   "remaining_skus_recommendation": "string",
-   "remaining_skus_journey_summary": [
+  "remaining_skus_journey_summary": [
     "point 1",
     "point 2"
-  ]
+  ],
+  "remaining_skus_ads_recommendation": "string",
+  "remaining_skus_inventory_recommendation": "string"
 }
+
+CRITICAL SKU COMPLETENESS RULE:
+- Every SKU in focus_skus MUST appear as a key inside sku_actions.
+- The number of keys in sku_actions MUST equal the number of SKUs in focus_skus.
+- Do not return only top 5 SKUs.
+- Do not omit SKUs with sparse data.
+- Do not omit SKUs with zero sales.
+- Do not omit SKUs outside top contribution.
 
 ads_recommendation RULES (MANDATORY):
 
@@ -2262,8 +2312,8 @@ inventory_recommendation RULES (MANDATORY):
 
 Rules:
 - journey_summary must be an array (list), not a paragraph.
-- Every SKU in focus_skus MUST appear.
-- No extra keys.
+- Every SKU in focus_skus MUST appear inside sku_actions.
+- sku_actions must contain exactly one object for each SKU in focus_skus.
 - No markdown.
 - No commentary.
 - Valid JSON only.

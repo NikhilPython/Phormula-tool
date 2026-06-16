@@ -2575,7 +2575,6 @@ def select_focus_skus_by_sales_mix_from_rows(
     return selected
 
 
-
 def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     focus_set = set([str(x).strip() for x in (focus_skus or [])])
 
@@ -2586,6 +2585,27 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
 
     if not remaining:
         return None
+
+    # ✅ NEW: keep product names/SKUs included inside Remaining SKUs
+    included_products = []
+
+    for r in remaining:
+        sku = str(r.get("sku") or "").strip()
+        product_name = (
+            r.get("product_name")
+            or r.get("Product Name")
+            or sku
+        )
+
+        included_products.append({
+            "sku": sku,
+            "product_name": str(product_name).strip() or sku,
+        })
+
+    included_products = sorted(
+        included_products,
+        key=lambda x: x["product_name"].lower()
+    )
 
     prev_qty = sum(safe0(r.get("quantity_prev")) for r in remaining)
     curr_qty = sum(safe0(r.get("quantity_curr")) for r in remaining)
@@ -2605,6 +2625,11 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     return {
         "sku": "REMAINING_SEGMENT",
         "product_name": "Remaining SKUs",
+
+        # ✅ NEW
+        "included_products": included_products,
+        "included_product_count": len(included_products),
+
         "quantity_prev": prev_qty,
         "quantity_curr": curr_qty,
         "net_sales_prev": prev_sales,
@@ -2616,8 +2641,6 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
         "unit_wise_profitability_prev": prev_ppu,
         "unit_wise_profitability_curr": curr_ppu,
     }
-
-
 
 
 def build_ai_summary(
@@ -2822,6 +2845,22 @@ def build_ai_summary(
         row["cm2_profit_curr"] = round(cm2_profit, 2)
         row["cm2_margin_curr"] = cm2_margin
 
+    # =========================================================
+    # ✅ All SKU Action Context
+    # This is for product journey + all 3 recommendations.
+    # It does NOT change focus_skus or Remaining SKUs logic.
+    # =========================================================
+    all_sku_action_rows = [
+        row for row in (top_80_skus or [])
+        if str(row.get("sku") or "").strip()
+    ]
+
+    all_individual_skus = [
+        str(row.get("sku")).strip()
+        for row in all_sku_action_rows
+        if str(row.get("sku") or "").strip()
+    ]    
+
 
 
     # =========================================================
@@ -2854,10 +2893,44 @@ def build_ai_summary(
             "unit_profit_index_pct": up_pct,
         },
         "sku_tables": {
+            # Existing table
             "top_80_skus": top_80_skus,
-            
+
+            # ✅ Only 5 focus SKUs
+            "focus_skus": focus_skus,
+
+            # ✅ Every available SKU for journey + recommendations
+            "all_individual_skus": all_individual_skus,
+            "all_sku_action_rows": all_sku_action_rows,
+
+            # ✅ One aggregated Remaining SKUs row
+            "remaining_skus_aggregate": remaining_growth_row,
         },
+
         "sku_context": sku_context,
+
+        # ✅ NEW: tells AI to create journey + recommendations for every SKU
+        "product_action_context": {
+            "action_skus": all_individual_skus,
+            "action_rows": all_sku_action_rows,
+
+            "focus_skus": focus_skus,
+            "remaining_skus": remaining_growth_row,
+
+            "required_sku_outputs": [
+                "journey_summary",
+                "recommendation",
+                "ads_recommendation",
+                "inventory_recommendation",
+            ],
+
+            "required_remaining_skus_outputs": [
+                "remaining_skus_journey_summary",
+                "remaining_skus_recommendation",
+                "remaining_skus_ads_recommendation",
+                "remaining_skus_inventory_recommendation",
+            ],
+        },
         "inventory_signals": inv_payload,
         "portfolio_inventory_alerts": portfolio_inventory_payload,
         "selling_costs": {
