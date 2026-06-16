@@ -2489,6 +2489,93 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
 
     return sku_map, totals
 
+def select_focus_skus_by_sales_mix_from_rows(
+    sku_rows: list[dict],
+    threshold: float = 80.0,
+    min_focus: int = 5,
+) -> list[str]:
+    ranked = []
+
+    # -------------------------------------------------
+    # Primary ranking: sales_mix / Sales Mix (Current)
+    # -------------------------------------------------
+    for row in sku_rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        sku = str(row.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        sales_mix = row.get("sales_mix_curr")
+        if sales_mix is None:
+            sales_mix = row.get("Sales Mix (Current)")
+        if sales_mix is None:
+            sales_mix = row.get("sales_mix")
+
+        if sales_mix is None:
+            continue
+
+        try:
+            ranked.append((sku, float(sales_mix)))
+        except (TypeError, ValueError):
+            continue
+
+    using_sales_mix = bool(ranked)
+
+    # -------------------------------------------------
+    # Fallback ranking: current net_sales
+    # This prevents everything collapsing into Remaining SKUs
+    # if sales_mix is missing.
+    # -------------------------------------------------
+    if not ranked:
+        for row in sku_rows or []:
+            if not isinstance(row, dict):
+                continue
+
+            sku = str(row.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            net_sales = row.get("net_sales_curr")
+            if net_sales is None:
+                net_sales = row.get("net_sales")
+
+            if net_sales is None:
+                continue
+
+            try:
+                ranked.append((sku, float(net_sales)))
+            except (TypeError, ValueError):
+                continue
+
+    ranked.sort(key=lambda x: x[1], reverse=True)
+
+    if not ranked:
+        return []
+
+    cumulative = 0.0
+    selected = []
+
+    for sku, value in ranked:
+        selected.append(sku)
+
+        if using_sales_mix:
+            cumulative += value
+            if cumulative >= threshold:
+                break
+        else:
+            if len(selected) >= min_focus:
+                break
+
+    # ✅ Always return at least 5 SKUs where available
+    if len(selected) < min_focus:
+        return [sku for sku, _ in ranked[:min_focus]]
+
+    return selected
+
+
+
 def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     focus_set = set([str(x).strip() for x in (focus_skus or [])])
 
@@ -2635,12 +2722,17 @@ def build_ai_summary(
         if row.get("sku") not in SKUS_TO_SKIP
     ]
 
-    # Remove them from focus_skus (THIS IS THE MISSING PART)
-    if focus_skus:
-        focus_skus = [
-            sku for sku in focus_skus
-            if sku not in SKUS_TO_SKIP
-        ]
+    # ✅ Build focus_skus from filtered top_80_skus
+    # Logic:
+    # - rank by sales_mix / Sales Mix (Current)
+    # - stop once cumulative sales mix reaches 80%
+    # - but always return at least 5 SKUs if available
+    # - fallback to net_sales top 5 if sales_mix is missing
+    focus_skus = select_focus_skus_by_sales_mix_from_rows(
+        sku_rows=top_80_skus,
+        threshold=80.0,
+        min_focus=5,
+    )
 
     # ✅ Build aggregated remaining segment
     remaining_segment_raw = build_remaining_skus_aggregate(
@@ -3123,6 +3215,246 @@ def generate_live_insight_with_app_context(app, item, country, prev_label, curr_
             user_id,
             month2
         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
