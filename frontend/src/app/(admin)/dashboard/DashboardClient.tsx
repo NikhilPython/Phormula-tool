@@ -2313,8 +2313,6 @@ export default function DashboardPage() {
         );
     }, [previousDisplayMonth]);
 
-
-
     const lastUpdatedTimeText = useMemo(() => {
         if (!lastRefreshAt) return "";
 
@@ -2328,6 +2326,18 @@ export default function DashboardPage() {
                 ? formatLastUpdatedDateTime(lastRefreshAt, "America/Toronto")
                 : formatLastUpdatedDateTime(lastRefreshAt, "Europe/London");
     }, [lastRefreshAt, platform, isUsAmazonConnected, activeDateRegion]);
+
+    const dashboardCompletedTimeZone = useMemo(() => {
+        if (platform === "global" && isUsAmazonConnected) {
+            return "America/Los_Angeles";
+        }
+
+        if (activeDateRegion === "US") return "America/Los_Angeles";
+        if (activeDateRegion === "CA") return "America/Toronto";
+        if (activeDateRegion === "UK") return "Europe/London";
+
+        return "Asia/Kolkata";
+    }, [platform, isUsAmazonConnected, activeDateRegion]);
 
     const countryLastRefreshTimeText = useMemo(() => {
         const selected = countryTime?.selected_country;
@@ -11682,10 +11692,10 @@ ${pageLoading
                                                     ? true
                                                     : biCardsReady
                                         }
-
-                                        // ✅ add these
                                         periodCompletedPct={finalRangeCompletedPct}
                                         periodCompletedLabel="Month"
+                                        completedAt={lastRefreshAt}
+                                        completedTimeZone={dashboardCompletedTimeZone}
                                     />
                                 </div>
                             </div>

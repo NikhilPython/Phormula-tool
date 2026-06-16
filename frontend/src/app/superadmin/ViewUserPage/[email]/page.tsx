@@ -3,10 +3,22 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Settings, Mail, Building2, BarChart3, Users, UserCircle2 } from "lucide-react";
+import {
+  Settings,
+  Users,
+  ArrowLeft,
+  Building2,
+  Package,
+  Database,
+  CalendarDays,
+  BadgePoundSterling,
+  Landmark,
+  ClipboardList,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
-import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
-import SummaryMetricCardLarge from "../SummaryMetricCardLarge";
+// import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
+// import SummaryMetricCardLarge from "../SummaryMetricCardLarge";
 
 type AnyRecord = Record<string, any>;
 
@@ -76,6 +88,42 @@ type MemberRow = {
   modules?: string[];
   role?: string;
 };
+
+type AdminSectionCardProps = {
+  title: string;
+  description?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+};
+
+function AdminSectionCard({
+  title,
+  description,
+  icon,
+  children,
+}: AdminSectionCardProps) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-4">
+        {icon && (
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5EA68E]/10 text-[#5EA68E]">
+            {icon}
+          </div>
+        )}
+
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+
+          {description && (
+            <p className="mt-1 text-sm text-slate-500">{description}</p>
+          )}
+        </div>
+      </div>
+
+      <div>{children}</div>
+    </section>
+  );
+}
 
 export default function ViewUserPage() {
   const params = useParams<{ email: string }>();
@@ -375,10 +423,10 @@ export default function ViewUserPage() {
   }, [data?.months_of_data_count]);
 
   const profitabilityLabel = useMemo(() => {
-  const val = Number(data?.profitability);
-  if (data?.profitability == null || Number.isNaN(val)) return "Not available";
-  return Math.round(val).toLocaleString("en-US");
-}, [data?.profitability]);
+    const val = Number(data?.profitability);
+    if (data?.profitability == null || Number.isNaN(val)) return "Not available";
+    return Math.round(val).toLocaleString("en-US");
+  }, [data?.profitability]);
 
   const savingsLabel = useMemo(() => {
     const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
@@ -402,49 +450,73 @@ export default function ViewUserPage() {
       key: "brandName",
       title: "Brand Name",
       value: data?.brand_name || "-",
-      className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
+      icon: <Building2 size={20} />,
+      accent: "from-amber-400 to-orange-500",
+      bg: "bg-amber-50",
+      text: "text-amber-700",
     },
     {
       key: "companyName",
       title: "Company Name",
       value: data?.company_name || "-",
-      className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+      icon: <Landmark size={20} />,
+      accent: "from-orange-400 to-rose-500",
+      bg: "bg-orange-50",
+      text: "text-orange-700",
     },
     {
       key: "totalSku",
       title: "Total SKU",
       value: data?.sku_count ?? "-",
-      className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+      icon: <Package size={20} />,
+      accent: "from-sky-400 to-blue-500",
+      bg: "bg-sky-50",
+      text: "text-sky-700",
     },
     {
       key: "marketplaceId",
       title: "Marketplace ID",
       value: data?.marketplace_id || "-",
-      className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+      icon: <ClipboardList size={20} />,
+      accent: "from-red-400 to-rose-500",
+      bg: "bg-red-50",
+      text: "text-red-700",
     },
     {
       key: "dataFetch",
       title: "Data Fetch",
       value: dataFetchLabel,
-      className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+      icon: <Database size={20} />,
+      accent: "from-stone-400 to-amber-600",
+      bg: "bg-stone-50",
+      text: "text-stone-700",
     },
     {
       key: "onboardSince",
       title: "Onboard Since",
       value: onboardSince,
-      className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+      icon: <CalendarDays size={20} />,
+      accent: "from-cyan-400 to-teal-500",
+      bg: "bg-cyan-50",
+      text: "text-cyan-700",
     },
     {
-  key: "profitability",
-  title: "CM2 Profit (Last Month)",   // 👈 changed here
-  value: profitabilityLabel,
-  className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-},
+      key: "profitability",
+      title: "CM2 Profit",
+      value: profitabilityLabel,
+      icon: <BadgePoundSterling size={20} />,
+      accent: "from-lime-400 to-emerald-500",
+      bg: "bg-lime-50",
+      text: "text-lime-700",
+    },
     {
       key: "savings",
       title: "Savings",
       value: savingsLabel,
-      className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+      icon: <BadgePoundSterling size={20} />,
+      accent: "from-emerald-400 to-green-600",
+      bg: "bg-emerald-50",
+      text: "text-emerald-700",
     },
   ];
 
@@ -470,99 +542,146 @@ export default function ViewUserPage() {
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-emerald-50 via-slate-50 to-slate-100 p-4 sm:p-6">
-      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#5EA68E] to-[#1f5274] rounded-2xl shadow-lg">
-        <div className="mx-auto px-4 sm:px-6 mb-6">
-          <div className="flex items-center justify-between gap-3 py-3 sm:py-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Image
-                width={220}
-                height={40}
-                src="/images/auth/Phormula.png"
-                alt="Phormula"
-                priority
-                className="2xl:w-[220px] 2xl:h-[50px] xl:w-[150px] w-auto"
-              />
-            </div>
+      <div className="space-y-6">
+        {/* Hero */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="relative bg-gradient-to-r from-[#37455F] via-[#40516E] to-[#5EA68E] px-6 py-6 text-white">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_35%)]" />
 
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="relative">
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <Image
+                  width={210}
+                  height={44}
+                  src="/images/auth/Phormula.png"
+                  alt="Phormula"
+                  priority
+                  className="h-auto w-[170px] sm:w-[210px]"
+                />
+
+                <div className="hidden h-10 w-px bg-white/20 sm:block" />
+
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
+                    Admin Profile
+                  </p>
+
+                  <h1 className="mt-1 truncate text-2xl font-bold tracking-tight">
+                    {data?.brand_name || "Admin Details"}
+                  </h1>
+
+                  <p className="mt-1 truncate text-sm text-white/75">
+                    {data?.email || email}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowSettings((s) => !s)}
-                  className="inline-flex items-center justify-center rounded-lg p-3 text-white bg-white/10 hover:bg-white/20 font-medium shadow focus:outline-none focus:ring-4 focus:ring-white/30"
-                  aria-label="Open settings"
+                  onClick={() => {
+                    if (window.history.length > 1) {
+                      router.back();
+                    } else {
+                      router.push("/superadmin/CDPAdminConsole");
+                    }
+                  }}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20"
                 >
-                  <Settings size={20} />
+                  <ArrowLeft size={17} />
+                  Back to Admins
                 </button>
 
-                {showSettings && (
-                  <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-lg bg-white text-slate-800 shadow-2xl ring-1 ring-black/5 overflow-hidden">
-                    <button
-                      onClick={() => router.push("/superadmin/Superadminchangepassword")}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b"
-                    >
-                      Change Password
-                    </button>
-                    <button
-                      onClick={() => router.push("/superadmin/DeleteAdmin")}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b"
-                    >
-                      Delete Admin
-                    </button>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowSettings((s) => !s)}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white shadow-sm transition hover:bg-white/20"
+                    aria-label="Open settings"
+                  >
+                    <Settings size={19} />
+                  </button>
+
+                  {showSettings && (
+                    <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl">
+                      <button
+                        onClick={() =>
+                          router.push("/superadmin/Superadminchangepassword")
+                        }
+                        className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-slate-50"
+                      >
+                        Change Password
+                      </button>
+
+                      <button
+                        onClick={() => router.push("/superadmin/DeleteAdmin")}
+                        className="w-full border-t border-slate-100 px-4 py-3 text-left text-sm font-medium hover:bg-slate-50"
+                      >
+                        Delete Admin
+                      </button>
+
+                      <button
+                        onClick={handleLogout}
+                        className="w-full border-t border-slate-100 px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
 
-      <div className="mt-6 space-y-8">
-        <div className="flex items-center my-2">
-          <button
-            onClick={() => {
-              if (window.history.length > 1) {
-                router.back();
-              } else {
-                router.push("/superadmin/CDPAdminConsole");
-              }
-            }}
-            className="inline-flex items-center gap-2 text-sm font-medium text-[#1f5274] hover:text-[#5EA68E] transition"
-          >
-            ← Back to Admins
-          </button>
-        </div>
-        {/* Admin profile card */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {infoCards.map((card) => (
-            <SummaryMetricCardLarge
-              key={card.key}
-              title={card.title}
-              value={card.value}
-              className={card.className}
-            />
-          ))}
-        </div>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+            {infoCards.map((card) => (
+              <div
+                key={card.key}
+                className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div
+                  className={`absolute left-0 top-0 h-1 w-full bg-gradient-to-r ${card.accent}`}
+                />
 
-        <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-          <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-            <h2 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-              Business Journey
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              AI-generated summary of the Admin&apos;s business journey
-            </p>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-500">
+                      {card.title}
+                    </p>
+
+                    <h3 className="mt-2 truncate text-2xl font-bold text-slate-950">
+                      {card.value}
+                    </h3>
+                  </div>
+
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${card.bg} ${card.text}`}
+                  >
+                    {card.icon}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div className="">
-            <div className="rounded-2xl  bg-white p-5 shadow-sm">
-              <p className="text-sm leading-5 text-slate-600 whitespace-pre-line">
+        {/* Error */}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Business Journey */}
+        <AdminSectionCard
+          title="Business Journey"
+          // description="AI-generated summary of this admin's business journey"
+          icon={<Sparkles size={20} />}
+        >
+          <div className="p-5">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5">
+              <p className="text-sm leading-6 text-slate-600 whitespace-pre-line">
                 {isSummaryExpanded ? fullSummary : shortSummary}
               </p>
 
@@ -570,118 +689,104 @@ export default function ViewUserPage() {
                 <button
                   type="button"
                   onClick={() => setIsSummaryExpanded((prev) => !prev)}
-                  className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-[#1f5274] hover:bg-slate-50"
+                  className="mt-4 inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-[#37455F] shadow-sm transition hover:bg-slate-50"
                 >
                   {isSummaryExpanded ? "Show less" : "Show more"}
                 </button>
               )}
             </div>
           </div>
-        </section>
+        </AdminSectionCard>
 
+        {/* Stock, Transit & Targets */}
         {data?.related_country_profiles?.length ? (
-          <section className="space-y-3">
-            <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-              <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-                  Stock, Transit & Targets
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Operational settings for this admin
-                </p>
-              </div>
+          <AdminSectionCard
+            title="Stock, Transit & Targets"
+            // description="Operational settings configured for this admin"
+            icon={<ClipboardList size={20} />}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px] table-auto">
+                <thead className="bg-white">
+                  <tr className="border-b border-slate-200">
+                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Country
+                    </th>
+                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Stock Unit
+                    </th>
+                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Transit Time
+                    </th>
+                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Target
+                    </th>
+                  </tr>
+                </thead>
 
-              <div className="p-6 sm:p-8">
-                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full table-auto">
-                    <thead className="bg-slate-100">
-                      <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Country
-                        </th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Stock Unit
-                        </th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Transit Time
-                        </th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Target
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.related_country_profiles?.map((p, index) => (
-                        <tr
-                          key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
-                          className="border-t"
-                        >
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
-                            {p.country?.toUpperCase() || "-"}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-                            {p.stock_unit ?? "-"}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-                            {p.transit_time ?? "-"}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-                            {p.target_sales ?? data?.target_sales ?? "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                <tbody>
+                  {data.related_country_profiles?.map((p, index) => (
+                    <tr
+                      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
+                      className="border-b border-slate-100 transition hover:bg-slate-50/80"
+                    >
+                      <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                        <span className="inline-flex rounded-full bg-[#5EA68E]/10 px-3 py-1 text-xs font-bold text-[#5EA68E]">
+                          {p.country?.toUpperCase() || "-"}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {p.stock_unit ?? "-"}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {p.transit_time ?? "-"}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {p.target_sales ?? data?.target_sales ?? "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </section>
+          </AdminSectionCard>
         ) : null}
 
-        {/* Members section */}
-        <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-          <div className="flex items-center justify-between gap-3 px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-[#5EA68E]/10 p-3 text-[#5EA68E]">
-                <Users size={20} />
-              </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-                  Members Information
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {members.length} member{members.length !== 1 ? "s" : ""} added by this admin
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 sm:p-8">
+        {/* Members */}
+        <AdminSectionCard
+          title="Members Information"
+          // description={`${members.length} member${members.length !== 1 ? "s" : ""} added by this admin`}
+          icon={<Users size={20} />}
+        >
+          <div>
             {membersLoading ? (
-              <div className="flex items-center justify-center py-10">
+              <div className="flex items-center justify-center py-14">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1f5274]/30 border-t-[#1f5274]" />
               </div>
             ) : members.length > 0 ? (
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="w-full table-auto">
-                  <thead className="bg-slate-100">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1050px] table-auto">
+                  <thead className="bg-white">
+                    <tr className="border-b border-slate-200">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Member Name
                       </th>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Email
                       </th>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Role
                       </th>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Countries
                       </th>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Modules
                       </th>
-                      <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600 whitespace-nowrap">
+                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                         Marketplace IDs
                       </th>
                     </tr>
@@ -691,26 +796,29 @@ export default function ViewUserPage() {
                     {members.map((member, index) => (
                       <tr
                         key={`${member.email || member.member_name || "member"}-${index}`}
-                        className="border-t hover:bg-slate-50 transition-colors"
+                        className="border-b border-slate-100 transition hover:bg-slate-50/80"
                       >
-                        <td className="px-4 py-4 text-sm text-slate-800 font-semibold whitespace-nowrap">
+                        <td className="px-5 py-4 text-sm font-semibold text-slate-900 whitespace-nowrap">
                           {member.member_name || "-"}
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700 break-all ">
+
+                        <td className="px-5 py-4 text-sm text-slate-600 break-all">
                           {member.email || "-"}
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700 whitespace-nowrap">
-                          <span className="inline-flex rounded-full bg-[#1f5274]/10 text-[#1f5274] px-3 py-1 text-xs font-semibold">
+
+                        <td className="px-5 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          <span className="inline-flex rounded-full bg-[#37455F]/10 px-3 py-1 text-xs font-bold text-[#37455F]">
                             {member.role || "-"}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700">
+
+                        <td className="px-5 py-4 text-sm text-slate-600">
                           <div className="flex flex-wrap gap-2">
                             {(member.countries || []).length > 0 ? (
                               member.countries?.map((country, i) => (
                                 <span
                                   key={`${country}-${i}`}
-                                  className="inline-flex rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-medium"
+                                  className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
                                 >
                                   {country}
                                 </span>
@@ -720,13 +828,14 @@ export default function ViewUserPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700 min-w-[220px]">
+
+                        <td className="min-w-[220px] px-5 py-4 text-sm text-slate-600">
                           <div className="flex flex-wrap gap-2">
                             {(member.modules || []).length > 0 ? (
                               member.modules?.map((module, i) => (
                                 <span
                                   key={`${module}-${i}`}
-                                  className="inline-flex rounded-full bg-slate-100 text-slate-700 px-2.5 py-1 text-xs font-medium"
+                                  className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
                                 >
                                   {module.replaceAll("_", " ")}
                                 </span>
@@ -736,13 +845,14 @@ export default function ViewUserPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700">
+
+                        <td className="px-5 py-4 text-sm text-slate-600">
                           <div className="flex flex-wrap gap-2">
                             {(member.marketplace_ids || []).length > 0 ? (
                               member.marketplace_ids?.map((id, i) => (
                                 <span
                                   key={`${id}-${i}`}
-                                  className="inline-flex rounded-full bg-blue-100 text-blue-700 px-2.5 py-1 text-xs font-medium"
+                                  className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
                                 >
                                   {id}
                                 </span>
@@ -758,14 +868,24 @@ export default function ViewUserPage() {
                 </table>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-                <p className="text-slate-600 font-medium">No members found for this admin.</p>
+              <div className="p-5">
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <Users size={22} />
+                  </div>
+
+                  <p className="mt-4 font-semibold text-slate-700">
+                    No members found for this admin.
+                  </p>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Members added by this admin will appear here.
+                  </p>
+                </div>
               </div>
             )}
           </div>
-        </section>
-
-
+        </AdminSectionCard>
       </div>
     </div>
   );

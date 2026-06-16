@@ -25,7 +25,6 @@ type BiAlignedTotalsCard = {
 
 };
 
-
 type Props = {
   data: RegionMetrics;
   homeCurrency: CurrencyCode;
@@ -48,6 +47,10 @@ type Props = {
 
   currentMonthLabel?: string;
   previousMonthLabel?: string;
+
+  // ✅ add these
+  completedAt?: number | string | Date | null;
+  completedTimeZone?: string;
 };
 
 const currencySymbolMap: Record<CurrencyCode, string> = {
@@ -79,6 +82,8 @@ function SalesTargetCard({
   periodCompletedLabel,
   currentMonthLabel,
   previousMonthLabel,
+  completedAt,
+  completedTimeZone,
 }: Props) {
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
@@ -193,12 +198,45 @@ function SalesTargetCard({
   const toDeg_DecTarget = 180 * decDraw;
   const toDeg_Orange = 180 * orangeDraw;
 
-  // const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
+  const getMonthCompletedPctTillYesterday = (
+    timestamp?: number | string | Date | null,
+    timeZone?: string
+  ) => {
+    if (!timestamp || !timeZone) return 0;
+
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return 0;
+
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value || "";
+
+    const year = Number(get("year"));
+    const month = Number(get("month")); // 1..12
+    const day = Number(get("day"));
+
+    if (!year || !month || !day) return 0;
+
+    // ✅ date - 1 because current day is still going on
+    const completedDay = Math.max(day - 1, 0);
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    return daysInMonth > 0 ? (completedDay / daysInMonth) * 100 : 0;
+  };
 
   const completedPct =
-    typeof periodCompletedPct === "number" && Number.isFinite(periodCompletedPct)
-      ? periodCompletedPct
-      : 0;
+    completedAt && completedTimeZone
+      ? getMonthCompletedPctTillYesterday(completedAt, completedTimeZone)
+      : typeof periodCompletedPct === "number" && Number.isFinite(periodCompletedPct)
+        ? periodCompletedPct
+        : 0;
 
   const completedLabel = periodCompletedLabel ?? "Month";
 

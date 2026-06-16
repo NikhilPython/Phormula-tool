@@ -282,14 +282,7 @@ export default function SuperAdminLayoutClient({
                                 {sidebarCollapsed ? <ChevronRight size={22} /> : <ChevronLeft size={22} />}
                             </button>
 
-                            <div>
-                                <h1 className="truncate text-lg sm:text-2xl font-semibold tracking-tight text-[#414042]">
-                                    Super Admin Dashboard
-                                </h1>
-                                <p className="hidden text-xs text-slate-500 sm:block">
-                                    Manage users, brands, companies and marketplaces
-                                </p>
-                            </div>
+                            
                         </div>
 
                         <div className="relative">

@@ -2,12 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaSearch, FaLongArrowAltRight } from "react-icons/fa";
-import { Trash2 } from "lucide-react";
+import { FaSearch } from "react-icons/fa";
+import { Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Loader from "@/components/loader/Loader";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import SummaryMetricCardLarge from "../ViewUserPage/SummaryMetricCardLarge";
+import AdminDataTable from "@/components/admin/AdminDataTable";
 
 const MIN_LOADER_MS = 3000;
 
@@ -358,28 +359,100 @@ export default function SuperAdminDashboardPage() {
     {
       title: "Total Users",
       value: totalUsers,
-      accent: "border-[#F4C04E] border-t-[#F4C04E]",
       subText: `${activeUsers} active users`,
+      accent: "from-amber-400 to-orange-500",
+      bg: "bg-amber-50",
+      text: "text-amber-700",
     },
     {
       title: "Active Brands",
       value: totalBrands,
-      accent: "border-[#C78B57] border-t-[#C78B57]",
       subText: `${totalBrands} total brands`,
+      accent: "from-emerald-400 to-teal-500",
+      bg: "bg-emerald-50",
+      text: "text-emerald-700",
     },
     {
       title: "Companies",
       value: totalCompanies,
-      accent: "border-[#2EA8E5] border-t-[#2EA8E5]",
       subText: `${totalCompanies} total companies`,
+      accent: "from-sky-400 to-blue-500",
+      bg: "bg-sky-50",
+      text: "text-sky-700",
     },
     {
       title: "Marketplaces",
       value: totalMarketplaces,
-      accent: "border-[#93A95B] border-t-[#93A95B]",
       subText: `${inactiveUsers} inactive users`,
+      accent: "from-violet-400 to-indigo-500",
+      bg: "bg-violet-50",
+      text: "text-violet-700",
     },
   ];
+
+  const tableColumns = [
+    "Brand Name",
+    "Company",
+    "Native Country",
+    "Marketplace",
+    "Name",
+    "Email",
+    "Status",
+    "Actions",
+  ];
+
+  const confirmToggleStatus = (user: UserRow) => {
+    const currentStatus = normalizeStatus(user.status);
+    const nextLabel = currentStatus === "active" ? "disable" : "enable";
+
+    toast.custom(
+      (toastId) => (
+        <div className="w-[360px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Confirm status change
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-600">
+              Are you sure you want to {nextLabel}{" "}
+              <span className="font-medium text-slate-900">
+                {user.email}
+              </span>
+              ?
+            </p>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => toast.dismiss(toastId)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(toastId);
+                handleToggleStatus(user);
+              }}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${currentStatus === "active"
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+            >
+              Yes, {nextLabel}
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        duration: Infinity,
+        position: "top-center",
+      }
+    );
+  };
 
   const handleToggleStatus = async (user: UserRow) => {
     const emailKey = user.email;
@@ -466,11 +539,51 @@ export default function SuperAdminDashboardPage() {
     }
   };
 
-  const handleDeleteAdmin = async (email: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${email}?`
+  const confirmDeleteAdmin = (email: string) => {
+    toast.custom(
+      (toastId) => (
+        <div className="w-[360px] rounded-xl border border-red-100 bg-white p-4 shadow-xl">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Delete admin?
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-600">
+              This will permanently delete{" "}
+              <span className="font-medium text-slate-900">{email}</span>.
+            </p>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => toast.dismiss(toastId)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(toastId);
+                handleDeleteAdmin(email);
+              }}
+              className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+            >
+              Yes, delete
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        duration: Infinity,
+        position: "top-center",
+      }
     );
-    if (!confirmed) return;
+  };
+
+  const handleDeleteAdmin = async (email: string) => {
 
     try {
       setActionLoading((prev) => ({ ...prev, [email]: true }));
@@ -528,81 +641,85 @@ export default function SuperAdminDashboardPage() {
       const isBusy = !!actionLoading[user.email];
 
       return (
-        <tr key={user.id} className="border-t">
-          <td className="px-4 py-3 text-sm text-slate-700">
-            {user.brand_name || "Not added"}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700">
-            {user.company_name || "Not added"}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700">
-            {nativeCountry}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700 capitalize">
-            {marketplaceIntegration}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700">
-            {user.name || "Not added"}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700 break-all">
-            {user.email || "Not added"}
-          </td>
-
-          <td className="px-4 py-3 text-sm text-slate-700">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-2">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${userStatus === "active" ? "bg-green-500" : "bg-red-500"
-                    }`}
-                />
-                <span className="capitalize">{userStatus}</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleToggleStatus(user)}
-                disabled={isBusy}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${userStatus === "active" ? "bg-emerald-500" : "bg-slate-300"
-                  } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
-                title={
-                  userStatus === "active" ? "Disable admin" : "Enable admin"
-                }
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${userStatus === "active" ? "translate-x-6" : "translate-x-1"
-                    }`}
-                />
-              </button>
+        <tr
+          key={user.id}
+          className="group border-b border-slate-100 transition hover:bg-slate-50/80"
+        >
+          <td className="px-5 py-4">
+            <div className="font-medium text-slate-900">
+              {user.brand_name || "Not added"}
             </div>
           </td>
 
-          <td className="px-4 py-3 text-sm text-slate-700">
+          <td className="px-5 py-4 text-sm text-slate-600">
+            {user.company_name || "Not added"}
+          </td>
+
+          <td className="px-5 py-4 text-sm text-slate-600">
+            {nativeCountry}
+          </td>
+
+          <td className="px-5 py-4">
+            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium capitalize text-slate-700">
+              {marketplaceIntegration}
+            </span>
+          </td>
+
+          <td className="px-5 py-4 text-sm font-medium text-slate-800">
+            {user.name || "Not added"}
+          </td>
+
+          <td className="px-5 py-4 text-sm text-slate-600 break-all">
+            {user.email || "Not added"}
+          </td>
+
+          <td className="px-5 py-4">
+            <button
+              type="button"
+              onClick={() => confirmToggleStatus(user)}
+              disabled={isBusy}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${userStatus === "active" ? "bg-emerald-500" : "bg-slate-300"
+                } ${isBusy ? "cursor-not-allowed opacity-60" : ""}`}
+              title={userStatus === "active" ? "Disable admin" : "Enable admin"}
+              aria-label={
+                userStatus === "active"
+                  ? `Disable ${user.email}`
+                  : `Enable ${user.email}`
+              }
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${userStatus === "active" ? "translate-x-6" : "translate-x-1"
+                  }`}
+              />
+            </button>
+          </td>
+
+          <td className="px-5 py-4">
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() =>
                   router.push(
                     `/superadmin/ViewUserPage/${encodeURIComponent(user.email)}`
                   )
                 }
-                className="inline-flex items-center justify-center p-1.5 rounded-md bg-white border border-[#414042] text-[#414042] shadow"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-[#37455F]"
+                title="View user"
+                aria-label={`View ${user.email}`}
               >
-                View <FaLongArrowAltRight className="pl-1" />
+                <Eye size={18} />
               </button>
 
               <button
                 type="button"
-                onClick={() => handleDeleteAdmin(user.email)}
+                onClick={() => confirmDeleteAdmin(user.email)}
                 disabled={isBusy}
-                className={`inline-flex items-center justify-center px-3 py-2 rounded-md border border-red-200 bg-red-50 text-red-600 shadow-sm hover:bg-red-100 ${isBusy ? "opacity-60 cursor-not-allowed" : ""
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 shadow-sm transition hover:bg-red-100 ${isBusy ? "cursor-not-allowed opacity-60" : ""
                   }`}
                 title="Delete admin"
+                aria-label={`Delete ${user.email}`}
               >
-                <Trash2 size={16} />
+                <Trash2 size={17} />
               </button>
             </div>
           </td>
@@ -612,185 +729,137 @@ export default function SuperAdminDashboardPage() {
 
   return (
     <>
-      <div className="flex justify-end pb-5">
-        <form
-          onSubmit={handleEmailSearch}
-          className="hidden md:flex items-center gap-2"
-        >
-          <div className="relative">
-            <input
-              type="text"
-              value={emailInput}
-              onChange={handleSearchInputChange}
-              placeholder="Search email, brand..."
-              className="w-[280px] lg:w-[360px] rounded-lg bg-white text-slate-800 placeholder:text-slate-400 border border-slate-200 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 px-4 py-2.5 shadow"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <FaSearch />
-            </span>
+      <div className="space-y-6">
+        {/* Header / Hero */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="relative bg-gradient-to-r from-[#37455F] via-[#40516E] to-[#5EA68E] px-6 py-6 text-white">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_35%)]" />
+
+            <div className="relative">
+              <h1 className="mt-2 text-2xl font-bold tracking-tight">
+                Super Admin Dashboard
+              </h1>
+
+              <p className="mt-1 max-w-2xl text-sm text-white/75">
+                Manage users, brands, companies, marketplace access, account status and
+                registry actions from one place.
+              </p>
+            </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#37455F] px-4 py-2.5 font-semibold text-[#f8edce] hover:opacity-90 disabled:opacity-60"
-          >
-            Search
-          </button>
-        </form>
-      </div>
+          <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((card) => (
+              <div
+                key={card.title}
+                className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div
+                  className={`absolute left-0 top-0 h-1 w-full bg-gradient-to-r ${card.accent}`}
+                />
 
-      {showSearch && (
-        <form onSubmit={handleEmailSearch} className="mb-5 md:hidden">
-          <div className="relative">
-            <input
-              type="text"
-              value={emailInput}
-              onChange={handleSearchInputChange}
-              placeholder="Search email, brand..."
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-slate-800 shadow placeholder:text-slate-400 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="absolute right-1.5 top-1.5 inline-flex items-center justify-center rounded-md bg-[#37455F] px-3 py-1.5 text-white hover:opacity-90"
-            >
-              Go
-            </button>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500">
+                      {card.title}
+                    </p>
+
+                    <h3 className="mt-2 text-3xl font-bold text-slate-950">
+                      {card.value.toLocaleString()}
+                    </h3>
+
+                    <p className="mt-2 text-sm text-slate-500">
+                      {card.subText}
+                    </p>
+                  </div>
+
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-xl ${card.bg} ${card.text}`}
+                  >
+                    <span className="text-lg font-bold">
+                      {String(card.title).charAt(0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </form>
-      )}
+        </section>
 
-      <div className="space-y-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {summaryCards.map((card) => (
-            <SummaryMetricCardLarge
-              key={card.title}
-              title={card.title}
-              value={card.value.toLocaleString()}
-              className={`bg-white border border-t-4 ${card.accent}`}
-              comparisons={[
-                {
-                  label: "Summary",
-                  valueText: card.subText,
-                  deltaText: "-",
-                  deltaClassName: "text-gray-400",
-                },
-              ]}
-              valueClassName="text-[#414042]"
-            />
-          ))}
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-t-xl border border-b-0 border-slate-200 bg-white px-4 py-3">
-          <h2 className="text-sm sm:text-base font-semibold text-[#5EA68E]">
-            User Brand Registry
-          </h2>
-
-          <SegmentedToggle
-            value={statusFilter}
-            options={STATUS_OPTIONS}
-            onChange={setStatusFilter}
-            compact
-            className="w-fit"
-            textSizeClass="text-[10px] sm:text-xs"
-          />
-        </div>
-      </div>
-
-      <div className="mx-auto">
+        {/* Error */}
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
           </div>
         )}
 
-        {loading ? (
-          <Loader fullscreen backgroundClass="bg-white/80" />
-        ) : (
-          <div className="space-y-8">
-            {searchResult ? (
-              <section>
-                <h3 className="mb-3 text-xl font-semibold text-slate-700">
-                  Search Results for:{" "}
-                  <span className="text-slate-900">{emailInput}</span>
-                </h3>
+        {/* Registry Panel */}
+        {/* Registry Panel */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* Section Header */}
+          <div className="border-b border-slate-200 bg-white px-5 py-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  User Brand Registry
+                </h2>
+              </div>
 
-                <div className="overflow-x-auto rounded-xl bg-white shadow ring-1 ring-slate-200">
-                  <table className="min-w-[1100px] w-full table-auto">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Brand Name
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Company Name
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Native Country
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Marketplace Integration
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Name
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Email
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Status
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>{renderTableRows(filteredUsers)}</tbody>
-                  </table>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="relative w-full sm:w-[340px] lg:w-[400px]">
+                  <input
+                    type="text"
+                    value={emailInput}
+                    onChange={handleSearchInputChange}
+                    placeholder="Search by Email, Brand or Company..."
+                    className="h-[38px] w-full rounded-xl border border-slate-200 bg-white px-4 pr-11 text-sm text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/15"
+                  />
+
+                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    <FaSearch />
+                  </span>
                 </div>
-              </section>
-            ) : (
-              defaultData && (
-                <section>
-                  <div className="overflow-x-auto rounded-xl bg-white shadow ring-1 ring-slate-200">
-                    <table className="min-w-[1100px] w-full table-auto">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Brand Name
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Company Name
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Native Country
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Marketplace Integration
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Name
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Email
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Status
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>{renderTableRows(filteredUsers)}</tbody>
-                    </table>
-                  </div>
-                </section>
-              )
-            )}
+
+                <SegmentedToggle
+                  value={statusFilter}
+                  options={STATUS_OPTIONS}
+                  onChange={setStatusFilter}
+                  compact
+                  className="w-fit rounded-xl bg-white shadow-sm"
+                  textSizeClass="text-xs"
+                />
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Table */}
+          {loading ? (
+            <Loader fullscreen backgroundClass="bg-white/80" />
+          ) : (
+            <AdminDataTable columns={tableColumns} minWidth="1150px">
+              {filteredUsers.length > 0 ? (
+                renderTableRows(filteredUsers)
+              ) : (
+                <tr>
+                  <td colSpan={8} className="px-5 py-16 text-center">
+                    <div className="mx-auto max-w-sm">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                        <FaSearch />
+                      </div>
+
+                      <h3 className="mt-4 text-base font-semibold text-slate-900">
+                        No users found
+                      </h3>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Try changing your search keyword or status filter.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </AdminDataTable>
+          )}
+        </section>
       </div>
     </>
   );
