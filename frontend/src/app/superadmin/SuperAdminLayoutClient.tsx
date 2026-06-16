@@ -7,13 +7,13 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     LayoutDashboard,
     Users,
-    KeyRound,
     RefreshCw,
     LogOut,
     Menu,
     X,
     Shield,
     Settings,
+    KeyRound,
     ChevronLeft,
     ChevronRight,
 } from "lucide-react";
@@ -46,14 +46,9 @@ export default function SuperAdminLayoutClient({
             icon: LayoutDashboard,
         },
         {
-            label: "User Brand Registry",
-            href: "/superadmin/SuperAdminDashboard",
+            label: "Admins",
+            href: "/superadmin/Admins",
             icon: Users,
-        },
-        {
-            label: "Change Password",
-            href: "/superadmin/Superadminchangepassword",
-            icon: KeyRound,
         },
     ];
 
@@ -175,17 +170,16 @@ export default function SuperAdminLayoutClient({
 
             <aside
                 className={`fixed left-0 top-0 z-50 h-screen bg-[#37455F] text-white shadow-2xl transition-all duration-300 overflow-hidden lg:translate-x-0 ${sidebarCollapsed ? "lg:w-0 lg:border-0 lg:shadow-none" : "lg:w-72"
-                    } w-72 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
-                    }`}
+                    } w-72 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
             >
-                <div className="flex h-20 items-center justify-between border-b border-white/10 px-5">
+                <div className="relative flex h-20 items-center justify-center border-b border-white/10 px-5">
                     <Image
                         width={180}
                         height={40}
-                        src="/images/auth/Phormula.png"
+                        src="/images/auth/Logo_Phormula.png"
                         alt="Phormula"
                         priority
-                        className="w-[160px] h-auto"
+                        className="w-[200px] h-auto"
                     />
 
                     <button
@@ -198,62 +192,39 @@ export default function SuperAdminLayoutClient({
                     </button>
                 </div>
 
-                <div className="px-4 py-5">
-                    <div className="mb-5 flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
-                        <Shield size={20} />
+                <div className="flex h-[calc(100vh-80px)] flex-col justify-between px-4 py-5">
+                    <div>
+                        <div className="mb-5 flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
+                            <Shield size={20} />
 
-                        <div>
-                            <p className="text-sm font-semibold">Super Admin</p>
-                            <p className="text-xs text-white/70">Control Panel</p>
+                            <div>
+                                <p className="text-sm font-semibold">Super Admin</p>
+                                <p className="text-xs text-white/70">Control Panel</p>
+                            </div>
                         </div>
+
+                        <nav className="space-y-2">
+                            {navItems.map((item) => {
+                                const Icon = item.icon;
+                                const isActive = pathname === item.href;
+
+                                return (
+                                    <Link
+                                        key={item.label}
+                                        href={item.href}
+                                        onClick={() => setSidebarOpen(false)}
+                                        className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${isActive
+                                            ? "bg-[#5EA68E] text-white shadow-sm"
+                                            : "text-white/80 hover:bg-white/10 hover:text-white"
+                                            }`}
+                                    >
+                                        <Icon size={18} />
+                                        <span>{item.label}</span>
+                                    </Link>
+                                );
+                            })}
+                        </nav>
                     </div>
-
-                    <nav className="space-y-2">
-                        {navItems.map((item) => {
-                            const Icon = item.icon;
-                            const isActive = pathname === item.href;
-
-                            return (
-                                <Link
-                                    key={item.label}
-                                    href={item.href}
-                                    onClick={() => setSidebarOpen(false)}
-                                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${isActive
-                                        ? "bg-[#5EA68E] text-white"
-                                        : "text-white/80 hover:bg-white/10 hover:text-white"
-                                        }`}
-                                >
-                                    <Icon size={18} />
-                                    {item.label}
-                                </Link>
-                            );
-                        })}
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSelectedFormulaCountry("uk");
-                                setShowFormulaCountryModal(true);
-                                setSidebarOpen(false);
-                            }}
-                            disabled={formulaUpdating}
-                            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            <RefreshCw size={18} />
-                            <span>{formulaUpdating ? "Updating Formula..." : "Formula Update"}</span>
-                        </button>
-                    </nav>
-                </div>
-
-                <div className="absolute bottom-0 left-0 w-full border-t border-white/10 p-4">
-                    <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-white/80 transition hover:bg-red-500/20 hover:text-white"
-                    >
-                        <LogOut size={18} />
-                        Logout
-                    </button>
                 </div>
             </aside>
 
@@ -282,50 +253,85 @@ export default function SuperAdminLayoutClient({
                                 {sidebarCollapsed ? <ChevronRight size={22} /> : <ChevronLeft size={22} />}
                             </button>
 
-                            
+
                         </div>
 
                         <div className="relative">
                             <button
                                 type="button"
                                 onClick={() => setShowSettings((s) => !s)}
-                                className="inline-flex items-center justify-center rounded-lg bg-[#37455F] p-3 text-[#f8edce] shadow hover:opacity-90"
+                                className={`inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#37455F] text-[#f8edce] shadow-md transition hover:scale-105 hover:opacity-95 ${showSettings ? "ring-2 ring-[#5EA68E]/40" : ""
+                                    }`}
                                 aria-label="Open settings"
                             >
                                 <Settings size={20} />
                             </button>
 
                             {showSettings && (
-                                <div className="absolute right-0 mt-2 w-56 origin-top-right overflow-hidden rounded-lg bg-white text-slate-800 shadow-2xl ring-1 ring-black/5">
+                                <>
                                     <button
-                                        onClick={() => {
-                                            setShowSettings(false);
-                                            router.push("/superadmin/Superadminchangepassword");
-                                        }}
-                                        className="w-full border-b px-4 py-3 text-left hover:bg-slate-50"
-                                    >
-                                        Change Password
-                                    </button>
+                                        type="button"
+                                        className="fixed inset-0 z-40 cursor-default"
+                                        onClick={() => setShowSettings(false)}
+                                        aria-label="Close settings menu"
+                                    />
 
-                                    <button
-                                        onClick={() => {
-                                            setShowSettings(false);
-                                            setSelectedFormulaCountry("uk");
-                                            setShowFormulaCountryModal(true);
-                                        }}
-                                        disabled={formulaUpdating}
-                                        className="w-full border-b px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        {formulaUpdating ? "Updating Formula..." : "Formula Update"}
-                                    </button>
+                                    <div className="absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                                        <div className="border-b border-slate-100 px-4 py-3">
+                                            <p className="text-sm font-semibold text-slate-800">
+                                                Settings
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                Super Admin controls
+                                            </p>
+                                        </div>
 
-                                    <button
-                                        onClick={handleLogout}
-                                        className="w-full px-4 py-3 text-left hover:bg-slate-50"
-                                    >
-                                        Logout
-                                    </button>
-                                </div>
+                                        <div className="p-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowSettings(false);
+                                                    router.push("/superadmin/Superadminchangepassword");
+                                                }}
+                                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                            >
+                                                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                                                    <KeyRound size={16} />
+                                                </span>
+                                                Change Password
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowSettings(false);
+                                                    setSelectedFormulaCountry("uk");
+                                                    setShowFormulaCountryModal(true);
+                                                }}
+                                                disabled={formulaUpdating}
+                                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                                                    <RefreshCw size={16} />
+                                                </span>
+                                                {formulaUpdating ? "Updating Formula..." : "Formula Update"}
+                                            </button>
+
+                                            <div className="my-2 border-t border-slate-100" />
+
+                                            <button
+                                                type="button"
+                                                onClick={handleLogout}
+                                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                                            >
+                                                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                                    <LogOut size={16} />
+                                                </span>
+                                                Logout
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>

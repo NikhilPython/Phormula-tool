@@ -2,9 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import {
-  Settings,
   Users,
   ArrowLeft,
   Building2,
@@ -14,15 +12,19 @@ import {
   BadgePoundSterling,
   Landmark,
   ClipboardList,
-  Sparkles,
 } from "lucide-react";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
-// import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
-// import SummaryMetricCardLarge from "../SummaryMetricCardLarge";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 type AnyRecord = Record<string, any>;
-
-
 
 type UploadHistoryRow = {
   id: number | string;
@@ -90,37 +92,13 @@ type MemberRow = {
 };
 
 type AdminSectionCardProps = {
-  title: string;
-  description?: string;
-  icon?: React.ReactNode;
   children: React.ReactNode;
 };
 
-function AdminSectionCard({
-  title,
-  description,
-  icon,
-  children,
-}: AdminSectionCardProps) {
+function AdminSectionCard({ children }: AdminSectionCardProps) {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-4">
-        {icon && (
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5EA68E]/10 text-[#5EA68E]">
-            {icon}
-          </div>
-        )}
-
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-
-          {description && (
-            <p className="mt-1 text-sm text-slate-500">{description}</p>
-          )}
-        </div>
-      </div>
-
-      <div>{children}</div>
+      {children}
     </section>
   );
 }
@@ -401,10 +379,50 @@ export default function ViewUserPage() {
     );
   };
 
-  const fullSummary = data?.ai_business_journey?.trim() || "No business journey available yet.";
-  const shortSummary =
-    fullSummary.length > 320 ? `${fullSummary.slice(0, 320)}...` : fullSummary;
 
+
+  const fullSummary = data?.ai_business_journey?.trim() || "No business journey available yet.";
+
+  const shortSummary =
+    fullSummary.length > 1800 ? `${fullSummary.slice(0, 1800)}...` : fullSummary;
+
+
+  const businessJourneySections = useMemo(() => {
+    const sourceText = isSummaryExpanded ? fullSummary : shortSummary;
+
+    const blocks = sourceText
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+
+    const sections: { title: string; paragraphs: string[] }[] = [];
+    let currentSection: { title: string; paragraphs: string[] } | null = null;
+
+    blocks.forEach((block) => {
+      const isTitle = /^\d+\.\s/.test(block);
+
+      if (isTitle) {
+        currentSection = {
+          title: block,
+          paragraphs: [],
+        };
+        sections.push(currentSection);
+        return;
+      }
+
+      if (!currentSection) {
+        currentSection = {
+          title: "Overview",
+          paragraphs: [],
+        };
+        sections.push(currentSection);
+      }
+
+      currentSection.paragraphs.push(block);
+    });
+
+    return sections;
+  }, [fullSummary, shortSummary, isSummaryExpanded]);
 
   const onboardSince = useMemo(() => {
     if (!data?.created_at) return "-";
@@ -450,73 +468,73 @@ export default function ViewUserPage() {
       key: "brandName",
       title: "Brand Name",
       value: data?.brand_name || "-",
-      icon: <Building2 size={20} />,
-      accent: "from-amber-400 to-orange-500",
+      icon: <Building2 size={22} />,
       bg: "bg-amber-50",
       text: "text-amber-700",
+      borderTop: "border-t-amber-500",
     },
     {
       key: "companyName",
       title: "Company Name",
       value: data?.company_name || "-",
-      icon: <Landmark size={20} />,
-      accent: "from-orange-400 to-rose-500",
+      icon: <Landmark size={22} />,
       bg: "bg-orange-50",
       text: "text-orange-700",
+      borderTop: "border-t-orange-500",
     },
     {
       key: "totalSku",
       title: "Total SKU",
       value: data?.sku_count ?? "-",
-      icon: <Package size={20} />,
-      accent: "from-sky-400 to-blue-500",
+      icon: <Package size={22} />,
       bg: "bg-sky-50",
       text: "text-sky-700",
+      borderTop: "border-t-sky-500",
     },
     {
       key: "marketplaceId",
       title: "Marketplace ID",
       value: data?.marketplace_id || "-",
-      icon: <ClipboardList size={20} />,
-      accent: "from-red-400 to-rose-500",
+      icon: <ClipboardList size={22} />,
       bg: "bg-red-50",
       text: "text-red-700",
+      borderTop: "border-t-red-500",
     },
     {
       key: "dataFetch",
       title: "Data Fetch",
       value: dataFetchLabel,
-      icon: <Database size={20} />,
-      accent: "from-stone-400 to-amber-600",
+      icon: <Database size={22} />,
       bg: "bg-stone-50",
       text: "text-stone-700",
+      borderTop: "border-t-stone-500",
     },
     {
       key: "onboardSince",
       title: "Onboard Since",
       value: onboardSince,
-      icon: <CalendarDays size={20} />,
-      accent: "from-cyan-400 to-teal-500",
+      icon: <CalendarDays size={22} />,
       bg: "bg-cyan-50",
       text: "text-cyan-700",
+      borderTop: "border-t-cyan-500",
     },
     {
       key: "profitability",
       title: "CM2 Profit",
       value: profitabilityLabel,
-      icon: <BadgePoundSterling size={20} />,
-      accent: "from-lime-400 to-emerald-500",
+      icon: <BadgePoundSterling size={22} />,
       bg: "bg-lime-50",
       text: "text-lime-700",
+      borderTop: "border-t-lime-500",
     },
     {
       key: "savings",
       title: "Savings",
       value: savingsLabel,
-      icon: <BadgePoundSterling size={20} />,
-      accent: "from-emerald-400 to-green-600",
+      icon: <BadgePoundSterling size={22} />,
       bg: "bg-emerald-50",
       text: "text-emerald-700",
+      borderTop: "border-t-emerald-500",
     },
   ];
 
@@ -541,129 +559,66 @@ export default function ViewUserPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-emerald-50 via-slate-50 to-slate-100 p-4 sm:p-6">
+    <div className="w-full">
       <div className="space-y-6">
-        {/* Hero */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="relative bg-gradient-to-r from-[#37455F] via-[#40516E] to-[#5EA68E] px-6 py-6 text-white">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_35%)]" />
+        {/* Page Heading */}
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) {
+                router.back();
+              } else {
+                router.push("/superadmin/CDPAdminConsole");
+              }
+            }}
+            className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+            aria-label="Go back"
+            title="Back"
+          >
+            <ArrowLeft size={17} />
+          </button>
 
-            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <Image
-                  width={210}
-                  height={44}
-                  src="/images/auth/Phormula.png"
-                  alt="Phormula"
-                  priority
-                  className="h-auto w-[170px] sm:w-[210px]"
-                />
+          <div className="flex flex-col leading-tight">
+            <PageBreadcrumb
+              pageTitle="Admin Profile"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
 
-                <div className="hidden h-10 w-px bg-white/20 sm:block" />
+            <p className="mt-1 text-xs text-charcoal-500 2xl:text-sm">
+              View user details, business journey, members and marketplace settings.
+            </p>
+          </div>
+        </div>
+
+        {/* Info Cards */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {infoCards.map((card) => (
+            <div
+              key={card.key}
+              className={`rounded-2xl border border-t-4 border-slate-200 bg-white p-5 shadow-sm transition  hover:shadow-md ${card.borderTop}`}
+            >
+              <div className="flex items-center gap-4">
+                <div
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${card.bg} ${card.text}`}
+                >
+                  {card.icon}
+                </div>
 
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
-                    Admin Profile
+                  <p className="text-sm font-medium text-slate-500">
+                    {card.title}
                   </p>
 
-                  <h1 className="mt-1 truncate text-2xl font-bold tracking-tight">
-                    {data?.brand_name || "Admin Details"}
-                  </h1>
-
-                  <p className="mt-1 truncate text-sm text-white/75">
-                    {data?.email || email}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.history.length > 1) {
-                      router.back();
-                    } else {
-                      router.push("/superadmin/CDPAdminConsole");
-                    }
-                  }}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20"
-                >
-                  <ArrowLeft size={17} />
-                  Back to Admins
-                </button>
-
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowSettings((s) => !s)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white shadow-sm transition hover:bg-white/20"
-                    aria-label="Open settings"
-                  >
-                    <Settings size={19} />
-                  </button>
-
-                  {showSettings && (
-                    <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl">
-                      <button
-                        onClick={() =>
-                          router.push("/superadmin/Superadminchangepassword")
-                        }
-                        className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-slate-50"
-                      >
-                        Change Password
-                      </button>
-
-                      <button
-                        onClick={() => router.push("/superadmin/DeleteAdmin")}
-                        className="w-full border-t border-slate-100 px-4 py-3 text-left text-sm font-medium hover:bg-slate-50"
-                      >
-                        Delete Admin
-                      </button>
-
-                      <button
-                        onClick={handleLogout}
-                        className="w-full border-t border-slate-100 px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  )}
+                  <h3 className="mt-1 truncate text-xl font-bold tracking-tight text-charcoal-500">
+                    {card.value}
+                  </h3>
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
-            {infoCards.map((card) => (
-              <div
-                key={card.key}
-                className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div
-                  className={`absolute left-0 top-0 h-1 w-full bg-gradient-to-r ${card.accent}`}
-                />
-
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-500">
-                      {card.title}
-                    </p>
-
-                    <h3 className="mt-2 truncate text-2xl font-bold text-slate-950">
-                      {card.value}
-                    </h3>
-                  </div>
-
-                  <div
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${card.bg} ${card.text}`}
-                  >
-                    {card.icon}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          ))}
         </section>
 
         {/* Error */}
@@ -674,198 +629,246 @@ export default function ViewUserPage() {
         )}
 
         {/* Business Journey */}
-        <AdminSectionCard
-          title="Business Journey"
-          // description="AI-generated summary of this admin's business journey"
-          icon={<Sparkles size={20} />}
-        >
-          <div className="p-5">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5">
-              <p className="text-sm leading-6 text-slate-600 whitespace-pre-line">
-                {isSummaryExpanded ? fullSummary : shortSummary}
-              </p>
+        <section className="space-y-3">
+          {/* <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              Business Journey
+            </h2>
+           
+          </div> */}
 
-              {fullSummary.length > 320 && (
+          <PageBreadcrumb pageTitle="Business Journey" variant="page" align="left" textSize="2xl" />
+
+          <AdminSectionCard>
+            <div
+              className={`relative overflow-hidden ${isSummaryExpanded ? "max-h-none" : "max-h-[520px]"
+                }`}
+            >
+              <div className="space-y-4 p-5">
+                {businessJourneySections.map((section, sectionIndex) => (
+                  <div
+                    key={`${section.title}-${sectionIndex}`}
+                    className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-sm font-bold text-emerald-700">
+                        {sectionIndex + 1}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-slate-900">
+                          {section.title.replace(/^\d+\.\s*/, "")}
+                        </h3>
+
+                        <div className="mt-4 space-y-4">
+                          {section.paragraphs.map((paragraph, paragraphIndex) => (
+                            <p
+                              key={`${section.title}-${paragraphIndex}`}
+                              className="text-sm leading-7 text-slate-600"
+                            >
+                              {paragraph}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {!isSummaryExpanded && fullSummary.length > 1800 && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white via-white/95 to-transparent" />
+              )}
+            </div>
+
+            {fullSummary.length > 1800 && (
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4">
+                <p className="text-xs text-slate-500">
+                  {isSummaryExpanded ? "Showing full journey" : "Showing preview"}
+                </p>
+
                 <button
                   type="button"
                   onClick={() => setIsSummaryExpanded((prev) => !prev)}
-                  className="mt-4 inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-[#37455F] shadow-sm transition hover:bg-slate-50"
+                  className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
-                  {isSummaryExpanded ? "Show less" : "Show more"}
+                  {isSummaryExpanded ? "Show less" : "Read full journey"}
                 </button>
-              )}
-            </div>
-          </div>
-        </AdminSectionCard>
+              </div>
+            )}
+          </AdminSectionCard>
+        </section>
 
         {/* Stock, Transit & Targets */}
         {data?.related_country_profiles?.length ? (
-          <AdminSectionCard
-            title="Stock, Transit & Targets"
-            // description="Operational settings configured for this admin"
-            icon={<ClipboardList size={20} />}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] table-auto">
-                <thead className="bg-white">
-                  <tr className="border-b border-slate-200">
-                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Country
-                    </th>
-                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Stock Unit
-                    </th>
-                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Transit Time
-                    </th>
-                    <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Target
-                    </th>
-                  </tr>
-                </thead>
+          <section className="space-y-3">
+            {/* <div>
+              <h2 className="text-xl font-bold text-slate-900">
+                Stock, Transit & Targets
+              </h2>
+            </div> */}
+            <PageBreadcrumb pageTitle="Stock, Transit & Targets" variant="page" align="left" textSize="2xl" />
 
-                <tbody>
-                  {data.related_country_profiles?.map((p, index) => (
-                    <tr
-                      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
-                      className="border-b border-slate-100 transition hover:bg-slate-50/80"
-                    >
-                      <td className="px-5 py-4 text-sm font-semibold text-slate-900">
-                        <span className="inline-flex rounded-full bg-[#5EA68E]/10 px-3 py-1 text-xs font-bold text-[#5EA68E]">
-                          {p.country?.toUpperCase() || "-"}
-                        </span>
-                      </td>
+            <AdminSectionCard>
+              <div className="max-w-full overflow-x-auto">
+                <div className="min-w-[700px]">
+                  <Table>
+                    <TableHeader className="border-b border-gray-100 bg-slate-50/60 dark:border-white/[0.05]">
+                      <TableRow>
+                        {["Country", "Stock Unit", "Transit Time", "Target"].map(
+                          (column) => (
+                            <TableCell
+                              key={column}
+                              isHeader
+                              className="px-5 py-3 text-center text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              {column}
+                            </TableCell>
+                          )
+                        )}
+                      </TableRow>
+                    </TableHeader>
 
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {p.stock_unit ?? "-"}
-                      </td>
+                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                      {data.related_country_profiles.map((p, index) => (
+                        <TableRow
+                          key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
+                        >
+                          <TableCell className="px-5 py-4 text-center text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                              {p.country?.toUpperCase() || "-"}
+                            </span>
+                          </TableCell>
 
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {p.transit_time ?? "-"}
-                      </td>
+                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            {p.stock_unit ?? "-"}
+                          </TableCell>
 
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {p.target_sales ?? data?.target_sales ?? "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </AdminSectionCard>
+                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            {p.transit_time ?? "-"}
+                          </TableCell>
+
+                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            {p.target_sales ?? data?.target_sales ?? "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </AdminSectionCard>
+          </section>
         ) : null}
 
         {/* Members */}
-        <AdminSectionCard
-          title="Members Information"
-          // description={`${members.length} member${members.length !== 1 ? "s" : ""} added by this admin`}
-          icon={<Users size={20} />}
-        >
-          <div>
+        <section className="space-y-3">
+          <PageBreadcrumb pageTitle="Members Information" variant="page" align="left" textSize="2xl" />
+
+          <AdminSectionCard>
             {membersLoading ? (
               <div className="flex items-center justify-center py-14">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1f5274]/30 border-t-[#1f5274]" />
               </div>
             ) : members.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] table-auto">
-                  <thead className="bg-white">
-                    <tr className="border-b border-slate-200">
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Member Name
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Email
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Role
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Countries
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Modules
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Marketplace IDs
-                      </th>
-                    </tr>
-                  </thead>
+              <div className="max-w-full overflow-x-auto">
+                <div className="min-w-[1050px]">
+                  <Table>
+                    <TableHeader className="border-b border-gray-100 bg-slate-50/60 dark:border-white/[0.05]">
+                      <TableRow>
+                        {[
+                          "Member Name",
+                          "Email",
+                          "Role",
+                          "Countries",
+                          "Modules",
+                          "Marketplace IDs",
+                        ].map((column) => (
+                          <TableCell
+                            key={column}
+                            isHeader
+                            className="px-5 py-3 text-center text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                          >
+                            {column}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
 
-                  <tbody>
-                    {members.map((member, index) => (
-                      <tr
-                        key={`${member.email || member.member_name || "member"}-${index}`}
-                        className="border-b border-slate-100 transition hover:bg-slate-50/80"
-                      >
-                        <td className="px-5 py-4 text-sm font-semibold text-slate-900 whitespace-nowrap">
-                          {member.member_name || "-"}
-                        </td>
+                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                      {members.map((member, index) => (
+                        <TableRow
+                          key={`${member.email || member.member_name || "member"}-${index}`}
+                        >
+                          <TableCell className="whitespace-nowrap px-5 py-4 text-center text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                            {member.member_name || "-"}
+                          </TableCell>
 
-                        <td className="px-5 py-4 text-sm text-slate-600 break-all">
-                          {member.email || "-"}
-                        </td>
+                          <TableCell className="break-all px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            {member.email || "-"}
+                          </TableCell>
 
-                        <td className="px-5 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          <span className="inline-flex rounded-full bg-[#37455F]/10 px-3 py-1 text-xs font-bold text-[#37455F]">
-                            {member.role || "-"}
-                          </span>
-                        </td>
+                          <TableCell className="whitespace-nowrap px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-300">
+                              {member.role || "-"}
+                            </span>
+                          </TableCell>
 
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          <div className="flex flex-wrap gap-2">
-                            {(member.countries || []).length > 0 ? (
-                              member.countries?.map((country, i) => (
-                                <span
-                                  key={`${country}-${i}`}
-                                  className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
-                                >
-                                  {country}
-                                </span>
-                              ))
-                            ) : (
-                              <span>-</span>
-                            )}
-                          </div>
-                        </td>
+                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {(member.countries || []).length > 0 ? (
+                                member.countries?.map((country, i) => (
+                                  <span
+                                    key={`${country}-${i}`}
+                                    className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                                  >
+                                    {country}
+                                  </span>
+                                ))
+                              ) : (
+                                <span>-</span>
+                              )}
+                            </div>
+                          </TableCell>
 
-                        <td className="min-w-[220px] px-5 py-4 text-sm text-slate-600">
-                          <div className="flex flex-wrap gap-2">
-                            {(member.modules || []).length > 0 ? (
-                              member.modules?.map((module, i) => (
-                                <span
-                                  key={`${module}-${i}`}
-                                  className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                                >
-                                  {module.replaceAll("_", " ")}
-                                </span>
-                              ))
-                            ) : (
-                              <span>-</span>
-                            )}
-                          </div>
-                        </td>
+                          <TableCell className="min-w-[220px] px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {(member.modules || []).length > 0 ? (
+                                member.modules?.map((module, i) => (
+                                  <span
+                                    key={`${module}-${i}`}
+                                    className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-white/[0.06] dark:text-gray-300"
+                                  >
+                                    {module.replaceAll("_", " ")}
+                                  </span>
+                                ))
+                              ) : (
+                                <span>-</span>
+                              )}
+                            </div>
+                          </TableCell>
 
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          <div className="flex flex-wrap gap-2">
-                            {(member.marketplace_ids || []).length > 0 ? (
-                              member.marketplace_ids?.map((id, i) => (
-                                <span
-                                  key={`${id}-${i}`}
-                                  className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
-                                >
-                                  {id}
-                                </span>
-                              ))
-                            ) : (
-                              <span>-</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {(member.marketplace_ids || []).length > 0 ? (
+                                member.marketplace_ids?.map((id, i) => (
+                                  <span
+                                    key={`${id}-${i}`}
+                                    className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
+                                  >
+                                    {id}
+                                  </span>
+                                ))
+                              ) : (
+                                <span>-</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             ) : (
               <div className="p-5">
@@ -884,8 +887,8 @@ export default function ViewUserPage() {
                 </div>
               </div>
             )}
-          </div>
-        </AdminSectionCard>
+          </AdminSectionCard>
+        </section>
       </div>
     </div>
   );

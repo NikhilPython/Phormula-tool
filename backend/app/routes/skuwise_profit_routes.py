@@ -25,6 +25,7 @@ load_dotenv()
 SECRET_KEY = Config.SECRET_KEY
 db_url = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL')
+db_url2 = os.getenv('DATABASE_AMAZON_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -46,6 +47,15 @@ admin_engine = create_engine(
     pool_recycle=1800,
     pool_size=1,
     max_overflow=0,
+    pool_timeout=30,
+)
+
+amazon_engine = create_engine(
+    db_url2,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=1,
+    max_overflow=1,
     pool_timeout=30,
 )
 
@@ -97,6 +107,105 @@ country_currency_map = {
     "us": "usd",
     "global": None
 }
+
+inventory_marketplace_map = {
+    "uk": "A1F83G8C2ARO7P",
+    "us": "ATVPDKIKX0DER"
+}
+
+def get_monthly_inventory_units(
+    user_id,
+    country,
+    product_name,
+    year,
+    months_to_fetch,
+    month_mapping,
+    fallback_sku=None
+):
+    """
+    Returns inventory units from monthwise_inventory.
+
+    Matching logic:
+    1. Match by product_name when product_name exists in monthwise_inventory.
+    2. If monthwise_inventory.product_name is NULL/blank, fallback to matching:
+       monthwise_inventory.msku = SKU resolved from sku_{user_id}_data_table.
+    """
+
+    sku_country = normalize_sku_country(country)
+
+    if sku_country not in ("uk", "us"):
+        return {}
+
+    marketplace_id = inventory_marketplace_map.get(sku_country)
+
+    if not marketplace_id:
+        return {}
+
+    month_numbers = [
+        int(month_mapping[month])
+        for month in months_to_fetch
+    ]
+
+    inventory_map = {}
+
+    try:
+        with amazon_engine.connect() as conn:
+            for month_num in month_numbers:
+                query = text("""
+                    WITH first_date AS (
+                        SELECT MIN(date::date) AS first_available_date
+                        FROM monthwise_inventory
+                        WHERE user_id = :user_id
+                          AND marketplace_id = :marketplace_id
+                          AND LOWER(TRIM(disposition)) = 'sellable'
+                          AND EXTRACT(YEAR FROM date::date)::int = :year
+                          AND EXTRACT(MONTH FROM date::date)::int = :month_num
+                          AND (
+                                LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                                OR (
+                                    (product_name IS NULL OR TRIM(product_name) = '')
+                                    AND :fallback_sku IS NOT NULL
+                                    AND LOWER(TRIM(msku)) = LOWER(TRIM(:fallback_sku))
+                                )
+                          )
+                    )
+                    SELECT
+                        COALESCE(SUM(starting_warehouse_balance), 0) AS inventory_units
+                    FROM monthwise_inventory
+                    WHERE user_id = :user_id
+                      AND marketplace_id = :marketplace_id
+                      AND LOWER(TRIM(disposition)) = 'sellable'
+                      AND date::date = (SELECT first_available_date FROM first_date)
+                      AND (
+                            LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                            OR (
+                                (product_name IS NULL OR TRIM(product_name) = '')
+                                AND :fallback_sku IS NOT NULL
+                                AND LOWER(TRIM(msku)) = LOWER(TRIM(:fallback_sku))
+                            )
+                      )
+                """)
+
+                row = conn.execute(query, {
+                    "user_id": int(user_id),
+                    "marketplace_id": marketplace_id,
+                    "product_name": product_name,
+                    "fallback_sku": fallback_sku,
+                    "year": int(year),
+                    "month_num": int(month_num)
+                }).fetchone()
+
+                inventory_map[(int(year), int(month_num))] = float(
+                    row.inventory_units or 0
+                )
+
+        return inventory_map
+
+    except Exception as e:
+        print(f"Inventory fetch error for {country}: {str(e)}")
+        return {}
+    
+
 
 
 def normalize_sku_country(country):
@@ -410,6 +519,28 @@ def productwise_performance():
             for country in requested_countries:
                 country_data = []
 
+                sku_country = normalize_sku_country(country)
+
+                fallback_sku = None
+
+                if sku_country in ("uk", "us"):
+                    fallback_sku = resolve_product_sku_for_country(
+                        conn=conn,
+                        user_id=user_id,
+                        product_name=product_name,
+                        country=sku_country
+                    )
+
+                inventory_units_map = get_monthly_inventory_units(
+                    user_id=user_id,
+                    country=sku_country,
+                    product_name=product_name,
+                    year=year,
+                    months_to_fetch=months_to_fetch,
+                    month_mapping=month_mapping,
+                    fallback_sku=fallback_sku
+                )
+
                 for month in months_to_fetch:
                     month_num = month_mapping[month]
 
@@ -524,11 +655,17 @@ def productwise_performance():
                         (total_profit / total_sales) * 100 if total_sales > 0 else 0.0
                     )
 
+                    inventory_units = inventory_units_map.get(
+                        (int(year), int(month_num)),
+                        0
+                    )
+
                     country_data.append({
                         'month': month.capitalize(),
                         'month_num': month_num,
                         'net_sales': total_sales if table_found else 0.0,
                         'quantity': total_quantity if table_found else 0,
+                        'inventory_units': inventory_units,
                         'profit': total_profit if table_found else 0.0,
                         'asp': total_asp if table_found else 0.0,
                         'sales_mix': total_sales_mix if table_found else 0.0,
@@ -1179,4 +1316,195 @@ def productwise_growth_ai():
     except Exception as e:
         print("ProductwiseGrowthAI ERROR:", str(e))
         return jsonify({'error': str(e)}), 500
+
+
+
+@skuwise_bp.route('/ProductBestPerformance', methods=['POST'])
+def product_best_performance():
+    try:
+        # AUTH
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authorization token missing or invalid'}), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
+            user_id = str(payload.get('user_id'))
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        data = request.get_json() or {}
+
+        product_name = data.get('product_name')
+        country = (data.get('country') or 'us').strip().lower()
+        home_currency = (data.get('home_currency') or 'USD').strip().lower()
+
+        if not product_name:
+            return jsonify({'error': 'Product name is required'}), 400
+
+        if country.startswith('uk'):
+            country = 'uk'
+        elif country.startswith('us'):
+            country = 'us'
+        else:
+            return jsonify({'error': 'Only us or uk country is supported in this API'}), 400
+
+        month_mapping = {
+            'january': 1,
+            'february': 2,
+            'march': 3,
+            'april': 4,
+            'may': 5,
+            'june': 6,
+            'july': 7,
+            'august': 8,
+            'september': 9,
+            'october': 10,
+            'november': 11,
+            'december': 12
+        }
+
+        monthly_rows = []
+
+        with user_engine.connect() as conn:
+            inspector = inspect(conn)
+            all_tables = inspector.get_table_names()
+
+            prefix = f"skuwisemonthly_{user_id}_{country}_"
+
+            for table_name in all_tables:
+                table_lower = table_name.lower()
+
+                if not table_lower.startswith(prefix.lower()):
+                    continue
+
+                clean_suffix = table_lower.replace(prefix.lower(), '').replace('_table', '')
+
+                month_name = ''.join(ch for ch in clean_suffix if ch.isalpha())
+                year_text = ''.join(ch for ch in clean_suffix if ch.isdigit())
+
+                if month_name not in month_mapping or not year_text:
+                    continue
+
+                year = int(year_text[:4])
+                month_num = month_mapping[month_name]
+
+                try:
+                    columns = [col['name'] for col in inspector.get_columns(table_name)]
+
+                    if 'product_name' not in columns or 'net_sales' not in columns:
+                        continue
+
+                    quantity_col = None
+                    if 'total_quantity' in columns:
+                        quantity_col = 'total_quantity'
+                    elif 'quantity' in columns:
+                        quantity_col = 'quantity'
+
+                    profit_col = None
+                    if 'cm1_profit' in columns:
+                        profit_col = 'cm1_profit'
+                    elif 'profit' in columns:
+                        profit_col = 'profit'
+
+                    if not quantity_col or not profit_col:
+                        continue
+
+                    query = text(f"""
+                        SELECT
+                            COALESCE(SUM("{quantity_col}"), 0) AS units,
+                            COALESCE(SUM(net_sales), 0) AS net_sales,
+                            COALESCE(SUM("{profit_col}"), 0) AS cm1_profit
+                        FROM "{table_name}"
+                        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                    """)
+
+                    row = conn.execute(query, {
+                        'product_name': product_name
+                    }).fetchone()
+
+                    units = float(row.units or 0)
+                    net_sales = float(row.net_sales or 0)
+                    cm1_profit = float(row.cm1_profit or 0)
+
+                    if units == 0 and net_sales == 0 and cm1_profit == 0:
+                        continue
+
+                    # Currency conversion
+                    source_currency = country_currency_map.get(country)
+                    target_currency = home_currency
+                    conversion_rate = 1.0
+
+                    if source_currency and target_currency:
+                        with admin_engine.connect() as conn1:
+                            conversion_rate = get_conversion_rate(
+                                conn1,
+                                source_currency,
+                                target_currency,
+                                month_name,
+                                year
+                            )
+
+                    net_sales *= conversion_rate
+                    cm1_profit *= conversion_rate
+
+                    monthly_rows.append({
+                        'month': month_name.capitalize(),
+                        'year': year,
+                        'month_num': month_num,
+                        'units': round(units, 2),
+                        'net_sales': round(net_sales, 2),
+                        'cm1_profit': round(cm1_profit, 2)
+                    })
+
+                except Exception as e:
+                    print(f"Error in table {table_name}: {str(e)}")
+                    continue
+
+        if not monthly_rows:
+            return jsonify({
+                'success': True,
+                'product_name': product_name,
+                'country': country,
+                'message': 'No data found for this product',
+                'best_performance': None
+            }), 200
+
+        monthly_rows.sort(key=lambda x: (x['year'], x['month_num']))
+
+        best_units = max(monthly_rows, key=lambda x: x['units'])
+        best_net_sales = max(monthly_rows, key=lambda x: x['net_sales'])
+        best_cm1_profit = max(monthly_rows, key=lambda x: x['cm1_profit'])
+
+        def clean_best(row, metric):
+            return {
+                'month': row['month'],
+                'year': row['year'],
+                metric: row[metric]
+            }
+
+        return jsonify({
+            'success': True,
+            'product_name': product_name,
+            'country': country,
+            'home_currency': home_currency.upper(),
+            'date_range': {
+                'start': f"{monthly_rows[0]['month']} {monthly_rows[0]['year']}",
+                'latest': f"{monthly_rows[-1]['month']} {monthly_rows[-1]['year']}"
+            },
+            'best_performance': {
+                'units': clean_best(best_units, 'units'),
+                'net_sales': clean_best(best_net_sales, 'net_sales'),
+                'cm1_profit': clean_best(best_cm1_profit, 'cm1_profit')
+            }
+        }), 200
+
+    except Exception as e:
+        print("ProductBestPerformance ERROR:", str(e))
+        return jsonify({'error': str(e)}), 500
+
 
