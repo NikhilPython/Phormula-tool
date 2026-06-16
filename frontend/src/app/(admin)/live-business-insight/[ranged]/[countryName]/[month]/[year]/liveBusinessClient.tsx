@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from "xlsx-js-style";
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
@@ -237,15 +237,24 @@ const capitalizeWords = (value: string) =>
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const normalizeTextBlock = (value: unknown): string => {
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return String(value);
+  if (value === null || value === undefined) return "";
 
-  // ✅ Global returns { uk: "...", us: "..." }
+  if (typeof value === "number") {
+    return value === 0 ? "" : String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "0" || trimmed === "0.0") return "";
+    return trimmed;
+  }
+
   if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>)
       .map(([country, text]) => {
-        if (!text) return "";
-        return `## ${country.toUpperCase()}\n${String(text)}`;
+        const normalized = normalizeTextBlock(text);
+        if (!normalized) return "";
+        return `## ${country.toUpperCase()}\n${normalized}`;
       })
       .filter(Boolean)
       .join("\n\n");
@@ -253,7 +262,6 @@ const normalizeTextBlock = (value: unknown): string => {
 
   return "";
 };
-
 const isOthersCardName = (name: string) => {
   const value = String(name || "").trim().toLowerCase();
   return (
@@ -2375,6 +2383,121 @@ export default function LiveBusinessClient({
     };
   };
 
+
+  const buildOtherSkusAggregateItem = useCallback((): SkuItem | null => {
+    const rows = categorizedGrowth.other_skus || [];
+    const total = categorizedGrowth.other_total as any;
+
+    if (!rows.length && !total) return null;
+
+    const qtyPrev =
+      Number(total?.quantity_month1 ?? total?.quantity_prev ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.quantity_month1 ?? r.quantity_prev ?? 0),
+        0
+      );
+
+    const qtyCurr =
+      Number(total?.quantity_month2 ?? total?.quantity_curr ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.quantity_month2 ?? r.quantity_curr ?? r.quantity ?? 0),
+        0
+      );
+
+    const netSalesPrev =
+      Number(total?.net_sales_month1 ?? total?.net_sales_prev ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.net_sales_month1 ?? r.net_sales_prev ?? 0),
+        0
+      );
+
+    const netSalesCurr =
+      Number(total?.net_sales_month2 ?? total?.net_sales_curr ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.net_sales_month2 ?? r.net_sales_curr ?? r.net_sales ?? 0),
+        0
+      );
+
+    const profitPrev =
+      Number(total?.profit_month1 ?? total?.profit_prev ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.profit_month1 ?? r.profit_prev ?? 0),
+        0
+      );
+
+    const profitCurr =
+      Number(total?.profit_month2 ?? total?.profit_curr ?? 0) ||
+      rows.reduce(
+        (s, r: any) => s + Number(r.profit_month2 ?? r.profit_curr ?? r.profit ?? 0),
+        0
+      );
+
+    const aspPrev = qtyPrev > 0 ? netSalesPrev / qtyPrev : 0;
+    const aspCurr = qtyCurr > 0 ? netSalesCurr / qtyCurr : 0;
+
+    const unitProfitPrev = qtyPrev > 0 ? profitPrev / qtyPrev : 0;
+    const unitProfitCurr = qtyCurr > 0 ? profitCurr / qtyCurr : 0;
+
+    const pct = (prev: number, curr: number) =>
+      prev ? ((curr - prev) / prev) * 100 : 0;
+
+    return {
+      product_name: "Other SKUs",
+      quantity_month1: qtyPrev,
+      quantity_month2: qtyCurr,
+      net_sales_month1: netSalesPrev,
+      net_sales_month2: netSalesCurr,
+      profit_month1: profitPrev,
+      profit_month2: profitCurr,
+      asp_month1: aspPrev,
+      asp_month2: aspCurr,
+      unit_wise_profitability_month1: unitProfitPrev,
+      unit_wise_profitability_month2: unitProfitCurr,
+
+      ["Unit Growth"]: { value: pct(qtyPrev, qtyCurr), category: "" },
+      ["ASP Growth"]: { value: pct(aspPrev, aspCurr), category: "" },
+      ["Sales Growth"]: { value: pct(netSalesPrev, netSalesCurr), category: "" },
+      ["CM1 Profit Impact"]: { value: pct(profitPrev, profitCurr), category: "" },
+      ["Profit Per Unit"]: { value: pct(unitProfitPrev, unitProfitCurr), category: "" },
+      ["Sales Mix Change"]: { value: 0, category: "" },
+    };
+  }, [categorizedGrowth.other_skus, categorizedGrowth.other_total]);
+
+  const getRecommendationSourceRow = useCallback(
+    (productName: string) => {
+      if (isOthersCardName(productName)) {
+        return buildOtherSkusAggregateItem();
+      }
+
+      const allRows = [
+        ...(categorizedGrowth.top_80_skus || []),
+        ...(categorizedGrowth.new_skus || []),
+        ...(categorizedGrowth.reviving_skus || []),
+        ...(categorizedGrowth.other_skus || []),
+      ];
+
+      const normalized = String(productName || "").trim().toLowerCase();
+
+      return (
+        allRows.find((row) => {
+          const rowName = String(row.product_name || "").trim().toLowerCase();
+          return (
+            rowName === normalized ||
+            rowName.includes(normalized) ||
+            normalized.includes(rowName)
+          );
+        }) || null
+      );
+    },
+    [
+      categorizedGrowth.top_80_skus,
+      categorizedGrowth.new_skus,
+      categorizedGrowth.reviving_skus,
+      categorizedGrowth.other_skus,
+      buildOtherSkusAggregateItem,
+    ]
+  );
+
   const parseOtherSkusBlock = (raw: string) => {
     const lines = (raw || "")
       .split("\n")
@@ -3654,6 +3777,70 @@ export default function LiveBusinessClient({
     remainingSkusBlock,
   ]);
 
+  const buildOthersActionFromCategorizedGrowth = useCallback(() => {
+    const total = categorizedGrowth.other_total;
+    const rows = categorizedGrowth.other_skus || [];
+
+    if (!total && rows.length === 0) return "";
+
+    const qty =
+      Number((total as any)?.quantity_curr ?? (total as any)?.quantity_month2 ?? 0) ||
+      rows.reduce((s, r: any) => s + Number(r.quantity_curr ?? r.quantity_month2 ?? 0), 0);
+
+    const netSales =
+      Number((total as any)?.net_sales_curr ?? (total as any)?.net_sales_month2 ?? 0) ||
+      rows.reduce((s, r: any) => s + Number(r.net_sales_curr ?? r.net_sales_month2 ?? 0), 0);
+
+    const profit =
+      Number((total as any)?.profit_curr ?? (total as any)?.profit_month2 ?? 0) ||
+      rows.reduce((s, r: any) => s + Number(r.profit_curr ?? r.profit_month2 ?? 0), 0);
+
+    const asp =
+      Number((total as any)?.asp_curr ?? (total as any)?.asp_month2 ?? 0) ||
+      (qty > 0 ? netSales / qty : 0);
+
+    const unitProfit =
+      Number(
+        (total as any)?.unit_wise_profitability_curr ??
+        (total as any)?.unit_wise_profitability_month2 ??
+        0
+      ) || (qty > 0 ? profit / qty : 0);
+
+    const getGrowth = (key: string) => {
+      const raw = (total as any)?.[key];
+      const value = typeof raw === "object" ? raw?.value : raw;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const fmt = (n: number) =>
+      formatDisplayAmount(convertToDisplayCurrency(n, sourceCurrency));
+
+    const fmtNoDec = (n: number) =>
+      formatDisplayAmountNoDecimals(convertToDisplayCurrency(n, sourceCurrency));
+
+    const pct = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
+
+    return [
+      `Other SKUs`,
+      ``,
+      `ASP: ${fmt(asp)} (${pct(getGrowth("ASP Growth") || getGrowth("ASP Growth (%)"))})`,
+      `Units: ${qty.toLocaleString()} (${pct(getGrowth("Unit Growth") || getGrowth("Unit Growth (%)"))})`,
+      `Net sales: ${fmtNoDec(netSales)} (${pct(getGrowth("Sales Growth") || getGrowth("Net Sales Growth") || getGrowth("Net Sales Growth (%)"))})`,
+      `CM1 profit: ${fmtNoDec(profit)} (${pct(getGrowth("CM1 Profit Impact") || getGrowth("CM1 Profit Impact (%)"))})`,
+      `CM1 profit per unit: ${fmt(unitProfit)} (${pct(getGrowth("Profit Per Unit") || getGrowth("Profit Per Unit (%)"))})`,
+      ``,
+      `Recommendation: Monitor the remaining SKUs and prioritize actions based on units, net sales, ASP, and CM1 profit.`,
+    ].join("\n");
+  }, [
+    categorizedGrowth.other_total,
+    categorizedGrowth.other_skus,
+    convertToDisplayCurrency,
+    formatDisplayAmount,
+    formatDisplayAmountNoDecimals,
+    sourceCurrency,
+  ]);
+
   const sortedRecommendations = useMemo(() => {
     const cards = Object.entries(recommendedActions)
       .map(([key, text]) => {
@@ -3990,6 +4177,10 @@ export default function LiveBusinessClient({
     );
   };
 
+  const effectiveRemainingSkusBlock = useMemo(() => {
+    return normalizeTextBlock(remainingSkusBlock) || buildOthersActionFromCategorizedGrowth();
+  }, [remainingSkusBlock, buildOthersActionFromCategorizedGrowth]);
+
   const GlobalInventoryInsights = () => {
     const inventory = parseGlobalInventoryItems(portfolioInventoryBlock);
 
@@ -4176,7 +4367,10 @@ export default function LiveBusinessClient({
                 {(
                   isGlobalData()
                     ? globalRecommendationCards.length > 0
-                    : recommendedActions && Object.keys(recommendedActions).length > 0
+                    : (
+                      Object.keys(recommendedActions || {}).length > 0 ||
+                      !!effectiveRemainingSkusBlock
+                    )
                 ) && (
                     <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
                       <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
@@ -4293,6 +4487,11 @@ export default function LiveBusinessClient({
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      const sourceRow = getRecommendationSourceRow(parsed.productName);
+
+                                      setSelectedSkuItem(sourceRow);
+                                      setSelectedSku(sourceRow?.sku || parsed.productName);
+
                                       setSelectedRec({
                                         productName: parsed.productName,
                                         metrics: parsed.metrics,
@@ -4302,6 +4501,7 @@ export default function LiveBusinessClient({
                                         inventoryPoints: parsed.inventoryPoints,
                                         showChart: true,
                                       });
+
                                       setRecDrawerOpen(true);
                                     }}
                                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
@@ -4360,11 +4560,15 @@ export default function LiveBusinessClient({
                             );
                           })}
 
-                        {!isGlobalData() && remainingSkusBlock?.trim() && (() => {
-                          const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
-                          const otherIdx = Object.keys(recommendedActions).length;
-                          const borderColor = topBorderColors[otherIdx % topBorderColors.length];
+                        {!isGlobalData() && effectiveRemainingSkusBlock && (() => {
+                          const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
 
+                          // Use visible recommendation count, not full backend count.
+                          // If 5 cards are visible, Remaining SKUs becomes 6.
+                          const otherIdx = sortedRecommendations.length;
+                          const displayNumber = otherIdx + 1;
+
+                          const borderColor = topBorderColors[otherIdx % topBorderColors.length];
                           return (
                             <motion.div
                               key="other-skus-card"
@@ -4379,21 +4583,28 @@ export default function LiveBusinessClient({
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-                                  {otherIdx + 1}. {parsedOther.productName}
+                                  {displayNumber}. {parsedOther.productName}
                                 </div>
 
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
+                                    const otherSourceRow = buildOtherSkusAggregateItem();
+
+                                    setSelectedSkuItem(otherSourceRow);
+                                    setSelectedSku("__OTHER_SKUS__");
+
                                     setSelectedRec({
-                                      productName: parsedOther.productName,
+                                      productName: parsedOther.productName || "Other SKUs",
                                       metrics: parsedOther.metrics,
                                       journeyPoints: parsedOther.journeyPoints,
                                       recommendationPoints: parsedOther.recommendationPoints,
                                       advertisingPoints: parsedOther.advertisingPoints,
                                       inventoryPoints: parsedOther.inventoryPoints,
-                                      showChart: false,
+                                      showChart: true,
                                     });
+
                                     setRecDrawerOpen(true);
                                   }}
                                   className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
