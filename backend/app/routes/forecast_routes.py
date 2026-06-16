@@ -1682,6 +1682,8 @@ def Pnlforecast():
         prev_years_5 = [year if months - i > 0 else year - 1 for i in range(5)]
 
         platform_fee_values = []
+        platform_fee_sales_values = []
+
         for m, y in zip(prev_months_5, prev_years_5):
             month_name = MONTHS_REVERSE_MAP.get(m, 'january')
             record = UploadHistory.query.filter_by(
@@ -1697,9 +1699,18 @@ def Pnlforecast():
                 except (ValueError, TypeError):
                     pass
 
-        avg_platform_fee_percentage = (
-            sum(platform_fee_values) / len(platform_fee_values)
-            if platform_fee_values else 0
+            if record and record.total_sales is not None:
+                try:
+                    platform_fee_sales_values.append(float(record.total_sales))
+                except (ValueError, TypeError):
+                    pass
+
+        platform_fee_sum_5months = sum(platform_fee_values) if platform_fee_values else 0
+        platform_fee_sales_sum_5months = sum(platform_fee_sales_values) if platform_fee_sales_values else 0
+
+        platform_fee_percentage = (
+            abs((platform_fee_sum_5months / platform_fee_sales_sum_5months) * 100)
+            if platform_fee_sales_sum_5months > 0 else 0
         )
 
         requested_month = month.lower()
@@ -1789,9 +1800,9 @@ def Pnlforecast():
         advertising_total2 = abs((total_sales_2nd * acos2_value) / 100)
         advertising_total3 = abs((total_sales_3rd * acos3_value) / 100)
 
-        platform_fees1_value = abs(avg_platform_fee_percentage)
-        platform_fees2_value = abs(avg_platform_fee_percentage)
-        platform_fees3_value = abs(avg_platform_fee_percentage)
+        platform_fees1_value = abs((total_sales_1st * platform_fee_percentage) / 100)
+        platform_fees2_value = abs((total_sales_2nd * platform_fee_percentage) / 100)
+        platform_fees3_value = abs((total_sales_3rd * platform_fee_percentage) / 100)
 
         cm2profit1_value = cm1_profit_1st - advertising_total1 - platform_fees1_value
         cm2profit2_value = cm1_profit_2nd - advertising_total2 - platform_fees2_value
