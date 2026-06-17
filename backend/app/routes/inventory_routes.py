@@ -772,7 +772,11 @@ def _row_to_inventory_aged(row: dict) -> "InventoryAged":
         inv_age_91_180=_int(row.get("inv-age-91-to-180-days")),
         inv_age_181_270=_int(row.get("inv-age-181-to-270-days")),
         inv_age_271_365=_int(row.get("inv-age-271-to-365-days")),
-        inv_age_365_plus=_int(row.get("inv-age-365-plus-days")),
+        inv_age_365_plus=(
+            _int(row.get("inv-age-365-plus-days"))
+            + _int(row.get("inv-age-366-to-455-days"))
+            + _int(row.get("inv-age-456-plus-days"))
+        ),
         currency=row.get("currency"),
 
         # shipped units
@@ -898,7 +902,57 @@ def _row_to_inventory_aged(row: dict) -> "InventoryAged":
         total_days_of_supply_incl_open_shipments=_safe_float(
             row.get("Total Days of Supply (including units from open shipments)")
         ),
-    )
+        fc_transfer=_int(row.get("fc-transfer")),
+
+        inv_age_366_455=_int(row.get("inv-age-366-to-455-days")),
+        inv_age_456_plus=_int(row.get("inv-age-456-plus-days")),
+
+        deprecated_healthy_inventory_level=_safe_float(
+            row.get("DEPRECATED healthy-inventory-level")
+        ),
+
+        no_sale_last_6_months=row.get("no-sale-last-6-months"),
+
+        qty_charged_ais_181_210=_int(
+            row.get("quantity-to-be-charged-ais-181-210-days")
+        ),
+        est_ais_181_210=_safe_float(row.get("estimated-ais-181-210-days")),
+
+        qty_charged_ais_211_240=_int(
+            row.get("quantity-to-be-charged-ais-211-240-days")
+        ),
+        est_ais_211_240=_safe_float(row.get("estimated-ais-211-240-days")),
+
+        qty_charged_ais_366_455=_int(
+            row.get("quantity-to-be-charged-ais-366-455-days")
+        ),
+        est_ais_366_455=_safe_float(row.get("estimated-ais-366-455-days")),
+
+        qty_charged_ais_456_plus=_int(
+            row.get("quantity-to-be-charged-ais-456-plus-days")
+        ),
+        est_ais_456_plus=_safe_float(row.get("estimated-ais-456-plus-days")),
+
+        fba_minimum_inventory_level=_int(row.get("fba-minimum-inventory-level")),
+        fba_inventory_level_health_status=row.get(
+            "fba-inventory-level-health-status"
+        ),
+
+        exempted_low_inventory_fee=row.get(
+            "Exempted from Low-Inventory-Level fee?"
+        ),
+        low_inventory_fee_current_week=row.get(
+            "Low-Inventory-Level fee applied in current week?"
+        ),
+
+        reserved_staging=_int(row.get("Reserved Staging")),
+
+        supplier=row.get("supplier"),
+        is_seasonal_next_3_months=row.get("is-seasonal-in-next-3-months"),
+        season_name=row.get("season-name"),
+        season_start_date=row.get("season-start-date"),
+        season_end_date=row.get("season-end-date"),
+            )
 
     return inv
 
@@ -1198,6 +1252,57 @@ def get_inventory_aged_selected_columns():
             "inv-age-365-plus-days": getattr(r, "inv_age_365_plus", 0),
             "currency": getattr(r, "currency", None),
             "estimated-storage-cost-next-month": getattr(r, "estimated_storage_cost_next_month", 0.0),
+            "fc-transfer": getattr(r, "fc_transfer", 0),
+
+            "inv-age-366-to-455-days": getattr(r, "inv_age_366_455", 0),
+            "inv-age-456-plus-days": getattr(r, "inv_age_456_plus", 0),
+
+            "DEPRECATED healthy-inventory-level": getattr(
+                r, "deprecated_healthy_inventory_level", None
+            ),
+            "no-sale-last-6-months": getattr(r, "no_sale_last_6_months", None),
+
+            "quantity-to-be-charged-ais-181-210-days": getattr(
+                r, "qty_charged_ais_181_210", 0
+            ),
+            "estimated-ais-181-210-days": getattr(r, "est_ais_181_210", None),
+
+            "quantity-to-be-charged-ais-211-240-days": getattr(
+                r, "qty_charged_ais_211_240", 0
+            ),
+            "estimated-ais-211-240-days": getattr(r, "est_ais_211_240", None),
+
+            "quantity-to-be-charged-ais-366-455-days": getattr(
+                r, "qty_charged_ais_366_455", 0
+            ),
+            "estimated-ais-366-455-days": getattr(r, "est_ais_366_455", None),
+
+            "quantity-to-be-charged-ais-456-plus-days": getattr(
+                r, "qty_charged_ais_456_plus", 0
+            ),
+            "estimated-ais-456-plus-days": getattr(r, "est_ais_456_plus", None),
+
+            "fba-minimum-inventory-level": getattr(
+                r, "fba_minimum_inventory_level", 0
+            ),
+            "fba-inventory-level-health-status": getattr(
+                r, "fba_inventory_level_health_status", None
+            ),
+
+            "Exempted from Low-Inventory-Level fee?": getattr(
+                r, "exempted_low_inventory_fee", None
+            ),
+            "Low-Inventory-Level fee applied in current week?": getattr(
+                r, "low_inventory_fee_current_week", None
+            ),
+
+            "Reserved Staging": getattr(r, "reserved_staging", 0),
+
+            "supplier": getattr(r, "supplier", None),
+            "is-seasonal-in-next-3-months": getattr(r, "is_seasonal_next_3_months", None),
+            "season-name": getattr(r, "season_name", None),
+            "season-start-date": getattr(r, "season_start_date", None),
+            "season-end-date": getattr(r, "season_end_date", None),
         })
 
     return jsonify({
