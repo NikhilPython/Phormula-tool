@@ -41,6 +41,10 @@ type SelectedRec = {
   advertisingPoints?: string[];
   inventoryPoints?: string[];
   showChart?: boolean;
+
+  // ✅ aggregate SKU group support
+  isOtherSkus?: boolean;
+  otherSkuProductNames?: string[];
 } | null;
 
 const ObjectiveCards = ({
@@ -164,6 +168,43 @@ const formatBestPerformancePeriod = (
   return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
 };
 
+const normalizeSkuGroupName = (name: string) =>
+  String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/sku's/g, "skus")
+    .replace(/product's/g, "products");
+
+const isSkuGroupCardName = (name: string) => {
+  const value = normalizeSkuGroupName(name);
+
+  return (
+    value === "others" ||
+    value === "other" ||
+    value === "other sku" ||
+    value === "other skus" ||
+    value === "other product" ||
+    value === "other products" ||
+    value === "remaining" ||
+    value === "remaining sku" ||
+    value === "remaining skus" ||
+    value === "remaining product" ||
+    value === "remaining products" ||
+    value === "rest sku" ||
+    value === "rest skus" ||
+    value === "rest product" ||
+    value === "rest products" ||
+    value === "leftover sku" ||
+    value === "leftover skus" ||
+    value === "leftover product" ||
+    value === "leftover products" ||
+    value === "all other skus" ||
+    value === "all remaining skus"
+  );
+};
+
 export default function SkuRecommendationDrawer({
   open,
   onClose,
@@ -211,17 +252,17 @@ const [bestPerformanceData, setBestPerformanceData] =
 
   const lowerName = productName.toLowerCase();
 
-  if (
-    lowerName === "total" ||
-    lowerName === "grand total" ||
-    lowerName === "others" ||
-    lowerName === "other skus"
-  ) {
-    setBestPerformanceData(null);
-    setBestPerformanceError(null);
-    setBestPerformanceLoading(false);
-    return;
-  }
+if (
+  lowerName === "total" ||
+  lowerName === "grand total" ||
+  selectedRec?.isOtherSkus ||
+  isSkuGroupCardName(productName)
+) {
+  setBestPerformanceData(null);
+  setBestPerformanceError(null);
+  setBestPerformanceLoading(false);
+  return;
+}
 
   const ac = new AbortController();
 
@@ -281,6 +322,7 @@ const [bestPerformanceData, setBestPerformanceData] =
 }, [
   open,
   selectedRec?.productName,
+  selectedRec?.isOtherSkus,
   countryName,
   sourceCountryName,
   displayCurrency,
@@ -509,12 +551,14 @@ const [bestPerformanceData, setBestPerformanceData] =
 
                 {selectedRec?.showChart && selectedRec?.productName && (
                   <div className="w-full">
-                    <Productinfoinpopup
-                      productname={selectedRec.productName}
-                      countryName={countryName}
-                      sourceCountryName={sourceCountryName}
-                      displayCurrency={displayCurrency}
-                    />
+                   <Productinfoinpopup
+  productname={selectedRec.productName}
+  countryName={countryName}
+  sourceCountryName={sourceCountryName}
+  displayCurrency={displayCurrency}
+  isOtherSkus={selectedRec.isOtherSkus || isSkuGroupCardName(selectedRec.productName)}
+  otherSkuProductNames={selectedRec.otherSkuProductNames || []}
+/>
                   </div>
                 )}
 
