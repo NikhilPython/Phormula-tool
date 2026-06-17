@@ -9959,6 +9959,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
         String(value || "")
             .trim()
             .toLowerCase()
+            .replace(/\s*\+\s*/g, " + ")
             .replace(/\s+/g, " ");
 
     const getDrawerGrowth = (row: any, ...keys: string[]) => {
@@ -10015,17 +10016,29 @@ Keep enough stock for validation but avoid over-committing too early.`,
             const sku = normalizeDrawerKey(row?.sku);
             const name = normalizeDrawerKey(row?.product_name);
 
-            return getLiveBiProductRows().find((item: any) => {
-                const itemSku = normalizeDrawerKey(item?.sku);
-                const itemName = normalizeDrawerKey(item?.product_name);
+            const rows = getLiveBiProductRows();
 
-                return (
-                    (!!sku && sku !== "others" && itemSku === sku) ||
-                    (!!name && itemName === name) ||
-                    (!!name && itemName.includes(name)) ||
-                    (!!itemName && name.includes(itemName))
-                );
-            });
+            // 1. Exact SKU match first
+            if (sku && sku !== "others") {
+                const bySku = rows.find((item: any) => {
+                    const itemSku = normalizeDrawerKey(item?.sku);
+                    return itemSku === sku;
+                });
+
+                if (bySku) return bySku;
+            }
+
+            // 2. Exact product name match only
+            if (name) {
+                const byName = rows.find((item: any) => {
+                    const itemName = normalizeDrawerKey(item?.product_name);
+                    return itemName === name;
+                });
+
+                if (byName) return byName;
+            }
+
+            return undefined;
         },
         [getLiveBiProductRows]
     );
@@ -10163,11 +10176,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
             const byProductName = Object.values(insights).find((item: any) => {
                 const product = normalizeDrawerKey(item?.product_name);
-                return (
-                    product === name ||
-                    (!!product && product.includes(name)) ||
-                    (!!name && name.includes(product))
-                );
+                return product === name;
             });
 
             if (byProductName) return byProductName as any;
@@ -10217,10 +10226,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     const normalizedFullText = normalizeDrawerKey(text);
 
                     return (
-                        (!!targetName &&
-                            (normalizedFirstLine === targetName ||
-                                normalizedFirstLine.includes(targetName) ||
-                                targetName.includes(normalizedFirstLine))) ||
+                        (!!targetName && normalizedFirstLine === targetName) ||
                         (!!targetSku && normalizedFullText.includes(targetSku))
                     );
                 }) || ""
@@ -10238,12 +10244,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 const keyName = normalizeDrawerKey(key);
                 const productName = normalizeDrawerKey(value?.product_name);
 
-                return (
-                    keyName === name ||
-                    productName === name ||
-                    (!!productName && productName.includes(name)) ||
-                    (!!name && productName && name.includes(productName))
-                );
+                return keyName === name || productName === name;
             });
 
             return direct?.[1] as any;
