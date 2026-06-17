@@ -262,16 +262,45 @@ const normalizeTextBlock = (value: unknown): string => {
 
   return "";
 };
+
+
+
+const normalizeSkuGroupName = (name: string) =>
+  String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/sku's/g, "skus")
+    .replace(/product's/g, "products");
+
 const isOthersCardName = (name: string) => {
-  const value = String(name || "").trim().toLowerCase();
+  const value = normalizeSkuGroupName(name);
+
   return (
     value === "others" ||
-    value === "other skus" ||
+    value === "other" ||
     value === "other sku" ||
-    value === "other"
+    value === "other skus" ||
+    value === "other product" ||
+    value === "other products" ||
+    value === "remaining" ||
+    value === "remaining sku" ||
+    value === "remaining skus" ||
+    value === "remaining product" ||
+    value === "remaining products" ||
+    value === "rest sku" ||
+    value === "rest skus" ||
+    value === "rest product" ||
+    value === "rest products" ||
+    value === "leftover sku" ||
+    value === "leftover skus" ||
+    value === "leftover product" ||
+    value === "leftover products" ||
+    value === "all other skus" ||
+    value === "all remaining skus"
   );
 };
-
 const getLiveMtdParams = ({
   isGlobal,
   asOf,
@@ -647,6 +676,7 @@ export default function LiveBusinessClient({
     disableAutoFetch ? !initialData : true
   );
   const [recDrawerOpen, setRecDrawerOpen] = useState(false);
+
   const [selectedRec, setSelectedRec] = useState<{
     productName: string;
     metrics: { label: string; value: string; color?: string }[];
@@ -654,10 +684,23 @@ export default function LiveBusinessClient({
     recommendationPoints: string[];
     advertisingPoints?: string[];
     inventoryPoints?: string[];
-    showChart?: boolean; // ✅ NEW
-  } | null>(null);
+    showChart?: boolean;
 
+    // ✅ aggregate SKU group support: Other SKUs, Remaining SKUs, Rest SKUs, etc.
+    isOtherSkus?: boolean;
+    otherSkuProductNames?: string[];
+  } | null>(null);
   const isGlobalData = () => normalizedCountry === 'global';
+
+
+  const getOtherSkuProductNames = () => {
+    return (categorizedGrowth.other_skus || [])
+      .filter((row: any) => !isTotalLikeRow(row))
+      .filter((row: any) => !isOthersCardName(row?.product_name || ""))
+      .map((row: any) => String(row?.product_name || "").trim())
+      .filter(Boolean);
+  };
+
 
   const getMonthYearFromLabel = (label?: string) => {
     if (!label) return { month: '', year: '' };
@@ -3556,23 +3599,10 @@ export default function LiveBusinessClient({
     return Object.values(countryObj || {})[0] as any;
   };
 
-  const globalRecommendationCards = useMemo(() => {
-    if (!isGlobalData()) return [];
+const globalRecommendationCards = useMemo(() => {
+  if (!isGlobalData()) return [];
 
-    const isOthersCardName = (name: string) => {
-      const value = String(name || "").trim().toLowerCase();
-
-      return (
-        value === "others" ||
-        value === "other" ||
-        value === "other skus" ||
-        value === "other sku" ||
-        value === "other products" ||
-        value === "other product"
-      );
-    };
-
-    const getNetSalesValue = (row: any) => {
+  const getNetSalesValue = (row: any) => {
       return Number(
         row?.net_sales_curr ??
         row?.net_sales_month2 ??
@@ -4398,6 +4428,8 @@ export default function LiveBusinessClient({
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      const isSkuGroup = isOthersCardName(card.productName);
+
                                       setSelectedRec({
                                         productName: card.productName,
                                         metrics: card.metrics,
@@ -4405,8 +4437,15 @@ export default function LiveBusinessClient({
                                         recommendationPoints: card.recommendationPoints,
                                         advertisingPoints: card.advertisingPoints,
                                         inventoryPoints: card.inventoryPoints,
-                                        showChart: !isOthersCardName(card.productName),
+
+                                        // ✅ keep chart visible for Other/Remaining SKU groups too
+                                        showChart: true,
+
+                                        // ✅ tells drawer/chart to use aggregate graph mode
+                                        isOtherSkus: isSkuGroup,
+                                        otherSkuProductNames: isSkuGroup ? getOtherSkuProductNames() : [],
                                       });
+
                                       setRecDrawerOpen(true);
                                     }}
                                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
@@ -4488,6 +4527,7 @@ export default function LiveBusinessClient({
                                     type="button"
                                     onClick={() => {
                                       const sourceRow = getRecommendationSourceRow(parsed.productName);
+                                      const isSkuGroup = isOthersCardName(parsed.productName);
 
                                       setSelectedSkuItem(sourceRow);
                                       setSelectedSku(sourceRow?.sku || parsed.productName);
@@ -4500,6 +4540,10 @@ export default function LiveBusinessClient({
                                         advertisingPoints: parsed.advertisingPoints,
                                         inventoryPoints: parsed.inventoryPoints,
                                         showChart: true,
+
+                                        // ✅ supports Other SKUs / Remaining SKUs / Rest SKUs etc.
+                                        isOtherSkus: isSkuGroup,
+                                        otherSkuProductNames: isSkuGroup ? getOtherSkuProductNames() : [],
                                       });
 
                                       setRecDrawerOpen(true);
@@ -4596,13 +4640,17 @@ export default function LiveBusinessClient({
                                     setSelectedSku("__OTHER_SKUS__");
 
                                     setSelectedRec({
-                                      productName: parsedOther.productName || "Other SKUs",
+                                      productName: parsedOther.productName || "Remaining SKUs",
                                       metrics: parsedOther.metrics,
                                       journeyPoints: parsedOther.journeyPoints,
                                       recommendationPoints: parsedOther.recommendationPoints,
                                       advertisingPoints: parsedOther.advertisingPoints,
                                       inventoryPoints: parsedOther.inventoryPoints,
                                       showChart: true,
+
+                                      // ✅ always aggregate mode for this card
+                                      isOtherSkus: true,
+                                      otherSkuProductNames: getOtherSkuProductNames(),
                                     });
 
                                     setRecDrawerOpen(true);
