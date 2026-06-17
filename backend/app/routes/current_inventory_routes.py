@@ -143,6 +143,7 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
     select_cols = [
         "sku",
         "available",
+        "fc-transfer",
         "inv-age-0-to-90-days",
         "inv-age-91-to-180-days",
         "inv-age-181-to-270-days",
@@ -151,6 +152,7 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         "sales-rank",
         "estimated-storage-cost-next-month",
     ]
+    select_cols = [c for c in select_cols if c in cols]
 
     if "snapshot_date" in cols:
         select_cols.append("snapshot_date")
@@ -400,7 +402,83 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             else pd.DataFrame({"sku": sku_df["sku"], current_month_col: 0})
         )
 
-        final_df = sku_df[["sku", "product_name"]].merge(
+        # ------------------------------------------------------------
+        # Base rows:
+        # 1) SKU master rows first
+        # 2) Amazon-only SKUs appended at bottom
+        # No extra output column
+        # ------------------------------------------------------------
+
+        sku_master_df = sku_df[["sku", "product_name"]].copy()
+        sku_master_df["row_order"] = 1
+
+        extra_skus = []
+
+        # SKUs from aged inventory that are not in SKU master
+        if not aged_df.empty and "sku" in aged_df.columns:
+            aged_extra = aged_df[["sku"]].copy()
+
+            if "product-name" in aged_df.columns:
+                aged_extra["product_name"] = aged_df["product-name"]
+            elif "product_name" in aged_df.columns:
+                aged_extra["product_name"] = aged_df["product_name"]
+            else:
+                aged_extra["product_name"] = ""
+
+            extra_skus.append(aged_extra)
+
+        # SKUs from inventory summary that are not in SKU master
+        if not inv_df.empty and "seller_sku" in inv_df.columns:
+            inv_extra = inv_df[["seller_sku"]].copy()
+            inv_extra.rename(columns={"seller_sku": "sku"}, inplace=True)
+
+            if "product_name" in inv_df.columns:
+                inv_extra["product_name"] = inv_df["product_name"]
+            else:
+                inv_extra["product_name"] = ""
+
+            extra_skus.append(inv_extra)
+
+        if extra_skus:
+            amazon_skus_df = pd.concat(extra_skus, ignore_index=True)
+            amazon_skus_df["sku"] = amazon_skus_df["sku"].apply(norm_sku)
+            amazon_skus_df = amazon_skus_df[amazon_skus_df["sku"] != ""]
+
+            master_sku_set = set(sku_master_df["sku"].apply(norm_sku))
+
+            # Keep only Amazon SKUs not already in SKU master
+            amazon_skus_df = amazon_skus_df[
+                ~amazon_skus_df["sku"].isin(master_sku_set)
+            ].copy()
+
+            amazon_skus_df["row_order"] = 2
+
+            base_skus_df = pd.concat(
+                [sku_master_df, amazon_skus_df],
+                ignore_index=True
+            )
+        else:
+            base_skus_df = sku_master_df.copy()
+
+        # Clean + remove duplicates
+        base_skus_df["sku"] = base_skus_df["sku"].apply(norm_sku)
+        base_skus_df["product_name"] = base_skus_df["product_name"].fillna("")
+
+        base_skus_df["_has_name"] = (
+            base_skus_df["product_name"].astype(str).str.strip() != ""
+        )
+
+        base_skus_df = (
+            base_skus_df
+            .sort_values(
+                by=["row_order", "sku", "_has_name"],
+                ascending=[True, True, False]
+            )
+            .drop_duplicates(subset=["sku"], keep="first")
+            .drop(columns=["_has_name"])
+        )
+
+        final_df = base_skus_df.merge(
             base_sales_df,
             on="sku",
             how="left"
@@ -444,6 +522,25 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         if not aged_df.empty:
             final_df = final_df.merge(aged_df, on="sku", how="left")
+
+            # Fill missing product names from Amazon aged report, but do not add new column
+            if "product-name" in final_df.columns:
+                final_df["product_name"] = final_df["product_name"].where(
+                    final_df["product_name"].astype(str).str.strip() != "",
+                    final_df["product-name"]
+                )
+
+            if "product_name_y" in final_df.columns:
+                final_df["product_name"] = final_df["product_name"].where(
+                    final_df["product_name"].astype(str).str.strip() != "",
+                    final_df["product_name_y"]
+                )
+
+            final_df.drop(
+                columns=["product-name", "product_name_y"],
+                inplace=True,
+                errors="ignore"
+            )
         else:
             for c in [
                 "available",
@@ -473,7 +570,17 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         final_df[current_month_col] = safe_numeric(final_df[current_month_col], 0)
         final_df["inbound_quantity"] = safe_numeric(final_df.get("inbound_quantity"), 0)
-        final_df["available"] = safe_numeric(final_df.get("available"), 0)
+
+        aged_available = safe_numeric(final_df.get("available"), 0)
+        fc_transfer = safe_numeric(final_df.get("fc-transfer"), 0)
+        summary_available = safe_numeric(final_df.get("available_quantity"), 0)
+
+        # Current Inventory = Amazon available + fc-transfer.
+        # If aged available is missing/zero, fallback to inventory summary available_quantity.
+        final_df["available"] = (
+            aged_available.where(aged_available > 0, summary_available)
+            + fc_transfer
+        )
 
         final_df["Inventory Inwarded"] = final_df["inbound_quantity"]
         final_df["Inventory at the end of the month"] = final_df["available"]
@@ -550,6 +657,12 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         final_df.insert(0, "Sno.", range(1, len(final_df) + 1))
 
+        if "row_order" in final_df.columns:
+            final_df = final_df.sort_values(
+                by=["row_order", "SKU"],
+                ascending=[True, True]
+            ).reset_index(drop=True)
+
         # Use the same value that is displayed as "Current Inventory"
         current_inventory_for_coverage = safe_numeric(final_df["available"], 0)
         sales_last_30_days = safe_numeric(final_df["Sales Last 30 Days"], 0)
@@ -596,6 +709,7 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             columns=[c for c in desired_order if c in final_df.columns]
             + [c for c in final_df.columns if c not in desired_order]
         )
+        final_df.drop(columns=["row_order"], inplace=True, errors="ignore")
 
         numeric_columns = final_df.select_dtypes(include=["number"]).columns
         total_row = {

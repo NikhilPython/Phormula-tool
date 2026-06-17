@@ -1405,6 +1405,253 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
 
     return sku_metrics, daily_series
 
+def fetch_current_ai_values_from_skuwisemonthly(
+    user_id: int,
+    country: str,
+    curr_end: date,
+):
+    """
+    Fetches current-month AI values from:
+      skuwisemonthly_{user_id}_{country_lower}_{month_str}_{year}
+
+    This is ONLY for AI payload.
+    Do NOT use this for graph daily_series.
+    """
+
+    country_lower = str(country or "uk").strip().lower()
+    month_str = month_name[curr_end.month].lower()
+    year = curr_end.year
+
+    table_name = f"skuwisemonthly_{user_id}_{country_lower}_{month_str}_{year}"
+
+    try:
+        with engine_hist.connect() as conn:
+            df = pd.read_sql(
+                text(f"SELECT * FROM {table_name}"),
+                conn,
+            )
+    except Exception as e:
+        print(f"[WARN] Could not read AI monthly table {table_name}: {e}")
+        return [], {}, {}
+
+    if df is None or df.empty or "sku" not in df.columns:
+        return [], {}, {}
+
+    df = df.copy()
+
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df.loc[df["sku"].str.lower().isin(["none", "nan", "null", ""]), "sku"] = None
+
+    total_mask = df["sku"].fillna("").str.lower().eq("total")
+    total_row_df = df[total_mask].copy()
+
+    sku_df = df[
+        df["sku"].notna()
+        & ~total_mask
+    ].copy()
+
+    if sku_df.empty:
+        return [], {}, {}
+
+    def first_col(xdf: pd.DataFrame, candidates: list[str]):
+        for c in candidates:
+            if c in xdf.columns:
+                return c
+        return None
+
+    def get_series(xdf: pd.DataFrame, candidates: list[str], default=0.0):
+        c = first_col(xdf, candidates)
+        if c:
+            return safe_num(xdf[c])
+        return pd.Series([default] * len(xdf), index=xdf.index, dtype=float)
+
+    def get_total(candidates: list[str], fallback_value=0.0):
+        if total_row_df.empty:
+            return fallback_value
+
+        c = first_col(total_row_df, candidates)
+        if not c:
+            return fallback_value
+
+        return float(safe_num(total_row_df[c]).sum())
+
+    # -------------------------------------------------
+    # Product name
+    # -------------------------------------------------
+    if "product_name" not in sku_df.columns:
+        sku_df["product_name"] = sku_df["sku"]
+    else:
+        sku_df["product_name"] = sku_df["product_name"].fillna(sku_df["sku"])
+
+    # -------------------------------------------------
+    # Normalize monthly-table columns to your AI expected keys
+    # calculate_growth() expects:
+    # quantity, asp, net_sales, sales_mix,
+    # unit_wise_profitability, profit, product_name, sku
+    # -------------------------------------------------
+    sku_df["quantity"] = get_series(
+        sku_df,
+        ["total_quantity"]
+    )
+
+    sku_df["net_sales"] = get_series(
+        sku_df,
+        ["net_sales", "sales", "sales_metric"]
+    )
+
+    sku_df["profit"] = get_series(
+        sku_df,
+        ["profit", "cm1_profit"]
+    )
+
+    sku_df["product_sales"] = get_series(
+        sku_df,
+        ["product_sales", "gross_product_sales"]
+    )
+
+    if "gross_sales" in sku_df.columns:
+        sku_df["gross_sales"] = safe_num(sku_df["gross_sales"])
+    else:
+        sku_df["gross_sales"] = sku_df["product_sales"]
+
+    # ASP
+    if "asp" in sku_df.columns:
+        sku_df["asp"] = safe_num(sku_df["asp"])
+    else:
+        qty_nonzero = sku_df["quantity"].replace(0, np.nan)
+        sku_df["asp"] = (
+            sku_df["net_sales"] / qty_nonzero
+        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    # Unit-wise profitability
+    if "unit_wise_profitability" in sku_df.columns:
+        sku_df["unit_wise_profitability"] = safe_num(sku_df["unit_wise_profitability"])
+    elif "profit_per_unit" in sku_df.columns:
+        sku_df["unit_wise_profitability"] = safe_num(sku_df["profit_per_unit"])
+    else:
+        qty_nonzero = sku_df["quantity"].replace(0, np.nan)
+        sku_df["unit_wise_profitability"] = (
+            sku_df["profit"] / qty_nonzero
+        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    # Sales mix
+    if "sales_mix" in sku_df.columns:
+        sku_df["sales_mix"] = safe_num(sku_df["sales_mix"])
+    else:
+        total_net_sales = float(sku_df["net_sales"].sum())
+        sku_df["sales_mix"] = (
+            (sku_df["net_sales"] / total_net_sales) * 100.0
+            if total_net_sales
+            else 0.0
+        )
+
+    sku_df = normalize_sales_mix(sku_df, "sales_mix", digits=2)
+
+    # Optional columns used in AI/enrichment
+    for c in [
+        "selling_fees",
+        "fba_fees",
+        "tax_and_credits",
+        "cogs",
+        "ads_spend",
+        "cm2_profit",
+        "platform_fee",
+        "advertising",
+        "rembursement_fee",
+        "reimbursement_fee",
+    ]:
+        if c not in sku_df.columns:
+            sku_df[c] = 0.0
+        else:
+            sku_df[c] = safe_num(sku_df[c])
+
+    out_cols = [
+        "sku",
+        "product_name",
+        "quantity",
+        "product_sales",
+        "gross_sales",
+        "selling_fees",
+        "fba_fees",
+        "tax_and_credits",
+        "asp",
+        "profit",
+        "sales_mix",
+        "net_sales",
+        "unit_wise_profitability",
+        "cogs",
+        "ads_spend",
+        "cm2_profit",
+        "platform_fee",
+        "advertising",
+        "rembursement_fee",
+        "reimbursement_fee",
+    ]
+
+    curr_ai_data = (
+        sku_df[out_cols]
+        .replace({np.nan: None})
+        .to_dict(orient="records")
+    )
+
+    # -------------------------------------------------
+    # AI totals: prefer TOTAL row from monthly table
+    # -------------------------------------------------
+    fallback_totals = aggregate_totals(curr_ai_data)
+    fallback_totals["total_asp"] = compute_total_asp(curr_ai_data)
+    fallback_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_ai_data)
+
+    curr_ai_totals = {
+        "quantity": get_total(
+            ["quantity", "total_quantity", "units", "unit_sold"],
+            fallback_totals.get("quantity", 0.0),
+        ),
+        "net_sales": get_total(
+            ["net_sales", "sales", "sales_metric"],
+            fallback_totals.get("net_sales", 0.0),
+        ),
+        "profit": get_total(
+            ["profit", "cm1_profit"],
+            fallback_totals.get("profit", 0.0),
+        ),
+        "total_asp": get_total(
+            ["asp"],
+            fallback_totals.get("total_asp", 0.0),
+        ),
+        "unit_wise_profitability": get_total(
+            ["unit_wise_profitability", "profit_per_unit"],
+            fallback_totals.get("unit_wise_profitability", 0.0),
+        ),
+    }
+
+    # If TOTAL row asp/unit profit is missing or zero, recompute portfolio level
+    if not curr_ai_totals["total_asp"]:
+        curr_ai_totals["total_asp"] = fallback_totals.get("total_asp", 0.0)
+
+    if not curr_ai_totals["unit_wise_profitability"]:
+        curr_ai_totals["unit_wise_profitability"] = fallback_totals.get("unit_wise_profitability", 0.0)
+
+    # -------------------------------------------------
+    # AI fee totals: prefer TOTAL row, else SKU sum
+    # -------------------------------------------------
+    curr_ai_fee_totals = {
+        "platform_fee": abs(get_total(
+            ["platform_fee", "platform_fees"],
+            float(sku_df["platform_fee"].sum()) if "platform_fee" in sku_df.columns else 0.0,
+        )),
+        "advertising": abs(get_total(
+            ["ads_spend", "advertising", "advertising_total"],
+            float(sku_df["ads_spend"].sum()) if "ads_spend" in sku_df.columns else 0.0,
+        )),
+        "rembursement_fee": get_total(
+            ["rembursement_fee", "reimbursement_fee", "net_reimbursement"],
+            float(sku_df["rembursement_fee"].sum()) if "rembursement_fee" in sku_df.columns else 0.0,
+        ),
+    }
+
+    return curr_ai_data, curr_ai_totals, curr_ai_fee_totals
+
+
 
 # ----------------------------------------------------------------------------
 # GROWTH METRIC CALCULATION (same formulas as Business Insights)

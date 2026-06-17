@@ -15,7 +15,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -2058,6 +2058,23 @@ def live_mtd_vs_previous():
             user_id, country, curr_start, curr_end
         )
 
+        # ✅ Current values for AI only, from skuwisemonthly monthly table
+        curr_ai_data, curr_ai_totals, curr_ai_fee_totals = fetch_current_ai_values_from_skuwisemonthly(
+            user_id=user_id,
+            country=country,
+            curr_end=curr_end,
+        )
+
+        # ✅ Fallback: if monthly table missing, AI uses liveorders values
+        if not curr_ai_data:
+            curr_ai_data = curr_data
+
+            curr_ai_totals = aggregate_totals(curr_ai_data)
+            curr_ai_totals["total_asp"] = compute_total_asp(curr_ai_data)
+            curr_ai_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_ai_data)
+
+            curr_ai_fee_totals = totals_from_daily_series(curr_daily)
+
         # -------------------------------------------------
         # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
         # -------------------------------------------------
@@ -2070,7 +2087,7 @@ def live_mtd_vs_previous():
 
         ads_sku_map = {str(k).strip(): v for k, v in (ads_sku_map or {}).items()}
 
-        for row in (curr_data or []):
+        for row in (curr_ai_data or []):
             sku = str(row.get("sku") or "").strip()
             if not sku:
                 continue
@@ -2095,14 +2112,14 @@ def live_mtd_vs_previous():
         # ---------------------------
         # ALIGN SKUs (PREVIOUS + CURRENT)
         # ---------------------------
-        prev_data_aligned, curr_data = align_prev_curr_by_sku(
+        prev_data_aligned, curr_ai_data = align_prev_curr_by_sku(
             prev_data_aligned,
-            curr_data,
+            curr_ai_data,
         )
         # ---------------------------
         # DATA STILL WARMING UP
         # ---------------------------
-        if not curr_data:
+        if not curr_ai_data:
             return jsonify({
                 "status": "loading",
                 "message": "Data is still syncing. Please wait a few seconds."
@@ -2200,22 +2217,23 @@ def live_mtd_vs_previous():
         # PLATFORM FEES + ADS (SUMMARY ONLY)
         # ---------------------------
         prev_fee_totals = totals_from_daily_series(prev_daily_aligned)
-        curr_fee_totals = totals_from_daily_series(curr_daily)
+
+        # ✅ For AI payload only
+        curr_fee_totals = curr_ai_fee_totals
 
         # ---------------------------
         # GROWTH
         # ---------------------------
         growth_data = calculate_growth(
             prev_data_aligned,
-            curr_data,
+            curr_ai_data,
             key=key_column,
-            
         )
 
        
 
         prev_keys = {r.get(key_column) for r in prev_data_aligned if r.get(key_column)}
-        curr_keys = {r.get(key_column) for r in curr_data if r.get(key_column)}
+        curr_keys = {r.get(key_column) for r in curr_ai_data if r.get(key_column)}
 
   
         # ---------------------------
@@ -2316,13 +2334,13 @@ def live_mtd_vs_previous():
         reviving_keys_for_total = {r.get(key_column) for r in reviving_skus}
 
         prev_top = [r for r in prev_data_aligned if r.get(key_column) in top_keys]
-        curr_top = [r for r in curr_data if r.get(key_column) in top_keys]
+        curr_top = [r for r in curr_ai_data if r.get(key_column) in top_keys]
 
         prev_other = [r for r in prev_data_aligned if r.get(key_column) in other_keys]
-        curr_other = [r for r in curr_data if r.get(key_column) in other_keys]
+        curr_other = [r for r in curr_ai_data if r.get(key_column) in other_keys]
 
         prev_new = [r for r in prev_data_aligned if r.get(key_column) in new_keys]
-        curr_new = [r for r in curr_data if r.get(key_column) in new_keys]
+        curr_new = [r for r in curr_ai_data if r.get(key_column) in new_keys]
 
         prev_reviving = [
             r for r in prev_data_aligned
@@ -2330,7 +2348,7 @@ def live_mtd_vs_previous():
         ]
 
         curr_reviving = [
-            r for r in curr_data
+            r for r in curr_ai_data
             if r.get(key_column) in reviving_keys_for_total
         ]
 
@@ -2385,7 +2403,7 @@ def live_mtd_vs_previous():
         ]
 
         remaining_curr = [
-            r for r in curr_data
+            r for r in curr_ai_data
             if r.get("sku") not in top_keys
         ]
 
@@ -2468,13 +2486,11 @@ def live_mtd_vs_previous():
         # AI SUMMARY (ONCE)
         # ---------------------------
         prev_totals = aggregate_totals(prev_data_aligned)
-        curr_totals = aggregate_totals(curr_data)
         prev_totals["total_asp"] = compute_total_asp(prev_data_aligned)
-        curr_totals["total_asp"] = compute_total_asp(curr_data)
-
-        # ✅ FIX
         prev_totals["unit_wise_profitability"] = compute_total_unit_profitability(prev_data_aligned)
-        curr_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_data)
+
+        # ✅ Current AI totals come from skuwisemonthly TOTAL row / monthly table
+        curr_totals = curr_ai_totals
 
         sku_context = build_sku_context(growth_data, max_items=5)
         estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id, country)

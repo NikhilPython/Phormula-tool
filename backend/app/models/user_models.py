@@ -854,6 +854,61 @@ class InventoryAged(db.Model):
     reserved_fc_transfer = db.Column(
         "Reserved FC Transfer", db.Integer, default=0
     )
+    # ----- Seller Central extra columns not currently stored -----
+    fc_transfer = db.Column("fc-transfer", db.Integer, default=0)
+
+    inv_age_366_455 = db.Column("inv-age-366-to-455-days", db.Integer, default=0)
+    inv_age_456_plus = db.Column("inv-age-456-plus-days", db.Integer, default=0)
+
+    deprecated_healthy_inventory_level = db.Column(
+        "DEPRECATED healthy-inventory-level", db.Float
+    )
+
+    no_sale_last_6_months = db.Column("no-sale-last-6-months", db.String(50))
+
+    qty_charged_ais_181_210 = db.Column(
+        "quantity-to-be-charged-ais-181-210-days", db.Integer, default=0
+    )
+    est_ais_181_210 = db.Column("estimated-ais-181-210-days", db.Float)
+
+    qty_charged_ais_211_240 = db.Column(
+        "quantity-to-be-charged-ais-211-240-days", db.Integer, default=0
+    )
+    est_ais_211_240 = db.Column("estimated-ais-211-240-days", db.Float)
+
+    qty_charged_ais_366_455 = db.Column(
+        "quantity-to-be-charged-ais-366-455-days", db.Integer, default=0
+    )
+    est_ais_366_455 = db.Column("estimated-ais-366-455-days", db.Float)
+
+    qty_charged_ais_456_plus = db.Column(
+        "quantity-to-be-charged-ais-456-plus-days", db.Integer, default=0
+    )
+    est_ais_456_plus = db.Column("estimated-ais-456-plus-days", db.Float)
+
+    fba_minimum_inventory_level = db.Column(
+        "fba-minimum-inventory-level", db.Integer, default=0
+    )
+    fba_inventory_level_health_status = db.Column(
+        "fba-inventory-level-health-status", db.String(255)
+    )
+
+    exempted_low_inventory_fee = db.Column(
+        "Exempted from Low-Inventory-Level fee?", db.String(50)
+    )
+    low_inventory_fee_current_week = db.Column(
+        "Low-Inventory-Level fee applied in current week?", db.String(50)
+    )
+
+    reserved_staging = db.Column("Reserved Staging", db.Integer, default=0)
+
+    supplier = db.Column("supplier", db.String(255))
+    is_seasonal_next_3_months = db.Column(
+        "is-seasonal-in-next-3-months", db.String(50)
+    )
+    season_name = db.Column("season-name", db.String(255))
+    season_start_date = db.Column("season-start-date", db.String(50))
+    season_end_date = db.Column("season-end-date", db.String(50))
     reserved_fc_processing = db.Column(
         "Reserved FC Processing", db.Integer, default=0
     )
