@@ -268,36 +268,35 @@ export default function SuperAdminDashboardPage() {
       title: "Total Users",
       value: totalUsers,
       icon: Users,
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-      borderTop: "border-t-amber-500",
+      iconBg: "bg-[#31d9e5]/15",
+      iconText: "text-[#31d9e5]",
+      borderTop: "border-t-[#31d9e5]",
     },
     {
       title: "Active Brands",
       value: totalBrands,
       icon: Tags,
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-      borderTop: "border-t-emerald-500",
+      iconBg: "bg-[#31d9e5]/15",
+      iconText: "text-[#31d9e5]",
+      borderTop: "border-t-[#31d9e5]",
     },
     {
       title: "Companies",
       value: totalCompanies,
       icon: Building2,
-      bg: "bg-sky-50",
-      text: "text-sky-700",
-      borderTop: "border-t-sky-500",
+      iconBg: "bg-[#31d9e5]/15",
+      iconText: "text-[#31d9e5]",
+      borderTop: "border-t-[#31d9e5]",
     },
     {
       title: "Marketplaces",
       value: totalMarketplaces,
       icon: Store,
-      bg: "bg-violet-50",
-      text: "text-violet-700",
-      borderTop: "border-t-violet-500",
+      iconBg: "bg-[#31d9e5]/15",
+      iconText: "text-[#31d9e5]",
+      borderTop: "border-t-[#31d9e5]",
     },
   ];
-
 
   const confirmToggleStatus = (user: UserRow) => {
     const currentStatus = normalizeStatus(user.status);
@@ -305,15 +304,15 @@ export default function SuperAdminDashboardPage() {
 
     toast.custom(
       (toastId) => (
-        <div className="w-[360px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+     <div className="w-[360px] rounded-xl border border-white/10 bg-[#37384f] p-4 text-white shadow-[0_24px_55px_rgba(20,22,45,0.45)]">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">
+         <h3 className="text-sm font-semibold text-white">
               Confirm status change
             </h3>
 
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-white/60">
               Are you sure you want to {nextLabel}{" "}
-              <span className="font-medium text-slate-900">
+              <span className="font-medium text-white">
                 {user.email}
               </span>
               ?
@@ -324,7 +323,7 @@ export default function SuperAdminDashboardPage() {
             <button
               type="button"
               onClick={() => toast.dismiss(toastId)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
             >
               Cancel
             </button>
@@ -532,30 +531,26 @@ export default function SuperAdminDashboardPage() {
   };
 
 
-
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-7 text-white">
         {/* Page Heading */}
-        {/* <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-            Welcome, Super Admin!
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage users, brands, companies, marketplaces and account status.
-          </p>
-        </div> */}
+        <div className="rounded-2xl border border-white/10 bg-[#484962] px-5 py-5 shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
+          <div className="flex flex-col leading-tight">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-white">
+                Welcome,
+              </h1>
 
-        <div className="flex flex-col leading-tight w-full md:w-auto ">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb pageTitle="Welcome, " variant="page" align="left" textSize="2xl" />
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Super Admin!
-            </span>
+              <span className="text-2xl font-bold tracking-tight text-[#31d9e5]">
+                Super Admin!
+              </span>
+            </div>
+
+            <p className="mt-2 text-sm text-white/60">
+              Manage users, brands, companies, marketplaces and account status.
+            </p>
           </div>
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Manage users, brands, companies, marketplaces and account status.
-          </p>
         </div>
 
         {/* Summary Cards */}
@@ -566,21 +561,21 @@ export default function SuperAdminDashboardPage() {
             return (
               <div
                 key={card.title}
-                className={`rounded-2xl border border-t-4 border-slate-200 bg-white p-5 shadow-sm transition  hover:shadow-md ${card.borderTop}`}
+                className={`rounded-2xl border border-t-4 border-white/10 bg-[#484962] p-5 shadow-[0_18px_40px_rgba(20,22,45,0.22)] transition hover:-translate-y-0.5 hover:bg-[#4f506b] hover:shadow-[0_22px_48px_rgba(20,22,45,0.30)] ${card.borderTop}`}
               >
                 <div className="flex items-center gap-4">
                   <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${card.bg}`}
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${card.iconBg}`}
                   >
-                    <Icon size={22} className={card.text} />
+                    <Icon size={22} className={card.iconText} />
                   </div>
 
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-500">
+                    <p className="text-sm font-medium text-white/60">
                       {card.title}
                     </p>
 
-                    <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
+                    <h3 className="mt-1 text-xl font-bold tracking-tight text-white">
                       {card.value.toLocaleString()}
                     </h3>
                   </div>
@@ -592,61 +587,59 @@ export default function SuperAdminDashboardPage() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-100">
             {error}
           </div>
         )}
 
         {/* Registry Section */}
         <section className="space-y-4">
-          {/* Standalone Header */}
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between">
-            {/* <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                User Brand Registry
-              </h2>
-            </div> */}
-            <PageBreadcrumb pageTitle="User Brand Registry" textSize="2xl" align="left" />
+          <div className="rounded-2xl border border-white/10 bg-[#484962] p-5 shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
+            {/* Header */}
+            <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-white">
+                  User Brand Registry
+                </h2>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="relative w-full sm:w-[340px] lg:w-[400px]">
-                <input
-                  type="text"
-                  value={emailInput}
-                  onChange={handleSearchInputChange}
-                  placeholder="Search by Email, Brand or Company..."
-                  className="h-[38px] w-full rounded-xl border border-slate-200 bg-white px-4 pr-11 text-sm text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/15"
-                />
-
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <FaSearch />
-                </span>
+                <p className="mt-1 text-sm text-white/55">
+                  View, search, and manage registered user brands.
+                </p>
               </div>
 
-              {/* <SegmentedToggle
-                value={statusFilter}
-                options={STATUS_OPTIONS}
-                onChange={setStatusFilter}
-                compact
-                className="w-fit rounded-xl bg-white shadow-sm"
-                textSizeClass="text-xs"
-              /> */}
-            </div>
-          </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="relative w-full sm:w-[340px] lg:w-[400px]">
+                  <input
+                    type="text"
+                    value={emailInput}
+                    onChange={handleSearchInputChange}
+                    placeholder="Search by Email, Brand or Company..."
+                    className="h-[42px] w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-11 text-sm text-white shadow-sm outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
+                  />
 
-          {/* Table Card */}
-          {loading ? (
-            <Loader fullscreen backgroundClass="bg-white/80" />
-          ) : (
-            <SuperAdminUsersTable
-              users={filteredUsers}
-              actionLoading={actionLoading}
-              normalizeStatus={normalizeStatus}
-              onToggleStatus={confirmToggleStatus}
-              onDeleteUser={confirmDeleteAdmin}
-              onViewUser={handleViewUser}
-            />
-          )}
+                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#31d9e5]">
+                    <FaSearch />
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Card */}
+            {loading ? (
+              <Loader fullscreen backgroundClass="bg-[#37384f]/80" />
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+                <SuperAdminUsersTable
+                  users={filteredUsers}
+                  actionLoading={actionLoading}
+                  normalizeStatus={normalizeStatus}
+                  onToggleStatus={confirmToggleStatus}
+                  onDeleteUser={confirmDeleteAdmin}
+                  onViewUser={handleViewUser}
+                />
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </>

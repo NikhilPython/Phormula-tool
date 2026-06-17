@@ -13,16 +13,12 @@ import {
   Landmark,
   ClipboardList,
 } from "lucide-react";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import SuperAdminUsersTable, {
+  SuperAdminTableColumn,
+} from "@/components/admin/table/SuperAdminUsersTable";
 import { toast } from "sonner";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import Loader from "@/components/loader/Loader";
 
 type AnyRecord = Record<string, any>;
 
@@ -97,7 +93,7 @@ type AdminSectionCardProps = {
 
 function AdminSectionCard({ children }: AdminSectionCardProps) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#484962] text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
       {children}
     </section>
   );
@@ -469,88 +465,60 @@ export default function ViewUserPage() {
       title: "Brand Name",
       value: data?.brand_name || "-",
       icon: <Building2 size={22} />,
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-      borderTop: "border-t-amber-500",
     },
     {
       key: "companyName",
       title: "Company Name",
       value: data?.company_name || "-",
       icon: <Landmark size={22} />,
-      bg: "bg-orange-50",
-      text: "text-orange-700",
-      borderTop: "border-t-orange-500",
     },
     {
       key: "totalSku",
       title: "Total SKU",
       value: data?.sku_count ?? "-",
       icon: <Package size={22} />,
-      bg: "bg-sky-50",
-      text: "text-sky-700",
-      borderTop: "border-t-sky-500",
     },
     {
       key: "marketplaceId",
       title: "Marketplace ID",
       value: data?.marketplace_id || "-",
       icon: <ClipboardList size={22} />,
-      bg: "bg-red-50",
-      text: "text-red-700",
-      borderTop: "border-t-red-500",
     },
     {
       key: "dataFetch",
       title: "Data Fetch",
       value: dataFetchLabel,
       icon: <Database size={22} />,
-      bg: "bg-stone-50",
-      text: "text-stone-700",
-      borderTop: "border-t-stone-500",
     },
     {
       key: "onboardSince",
       title: "Onboard Since",
       value: onboardSince,
       icon: <CalendarDays size={22} />,
-      bg: "bg-cyan-50",
-      text: "text-cyan-700",
-      borderTop: "border-t-cyan-500",
     },
     {
       key: "profitability",
       title: "CM2 Profit",
       value: profitabilityLabel,
       icon: <BadgePoundSterling size={22} />,
-      bg: "bg-lime-50",
-      text: "text-lime-700",
-      borderTop: "border-t-lime-500",
     },
     {
       key: "savings",
       title: "Savings",
       value: savingsLabel,
       icon: <BadgePoundSterling size={22} />,
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-      borderTop: "border-t-emerald-500",
     },
   ];
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-slate-100">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#1f5274]/30 border-t-[#1f5274]" />
-      </div>
-    );
+    return <Loader fullscreen backgroundClass="bg-[#37384f]" />;
   }
 
   if (error) {
     return (
-      <div className="min-h-screen p-4 sm:p-6 bg-gradient-to-br from-emerald-50 to-slate-100">
-        <div className="max-w-full mx-auto">
-          <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 px-4 py-3">
+      <div className="min-h-screen bg-[#37384f] p-4 text-white sm:p-6">
+        <div className="mx-auto max-w-full">
+          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-100">
             {error}
           </div>
         </div>
@@ -558,38 +526,153 @@ export default function ViewUserPage() {
     );
   }
 
+  const countryProfileColumns: SuperAdminTableColumn<CountryProfileRow>[] = [
+    {
+      key: "country",
+      label: "Country",
+      render: (p) => (
+        <span className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-3 py-1 text-xs font-semibold text-[#31d9e5]">
+          {p.country?.toUpperCase() || "-"}
+        </span>
+      ),
+    },
+    {
+      key: "stock_unit",
+      label: "Stock Unit",
+      render: (p) => p.stock_unit ?? "-",
+    },
+    {
+      key: "transit_time",
+      label: "Transit Time",
+      render: (p) => p.transit_time ?? "-",
+    },
+    {
+      key: "target",
+      label: "Target",
+      render: (p) => p.target_sales ?? data?.target_sales ?? "-",
+    },
+  ];
+
+  const memberColumns: SuperAdminTableColumn<MemberRow>[] = [
+    {
+      key: "member_name",
+      label: "Member Name",
+      cellClassName: "whitespace-nowrap",
+      render: (member) => (
+        <span className="font-medium text-white">
+          {member.member_name || "-"}
+        </span>
+      ),
+    },
+    {
+      key: "email",
+      label: "Email",
+      cellClassName: "break-all",
+      render: (member) => member.email || "-",
+    },
+    {
+      key: "role",
+      label: "Role",
+      render: (member) => (
+        <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/75">
+          {member.role || "-"}
+        </span>
+      ),
+    },
+    {
+      key: "countries",
+      label: "Countries",
+      render: (member) => (
+        <div className="flex flex-wrap justify-center gap-2">
+          {(member.countries || []).length > 0 ? (
+            member.countries?.map((country, i) => (
+              <span
+                key={`${country}-${i}`}
+                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-xs font-semibold text-[#31d9e5]"
+              >
+                {country}
+              </span>
+            ))
+          ) : (
+            <span>-</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "modules",
+      label: "Modules",
+      cellClassName: "min-w-[220px]",
+      render: (member) => (
+        <div className="flex flex-wrap justify-center gap-2">
+          {(member.modules || []).length > 0 ? (
+            member.modules?.map((module, i) => (
+              <span
+                key={`${module}-${i}`}
+                className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-white/75"
+              >
+                {module.replaceAll("_", " ")}
+              </span>
+            ))
+          ) : (
+            <span>-</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "marketplace_ids",
+      label: "Marketplace IDs",
+      render: (member) => (
+        <div className="flex flex-wrap justify-center gap-2">
+          {(member.marketplace_ids || []).length > 0 ? (
+            member.marketplace_ids?.map((id, i) => (
+              <span
+                key={`${id}-${i}`}
+                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-xs font-semibold text-[#31d9e5]"
+              >
+                {id}
+              </span>
+            ))
+          ) : (
+            <span>-</span>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="w-full">
       <div className="space-y-6">
         {/* Page Heading */}
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.history.length > 1) {
-                router.back();
-              } else {
-                router.push("/superadmin/CDPAdminConsole");
-              }
-            }}
-            className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-            aria-label="Go back"
-            title="Back"
-          >
-            <ArrowLeft size={17} />
-          </button>
+        <div className="rounded-2xl border border-white/10 bg-[#484962] px-5 py-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  router.back();
+                } else {
+                  router.push("/superadmin/CDPAdminConsole");
+                }
+              }}
+              className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/80 shadow-sm transition hover:bg-white/10 hover:text-[#31d9e5]"
+              aria-label="Go back"
+              title="Back"
+            >
+              <ArrowLeft size={17} />
+            </button>
 
-          <div className="flex flex-col leading-tight">
-            <PageBreadcrumb
-              pageTitle="Admin Profile"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
+            <div className="flex flex-col leading-tight">
+              <h1 className="text-2xl font-bold tracking-tight text-white">
+                Admin Profile
+              </h1>
 
-            <p className="mt-1 text-xs text-charcoal-500 2xl:text-sm">
-              View user details, business journey, members and marketplace settings.
-            </p>
+              <p className="mt-2 text-sm text-white/60">
+                View user details, business journey, members and marketplace settings.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -598,21 +681,19 @@ export default function ViewUserPage() {
           {infoCards.map((card) => (
             <div
               key={card.key}
-              className={`rounded-2xl border border-t-4 border-slate-200 bg-white p-5 shadow-sm transition  hover:shadow-md ${card.borderTop}`}
+              className="rounded-2xl border border-t-4 border-white/10 border-t-[#31d9e5] bg-[#484962] p-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.22)] transition hover:-translate-y-0.5 hover:bg-[#4f506b] hover:shadow-[0_22px_48px_rgba(20,22,45,0.30)]"
             >
               <div className="flex items-center gap-4">
-                <div
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${card.bg} ${card.text}`}
-                >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
                   {card.icon}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-500">
+                  <p className="text-sm font-medium text-white/60">
                     {card.title}
                   </p>
 
-                  <h3 className="mt-1 truncate text-xl font-bold tracking-tight text-charcoal-500">
+                  <h3 className="mt-1 truncate text-xl font-bold tracking-tight text-white">
                     {card.value}
                   </h3>
                 </div>
@@ -623,7 +704,7 @@ export default function ViewUserPage() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-100">
             {error}
           </div>
         )}
@@ -637,7 +718,12 @@ export default function ViewUserPage() {
            
           </div> */}
 
-          <PageBreadcrumb pageTitle="Business Journey" variant="page" align="left" textSize="2xl" />
+          <PageBreadcrumb
+            pageTitle="Business Journey"
+            variant="superadmin"
+            align="left"
+            textSize="2xl"
+          />
 
           <AdminSectionCard>
             <div
@@ -648,15 +734,15 @@ export default function ViewUserPage() {
                 {businessJourneySections.map((section, sectionIndex) => (
                   <div
                     key={`${section.title}-${sectionIndex}`}
-                    className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5"
+                    className="rounded-2xl border border-white/10 bg-white/[0.05] p-5"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-sm font-bold text-emerald-700">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#31d9e5]/15 text-sm font-bold text-[#31d9e5]">
                         {sectionIndex + 1}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-slate-900">
+                        <h3 className="text-sm font-bold text-white">
                           {section.title.replace(/^\d+\.\s*/, "")}
                         </h3>
 
@@ -664,7 +750,7 @@ export default function ViewUserPage() {
                           {section.paragraphs.map((paragraph, paragraphIndex) => (
                             <p
                               key={`${section.title}-${paragraphIndex}`}
-                              className="text-sm leading-7 text-slate-600"
+                              className="text-sm leading-7 text-white/65"
                             >
                               {paragraph}
                             </p>
@@ -677,12 +763,12 @@ export default function ViewUserPage() {
               </div>
 
               {!isSummaryExpanded && fullSummary.length > 1800 && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white via-white/95 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#484962] via-[#484962]/95 to-transparent" />
               )}
             </div>
 
             {fullSummary.length > 1800 && (
-              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4">
+              <div className="flex items-center justify-between border-t border-white/10 px-5 py-4">
                 <p className="text-xs text-slate-500">
                   {isSummaryExpanded ? "Showing full journey" : "Showing preview"}
                 </p>
@@ -702,190 +788,47 @@ export default function ViewUserPage() {
         {/* Stock, Transit & Targets */}
         {data?.related_country_profiles?.length ? (
           <section className="space-y-3">
-            {/* <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Stock, Transit & Targets
-              </h2>
-            </div> */}
-            <PageBreadcrumb pageTitle="Stock, Transit & Targets" variant="page" align="left" textSize="2xl" />
+            <PageBreadcrumb
+              pageTitle="Stock, Transit & Targets"
+              variant="superadmin"
+              align="left"
+              textSize="2xl"
+            />
 
             <AdminSectionCard>
-              <div className="max-w-full overflow-x-auto">
-                <div className="min-w-[700px]">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 bg-slate-50/60 dark:border-white/[0.05]">
-                      <TableRow>
-                        {["Country", "Stock Unit", "Transit Time", "Target"].map(
-                          (column) => (
-                            <TableCell
-                              key={column}
-                              isHeader
-                              className="px-5 py-3 text-center text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                            >
-                              {column}
-                            </TableCell>
-                          )
-                        )}
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                      {data.related_country_profiles.map((p, index) => (
-                        <TableRow
-                          key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
-                        >
-                          <TableCell className="px-5 py-4 text-center text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                            <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                              {p.country?.toUpperCase() || "-"}
-                            </span>
-                          </TableCell>
-
-                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            {p.stock_unit ?? "-"}
-                          </TableCell>
-
-                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            {p.transit_time ?? "-"}
-                          </TableCell>
-
-                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            {p.target_sales ?? data?.target_sales ?? "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+              <SuperAdminUsersTable
+                columns={countryProfileColumns}
+                data={data.related_country_profiles}
+                minWidth="700px"
+                emptyTitle="No country profiles found"
+                emptyDescription="Stock, transit, and target settings will appear here."
+              />
             </AdminSectionCard>
           </section>
         ) : null}
 
         {/* Members */}
         <section className="space-y-3">
-          <PageBreadcrumb pageTitle="Members Information" variant="page" align="left" textSize="2xl" />
+          <PageBreadcrumb
+            pageTitle="Members Information"
+            variant="superadmin"
+            align="left"
+            textSize="2xl"
+          />
 
           <AdminSectionCard>
             {membersLoading ? (
-              <div className="flex items-center justify-center py-14">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1f5274]/30 border-t-[#1f5274]" />
-              </div>
-            ) : members.length > 0 ? (
-              <div className="max-w-full overflow-x-auto">
-                <div className="min-w-[1050px]">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 bg-slate-50/60 dark:border-white/[0.05]">
-                      <TableRow>
-                        {[
-                          "Member Name",
-                          "Email",
-                          "Role",
-                          "Countries",
-                          "Modules",
-                          "Marketplace IDs",
-                        ].map((column) => (
-                          <TableCell
-                            key={column}
-                            isHeader
-                            className="px-5 py-3 text-center text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                          >
-                            {column}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                      {members.map((member, index) => (
-                        <TableRow
-                          key={`${member.email || member.member_name || "member"}-${index}`}
-                        >
-                          <TableCell className="whitespace-nowrap px-5 py-4 text-center text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                            {member.member_name || "-"}
-                          </TableCell>
-
-                          <TableCell className="break-all px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            {member.email || "-"}
-                          </TableCell>
-
-                          <TableCell className="whitespace-nowrap px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-300">
-                              {member.role || "-"}
-                            </span>
-                          </TableCell>
-
-                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            <div className="flex flex-wrap justify-center gap-2">
-                              {(member.countries || []).length > 0 ? (
-                                member.countries?.map((country, i) => (
-                                  <span
-                                    key={`${country}-${i}`}
-                                    className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
-                                  >
-                                    {country}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>-</span>
-                              )}
-                            </div>
-                          </TableCell>
-
-                          <TableCell className="min-w-[220px] px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            <div className="flex flex-wrap justify-center gap-2">
-                              {(member.modules || []).length > 0 ? (
-                                member.modules?.map((module, i) => (
-                                  <span
-                                    key={`${module}-${i}`}
-                                    className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-white/[0.06] dark:text-gray-300"
-                                  >
-                                    {module.replaceAll("_", " ")}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>-</span>
-                              )}
-                            </div>
-                          </TableCell>
-
-                          <TableCell className="px-5 py-4 text-center text-theme-sm text-gray-500 dark:text-gray-400">
-                            <div className="flex flex-wrap justify-center gap-2">
-                              {(member.marketplace_ids || []).length > 0 ? (
-                                member.marketplace_ids?.map((id, i) => (
-                                  <span
-                                    key={`${id}-${i}`}
-                                    className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
-                                  >
-                                    {id}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>-</span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+              <div className="flex min-h-[260px] items-center justify-center">
+                <Loader backgroundClass="bg-transparent" />
               </div>
             ) : (
-              <div className="p-5">
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                    <Users size={22} />
-                  </div>
-
-                  <p className="mt-4 font-semibold text-slate-700">
-                    No members found for this admin.
-                  </p>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Members added by this admin will appear here.
-                  </p>
-                </div>
-              </div>
+              <SuperAdminUsersTable
+                columns={memberColumns}
+                data={members}
+                minWidth="1050px"
+                emptyTitle="No members found"
+                emptyDescription="Members added by this admin will appear here."
+              />
             )}
           </AdminSectionCard>
         </section>
