@@ -15,7 +15,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,get_ai_refresh_slot)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -755,6 +755,32 @@ def safe_json_load(val):
     except Exception:
         return {}
 
+# def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
+
+#     record = LiveAISummary.query.filter_by(
+#         user_id=user_id,
+#         country=country,
+#         start_date=start_date,
+#         end_date=end_date
+#     ).first()
+
+#     if not record:
+#         return None
+
+#     # objective changed
+#     if record.objective_hash != objective_hash:
+#         return None
+
+#     # next day rerun
+#     if not record.created_at or record.created_at.date() < date.today():
+#         return None
+
+#     return {
+#     "analysis": safe_json_load(record.analysis),
+#     "summary": safe_json_load(record.summary),
+#     "strategy": safe_json_load(record.strategy)
+#     }
+
 def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
 
     record = LiveAISummary.query.filter_by(
@@ -771,15 +797,21 @@ def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
     if record.objective_hash != objective_hash:
         return None
 
-    # next day rerun
-    if not record.created_at or record.created_at.date() < date.today():
-        return None
+    # IMPORTANT:
+    # Do not expire cache daily.
+    # The route controls refresh by using ai_refresh_slot as end_date.
+    # Example:
+    # 1st-7th  -> end_date = 1st
+    # 8th-14th -> end_date = 8th
+    # etc.
 
     return {
-    "analysis": safe_json_load(record.analysis),
-    "summary": safe_json_load(record.summary),
-    "strategy": safe_json_load(record.strategy)
+        "analysis": safe_json_load(record.analysis),
+        "summary": safe_json_load(record.summary),
+        "strategy": safe_json_load(record.strategy),
     }
+
+
 
 def save_live_ai_cache(
     user_id,
@@ -880,10 +912,19 @@ def live_mtd_vs_previous():
         prev_end = ranges["previous"]["end"]
         curr_start = ranges["current"]["start"]
         curr_end = ranges["current"]["end"]
+
+        # --------------------------------------------
+        # AI REFRESH SLOT
+        # AI insights/recommendations refresh only on:
+        # 1st, 8th, 15th, 22nd, 29th.
+        # Everything else still uses curr_end normally.
+        # --------------------------------------------
+        today = ranges["meta"]["today"]
+        ai_refresh_slot = get_ai_refresh_slot(today)
+
         # --------------------------------------------
         # HISTORIC MOVEMENT CONTEXT (24 MONTHS)
         # --------------------------------------------
-        today = ranges["meta"]["today"]
 
         # Anchor on LAST COMPLETED MONTH (never current MTD)
         anchor_year = today.year
@@ -1478,7 +1519,7 @@ def live_mtd_vs_previous():
                 user_id=user_id,
                 country="global",
                 start_date=curr_start,
-                end_date=curr_end,
+                end_date=ai_refresh_slot,
                 objective_hash=objective_hash,
             )
 
@@ -1670,7 +1711,7 @@ def live_mtd_vs_previous():
                         user_id=user_id,
                         country="global",
                         start_date=curr_start,
-                        end_date=curr_end,
+                        end_date=ai_refresh_slot,
                         objective_hash=objective_hash,
                         analysis=analysis,
                         summary=summary_out,
@@ -2618,49 +2659,22 @@ def live_mtd_vs_previous():
                 user_id=user_id,
                 country=country,
                 start_date=curr_start,
-                end_date=curr_end,
+                end_date=ai_refresh_slot,
                 objective_hash=objective_hash,
             )
 
-            if False and cached_ai:
-                analysis = cached_ai["analysis"]
-                summary_out = cached_ai["summary"]
-                strategy_parsed = cached_ai["strategy"]
-
-            # else:
-
-            #     # ---------------------------
-            #     # PROMPT-1 (ANALYSIS)
-            #     # ---------------------------
-            #     analysis = run_live_prompt_1_analysis(payload_ai)
-
-            #     # ---------------------------
-            #     # PROMPT-1.5 (EXECUTIVE SUMMARY)
-            #     # ---------------------------
-            #     summary_out = run_live_prompt_1_5_summary(
-            #         analysis_output=analysis,
-            #         numeric_context={
-            #             "periods": payload_ai["periods"],
-            #             "pct_changes": payload_ai["pct_changes"],
-            #             "selling_costs": payload_ai["selling_costs"],
-            #             "roas": payload_ai["roas"],
-            #             "movement_context": payload_ai["movement_context"],
-            #             "currency": payload_ai["currency"],
-            #         },
-            #         user_objective=user_objective,
-            #     )
-
+            if cached_ai:
+                analysis = cached_ai.get("analysis", {}) or {}
+                summary_out = cached_ai.get("summary", {}) or {
+                    "summary_text": "",
+                    "metric_bullets": [],
+                }
+                strategy_parsed = cached_ai.get("strategy", {}) or {}
             else:
-
                 # ---------------------------
                 # PROMPT-1 (ANALYSIS)
                 # ---------------------------
                 analysis = run_live_prompt_1_analysis(payload_ai)
-
-                # print("\n========== PAYLOAD GOING TO AI ==========")
-                # print(json.dumps(payload_ai, indent=2, default=str))
-                # print("========== END PAYLOAD GOING TO AI ==========\n")
-
 
                 # ---------------------------
                 # PROMPT-1.5 (EXECUTIVE SUMMARY)
@@ -2673,10 +2687,6 @@ def live_mtd_vs_previous():
                     "movement_context": payload_ai["movement_context"],
                     "currency": payload_ai["currency"],
                 }
-
-                # print("\n========== PROMPT 1.5 NUMERIC CONTEXT ==========")
-                # print(json.dumps(summary_numeric_context, indent=2, default=str))
-                # print("========== END PROMPT 1.5 NUMERIC CONTEXT ==========\n")
 
                 summary_out = run_live_prompt_1_5_summary(
                     analysis_output=analysis,
@@ -2977,7 +2987,7 @@ def live_mtd_vs_previous():
                 user_id=user_id,
                 country=country,
                 start_date=curr_start,
-                end_date=curr_end,
+                end_date=ai_refresh_slot,
                 objective_hash=objective_hash,
                 analysis=analysis,
                 summary=summary_out,

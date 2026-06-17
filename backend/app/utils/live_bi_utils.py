@@ -293,7 +293,22 @@ def get_mtd_and_prev_ranges(as_of=None, start_day=None, end_day=None):
         },
     }
 
+AI_REFRESH_DAYS = {1, 8, 15, 22, 29}
 
+
+def get_ai_refresh_slot(as_of_date: date) -> date:
+    """
+    AI insights/recommendations refresh only on:
+    1st, 8th, 15th, 22nd, 29th.
+
+    On other days, reuse the latest previous AI refresh slot
+    from the same month.
+    """
+    if isinstance(as_of_date, datetime):
+        as_of_date = as_of_date.date()
+
+    allowed_day = max(d for d in AI_REFRESH_DAYS if d <= as_of_date.day)
+    return date(as_of_date.year, as_of_date.month, allowed_day)
 
 # -----------------------------------------------------------------------------
 # 🔹 NEW HELPER — HISTORIC BI PARITY (6-MONTH LOOKBACK)
@@ -1603,7 +1618,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
 
     curr_ai_totals = {
         "quantity": get_total(
-            ["quantity", "total_quantity", "units", "unit_sold"],
+            ["total_quantity", "units", "unit_sold"],
             fallback_totals.get("quantity", 0.0),
         ),
         "net_sales": get_total(
@@ -2935,13 +2950,17 @@ def build_ai_summary(
     asp_prev = safe_float_local(prev_totals.get("total_asp"))
     asp_curr = safe_float_local(curr_totals.get("total_asp"))
 
+    # ✅ Use rounded ASP values for % change so Business Summary matches ASP card
+    asp_prev_for_pct = round(asp_prev, 2) if asp_prev is not None else None
+    asp_curr_for_pct = round(asp_curr, 2) if asp_curr is not None else None
+
     up_prev_idx = safe0(prev_totals.get("unit_wise_profitability"))
     up_curr_idx = safe0(curr_totals.get("unit_wise_profitability"))
 
     qty_pct   = pct_change_2(qty_prev, qty_curr)
     sales_pct = pct_change_2(sales_prev, sales_curr)
     prof_pct  = pct_change_2(prof_prev, prof_curr)
-    asp_pct   = pct_change_2(asp_prev, asp_curr)
+    asp_pct   = pct_change_2(asp_prev_for_pct, asp_curr_for_pct)
     up_pct    = pct_change_2(up_prev_idx, up_curr_idx)
 
     pf_prev = safe_float_local((prev_fee_totals or {}).get("platform_fee"))
