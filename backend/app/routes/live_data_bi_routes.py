@@ -169,6 +169,15 @@ def align_prev_curr_by_product_name(prev_data, curr_data):
     prev_df = prev_df[prev_df["product_name"].notna()]
     curr_df = curr_df[curr_df["product_name"].notna()]
 
+    # ✅ Before merge: normalize quantity source
+    for df in (prev_df, curr_df):
+        if "total_quantity" in df.columns:
+            df["quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0.0)
+        elif "quantity" in df.columns:
+            df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0.0)
+        else:
+            df["quantity"] = 0.0
+
     all_products = set(prev_df["product_name"]) | set(curr_df["product_name"])
 
     if not all_products:
@@ -180,6 +189,7 @@ def align_prev_curr_by_product_name(prev_data, curr_data):
     curr_df = base.merge(curr_df, on="product_name", how="left")
 
     numeric_cols = [
+        "total_quantity",
         "quantity",
         "net_sales",
         "product_sales",
@@ -203,6 +213,27 @@ def align_prev_curr_by_product_name(prev_data, curr_data):
 
         if c in curr_df.columns:
             curr_df[c] = pd.to_numeric(curr_df[c], errors="coerce").fillna(0.0)
+
+    # ✅ After merge: final source of truth for Units
+    # calculate_growth() reads "quantity", so force quantity from total_quantity here.
+    for df in (prev_df, curr_df):
+        if "total_quantity" in df.columns:
+            df["quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0.0)
+        elif "quantity" in df.columns:
+            df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0.0)
+        else:
+            df["quantity"] = 0.0
+
+        qty_nonzero = df["quantity"].replace(0, np.nan)
+
+        # ✅ Recalculate ASP and unit profitability from corrected units
+        if "net_sales" in df.columns:
+            df["asp"] = (df["net_sales"] / qty_nonzero).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        if "profit" in df.columns:
+            df["unit_wise_profitability"] = (
+                df["profit"] / qty_nonzero
+            ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
     return (
         prev_df.replace({np.nan: None}).to_dict(orient="records"),
@@ -3585,7 +3616,9 @@ def _build_aligned_totals(skuwise_items_global,extra_totals,total_previous_net_s
 def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
     total = _get_total_row(skuwise_items)
 
-    quantity = _safe_float(total.get("quantity"))
+    # ✅ GLOBAL UNITS FIX:
+    # Prefer total_quantity, fallback to quantity.
+    quantity = _safe_float(total.get("total_quantity", total.get("quantity")))
     gross_sales = _safe_float(total.get("gross_sales"))
     net_sales = _safe_float(total.get("net_sales"))
     profit = _safe_float(total.get("profit"))
@@ -3728,14 +3761,34 @@ def _build_global_skuwise(us_df, uk_df):
 def _append_total_row(items, country):
     if not items:
         return items
+
     df = pd.DataFrame(items)
+
+    # ✅ GLOBAL UNITS FIX:
+    # Global/productwise data should use total_quantity.
+    # Countrywise data can still fall back to quantity.
+    if "total_quantity" in df.columns:
+        df["quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0)
+    elif "quantity" in df.columns:
+        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+    else:
+        df["quantity"] = 0
+
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+
     total = {}
     for col in numeric_cols:
         total[col] = float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+
+    # ✅ Always use corrected quantity
     qty = total.get("quantity", 0) or 0
     net_sales = total.get("net_sales", 0) or 0
     profit = total.get("profit", 0) or 0
+
+    # ✅ Keep both keys for compatibility
+    total["quantity"] = qty
+    total["total_quantity"] = qty
+
     total["asp"] = net_sales / qty if qty else 0
     total["unit_wise_profitability"] = profit / qty if qty else 0
     total["sales_mix"] = 100.0
@@ -3743,8 +3796,10 @@ def _append_total_row(items, country):
     total["product_name"] = "Total"
     total["country"] = country
     total["currency"] = "USD"
+
     if country in ("uk", "us"):
         total["source_country"] = country
+
     return items + [total]
 
 
