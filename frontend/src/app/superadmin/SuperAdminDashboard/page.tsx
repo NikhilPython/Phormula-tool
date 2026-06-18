@@ -599,7 +599,7 @@ export default function SuperAdminDashboardPage() {
             <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight text-white">
-                  User Brand Registry
+                 Recent Brands
                 </h2>
 
                 <p className="mt-1 text-sm text-white/55">

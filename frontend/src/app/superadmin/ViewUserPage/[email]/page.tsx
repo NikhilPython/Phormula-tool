@@ -190,11 +190,33 @@ export default function ViewUserPage() {
             )}`,
             {
               method: "GET",
-              headers: { Authorization: `Bearer ${token}` },
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
             }
           );
-          const json = (await res.json()) as any;
-          if (!res.ok) throw new Error(json.message || "Superadmin fetch failed");
+
+          const json = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            const message = String(json?.message || "").toLowerCase();
+
+            if (
+              res.status === 401 ||
+              message.includes("token") ||
+              message.includes("expired") ||
+              message.includes("unauthorized")
+            ) {
+              localStorage.removeItem("superadmin_token");
+              toast.error("Session expired. Please login again.");
+              router.replace("/superadmin/CDPAdminConsole");
+              return;
+            }
+
+            throw new Error(json?.message || "Superadmin fetch failed");
+          }
+
           result = json as ViewUserData;
         }
 
@@ -229,12 +251,25 @@ export default function ViewUserPage() {
             }
           );
 
-          const membersJson = await membersRes.json();
+          const membersJson = await membersRes.json().catch(() => ({}));
 
-          if (membersRes.ok) {
-            setMembers(Array.isArray(membersJson?.data) ? membersJson.data : []);
-          } else {
+          if (!membersRes.ok) {
+            const message = String(membersJson?.message || "").toLowerCase();
+
+            if (
+              membersRes.status === 401 ||
+              message.includes("token") ||
+              message.includes("expired") ||
+              message.includes("unauthorized")
+            ) {
+              localStorage.removeItem("superadmin_token");
+              toast.error("Session expired. Please login again.");
+              router.replace("/superadmin/CDPAdminConsole");
+              return;
+            }
             setMembers([]);
+          } else {
+            setMembers(Array.isArray(membersJson?.data) ? membersJson.data : []);
           }
         } catch {
           setMembers([]);
@@ -249,7 +284,7 @@ export default function ViewUserPage() {
     };
 
     if (email) fetchUserDetails();
-  }, [email]);
+  }, [email, router]);
 
   const groupedTables: Record<
     "UK" | "US" | "GLOBAL",

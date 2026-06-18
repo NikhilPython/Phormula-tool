@@ -348,7 +348,7 @@ export default function CDPAdminConsolePage() {
                 </div>
               )} */}
 
-              {success && (
+              {/* {success && (
                 <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-2.5">
                   <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-200" />
 
@@ -365,7 +365,7 @@ export default function CDPAdminConsolePage() {
                     )}
                   </div>
                 </div>
-              )}
+              )} */}
 
               <button
                 type="submit"

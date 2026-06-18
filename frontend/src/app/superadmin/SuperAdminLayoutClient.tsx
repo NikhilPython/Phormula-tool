@@ -16,6 +16,7 @@ import {
     KeyRound,
     ChevronLeft,
     ChevronRight,
+    Building2 , 
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,6 +68,11 @@ export default function SuperAdminLayoutClient({
             label: "Admins",
             href: "/superadmin/Admins",
             icon: Users,
+        },
+        {
+            label: "Brands",
+            href: "/superadmin/Brands",
+            icon: Building2  ,
         },
     ];
 
