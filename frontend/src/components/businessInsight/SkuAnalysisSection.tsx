@@ -284,6 +284,15 @@ const splitMetricValue = (value: string) => {
   };
 };
 
+const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+  const normalizedLabel = label.trim().toLowerCase();
+  const metricIndex = metricOrder.indexOf(normalizedLabel);
+
+  return metricColors[
+    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+  ];
+};
+
 const SkuAnalysisSection: React.FC<Props> = ({
     categorizedGrowth,
     month1,
@@ -1246,9 +1255,9 @@ const buildMetricsForSku = (item?: SkuItem | null): MetricItem[] => {
           return (
             <div
               key={`${m.label}-${i}`}
-              className={`rounded-lg border border-t-4 ${
-                metricColors[i % metricColors.length]
-              } px-3 py-2`}
+             className={`rounded-lg border border-t-4 ${
+  getMetricBorderColorByLabel(m.label, i)
+} px-3 py-2`}
             >
               <div className="text-[10px] text-charcoal-400 2xl:text-xs">
                 {m.label
@@ -1279,7 +1288,7 @@ const buildMetricsForSku = (item?: SkuItem | null): MetricItem[] => {
 })()}
 <div>
   <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-    Best Performance
+   Overall Best Performance
   </div>
 
   {bestPerformanceLoading ? (
@@ -1327,8 +1336,8 @@ const buildMetricsForSku = (item?: SkuItem | null): MetricItem[] => {
         <div
           key={card.label}
           className={`rounded-lg border border-t-4 ${
-            metricColors[index % metricColors.length]
-          } px-3 py-2`}
+  getMetricBorderColorByLabel(card.label, index)
+} px-3 py-2`}
         >
           <div className="text-[10px] 2xl:text-xs text-charcoal-400">
             {card.label}

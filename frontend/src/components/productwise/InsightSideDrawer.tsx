@@ -255,6 +255,15 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
   return safeAIndex - safeBIndex;
 });
 
+const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+  const normalizedLabel = label.trim().toLowerCase();
+  const metricIndex = metricOrder.indexOf(normalizedLabel);
+
+  return metricColors[
+    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+  ];
+};
+
   return (
     <AnimatePresence>
       {open && (
@@ -322,8 +331,8 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
         <div
           key={`${m.label}-${i}`}
           className={`rounded-lg border border-t-4 ${
-            metricColors[i % metricColors.length]
-          } px-3 py-2`}
+  getMetricBorderColorByLabel(m.label, i)
+} px-3 py-2`}
         >
           <div className="text-[10px] text-charcoal-400 2xl:text-xs">
             {m.label
@@ -371,7 +380,7 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
                 {insightData.best_performance && (
                   <div>
                     <div className="text-xs sm:text-sm 2xl:text-lg font-semibold text-charcoal-700 mb-2">
-                      Best Performance
+                    Overall  Best Performance
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -379,8 +388,8 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
                         <div
                           key={card.label}
                           className={`rounded-lg border border-t-4 ${
-                            metricColors[index % metricColors.length]
-                          } px-3 py-2`}
+  getMetricBorderColorByLabel(card.label, index)
+} px-3 py-2`}
                         >
                           <div className="text-[10px] 2xl:text-xs text-charcoal-400">
                             {card.label}

@@ -1078,6 +1078,15 @@ bestPerformanceData = null,
     return safeAIndex - safeBIndex;
   });
 
+  const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+  const normalizedLabel = label.trim().toLowerCase();
+  const metricIndex = metricOrder.indexOf(normalizedLabel);
+
+  return metricColors[
+    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+  ];
+};
+
   if (!open || !block) return null;
 
   return (
@@ -1153,7 +1162,7 @@ bestPerformanceData = null,
                     {sortedMetrics.map((m, i) => (
                       <div
                         key={i}
-                        className={`rounded-lg border border-t-4 ${metricColors[i % metricColors.length]} px-3 py-2`}
+                        className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
                       >
                         <div className="text-[10px] text-charcoal-400 2xl:text-xs">
                           {m.label
@@ -1198,79 +1207,81 @@ bestPerformanceData = null,
                   </div>
                 </div>
 
-                <div>
-  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-    Best Performance
-  </div>
+               {!isOtherSkusBlock && (
+  <div>
+    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+      Overall Best Performance
+    </div>
 
-  {bestPerformanceLoading ? (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-      Loading best performance...
-    </div>
-  ) : bestPerformanceError ? (
-    <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
-      {bestPerformanceError}
-    </div>
-  ) : bestPerformanceData ? (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-     {[
-  {
-    label: "Units",
-    value: Math.round(toNum(bestPerformanceData?.units?.units)).toLocaleString(),
-    period: formatBestPerformancePeriod(
-      bestPerformanceData?.units?.month,
-      bestPerformanceData?.units?.year
-    ),
-  },
-  {
-    label: "Net Sales",
-    value: formatMoneyNoDecimal(
-      bestPerformanceData?.net_sales?.net_sales,
-      drawerCurrencySymbol
-    ),
-    period: formatBestPerformancePeriod(
-      bestPerformanceData?.net_sales?.month,
-      bestPerformanceData?.net_sales?.year
-    ),
-  },
-  {
-    label: "CM1 Profit",
-    value: formatMoneyNoDecimal(
-      bestPerformanceData?.cm1_profit?.cm1_profit,
-      drawerCurrencySymbol
-    ),
-    period: formatBestPerformancePeriod(
-      bestPerformanceData?.cm1_profit?.month,
-      bestPerformanceData?.cm1_profit?.year
-    ),
-  },
-].map((m, i) => (
-        <div
-          key={m.label}
-          className={`rounded-lg border border-t-4 ${metricColors[i % metricColors.length]} px-3 py-2`}
-        >
-          <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-            {m.label}
+    {bestPerformanceLoading ? (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+        Loading best performance...
+      </div>
+    ) : bestPerformanceError ? (
+      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+        {bestPerformanceError}
+      </div>
+    ) : bestPerformanceData ? (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[
+          {
+            label: "Units",
+            value: Math.round(toNum(bestPerformanceData?.units?.units)).toLocaleString(),
+            period: formatBestPerformancePeriod(
+              bestPerformanceData?.units?.month,
+              bestPerformanceData?.units?.year
+            ),
+          },
+          {
+            label: "Net Sales",
+            value: formatMoneyNoDecimal(
+              bestPerformanceData?.net_sales?.net_sales,
+              drawerCurrencySymbol
+            ),
+            period: formatBestPerformancePeriod(
+              bestPerformanceData?.net_sales?.month,
+              bestPerformanceData?.net_sales?.year
+            ),
+          },
+          {
+            label: "CM1 Profit",
+            value: formatMoneyNoDecimal(
+              bestPerformanceData?.cm1_profit?.cm1_profit,
+              drawerCurrencySymbol
+            ),
+            period: formatBestPerformancePeriod(
+              bestPerformanceData?.cm1_profit?.month,
+              bestPerformanceData?.cm1_profit?.year
+            ),
+          },
+        ].map((m, i) => (
+          <div
+            key={m.label}
+            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
+          >
+            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+              {m.label}
+            </div>
+
+            <div className="flex flex-col leading-tight">
+              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+                {m.period}
+              </span>
+
+              <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
+                {m.value}
+              </span>
+            </div>
           </div>
-
-         <div className="flex flex-col leading-tight">
-  <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-    {m.period}
-  </span>
-
-  <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
-    {m.value}
-  </span>
-</div>
-        </div>
-      ))}
-    </div>
-  ) : (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-      —
-    </div>
-  )}
-</div>
+        ))}
+      </div>
+    ) : (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+        —
+      </div>
+    )}
+  </div>
+)}
 
                 {/* {block.isOtherSkus && block.includedSkus?.length ? (
                   <div>
