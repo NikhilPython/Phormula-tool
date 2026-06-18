@@ -2828,10 +2828,7 @@ export default function DashboardPage() {
 
         const { monthName, year } = getRegionYearMonth(activeDateRegion);
 
-        const countries =
-            platform === "global"
-                ? ["uk", "us"]
-                : [targetSummaryCountry];
+        const countries = [targetSummaryCountry];
 
         const results = await Promise.all(
             countries.map(async (country) => {
@@ -2874,10 +2871,7 @@ export default function DashboardPage() {
 
         const { monthName, year } = getPrevBackendCountryYearMonth();
 
-        const countries =
-            platform === "global"
-                ? ["uk", "us"]
-                : [targetSummaryCountry];
+        const countries = [targetSummaryCountry];
 
         const results = await Promise.all(
             countries.map(async (country) => {
@@ -3016,19 +3010,10 @@ export default function DashboardPage() {
     );
 
     const userMonthlyTargetHome = useMemo(() => {
-        if (platform === "global") {
-            const ukTarget = toNumberSafe(targetSummaries.uk?.target_sales ?? 0);
-            const usTarget = toNumberSafe(targetSummaries.us?.target_sales ?? 0);
-
-            const globalTarget = ukTarget * gbpToUsd + usTarget;
-
-            return globalTarget;
-        }
-
         return toNumberSafe(
             targetSummaries[targetSummaryCountry as keyof typeof targetSummaries]?.target_sales ?? 0
         );
-    }, [platform, targetSummaries, targetSummaryCountry, gbpToUsd]);
+    }, [targetSummaries, targetSummaryCountry]);
 
 
     const prevFullMonthNetSalesDisp = useMemo(() => {
@@ -5199,25 +5184,18 @@ export default function DashboardPage() {
 
 
     const regions = useMemo(() => {
-        const ukTargetGBP = toNumberSafe(targetSummaries.uk?.target_sales ?? 0);
-        const usTargetUSD = toNumberSafe(targetSummaries.us?.target_sales ?? 0);
-
-        const globalTargetFromRows = ukTargetGBP * gbpToUsd + usTargetUSD;
-
-        const userMonthlyTargetForRegion =
-            platform === "global"
-                ? globalTargetFromRows
-                : toNumberSafe(
-                    targetSummaries[targetSummaryCountry as keyof typeof targetSummaries]?.target_sales ?? 0
-                );
+        const userMonthlyTargetForRegion = toNumberSafe(
+            targetSummaries[
+                targetSummaryCountry as keyof typeof targetSummaries
+            ]?.target_sales ?? 0
+        );
 
         const globalPrevFullMonthSales =
             globalPrevFullMonthNetSalesDisp > 0
                 ? globalPrevFullMonthNetSalesDisp
                 : globalPrevNetDisp;
 
-        const globalTarget =
-            userMonthlyTargetForRegion > 0 ? userMonthlyTargetForRegion : globalPrevFullMonthSales;
+        const globalTarget = userMonthlyTargetForRegion;
 
         const global: RegionMetrics = {
             mtdUSD: globalCurrNetDisp,
@@ -8877,11 +8855,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const stickyTargetHome =
         stats_targetHome && stats_targetHome > 0
             ? stats_targetHome
-            : targets_lastMonthTotalHome && targets_lastMonthTotalHome > 0
-                ? targets_lastMonthTotalHome
-                : stats_lastMonthTotalHome && stats_lastMonthTotalHome > 0
-                    ? stats_lastMonthTotalHome
-                    : 0;
+            : 0;
 
     const stickyTargetProratedToDate =
         daysInMonthByRegion > 0
@@ -8903,19 +8877,12 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 : 0;
 
     const prevMonthTargetHome = useMemo(() => {
-        if (platform === "global") {
-            const ukPrevTarget = toNumberSafe(prevTargetSummaries.uk?.target_sales ?? 0);
-            const usPrevTarget = toNumberSafe(prevTargetSummaries.us?.target_sales ?? 0);
-
-            return ukPrevTarget * gbpToUsd + usPrevTarget;
-        }
-
         return toNumberSafe(
             prevTargetSummaries[
                 targetSummaryCountry as keyof typeof prevTargetSummaries
             ]?.target_sales ?? 0
         );
-    }, [platform, prevTargetSummaries, targetSummaryCountry, gbpToUsd]);
+    }, [prevTargetSummaries, targetSummaryCountry]);
 
     const stickyPreviousTargetHome =
         prevMonthTargetHome && prevMonthTargetHome > 0
