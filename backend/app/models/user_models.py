@@ -920,6 +920,48 @@ class InventoryAged(db.Model):
         db.Float,
     )
 
+
+# --------------------------------- InventoryAWD model ---------------------------------
+
+class InventoryAWD(db.Model):
+    __tablename__ = "inventory_awd"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    marketplace_id = db.Column(db.String(50), nullable=False, index=True)
+
+    sku = db.Column(db.String(255), nullable=False, index=True)
+
+    total_onhand_quantity = db.Column(db.Integer, default=0)
+    total_inbound_quantity = db.Column(db.Integer, default=0)
+
+    available_distributable_quantity = db.Column(db.Integer, default=0)
+    reserved_distributable_quantity = db.Column(db.Integer, default=0)
+    replenishment_quantity = db.Column(db.Integer, default=0)
+
+    # Store Amazon's nested expirationDetails array as JSON
+    expiration_details = db.Column(JSON, nullable=True)
+
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "marketplace_id",
+            "sku",
+            name="uq_inventory_awd_user_marketplace_sku",
+        ),
+    )
+    
 # --------------------------------- MonthwiseInventory model ---------------------------------
 
 class MonthwiseInventory(db.Model):
