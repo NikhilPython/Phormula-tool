@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert, insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from sqlalchemy import delete, text
-from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged
+from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged, InventoryAWD
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.amazon_utils import amazon_client, _apply_region_and_marketplace_from_request
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
@@ -3266,3 +3266,333 @@ def inventory_ledger_summary_store_year():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# =============================================================================
+# AWD INVENTORY - FETCH FROM AMAZON SP-API AND STORE IN inventory_awd
+# =============================================================================
+
+def _safe_int_awd(value) -> int:
+    try:
+        if value is None:
+            return 0
+
+        if isinstance(value, dict):
+            return sum(
+                int(v or 0)
+                for v in value.values()
+                if isinstance(v, (int, float))
+            )
+
+        s = str(value).strip().replace(",", "")
+        if s == "":
+            return 0
+
+        return int(float(s))
+    except Exception:
+        return 0
+
+
+def _extract_awd_inventory_list(payload: dict) -> list[dict]:
+    """
+    Amazon AWD API response can be wrapped by your amazon_client in either:
+      - {"payload": {...}}
+      - direct payload {...}
+
+    This helper safely finds the inventory array.
+    """
+    payload = payload or {}
+
+    # Most expected shape
+    if isinstance(payload.get("inventory"), list):
+        return payload.get("inventory") or []
+
+    # Defensive fallback names
+    if isinstance(payload.get("items"), list):
+        return payload.get("items") or []
+
+    if isinstance(payload.get("inventoryItems"), list):
+        return payload.get("inventoryItems") or []
+
+    return []
+
+
+def _get_awd_next_token(payload: dict):
+    payload = payload or {}
+
+    # Most expected shape
+    if payload.get("nextToken"):
+        return payload.get("nextToken")
+
+    # Defensive fallback if Amazon wraps pagination differently
+    pagination = payload.get("pagination") or {}
+    if pagination.get("nextToken"):
+        return pagination.get("nextToken")
+
+    return None
+
+
+def _normalize_awd_inventory_item(item: dict) -> dict | None:
+    item = item or {}
+
+    sku = (
+        item.get("sku")
+        or item.get("sellerSku")
+        or item.get("merchantSku")
+        or item.get("msku")
+    )
+
+    if not sku:
+        return None
+
+    inventory_details = item.get("inventoryDetails") or {}
+
+    return {
+        "sku": str(sku).strip(),
+
+        "total_onhand_quantity": _safe_int_awd(
+            item.get("totalOnhandQuantity")
+        ),
+        "total_inbound_quantity": _safe_int_awd(
+            item.get("totalInboundQuantity")
+        ),
+
+        "available_distributable_quantity": _safe_int_awd(
+            inventory_details.get("availableDistributableQuantity")
+        ),
+        "reserved_distributable_quantity": _safe_int_awd(
+            inventory_details.get("reservedDistributableQuantity")
+        ),
+        "replenishment_quantity": _safe_int_awd(
+            inventory_details.get("replenishmentQuantity")
+        ),
+
+        "expiration_details": item.get("expirationDetails") or [],
+    }
+
+
+def _fetch_awd_inventory_rows_from_amazon(mp: str, sku: str | None = None) -> list[dict]:
+    """
+    Fetch AWD inventory from:
+      GET /awd/2024-05-09/inventory
+
+    Available Amazon-side fields:
+      sku
+      totalOnhandQuantity
+      totalInboundQuantity
+      inventoryDetails.availableDistributableQuantity
+      inventoryDetails.reservedDistributableQuantity
+      inventoryDetails.replenishmentQuantity
+      expirationDetails
+    """
+    rows: list[dict] = []
+
+    params = {
+        "details": "SHOW",
+        "maxResults": 200,
+        "sortOrder": "ASCENDING",
+    }
+
+    if sku:
+        params["sku"] = sku
+
+    while True:
+        res = amazon_client.make_api_call(
+            "/awd/2024-05-09/inventory",
+            "GET",
+            params,
+        )
+
+        if not res:
+            raise RuntimeError("Empty response from Amazon AWD inventory API")
+
+        if isinstance(res, dict) and res.get("error"):
+            msg = str(res)
+
+            if "403" in msg or "Unauthorized" in msg or "forbidden" in msg.lower():
+                raise RuntimeError(
+                    "SP-API 403 Unauthorized for AWD API. "
+                    "Check app authorization and AWD API permissions."
+                )
+
+            if "429" in msg or "QuotaExceeded" in msg or "Too Many Requests" in msg:
+                raise RuntimeError("Amazon AWD API rate limit exceeded. Try again later.")
+
+            raise RuntimeError(f"Failed to fetch AWD inventory: {res}")
+
+        payload = res.get("payload") if isinstance(res, dict) else None
+        if payload is None:
+            payload = res
+
+        inventory_items = _extract_awd_inventory_list(payload)
+
+        for item in inventory_items:
+            normalized = _normalize_awd_inventory_item(item)
+            if normalized:
+                rows.append(normalized)
+
+        next_token = _get_awd_next_token(payload)
+        if not next_token:
+            break
+
+        params = {
+            "nextToken": next_token,
+            "details": "SHOW",
+            "maxResults": 200,
+        }
+
+    return rows
+
+
+def _upsert_inventory_awd_rows(
+    rows: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> int:
+    if not rows:
+        return 0
+
+    now = datetime.utcnow()
+    db_rows = []
+
+    for r in rows:
+        sku = (r.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        db_rows.append({
+            "user_id": user_id,
+            "marketplace_id": marketplace_id,
+            "sku": sku,
+
+            "total_onhand_quantity": _safe_int_awd(
+                r.get("total_onhand_quantity")
+            ),
+            "total_inbound_quantity": _safe_int_awd(
+                r.get("total_inbound_quantity")
+            ),
+            "available_distributable_quantity": _safe_int_awd(
+                r.get("available_distributable_quantity")
+            ),
+            "reserved_distributable_quantity": _safe_int_awd(
+                r.get("reserved_distributable_quantity")
+            ),
+            "replenishment_quantity": _safe_int_awd(
+                r.get("replenishment_quantity")
+            ),
+            "expiration_details": r.get("expiration_details") or [],
+
+            "synced_at": now,
+            "updated_at": now,
+        })
+
+    if not db_rows:
+        return 0
+
+    stmt = pg_insert(InventoryAWD).values(db_rows)
+
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_inventory_awd_user_marketplace_sku",
+        set_={
+            "total_onhand_quantity": stmt.excluded.total_onhand_quantity,
+            "total_inbound_quantity": stmt.excluded.total_inbound_quantity,
+            "available_distributable_quantity": stmt.excluded.available_distributable_quantity,
+            "reserved_distributable_quantity": stmt.excluded.reserved_distributable_quantity,
+            "replenishment_quantity": stmt.excluded.replenishment_quantity,
+            "expiration_details": stmt.excluded.expiration_details,
+            "synced_at": stmt.excluded.synced_at,
+            "updated_at": stmt.excluded.updated_at,
+        },
+    )
+
+    db.session.execute(stmt)
+    db.session.commit()
+
+    return len(db_rows)
+
+
+@inventory_bp.route("/amazon_api/inventory/awd", methods=["GET"])
+def sync_inventory_awd_from_amazon():
+    """
+    Fetch AWD current inventory from Amazon SP-API and save it into inventory_awd.
+
+    Query params:
+      marketplace_id optional
+      sku optional
+      store_in_db=true/false optional, default true
+
+    Example:
+      GET /amazon_api/inventory/awd?marketplace_id=ATVPDKIKX0DER
+      GET /amazon_api/inventory/awd?marketplace_id=ATVPDKIKX0DER&sku=ABC123
+    """
+
+    # ---------------- AUTH ----------------
+    auth_header = request.headers.get("Authorization")
+    user_id = None
+
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        try:
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
+            user_id = payload.get("user_id") or user_id
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # ---------------- MARKETPLACE ----------------
+    _apply_region_and_marketplace_from_request()
+
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported marketplace",
+        }), 400
+
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    sku = request.args.get("sku")
+    store_in_db = request.args.get("store_in_db", "true").lower() != "false"
+
+    logger.info(
+        "Starting AWD inventory sync for marketplace=%s user_id=%s sku=%s",
+        mp,
+        user_id,
+        sku,
+    )
+
+    try:
+        rows = _fetch_awd_inventory_rows_from_amazon(
+            mp=mp,
+            sku=sku,
+        )
+
+        saved = 0
+        if store_in_db:
+            saved = _upsert_inventory_awd_rows(
+                rows=rows,
+                user_id=user_id,
+                marketplace_id=mp,
+            )
+
+        return jsonify({
+            "success": True,
+            "message": "AWD inventory fetched from Amazon successfully",
+            "marketplace_id": mp,
+            "sku_filter": sku,
+            "count": len(rows),
+            "db": {
+                "saved_rows": saved,
+            },
+            "items": rows,
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.exception("Failed to fetch AWD inventory from Amazon")
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
