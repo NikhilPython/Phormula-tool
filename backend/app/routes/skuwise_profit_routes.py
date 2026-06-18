@@ -205,7 +205,71 @@ def get_monthly_inventory_units(
         print(f"Inventory fetch error for {country}: {str(e)}")
         return {}
     
+def get_monthly_inventory_units_for_other_skus(
+    conn,
+    user_id,
+    country,
+    product_names,
+    year,
+    months_to_fetch,
+    month_mapping,
+):
+    """
+    Inventory for Other SKUs.
 
+    For global:
+    inventory = UK inventory + US inventory for all products inside Other SKUs.
+
+    For uk/us:
+    inventory = that country inventory for all products inside Other SKUs.
+    """
+
+    inventory_units_map = {}
+
+    product_names = [
+        str(p).strip()
+        for p in (product_names or [])
+        if str(p).strip()
+    ]
+
+    if not product_names:
+        return inventory_units_map
+
+    raw_country = (country or "").strip().lower()
+
+    if raw_country.startswith("global"):
+        inventory_countries = ["uk", "us"]
+    else:
+        normalized_country = normalize_sku_country(raw_country)
+
+        if normalized_country not in ("uk", "us"):
+            return inventory_units_map
+
+        inventory_countries = [normalized_country]
+
+    for inv_country in inventory_countries:
+        for product_name in product_names:
+            fallback_sku = resolve_product_sku_for_country(
+                conn=conn,
+                user_id=user_id,
+                product_name=product_name,
+                country=inv_country
+            )
+
+            product_inventory_map = get_monthly_inventory_units(
+                user_id=user_id,
+                country=inv_country,
+                product_name=product_name,
+                year=year,
+                months_to_fetch=months_to_fetch,
+                month_mapping=month_mapping,
+                fallback_sku=fallback_sku
+            )
+
+            for key, value in product_inventory_map.items():
+                inventory_units_map[key] = inventory_units_map.get(key, 0) + float(value or 0)
+
+    return inventory_units_map
 
 
 def normalize_sku_country(country):
@@ -245,17 +309,26 @@ def resolve_product_sku_for_country(conn, user_id, product_name, country):
 
     return row[0] if row and row[0] else None
 
+
 def get_monthly_total_net_sales_and_profit(conn, inspector, all_tables, user_id, country, month_name, year):
     """
     Returns total account net_sales and profit for a country/month/year.
+    Supports uk/us and global/global_inr/global_gbp/global_cad tables.
     Used to calculate Other SKUs sales_mix and profit_mix.
     """
-    country = normalize_sku_country(country)
 
-    if country not in ("uk", "us"):
+    raw_country = (country or "").strip().lower()
+    is_global = raw_country.startswith("global")
+
+    table_country = raw_country if is_global else normalize_sku_country(raw_country)
+
+    if not is_global and table_country not in ("uk", "us"):
         return 0.0, 0.0
 
-    table_pattern = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
+    if is_global:
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_{month_name}{year}_table"
+    else:
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_{month_name}{year}"
 
     matching_tables = [
         table for table in all_tables
@@ -270,13 +343,20 @@ def get_monthly_total_net_sales_and_profit(conn, inspector, all_tables, user_id,
     try:
         columns = [col["name"] for col in inspector.get_columns(table_name)]
 
-        if "net_sales" not in columns or "profit" not in columns:
+        if "net_sales" not in columns:
+            return 0.0, 0.0
+
+        if "cm1_profit" in columns:
+            profit_col = "cm1_profit"
+        elif "profit" in columns:
+            profit_col = "profit"
+        else:
             return 0.0, 0.0
 
         # Prefer Total row if available
         if "product_name" in columns:
             total_query = text(f"""
-                SELECT net_sales, profit
+                SELECT net_sales, "{profit_col}"
                 FROM "{table_name}"
                 WHERE LOWER(TRIM(product_name)) = 'total'
                 LIMIT 1
@@ -291,7 +371,7 @@ def get_monthly_total_net_sales_and_profit(conn, inspector, all_tables, user_id,
         query = text(f"""
             SELECT
                 COALESCE(SUM(net_sales), 0) AS total_net_sales,
-                COALESCE(SUM(profit), 0) AS total_profit
+                COALESCE(SUM("{profit_col}"), 0) AS total_profit
             FROM "{table_name}"
             WHERE LOWER(TRIM(COALESCE(product_name, ''))) != 'total'
         """)
@@ -318,17 +398,24 @@ def get_exact_other_skus_month_row(
 ):
     """
     Aggregate only the exact product names shown in Other SKUs chips.
-    This fixes mismatch where graph was using all SKUs except one anchor SKU.
+    Supports uk/us and global/global_inr/global_gbp/global_cad tables.
     """
-    sku_country = normalize_sku_country(country)
 
-    if sku_country not in ("uk", "us"):
+    raw_country = (country or "").strip().lower()
+    is_global = raw_country.startswith("global")
+
+    table_country = raw_country if is_global else normalize_sku_country(raw_country)
+
+    if not is_global and table_country not in ("uk", "us"):
         return None
 
     if not product_names:
         return None
 
-    table_pattern = f"skuwisemonthly_{user_id}_{sku_country}_{month_name}{year}"
+    if is_global:
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_{month_name}{year}_table"
+    else:
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_{month_name}{year}"
 
     matching_tables = [
         table for table in all_tables
@@ -354,15 +441,21 @@ def get_exact_other_skus_month_row(
     try:
         columns = [col["name"] for col in inspector.get_columns(table_name)]
 
-        required_cols = {
-            "product_name",
-            "net_sales",
-            "total_quantity",
-            "profit",
-            "asp",
-        }
+        if "product_name" not in columns or "net_sales" not in columns:
+            return None
 
-        if not required_cols.issubset(columns):
+        if "total_quantity" in columns:
+            quantity_col = "total_quantity"
+        elif "quantity" in columns:
+            quantity_col = "quantity"
+        else:
+            return None
+
+        if "cm1_profit" in columns:
+            profit_col = "cm1_profit"
+        elif "profit" in columns:
+            profit_col = "profit"
+        else:
             return None
 
         placeholders = ", ".join([f":p{i}" for i in range(len(product_names))])
@@ -375,8 +468,8 @@ def get_exact_other_skus_month_row(
         query = text(f"""
             SELECT
                 COALESCE(SUM(net_sales), 0) AS net_sales,
-                COALESCE(SUM(total_quantity), 0) AS total_quantity,
-                COALESCE(SUM(profit), 0) AS profit
+                COALESCE(SUM("{quantity_col}"), 0) AS total_quantity,
+                COALESCE(SUM("{profit_col}"), 0) AS profit
             FROM "{table_name}"
             WHERE LOWER(TRIM(product_name)) IN ({placeholders})
         """)
@@ -387,24 +480,26 @@ def get_exact_other_skus_month_row(
         other_quantity = float(row[1] or 0)
         other_profit = float(row[2] or 0)
 
-        # Currency conversion for UK/US if needed
-        source_currency = country_currency_map.get(sku_country)
-        target_currency = (home_currency or "").lower()
-
         conversion_rate = 1.0
 
-        if source_currency and target_currency:
-            with admin_engine.connect() as conn1:
-                conversion_rate = get_conversion_rate(
-                    conn1,
-                    source_currency,
-                    target_currency,
-                    month_name,
-                    year
-                )
+        # Only UK/US source tables need conversion.
+        # Global tables are already stored in selected global currency table.
+        if not is_global:
+            source_currency = country_currency_map.get(table_country)
+            target_currency = (home_currency or "").lower()
 
-        other_net_sales *= conversion_rate
-        other_profit *= conversion_rate
+            if source_currency and target_currency:
+                with admin_engine.connect() as conn1:
+                    conversion_rate = get_conversion_rate(
+                        conn1,
+                        source_currency,
+                        target_currency,
+                        month_name,
+                        year
+                    )
+
+            other_net_sales *= conversion_rate
+            other_profit *= conversion_rate
 
         asp = other_net_sales / other_quantity if other_quantity else 0
         unit_wise_profitability = other_profit / other_quantity if other_quantity else 0
@@ -414,13 +509,10 @@ def get_exact_other_skus_month_row(
             inspector=inspector,
             all_tables=all_tables,
             user_id=user_id,
-            country=sku_country,
+            country=table_country,
             month_name=month_name,
             year=year
         )
-
-        total_net_sales *= conversion_rate
-        total_profit *= conversion_rate
 
         sales_mix = (
             (other_net_sales / total_net_sales) * 100
@@ -524,23 +616,49 @@ def productwise_performance():
 
                 fallback_sku = None
 
-                if sku_country in ("uk", "us"):
-                    fallback_sku = resolve_product_sku_for_country(
-                        conn=conn,
-                        user_id=user_id,
-                        product_name=product_name,
-                        country=sku_country
-                    )
+                if country.lower().startswith("global"):
+                    # Global inventory = UK product inventory + US product inventory
+                    inventory_units_map = {}
 
-                inventory_units_map = get_monthly_inventory_units(
-                    user_id=user_id,
-                    country=sku_country,
-                    product_name=product_name,
-                    year=year,
-                    months_to_fetch=months_to_fetch,
-                    month_mapping=month_mapping,
-                    fallback_sku=fallback_sku
-                )
+                    for inv_country in ("uk", "us"):
+                        inv_fallback_sku = resolve_product_sku_for_country(
+                            conn=conn,
+                            user_id=user_id,
+                            product_name=product_name,
+                            country=inv_country
+                        )
+
+                        inv_map = get_monthly_inventory_units(
+                            user_id=user_id,
+                            country=inv_country,
+                            product_name=product_name,
+                            year=year,
+                            months_to_fetch=months_to_fetch,
+                            month_mapping=month_mapping,
+                            fallback_sku=inv_fallback_sku
+                        )
+
+                        for key, value in inv_map.items():
+                            inventory_units_map[key] = inventory_units_map.get(key, 0) + float(value or 0)
+
+                else:
+                    if sku_country in ("uk", "us"):
+                        fallback_sku = resolve_product_sku_for_country(
+                            conn=conn,
+                            user_id=user_id,
+                            product_name=product_name,
+                            country=sku_country
+                        )
+
+                    inventory_units_map = get_monthly_inventory_units(
+                        user_id=user_id,
+                        country=sku_country,
+                        product_name=product_name,
+                        year=year,
+                        months_to_fetch=months_to_fetch,
+                        month_mapping=month_mapping,
+                        fallback_sku=fallback_sku
+                    )
 
                 for month in months_to_fetch:
                     month_num = month_mapping[month]
@@ -701,8 +819,24 @@ def productwise_performance():
                     # ✅ BEST PATH:
                     # If frontend sends exact Other SKUs chip names,
                     # aggregate those products directly.
-                    if other_sku_product_names and sku_country in ("uk", "us"):
+                    if other_sku_product_names and (
+                        sku_country in ("uk", "us") or country.lower().startswith("global")
+                    ):
                         exact_other_rows = []
+
+                        graph_country = country.lower() if country.lower().startswith("global") else sku_country
+
+                        # ✅ Inventory for Other SKUs only
+                        # For global this becomes UK + US inventory for all chip products.
+                        other_skus_inventory_units_map = get_monthly_inventory_units_for_other_skus(
+                            conn=conn,
+                            user_id=user_id,
+                            country=graph_country,
+                            product_names=other_sku_product_names,
+                            year=year,
+                            months_to_fetch=months_to_fetch,
+                            month_mapping=month_mapping,
+                        )
 
                         for month in months_to_fetch:
                             month_num = month_mapping[month]
@@ -712,7 +846,7 @@ def productwise_performance():
                                 inspector=inspector,
                                 all_tables=all_tables,
                                 user_id=user_id,
-                                country=sku_country,
+                                country=graph_country,
                                 month_name=month,
                                 month_num=month_num,
                                 year=year,
@@ -721,6 +855,11 @@ def productwise_performance():
                             )
 
                             if row:
+                                row["inventory_units"] = other_skus_inventory_units_map.get(
+                                    (int(year), int(month_num)),
+                                    0
+                                )
+
                                 exact_other_rows.append(row)
 
                         exact_other_rows.sort(key=lambda x: x["month_num"])
@@ -1355,6 +1494,12 @@ def product_best_performance():
         product_name = data.get('product_name')
         country = (data.get('country') or 'us').strip().lower()
         home_currency = (data.get('home_currency') or 'USD').strip().lower()
+        other_sku_product_names = data.get("other_sku_product_names") or []
+        other_sku_product_names = [
+            str(p).strip()
+            for p in other_sku_product_names
+            if str(p).strip()
+        ]
 
         if not product_name:
             return jsonify({'error': 'Product name is required'}), 400
@@ -1363,8 +1508,12 @@ def product_best_performance():
             country = 'uk'
         elif country.startswith('us'):
             country = 'us'
+        elif country.startswith('global'):
+            # keep exact global variant:
+            # global, global_inr, global_gbp, global_cad
+            country = country
         else:
-            return jsonify({'error': 'Only us or uk country is supported in this API'}), 400
+            return jsonify({'error': 'Only us, uk, or global country is supported in this API'}), 400
 
         month_mapping = {
             'january': 1,
@@ -1429,15 +1578,34 @@ def product_best_performance():
                     if not quantity_col or not profit_col:
                         continue
 
-                    where_condition = """
-                        LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
-                    """
+                    params = {}
 
-                    if has_sku_col:
+                    if other_sku_product_names:
+                        placeholders = ", ".join([f":p{i}" for i in range(len(other_sku_product_names))])
+
+                        params = {
+                            f"p{i}": other_sku_product_names[i].strip().lower()
+                            for i in range(len(other_sku_product_names))
+                        }
+
+                        where_condition = f"""
+                            LOWER(TRIM(product_name)) IN ({placeholders})
+                        """
+
+                    else:
+                        params = {
+                            "product_name": product_name
+                        }
+
                         where_condition = """
                             LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
-                            OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
                         """
+
+                        if has_sku_col:
+                            where_condition = """
+                                LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                                OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
+                            """
 
                     query = text(f"""
                         SELECT
@@ -1448,9 +1616,7 @@ def product_best_performance():
                         WHERE {where_condition}
                     """)
 
-                    row = conn.execute(query, {
-                        'product_name': product_name
-                    }).fetchone()
+                    row = conn.execute(query, params).fetchone()
 
                     units = float(row.units or 0)
                     net_sales = float(row.net_sales or 0)
