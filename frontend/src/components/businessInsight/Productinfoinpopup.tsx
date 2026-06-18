@@ -201,23 +201,23 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }).format(value);
   };
 
- const formatAsp = (value: number) => {
-  const locale =
-    chartCurrency === "GBP"
-      ? "en-GB"
-      : chartCurrency === "CAD"
-        ? "en-CA"
-        : chartCurrency === "INR"
-          ? "en-IN"
-          : "en-US";
+  const formatAsp = (value: number) => {
+    const locale =
+      chartCurrency === "GBP"
+        ? "en-GB"
+        : chartCurrency === "CAD"
+          ? "en-CA"
+          : chartCurrency === "INR"
+            ? "en-IN"
+            : "en-US";
 
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: chartCurrency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
-};
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: chartCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(value || 0));
+  };
 
   const formatPercent = (value: number) => {
     return `${Number(value || 0).toFixed(2)}%`;
@@ -569,11 +569,11 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         }
 
         if (activeTab === "inventory_units") {
-  return (
-    Number(point.inventory_units || 0) > 0 ||
-    Number(point.units_sold || 0) > 0
-  );
-}
+          return (
+            Number(point.inventory_units || 0) > 0 ||
+            Number(point.units_sold || 0) > 0
+          );
+        }
 
         if (activeTab === "mix") {
           return Number(point.sales_mix || 0) > 0 || Number(point.profit_mix || 0) > 0;
@@ -658,47 +658,47 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }
 
     if (activeTab === "inventory_units") {
-  const inventoryDatasets = activeCountries.map((country) => ({
-    label: `${formatCountry(country)} Inventory Units`,
-    data: labels.map((label) => {
-      const found = journeyData[country]?.find((d) => d.month === label);
-      return found ? found.inventory_units : 0;
-    }),
-    borderColor: getMetricColor("inventory_units"),
-    backgroundColor: getMetricColor("inventory_units"),
-    tension: 0.35,
-    pointRadius: 3,
-    pointHitRadius: 12,
-    pointHoverRadius: 5,
-    fill: false,
-    borderDash: [],
-    borderWidth: 2,
-    yAxisID: "y",
-  }));
+      const inventoryDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} Inventory Units`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.inventory_units : 0;
+        }),
+        borderColor: getMetricColor("inventory_units"),
+        backgroundColor: getMetricColor("inventory_units"),
+        tension: 0.35,
+        pointRadius: 3,
+        pointHitRadius: 12,
+        pointHoverRadius: 5,
+        fill: false,
+        borderDash: [],
+        borderWidth: 2,
+        yAxisID: "y",
+      }));
 
-  const unitDatasets = activeCountries.map((country) => ({
-    label: `${formatCountry(country)} Units`,
-    data: labels.map((label) => {
-      const found = journeyData[country]?.find((d) => d.month === label);
-      return found ? found.units_sold : 0;
-    }),
-    borderColor: getMetricColor("units_sold"),
-    backgroundColor: getMetricColor("units_sold"),
-    tension: 0.35,
-    pointRadius: 3,
-    pointHitRadius: 12,
-    pointHoverRadius: 5,
-    fill: false,
-    borderDash: [],
-    borderWidth: 2,
-    yAxisID: "y1",
-  }));
+      const unitDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} Units`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.units_sold : 0;
+        }),
+        borderColor: getMetricColor("units_sold"),
+        backgroundColor: getMetricColor("units_sold"),
+        tension: 0.35,
+        pointRadius: 3,
+        pointHitRadius: 12,
+        pointHoverRadius: 5,
+        fill: false,
+        borderDash: [],
+        borderWidth: 2,
+        yAxisID: "y1",
+      }));
 
-  return {
-    labels,
-    datasets: [...inventoryDatasets, ...unitDatasets],
-  };
-}
+      return {
+        labels,
+        datasets: [...inventoryDatasets, ...unitDatasets],
+      };
+    }
 
     if (activeTab === "units_asp") {
       const unitDatasets = activeCountries.map((country) => ({
@@ -797,78 +797,78 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       maintainAspectRatio: false,
       animation: false,
       interaction: {
-      mode: "index",
-      intersect: false,
-    },
-    hover: {
-      mode: "index",
-      intersect: false,
-    },
+        mode: "index",
+        intersect: false,
+      },
+      hover: {
+        mode: "index",
+        intersect: false,
+      },
       plugins: {
         legend: {
           display: false,
         },
         tooltip: {
-  enabled: true,
-  mode: "index",
-  intersect: false,
-  backgroundColor: "#ffffff",
-  titleColor: "#414042",
-  bodyColor: "#414042",
-  borderColor: "#D1D5DB",
-  borderWidth: 1,
-  cornerRadius: 6,
-  padding: 12,
-  displayColors: true,
-  boxWidth: 10,
-  boxHeight: 10,
-  usePointStyle: false,
-  titleFont: {
-    size: 14,
-    weight: "bold",
-  },
-  bodyFont: {
-    size: 13,
-    weight: "normal",
-  },
-  callbacks: {
-    title: (items: any[]) => {
-      const label = items?.[0]?.label || "";
-      return label;
-    },
+          enabled: true,
+          mode: "index",
+          intersect: false,
+          backgroundColor: "#ffffff",
+          titleColor: "#414042",
+          bodyColor: "#414042",
+          borderColor: "#D1D5DB",
+          borderWidth: 1,
+          cornerRadius: 6,
+          padding: 12,
+          displayColors: true,
+          boxWidth: 10,
+          boxHeight: 10,
+          usePointStyle: false,
+          titleFont: {
+            size: 14,
+            weight: "bold",
+          },
+          bodyFont: {
+            size: 13,
+            weight: "normal",
+          },
+          callbacks: {
+            title: (items: any[]) => {
+              const label = items?.[0]?.label || "";
+              return label;
+            },
 
-    label: (context: any) => {
-      const value = Number(context.parsed.y || 0);
-      const datasetLabel = String(context.dataset.label || "");
-      const lowerLabel = datasetLabel.toLowerCase();
+            label: (context: any) => {
+              const value = Number(context.parsed.y || 0);
+              const datasetLabel = String(context.dataset.label || "");
+              const lowerLabel = datasetLabel.toLowerCase();
 
-      if (lowerLabel.includes("asp")) {
-        return `${datasetLabel}: ${formatAsp(value)}`;
-      }
+              if (lowerLabel.includes("asp")) {
+                return `${datasetLabel}: ${formatAsp(value)}`;
+              }
 
-      if (lowerLabel.includes("mix")) {
-        return `${datasetLabel}: ${formatPercent(value)}`;
-      }
+              if (lowerLabel.includes("mix")) {
+                return `${datasetLabel}: ${formatPercent(value)}`;
+              }
 
-      if (lowerLabel.includes("units")) {
-        return `${datasetLabel}: ${formatUnits(value)}`;
-      }
+              if (lowerLabel.includes("units")) {
+                return `${datasetLabel}: ${formatUnits(value)}`;
+              }
 
-      return `${datasetLabel}: ${formatCurrency(value)}`;
-    },
+              return `${datasetLabel}: ${formatCurrency(value)}`;
+            },
 
-    labelColor: (context: any) => {
-      const color = context.dataset.borderColor || "#414042";
+            labelColor: (context: any) => {
+              const color = context.dataset.borderColor || "#414042";
 
-      return {
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2,
-        borderRadius: 2,
-      };
-    },
-  },
-},
+              return {
+                borderColor: color,
+                backgroundColor: color,
+                borderWidth: 2,
+                borderRadius: 2,
+              };
+            },
+          },
+        },
         zoom: {
           limits: {
             x: {
@@ -916,13 +916,13 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           title: {
             display: true,
             text:
-  activeTab === "units_asp"
-    ? "Units (in nos.)"
-    : activeTab === "inventory_units"
-      ? "Inventory Units"
-      : activeTab === "mix"
-        ? "Mix (%)"
-        : `Amount (${currencySymbol})`,
+              activeTab === "units_asp"
+                ? "Units (in nos.)"
+                : activeTab === "inventory_units"
+                  ? "Inventory Units"
+                  : activeTab === "mix"
+                    ? "Mix (%)"
+                    : `Amount (${currencySymbol})`,
           },
           min: 0,
           ticks: {
@@ -930,15 +930,15 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             font: {
               size: isSmallScreen ? 10 : 12,
             },
-           callback: (value: number) => {
-  if (activeTab === "units_asp" || activeTab === "inventory_units") {
-    return formatUnits(value);
-  }
+            callback: (value: number) => {
+              if (activeTab === "units_asp" || activeTab === "inventory_units") {
+                return formatUnits(value);
+              }
 
-  if (activeTab === "mix") return formatPercent(value);
+              if (activeTab === "mix") return formatPercent(value);
 
-  return formatCurrency(value);
-},
+              return formatCurrency(value);
+            },
           },
         },
         y1: {
@@ -950,19 +950,19 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           },
           title: {
             display: activeTab === "units_asp" || activeTab === "inventory_units",
-text:
-  activeTab === "inventory_units"
-    ? "Units (in nos.)"
-    : `ASP (${currencySymbol})`,
+            text:
+              activeTab === "inventory_units"
+                ? "Units (in nos.)"
+                : `ASP (${currencySymbol})`,
           },
           ticks: {
             font: {
               size: isSmallScreen ? 10 : 12,
             },
             callback: (value: number) => {
-  if (activeTab === "inventory_units") return formatUnits(Number(value));
-  return formatAsp(Number(value));
-},
+              if (activeTab === "inventory_units") return formatUnits(Number(value));
+              return formatAsp(Number(value));
+            },
           },
         },
       },
@@ -993,7 +993,7 @@ text:
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
                     <div className="flex items-center gap-1 flex-wrap">
@@ -1010,19 +1010,21 @@ text:
                   </div>
                 </div>
 
-                <div className="w-full sm:w-auto">
-                  <SegmentedToggle<TrendTab>
-                    value={activeTab}
-                    onChange={setActiveTab}
-                    textSizeClass="text-[10px] sm:text-xs"
-                    className="w-full sm:w-auto"
-                    options={[
-  { value: "sales_cm1", label: "Sales & CM1 Profit" },
-  { value: "units_asp", label: "Units & ASP" },
-  { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
-  { value: "inventory_units", label: "Inventory & Units" },
-]}
-                  />
+                <div className="w-full overflow-x-auto pb-1 2xl:w-auto 2xl:overflow-visible">
+                  <div className="min-w-max 2xl:min-w-0 2xl:w-fit">
+                    <SegmentedToggle<TrendTab>
+                      value={activeTab}
+                      onChange={setActiveTab}
+                      textSizeClass="text-[10px] sm:text-xs"
+                      className="w-full 2xl:w-auto"
+                      options={[
+                        { value: "sales_cm1", label: "Sales & CM1 Profit" },
+                        { value: "units_asp", label: "Units & ASP" },
+                        { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
+                        { value: "inventory_units", label: "Inventory & Units" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1082,17 +1084,17 @@ text:
               )}
 
               {activeTab === "inventory_units" && (
-  <>
-    <div className="flex items-center gap-2">
-      <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
-      <span>Inventory Units</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <span className="h-0 w-9 border-t-2 border-[#FDD36F]" />
-      <span>Units</span>
-    </div>
-  </>
-)}
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
+                    <span>Inventory Units</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#FDD36F]" />
+                    <span>Units</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
