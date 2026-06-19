@@ -22,15 +22,20 @@ type MetricItem = {
 type BestPerformanceMetric = {
   month?: string;
   year?: string | number;
-  cm1_profit?: number;
-  net_sales?: number;
+
   units?: number;
+  net_sales?: number;
+  asp?: number;
+  cm1_profit?: number;
+  unit_wise_profitability?: number;
 };
 
 type ProductBestPerformanceData = {
-  cm1_profit?: BestPerformanceMetric;
-  net_sales?: BestPerformanceMetric;
   units?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  asp?: BestPerformanceMetric;
+  cm1_profit?: BestPerformanceMetric;
+  unit_wise_profitability?: BestPerformanceMetric;
 };
 
 type SelectedRec = {
@@ -84,6 +89,7 @@ type Props = {
   countryName: string;
   sourceCountryName?: string;
   displayCurrency?: CurrencyCode;
+  formattedMonthYear?: string; // ✅ add this
 };
 
 const metricColors = [
@@ -129,6 +135,16 @@ const formatMoneyNoDecimal = (value: any, currency?: CurrencyCode | string) => {
   return `${symbol}${n.toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatMoneyTwoDecimal = (value: any, currency?: CurrencyCode | string) => {
+  const symbol = currencyCodeToSymbol(currency);
+  const n = toNum(value);
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   })}`;
 };
 
@@ -213,11 +229,12 @@ export default function SkuRecommendationDrawer({
   countryName,
   sourceCountryName,
   displayCurrency,
+  formattedMonthYear, // ✅ add this
 }: Props) {
   const [bestPerformanceLoading, setBestPerformanceLoading] = useState(false);
-const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
-const [bestPerformanceData, setBestPerformanceData] =
-  useState<ProductBestPerformanceData | null>(null);
+  const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
+  const [bestPerformanceData, setBestPerformanceData] =
+    useState<ProductBestPerformanceData | null>(null);
   const sortedMetrics = [...(selectedRec?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -243,103 +260,103 @@ const [bestPerformanceData, setBestPerformanceData] =
   ];
 
   const isSkuGroupDrawer =
-  selectedRec?.isOtherSkus ||
-  isSkuGroupCardName(selectedRec?.productName || "");
+    selectedRec?.isOtherSkus ||
+    isSkuGroupCardName(selectedRec?.productName || "");
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
-  const normalizedLabel = label.trim().toLowerCase();
-  const metricIndex = metricOrder.indexOf(normalizedLabel);
+    const normalizedLabel = label.trim().toLowerCase();
+    const metricIndex = metricOrder.indexOf(normalizedLabel);
 
-  return metricColors[
-    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
-  ];
-};
-
-  useEffect(() => {
-  if (!open) return;
-  if (!selectedRec?.productName) return;
-
-  const productName = String(selectedRec.productName || "").trim();
-
-  if (!productName) return;
-
-  const lowerName = productName.toLowerCase();
-
-if (
-  lowerName === "total" ||
-  lowerName === "grand total" ||
-  selectedRec?.isOtherSkus ||
-  isSkuGroupCardName(productName)
-) {
-  setBestPerformanceData(null);
-  setBestPerformanceError(null);
-  setBestPerformanceLoading(false);
-  return;
-}
-
-  const ac = new AbortController();
-
-  const fetchBestPerformance = async () => {
-    try {
-      setBestPerformanceLoading(true);
-      setBestPerformanceError(null);
-      setBestPerformanceData(null);
-
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
-          : null;
-
-      if (!token) throw new Error("Missing token");
-
-      const apiCountry = String(sourceCountryName || countryName || "global")
-        .trim()
-        .toLowerCase();
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            product_name: productName,
-            country: apiCountry,
-            home_currency: displayCurrency || "USD",
-          }),
-          cache: "no-store",
-          signal: ac.signal,
-        }
-      );
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to fetch best performance");
-      }
-
-      setBestPerformanceData(json?.best_performance ?? null);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setBestPerformanceError(e?.message || "Failed to load best performance");
-    } finally {
-      setBestPerformanceLoading(false);
-    }
+    return metricColors[
+      metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+    ];
   };
 
-  fetchBestPerformance();
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedRec?.productName) return;
 
-  return () => ac.abort();
-}, [
-  open,
-  selectedRec?.productName,
-  selectedRec?.isOtherSkus,
-  countryName,
-  sourceCountryName,
-  displayCurrency,
-]);
+    const productName = String(selectedRec.productName || "").trim();
+
+    if (!productName) return;
+
+    const lowerName = productName.toLowerCase();
+
+    if (
+      lowerName === "total" ||
+      lowerName === "grand total" ||
+      selectedRec?.isOtherSkus ||
+      isSkuGroupCardName(productName)
+    ) {
+      setBestPerformanceData(null);
+      setBestPerformanceError(null);
+      setBestPerformanceLoading(false);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    const fetchBestPerformance = async () => {
+      try {
+        setBestPerformanceLoading(true);
+        setBestPerformanceError(null);
+        setBestPerformanceData(null);
+
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null;
+
+        if (!token) throw new Error("Missing token");
+
+        const apiCountry = String(sourceCountryName || countryName || "global")
+          .trim()
+          .toLowerCase();
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              product_name: productName,
+              country: apiCountry,
+              home_currency: displayCurrency || "USD",
+            }),
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to fetch best performance");
+        }
+
+        setBestPerformanceData(json?.best_performance ?? null);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setBestPerformanceError(e?.message || "Failed to load best performance");
+      } finally {
+        setBestPerformanceLoading(false);
+      }
+    };
+
+    fetchBestPerformance();
+
+    return () => ac.abort();
+  }, [
+    open,
+    selectedRec?.productName,
+    selectedRec?.isOtherSkus,
+    countryName,
+    sourceCountryName,
+    displayCurrency,
+  ]);
 
   if (!open || !selectedRec) return null;
 
@@ -372,9 +389,15 @@ if (
                       textSize="2xl"
                     />
 
-                    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                      {selectedRec?.productName || "Details"}
-                    </span>
+                   <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+  {selectedRec?.productName || "Details"}
+</span>
+
+{formattedMonthYear && (
+  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+    ( {formattedMonthYear} )
+  </span>
+)}
                   </div>
                 </div>
 
@@ -439,81 +462,106 @@ if (
                   </div>
                 </div>
 
-              {!isSkuGroupDrawer && (
-  <div>
-    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-      Overall Best Performance
-    </div>
+                {!isSkuGroupDrawer && (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                      Overall Best Performance
+                    </div>
+                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                      Best performance is calculated from overall historical data, not just the selected period.
+                    </div>
 
-    {bestPerformanceLoading ? (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-        Loading best performance...
-      </div>
-    ) : bestPerformanceError ? (
-      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
-        {bestPerformanceError}
-      </div>
-    ) : bestPerformanceData ? (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[
-          {
-            label: "Units",
-            value: formatUnitsNoDecimal(bestPerformanceData?.units?.units),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.units?.month,
-              bestPerformanceData?.units?.year
-            ),
-          },
-          {
-            label: "Net Sales",
-            value: formatMoneyNoDecimal(
-              bestPerformanceData?.net_sales?.net_sales,
-              displayCurrency
-            ),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.net_sales?.month,
-              bestPerformanceData?.net_sales?.year
-            ),
-          },
-          {
-            label: "CM1 Profit",
-            value: formatMoneyNoDecimal(
-              bestPerformanceData?.cm1_profit?.cm1_profit,
-              displayCurrency
-            ),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.cm1_profit?.month,
-              bestPerformanceData?.cm1_profit?.year
-            ),
-          },
-        ].map((card, index) => (
-          <div
-            key={card.label}
-            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(card.label, index)} px-3 py-2`}
-          >
-            <div className="text-[10px] 2xl:text-xs text-charcoal-400">
-              {card.label}
-            </div>
+                    {bestPerformanceLoading ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        Loading best performance...
+                      </div>
+                    ) : bestPerformanceError ? (
+                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+                        {bestPerformanceError}
+                      </div>
+                    ) : bestPerformanceData ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                        {[
+                          {
+                            label: "Units",
+                            value: formatUnitsNoDecimal(bestPerformanceData?.units?.units),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.units?.month,
+                              bestPerformanceData?.units?.year
+                            ),
+                          },
+                          {
+                            label: "Net Sales",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.net_sales?.net_sales,
+                              displayCurrency
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.net_sales?.month,
+                              bestPerformanceData?.net_sales?.year
+                            ),
+                          },
+                          {
+                            label: "ASP",
+                            value: formatMoneyTwoDecimal(
+                              bestPerformanceData?.asp?.asp,
+                              displayCurrency
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.asp?.month,
+                              bestPerformanceData?.asp?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.cm1_profit?.cm1_profit,
+                              displayCurrency
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.cm1_profit?.month,
+                              bestPerformanceData?.cm1_profit?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit Per Unit",
+                            value: formatMoneyTwoDecimal(
+                              bestPerformanceData?.unit_wise_profitability?.unit_wise_profitability,
+                              displayCurrency
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.unit_wise_profitability?.month,
+                              bestPerformanceData?.unit_wise_profitability?.year
+                            ),
+                          },
+                        ].map((card, index) => (
+                          <div
+                            key={card.label}
+                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(card.label, index)} px-3 py-2`}
+                          >
+                            <div className="text-[10px] 2xl:text-xs text-charcoal-400">
+                              {card.label}
+                            </div>
 
-            <div className="flex flex-col leading-tight">
-              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                {card.period}
-              </span>
+                            <div className="flex flex-col leading-tight">
+                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+                                {card.period}
+                              </span>
 
-              <span className="mt-2 text-sm 2xl:text-lg font-bold text-[#414042]">
-                {card.value}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-        —
-      </div>
-    )}
-  </div>
-)}
+                              <span className=" text-sm 2xl:text-lg font-bold text-[#414042]">
+                                {card.value}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        —
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
@@ -564,14 +612,14 @@ if (
 
                 {selectedRec?.showChart && selectedRec?.productName && (
                   <div className="w-full">
-                   <Productinfoinpopup
-  productname={selectedRec.productName}
-  countryName={countryName}
-  sourceCountryName={sourceCountryName}
-  displayCurrency={displayCurrency}
-  isOtherSkus={selectedRec.isOtherSkus || isSkuGroupCardName(selectedRec.productName)}
-  otherSkuProductNames={selectedRec.otherSkuProductNames || []}
-/>
+                    <Productinfoinpopup
+                      productname={selectedRec.productName}
+                      countryName={countryName}
+                      sourceCountryName={sourceCountryName}
+                      displayCurrency={displayCurrency}
+                      isOtherSkus={selectedRec.isOtherSkus || isSkuGroupCardName(selectedRec.productName)}
+                      otherSkuProductNames={selectedRec.otherSkuProductNames || []}
+                    />
                   </div>
                 )}
 

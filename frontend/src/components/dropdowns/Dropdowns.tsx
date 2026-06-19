@@ -1006,15 +1006,20 @@ const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?
 type BestPerformanceMetric = {
   month?: string;
   year?: string | number;
-  cm1_profit?: number;
-  net_sales?: number;
+
   units?: number;
+  net_sales?: number;
+  asp?: number;
+  cm1_profit?: number;
+  unit_wise_profitability?: number;
 };
 
 type ProductBestPerformanceData = {
-  cm1_profit?: BestPerformanceMetric;
-  net_sales?: BestPerformanceMetric;
   units?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  asp?: BestPerformanceMetric;
+  cm1_profit?: BestPerformanceMetric;
+  unit_wise_profitability?: BestPerformanceMetric;
 };
 
 type RightProductDrawerProps = {
@@ -1119,6 +1124,50 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
     ];
   };
+
+  const getCurrentQuarter = (): Quarter => {
+    const monthIndex = new Date().getMonth();
+
+    if (monthIndex <= 2) return "Q1";
+    if (monthIndex <= 5) return "Q2";
+    if (monthIndex <= 8) return "Q3";
+    return "Q4";
+  };
+
+  const getPreviousCompletedMonth = () => {
+    const prevMonthDate = new Date();
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+
+    return {
+      month: prevMonthDate.toLocaleString("en-US", {
+        month: "long",
+      }).toLowerCase(),
+      year: String(prevMonthDate.getFullYear()),
+    };
+  };
+
+  const showCurrentPeriodRecommendations = (() => {
+    const currentYear = String(new Date().getFullYear());
+
+    if (range === "yearly") {
+      return String(year) === currentYear;
+    }
+
+    if (range === "quarterly") {
+      return String(year) === currentYear && quarter === getCurrentQuarter();
+    }
+
+    if (range === "monthly") {
+      const previousMonth = getPreviousCompletedMonth();
+
+      return (
+        String(year) === previousMonth.year &&
+        String(month).toLowerCase() === previousMonth.month
+      );
+    }
+
+    return false;
+  })();
 
   if (!open || !block) return null;
 
@@ -1245,6 +1294,9 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
                       Overall Best Performance
                     </div>
+                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                      Best performance is calculated from overall historical data, not just the selected period.
+                    </div>
 
                     {bestPerformanceLoading ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
@@ -1255,7 +1307,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         {bestPerformanceError}
                       </div>
                     ) : bestPerformanceData ? (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
                         {[
                           {
                             label: "Units",
@@ -1277,6 +1329,17 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             ),
                           },
                           {
+                            label: "ASP",
+                            value: formatMoney(
+                              bestPerformanceData?.asp?.asp,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.asp?.month,
+                              bestPerformanceData?.asp?.year
+                            ),
+                          },
+                          {
                             label: "CM1 Profit",
                             value: formatMoneyNoDecimal(
                               bestPerformanceData?.cm1_profit?.cm1_profit,
@@ -1285,6 +1348,17 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             period: formatBestPerformancePeriod(
                               bestPerformanceData?.cm1_profit?.month,
                               bestPerformanceData?.cm1_profit?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit Per Unit",
+                            value: formatMoney(
+                              bestPerformanceData?.unit_wise_profitability?.unit_wise_profitability,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.unit_wise_profitability?.month,
+                              bestPerformanceData?.unit_wise_profitability?.year
                             ),
                           },
                         ].map((m, i) => (
@@ -1301,7 +1375,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                                 {m.period}
                               </span>
 
-                              <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
+                              <span className=" text-sm font-bold 2xl:text-lg text-[#414042]">
                                 {m.value}
                               </span>
                             </div>
@@ -1358,56 +1432,46 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
                 ) : null}
 
-                <div>
-                  <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
-                    Recommendations
+                {showCurrentPeriodRecommendations && (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                      Recommendations
+                    </div>
+
+                    {block.recommendationBullets?.length ? (
+                      <div>
+                        <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                          Action
+                        </div>
+                        <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                          {block.recommendationBullets.map((pt, i) => (
+                            <li key={i}>{pt}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {inventoryRecoBullets.length ? (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                          Inventory
+                        </div>
+                        <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                          {inventoryRecoBullets.map((pt, i) => (
+                            <li key={i}>{pt}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {!block.recommendationBullets?.length &&
+                      !inventoryRecoBullets.length &&
+                      !adsRecoBullets.length && (
+                        <div className="text-xs text-charcoal-500 2xl:text-sm">—</div>
+                      )}
                   </div>
+                )}
 
-                  {block.recommendationBullets?.length ? (
-                    <div>
-                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                        Action
-                      </div>
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-                        {block.recommendationBullets.map((pt, i) => (
-                          <li key={i}>{pt}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* {adsRecoBullets.length ? (
-                    <div className="mt-2">
-                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                        Advertising
-                      </div>
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-                        {adsRecoBullets.map((pt, i) => (
-                          <li key={i}>{pt}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null} */}
-
-                  {inventoryRecoBullets.length ? (
-                    <div className="mt-2">
-                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                        Inventory
-                      </div>
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-                        {inventoryRecoBullets.map((pt, i) => (
-                          <li key={i}>{pt}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {!block.recommendationBullets?.length &&
-                    !inventoryRecoBullets.length &&
-                    !adsRecoBullets.length && (
-                      <div className="text-xs text-charcoal-500 2xl:text-sm">—</div>
-                    )}
-                </div>
                 <div className="w-full">
                   <Productinfoinpopup
                     productname={
@@ -2518,7 +2582,7 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   graphs: "Finance Dashboard",
   skuBreakdown: "P&L Breakdown",
   cashFlow: "Cash Flow",
-  skuwiseProfit: "SKU wise Profit",
+  skuwiseProfit: "SKU Journey",
   businessSummary: "AI Insights & Recommendations",
   inventoryInsights: "Inventory Insights",
 };
@@ -6637,7 +6701,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     businessSummary: "ai-insights",
     inventoryInsights: "inventory-insights",
     skuBreakdown: "pnl-breakdown",
-    skuwiseProfit: "skuwise-profit",
+    skuwiseProfit: "sku-journey",
     cashFlow: "cash-flow",
   };
 
@@ -6758,7 +6822,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         onAction={handleConnectAmazonPreview}
       >
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
-        {activeTab !== "cashFlow" && (
+        {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && (
 
           <div className="flex flex-col gap-5 w-full mt-4">
             {/* Summary Cards */}
@@ -7910,7 +7974,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )}
 
           {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+            <div id="sku-journey" className="mt-4 scroll-mt-[80px]">
               {(() => {
                 const productWiseRange =
                   range === "quarterly" ? "quarterly" : "yearly";
@@ -7935,11 +7999,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     );
                   });
 
+                const firstInsightProductName =
+                  parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [])?.[0]?.name || "";
+
                 const productWiseInitialProductName = isDemoMode
-                  ? defaultTopProductName || "Demo Product A"
+                  ? defaultTopProductName || firstInsightProductName || "Demo Product A"
                   : hasRealSkuRowsForProductWise
-                    ? defaultTopProductName
-                    : "";
+                    ? defaultTopProductName || firstInsightProductName
+                    : firstInsightProductName;
 
                 return (
                   <ProductwisePerformance

@@ -53,10 +53,11 @@ type MonthsforBIProps = {
   disableAutoFetch?: boolean;
   onGenerateInsights?: () => Promise<void>;
 
-  // ✅ NEW: optional global live MTD params
-  asOf?: string;      // "2026-05-11"
-  startDay?: number; // 1
-  endDay?: number;   // 11
+  asOf?: string;
+  startDay?: number;
+  endDay?: number;
+
+  formattedMonthYear?: string; // ✅ add this
 };
 
 // =========================
@@ -340,6 +341,7 @@ export default function LiveBusinessClient({
   asOf,
   startDay,
   endDay,
+   formattedMonthYear, // ✅ add this
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -609,6 +611,8 @@ export default function LiveBusinessClient({
     const yy = String(year || "").slice(2);
     return `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${yy}`; // Jan'26
   }, [month, year]);
+
+  const drawerMonthYear = formattedMonthYear || titleMonth;
 
   type TabKey =
     | "all_skus"
@@ -3710,8 +3714,15 @@ const globalRecommendationCards = useMemo(() => {
       : top80Rows;
 
     return finalRows.map((row) => {
-      const productName = row.product_name || "";
-      const journey = getGlobalProductJourney(productName);
+  const rawProductName = row.product_name || "";
+
+  const isOtherSkuCard =
+    isOthersCardName(rawProductName) ||
+    row === otherCardRow;
+
+  const productName = isOtherSkuCard ? "Other SKUs" : rawProductName;
+
+  const journey = getGlobalProductJourney(rawProductName);
 
       const ukAction = getFirstCountryAction(journey, "uk");
       const usAction = getFirstCountryAction(journey, "us");
@@ -3790,7 +3801,7 @@ const globalRecommendationCards = useMemo(() => {
 
       return {
         key: productName,
-        productName: toTitleCase(productName),
+        productName: isOtherSkuCard ? "Other SKUs" : toTitleCase(productName),
         metrics,
         journeyPoints,
         recommendationPoints,
@@ -4604,62 +4615,61 @@ const globalRecommendationCards = useMemo(() => {
                             );
                           })}
 
-                        {!isGlobalData() && effectiveRemainingSkusBlock && (() => {
-                          const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
+{!isGlobalData() && effectiveRemainingSkusBlock && (() => {
+  const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
 
-                          // Use visible recommendation count, not full backend count.
-                          // If 5 cards are visible, Remaining SKUs becomes 6.
-                          const otherIdx = sortedRecommendations.length;
-                          const displayNumber = otherIdx + 1;
+  const otherIdx = sortedRecommendations.length;
+  const displayNumber = otherIdx + 1;
+  const otherCardName = "Other SKUs";
 
-                          const borderColor = topBorderColors[otherIdx % topBorderColors.length];
-                          return (
-                            <motion.div
-                              key="other-skus-card"
-                              initial={{ opacity: 0, y: 16 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
-                              className={[
-                                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-                                "border-t-4",
-                                "p-3 space-y-3",
-                              ].join(" ")}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-                                  {displayNumber}. {parsedOther.productName}
-                                </div>
+  const borderColor = topBorderColors[otherIdx % topBorderColors.length];
 
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
-                                    const otherSourceRow = buildOtherSkusAggregateItem();
+  return (
+    <motion.div
+      key="other-skus-card"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
+      className={[
+        "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+        "border-t-4",
+        "p-3 space-y-3",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+          {displayNumber}. {otherCardName}
+        </div>
 
-                                    setSelectedSkuItem(otherSourceRow);
-                                    setSelectedSku("__OTHER_SKUS__");
+        <button
+          type="button"
+          onClick={() => {
+            const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
+            const otherSourceRow = buildOtherSkusAggregateItem();
 
-                                    setSelectedRec({
-                                      productName: parsedOther.productName || "Remaining SKUs",
-                                      metrics: parsedOther.metrics,
-                                      journeyPoints: parsedOther.journeyPoints,
-                                      recommendationPoints: parsedOther.recommendationPoints,
-                                      advertisingPoints: parsedOther.advertisingPoints,
-                                      inventoryPoints: parsedOther.inventoryPoints,
-                                      showChart: true,
+            setSelectedSkuItem(otherSourceRow);
+            setSelectedSku("__OTHER_SKUS__");
 
-                                      // ✅ always aggregate mode for this card
-                                      isOtherSkus: true,
-                                      otherSkuProductNames: getOtherSkuProductNames(),
-                                    });
+            setSelectedRec({
+              productName: otherCardName,
+              metrics: parsedOther.metrics,
+              journeyPoints: parsedOther.journeyPoints,
+              recommendationPoints: parsedOther.recommendationPoints,
+              advertisingPoints: parsedOther.advertisingPoints,
+              inventoryPoints: parsedOther.inventoryPoints,
+              showChart: true,
 
-                                    setRecDrawerOpen(true);
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
-                                >
-                                  Detailed View
-                                </button>
-                              </div>
+              isOtherSkus: true,
+              otherSkuProductNames: getOtherSkuProductNames(),
+            });
+
+            setRecDrawerOpen(true);
+          }}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
+        >
+          Detailed View
+        </button>
+      </div>
 
                               {parsedOther.metrics?.length > 0 && (
                                 <div className="grid grid-cols-3 gap-2">
@@ -4918,15 +4928,16 @@ const globalRecommendationCards = useMemo(() => {
         objectiveContext={objectiveContext}
         countryName={countryName}
       /> */}
-      <SkuRecommendationDrawer
-        open={recDrawerOpen}
-        onClose={() => setRecDrawerOpen(false)}
-        selectedRec={selectedRec}
-        objectiveContext={objectiveContext}
-        countryName={countryName}
-        sourceCountryName={sourceCountryName}
-        displayCurrency={displayCurrency}
-      />
+     <SkuRecommendationDrawer
+  open={recDrawerOpen}
+  onClose={() => setRecDrawerOpen(false)}
+  selectedRec={selectedRec}
+  objectiveContext={objectiveContext}
+  countryName={countryName}
+  sourceCountryName={sourceCountryName || countryName}
+  displayCurrency={displayCurrency}
+  formattedMonthYear={drawerMonthYear} // ✅ add this
+/>
     </>
   );
 };

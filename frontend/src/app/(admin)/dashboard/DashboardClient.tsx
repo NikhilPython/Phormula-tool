@@ -11738,22 +11738,23 @@ ${pageLoading
                         ) : (
                             showLiveBI && (
                                 <LiveBusinessClient
-                                    countryName={countryName}
-                                    sourceCountryName={countryName}
-                                    ranged="MTD"
-                                    month={(currMonthName || "").toLowerCase()}
-                                    year={String(currYear)}
-                                    initialData={finalLiveBiPayload}
-                                    disableAutoFetch
-                                    onGenerateInsights={async () => {
-                                        if (shouldShowDummyUi) return;
+  countryName={countryName}
+  sourceCountryName={countryName}
+  ranged="MTD"
+  month={(currMonthName || "").toLowerCase()}
+  year={String(currYear)}
+  initialData={finalLiveBiPayload}
+  disableAutoFetch
+  formattedMonthYear={formattedMonthYear} // ✅ add this
+  onGenerateInsights={async () => {
+    if (shouldShowDummyUi) return;
 
-                                        await fetchLiveBiPayload({
-                                            generateInsights: true,
-                                            skipLoader: true,
-                                        });
-                                    }}
-                                />
+    await fetchLiveBiPayload({
+      generateInsights: true,
+      skipLoader: true,
+    });
+  }}
+/>
                             )
                         )}
                     </div>
@@ -12387,8 +12388,8 @@ ${pageLoading
                 countryName={countryName}
                 sourceCountryName={countryName}
                 displayCurrency={displayCurrency}
+                formattedMonthYear={formattedMonthYear} // ✅ add this
             />
-
         </div >
 
     );

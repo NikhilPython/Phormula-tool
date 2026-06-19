@@ -677,7 +677,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       }));
 
       const unitDatasets = activeCountries.map((country) => ({
-        label: `${formatCountry(country)} Units`,
+        label: `${formatCountry(country)} Unit Sales`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.units_sold : 0;
@@ -952,7 +952,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             display: activeTab === "units_asp" || activeTab === "inventory_units",
             text:
               activeTab === "inventory_units"
-                ? "Units (in nos.)"
+                ? "Unit Sales (in nos.)"
                 : `ASP (${currencySymbol})`,
           },
           ticks: {
@@ -1021,7 +1021,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                         { value: "sales_cm1", label: "Sales & CM1 Profit" },
                         { value: "units_asp", label: "Units & ASP" },
                         { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
-                        { value: "inventory_units", label: "Inventory & Units" },
+                        { value: "inventory_units", label: "Inventory Units & Unit Sales" },
                       ]}
                     />
                   </div>
@@ -1091,7 +1091,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-0 w-9 border-t-2 border-[#FDD36F]" />
-                    <span>Units</span>
+                    <span>Unit Sales</span>
                   </div>
                 </>
               )}
