@@ -1900,7 +1900,7 @@ def upload_history():
     year = request.args.get("year", type=int)
 
     metric = (request.args.get("metric", "net_sales") or "net_sales").strip().lower()
-    if metric not in ("net_sales", "units"):
+    if metric not in ("net_sales", "units", "asp"):
         metric = "net_sales"
 
     # Use requested country if provided, else infer from first upload, else default "uk"

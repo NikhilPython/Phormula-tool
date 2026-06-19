@@ -80,6 +80,16 @@ def get_gbp_to_usd_rate(month: int, year: int) -> float:
     return float(rate or 1)
 
 
+def calc_asp(net_sales, units):
+    net_sales = float(net_sales or 0)
+    units = float(units or 0)
+
+    if units == 0:
+        return 0.0
+
+    return float(net_sales / units)
+
+
 # ---------- TARGET BUILDER ----------
 
 def build_targets(period: str, timeline: str, year: int):
@@ -206,6 +216,7 @@ def _empty_daily_result(month: int, year: int):
         "x": full_days,
         "net_sales": [0.0] * len(full_days),
         "units": [0.0] * len(full_days),
+        "asp": [0.0] * len(full_days),
     }
 
 
@@ -290,11 +301,19 @@ def fetch_monthly_daily_single_country(conn, user_id, country, month, year):
     ns_map = dict(zip(out["day_num"].tolist(), out["net_sales"].tolist()))
     un_map = dict(zip(out["day_num"].tolist(), out["units"].tolist()))
 
+    net_sales_list = [float(ns_map.get(d, 0.0)) for d in full_days]
+    units_list = [float(un_map.get(d, 0.0)) for d in full_days]
+    asp_list = [
+        calc_asp(net_sales_list[i], units_list[i])
+        for i in range(len(full_days))
+    ]
+
     return {
         "xType": "day",
         "x": full_days,
-        "net_sales": [float(ns_map.get(d, 0.0)) for d in full_days],
-        "units": [float(un_map.get(d, 0.0)) for d in full_days],
+        "net_sales": net_sales_list,
+        "units": units_list,
+        "asp": asp_list,
     }
 
 
@@ -340,17 +359,27 @@ def fetch_monthly_daily_global(conn, user_id, month, year):
     us_net_sales = us_data["net_sales"] if us_data else [0.0] * last_day
     us_units = us_data["units"] if us_data else [0.0] * last_day
 
+    net_sales_list = [
+    float((uk_net_sales[i] * gbp_to_usd) + us_net_sales[i])
+    for i in range(last_day)
+]
+
+    units_list = [
+        float(uk_units[i] + us_units[i])
+        for i in range(last_day)
+    ]
+
+    asp_list = [
+        calc_asp(net_sales_list[i], units_list[i])
+        for i in range(last_day)
+    ]
+
     return {
         "xType": "day",
         "x": full_days,
-        "net_sales": [
-            float((uk_net_sales[i] * gbp_to_usd) + us_net_sales[i])
-            for i in range(last_day)
-        ],
-        "units": [
-            float(uk_units[i] + us_units[i])
-            for i in range(last_day)
-        ],
+        "net_sales": net_sales_list,
+        "units": units_list,
+        "asp": asp_list,
     }
 
 
@@ -408,14 +437,23 @@ def fetch_month_totals(conn, user_id, country, month, year):
         """)
         row2 = conn.execute(q2).mappings().first()
 
-        return float(row2["net_sales"]), float(row2["units"])
+        net_sales = float(row2["net_sales"])
+        units = float(row2["units"])
+        asp = calc_asp(net_sales, units)
 
-    return float(row["net_sales"]), float(row["units"])
+        return net_sales, units, asp
+
+    net_sales = float(row["net_sales"])
+    units = float(row["units"])
+    asp = calc_asp(net_sales, units)
+
+    return net_sales, units, asp
 
 
 def fetch_monthwise_series(conn, user_id, country, months, year):
     net_sales_map = {}
     units_map = {}
+    asp_map = {}
 
     for m in months:
         res = fetch_month_totals(conn, user_id, country, m, year)
@@ -423,16 +461,18 @@ def fetch_monthwise_series(conn, user_id, country, months, year):
         if not res:
             continue
 
-        ns, un = res
+        ns, un, asp = res
         month_key = MONTH_MAP[int(m)].capitalize()[:3]
 
         net_sales_map[month_key] = float(ns)
         units_map[month_key] = float(un)
+        asp_map[month_key] = float(asp)
 
     return {
         "xType": "month",
         "net_sales": net_sales_map,
         "units": units_map,
+        "asp": asp_map,
     }
 
 
@@ -486,6 +526,7 @@ def get_performance_trend(user_id, country, period, timeline, year):
                     if pad_len > 0:
                         data["net_sales"] = list(data["net_sales"]) + [0.0] * pad_len
                         data["units"] = list(data["units"]) + [0.0] * pad_len
+                        data["asp"] = list(data["asp"]) + [0.0] * pad_len
 
             elif t["type"] == "quarterly":
                 months = QUARTER_MONTHS[t["quarter"]]
@@ -520,6 +561,7 @@ def get_performance_trend(user_id, country, period, timeline, year):
                 "label": t["label"],
                 "net_sales": data["net_sales"],
                 "units": data["units"],
+                "asp": data["asp"],
             })
 
     if result["xType"] is None:
