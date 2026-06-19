@@ -1241,7 +1241,7 @@ class amazon_sponsored_brands_keywords(db.Model):
     country = db.Column(db.String(8), nullable=True, index=True)
     profile_id = db.Column(db.String(32), nullable=True, index=True)
 
-    # ✅ IDs (critical to avoid overwriting rows)
+    # IDs
     campaign_id = db.Column(db.String(64), nullable=True, index=True)
     ad_group_id = db.Column(db.String(64), nullable=True, index=True)
     keyword_id = db.Column(db.String(64), nullable=True, index=True)
@@ -1251,21 +1251,98 @@ class amazon_sponsored_brands_keywords(db.Model):
     currency = db.Column(db.String(16), nullable=True)
 
     campaign_name = db.Column(db.String(512), nullable=True, index=True)
+    campaign_status = db.Column(db.String(64), nullable=True)
+    campaign_budget_amount = db.Column(db.Float, nullable=True)
+    campaign_budget_type = db.Column(db.String(64), nullable=True)
+
     ad_group_name = db.Column(db.String(512), nullable=True)
 
     targeting = db.Column(db.Text, nullable=True)
+    targeting_type = db.Column(db.String(64), nullable=True)
+
     match_type = db.Column(db.String(64), nullable=True)
     cost_type = db.Column(db.String(64), nullable=True)
 
-    # metrics
+    keyword_bid = db.Column(db.Float, nullable=True)
+    keyword_status = db.Column(db.String(64), nullable=True)
+    keyword_type = db.Column(db.String(64), nullable=True)
+
+    # traffic metrics
     impressions = db.Column(db.BigInteger, nullable=True)
     top_of_search_impression_share = db.Column(db.Float, nullable=True)
     viewable_impressions = db.Column(db.BigInteger, nullable=True)
+    viewability_rate = db.Column(db.Float, nullable=True)
+    view_click_through_rate = db.Column(db.Float, nullable=True)
 
     clicks = db.Column(db.BigInteger, nullable=True)
-    ctr = db.Column(db.Float, nullable=True)   # % value
+    ctr = db.Column(db.Float, nullable=True)
     spend = db.Column(db.Float, nullable=True)
     cpc = db.Column(db.Float, nullable=True)
+
+    # sales / conversion metrics
+    sales = db.Column(db.Float, nullable=True)
+    sales_clicks = db.Column(db.Float, nullable=True)
+    sales_promoted = db.Column(db.Float, nullable=True)
+
+    orders = db.Column(db.Float, nullable=True)
+    orders_clicks = db.Column(db.Float, nullable=True)
+    orders_promoted = db.Column(db.Float, nullable=True)
+
+    units = db.Column(db.Float, nullable=True)
+    units_clicks = db.Column(db.Float, nullable=True)
+
+    acos = db.Column(db.Float, nullable=True)
+    roas = db.Column(db.Float, nullable=True)
+    conversion_rate = db.Column(db.Float, nullable=True)
+
+    # brand/search/product interaction metrics
+    branded_searches = db.Column(db.Float, nullable=True)
+    branded_searches_clicks = db.Column(db.Float, nullable=True)
+
+    detail_page_views = db.Column(db.Float, nullable=True)
+    detail_page_views_clicks = db.Column(db.Float, nullable=True)
+
+    add_to_cart = db.Column(db.Float, nullable=True)
+    add_to_cart_clicks = db.Column(db.Float, nullable=True)
+    add_to_cart_rate = db.Column(db.Float, nullable=True)
+    ecp_add_to_cart = db.Column(db.Float, nullable=True)
+
+    # new-to-brand metrics
+    new_to_brand_sales = db.Column(db.Float, nullable=True)
+    new_to_brand_sales_clicks = db.Column(db.Float, nullable=True)
+    new_to_brand_sales_percentage = db.Column(db.Float, nullable=True)
+
+    new_to_brand_purchases = db.Column(db.Float, nullable=True)
+    new_to_brand_purchases_clicks = db.Column(db.Float, nullable=True)
+    new_to_brand_purchases_percentage = db.Column(db.Float, nullable=True)
+    new_to_brand_purchases_rate = db.Column(db.Float, nullable=True)
+
+    new_to_brand_units_sold = db.Column(db.Float, nullable=True)
+    new_to_brand_units_sold_clicks = db.Column(db.Float, nullable=True)
+    new_to_brand_units_sold_percentage = db.Column(db.Float, nullable=True)
+
+    new_to_brand_detail_page_views = db.Column(db.Float, nullable=True)
+    new_to_brand_detail_page_views_clicks = db.Column(db.Float, nullable=True)
+    new_to_brand_detail_page_view_rate = db.Column(db.Float, nullable=True)
+    new_to_brand_ecp_detail_page_view = db.Column(db.Float, nullable=True)
+
+    # video metrics
+    video_5_second_views = db.Column(db.Float, nullable=True)
+    video_5_second_view_rate = db.Column(db.Float, nullable=True)
+    video_first_quartile_views = db.Column(db.Float, nullable=True)
+    video_midpoint_views = db.Column(db.Float, nullable=True)
+    video_third_quartile_views = db.Column(db.Float, nullable=True)
+    video_complete_views = db.Column(db.Float, nullable=True)
+    video_unmutes = db.Column(db.Float, nullable=True)
+
+    # book / list metrics
+    qualified_borrows = db.Column(db.Float, nullable=True)
+    qualified_borrows_from_clicks = db.Column(db.Float, nullable=True)
+    royalty_qualified_borrows = db.Column(db.Float, nullable=True)
+    royalty_qualified_borrows_from_clicks = db.Column(db.Float, nullable=True)
+
+    add_to_list = db.Column(db.Float, nullable=True)
+    add_to_list_from_clicks = db.Column(db.Float, nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint(
@@ -1282,6 +1359,7 @@ class amazon_sponsored_brands_keywords(db.Model):
         ),
     )
 
+    
 from datetime import datetime
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB

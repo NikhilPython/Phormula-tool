@@ -820,6 +820,10 @@ def monthly_sp_sd_to_db():
                     "orders": float(getattr(r, "orders_7d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_7d", 0.0) or 0.0),
 
+                    "sp_ads_sales": float(getattr(r, "sales_7d", 0.0) or 0.0),
+                    "sd_ads_sales": 0.0,
+                    "sb_ads_sales": 0.0,
+
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
                     "advertised_unit_sale": float(getattr(r, "adv_sku_units_7d", 0.0) or 0.0),
                     "other_unit_sale": float(getattr(r, "other_sku_units_7d", 0.0) or 0.0),
@@ -865,6 +869,10 @@ def monthly_sp_sd_to_db():
                     "sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_14d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_14d", 0.0) or 0.0),
+
+                    "sp_ads_sales": 0.0,
+                    "sd_ads_sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
+                    "sb_ads_sales": 0.0,
 
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
 
@@ -929,6 +937,10 @@ def monthly_sp_sd_to_db():
                     "orders": float(getattr(r, "orders", 0.0) or 0.0),
                     "units": float(getattr(r, "units", 0.0) or 0.0),
 
+                    "sp_ads_sales": 0.0,
+                    "sd_ads_sales": 0.0,
+                    "sb_ads_sales": float(getattr(r, "sales", 0.0) or 0.0),
+
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
                     "advertised_unit_sale": 0.0,
                     "other_unit_sale": 0.0,
@@ -952,6 +964,7 @@ def monthly_sp_sd_to_db():
             "impressions", "clicks", "spend", "sales", "orders", "units",
             "advertised_unit_sale", "other_unit_sale", "new_to_brand_sales",
             "product_spend", "display_spend", "brand_spend",
+            "sp_ads_sales", "sd_ads_sales", "sb_ads_sales",
         ]:
             if col not in df.columns:
                 df[col] = 0.0
@@ -975,6 +988,10 @@ def monthly_sp_sd_to_db():
             "product_spend": "sum",
             "display_spend": "sum",
             "brand_spend": "sum",
+
+            "sp_ads_sales": "sum",
+            "sd_ads_sales": "sum",
+            "sb_ads_sales": "sum",
 
             # ✅ keep which sources contributed
             "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x])))
@@ -1016,6 +1033,10 @@ def monthly_sp_sd_to_db():
         out["spend"] = g["spend"].astype(float)
         out["sale_units"] = g["units"].astype(float)
         out["sale_amount"] = g["sales"].astype(float)
+
+        out["sp_ads_sales"] = g["sp_ads_sales"].astype(float)
+        out["sd_ads_sales"] = g["sd_ads_sales"].astype(float)
+        out["sb_ads_sales"] = g["sb_ads_sales"].astype(float)
 
         out["advertised_unit_sale"] = g["advertised_unit_sale"].astype(float)
         out["other_unit_sale"] = g["other_unit_sale"].astype(float)
@@ -1111,6 +1132,9 @@ def monthly_sp_sd_to_db():
                 "advertised_unit_sale": 0.0,
                 "other_unit_sale": 0.0,
                 "new_to_brand_sales": 0.0,
+                "sp_ads_sales": 0.0,
+                "sd_ads_sales": 0.0,
+                "sb_ads_sales": 0.0,
 
                 "conversion_rate": 0.0,
                 "roas": 0.0,
@@ -1150,6 +1174,17 @@ def monthly_sp_sd_to_db():
         total_units = float(
             pd.to_numeric(out["sale_units"], errors="coerce").fillna(0.0).sum()
         )
+        total_sp_ads_sales = float(
+            pd.to_numeric(out["sp_ads_sales"], errors="coerce").fillna(0.0).sum()
+        )
+
+        total_sd_ads_sales = float(
+            pd.to_numeric(out["sd_ads_sales"], errors="coerce").fillna(0.0).sum()
+        )
+
+        total_sb_ads_sales = float(
+            pd.to_numeric(out["sb_ads_sales"], errors="coerce").fillna(0.0).sum()
+        )
 
         total_row = {
             "sno": None,
@@ -1170,6 +1205,9 @@ def monthly_sp_sd_to_db():
 
             "sale_units": total_units,
             "sale_amount": total_sales_amt,
+            "sp_ads_sales": total_sp_ads_sales,
+            "sd_ads_sales": total_sd_ads_sales,
+            "sb_ads_sales": total_sb_ads_sales,
             "advertised_unit_sale": float(out["advertised_unit_sale"].sum()),
             "other_unit_sale": float(out["other_unit_sale"].sum()),
             "new_to_brand_sales": float(out["new_to_brand_sales"].sum()),
@@ -1212,6 +1250,9 @@ def monthly_sp_sd_to_db():
 
             sale_units DOUBLE PRECISION,
             sale_amount DOUBLE PRECISION,
+            sp_ads_sales DOUBLE PRECISION,
+            sd_ads_sales DOUBLE PRECISION,
+            sb_ads_sales DOUBLE PRECISION,
 
             advertised_unit_sale DOUBLE PRECISION,
             other_unit_sale DOUBLE PRECISION,
@@ -1234,6 +1275,7 @@ def monthly_sp_sd_to_db():
             product_spend, display_spend, brand_spend,
 
             sale_units, sale_amount,
+            sp_ads_sales, sd_ads_sales, sb_ads_sales,
             advertised_unit_sale, other_unit_sale, new_to_brand_sales,
             conversion_rate, roas, acos
         ) VALUES (
@@ -1244,6 +1286,7 @@ def monthly_sp_sd_to_db():
             :product_spend, :display_spend, :brand_spend,
 
             :sale_units, :sale_amount,
+            :sp_ads_sales, :sd_ads_sales, :sb_ads_sales,
             :advertised_unit_sale, :other_unit_sale, :new_to_brand_sales,
             :conversion_rate, :roas, :acos
         );
@@ -1256,6 +1299,9 @@ def monthly_sp_sd_to_db():
             db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS product_spend DOUBLE PRECISION;'))
             db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS display_spend DOUBLE PRECISION;'))
             db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS brand_spend DOUBLE PRECISION;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sp_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sd_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'))
 
             # ✅ wipe monthly output table before inserting
             db.session.execute(text(f"TRUNCATE TABLE public.{table_name};"))
@@ -1287,6 +1333,9 @@ def monthly_sp_sd_to_db():
 
                     "sale_units": float(r.get("sale_units") or 0.0),
                     "sale_amount": float(r.get("sale_amount") or 0.0),
+                    "sp_ads_sales": float(r.get("sp_ads_sales") or 0.0),
+                    "sd_ads_sales": float(r.get("sd_ads_sales") or 0.0),
+                    "sb_ads_sales": float(r.get("sb_ads_sales") or 0.0),
 
                     "advertised_unit_sale": float(r.get("advertised_unit_sale") or 0.0),
                     "other_unit_sale": float(r.get("other_unit_sale") or 0.0),
@@ -1299,6 +1348,96 @@ def monthly_sp_sd_to_db():
 
             if params:
                 db.session.execute(text(insert_sql), params)
+                month_name = calendar.month_name[month].lower()
+                skuwise_table_name = _safe_ident(f"skuwisemonthly_{user_id}_{country.lower()}_{month_name}_{year}")
+
+                # Check which columns exist in skuwise table
+                skuwise_columns = db.session.execute(text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = :table_name
+                """), {"table_name": skuwise_table_name}).scalars().all()
+
+                skuwise_columns = set(str(c).lower() for c in skuwise_columns)
+
+                # Add the 3 new columns
+                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sp_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sd_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+
+                # Refresh column list after ALTER
+                skuwise_columns.update({
+                    "sp_ads_sales",
+                    "sd_ads_sales",
+                    "sb_ads_sales",
+                })
+
+                join_conditions = []
+
+                if "sku" in skuwise_columns:
+                    join_conditions.append("""
+                        COALESCE(NULLIF(TRIM(s.sku::text), ''), '') =
+                        COALESCE(NULLIF(TRIM(a.products::text), ''), '')
+                    """)
+
+                if "asin" in skuwise_columns:
+                    join_conditions.append("""
+                        COALESCE(NULLIF(TRIM(s.asin::text), ''), '') =
+                        COALESCE(NULLIF(TRIM(a.asin::text), ''), '')
+                    """)
+
+                total_conditions = []
+
+                if "sku" in skuwise_columns:
+                    total_conditions.append("""
+                        UPPER(COALESCE(sku::text, '')) IN ('GRAND_TOTAL', 'TOTAL')
+                    """)
+
+                if "product_name" in skuwise_columns:
+                    total_conditions.append("""
+                        LOWER(COALESCE(product_name::text, '')) IN ('grand total', 'total')
+                    """)
+
+                total_where_sql = " OR ".join(total_conditions) if total_conditions else "FALSE"
+
+                if join_conditions:
+                    join_sql = " OR ".join(join_conditions)
+
+                    # Reset body rows only
+                    db.session.execute(text(f"""
+                        UPDATE public.{skuwise_table_name}
+                        SET
+                            sp_ads_sales = 0,
+                            sd_ads_sales = 0,
+                            sb_ads_sales = 0
+                        WHERE NOT ({total_where_sql})
+                    """))
+
+                    # Update matched SKU-wise rows from adsmonthly
+                    db.session.execute(text(f"""
+                        UPDATE public.{skuwise_table_name} s
+                        SET
+                            sp_ads_sales = COALESCE(a.sp_ads_sales, 0),
+                            sd_ads_sales = COALESCE(a.sd_ads_sales, 0),
+                            sb_ads_sales = COALESCE(a.sb_ads_sales, 0)
+                        FROM public.{table_name} a
+                        WHERE
+                            a.products IS NOT NULL
+                            AND a.products <> 'Grand Total'
+                            AND ({join_sql})
+                    """))
+
+                # Grand Total row
+                if total_conditions:
+                    db.session.execute(text(f"""
+                        UPDATE public.{skuwise_table_name}
+                        SET
+                            sp_ads_sales = COALESCE((SELECT SUM(sp_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0),
+                            sd_ads_sales = COALESCE((SELECT SUM(sd_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0),
+                            sb_ads_sales = COALESCE((SELECT SUM(sb_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0)
+                        WHERE {total_where_sql}
+                    """))
 
             db.session.commit()
 
@@ -2000,8 +2139,9 @@ def manager_sb_keyword_report():
             return jsonify({"error": "No advertiser profiles found (or your country filter removed all)."}), 400
 
         merged_rows = []
-        join_maps = {}  # profileId -> {"campaign_to_portfolio":{}, "portfolioid_to_name":{}}
+        join_maps = {}
         download_errors = []
+        join_warnings = []
 
         # ---------------------------
         # 1) Fetch report for profiles
@@ -2017,32 +2157,10 @@ def manager_sb_keyword_report():
             auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
             ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
 
-            # build joins (best-effort)
-            try:
-                sb_campaigns = ads.list_sb_campaigns()
-                portfolios = ads.list_portfolios()
-
-                campaign_to_portfolio = {
-                    str(c.get("campaignId")): str(c.get("portfolioId"))
-                    for c in (sb_campaigns or [])
-                    if c.get("campaignId") and c.get("portfolioId") is not None
-                }
-                portfolioid_to_name = {
-                    str(po.get("portfolioId")): (po.get("name") or "")
-                    for po in (portfolios or [])
-                    if po.get("portfolioId")
-                }
-                join_maps[str(profile_id)] = {
-                    "campaign_to_portfolio": campaign_to_portfolio,
-                    "portfolioid_to_name": portfolioid_to_name,
-                }
-            except Exception as e:
-                join_maps[str(profile_id)] = {"campaign_to_portfolio": {}, "portfolioid_to_name": {}}
-                download_errors.append({
-                    "profile_id": str(profile_id),
-                    "step": "join_maps",
-                    "error": str(e),
-                })
+            join_maps[str(profile_id)] = {
+                "campaign_to_portfolio": {},
+                "portfolioid_to_name": {},
+            }
 
             # create + download report
             try:
@@ -2133,40 +2251,220 @@ def manager_sb_keyword_report():
                 df[id_col] = ""
 
         # ---------------------------
-        # 3) Build output (your exact columns)
+        # 3) Build output with all available Sponsored Brands columns
         # ---------------------------
+
+        def _num(col_name, default=0.0):
+            if col_name in df.columns:
+                return pd.to_numeric(df[col_name], errors="coerce").fillna(default)
+            return pd.Series([default] * len(df))
+
+        def _txt(col_name, default=""):
+            if col_name in df.columns:
+                return df[col_name].fillna("").astype(str)
+            return pd.Series([default] * len(df))
+
+        def _safe_series_div(a, b):
+            a = pd.to_numeric(a, errors="coerce").fillna(0.0)
+            b = pd.to_numeric(b, errors="coerce").fillna(0.0).replace({0: pd.NA})
+            return (a / b).fillna(0.0)
+
         out = pd.DataFrame()
+
         out["Start Date"] = start_date
         out["End Date"] = end_date
-
-        out["Country"] = df.get("_country", "")
-        out["Profile ID"] = df.get("_profileId", "")
+        out["Country"] = _txt("_country")
+        out["Profile ID"] = _txt("_profileId")
 
         out["Portfolio name"] = df.get("__portfolio_name", "")
         out["Currency"] = df.get("__currency_value", "")
 
-        out["Campaign Name"] = df.get("campaignName", "")
-        out["Ad Group Name"] = df.get("adGroupName", "")
+        out["Campaign ID"] = _txt("campaignId")
+        out["Campaign Name"] = _txt("campaignName")
+        out["Ad Group ID"] = _txt("adGroupId")
+        out["Ad Group Name"] = _txt("adGroupName")
+
+        out["Keyword ID"] = _txt("keywordId")
+        out["Targeting ID"] = _txt("targetingId")
         out["Targeting"] = df.get("__targeting_value", "")
-        out["Match Type"] = df.get("matchType", "")
-        out["Cost Type"] = df.get("costType", "")
 
-        out["Impressions"] = df.get("impressions", 0).astype(float)
-        out["Top-of-search impression share"] = df.get("topOfSearchImpressionShare", 0.0).astype(float)
-        out["Viewable impressions"] = df.get("viewableImpressions", 0).astype(float)
-        out["Clicks"] = df.get("clicks", 0).astype(float)
+        out["Match Type"] = _txt("matchType")
+        out["Cost Type"] = _txt("costType")
 
-        # CTR (as % like console)
-        out["Click-Thru Rate (CTR)"] = [
-            _safe_div(c, i) * 100.0 for c, i in zip(out["Clicks"].tolist(), out["Impressions"].tolist())
-        ]
+        out["Impressions"] = _num("impressions").astype(int)
+        out["Top-of-search impression share"] = _num("topOfSearchImpressionShare")
+        out["Viewable impressions"] = _num("viewableImpressions").astype(int)
+        out["Clicks"] = _num("clicks").astype(int)
 
-        out["Spend"] = df.get("cost", 0.0).astype(float)
+        out["Click-Thru Rate (CTR)"] = _safe_series_div(out["Clicks"], out["Impressions"]) * 100.0
 
-        # CPC
-        out["Cost Per Click (CPC)"] = [
-            _safe_div(sp, c) for sp, c in zip(out["Spend"].tolist(), out["Clicks"].tolist())
-        ]
+        out["Spend"] = _num("cost")
+        out["Cost Per Click (CPC)"] = _safe_series_div(out["Spend"], out["Clicks"])
+
+        # Extra SB columns if Amazon sends them
+        extra_metric_map = {
+            "campaignStatus": "Campaign Status",
+            "campaignBudgetAmount": "Campaign Budget Amount",
+            "campaignBudgetType": "Campaign Budget Type",
+
+            "keywordBid": "Keyword Bid",
+            "adKeywordStatus": "Keyword Status",
+            "keywordType": "Keyword Type",
+            "targetingType": "Targeting Type",
+
+            "viewabilityRate": "Viewability Rate",
+            "viewClickThroughRate": "View Click-Through Rate",
+
+            "brandedSearches": "Brand Searches",
+            "brandedSearchesClicks": "Brand Searches Clicks",
+
+            "detailPageViews": "Detail Page Views",
+            "detailPageViewsClicks": "Detail Page Views Clicks",
+
+            "addToCart": "Add to Cart",
+            "addToCartClicks": "Add to Cart Clicks",
+            "addToCartRate": "Add to Cart Rate",
+            "eCPAddToCart": "eCP Add to Cart",
+
+            "purchases": "Purchases",
+            "purchasesClicks": "Purchases Clicks",
+            "purchasesPromoted": "Purchases Promoted",
+
+            "sales": "Sales",
+            "salesClicks": "Sales Clicks",
+            "salesPromoted": "Sales Promoted",
+
+            "unitsSold": "Units Sold",
+            "unitsSoldClicks": "Units Sold Clicks",
+
+            "newToBrandPurchases": "New-to-brand Purchases",
+            "newToBrandPurchasesClicks": "New-to-brand Purchases Clicks",
+            "newToBrandPurchasesPercentage": "New-to-brand Purchases %",
+            "newToBrandPurchasesRate": "New-to-brand Purchases Rate",
+
+            "newToBrandSales": "New-to-brand Sales",
+            "newToBrandSalesClicks": "New-to-brand Sales Clicks",
+            "newToBrandSalesPercentage": "New-to-brand Sales %",
+
+            "newToBrandUnitsSold": "New-to-brand Units Sold",
+            "newToBrandUnitsSoldClicks": "New-to-brand Units Sold Clicks",
+            "newToBrandUnitsSoldPercentage": "New-to-brand Units Sold %",
+
+            "newToBrandDetailPageViews": "New-to-brand Detail Page Views",
+            "newToBrandDetailPageViewsClicks": "New-to-brand Detail Page Views Clicks",
+            "newToBrandDetailPageViewRate": "New-to-brand Detail Page View Rate",
+            "newToBrandECPDetailPageView": "New-to-brand eCP Detail Page View",
+
+            "video5SecondViews": "Video 5-second views",
+            "video5SecondViewRate": "Video 5-second view rate",
+            "videoFirstQuartileViews": "Video first quartile views",
+            "videoMidpointViews": "Video midpoint views",
+            "videoThirdQuartileViews": "Video third quartile views",
+            "videoCompleteViews": "Video complete views",
+            "videoUnmutes": "Video unmutes",
+
+            "qualifiedBorrows": "Qualified Borrows",
+            "qualifiedBorrowsFromClicks": "Qualified Borrows from Clicks",
+            "royaltyQualifiedBorrows": "Royalty Qualified Borrows",
+            "royaltyQualifiedBorrowsFromClicks": "Royalty Qualified Borrows from Clicks",
+
+            "addToList": "Add to List",
+            "addToListFromClicks": "Add to List from Clicks",
+        }
+
+        for raw_col, pretty_col in extra_metric_map.items():
+            if raw_col in df.columns:
+                out[pretty_col] = df[raw_col]
+
+        if "sales" in df.columns:
+            sales_series = _num("sales")
+            out["Total Advertising Cost of Sales (ACOS)"] = _safe_series_div(out["Spend"], sales_series) * 100.0
+            out["Total Return on Advertising Spend (ROAS)"] = _safe_series_div(sales_series, out["Spend"])
+
+        if "purchases" in df.columns:
+            out["Conversion Rate"] = _safe_series_div(_num("purchases"), out["Clicks"]) * 100.0
+
+        # Keep every raw Amazon column also, so no column is lost
+        already_used_raw_cols = {
+            "_profileId", "_country",
+
+            "startDate", "endDate",
+
+            "campaignId", "campaignName", "campaignStatus",
+            "campaignBudgetAmount", "campaignBudgetCurrencyCode", "campaignBudgetType",
+
+            "adGroupId", "adGroupName",
+
+            "keywordId", "keywordBid", "adKeywordStatus",
+            "keywordText", "keywordType",
+
+            "targetingId", "targetingExpression", "targetingText", "targetingType",
+
+            "matchType", "costType",
+
+            "impressions", "topOfSearchImpressionShare",
+            "viewableImpressions", "viewabilityRate",
+            "viewClickThroughRate",
+
+            "clicks", "cost",
+
+            "brandedSearches", "brandedSearchesClicks",
+
+            "detailPageViews", "detailPageViewsClicks",
+
+            "addToCart", "addToCartClicks",
+            "addToCartRate", "eCPAddToCart",
+
+            "purchases", "purchasesClicks", "purchasesPromoted",
+
+            "sales", "salesClicks", "salesPromoted",
+
+            "unitsSold", "unitsSoldClicks",
+
+            "newToBrandPurchases",
+            "newToBrandPurchasesClicks",
+            "newToBrandPurchasesPercentage",
+            "newToBrandPurchasesRate",
+
+            "newToBrandSales",
+            "newToBrandSalesClicks",
+            "newToBrandSalesPercentage",
+
+            "newToBrandUnitsSold",
+            "newToBrandUnitsSoldClicks",
+            "newToBrandUnitsSoldPercentage",
+
+            "newToBrandDetailPageViews",
+            "newToBrandDetailPageViewsClicks",
+            "newToBrandDetailPageViewRate",
+            "newToBrandECPDetailPageView",
+
+            "video5SecondViews",
+            "video5SecondViewRate",
+            "videoFirstQuartileViews",
+            "videoMidpointViews",
+            "videoThirdQuartileViews",
+            "videoCompleteViews",
+            "videoUnmutes",
+
+            "qualifiedBorrows",
+            "qualifiedBorrowsFromClicks",
+            "royaltyQualifiedBorrows",
+            "royaltyQualifiedBorrowsFromClicks",
+
+            "addToList",
+            "addToListFromClicks",
+        }
+
+        for raw_col in df.columns:
+            if raw_col.startswith("__"):
+                continue
+            if raw_col in already_used_raw_cols:
+                continue
+
+            export_col = f"Amazon Raw - {raw_col}"
+            if export_col not in out.columns:
+                out[export_col] = df[raw_col]
 
         # cast ints where appropriate
         out["Impressions"] = out["Impressions"].astype(int)
@@ -2180,6 +2478,11 @@ def manager_sb_keyword_report():
         out["_adGroupId"] = df["adGroupId"].fillna("").astype(str)
         out["_keywordId"] = df["keywordId"].fillna("").astype(str)
         out["_targetingId"] = df["targetingId"].fillna("").astype(str)
+
+        out_export = out.drop(
+            columns=["_campaignId", "_adGroupId", "_keywordId", "_targetingId"],
+            errors="ignore"
+        )
 
         def _stable_targeting_hash(row: pd.Series) -> str:
             parts = [
@@ -2263,6 +2566,77 @@ def manager_sb_keyword_report():
                 "ctr": _to_float(rec.get("Click-Thru Rate (CTR)")),  # % value
                 "spend": _to_float(rec.get("Spend")),
                 "cpc": _to_float(rec.get("Cost Per Click (CPC)")),
+                "campaign_status": rec.get("Campaign Status") or None,
+                "campaign_budget_amount": _to_float(rec.get("Campaign Budget Amount")),
+                "campaign_budget_type": rec.get("Campaign Budget Type") or None,
+
+                "keyword_bid": _to_float(rec.get("Keyword Bid")),
+                "keyword_status": rec.get("Keyword Status") or None,
+                "keyword_type": rec.get("Keyword Type") or None,
+                "targeting_type": rec.get("Targeting Type") or None,
+
+                "viewability_rate": _to_float(rec.get("Viewability Rate")),
+                "view_click_through_rate": _to_float(rec.get("View Click-Through Rate")),
+
+                "sales": _to_float(rec.get("Sales")),
+                "sales_clicks": _to_float(rec.get("Sales Clicks")),
+                "sales_promoted": _to_float(rec.get("Sales Promoted")),
+
+                "orders": _to_float(rec.get("Purchases")),
+                "orders_clicks": _to_float(rec.get("Purchases Clicks")),
+                "orders_promoted": _to_float(rec.get("Purchases Promoted")),
+
+                "units": _to_float(rec.get("Units Sold")),
+                "units_clicks": _to_float(rec.get("Units Sold Clicks")),
+
+                "acos": _to_float(rec.get("Total Advertising Cost of Sales (ACOS)")),
+                "roas": _to_float(rec.get("Total Return on Advertising Spend (ROAS)")),
+                "conversion_rate": _to_float(rec.get("Conversion Rate")),
+
+                "branded_searches": _to_float(rec.get("Brand Searches")),
+                "branded_searches_clicks": _to_float(rec.get("Brand Searches Clicks")),
+
+                "detail_page_views": _to_float(rec.get("Detail Page Views")),
+                "detail_page_views_clicks": _to_float(rec.get("Detail Page Views Clicks")),
+
+                "add_to_cart": _to_float(rec.get("Add to Cart")),
+                "add_to_cart_clicks": _to_float(rec.get("Add to Cart Clicks")),
+                "add_to_cart_rate": _to_float(rec.get("Add to Cart Rate")),
+                "ecp_add_to_cart": _to_float(rec.get("eCP Add to Cart")),
+
+                "new_to_brand_sales": _to_float(rec.get("New-to-brand Sales")),
+                "new_to_brand_sales_clicks": _to_float(rec.get("New-to-brand Sales Clicks")),
+                "new_to_brand_sales_percentage": _to_float(rec.get("New-to-brand Sales %")),
+
+                "new_to_brand_purchases": _to_float(rec.get("New-to-brand Purchases")),
+                "new_to_brand_purchases_clicks": _to_float(rec.get("New-to-brand Purchases Clicks")),
+                "new_to_brand_purchases_percentage": _to_float(rec.get("New-to-brand Purchases %")),
+                "new_to_brand_purchases_rate": _to_float(rec.get("New-to-brand Purchases Rate")),
+
+                "new_to_brand_units_sold": _to_float(rec.get("New-to-brand Units Sold")),
+                "new_to_brand_units_sold_clicks": _to_float(rec.get("New-to-brand Units Sold Clicks")),
+                "new_to_brand_units_sold_percentage": _to_float(rec.get("New-to-brand Units Sold %")),
+
+                "new_to_brand_detail_page_views": _to_float(rec.get("New-to-brand Detail Page Views")),
+                "new_to_brand_detail_page_views_clicks": _to_float(rec.get("New-to-brand Detail Page Views Clicks")),
+                "new_to_brand_detail_page_view_rate": _to_float(rec.get("New-to-brand Detail Page View Rate")),
+                "new_to_brand_ecp_detail_page_view": _to_float(rec.get("New-to-brand eCP Detail Page View")),
+
+                "video_5_second_views": _to_float(rec.get("Video 5-second views")),
+                "video_5_second_view_rate": _to_float(rec.get("Video 5-second view rate")),
+                "video_first_quartile_views": _to_float(rec.get("Video first quartile views")),
+                "video_midpoint_views": _to_float(rec.get("Video midpoint views")),
+                "video_third_quartile_views": _to_float(rec.get("Video third quartile views")),
+                "video_complete_views": _to_float(rec.get("Video complete views")),
+                "video_unmutes": _to_float(rec.get("Video unmutes")),
+
+                "qualified_borrows": _to_float(rec.get("Qualified Borrows")),
+                "qualified_borrows_from_clicks": _to_float(rec.get("Qualified Borrows from Clicks")),
+                "royalty_qualified_borrows": _to_float(rec.get("Royalty Qualified Borrows")),
+                "royalty_qualified_borrows_from_clicks": _to_float(rec.get("Royalty Qualified Borrows from Clicks")),
+
+                "add_to_list": _to_float(rec.get("Add to List")),
+                "add_to_list_from_clicks": _to_float(rec.get("Add to List from Clicks")),
             })
 
         if any(r["start_date"] is None or r["end_date"] is None for r in rows_to_insert):
@@ -2297,6 +2671,77 @@ def manager_sb_keyword_report():
                 "ctr": stmt.excluded.ctr,
                 "spend": stmt.excluded.spend,
                 "cpc": stmt.excluded.cpc,
+                "campaign_status": stmt.excluded.campaign_status,
+                "campaign_budget_amount": stmt.excluded.campaign_budget_amount,
+                "campaign_budget_type": stmt.excluded.campaign_budget_type,
+
+                "keyword_bid": stmt.excluded.keyword_bid,
+                "keyword_status": stmt.excluded.keyword_status,
+                "keyword_type": stmt.excluded.keyword_type,
+                "targeting_type": stmt.excluded.targeting_type,
+
+                "viewability_rate": stmt.excluded.viewability_rate,
+                "view_click_through_rate": stmt.excluded.view_click_through_rate,
+
+                "sales": stmt.excluded.sales,
+                "sales_clicks": stmt.excluded.sales_clicks,
+                "sales_promoted": stmt.excluded.sales_promoted,
+
+                "orders": stmt.excluded.orders,
+                "orders_clicks": stmt.excluded.orders_clicks,
+                "orders_promoted": stmt.excluded.orders_promoted,
+
+                "units": stmt.excluded.units,
+                "units_clicks": stmt.excluded.units_clicks,
+
+                "acos": stmt.excluded.acos,
+                "roas": stmt.excluded.roas,
+                "conversion_rate": stmt.excluded.conversion_rate,
+
+                "branded_searches": stmt.excluded.branded_searches,
+                "branded_searches_clicks": stmt.excluded.branded_searches_clicks,
+
+                "detail_page_views": stmt.excluded.detail_page_views,
+                "detail_page_views_clicks": stmt.excluded.detail_page_views_clicks,
+
+                "add_to_cart": stmt.excluded.add_to_cart,
+                "add_to_cart_clicks": stmt.excluded.add_to_cart_clicks,
+                "add_to_cart_rate": stmt.excluded.add_to_cart_rate,
+                "ecp_add_to_cart": stmt.excluded.ecp_add_to_cart,
+
+                "new_to_brand_sales": stmt.excluded.new_to_brand_sales,
+                "new_to_brand_sales_clicks": stmt.excluded.new_to_brand_sales_clicks,
+                "new_to_brand_sales_percentage": stmt.excluded.new_to_brand_sales_percentage,
+
+                "new_to_brand_purchases": stmt.excluded.new_to_brand_purchases,
+                "new_to_brand_purchases_clicks": stmt.excluded.new_to_brand_purchases_clicks,
+                "new_to_brand_purchases_percentage": stmt.excluded.new_to_brand_purchases_percentage,
+                "new_to_brand_purchases_rate": stmt.excluded.new_to_brand_purchases_rate,
+
+                "new_to_brand_units_sold": stmt.excluded.new_to_brand_units_sold,
+                "new_to_brand_units_sold_clicks": stmt.excluded.new_to_brand_units_sold_clicks,
+                "new_to_brand_units_sold_percentage": stmt.excluded.new_to_brand_units_sold_percentage,
+
+                "new_to_brand_detail_page_views": stmt.excluded.new_to_brand_detail_page_views,
+                "new_to_brand_detail_page_views_clicks": stmt.excluded.new_to_brand_detail_page_views_clicks,
+                "new_to_brand_detail_page_view_rate": stmt.excluded.new_to_brand_detail_page_view_rate,
+                "new_to_brand_ecp_detail_page_view": stmt.excluded.new_to_brand_ecp_detail_page_view,
+
+                "video_5_second_views": stmt.excluded.video_5_second_views,
+                "video_5_second_view_rate": stmt.excluded.video_5_second_view_rate,
+                "video_first_quartile_views": stmt.excluded.video_first_quartile_views,
+                "video_midpoint_views": stmt.excluded.video_midpoint_views,
+                "video_third_quartile_views": stmt.excluded.video_third_quartile_views,
+                "video_complete_views": stmt.excluded.video_complete_views,
+                "video_unmutes": stmt.excluded.video_unmutes,
+
+                "qualified_borrows": stmt.excluded.qualified_borrows,
+                "qualified_borrows_from_clicks": stmt.excluded.qualified_borrows_from_clicks,
+                "royalty_qualified_borrows": stmt.excluded.royalty_qualified_borrows,
+                "royalty_qualified_borrows_from_clicks": stmt.excluded.royalty_qualified_borrows_from_clicks,
+
+                "add_to_list": stmt.excluded.add_to_list,
+                "add_to_list_from_clicks": stmt.excluded.add_to_list_from_clicks,
             }
 
             stmt = stmt.on_conflict_do_update(index_elements=conflict_cols, set_=update_cols)
@@ -2314,6 +2759,9 @@ def manager_sb_keyword_report():
                 "end_date": end_date,
                 "time_unit": time_unit,
                 "countries": sorted(list(wanted_countries)) if wanted_countries else None,
+                "excel_columns": list(out_export.columns),
+                "amazon_raw_columns": list(df.columns),
+                "join_warnings": join_warnings[:50],
                 "download_errors": download_errors[:50],
             }), 200
 
@@ -2325,23 +2773,23 @@ def manager_sb_keyword_report():
             out_export.to_excel(writer, index=False, sheet_name="SB_Keywords")
             ws = writer.book["SB_Keywords"]
 
-            # Format Spend as GBP if currency is GBP/GBP-like; otherwise generic currency format.
             if "Spend" in out_export.columns:
                 spend_col_idx = list(out_export.columns).index("Spend") + 1
                 spend_letter = get_column_letter(spend_col_idx)
 
-                # Decide format from first non-empty currency
                 cur = ""
                 if "Currency" in out_export.columns:
                     non_empty = [c for c in out_export["Currency"].tolist() if str(c).strip()]
-                    cur = (non_empty[0] if non_empty else "")
+                    cur = non_empty[0] if non_empty else ""
 
                 money_fmt = u"£#,##0.00" if str(cur).upper() in {"GBP", "UK", "GB"} else u"#,##0.00"
+
                 for r in range(2, ws.max_row + 1):
                     ws[f"{spend_letter}{r}"].number_format = money_fmt
 
         output.seek(0)
         filename = f"SB_Keyword_{start_date}_to_{end_date}.xlsx"
+
         return send_file(
             output,
             as_attachment=True,
