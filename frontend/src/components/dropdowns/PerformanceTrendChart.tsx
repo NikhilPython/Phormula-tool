@@ -9,15 +9,16 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
-type ChartMetric = "net_sales" | "units";
+type ChartMetric = "net_sales" | "units" | "asp";
 
 type TrendBucket = Record<string, number>;
 type TrendBucketOrArray = TrendBucket | number[];
 
 type PerformanceTrendSeries = {
-  label: string; // "Q4'25" OR "Dec'25" OR "2025"
+  label: string;
   net_sales: TrendBucketOrArray;
   units: TrendBucketOrArray;
+  asp?: TrendBucketOrArray;
 };
 
 type PerformanceTrendPayload = {
@@ -35,7 +36,7 @@ type PerformanceTrendChartProps = {
   countryName?: string;
   homeCurrency?: string;
   data?: PerformanceTrendPayload | null;
-  metric?: "net_sales" | "units";
+  metric?: "net_sales" | "units" | "asp";
   loading?: boolean;
   error?: string | null;
   selectedStartDay?: number | null;
@@ -175,6 +176,7 @@ type GenericPoint = {
   x: string;
   units?: number | null;
   net_sales?: number | null;
+  asp?: number | null;
   monthLabel?: string | null;
 };
 

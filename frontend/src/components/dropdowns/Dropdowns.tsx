@@ -33,7 +33,25 @@ import CashFlowPage from "@/app/(admin)/cashflow/[countryName]/[month]/[year]/Ca
 import { jwtDecode } from "jwt-decode";
 import AmazonAdsConnect from "@/features/integration/AmazonAdsConnectLegacy";
 import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessModal";
+import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
 
+import type {
+  AgeingBucket,
+  AgeingRiskHeatmapRow,
+} from "@/components/common/inventory/AgeingRiskHeatmap";
+
+import type {
+  DonutChartItem,
+} from "@/components/common/inventory/SkuAgeingDonutChart";
+
+import type {
+  AgeingTrendItem,
+} from "@/components/common/inventory/AgeingTrendChart";
+
+import type {
+  ActionCardItem,
+  ActionLogicItem,
+} from "@/components/common/inventory/ActionBasedDashboard";
 /* ---------------------- Types ---------------------- */
 type Summary = {
   unit_sold: number;
@@ -169,6 +187,60 @@ type ComparisonItem = {
   diffPct?: number | null;
 };
 
+type InventoryCurrentRow = Record<string, any>;
+
+type InventoryCurrentApiResponse = {
+  success: boolean;
+  table_name?: string;
+  columns?: string[];
+  rows?: InventoryCurrentRow[];
+  total_rows?: number;
+  categories?: Record<
+    string,
+    {
+      items?: any[];
+      product_count?: number;
+      sku_count?: number;
+    }
+  >;
+  category_counts?: Record<string, number>;
+  message?: string;
+};
+
+
+
+type InventoryInsightsData = {
+  heatmapBuckets: AgeingBucket[];
+  heatmapData: AgeingRiskHeatmapRow[];
+  donutSku: string;
+  donutData: DonutChartItem[];
+  donutTotalUnits: number;
+  trendSelectedBucket: string;
+  trendData: AgeingTrendItem[];
+  trendLineColor: string;
+  actions: ActionCardItem[];
+  actionLogic: ActionLogicItem[];
+};
+
+type InventoryAgeSummaryItem = {
+  month: string;
+  year: number;
+  age_bucket: string;
+  column: string;
+  units: number;
+};
+
+type InventoryAgeSummaryApiResponse = {
+  success: boolean;
+  table_name?: string;
+  month?: string;
+  year?: number;
+  country_key?: string;
+  totals?: Record<string, number>;
+  age_summary?: InventoryAgeSummaryItem[];
+  message?: string;
+};
+
 const normalizeKey = (s: string) =>
   (s || "")
     .toLowerCase()
@@ -201,45 +273,6 @@ const writeFetchedPeriods = (fp: FetchedPeriods) => {
   if (typeof window === "undefined") return;
   localStorage.setItem("fetchedPeriods", JSON.stringify(fp));
 };
-
-// const markFetched = (year: string, month?: string) => {
-//   if (typeof window === "undefined") return;
-//   const y = String(year);
-//   const m = month ? month.toLowerCase() : "";
-
-//   const fp = readFetchedPeriods();
-//   if (!fp[y]) fp[y] = [];
-//   if (m && !fp[y].includes(m)) fp[y].push(m);
-
-//   // keep months sorted
-//   fp[y] = fp[y]
-//     .filter(Boolean)
-//     .sort((a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99));
-
-//   writeFetchedPeriods(fp);
-
-//   if (m) {
-//     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
-//   }
-// };
-
-// const computeDefaultYearlyYear = () => {
-//   if (typeof window !== "undefined") {
-//     try {
-//       const raw = localStorage.getItem("latestFetchedPeriod");
-//       if (raw) {
-//         const parsed = JSON.parse(raw);
-//         const y = String(parsed?.year || "").trim();
-//         if (y) return y;
-//       }
-//     } catch { }
-//   }
-
-//   // Fallback: latest completed month, not current calendar year
-//   const now = new Date();
-//   const latestCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-//   return String(latestCompleted.getFullYear());
-// };
 
 const markFetched = (year: string, month?: string) => {
   if (typeof window === "undefined") return;
@@ -1014,8 +1047,8 @@ type RightProductDrawerProps = {
   perfMetric?: "net_sales" | "units";
   onPerfMetricChange?: (metric: "net_sales" | "units") => void;
   bestPerformanceLoading?: boolean;
-bestPerformanceError?: string | null;
-bestPerformanceData?: ProductBestPerformanceData | null;
+  bestPerformanceError?: string | null;
+  bestPerformanceData?: ProductBestPerformanceData | null;
 };
 
 const metricColors = [
@@ -1054,8 +1087,8 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   perfMetric = "net_sales",
   onPerfMetricChange,
   bestPerformanceLoading = false,
-bestPerformanceError = null,
-bestPerformanceData = null,
+  bestPerformanceError = null,
+  bestPerformanceData = null,
 }) => {
   const inventoryText =
     recObj?.inventory_recommendation || block?.inventoryBullets?.join(" ");
@@ -1079,13 +1112,13 @@ bestPerformanceData = null,
   });
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
-  const normalizedLabel = label.trim().toLowerCase();
-  const metricIndex = metricOrder.indexOf(normalizedLabel);
+    const normalizedLabel = label.trim().toLowerCase();
+    const metricIndex = metricOrder.indexOf(normalizedLabel);
 
-  return metricColors[
-    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
-  ];
-};
+    return metricColors[
+      metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+    ];
+  };
 
   if (!open || !block) return null;
 
@@ -1207,81 +1240,81 @@ bestPerformanceData = null,
                   </div>
                 </div>
 
-               {!isOtherSkusBlock && (
-  <div>
-    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-      Overall Best Performance
-    </div>
+                {!isOtherSkusBlock && (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                      Overall Best Performance
+                    </div>
 
-    {bestPerformanceLoading ? (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-        Loading best performance...
-      </div>
-    ) : bestPerformanceError ? (
-      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
-        {bestPerformanceError}
-      </div>
-    ) : bestPerformanceData ? (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[
-          {
-            label: "Units",
-            value: Math.round(toNum(bestPerformanceData?.units?.units)).toLocaleString(),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.units?.month,
-              bestPerformanceData?.units?.year
-            ),
-          },
-          {
-            label: "Net Sales",
-            value: formatMoneyNoDecimal(
-              bestPerformanceData?.net_sales?.net_sales,
-              drawerCurrencySymbol
-            ),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.net_sales?.month,
-              bestPerformanceData?.net_sales?.year
-            ),
-          },
-          {
-            label: "CM1 Profit",
-            value: formatMoneyNoDecimal(
-              bestPerformanceData?.cm1_profit?.cm1_profit,
-              drawerCurrencySymbol
-            ),
-            period: formatBestPerformancePeriod(
-              bestPerformanceData?.cm1_profit?.month,
-              bestPerformanceData?.cm1_profit?.year
-            ),
-          },
-        ].map((m, i) => (
-          <div
-            key={m.label}
-            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
-          >
-            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-              {m.label}
-            </div>
+                    {bestPerformanceLoading ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        Loading best performance...
+                      </div>
+                    ) : bestPerformanceError ? (
+                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+                        {bestPerformanceError}
+                      </div>
+                    ) : bestPerformanceData ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {[
+                          {
+                            label: "Units",
+                            value: Math.round(toNum(bestPerformanceData?.units?.units)).toLocaleString(),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.units?.month,
+                              bestPerformanceData?.units?.year
+                            ),
+                          },
+                          {
+                            label: "Net Sales",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.net_sales?.net_sales,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.net_sales?.month,
+                              bestPerformanceData?.net_sales?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.cm1_profit?.cm1_profit,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.cm1_profit?.month,
+                              bestPerformanceData?.cm1_profit?.year
+                            ),
+                          },
+                        ].map((m, i) => (
+                          <div
+                            key={m.label}
+                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
+                          >
+                            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+                              {m.label}
+                            </div>
 
-            <div className="flex flex-col leading-tight">
-              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                {m.period}
-              </span>
+                            <div className="flex flex-col leading-tight">
+                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+                                {m.period}
+                              </span>
 
-              <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
-                {m.value}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
-        —
-      </div>
-    )}
-  </div>
-)}
+                              <span className="mt-2 text-sm font-bold 2xl:text-lg text-[#414042]">
+                                {m.value}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        —
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* {block.isOtherSkus && block.includedSkus?.length ? (
                   <div>
@@ -1544,9 +1577,9 @@ const ProductInsightsSection = ({
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
   const [bestPerformanceLoading, setBestPerformanceLoading] = useState(false);
-const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
-const [bestPerformanceData, setBestPerformanceData] =
-  useState<ProductBestPerformanceData | null>(null);
+  const [bestPerformanceError, setBestPerformanceError] = useState<string | null>(null);
+  const [bestPerformanceData, setBestPerformanceData] =
+    useState<ProductBestPerformanceData | null>(null);
 
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState<string | null>(null);
@@ -1860,83 +1893,83 @@ const [bestPerformanceData, setBestPerformanceData] =
   ]);
 
   useEffect(() => {
-  if (!hasBlocks) return;
-  if (!selectedBlock) return;
+    if (!hasBlocks) return;
+    if (!selectedBlock) return;
 
-  const ac = new AbortController();
+    const ac = new AbortController();
 
-  const fetchBestPerformance = async () => {
-    try {
-      setBestPerformanceLoading(true);
-      setBestPerformanceError(null);
-      setBestPerformanceData(null);
+    const fetchBestPerformance = async () => {
+      try {
+        setBestPerformanceLoading(true);
+        setBestPerformanceError(null);
+        setBestPerformanceData(null);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
-          : null;
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null;
 
-      if (!token) throw new Error("Missing token");
+        if (!token) throw new Error("Missing token");
 
-      const isOtherSkusBlock =
-        selectedBlock.isOtherSkus ||
-        selectedBlock.name.trim().toLowerCase() === "other skus";
+        const isOtherSkusBlock =
+          selectedBlock.isOtherSkus ||
+          selectedBlock.name.trim().toLowerCase() === "other skus";
 
-      const productName =
-        isOtherSkusBlock
-          ? sortedBlocks.find(
+        const productName =
+          isOtherSkusBlock
+            ? sortedBlocks.find(
               (b) =>
                 !b.isOtherSkus &&
                 b.name.trim().toLowerCase() !== "other skus"
             )?.name
-          : selectedBlock.name;
+            : selectedBlock.name;
 
-      if (!productName) return;
+        if (!productName) return;
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            product_name: productName,
-            country: countryName,
-            home_currency: homeCurrency || resolvedCurrencySymbol,
-          }),
-          cache: "no-store",
-          signal: ac.signal,
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              product_name: productName,
+              country: countryName,
+              home_currency: homeCurrency || resolvedCurrencySymbol,
+            }),
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to fetch best performance");
         }
-      );
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to fetch best performance");
+        setBestPerformanceData(json?.best_performance ?? null);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setBestPerformanceError(e?.message || "Failed to load best performance");
+      } finally {
+        setBestPerformanceLoading(false);
       }
+    };
 
-      setBestPerformanceData(json?.best_performance ?? null);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setBestPerformanceError(e?.message || "Failed to load best performance");
-    } finally {
-      setBestPerformanceLoading(false);
-    }
-  };
+    fetchBestPerformance();
 
-  fetchBestPerformance();
-
-  return () => ac.abort();
-}, [
-  selectedBlock,
-  hasBlocks,
-  sortedBlocks,
-  countryName,
-  homeCurrency,
-  resolvedCurrencySymbol,
-]);
+    return () => ac.abort();
+  }, [
+    selectedBlock,
+    hasBlocks,
+    sortedBlocks,
+    countryName,
+    homeCurrency,
+    resolvedCurrencySymbol,
+  ]);
   if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
@@ -2044,34 +2077,34 @@ const [bestPerformanceData, setBestPerformanceData] =
       </div>
 
       <RightProductDrawer
-  open={!!selectedBlock}
-  onClose={() => {
-    setSelectedBlock(null);
-    setSelectedRecObj(null);
-    setPerfData(null);
-    setPerfError(null);
-    setBestPerformanceData(null);
-    setBestPerformanceError(null);
-  }}
-  block={selectedBlock}
-  objective={objective}
-  recObj={selectedRecObj}
-  countryName={countryName}
-  range={range}
-  year={selectedYear}
-  month={range === "monthly" ? (selectedMonth ?? "") : ""}
-  quarter={range === "quarterly" ? selectedQuarter : ""}
-  drawerPeriodText={drawerPeriodText}
-  currencySymbol={resolvedCurrencySymbol}
-  perfLoading={perfLoading}
-  perfError={perfError}
-  perfData={perfData}
-  perfMetric={perfMetric}
-  onPerfMetricChange={setPerfMetric}
-  bestPerformanceLoading={bestPerformanceLoading}
-  bestPerformanceError={bestPerformanceError}
-  bestPerformanceData={bestPerformanceData}
-/>
+        open={!!selectedBlock}
+        onClose={() => {
+          setSelectedBlock(null);
+          setSelectedRecObj(null);
+          setPerfData(null);
+          setPerfError(null);
+          setBestPerformanceData(null);
+          setBestPerformanceError(null);
+        }}
+        block={selectedBlock}
+        objective={objective}
+        recObj={selectedRecObj}
+        countryName={countryName}
+        range={range}
+        year={selectedYear}
+        month={range === "monthly" ? (selectedMonth ?? "") : ""}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={drawerPeriodText}
+        currencySymbol={resolvedCurrencySymbol}
+        perfLoading={perfLoading}
+        perfError={perfError}
+        perfData={perfData}
+        perfMetric={perfMetric}
+        onPerfMetricChange={setPerfMetric}
+        bestPerformanceLoading={bestPerformanceLoading}
+        bestPerformanceError={bestPerformanceError}
+        bestPerformanceData={bestPerformanceData}
+      />
     </div>
   );
 };
@@ -2255,6 +2288,7 @@ type AiSingleInsightCardProps = {
   currencySymbol?: string;
   otherSkuIncludedProducts?: OtherSkuItem[];
 };
+
 
 const formatSummaryPeriod = (text?: string) => {
   if (!text) return "";
@@ -2465,322 +2499,6 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             </div>
           </div>
         )}
-
-
-
-        {/* Inventory Section */}
-        {!hasNoAiData && inventoryBullets.length > 0 && (
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-                Inventory Insights
-              </span>
-            </div>
-
-            {(() => {
-              const isGlobalInventory = countryName.toLowerCase() === "global";
-
-              const getCountryTitle = () => {
-                const c = countryName.toLowerCase();
-
-                if (c === "uk") return "UK Inventory";
-                if (c === "us") return "US Inventory";
-                if (c === "global") return "Global Inventory";
-
-                return `${countryName.toUpperCase()} Inventory`;
-              };
-
-              const toTitleLabel = (value: string) => {
-                return String(value || "")
-                  .trim()
-                  .replace(/\s+/g, " ")
-                  .replace(/\b\w/g, (char) => char.toUpperCase())
-                  .replace(/\bSkus\b/g, "SKUs")
-                  .replace(/\bSku\b/g, "SKU")
-                  .replace(/\bUk\b/g, "UK")
-                  .replace(/\bUs\b/g, "US")
-                  .replace("Estimated Storage Cost", "Est. Storage Cost")
-                  .replace("Estimated Storage Cost Next Month", "Est. Storage Cost Next Month");
-              };
-
-              const parseInventoryLine = (line: string) => {
-                const raw = String(line || "").trim();
-
-                if (
-                  raw.toLowerCase().includes("for detailed inventory insights") ||
-                  raw.toLowerCase().includes("inventory reconciliation tab")
-                ) {
-                  return null;
-                }
-
-                const country = /^UK\b/i.test(raw)
-                  ? "UK"
-                  : /^US\b/i.test(raw)
-                    ? "US"
-                    : "";
-
-                const withoutCountry = raw
-                  .replace(/^UK\s+/i, "")
-                  .replace(/^US\s+/i, "")
-                  .trim();
-
-                const colonIdx = withoutCountry.indexOf(":");
-
-                let left = colonIdx > -1 ? withoutCountry.slice(0, colonIdx).trim() : withoutCountry;
-                let right = colonIdx > -1 ? withoutCountry.slice(colonIdx + 1).trim() : "";
-
-                // ✅ Fix for old unfulfillable sentence format:
-                // "Unfulfillable Inventory Is Above 1% Of Total Inventory (2.01%)"
-                if (!right && left.toLowerCase().includes("unfulfillable")) {
-                  const pctMatch = left.match(/\(([^)]+%)\)/);
-                  const isAbove = left.toLowerCase().includes("above");
-                  const isBelow = left.toLowerCase().includes("below");
-
-                  left = "Unfulfillable Inventory";
-
-                  right = [
-                    isAbove ? "Above 1% of Total Inventory" : "",
-                    isBelow ? "Below 1% of Total Inventory" : "",
-                    pctMatch?.[1] ? `(${pctMatch[1]})` : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                }
-
-                const cleanLabel = toTitleLabel(left);
-
-                return {
-                  country,
-                  label: cleanLabel,
-                  value: right,
-                };
-              };
-
-              type InventoryItem = NonNullable<ReturnType<typeof parseInventoryLine>>;
-
-              const getItemRank = (label: string) => {
-                const value = label.toLowerCase();
-
-                if (value.includes("ageing")) return 1;
-                if (value.includes("estimated storage") || value.includes("est. storage")) return 2;
-                if (value.includes("unfulfillable")) return 3;
-                if (value.includes("high coverage")) return 4;
-
-                return 99;
-              };
-
-              const getMetricLabel = (label: string) => {
-                const value = label.toLowerCase();
-
-                if (value.includes("ageing")) return "Ageing Inventory";
-                if (value.includes("estimated storage") || value.includes("est. storage")) {
-                  return "Est. Storage Cost";
-                }
-                if (value.includes("unfulfillable")) return "Unfulfillable Inventory";
-                if (value.includes("high coverage")) return "High Coverage SKUs";
-
-                return label;
-              };
-
-              const splitInventoryValue = (label: string, value: string) => {
-                const rawValue = String(value || "").trim();
-                const lowerLabel = label.toLowerCase();
-
-                if (!rawValue) {
-                  return {
-                    main: "—",
-                    sub: "",
-                  };
-                }
-
-                if (lowerLabel.includes("unfulfillable")) {
-                  return {
-                    main: rawValue,
-                    sub: "",
-                  };
-                }
-
-                if (lowerLabel.includes("ageing")) {
-                  const match = rawValue.match(/^(.+?)\s+across\s+(.+)$/i);
-
-                  if (match) {
-                    return {
-                      main: match[1].trim(),
-                      sub: `across ${match[2].trim()}`,
-                    };
-                  }
-                }
-
-                return {
-                  main: rawValue,
-                  sub: "",
-                };
-              };
-
-              const CountryInventoryCard = ({
-                title,
-                items,
-                accentClass,
-                countryCode,
-                showHeader = true,
-              }: {
-                title: string;
-                items: InventoryItem[];
-                accentClass: string;
-                countryCode?: string;
-                showHeader?: boolean;
-              }) => {
-                if (!items.length) return null;
-
-                const orderedItems = [...items].sort(
-                  (a, b) => getItemRank(a.label) - getItemRank(b.label)
-                );
-
-                return (
-                  <div
-                    className={[
-                      "w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm",
-                      "transition hover:shadow-md",
-                      accentClass,
-                    ].join(" ")}
-                  >
-                    <div className="p-4">
-                      {showHeader && (
-                        <div className="mb-4 flex items-center gap-2">
-
-                          <h3 className="text-sm font-bold text-slate-800">
-                            {title}
-                          </h3>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {orderedItems.map((item, i) => {
-                          const metricLabel = getMetricLabel(item.label);
-                          const { main, sub } = splitInventoryValue(metricLabel, item.value);
-
-                          return (
-                            <div
-                              key={`${item.label}-${i}`}
-                              className="min-h-[72px] rounded-lg border border-slate-200 bg-slate-50/70 p-3"
-                            >
-                              <div className="text-xs font-medium text-slate-500">
-                                {metricLabel}
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-baseline gap-1 leading-tight">
-                                <span className="text-base font-bold text-charcoal-500">
-                                  {main}
-                                </span>
-
-                                {sub ? (
-                                  <span className="text-xs font-medium text-charcoal-500">
-                                    {sub}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={goToInventoryReconciliation}
-                        className="mt-4 inline-flex items-center text-sm font-semibold text-[#5EA68E] transition hover:text-[#4B8F7A] hover:underline"
-                      >
-                        View inventory reconciliation
-                        <span className="ml-1">→</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              };
-
-              const parsedItems = inventoryBullets
-                .map(parseInventoryLine)
-                .filter((item): item is InventoryItem => item !== null);
-
-              if (!isGlobalInventory) {
-                const c = countryName.toLowerCase();
-
-                return (
-                  <div className="grid grid-cols-1 gap-4">
-                    <CountryInventoryCard
-                      title={getCountryTitle()}
-                      items={parsedItems}
-                      countryCode={c === "uk" ? "GB" : c === "us" ? "US" : c.toUpperCase()}
-                      showHeader={false}
-                      accentClass={
-                        c === "uk"
-                          ? "border-t-4 border-t-[#5EA68E]"
-                          : "border-t-4 border-t-[#3A8EA4]"
-                      }
-                    />
-                  </div>
-                );
-              }
-
-              const grouped = parsedItems.reduce(
-                (acc, item) => {
-                  if (item.country === "UK") acc.uk.push(item);
-                  else if (item.country === "US") acc.us.push(item);
-                  else acc.other.push(item);
-
-                  return acc;
-                },
-                {
-                  uk: [] as InventoryItem[],
-                  us: [] as InventoryItem[],
-                  other: [] as InventoryItem[],
-                }
-              );
-
-              const hasUkInventory = grouped.uk.length > 0;
-              const hasUsInventory = grouped.us.length > 0;
-              const hasOtherInventory = grouped.other.length > 0;
-
-              const visibleCountryCount =
-                Number(hasUkInventory) + Number(hasUsInventory);
-
-              return (
-                <div
-                  className={[
-                    "grid grid-cols-1 gap-4",
-                    visibleCountryCount > 1 ? "lg:grid-cols-2" : "lg:grid-cols-1",
-                  ].join(" ")}
-                >
-                  {hasUkInventory && (
-                    <CountryInventoryCard
-                      title="UK Inventory"
-                      items={grouped.uk}
-                      countryCode="GB"
-                      accentClass="border-t-4 border-t-[#5EA68E]"
-                    />
-                  )}
-
-                  {hasUsInventory && (
-                    <CountryInventoryCard
-                      title="US Inventory"
-                      items={grouped.us}
-                      countryCode="US"
-                      accentClass="border-t-4 border-t-[#3A8EA4]"
-                    />
-                  )}
-
-                  {hasOtherInventory && (
-                    <CountryInventoryCard
-                      title="Other Inventory"
-                      items={grouped.other}
-                      countryCode="OTHER"
-                      accentClass="border-t-4 border-t-slate-400 lg:col-span-2"
-                    />
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2793,7 +2511,8 @@ type DashboardTab =
   | "skuBreakdown"
   | "cashFlow"
   | "skuwiseProfit"
-  | "businessSummary";
+  | "businessSummary"
+  | "inventoryInsights";
 
 const TAB_LABELS: Record<DashboardTab, string> = {
   graphs: "Finance Dashboard",
@@ -2801,6 +2520,7 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   cashFlow: "Cash Flow",
   skuwiseProfit: "SKU wise Profit",
   businessSummary: "AI Insights & Recommendations",
+  inventoryInsights: "Inventory Insights",
 };
 
 const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
@@ -2809,11 +2529,13 @@ const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
   { value: "cashFlow", label: TAB_LABELS.cashFlow },
   { value: "skuwiseProfit", label: TAB_LABELS.skuwiseProfit },
   { value: "businessSummary", label: TAB_LABELS.businessSummary },
+  { value: "inventoryInsights", label: TAB_LABELS.inventoryInsights },
 ];
 
 const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "finance-dashboard": "graphs",
   "ai-insights": "businessSummary",
+  "inventory-insights": "inventoryInsights",
   "pnl-breakdown": "skuBreakdown",
   "skuwise-profit": "skuwiseProfit",
   "cash-flow": "cashFlow",
@@ -3230,7 +2952,514 @@ const DEMO_TARGET_SUMMARY = {
   cashflow_total: 0,
 };
 
+const heatmapBuckets: AgeingBucket[] = [
+  { key: "zeroToNinety", label: "0–90 Days", color: "#63b64f" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#f4d03f" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#f5a623" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ff7f32" },
+  { key: "threeSixtyFivePlus", label: "365+ Days", color: "#ef3b2d" },
+];
 
+const heatmapData: AgeingRiskHeatmapRow[] = [
+  {
+    productName: "Demo Product A",
+    sku: "SKU-A",
+    zeroToNinety: 420,
+    ninetyOneToOneEighty: 110,
+    oneEightyOneToTwoSeventy: 60,
+    twoSeventyOneToThreeSixtyFive: 25,
+    threeSixtyFivePlus: 10,
+    totalUnits: 625,
+  },
+  {
+    productName: "Demo Product B",
+    sku: "SKU-B",
+    zeroToNinety: 120,
+    ninetyOneToOneEighty: 240,
+    oneEightyOneToTwoSeventy: 180,
+    twoSeventyOneToThreeSixtyFive: 90,
+    threeSixtyFivePlus: 130,
+    totalUnits: 760,
+  },
+  {
+    productName: "Demo Product C",
+    sku: "SKU-C",
+    zeroToNinety: 560,
+    ninetyOneToOneEighty: 75,
+    oneEightyOneToTwoSeventy: 20,
+    twoSeventyOneToThreeSixtyFive: 5,
+    threeSixtyFivePlus: 0,
+    totalUnits: 660,
+  },
+  {
+    productName: "Demo Product D",
+    sku: "SKU-D",
+    zeroToNinety: 80,
+    ninetyOneToOneEighty: 130,
+    oneEightyOneToTwoSeventy: 160,
+    twoSeventyOneToThreeSixtyFive: 220,
+    threeSixtyFivePlus: 310,
+    totalUnits: 900,
+  },
+  {
+    productName: "Demo Product E",
+    sku: "SKU-E",
+    zeroToNinety: 300,
+    ninetyOneToOneEighty: 210,
+    oneEightyOneToTwoSeventy: 95,
+    twoSeventyOneToThreeSixtyFive: 40,
+    threeSixtyFivePlus: 35,
+    totalUnits: 680,
+  },
+  {
+    productName: "Demo Product F",
+    sku: "SKU-F",
+    zeroToNinety: 180,
+    ninetyOneToOneEighty: 160,
+    oneEightyOneToTwoSeventy: 120,
+    twoSeventyOneToThreeSixtyFive: 80,
+    threeSixtyFivePlus: 60,
+    totalUnits: 600,
+  },
+];
+
+const selectedDonutSku = "SKU-B";
+
+
+const INVENTORY_BUCKETS: AgeingBucket[] = [
+  { key: "zeroToNinety", label: "0–90 Days", color: "#63b64f" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#f4d03f" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#f5a623" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ff7f32" },
+  { key: "threeSixtyFivePlus", label: "365+ Days", color: "#ef3b2d" },
+];
+
+const AGEING_TREND_BUCKET = {
+  label: "365+ Days",
+  column: "inv-age-365-plus-days",
+  color: "#ef3b2d",
+};
+
+const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
+  {
+    key: "liquidate",
+    label: "Liquidate",
+    description: "High 271–365 days inventory",
+    color: "#B75A5A",
+  },
+  {
+    key: "discount",
+    label: "Discount",
+    description: "High 181–270 days inventory",
+    color: "#ff7f32",
+  },
+  {
+    key: "monitor",
+    label: "Monitor",
+    description: "Inventory in 0–90 or 91–180 day buckets",
+    color: "#f4d03f",
+  },
+  {
+    key: "unfulfillable",
+    label: "Unfulfillable inventory",
+    description: "High 365+ days or unfulfillable inventory",
+    color: "#3A8EA4",
+  },
+  {
+    key: "estimated_storage_cost",
+    label: "Storage Cost",
+    description: "SKUs with estimated next-month storage cost",
+    color: "#C49466",
+  },
+];
+
+const INVENTORY_ACTION_META: Record<
+  string,
+  {
+    label: string;
+    description: string;
+    color: string;
+  }
+> = {
+  liquidate: {
+    label: "Liquidate",
+    description: "High 271–365 days inventory",
+    color: "#B75A5A",
+  },
+  discount: {
+    label: "Discount",
+    description: "High 181–270 days inventory",
+    color: "#ED9F50",
+  },
+  monitor: {
+    label: "Monitor",
+    description: "Ageing or watchlist inventory",
+    color: "#FDD36F",
+  },
+  unfulfillable: {
+    label: "Unfulfillable inventory",
+    description: "Remove/Dispose",
+    color: "#3A8EA4",
+  },
+  estimated_storage_cost: {
+    label: "Storage Cost",
+    description: "Estimated next-month storage cost",
+    color: "#C49466",
+  },
+};
+
+const getInventoryRowSku = (row: InventoryCurrentRow) =>
+  String(row?.SKU ?? row?.sku ?? "").trim();
+
+const getInventoryRowProductName = (row: InventoryCurrentRow) =>
+  String(row?.["Product Name"] ?? row?.product_name ?? "").trim();
+
+const isInventoryTotalRow = (row: InventoryCurrentRow) => {
+  const sku = getInventoryRowSku(row).toLowerCase();
+  const product = getInventoryRowProductName(row).toLowerCase();
+
+  return sku === "total" || product === "total";
+};
+
+const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
+  toNum(row?.[key]);
+
+const getEstimatedStorageCostTotal = (
+  latestResponse?: InventoryCurrentApiResponse
+) => {
+  const storageItems =
+    latestResponse?.categories?.estimated_storage_cost?.items ?? [];
+
+  const totalRow = storageItems.find((item: any) => {
+    const productName = String(item?.product_name || "")
+      .trim()
+      .toLowerCase();
+
+    const sku = String(item?.sku || "")
+      .trim()
+      .toLowerCase();
+
+    return productName === "total" || sku === "total" || sku === "";
+  });
+
+  if (totalRow) {
+    return toNum(totalRow?.["estimated-storage-cost-next-month"]);
+  }
+
+  return storageItems.reduce(
+    (sum: number, item: any) =>
+      sum + toNum(item?.["estimated-storage-cost-next-month"]),
+    0
+  );
+};
+
+const formatInventoryStorageCost = (
+  value: number,
+  countryName: string,
+  homeCurrency?: string
+) => {
+  const symbol =
+    String(countryName || "").toLowerCase() === "global"
+      ? getCurrencySymbol(homeCurrency || "usd")
+      : getCurrencySymbol(countryName);
+
+  return `${symbol}${value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+  const bucketTotal =
+    getInventoryAgeValue(row, "inv-age-0-to-90-days") +
+    getInventoryAgeValue(row, "inv-age-91-to-180-days") +
+    getInventoryAgeValue(row, "inv-age-181-to-270-days") +
+    getInventoryAgeValue(row, "inv-age-271-to-365-days") +
+    getInventoryAgeValue(row, "inv-age-365-plus-days");
+
+  return bucketTotal || toNum(row?.available ?? row?.total_quantity);
+};
+
+const monthLabelFromMonthName = (monthName: string) => {
+  const clean = String(monthName || "").trim();
+  return clean ? clean.slice(0, 3) : "-";
+};
+
+const buildInventoryInsightsFromResponses = (
+  responses: InventoryCurrentApiResponse[],
+  monthLabels: string[],
+  ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
+  countryName: string,
+  homeCurrency?: string
+): InventoryInsightsData => {
+  const validResponses = responses.filter((res) => res?.success);
+  const latestResponse = validResponses[validResponses.length - 1];
+
+  const latestRows = (latestResponse?.rows ?? []).filter(
+    (row) => !isInventoryTotalRow(row)
+  );
+
+  const heatmapData: AgeingRiskHeatmapRow[] = latestRows
+    .map((row) => {
+      const sku = getInventoryRowSku(row);
+      const productName = getInventoryRowProductName(row);
+
+      const zeroToNinety = getInventoryAgeValue(row, "inv-age-0-to-90-days");
+      const ninetyOneToOneEighty = getInventoryAgeValue(row, "inv-age-91-to-180-days");
+      const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, "inv-age-181-to-270-days");
+      const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
+      const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
+
+      const totalUnits =
+        zeroToNinety +
+        ninetyOneToOneEighty +
+        oneEightyOneToTwoSeventy +
+        twoSeventyOneToThreeSixtyFive +
+        threeSixtyFivePlus;
+
+      return {
+        productName: productName || sku || "-",
+        sku,
+        zeroToNinety,
+        ninetyOneToOneEighty,
+        oneEightyOneToTwoSeventy,
+        twoSeventyOneToThreeSixtyFive,
+        threeSixtyFivePlus,
+        totalUnits,
+        coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+      };
+    })
+    .filter((row) => row.productName && Number(row.totalUnits) > 0)
+    .sort((a, b) => b.totalUnits - a.totalUnits);
+
+  const overallAgeing = latestRows.reduce(
+    (acc, row) => {
+      acc.zeroToNinety += getInventoryAgeValue(row, "inv-age-0-to-90-days");
+      acc.ninetyOneToOneEighty += getInventoryAgeValue(row, "inv-age-91-to-180-days");
+      acc.oneEightyOneToTwoSeventy += getInventoryAgeValue(row, "inv-age-181-to-270-days");
+      acc.twoSeventyOneToThreeSixtyFive += getInventoryAgeValue(row, "inv-age-271-to-365-days");
+      acc.threeSixtyFivePlus += getInventoryAgeValue(row, "inv-age-365-plus-days");
+
+      return acc;
+    },
+    {
+      zeroToNinety: 0,
+      ninetyOneToOneEighty: 0,
+      oneEightyOneToTwoSeventy: 0,
+      twoSeventyOneToThreeSixtyFive: 0,
+      threeSixtyFivePlus: 0,
+    }
+  );
+
+  const donutData: DonutChartItem[] = [
+    {
+      bucket: "0–90 Days",
+      units: overallAgeing.zeroToNinety,
+      color: "#63b64f",
+    },
+    {
+      bucket: "91–180 Days",
+      units: overallAgeing.ninetyOneToOneEighty,
+      color: "#f4d03f",
+    },
+    {
+      bucket: "181–270 Days",
+      units: overallAgeing.oneEightyOneToTwoSeventy,
+      color: "#f5a623",
+    },
+    {
+      bucket: "271–365 Days",
+      units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+      color: "#ff7f32",
+    },
+    {
+      bucket: "365+ Days",
+      units: overallAgeing.threeSixtyFivePlus,
+      color: "#ef3b2d",
+    },
+  ].filter((item) => item.units > 0);
+
+  const donutTotalUnits = donutData.reduce(
+    (sum, item) => sum + toNum(item.units),
+    0
+  );
+
+  const trendSelectedBucket = AGEING_TREND_BUCKET.label;
+
+  const trendData: AgeingTrendItem[] = ageSummaryResponses
+    .filter((res) => res?.success)
+    .map((res, index) => {
+      const valueFromTotals = toNum(res?.totals?.[AGEING_TREND_BUCKET.column]);
+
+      const valueFromSummary = toNum(
+        res?.age_summary?.find(
+          (item) => item.column === AGEING_TREND_BUCKET.column
+        )?.units
+      );
+
+      return {
+        label: monthLabels[index] ?? res?.month?.slice(0, 3) ?? `P${index + 1}`,
+        value: valueFromTotals || valueFromSummary,
+      };
+    });
+
+  const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
+
+  const actions: ActionCardItem[] = Object.entries(INVENTORY_ACTION_META).map(
+    ([key, meta]) => {
+      const categoryFromResponse = latestResponse?.categories?.[key] as any;
+
+      const labelFromApi =
+        categoryFromResponse?.name ||
+        categoryFromResponse?.label ||
+        meta.label;
+
+      const descriptionFromApi =
+        categoryFromResponse?.description ||
+        meta.description;
+
+      const count =
+        toNum(latestResponse?.category_counts?.[key]) ||
+        toNum(categoryFromResponse?.items?.length);
+
+      if (key === "estimated_storage_cost") {
+        return {
+          key,
+          label: labelFromApi,
+          description: descriptionFromApi,
+          count,
+          displayValue: formatInventoryStorageCost(
+            storageCostTotal,
+            countryName,
+            homeCurrency
+          ),
+          valueSuffix: "Storage Cost",
+          color: meta.color,
+        };
+      }
+
+      return {
+        key,
+        label: labelFromApi,
+        description: descriptionFromApi,
+        count,
+        displayValue: count,
+        valueSuffix: "SKUs",
+        color: meta.color,
+      };
+    }
+  );
+
+  return {
+    heatmapBuckets: INVENTORY_BUCKETS,
+    heatmapData,
+    donutSku: "Overall",
+    donutData,
+    donutTotalUnits,
+    trendSelectedBucket,
+    trendData,
+    trendLineColor: AGEING_TREND_BUCKET.color,
+    actions,
+    actionLogic: INVENTORY_ACTION_LOGIC,
+  };
+};
+
+
+const donutData: DonutChartItem[] = [
+  { bucket: "0–90 Days", units: 120, color: "#63b64f" },
+  { bucket: "91–180 Days", units: 240, color: "#f4d03f" },
+  { bucket: "181–270 Days", units: 180, color: "#f5a623" },
+  { bucket: "271–365 Days", units: 90, color: "#ff7f32" },
+  { bucket: "365+ Days", units: 130, color: "#ef3b2d" },
+];
+
+const donutTotalUnits = 760;
+
+const trendSelectedBucket = "365+ Days";
+
+const trendData: AgeingTrendItem[] = [
+  { label: "Jan", value: 80 },
+  { label: "Feb", value: 120 },
+  { label: "Mar", value: 180 },
+  { label: "Apr", value: 260 },
+  { label: "May", value: 310 },
+  { label: "Jun", value: 280 },
+  { label: "Jul", value: 260 },
+  { label: "Aug", value: 210 },
+];
+
+const trendLineColor = "#ef3b2d";
+
+const inventoryActions: ActionCardItem[] = [
+  {
+    key: "liquidate",
+    label: "Liquidate",
+    description: "High 271–365 or 365+",
+    count: 8,
+    color: "#ef3b2d",
+    backgroundColor: "#fff0f0",
+  },
+  {
+    key: "discount",
+    label: "Discount",
+    description: "High 181–270",
+    count: 14,
+    color: "#ff7f32",
+    backgroundColor: "#fff4e8",
+  },
+  {
+    key: "monitor",
+    label: "Monitor",
+    description: "High 91–180",
+    count: 22,
+    color: "#f4b400",
+    backgroundColor: "#fffbea",
+  },
+  {
+    key: "reorder",
+    label: "Reorder",
+    description: "Healthy & fast moving",
+    count: 16,
+    color: "#4caf50",
+    backgroundColor: "#effaf0",
+  },
+  {
+    key: "remove",
+    label: "Remove / Dispose",
+    description: "High 365+",
+    count: 3,
+    color: "#6a5acd",
+    backgroundColor: "#f3f0ff",
+  },
+];
+
+const inventoryActionLogic: ActionLogicItem[] = [
+  {
+    label: "Reorder",
+    description: "Mostly 0–90 days and fast selling",
+    color: "#63b64f",
+  },
+  {
+    label: "Monitor",
+    description: "High 91–180 days inventory",
+    color: "#f4d03f",
+  },
+  {
+    label: "Discount",
+    description: "High 181–270 days inventory",
+    color: "#ff7f32",
+  },
+  {
+    label: "Liquidate",
+    description: "High 271–365 days inventory",
+    color: "#ef3b2d",
+  },
+  {
+    label: "Remove/Dispose",
+    description: "High 365+ days inventory",
+    color: "#b91c1c",
+  },
+];
 
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
@@ -3401,6 +3630,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [cmPieTab, setCmPieTab] = useState<"cm1" | "cm2">("cm1");
 
+  const [inventoryInsightsData, setInventoryInsightsData] =
+    useState<InventoryInsightsData | null>(
+      isDemoMode
+        ? {
+          heatmapBuckets,
+          heatmapData,
+          donutSku: selectedDonutSku,
+          donutData,
+          donutTotalUnits,
+          trendSelectedBucket,
+          trendData,
+          trendLineColor,
+          actions: inventoryActions,
+          actionLogic: inventoryActionLogic,
+        }
+        : null
+    );
+
+  const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(false);
+  const [inventoryInsightsError, setInventoryInsightsError] = useState<string | null>(null);
+
   const [allDropdownsSelected, setAllDropdownsSelected] = useState(() => {
     if (isDemoMode) return true;
 
@@ -3538,6 +3788,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return {
         graphs: false,
         businessSummary: false,
+        inventoryInsights: false,
         skuBreakdown: false,
         skuwiseProfit: false,
         cashFlow: false,
@@ -3545,9 +3796,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
 
     const disabled = !allDropdownsSelected;
+
     return {
       graphs: disabled,
       businessSummary: disabled,
+      inventoryInsights: disabled,
       skuBreakdown: disabled,
       skuwiseProfit: disabled,
       cashFlow: disabled,
@@ -3590,10 +3843,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
     useState<any>(null);
-    const [aiBestPerformanceLoading, setAiBestPerformanceLoading] = useState(false);
-const [aiBestPerformanceError, setAiBestPerformanceError] = useState<string | null>(null);
-const [aiBestPerformanceData, setAiBestPerformanceData] =
-  useState<ProductBestPerformanceData | null>(null);
+  const [aiBestPerformanceLoading, setAiBestPerformanceLoading] = useState(false);
+  const [aiBestPerformanceError, setAiBestPerformanceError] = useState<string | null>(null);
+  const [aiBestPerformanceData, setAiBestPerformanceData] =
+    useState<ProductBestPerformanceData | null>(null);
 
   const aiProductBlocks = useMemo(() => {
     return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
@@ -3660,84 +3913,84 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
   );
 
   useEffect(() => {
-  if (!selectedAiProductBlock) return;
+    if (!selectedAiProductBlock) return;
 
-  const ac = new AbortController();
+    const ac = new AbortController();
 
-  const fetchBestPerformance = async () => {
-    try {
-      setAiBestPerformanceLoading(true);
-      setAiBestPerformanceError(null);
-      setAiBestPerformanceData(null);
+    const fetchBestPerformance = async () => {
+      try {
+        setAiBestPerformanceLoading(true);
+        setAiBestPerformanceError(null);
+        setAiBestPerformanceData(null);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
-          : null;
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null;
 
-      if (!token) throw new Error("Missing token");
+        if (!token) throw new Error("Missing token");
 
-      const isOtherSkusBlock =
-        selectedAiProductBlock.isOtherSkus ||
-        selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
+        const isOtherSkusBlock =
+          selectedAiProductBlock.isOtherSkus ||
+          selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
 
-      const productName =
-        isOtherSkusBlock
-          ? aiProductBlocks.find(
+        const productName =
+          isOtherSkusBlock
+            ? aiProductBlocks.find(
               (b) =>
                 !b.isOtherSkus &&
                 b.name.trim().toLowerCase() !== "other skus"
             )?.name
-          : selectedAiProductBlock.name;
+            : selectedAiProductBlock.name;
 
-      if (!productName) return;
+        if (!productName) return;
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            product_name: productName,
-            country: countryName,
-            home_currency:
-              countryName.toLowerCase() === "global"
-                ? homeCurrency
-                : currencySymbol,
-          }),
-          cache: "no-store",
-          signal: ac.signal,
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              product_name: productName,
+              country: countryName,
+              home_currency:
+                countryName.toLowerCase() === "global"
+                  ? homeCurrency
+                  : currencySymbol,
+            }),
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to fetch best performance");
         }
-      );
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to fetch best performance");
+        setAiBestPerformanceData(json?.best_performance ?? null);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setAiBestPerformanceError(e?.message || "Failed to load best performance");
+      } finally {
+        setAiBestPerformanceLoading(false);
       }
+    };
 
-      setAiBestPerformanceData(json?.best_performance ?? null);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setAiBestPerformanceError(e?.message || "Failed to load best performance");
-    } finally {
-      setAiBestPerformanceLoading(false);
-    }
-  };
+    fetchBestPerformance();
 
-  fetchBestPerformance();
-
-  return () => ac.abort();
-}, [
-  selectedAiProductBlock,
-  aiProductBlocks,
-  countryName,
-  homeCurrency,
-  currencySymbol,
-]);
+    return () => ac.abort();
+  }, [
+    selectedAiProductBlock,
+    aiProductBlocks,
+    countryName,
+    homeCurrency,
+    currencySymbol,
+  ]);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -5693,6 +5946,241 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
     setSelectedQuarter("");
   }, [activeTab, range]);
 
+  const fetchSingleMonthInventoryCurrent = async (
+    monthName: string,
+    yearValue: string,
+    countryValue: string,
+    signal?: AbortSignal
+  ): Promise<InventoryCurrentApiResponse> => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    if (!token) {
+      throw new Error("Missing token");
+    }
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
+    );
+
+    url.searchParams.set("country_key", String(countryValue).toLowerCase());
+    url.searchParams.set("month_name", String(monthName).toLowerCase());
+    url.searchParams.set("year", String(yearValue));
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      signal,
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        json?.message ||
+        json?.error ||
+        `Failed to fetch inventory for ${monthName} ${yearValue}`
+      );
+    }
+
+    return json;
+  };
+
+  const fetchSingleMonthInventoryAgeSummary = async (
+    monthName: string,
+    yearValue: string,
+    countryValue: string,
+    signal?: AbortSignal
+  ): Promise<InventoryAgeSummaryApiResponse> => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    if (!token) {
+      throw new Error("Missing token");
+    }
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current_age_summary`
+    );
+
+    url.searchParams.set("country_key", String(countryValue).toLowerCase());
+    url.searchParams.set("month_name", String(monthName).toLowerCase());
+    url.searchParams.set("year", String(yearValue));
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      signal,
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        json?.message ||
+        json?.error ||
+        `Failed to fetch inventory age summary for ${monthName} ${yearValue}`
+      );
+    }
+
+    return json;
+  };
+
+  const getInventoryMonthsForSelectedRange = () => {
+    if (range === "monthly") {
+      return selectedMonth ? [selectedMonth] : [];
+    }
+
+    if (range === "quarterly" && selectedQuarter) {
+      return quarterToMonths[selectedQuarter].map((m) => m.toLowerCase());
+    }
+
+    if (range === "yearly") {
+      return allMonths.map((m) => m.toLowerCase());
+    }
+
+    return [];
+  };
+
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setInventoryInsightsData({
+        heatmapBuckets,
+        heatmapData,
+        donutSku: selectedDonutSku,
+        donutData,
+        donutTotalUnits,
+        trendSelectedBucket,
+        trendData,
+        trendLineColor,
+        actions: inventoryActions,
+        actionLogic: inventoryActionLogic,
+      });
+      setInventoryInsightsLoading(false);
+      setInventoryInsightsError(null);
+      return;
+    }
+
+    if (activeTab !== "inventoryInsights") return;
+
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready || !countryName) {
+      setInventoryInsightsData(null);
+      setInventoryInsightsError(null);
+      return;
+    }
+
+    const monthsToFetch = getInventoryMonthsForSelectedRange();
+
+    if (!monthsToFetch.length) {
+      setInventoryInsightsData(null);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    const fetchInventoryInsights = async () => {
+      try {
+        setInventoryInsightsLoading(true);
+        setInventoryInsightsError(null);
+
+        const [inventoryResults, ageSummaryResults] = await Promise.all([
+          Promise.allSettled(
+            monthsToFetch.map((monthName) =>
+              fetchSingleMonthInventoryCurrent(
+                monthName,
+                selectedYear,
+                countryName,
+                ac.signal
+              )
+            )
+          ),
+          Promise.allSettled(
+            monthsToFetch.map((monthName) =>
+              fetchSingleMonthInventoryAgeSummary(
+                monthName,
+                selectedYear,
+                countryName,
+                ac.signal
+              )
+            )
+          ),
+        ]);
+
+        const fulfilledInventory = inventoryResults
+          .filter(
+            (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
+              result.status === "fulfilled"
+          )
+          .map((result) => result.value);
+
+        const fulfilledAgeSummary = ageSummaryResults
+          .filter(
+            (
+              result
+            ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
+              result.status === "fulfilled"
+          )
+          .map((result) => result.value);
+
+        if (!fulfilledInventory.length) {
+          const firstError = inventoryResults.find(
+            (result): result is PromiseRejectedResult =>
+              result.status === "rejected"
+          );
+
+          throw new Error(
+            firstError?.reason?.message || "No inventory data found"
+          );
+        }
+
+        const successfulMonthLabels = inventoryResults
+          .map((result, index) =>
+            result.status === "fulfilled"
+              ? monthLabelFromMonthName(monthsToFetch[index])
+              : null
+          )
+          .filter(Boolean) as string[];
+
+        setInventoryInsightsData(
+          buildInventoryInsightsFromResponses(
+            fulfilledInventory,
+            successfulMonthLabels,
+            fulfilledAgeSummary,
+            countryName,
+            homeCurrency
+          )
+        );
+      } finally {
+        setInventoryInsightsLoading(false);
+      }
+    };
+
+    fetchInventoryInsights();
+
+    return () => ac.abort();
+  }, [
+    activeTab,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    isDemoMode,
+  ]);
+
+
   const normalizeRowsForParent = (data: any[]): TableRow[] => {
     return data.map((row) => {
       const productName =
@@ -6147,6 +6635,7 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
   const FINANCE_TAB_TO_HASH: Record<DashboardTab, string> = {
     graphs: "finance-dashboard",
     businessSummary: "ai-insights",
+    inventoryInsights: "inventory-insights",
     skuBreakdown: "pnl-breakdown",
     skuwiseProfit: "skuwise-profit",
     cashFlow: "cash-flow",
@@ -7507,8 +7996,52 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
             </div>
 
           )}
+
+          {/* ---------- TAB: INVENTORY INSIGHTS ---------- */}
+          {/* ---------- TAB: INVENTORY INSIGHTS ---------- */}
+          {activeTab === "inventoryInsights" && allDropdownsSelected && (
+            <div id="inventory-insights" className="mt-4 scroll-mt-[80px]">
+              {inventoryInsightsLoading ? (
+                <div className="min-h-[420px] flex items-center justify-center">
+                  <Loader fullscreen={false} transparent />
+                </div>
+              ) : inventoryInsightsError ? (
+                <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <p className="font-semibold text-red-700">
+                      Unable to Load Inventory Insights
+                    </p>
+                  </div>
+
+                  <p className="text-sm text-red-600">{inventoryInsightsError}</p>
+                </div>
+              ) : inventoryInsightsData ? (
+                <InventoryInsightsSection
+                  heatmapBuckets={inventoryInsightsData.heatmapBuckets}
+                  heatmapData={inventoryInsightsData.heatmapData}
+                  donutSku={inventoryInsightsData.donutSku}
+                  donutData={inventoryInsightsData.donutData}
+                  donutTotalUnits={inventoryInsightsData.donutTotalUnits}
+                  trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+                  trendData={inventoryInsightsData.trendData}
+                  trendLineColor={inventoryInsightsData.trendLineColor}
+                  actions={inventoryInsightsData.actions}
+                  actionLogic={inventoryInsightsData.actionLogic}
+                  onActionViewDetails={(action: ActionCardItem) => {
+                    console.log("Selected inventory action:", action);
+                  }}
+                />
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+                  No inventory insights found for the selected period.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </PreviewLockedSection>
+
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
       {/* {showNoDataOverlay && (
         <div
@@ -7555,31 +8088,31 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
       )}
 
       <RightProductDrawer
-  open={!!selectedAiProductBlock}
-  onClose={() => {
-    setSelectedAiProductBlock(null);
-    setSelectedAiProductRecObj(null);
-    setAiBestPerformanceData(null);
-    setAiBestPerformanceError(null);
-  }}
-  block={selectedAiProductBlock}
-  objective={aiPanel?.objective}
-  recObj={selectedAiProductRecObj}
-  countryName={countryName}
-  range={range}
-  year={selectedYear}
-  month={range === "monthly" ? selectedMonth : ""}
-  quarter={range === "quarterly" ? selectedQuarter : ""}
-  drawerPeriodText={
-    aiPanel?.summaryBullets?.[0]
-      ? formatSummaryPeriod(aiPanel.summaryBullets[0])
-      : ""
-  }
-  currencySymbol={currencySymbol}
-  bestPerformanceLoading={aiBestPerformanceLoading}
-  bestPerformanceError={aiBestPerformanceError}
-  bestPerformanceData={aiBestPerformanceData}
-/>
+        open={!!selectedAiProductBlock}
+        onClose={() => {
+          setSelectedAiProductBlock(null);
+          setSelectedAiProductRecObj(null);
+          setAiBestPerformanceData(null);
+          setAiBestPerformanceError(null);
+        }}
+        block={selectedAiProductBlock}
+        objective={aiPanel?.objective}
+        recObj={selectedAiProductRecObj}
+        countryName={countryName}
+        range={range}
+        year={selectedYear}
+        month={range === "monthly" ? selectedMonth : ""}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={
+          aiPanel?.summaryBullets?.[0]
+            ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+            : ""
+        }
+        currencySymbol={currencySymbol}
+        bestPerformanceLoading={aiBestPerformanceLoading}
+        bestPerformanceError={aiBestPerformanceError}
+        bestPerformanceData={aiBestPerformanceData}
+      />
     </div>
   );
 

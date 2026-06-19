@@ -247,6 +247,35 @@ async function syncInventoryAgedOnce(country: string) {
   markDone(key);
 }
 
+function lsKeyInventoryAgedSurcharge(country: string, period: string) {
+  return `inventoryAgedSurchargeSynced:${country}:${period}`;
+}
+
+async function syncInventoryAgedSurchargeOnce(params: {
+  country: string;
+  marketplace_id: string;
+  month: number; // 1-12
+  year: number;
+  store_in_db?: boolean;
+}) {
+  const periodKey = `${params.year}-${two(params.month)}`;
+  const key = lsKeyInventoryAgedSurcharge(params.country, periodKey);
+
+  if (wasDone(key)) return;
+
+  const qs = new URLSearchParams();
+
+  qs.set("marketplace_id", params.marketplace_id);
+  qs.set("month", String(params.month));
+  qs.set("year", String(params.year));
+  qs.set("store_in_db", String(params.store_in_db ?? true));
+
+  await apiJson(`/amazon_api/inventory/aged-surcharge?${qs.toString()}`, {
+    method: "GET",
+  });
+
+  markDone(key);
+}
 
 async function fetchProductInformation(params: {
   marketplace_id: string;
@@ -360,18 +389,18 @@ async function fetchMonthlyTransactionsExcel(params: {
   }
 
   const qs = new URLSearchParams({
-  year: String(params.year),
-  month: String(params.month),
-  marketplace_id: params.marketplace_id,
-  run_upload_pipeline: String(params.run_upload_pipeline),
-  country: params.country,
-  format: "excel",
-  store_in_db: String(params.store_in_db),
+    year: String(params.year),
+    month: String(params.month),
+    marketplace_id: params.marketplace_id,
+    run_upload_pipeline: String(params.run_upload_pipeline),
+    country: params.country,
+    format: "excel",
+    store_in_db: String(params.store_in_db),
 
-  // US needs both RELEASED + DEFERRED; UK needs only RELEASED
-  transaction_status:
-    params.country.toLowerCase() === "us" ? "RELEASED" : "RELEASED",
-});
+    // US needs both RELEASED + DEFERRED; UK needs only RELEASED
+    transaction_status:
+      params.country.toLowerCase() === "us" ? "RELEASED" : "RELEASED",
+  });
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
   const res = await fetch(url, {
@@ -1269,10 +1298,26 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       markStepComplete(4);
 
       // Step 5: Inventory
-      setStep(5, "Inventory", 0, "Syncing inventory data...");
+      // Step 5: Inventory
+      setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
+      // 1) Hit aged-surcharge FIRST
+      await syncInventoryAgedSurchargeOnce({
+        country: countryUsed,
+        marketplace_id: marketplaceIdUsed,
+        month: mNum,
+        year: y,
+        store_in_db: true,
+      });
+
+      setStep(5, "Inventory", 35, "Syncing aged inventory data...");
+
+      // 2) Existing aged inventory API
       await syncInventoryAgedOnce(countryUsed);
 
+      setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
+
+      // 3) Existing ledger summary API
       await fetchInventoryLedgerSummary({
         marketplace_id: marketplaceIdUsed,
         month: `${y}-${two(mNum)}`,
@@ -1280,6 +1325,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         keep_first_last: false,
       });
 
+      setStep(5, "Inventory", 100, "Inventory data synced successfully");
       markStepComplete(5);
 
       // Step 6: Historic Data (per month, ~20 seconds)
@@ -1452,16 +1498,43 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       markStepComplete(4);
 
       // Step 5: Inventory
-      setStep(5, "Inventory", 0, "Syncing inventory data...");
-      try {
-        // existing API as-is
-        await syncInventoryAgedOnce(countryUsed);
+      setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
-        // additional ledger-summary API
+      try {
         const ledgerRange = buildLedgerRange(
           selectedPeriod === 24 ? "lifetime" : Number(selectedPeriod)
         );
 
+        // 1) Hit aged-surcharge FIRST, once per selected month
+        for (let i = 0; i < months.length; i++) {
+          const { y, mNum } = months[i];
+
+          const pct = Math.round(((i + 1) / months.length) * 30);
+
+          setStep(
+            5,
+            "Inventory",
+            pct,
+            `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${months.length})...`
+          );
+
+          await syncInventoryAgedSurchargeOnce({
+            country: countryUsed,
+            marketplace_id: marketplaceIdUsed,
+            month: mNum,
+            year: y,
+            store_in_db: true,
+          });
+        }
+
+        setStep(5, "Inventory", 35, "Syncing aged inventory data...");
+
+        // 2) Existing aged inventory API
+        await syncInventoryAgedOnce(countryUsed);
+
+        setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
+
+        // 3) Existing ledger-summary API
         await fetchInventoryLedgerSummary({
           marketplace_id: marketplaceIdUsed,
           start_date: ledgerRange.start_date,
@@ -1470,6 +1543,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           keep_first_last: false,
         });
 
+        setStep(5, "Inventory", 100, "Inventory data synced successfully");
         markStepComplete(5);
       } catch (e) {
         console.error("inventory sync failed", e);
