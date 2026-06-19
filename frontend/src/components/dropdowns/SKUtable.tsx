@@ -15,7 +15,12 @@ import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import Loader from "../loader/Loader";
-import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import {
+  RiExpandDiagonalFill,
+  RiCollapseDiagonalFill,
+  RiLayoutColumnFill,
+  RiLayoutColumnLine,
+} from "react-icons/ri";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -536,7 +541,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     other: true,
   });
   const [showAllRows, setShowAllRows] = useState(false);
-
+  const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
   };
@@ -1158,6 +1164,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
       : []),
   ], [hasCm2Data]);
 
+  const buildAllGroupsCollapsedState = useCallback(
+    (collapsedValue: boolean) => {
+      const next: Record<string, boolean> = {};
+
+      groups.forEach((group) => {
+        next[group.id] = collapsedValue;
+      });
+
+      return next;
+    },
+    [groups]
+  );
+
+  const handleToggleAllColumns = useCallback(() => {
+    setAllColumnsExpanded((prev) => {
+      const nextExpanded = !prev;
+
+      // collapsed = false means expanded
+      setCollapsedGroups(buildAllGroupsCollapsedState(!nextExpanded));
+
+      return nextExpanded;
+    });
+  }, [buildAllGroupsCollapsedState]);
+
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       {
@@ -1768,12 +1798,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-            {/* <MetricSortDropdown
-              value={sortOption}
-              onChange={setSortOption}
-              metrics={metricSortMetrics}
-            /> */}
-
             <button
               type="button"
               onClick={() => setShowAllRows((prev) => !prev)}
@@ -1785,6 +1809,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <RiCollapseDiagonalFill size={18} className="font-extrabold" />
               ) : (
                 <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleAllColumns}
+              title={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
+              aria-label={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
+              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              {allColumnsExpanded ? (
+                <RiLayoutColumnLine size={18} className="font-extrabold" />
+              ) : (
+                <RiLayoutColumnFill size={18} className="font-extrabold" />
               )}
             </button>
 
@@ -1814,6 +1852,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
+                collapsedState={collapsedGroups}
+                onCollapsedChange={(next) => {
+                  setCollapsedGroups(next);
+                  setAllColumnsExpanded(
+                    groups.length > 0 && groups.every((group) => next[group.id] === false)
+                  );
+                }}
                 onAnyGroupExpandedChange={setAnyGroupExpanded}
                 tableClassName={[
                   "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",

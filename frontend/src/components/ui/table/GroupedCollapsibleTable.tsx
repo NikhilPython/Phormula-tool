@@ -838,7 +838,7 @@ export default function GroupedCollapsibleTable<RowT>({
           <table
             className={tableClassName}
             style={{
-              tableLayout: "fixed",
+              // tableLayout: "fixed",
               width: "100%",
             }}
           >
