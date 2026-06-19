@@ -114,6 +114,7 @@ def create_app():
     from app.routes.agent_routes import agent_bp
     from app.routes.email_routes import email_bp
     from app.routes.notification_routes import notification_bp
+    from app.routes.inventory_current_routes import inventory_current_bp
 
     app.register_blueprint(user_bp)
     app.register_blueprint(upload_bp)
@@ -148,6 +149,7 @@ def create_app():
     app.register_blueprint(agent_bp)
     app.register_blueprint(email_bp)
     app.register_blueprint(notification_bp)
+    app.register_blueprint(inventory_current_bp)
 
     with app.app_context():
         db.create_all()

@@ -144,6 +144,7 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         "sku",
         "available",
         "fc-transfer",
+        "unfulfillable-quantity",
         "inv-age-0-to-90-days",
         "inv-age-91-to-180-days",
         "inv-age-181-to-270-days",
@@ -544,6 +545,8 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
         else:
             for c in [
                 "available",
+                "fc-transfer",
+                "unfulfillable-quantity",
                 "inv-age-0-to-90-days",
                 "inv-age-91-to-180-days",
                 "inv-age-181-to-270-days",
@@ -553,7 +556,6 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
                 "estimated-storage-cost-next-month",
             ]:
                 final_df[c] = pd.NA
-
         if not inv_df.empty:
             final_df = final_df.merge(inv_df, left_on="sku", right_on="seller_sku", how="left")
         else:
@@ -688,6 +690,7 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             "Product Name",
             "inbound_quantity",
             "available",
+            "unfulfillable-quantity",
             "inv-age-0-to-90-days",
             "inv-age-91-to-180-days",
             "inv-age-181-to-270-days",
