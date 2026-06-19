@@ -920,6 +920,61 @@ class InventoryAged(db.Model):
         db.Float,
     )
 
+#---------------------------------- InventoryAgedHistory model -------------------------------------
+
+class InventoryAgedHistory(db.Model):
+    __tablename__ = "inventory_aged_history"
+    __bind_key__  = "amazon"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    marketplace_id = db.Column(db.String(50), nullable=False, index=True)
+
+    report_id = db.Column(db.String(100), nullable=True)
+    document_id = db.Column(db.String(255), nullable=True)
+
+    snapshot_date = db.Column(db.DateTime, nullable=True, index=True)
+
+    sku = db.Column(db.String(255), nullable=True, index=True)
+    fnsku = db.Column(db.String(255), nullable=True)
+    asin = db.Column(db.String(50), nullable=True, index=True)
+    product_name = db.Column(db.Text, nullable=True)
+    condition = db.Column(db.String(100), nullable=True)
+
+    per_unit_volume = db.Column(db.Float, nullable=True)
+    currency = db.Column(db.String(20), nullable=True)
+    volume_unit = db.Column(db.String(50), nullable=True)
+    country = db.Column(db.String(20), nullable=True)
+
+    qty_charged = db.Column(db.Integer, nullable=False, default=0)
+    amount_charged = db.Column(db.Float, nullable=False, default=0.0)
+    surcharge_age_tier = db.Column(db.String(50), nullable=True)
+    rate_surcharge = db.Column(db.Float, nullable=False, default=0.0)
+
+    synced_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "marketplace_id",
+            "snapshot_date",
+            "sku",
+            "fnsku",
+            "asin",
+            "country",
+            "currency",
+            "surcharge_age_tier",
+            name="uq_inventory_aged_history_key",
+        ),
+    )
 
 # --------------------------------- InventoryAWD model ---------------------------------
 
