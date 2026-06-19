@@ -394,3 +394,141 @@ def get_inventory_current_table():
             "message": "Error fetching inventory current table",
             "error": str(e)
         }), 500
+    
+
+
+@inventory_current_bp.route("/inventory_current_age_summary", methods=["GET", "OPTIONS"])
+def get_inventory_current_age_summary():
+    if request.method == "OPTIONS":
+        return jsonify({"message": "CORS Preflight OK"}), 200
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload, effective_user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = payload["user_id"]
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    try:
+        country_key = request.args.get("country_key")
+        month_name = request.args.get("month_name")
+        year = request.args.get("year")
+
+        if not country_key or not month_name or not year:
+            return jsonify({
+                "success": False,
+                "message": "Missing required params: country_key, month_name, year"
+            }), 400
+
+        user_id = str(user_id).strip()
+        country_key = str(country_key).strip().lower()
+        month_name = str(month_name).strip().lower()
+        year = str(year).strip()
+
+        if not all([
+            is_safe_identifier(user_id),
+            is_safe_identifier(country_key),
+            is_safe_identifier(month_name),
+            is_safe_identifier(year)
+        ]):
+            return jsonify({
+                "success": False,
+                "message": "Invalid table parameters"
+            }), 400
+
+        table_name = f"currentinventory_{user_id}_{country_key}_{month_name}{year}_table"
+
+        inspector = inspect(primary_engine)
+
+        if table_name not in inspector.get_table_names():
+            return jsonify({
+                "success": False,
+                "message": f"Table not found: {table_name}",
+                "table_name": table_name,
+                "age_summary": [],
+                "totals": {}
+            }), 404
+
+        query = text(f'''
+            SELECT
+                COALESCE(SUM(CAST(NULLIF("inv-age-0-to-90-days"::text, '') AS NUMERIC)), 0) AS inv_age_0_to_90_days,
+                COALESCE(SUM(CAST(NULLIF("inv-age-91-to-180-days"::text, '') AS NUMERIC)), 0) AS inv_age_91_to_180_days,
+                COALESCE(SUM(CAST(NULLIF("inv-age-181-to-270-days"::text, '') AS NUMERIC)), 0) AS inv_age_181_to_270_days,
+                COALESCE(SUM(CAST(NULLIF("inv-age-271-to-365-days"::text, '') AS NUMERIC)), 0) AS inv_age_271_to_365_days,
+                COALESCE(SUM(CAST(NULLIF("inv-age-365-plus-days"::text, '') AS NUMERIC)), 0) AS inv_age_365_plus_days
+            FROM "{table_name}"
+            WHERE LOWER(COALESCE("Product Name"::text, '')) != 'total'
+        ''')
+
+        with primary_engine.connect() as connection:
+            result = connection.execute(query).mappings().first()
+
+        totals = {
+            "inv-age-0-to-90-days": clean_value(float(result["inv_age_0_to_90_days"] or 0)),
+            "inv-age-91-to-180-days": clean_value(float(result["inv_age_91_to_180_days"] or 0)),
+            "inv-age-181-to-270-days": clean_value(float(result["inv_age_181_to_270_days"] or 0)),
+            "inv-age-271-to-365-days": clean_value(float(result["inv_age_271_to_365_days"] or 0)),
+            "inv-age-365-plus-days": clean_value(float(result["inv_age_365_plus_days"] or 0))
+        }
+
+        age_summary = [
+            {
+                "month": month_name.capitalize(),
+                "year": int(year),
+                "age_bucket": "0-90 days",
+                "column": "inv-age-0-to-90-days",
+                "units": totals["inv-age-0-to-90-days"]
+            },
+            {
+                "month": month_name.capitalize(),
+                "year": int(year),
+                "age_bucket": "91-180 days",
+                "column": "inv-age-91-to-180-days",
+                "units": totals["inv-age-91-to-180-days"]
+            },
+            {
+                "month": month_name.capitalize(),
+                "year": int(year),
+                "age_bucket": "181-270 days",
+                "column": "inv-age-181-to-270-days",
+                "units": totals["inv-age-181-to-270-days"]
+            },
+            {
+                "month": month_name.capitalize(),
+                "year": int(year),
+                "age_bucket": "271-365 days",
+                "column": "inv-age-271-to-365-days",
+                "units": totals["inv-age-271-to-365-days"]
+            },
+            {
+                "month": month_name.capitalize(),
+                "year": int(year),
+                "age_bucket": "365+ days",
+                "column": "inv-age-365-plus-days",
+                "units": totals["inv-age-365-plus-days"]
+            }
+        ]
+
+        return jsonify({
+            "success": True,
+            "table_name": table_name,
+            "month": month_name.capitalize(),
+            "year": int(year),
+            "country_key": country_key,
+            "totals": totals,
+            "age_summary": age_summary
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Error fetching inventory age summary",
+            "error": str(e)
+        }), 500    
