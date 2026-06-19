@@ -1643,15 +1643,20 @@ def product_best_performance():
                     net_sales *= conversion_rate
                     cm1_profit *= conversion_rate
 
+                    # Derived metrics after currency conversion
+                    asp = net_sales / units if units else 0
+                    unit_wise_profitability = cm1_profit / units if units else 0
+
                     monthly_rows.append({
                         'month': month_name.capitalize(),
                         'year': year,
                         'month_num': month_num,
                         'units': round(units, 2),
                         'net_sales': round(net_sales, 2),
-                        'cm1_profit': round(cm1_profit, 2)
+                        'cm1_profit': round(cm1_profit, 2),
+                        'asp': round(asp, 2),
+                        'unit_wise_profitability': round(unit_wise_profitability, 2)
                     })
-
                 except Exception as e:
                     print(f"Error in table {table_name}: {str(e)}")
                     continue
@@ -1670,6 +1675,11 @@ def product_best_performance():
         best_units = max(monthly_rows, key=lambda x: x['units'])
         best_net_sales = max(monthly_rows, key=lambda x: x['net_sales'])
         best_cm1_profit = max(monthly_rows, key=lambda x: x['cm1_profit'])
+        best_asp = max(monthly_rows, key=lambda x: x['asp'])
+        best_unit_wise_profitability = max(
+            monthly_rows,
+            key=lambda x: x['unit_wise_profitability']
+        )
 
         def clean_best(row, metric):
             return {
@@ -1688,10 +1698,15 @@ def product_best_performance():
                 'latest': f"{monthly_rows[-1]['month']} {monthly_rows[-1]['year']}"
             },
             'best_performance': {
-                'units': clean_best(best_units, 'units'),
-                'net_sales': clean_best(best_net_sales, 'net_sales'),
-                'cm1_profit': clean_best(best_cm1_profit, 'cm1_profit')
-            }
+            'units': clean_best(best_units, 'units'),
+            'net_sales': clean_best(best_net_sales, 'net_sales'),
+            'cm1_profit': clean_best(best_cm1_profit, 'cm1_profit'),
+            'asp': clean_best(best_asp, 'asp'),
+            'unit_wise_profitability': clean_best(
+                best_unit_wise_profitability,
+                'unit_wise_profitability'
+            )
+        }
         }), 200
 
     except Exception as e:
