@@ -30,7 +30,8 @@ import TrendChartSection from "@/components/productwise/TrendChartSection";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { PlatformId, platformToCountryName } from "@/lib/utils/platforms";
-import InsightSideDrawer from "@/components/productwise/InsightSideDrawer";
+import ProductJourneyInlineGraph from "@/components/businessInsight/ProductJourneyInlineGraph";
+import ProductSearchDropdown from "@/components/products/ProductSearchDropdown";
 
 ChartJS.register(
   CategoryScale,
@@ -142,23 +143,30 @@ const buildInsightsCacheKey = (
 };
 
 type BestPerfItem = { month: string; value: number };
+
 type BestPerformance = {
-  sales?: BestPerfItem;
   units?: BestPerfItem;
+  sales?: BestPerfItem;
+  asp?: BestPerfItem;
   profit?: BestPerfItem;
+  unitWiseProfitability?: BestPerfItem;
 };
 
 type SkuInsightExtended = {
   product_name: string;
+  sku?: string;
   insight: string;
   inventory_recommendation?: string;
   objective?: Record<string, any> | null;
   recommendation?: string;
   best_performance?: BestPerformance;
   product_journey?: string[];
-
-  // ✅ Dropdown drawer wale same metrics
   metrics?: ProductInsightMetric[];
+  isOtherSkus?: boolean;
+  includedSkus?: {
+    product_name: string;
+    sku: string;
+  }[];
 };
 
 type ProductInsightMetric = {
@@ -249,7 +257,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const params = useParams();
   const router = useRouter();
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(embedded);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
@@ -278,26 +286,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const isPreviewMode =
     String(embedded ? selectedMonthProp : monthParam).toUpperCase() === "NA" &&
     String(embedded ? selectedYearProp : yearParam).toUpperCase() === "NA";
-
-  useEffect(() => {
-    if (!embedded) return;
-
-    setSelectedProductName(
-      isPreviewMode ? (initialProductName || "Demo Product") : initialProductName
-    );
-    setSelectedSku(null);
-    setSkuInsights({});
-    setIsDrawerOpen(false);
-  }, [
-    embedded,
-    initialProductName,
-    rangeProp,
-    selectedMonthProp,
-    selectedQuarterProp,
-    selectedYearProp,
-    countryNameProp,
-    isPreviewMode,
-  ]);
 
   const productname = isPreviewMode
     ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
@@ -430,6 +418,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   if (!isDrawerOpen || !selectedSku) return;
 
   const currentInsight = skuInsights[selectedSku];
+
+  // ✅ already loaded, don't call again
+  if (currentInsight?.best_performance) return;
+
   const productName =
     currentInsight?.product_name ||
     productname ||
@@ -441,7 +433,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   const loadBestPerformance = async () => {
     try {
-      const countryForApi = (platformCountryName || countryName || "global").toLowerCase();
+      const countryForApi = (
+        platformCountryName ||
+        countryName ||
+        "global"
+      ).toLowerCase();
 
       const bestPerformance = await fetchProductBestPerformance({
         productName,
@@ -452,7 +448,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
       setSkuInsights((prev) => {
         const current = prev[selectedSku];
+
         if (!current) return prev;
+
+        // ✅ protect again inside setter
+        if (current.best_performance) return prev;
 
         return {
           ...prev,
@@ -474,7 +474,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 }, [
   isDrawerOpen,
   selectedSku,
-  skuInsights,
   productname,
   platformCountryName,
   countryName,
@@ -562,89 +561,248 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   };
 
   const normalizeTextKey = (value: string) =>
-  String(value || "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[^\w\s-]/g, "");
+    String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s-]/g, "");
 
-const blockToSkuInsight = (
-  block: ProductInsightBlockForDrawer,
-  recObj: any,
-  fallbackObjective?: Record<string, any> | null,
-  bestPerformance?: BestPerformance
-): SkuInsightExtended => {
-  const recommendationText =
-    recObj?.recommendation ||
-    block.recommendationBullets?.join(" ") ||
-    "";
+  const blockToSkuInsight = (
+    block: ProductInsightBlockForDrawer,
+    recObj: any,
+    fallbackObjective?: Record<string, any> | null,
+    bestPerformance?: BestPerformance
+  ): SkuInsightExtended => {
+    const recommendationText =
+      recObj?.recommendation ||
+      block.recommendationBullets?.join(" ") ||
+      "";
 
-  const inventoryText =
-    recObj?.inventory_recommendation ||
-    block.inventoryBullets?.join(" ") ||
-    "";
+    const inventoryText =
+      recObj?.inventory_recommendation ||
+      block.inventoryBullets?.join(" ") ||
+      "";
 
-  return {
-  product_name: block.name,
-  insight: block.journeyBullets?.join("\n") || "",
-  recommendation: recommendationText,
-  inventory_recommendation: inventoryText,
-  objective: recObj?.objective ?? fallbackObjective ?? null,
-  product_journey: block.journeyBullets || [],
-  best_performance: bestPerformance,
+    return {
+      product_name: block.name,
+      sku: block.skuKey || "",
+      insight: block.journeyBullets?.join("\n") || "",
+      recommendation: recommendationText,
+      inventory_recommendation: inventoryText,
+      objective: recObj?.objective ?? fallbackObjective ?? null,
+      product_journey: block.journeyBullets || [],
+      best_performance: bestPerformance,
+      metrics: block.metrics || [],
+      isOtherSkus: block.isOtherSkus,
+      includedSkus: block.includedSkus || [],
+    };
+  };
 
-  // ✅ Same Metrics from Dropdown drawer
-  metrics: block.metrics || [],
+  const findSharedInsightBlock = (
+    identifier: string,
+    shared?: SharedInsightData
+  ) => {
+    if (!identifier || !shared?.blocks?.length) return null;
+
+    const normalizedIdentifier = normalizeTextKey(identifier);
+
+    return (
+      shared.blocks.find(
+        (b) =>
+          String(b.skuKey || "").trim().toLowerCase() ===
+          identifier.trim().toLowerCase()
+      ) ||
+      shared.blocks.find(
+        (b) => normalizeTextKey(b.name) === normalizedIdentifier
+      ) ||
+      null
+    );
+  };
+
+  
+
+  const getSharedRecObj = (
+    block: ProductInsightBlockForDrawer,
+    shared?: SharedInsightData
+  ) => {
+    const map = shared?.recommendationsMap as any;
+
+    if (!map) return null;
+
+    const skuActions =
+      map?.sku_actions ??
+      map?.recommendations ??
+      map ??
+      {};
+
+    return (
+      (block.skuKey && skuActions[block.skuKey]) ||
+      skuActions[block.name] ||
+      skuActions[block.name?.trim?.()] ||
+      null
+    );
+  };
+
+  const handleInlineProductSelect = async (nextProductName: string) => {
+  const cleanProductName = String(nextProductName || "").trim();
+  if (!cleanProductName) return;
+
+  setSelectedProductName(cleanProductName);
+  setInsightsError(null);
+  setIsDrawerOpen(true);
+
+  const sharedBlock = findSharedInsightBlock(cleanProductName, sharedInsightData);
+
+  if (sharedBlock) {
+    const key =
+      sharedBlock.skuKey ||
+      sharedBlock.name ||
+      cleanProductName;
+
+    const recObj = getSharedRecObj(sharedBlock, sharedInsightData);
+
+    setSelectedSku(key);
+
+    setSkuInsights((prev) => ({
+      ...prev,
+      [key]: blockToSkuInsight(
+        sharedBlock,
+        recObj,
+        sharedInsightData?.objective,
+        prev[key]?.best_performance
+      ),
+    }));
+
+    setInsightsLoading(false);
+    return;
+  }
+
+  setInsightsLoading(true);
+
+  try {
+    const countryForApi = (
+      platformCountryName ||
+      countryName ||
+      countryNameProp ||
+      "global"
+    ).toLowerCase();
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken ?? ""}`,
+        },
+        body: JSON.stringify({
+          country: countryForApi,
+          product_name: cleanProductName,
+        }),
+      }
+    );
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.error || `HTTP ${res.status}`);
+    }
+
+    const key = cleanProductName;
+    const returnedName = json.product_name || cleanProductName;
+
+    setSelectedSku(key);
+
+    setSkuInsights((prev) => ({
+      ...prev,
+      [key]: {
+        product_name: returnedName,
+        sku: "",
+        insight: json.ai_insights || "",
+        inventory_recommendation: json.inventory_recommendation || "",
+        objective: json.objective ?? null,
+        recommendation: json.recommendation || "",
+        best_performance: prev[key]?.best_performance,
+        product_journey: Array.isArray(json.product_journey)
+          ? json.product_journey
+          : [],
+        metrics: [],
+      },
+    }));
+  } catch (e: any) {
+    console.error("Inline product search insight error:", e);
+    setInsightsError(e?.message || "Failed to load selected product insight");
+  } finally {
+    setInsightsLoading(false);
+  }
 };
-};
 
-const findSharedInsightBlock = (
-  identifier: string,
-  shared?: SharedInsightData
-) => {
-  if (!identifier || !shared?.blocks?.length) return null;
+ useEffect(() => {
+  if (!embedded) return;
+  if (!sharedInsightData?.blocks?.length) return;
 
-  const normalizedIdentifier = normalizeTextKey(identifier);
-
-  return (
-    shared.blocks.find(
+  const selectedBlock =
+    sharedInsightData.blocks.find(
       (b) =>
-        String(b.skuKey || "").trim().toLowerCase() ===
-        identifier.trim().toLowerCase()
+        normalizeTextKey(b.name) === normalizeTextKey(initialProductName || "")
     ) ||
-    shared.blocks.find(
-      (b) => normalizeTextKey(b.name) === normalizedIdentifier
-    ) ||
-    null
+    sharedInsightData.blocks.find((b) => !b.isOtherSkus) ||
+    sharedInsightData.blocks[0];
+
+  if (!selectedBlock) return;
+
+  const key =
+    selectedBlock.skuKey ||
+    selectedBlock.name ||
+    initialProductName ||
+    "selected-product";
+
+  // ✅ same product hai to state dobara set nahi hogi
+  if (selectedSku && skuInsights[selectedSku]) return;
+
+  const recObj = getSharedRecObj(selectedBlock, sharedInsightData);
+
+  setSelectedSku(key);
+
+  setSelectedProductName((prev) =>
+    prev === selectedBlock.name ? prev : selectedBlock.name
   );
-};
 
-const getSharedRecObj = (
-  block: ProductInsightBlockForDrawer,
-  shared?: SharedInsightData
-) => {
-  const map = shared?.recommendationsMap as any;
+  setSkuInsights((prev) => {
+    if (prev[key]) return prev;
 
-  if (!map) return null;
+    return {
+      ...prev,
+      [key]: blockToSkuInsight(
+        selectedBlock,
+        recObj,
+        sharedInsightData.objective,
+        undefined
+      ),
+    };
+  });
 
-  const skuActions =
-    map?.sku_actions ??
-    map?.recommendations ??
-    map ??
-    {};
+  setInsightsError(null);
+  setInsightsLoading(false);
+  setIsDrawerOpen(true);
+}, [
+  embedded,
+  sharedInsightData?.blocks?.length,
+  initialProductName,
+  selectedSku,
+]);
 
-  return (
-    (block.skuKey && skuActions[block.skuKey]) ||
-    skuActions[block.name] ||
-    skuActions[block.name?.trim?.()] ||
-    null
-  );
-};
-
-const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerformance | undefined => {
+ const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerformance | undefined => {
   if (!apiBestPerformance) return undefined;
 
   return {
+    units: apiBestPerformance?.units
+      ? {
+          month: String(apiBestPerformance.units.month || ""),
+          value: Number(apiBestPerformance.units.units ?? 0),
+        }
+      : undefined,
+
     sales: apiBestPerformance?.net_sales
       ? {
           month: String(apiBestPerformance.net_sales.month || ""),
@@ -652,10 +810,10 @@ const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerfor
         }
       : undefined,
 
-    units: apiBestPerformance?.units
+    asp: apiBestPerformance?.asp
       ? {
-          month: String(apiBestPerformance.units.month || ""),
-          value: Number(apiBestPerformance.units.units ?? 0),
+          month: String(apiBestPerformance.asp.month || ""),
+          value: Number(apiBestPerformance.asp.asp ?? 0),
         }
       : undefined,
 
@@ -665,52 +823,411 @@ const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerfor
           value: Number(apiBestPerformance.cm1_profit.cm1_profit ?? 0),
         }
       : undefined,
+
+    unitWiseProfitability: apiBestPerformance?.unit_wise_profitability
+      ? {
+          month: String(apiBestPerformance.unit_wise_profitability.month || ""),
+          value: Number(
+            apiBestPerformance.unit_wise_profitability.unit_wise_profitability ?? 0
+          ),
+        }
+      : undefined,
+  };
+};
+  const fetchProductBestPerformance = async ({
+    productName,
+    country,
+    homeCurrency,
+    signal,
+  }: {
+    productName: string;
+    country: string;
+    homeCurrency?: string;
+    signal?: AbortSignal;
+  }): Promise<BestPerformance | undefined> => {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
+
+    if (!token) throw new Error("Missing token");
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          product_name: productName,
+          country,
+          home_currency: homeCurrency,
+        }),
+        cache: "no-store",
+        signal,
+      }
+    );
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Failed to fetch best performance");
+    }
+
+    return mapApiBestPerformanceToDrawerShape(json?.best_performance);
+  };
+
+  const splitMetricValue = (value: string) => {
+  const v = (value || "").trim();
+  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+
+  if (!m) return { main: v, delta: "", deltaColor: "" };
+
+  const main = m[1].trim();
+  const delta = m[2].trim();
+  const sign = m[3];
+
+  return {
+    main,
+    delta,
+    deltaColor: sign === "+" ? "#5EA68E" : "#FF5C5C",
   };
 };
 
-const fetchProductBestPerformance = async ({
-  productName,
-  country,
-  homeCurrency,
-  signal,
-}: {
-  productName: string;
-  country: string;
-  homeCurrency?: string;
-  signal?: AbortSignal;
-}): Promise<BestPerformance | undefined> => {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("jwtToken")
-      : null;
+const formatRecommendationCardMainValue = (label: string, main: string) => {
+  const normalizedLabel = label.trim().toLowerCase();
 
-  if (!token) throw new Error("Missing token");
-
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        product_name: productName,
-        country,
-        home_currency: homeCurrency,
-      }),
-      cache: "no-store",
-      signal,
-    }
-  );
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(json?.error || "Failed to fetch best performance");
+  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+    return main;
   }
 
-  return mapApiBestPerformanceToDrawerShape(json?.best_performance);
+  const currencyMatch = main.match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+
+  const numberPart = main.replace(/[^0-9.-]/g, "");
+  const numberValue = Number(numberPart);
+
+  if (!Number.isFinite(numberValue)) return main;
+
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
+
+const metricColors = [
+  "border border-[#FDD36F] border-t-[#FDD36F]",
+  "border border-[#75BBDA] border-t-[#75BBDA]",
+  "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#C49466] border-t-[#C49466]",
+];
+
+const metricOrder = [
+  "units",
+  "net sales",
+  "asp",
+  "cm1 profit",
+  "cm1 profit per unit",
+];
+
+const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+  const normalizedLabel = label.trim().toLowerCase();
+  const metricIndex = metricOrder.indexOf(normalizedLabel);
+
+  return metricColors[
+    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+  ];
+};
+
+const formatPerfMonth = (month?: string) => {
+  if (!month) return "-";
+
+  const fullNames = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+  ];
+
+  const abbrs = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  const lower = month.toLowerCase();
+  let idx = fullNames.indexOf(lower);
+
+  if (idx === -1) {
+    idx = fullNames.findIndex((m) => lower.startsWith(m.slice(0, 3)));
+  }
+
+  const shortMonth = idx >= 0 ? abbrs[idx] : month;
+  const shortYear =
+    selectedYear !== undefined && selectedYear !== ""
+      ? String(selectedYear).slice(-2)
+      : "";
+
+  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
+const formatPerfValue = (label: string, value?: number) => {
+  if (typeof value !== "number") return "-";
+
+  const lower = label.toLowerCase();
+
+  if (lower === "units") {
+    return Math.round(value).toLocaleString();
+  }
+
+  if (lower.includes("asp") || lower.includes("per unit")) {
+    return `${currencySymbolFromCode(homeCurrency)}${Number(value).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  return `${currencySymbolFromCode(homeCurrency)}${Math.round(value).toLocaleString()}`;
+};
+
+const renderInlineAiInsightSection = () => {
+
+  if (!selectedSku) return null;
+
+  const insightData = skuInsights[selectedSku];
+  if (!insightData) return null;
+
+  const sortedMetrics = [...(insightData.metrics || [])].sort((a, b) => {
+    const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+    const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+
+    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+    return safeAIndex - safeBIndex;
+  });
+
+  const bestPerformanceCards = [
+  {
+    label: "Units",
+    data: insightData.best_performance?.units,
+  },
+  {
+    label: "Net Sales",
+    data: insightData.best_performance?.sales,
+  },
+  {
+    label: "ASP",
+    data: insightData.best_performance?.asp,
+  },
+  {
+    label: "CM1 Profit",
+    data: insightData.best_performance?.profit,
+  },
+  {
+    label: "CM1 Profit Per Unit",
+    data: insightData.best_performance?.unitWiseProfitability,
+  },
+];
+
+  const journeyBullets = Array.isArray(insightData.product_journey)
+    ? insightData.product_journey
+    : [];
+
+ const filteredJourneyBullets = journeyBullets;
+
+  const displaySku = insightData.sku || selectedSku || "-";
+
+  const graphProductName = insightData.isOtherSkus
+  ? insightData.includedSkus?.[0]?.product_name ||
+    insightData.product_name ||
+    selectedSku
+  : insightData.product_name || selectedSku;
+
+const graphCountryName = String(
+  countryName ||
+    platformCountryName ||
+    countryNameProp ||
+    "global"
+)
+  .trim()
+  .toLowerCase();
+
+const graphYear =
+  selectedYear !== "" && selectedYear !== undefined
+    ? Number(selectedYear)
+    : new Date().getFullYear();
+
+  return (
+    <div className="">
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+            Product Name
+          </div>
+
+         <div className="flex flex-wrap items-center gap-3">
+  <span className="text-base font-bold text-[#414042] sm:text-xl lg:text-lg 2xl:text-2xl">
+    {insightData.product_name || selectedSku}
+  </span>
+
+  {sharedInsightData?.drawerPeriodText || getHeadingPeriod() ? (
+    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+      {sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
+    </span>
+  ) : null}
+
+  
+</div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="w-full sm:w-72">
+    <ProductSearchDropdown
+      authToken={authToken}
+      onProductSelect={handleInlineProductSelect}
+    />
+  </div>
+        </div>
+      </div>
+
+      {sortedMetrics.length > 0 && (
+        <div>
+          <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+            Metrics
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 ">
+            {sortedMetrics.map((m, i) => (
+              <div
+                key={`${m.label}-${i}`}
+                className={`rounded-lg border bg-white shadow-sm border-t-4 ${getMetricBorderColorByLabel(
+                  m.label,
+                  i
+                )} px-3 py-2`}
+              >
+                <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+                  {m.label
+                    .replace(/\b\w/g, (char) => char.toUpperCase())
+                    .replace("Cm1", "CM1")}
+                </div>
+
+                <div className="flex flex-col leading-tight">
+                  {(() => {
+                    const { main, delta, deltaColor } = splitMetricValue(m.value);
+                    const displayMain = formatRecommendationCardMainValue(
+                      m.label,
+                      main
+                    );
+
+                    return (
+                      <>
+                        <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
+                          {displayMain}
+                        </span>
+
+                        {delta && (
+                          <span
+                            className="text-[10px] 2xl:text-xs font-semibold"
+                            style={{ color: deltaColor }}
+                          >
+                            {delta}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {insightData.best_performance && (
+        <div className="mt-5">
+          <div className="mb-1 text-xs sm:text-sm 2xl:text-lg font-semibold text-charcoal-700">
+            Overall Best Performance
+          </div>
+
+          <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+            Best performance is calculated from overall historical data.
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {bestPerformanceCards.map((card, index) => (
+              <div
+                key={card.label}
+                className={`rounded-lg border bg-white shadow-sm border-t-4 ${getMetricBorderColorByLabel(
+                  card.label,
+                  index
+                )} px-3 py-2`}
+              >
+                <div className="text-[10px] 2xl:text-xs text-charcoal-400">
+                  {card.label}
+                </div>
+
+                <div className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+                  {formatPerfMonth(card.data?.month)}
+                </div>
+
+                <div className=" text-sm 2xl:text-lg font-bold text-[#414042]">
+                  {formatPerfValue(card.label, card.data?.value)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5">
+       <ProductJourneyInlineGraph
+  productname={graphProductName || ""}
+  countryName={graphCountryName}
+  displayCurrency={homeCurrency as any}
+  isOtherSkus={!!insightData.isOtherSkus}
+  otherSkuProductNames={
+    insightData.isOtherSkus
+      ? (insightData.includedSkus || []).map((item) => item.product_name)
+      : []
+  }
+/>
+      </div>
+
+      <div className="mt-5 pb-2 w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+          Product Journey
+        </div>
+
+        {filteredJourneyBullets.length > 0 ? (
+          <ol className="list-decimal pl-4 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
+            {filteredJourneyBullets.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ol>
+        ) : (
+          <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+        )}
+      </div>
+    </div>
+  );
 };
 
   const handleViewBusinessInsights = async () => {
@@ -737,23 +1254,23 @@ const fetchProductBestPerformance = async ({
 
     const sharedBlock = findSharedInsightBlock(identifier, sharedInsightData);
 
-if (sharedBlock) {
+    if (sharedBlock) {
 
-  const sharedRecObj = getSharedRecObj(sharedBlock, sharedInsightData);
+      const sharedRecObj = getSharedRecObj(sharedBlock, sharedInsightData);
 
-  setSkuInsights({
-  [identifier]: blockToSkuInsight(
-    sharedBlock,
-    sharedRecObj,
-    sharedInsightData?.objective,
-    undefined
-  ),
-});
+      setSkuInsights({
+        [identifier]: blockToSkuInsight(
+          sharedBlock,
+          sharedRecObj,
+          sharedInsightData?.objective,
+          undefined
+        ),
+      });
 
-  setSelectedSku(identifier);
-  setInsightsLoading(false);
-  return;
-}
+      setSelectedSku(identifier);
+      setInsightsLoading(false);
+      return;
+    }
 
     if (typeof window !== "undefined") {
       const cached = localStorage.getItem(cacheKey);
@@ -764,17 +1281,20 @@ if (sharedBlock) {
           };
 
           setSkuInsights({
-  [identifier]: {
-    product_name: parsed.product_name,
-    insight: parsed.insight,
-    inventory_recommendation: parsed.inventory_recommendation,
-    objective: parsed.objective ?? null,
-    recommendation: parsed.recommendation,
-   best_performance: undefined,
-    product_journey: parsed.product_journey ?? [],
-    metrics: parsed.metrics ?? [],
-  },
-});
+            [identifier]: {
+              product_name: parsed.product_name,
+              sku: parsed.sku || identifier,
+              insight: parsed.insight,
+              inventory_recommendation: parsed.inventory_recommendation,
+              objective: parsed.objective ?? null,
+              recommendation: parsed.recommendation,
+              best_performance: undefined,
+              product_journey: parsed.product_journey ?? [],
+              metrics: parsed.metrics ?? [],
+              isOtherSkus: parsed.isOtherSkus,
+              includedSkus: parsed.includedSkus ?? [],
+            },
+          });
 
           setSelectedSku(identifier);
           setInsightsLoading(false);
@@ -828,16 +1348,18 @@ if (sharedBlock) {
       const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
       setSkuInsights({
-        [identifier]: {
-          product_name: returnedName,
-          insight: insightText,
-          inventory_recommendation: inventoryRec,
-          objective,
-          recommendation,
-         best_performance: undefined,
-          product_journey: productJourney,
-        },
-      });
+  [identifier]: {
+    product_name: returnedName,
+    sku: isSku ? identifier : "",
+    insight: insightText,
+    inventory_recommendation: inventoryRec,
+    objective,
+    recommendation,
+    best_performance: undefined,
+    product_journey: productJourney,
+    metrics: [],
+  },
+});
 
       setSelectedSku(identifier);
 
@@ -852,7 +1374,9 @@ if (sharedBlock) {
           best_performance: undefined,
           product_journey: productJourney,
           cachedAt: Date.now(),
-          
+          sku: isSku ? identifier : "",
+          metrics: [],
+
         })
       );
     } catch (e: any) {
@@ -927,18 +1451,21 @@ if (sharedBlock) {
   };
 
   useEffect(() => {
-    if (!canShowResults) return;
-    fetchProductData();
-  }, [
-    productname,
-    selectedYear,
-    range,
-    selectedQuarter,
-    selectedMonth,
-    canShowResults,
-    globalKey,
-    profileHomeCurrency,
-  ]);
+  if (embedded) return;
+  if (!canShowResults) return;
+
+  fetchProductData();
+}, [
+  embedded,
+  productname,
+  selectedYear,
+  range,
+  selectedQuarter,
+  selectedMonth,
+  canShowResults,
+  globalKey,
+  profileHomeCurrency,
+]);
 
   const nonEmptyCountriesFromApi = useMemo(() => {
     if (!data?.data) return [] as CountryKey[];
@@ -1413,108 +1940,29 @@ if (sharedBlock) {
 
   const isMultiCountry = visibleCountryCards.length > 1;
 
-  return (
-    <div className="w-full">
-      {!canShowResults && !embedded && (
-        <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-          <div className="flex items-center">
-            <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-            <span>
-              Search a product and choose the period to view SKU-wise performance.
-            </span>
-          </div>
-        </div>
-      )}
+ return (
+  <div className="w-full space-y-4">
+    {insightsError && (
+      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {insightsError}
+      </div>
+    )}
 
-      {canShowResults && loading && (
-        <div className="flex flex-col items-center justify-center py-12 textcenter">
-          <Loader fullscreen transparent />
-        </div>
-      )}
+    {insightsLoading && (
+      <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <Loader fullscreen={false} transparent />
+      </div>
+    )}
 
-      {canShowResults && !!error && (
-        <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-6">
-          <div className="flex items-center gap-3 text-red-700">
-            <span className="text-xl">❌</span>
-            <p className="m-0 font-medium">{error}</p>
-          </div>
-        </div>
-      )}
+    {!insightsLoading && renderInlineAiInsightSection()}
 
-      {shouldShowTrendSection && (
-        <div className="flex flex-col">
-          <TrendChartSection
-            productname={productname}
-            title={getTitle()}
-            chartDataList={canShowResults ? chartDataList : [null, null, null]}
-            chartOptions={chartOptions}
-            nonEmptyCountriesFromApi={
-              canShowResults && isGlobalPage ? nonEmptyCountriesFromApi : []
-            }
-            selectedCountries={selectedCountries}
-            onToggleCountry={handleCountryChange}
-            authToken={authToken}
-            onProductSelect={handleProductSelect}
-            onViewBusinessInsights={canShowResults ? handleViewBusinessInsights : undefined}
-            insightsLoading={insightsLoading}
-            isPreviewMode={isPreviewMode}
-            exportMeta={{
-              titleLine: `${productname} - Productwise Performance - ${getHeadingPeriod()}`,
-              titleCountry: exportTitleCountry,
-              platformLabel: "Phormula",
-              periodLabel: getHeadingPeriod(),
-              companyName: userData?.company_name || "",
-              brandName: userData?.brand_name || "",
-              currencyLabel: exportCurrencySymbol,
-            }}
-            exportCountryCards={canShowResults ? exportCountryCards : []}
-          />
-
-          {canShowResults && data && !loading && (
-            <>
-              <InsightSideDrawer
-                open={isDrawerOpen}
-                selectedSku={selectedSku}
-                skuInsights={skuInsights}
-                onClose={() => setIsDrawerOpen(false)}
-                enableFeedback={false}
-                selectedYear={selectedYear}
-                homeCurrency={homeCurrency}
-                drawerPeriodText={sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
-                 countryName={(countryName || platformCountryName || "global").toLowerCase()}
-              />
-
-              {isDrawerOpen && insightsError && (
-                <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">
-                  {insightsError}
-                </div>
-              )}
-
-              <div className="mt-4">
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
-                  {visibleCountryCards.map((card) => (
-                    <CountryCard
-  key={card.country.toLowerCase()}
-  country={card.country}
-  stats={card.stats}
-  selectedYear={selectedYear}
-  homeCurrency={homeCurrency}
-  activeCountry={(countryName || "global").toLowerCase()}
-  isMultiCountry={isMultiCountry}
-
-  // ✅ Add this
-  range={range}
-  selectedQuarter={selectedQuarter}
-/>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
+    {!selectedSku && !sharedInsightData?.blocks?.length && (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
+        No SKU-wise insight data available for this period.
+      </div>
+    )}
+  </div>
+);
 };
 
 export default ProductwisePerformance;
