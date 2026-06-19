@@ -247,6 +247,14 @@ class AmazonAdsReportingClient:
         """
         resp = self._request("GET", f"/reporting/reportTypes/{report_type_id}")
         return resp.json()
+    
+    def _get_headers(self, accept: str = "application/json") -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.auth.access_token}",
+            "Amazon-Advertising-API-ClientId": Config.AMAZON_ADS_CLIENT_ID,
+            "Amazon-Advertising-API-Scope": str(self.auth.profile_id),
+            "Accept": accept,
+        }
 
     def _headers(self) -> Dict[str, str]:
         return {
@@ -263,15 +271,21 @@ class AmazonAdsReportingClient:
 
     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
         url = f"{self.base_url}{path}"
+
+        method_upper = method.upper()
+
+        # POST /reporting/reports needs v3 create-report Content-Type.
+        # GET endpoints should not send that Content-Type.
+        headers = self._headers() if method_upper == "POST" else self._get_headers("application/json")
+
         resp = self.session.request(
-            method,
+            method_upper,
             url,
-            headers=self._headers(),
+            headers=headers,
             timeout=self._timeout(),
             **kwargs,
         )
 
-        # If retry exhausted, we may still get 4xx/5xx here
         if resp.status_code >= 400:
             raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
 
@@ -344,7 +358,16 @@ class AmazonAdsReportingClient:
         raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
 
     def get_report_status(self, report_id: str) -> Dict[str, Any]:
-        return self._request("GET", f"/reporting/reports/{report_id}").json()
+        for attempt in range(1, 6):
+            try:
+                return self._request("GET", f"/reporting/reports/{report_id}").json()
+            except RuntimeError as e:
+                if "429" in str(e):
+                    time.sleep(min(60, 5 * attempt))
+                    continue
+                raise
+
+        raise RuntimeError("Amazon Ads API error 429: Throttled while checking report status")
 
     def wait_until_ready(
         self,
@@ -395,9 +418,31 @@ class AmazonAdsReportingClient:
         raise TimeoutError(f"Report not ready within {max_wait_seconds}s. Last status: {last}")
 
     def download_gzip_json(self, location_url: str) -> List[Dict[str, Any]]:
-        r = self.session.get(location_url, timeout=self._timeout())
-        if r.status_code >= 400:
-            raise RuntimeError(f"Download failed {r.status_code}: {r.text}")
+        r = None
+
+        for attempt in range(1, 6):
+            r = self.session.get(location_url, timeout=self._timeout())
+
+            if r.status_code == 429:
+                retry_after = r.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        sleep_seconds = int(float(retry_after))
+                    except Exception:
+                        sleep_seconds = min(60, 5 * attempt)
+                else:
+                    sleep_seconds = min(60, 5 * attempt)
+
+                time.sleep(sleep_seconds)
+                continue
+
+            if r.status_code >= 400:
+                raise RuntimeError(f"Download failed {r.status_code}: {r.text}")
+
+            break
+
+        if r is None or r.status_code == 429:
+            raise RuntimeError("Download failed 429: Throttled after retries")
 
         content = r.content
         try:
@@ -458,14 +503,47 @@ class AmazonAdsReportingClient:
 
 
     def list_sb_campaigns(self) -> list[dict]:
-        # adjust if your SB campaigns endpoint differs
-        resp = self._request("GET", "/sb/campaigns", params={"count": 1000, "startIndex": 0})
+        url = f"{self.base_url}/sb/campaigns"
+
+        resp = self.session.get(
+            url,
+            headers=self._get_headers("application/vnd.sbcampaignresource.v4+json"),
+            params={"count": 1000, "startIndex": 0},
+            timeout=self._timeout(),
+        )
+
+        if resp.status_code == 406:
+            resp = self.session.get(
+                url,
+                headers=self._get_headers("application/vnd.sbcampaignresource.v3+json"),
+                params={"count": 1000, "startIndex": 0},
+                timeout=self._timeout(),
+            )
+
+        if resp.status_code == 406:
+            resp = self.session.get(
+                url,
+                headers=self._get_headers("application/json"),
+                params={"count": 1000, "startIndex": 0},
+                timeout=self._timeout(),
+            )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+
         data = resp.json()
-        return data if isinstance(data, list) else []
+
+        if isinstance(data, list):
+            return data
+
+        if isinstance(data, dict):
+            return data.get("campaigns") or data.get("data") or []
+
+        return []
 
     def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
         payload = {
-            "name": f"SB Targeting {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+            "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
             "startDate": start_date,
             "endDate": end_date,
             "configuration": {
@@ -475,33 +553,101 @@ class AmazonAdsReportingClient:
                 "format": "GZIP_JSON",
                 "groupBy": ["targeting"],
                 "columns": [
-                    "startDate", "endDate",
-                    "campaignId", "campaignName",
-                    "adGroupId", "adGroupName",
+                    "startDate",
+                    "endDate",
 
-                    # targeting/keyword fields
+                    "campaignId",
+                    "campaignName",
+                    "campaignStatus",
+                    "campaignBudgetAmount",
+                    "campaignBudgetCurrencyCode",
+                    "campaignBudgetType",
+
+                    "adGroupId",
+                    "adGroupName",
+
+                    "keywordId",
+                    "keywordBid",
+                    "adKeywordStatus",
                     "keywordText",
-                    "targetingText",
+                    "keywordType",
+
+                    "targetingId",
                     "targetingExpression",
+                    "targetingText",
+                    "targetingType",
+
                     "matchType",
                     "costType",
 
-                    # try to fetch IDs if available for your account
-                    "keywordId",
-                    "targetingId",
-
-                    # currency
-                    "campaignBudgetCurrencyCode",
-
-                    # metrics
                     "impressions",
-                    "viewableImpressions",
                     "topOfSearchImpressionShare",
+                    "viewableImpressions",
+                    "viewabilityRate",
                     "clicks",
                     "cost",
+
+                    "brandedSearches",
+                    "brandedSearchesClicks",
+
+                    "detailPageViews",
+                    "detailPageViewsClicks",
+
+                    "addToCart",
+                    "addToCartClicks",
+                    "addToCartRate",
+                    "eCPAddToCart",
+
+                    "purchases",
+                    "purchasesClicks",
+                    "purchasesPromoted",
+
+                    "sales",
+                    "salesClicks",
+                    "salesPromoted",
+
+                    "unitsSold",
+                    "unitsSoldClicks",
+
+                    "newToBrandPurchases",
+                    "newToBrandPurchasesClicks",
+                    "newToBrandPurchasesPercentage",
+                    "newToBrandPurchasesRate",
+
+                    "newToBrandSales",
+                    "newToBrandSalesClicks",
+                    "newToBrandSalesPercentage",
+
+                    "newToBrandUnitsSold",
+                    "newToBrandUnitsSoldClicks",
+                    "newToBrandUnitsSoldPercentage",
+
+                    "newToBrandDetailPageViews",
+                    "newToBrandDetailPageViewsClicks",
+                    "newToBrandDetailPageViewRate",
+                    "newToBrandECPDetailPageView",
+
+                    "viewClickThroughRate",
+
+                    "video5SecondViews",
+                    "video5SecondViewRate",
+                    "videoFirstQuartileViews",
+                    "videoMidpointViews",
+                    "videoThirdQuartileViews",
+                    "videoCompleteViews",
+                    "videoUnmutes",
+
+                    "qualifiedBorrows",
+                    "qualifiedBorrowsFromClicks",
+                    "royaltyQualifiedBorrows",
+                    "royaltyQualifiedBorrowsFromClicks",
+
+                    "addToList",
+                    "addToListFromClicks",
                 ],
             },
         }
+
         return self._create_report(payload)
  
     def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
@@ -549,11 +695,40 @@ class AmazonAdsReportingClient:
         return data if isinstance(data, list) else []
 
     def list_portfolios(self) -> list[dict]:
-        # portfolios are usually v2
-        resp = self._request("GET", "/v2/portfolios")
-        data = resp.json()
-        return data if isinstance(data, list) else []
+        url = f"{self.base_url}/v2/portfolios"
 
+        resp = self.session.get(
+            url,
+            headers=self._get_headers("application/vnd.portfolio.v3+json"),
+            timeout=self._timeout(),
+        )
+
+        if resp.status_code == 406:
+            resp = self.session.get(
+                url,
+                headers=self._get_headers("application/vnd.portfolio.v2+json"),
+                timeout=self._timeout(),
+            )
+
+        if resp.status_code == 406:
+            resp = self.session.get(
+                url,
+                headers=self._get_headers("application/json"),
+                timeout=self._timeout(),
+            )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+
+        if isinstance(data, list):
+            return data
+
+        if isinstance(data, dict):
+            return data.get("portfolios") or data.get("data") or []
+
+        return []
     def create_sd_advertised_product_report(
         self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
     ) -> str:
@@ -594,25 +769,55 @@ class AmazonAdsReportingClient:
 
     def _create_report(self, payload: dict) -> str:
         """
-        helper used by all report creators.
+        Create report with throttling retry.
         """
         url = f"{self.base_url}/reporting/reports"
-        resp = self.session.post(url, headers=self._headers(), json=payload, timeout=self._timeout())
+        max_attempts = 6
 
-        if resp.status_code in (200, 202):
-            data = resp.json()
-            rid = data.get("reportId")
-            if not rid:
-                raise RuntimeError(f"Missing reportId in response: {data}")
-            return str(rid)
+        for attempt in range(1, max_attempts + 1):
+            resp = self.session.post(
+                url,
+                headers=self._headers(),
+                json=payload,
+                timeout=self._timeout()
+            )
 
-        if resp.status_code == 425:
-            try:
+            if resp.status_code in (200, 202):
                 data = resp.json()
-            except Exception:
-                data = {"raw": resp.text}
-            raise RuntimeError(f"Duplicate report response (425). Body: {data}")
+                rid = data.get("reportId")
+                if not rid:
+                    raise RuntimeError(f"Missing reportId in response: {data}")
+                return str(rid)
 
-        raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+            if resp.status_code == 425:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = {"raw": resp.text}
 
+                detail = ""
+                if isinstance(data, dict):
+                    detail = str(data.get("detail") or data.get("message") or "")
 
+                m = re.search(r"duplicate of\s*:?\s*([0-9a-fA-F-]{16,})", detail)
+                if m:
+                    return m.group(1)
+
+                raise RuntimeError(f"Duplicate report response (425). Body: {data}")
+
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        sleep_seconds = int(float(retry_after))
+                    except Exception:
+                        sleep_seconds = min(60, 5 * attempt)
+                else:
+                    sleep_seconds = min(60, 5 * attempt)
+
+                time.sleep(sleep_seconds)
+                continue
+
+            raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+
+        raise RuntimeError(f"Amazon Ads API error 429: Throttled after {max_attempts} attempts")
