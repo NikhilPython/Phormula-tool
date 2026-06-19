@@ -42,7 +42,12 @@ import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
 import { useRouter, useParams } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
-import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import {
+    RiExpandDiagonalFill,
+    RiCollapseDiagonalFill,
+    RiLayoutColumnFill,
+    RiLayoutColumnLine,
+} from "react-icons/ri";
 import GroupedCollapsibleTable, {
     ColGroup,
     type LeafCol,
@@ -1849,10 +1854,11 @@ export default function DashboardPage() {
         productwiseInitialCollapsed
     );
 
+    const [productwiseAllColumnsExpanded, setProductwiseAllColumnsExpanded] = useState(false);
+
     const [productwiseAnyGroupExpanded, setProductwiseAnyGroupExpanded] = useState(false);
 
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
-
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
 
@@ -7220,6 +7226,57 @@ export default function DashboardPage() {
 
     ];
 
+
+    const PRODUCTWISE_GROUP_IDS = useMemo(
+        () => [
+            "quantity",
+            "marketplace_fees",
+            "tax_and_credits",
+            "profit",
+            "ads_spend",
+            "cm2_profit",
+        ],
+        []
+    );
+
+    const productwiseHasExpandedGroups = useMemo(() => {
+        return PRODUCTWISE_GROUP_IDS.some(
+            (groupId) => productwiseCollapsed[groupId] === false
+        );
+    }, [productwiseCollapsed, PRODUCTWISE_GROUP_IDS]);
+
+    const buildProductwiseCollapsedState = useCallback(
+        (collapsedValue: boolean) => {
+            return PRODUCTWISE_GROUP_IDS.reduce<Record<string, boolean>>(
+                (acc, groupId) => {
+                    acc[groupId] = collapsedValue;
+                    return acc;
+                },
+                {}
+            );
+        },
+        [PRODUCTWISE_GROUP_IDS]
+    );
+
+    const handleToggleProductwiseAllColumns = useCallback(() => {
+        setProductwiseCollapsed((prev) => {
+            const currentlyAllExpanded =
+                PRODUCTWISE_GROUP_IDS.length > 0 &&
+                PRODUCTWISE_GROUP_IDS.every((groupId) => prev[groupId] === false);
+
+            const nextExpanded = !currentlyAllExpanded;
+            const next = buildProductwiseCollapsedState(!nextExpanded);
+
+            setProductwiseAllColumnsExpanded(nextExpanded);
+            return next;
+        });
+    }, [PRODUCTWISE_GROUP_IDS, buildProductwiseCollapsedState]);
+
+    useEffect(() => {
+        setProductwiseCollapsed(buildProductwiseCollapsedState(true));
+        setProductwiseAllColumnsExpanded(false);
+    }, [platform, globalMtdView, buildProductwiseCollapsedState]);
+
     const prevValues = useMemo(() => {
         const getPrev = (label: string) => {
             switch (label) {
@@ -11725,9 +11782,9 @@ ${pageLoading
                                         Ads data is being fetched, please wait…
                                     </div>
                                 )}
-                                {/* RIGHT: Download */}
-                                {/* RIGHT: Expand + Download */}
+
                                 <div className="flex items-center gap-2">
+                                    {/* Expand / collapse rows */}
                                     <button
                                         type="button"
                                         onClick={() => setShowAllMtdProductwiseRows((prev) => !prev)}
@@ -11739,6 +11796,29 @@ ${pageLoading
                                             <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                                         ) : (
                                             <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                                        )}
+                                    </button>
+
+                                    {/* Expand / collapse all columns */}
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleProductwiseAllColumns}
+                                        title={
+                                            productwiseAllColumnsExpanded
+                                                ? "Collapse all columns"
+                                                : "Expand all columns"
+                                        }
+                                        aria-label={
+                                            productwiseAllColumnsExpanded
+                                                ? "Collapse all columns"
+                                                : "Expand all columns"
+                                        }
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                                    >
+                                        {productwiseAllColumnsExpanded ? (
+                                            <RiLayoutColumnLine size={18} className="font-extrabold" />
+                                        ) : (
+                                            <RiLayoutColumnFill size={18} className="font-extrabold" />
                                         )}
                                     </button>
 
@@ -11760,16 +11840,16 @@ ${pageLoading
                                 <div
                                     className={[
                                         "w-full rounded-xl border border-gray-300",
-                                        productwiseAnyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+                                        productwiseHasExpandedGroups ? "overflow-x-auto" : "overflow-hidden",
                                     ].join(" ")}
                                 >
-                                    <div className={productwiseAnyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
+                                    <div className={productwiseHasExpandedGroups ? "min-w-[1200px]" : "w-full"}>
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                             rows={finalMonthlySkuwiseRowsForTable}
                                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
                                             tableClassName={[
                                                 "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
-                                                productwiseAnyGroupExpanded
+                                                productwiseHasExpandedGroups
                                                     ? "table-auto min-w-[1200px]"
                                                     : "table-fixed",
                                             ].join(" ")}
@@ -11785,7 +11865,14 @@ ${pageLoading
                                             singleCols={SKUWISE_SINGLE_COLS}
                                             initialCollapsed={productwiseInitialCollapsed}
                                             collapsedState={productwiseCollapsed}
-                                            onCollapsedChange={setProductwiseCollapsed}
+                                            onCollapsedChange={(next) => {
+                                                setProductwiseCollapsed(next);
+
+                                                setProductwiseAllColumnsExpanded(
+                                                    PRODUCTWISE_GROUP_IDS.length > 0 &&
+                                                    PRODUCTWISE_GROUP_IDS.every((groupId) => next[groupId] === false)
+                                                );
+                                            }}
                                             defaultSort={plSortConfig}
                                             onSortChange={setPlSortConfig}
                                             showSignRowInBody
