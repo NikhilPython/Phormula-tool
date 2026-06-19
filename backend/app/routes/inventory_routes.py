@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os, re, io, csv, time, gzip, logging , jwt, calendar, requests
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 from dotenv import find_dotenv, load_dotenv
 from sqlalchemy.orm import load_only
@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert, insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from sqlalchemy import delete, text
-from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged, InventoryAWD
+from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged, InventoryAWD, InventoryAgedHistory
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.amazon_utils import amazon_client, _apply_region_and_marketplace_from_request
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
@@ -3596,3 +3596,721 @@ def sync_inventory_awd_from_amazon():
             "success": False,
             "error": str(e),
         }), 500
+    
+# ---------------------------------------------------------------------
+# Aged Inventory Surcharge Report
+# Seller Central page:
+# Amazon Fulfillment Reports -> Aged Inventory Surcharge report
+# Stores into: inventory_aged_history
+# ---------------------------------------------------------------------
+
+AGED_INVENTORY_SURCHARGE_REPORT_TYPE = "GET_FBA_FULFILLMENT_LONGTERM_STORAGE_FEE_CHARGES_DATA"
+
+
+
+def _safe_str(val):
+    if val is None:
+        return None
+
+    val = str(val).strip()
+    return val if val != "" else None
+
+
+def _safe_float_0(val):
+    if val is None:
+        return 0.0
+
+    try:
+        return float(str(val).replace(",", "").strip() or 0)
+    except Exception:
+        return 0.0
+
+
+def _safe_int_0(val):
+    if val is None:
+        return 0
+
+    try:
+        return int(float(str(val).replace(",", "").strip() or 0))
+    except Exception:
+        return 0
+
+
+def _parse_snapshot_datetime(value):
+    """
+    Amazon report examples:
+      2026-02-15T00:04:00+00:00
+      2026-02-15T00:04:00Z
+      2026-02-15
+
+    DB value:
+      naive UTC datetime
+    """
+
+    if not value:
+        return None
+
+    try:
+        s = str(value).strip()
+
+        if not s:
+            return None
+
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+
+        if "T" in s:
+            dt = datetime.fromisoformat(s)
+
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+            return dt
+
+        return datetime.strptime(s[:10], "%Y-%m-%d")
+
+    except Exception as e:
+        logger.warning(
+            "Could not parse aged surcharge snapshot-date=%s | error=%s",
+            value,
+            e,
+        )
+        return None
+
+
+def _resolve_aged_surcharge_date_range():
+    """
+    Supports:
+      ?month=march&year=2026
+      ?month=3&year=2026
+      ?month=03&year=2026
+      ?month=2026-03
+      ?start_date=2026-03-01&end_date=2026-03-31
+
+    Returns:
+      start_date, end_date, mode
+    """
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
+    month_param = request.args.get("month")
+    year_param = request.args.get("year")
+
+    # ---------------- MONTH MODE ----------------
+    if month_param and not (start_date or end_date):
+        m_raw = month_param.strip().lower()
+
+        if "-" in m_raw:
+            # month=2026-03
+            y_str, m_str = m_raw.split("-", 1)
+            year = int(year_param or y_str)
+            month_num = int(m_str)
+
+        elif m_raw.isdigit():
+            # month=3&year=2026
+            if not year_param:
+                raise ValueError(
+                    "year is required when month is numeric, example: ?month=3&year=2026"
+                )
+
+            year = int(year_param)
+            month_num = int(m_raw)
+
+        else:
+            # month=march&year=2026
+            if not year_param:
+                raise ValueError(
+                    "year is required when month is a name, example: ?month=march&year=2026"
+                )
+
+            year = int(year_param)
+
+            try:
+                month_num = datetime.strptime(m_raw.capitalize(), "%B").month
+            except ValueError:
+                month_num = datetime.strptime(m_raw.capitalize(), "%b").month
+
+        month_start, month_end = _month_range(year, month_num)
+
+        return month_start.isoformat(), month_end.isoformat(), "month"
+
+    # ---------------- RANGE MODE ----------------
+    if start_date or end_date:
+        if not start_date or not end_date:
+            raise ValueError("Provide both start_date and end_date, or use month/year")
+
+        parsed_start = _parse_date_str(start_date)
+        parsed_end = _parse_date_str(end_date)
+
+        if parsed_end < parsed_start:
+            raise ValueError("end_date cannot be before start_date")
+
+        return parsed_start.isoformat(), parsed_end.isoformat(), "range"
+
+    # ---------------- ALL MODE ----------------
+    return None, None, "all"
+
+
+def _request_aged_inventory_surcharge_report(
+    mp: str,
+    data_start_time: str | None = None,
+    data_end_time: str | None = None,
+) -> str:
+    """
+    Creates Aged Inventory Surcharge report request.
+    """
+
+    body = {
+        "reportType": AGED_INVENTORY_SURCHARGE_REPORT_TYPE,
+        "marketplaceIds": [mp],
+    }
+
+    if data_start_time:
+        body["dataStartTime"] = data_start_time
+
+    if data_end_time:
+        body["dataEndTime"] = data_end_time
+
+    res = amazon_client.make_api_call(
+        "/reports/2021-06-30/reports",
+        "POST",
+        {},
+        body,
+    )
+
+    if not res:
+        raise RuntimeError("Empty response from SP-API while creating aged surcharge report")
+
+    if "error" in res:
+        msg = str(res)
+
+        if (
+            "403" in msg
+            or "Unauthorized" in msg
+            or "forbidden" in msg.lower()
+            or "Access to requested resource is denied" in msg
+        ):
+            raise RuntimeError(
+                "SP-API 403 Unauthorized for Aged Inventory Surcharge report. "
+                "Please check Seller Central report permissions."
+            )
+
+        if "QuotaExceeded" in msg or "429" in msg or "Too Many Requests" in msg:
+            raise RuntimeError(
+                "Amazon rate limit exceeded for Aged Inventory Surcharge report. "
+                "Please retry later."
+            )
+
+        raise RuntimeError(f"Failed to create aged surcharge report: {msg}")
+
+    payload = res.get("payload") or res
+    report_id = payload.get("reportId")
+
+    if not report_id:
+        raise RuntimeError(f"No reportId returned for aged surcharge report: {res}")
+
+    logger.info("Created aged inventory surcharge report: %s", report_id)
+    return report_id
+
+
+def _parse_aged_inventory_surcharge_rows(content: bytes) -> list[dict]:
+    """
+    Parses Amazon Aged Inventory Surcharge report.
+
+    Expected columns:
+      snapshot-date
+      sku
+      fnsku
+      asin
+      product-name
+      condition
+      per-unit-volume
+      currency
+      volume-unit
+      country
+      qty-charged
+      amount-charged
+      surcharge-age-tier
+      rate-surcharge
+    """
+
+    text_content = content.decode("utf-8-sig", errors="replace")
+
+    sample = text_content[:2048]
+    delimiter = "\t" if "\t" in sample else ","
+
+    reader = csv.DictReader(io.StringIO(text_content), delimiter=delimiter)
+
+    if not reader.fieldnames:
+        raise RuntimeError("Aged Inventory Surcharge report has no header row")
+
+    rows = []
+
+    for row in reader:
+        item = {
+            "snapshot-date": _safe_str(row.get("snapshot-date")),
+            "sku": _safe_str(row.get("sku")),
+            "fnsku": _safe_str(row.get("fnsku")),
+            "asin": _safe_str(row.get("asin")),
+            "product-name": _safe_str(row.get("product-name")),
+            "condition": _safe_str(row.get("condition")),
+            "per-unit-volume": _safe_float_0(row.get("per-unit-volume")),
+            "currency": _safe_str(row.get("currency")),
+            "volume-unit": _safe_str(row.get("volume-unit")),
+            "country": _safe_str(row.get("country")),
+            "qty-charged": _safe_int_0(row.get("qty-charged")),
+            "amount-charged": _safe_float_0(row.get("amount-charged")),
+            "surcharge-age-tier": _safe_str(row.get("surcharge-age-tier")),
+            "rate-surcharge": _safe_float_0(row.get("rate-surcharge")),
+        }
+
+        if not item["sku"] and not item["asin"] and not item["fnsku"]:
+            continue
+
+        rows.append(item)
+
+    return rows
+
+
+def _filter_aged_surcharge_rows_by_date(
+    rows: list[dict],
+    start_date: str | None,
+    end_date: str | None,
+) -> list[dict]:
+    """
+    Local safety filter using snapshot-date.
+    start_date/end_date should be YYYY-MM-DD.
+    """
+
+    if not start_date and not end_date:
+        return rows
+
+    filtered = []
+
+    for r in rows:
+        snap = r.get("snapshot-date")
+        if not snap:
+            continue
+
+        snap_date = str(snap)[:10]
+
+        if start_date and snap_date < start_date:
+            continue
+
+        if end_date and snap_date > end_date:
+            continue
+
+        filtered.append(r)
+
+    return filtered
+
+
+def _get_sku_product_column_for_marketplace(marketplace_id: str) -> str | None:
+    """
+    Decides which SKU column to use from public.sku_{user_id}_data_table.
+    """
+
+    country = MARKETPLACE_TO_COUNTRY.get(marketplace_id, "").lower()
+
+    if country == "uk":
+        return "sku_uk"
+
+    if country == "us":
+        return "sku_us"
+
+    return None
+
+
+def _attach_product_names_to_aged_surcharge_rows(
+    rows: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> int:
+    """
+    Overwrite row['product-name'] from public.sku_{user_id}_data_table.
+
+    UK:
+      row['sku'] == sku_uk
+
+    US:
+      row['sku'] == sku_us
+
+    Returns count of mapped product names.
+    """
+
+    if not rows or not user_id:
+        return 0
+
+    sku_column = _get_sku_product_column_for_marketplace(marketplace_id)
+
+    if not sku_column:
+        logger.info(
+            "Skipping aged surcharge product-name mapping for marketplace_id=%s",
+            marketplace_id,
+        )
+        return 0
+
+    skus = sorted({
+        (r.get("sku") or "").strip()
+        for r in rows
+        if (r.get("sku") or "").strip()
+    })
+
+    if not skus:
+        return 0
+
+    sku_table = f"public.sku_{user_id}_data_table"
+
+    placeholders = ", ".join(f":sku{i}" for i in range(len(skus)))
+
+    sql = text(f"""
+        SELECT {sku_column} AS sku, product_name
+        FROM {sku_table}
+        WHERE {sku_column} IN ({placeholders})
+    """)
+
+    params = {f"sku{i}": sku for i, sku in enumerate(skus)}
+
+    try:
+        result = db.session.execute(sql, params).mappings().all()
+    except Exception as e:
+        logger.exception(
+            "Failed to read SKU product mapping table=%s column=%s",
+            sku_table,
+            sku_column,
+        )
+        return 0
+
+    mapping = {
+        (r.get("sku") or "").strip(): r.get("product_name")
+        for r in result
+        if (r.get("sku") or "").strip() and r.get("product_name")
+    }
+
+    mapped_count = 0
+
+    for r in rows:
+        sku = (r.get("sku") or "").strip()
+        mapped_name = mapping.get(sku)
+
+        if mapped_name:
+            r["product-name"] = mapped_name
+            mapped_count += 1
+
+    return mapped_count
+
+
+def _row_to_inventory_aged_history(
+    row: dict,
+    user_id: int,
+    marketplace_id: str,
+    report_id: str | None = None,
+    document_id: str | None = None,
+) -> dict:
+    snapshot_dt = _parse_snapshot_datetime(row.get("snapshot-date"))
+
+    return {
+        "user_id": user_id,
+        "marketplace_id": marketplace_id,
+        "report_id": report_id,
+        "document_id": document_id,
+
+        "snapshot_date": snapshot_dt,
+
+        "sku": row.get("sku"),
+        "fnsku": row.get("fnsku"),
+        "asin": row.get("asin"),
+        "product_name": row.get("product-name"),
+        "condition": row.get("condition"),
+
+        "per_unit_volume": _safe_float_0(row.get("per-unit-volume")),
+        "currency": row.get("currency"),
+        "volume_unit": row.get("volume-unit"),
+        "country": row.get("country"),
+
+        "qty_charged": _safe_int_0(row.get("qty-charged")),
+        "amount_charged": _safe_float_0(row.get("amount-charged")),
+        "surcharge_age_tier": row.get("surcharge-age-tier"),
+        "rate_surcharge": _safe_float_0(row.get("rate-surcharge")),
+
+        "synced_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+
+
+def _upsert_inventory_aged_history_rows(
+    rows: list[dict],
+    user_id: int,
+    marketplace_id: str,
+    report_id: str | None = None,
+    document_id: str | None = None,
+) -> tuple[int, int, int]:
+    """
+    Upsert parsed surcharge report rows into inventory_aged_history.
+
+    Returns:
+      saved_rows, skipped_missing_snapshot, mapped_product_names
+    """
+
+    if not rows:
+        return 0, 0, 0
+
+    mapped_product_names = _attach_product_names_to_aged_surcharge_rows(
+        rows=rows,
+        user_id=user_id,
+        marketplace_id=marketplace_id,
+    )
+
+    db_rows = []
+    skipped_missing_snapshot = 0
+
+    for r in rows:
+        sku = (r.get("sku") or "").strip()
+        asin = (r.get("asin") or "").strip()
+        fnsku = (r.get("fnsku") or "").strip()
+
+        if not sku and not asin and not fnsku:
+            continue
+
+        mapped = _row_to_inventory_aged_history(
+            row=r,
+            user_id=user_id,
+            marketplace_id=marketplace_id,
+            report_id=report_id,
+            document_id=document_id,
+        )
+
+        if not mapped.get("snapshot_date"):
+            skipped_missing_snapshot += 1
+
+            logger.warning(
+                "Skipping aged surcharge row because snapshot_date is missing/unparseable. "
+                "sku=%s raw_snapshot=%s",
+                sku,
+                r.get("snapshot-date"),
+            )
+            continue
+
+        db_rows.append(mapped)
+
+    if not db_rows:
+        return 0, skipped_missing_snapshot, mapped_product_names
+
+    stmt = pg_insert(InventoryAgedHistory).values(db_rows)
+
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_inventory_aged_history_key",
+        set_={
+            "report_id": stmt.excluded.report_id,
+            "document_id": stmt.excluded.document_id,
+
+            "product_name": stmt.excluded.product_name,
+            "condition": stmt.excluded.condition,
+            "per_unit_volume": stmt.excluded.per_unit_volume,
+            "currency": stmt.excluded.currency,
+            "volume_unit": stmt.excluded.volume_unit,
+            "country": stmt.excluded.country,
+
+            "qty_charged": stmt.excluded.qty_charged,
+            "amount_charged": stmt.excluded.amount_charged,
+            "rate_surcharge": stmt.excluded.rate_surcharge,
+
+            "synced_at": stmt.excluded.synced_at,
+            "updated_at": stmt.excluded.updated_at,
+        },
+    )
+
+    db.session.execute(stmt)
+    db.session.commit()
+
+    return len(db_rows), skipped_missing_snapshot, mapped_product_names
+
+
+@inventory_bp.route("/amazon_api/inventory/aged-surcharge", methods=["GET"])
+def fetch_aged_inventory_surcharge():
+    # ---------------- AUTH ----------------
+    auth_header = request.headers.get("Authorization")
+    user_id = None
+
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+
+        try:
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
+            user_id = payload.get("user_id")
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # ---------------- MARKETPLACE ----------------
+    _apply_region_and_marketplace_from_request()
+
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported marketplace",
+        }), 400
+
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    store_in_db = request.args.get("store_in_db", "true").lower() != "false"
+
+    # ---------------- DATE / MONTH PARAMS ----------------
+    try:
+        start_date, end_date, mode = _resolve_aged_surcharge_date_range()
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid date/month parameters: {str(e)}",
+        }), 400
+
+    data_start_time = f"{start_date}T00:00:00Z" if start_date else None
+    data_end_time = f"{end_date}T23:59:59Z" if end_date else None
+
+    # ---------------- REQUEST REPORT ----------------
+    try:
+        report_id = _request_aged_inventory_surcharge_report(
+            mp=mp,
+            data_start_time=data_start_time,
+            data_end_time=data_end_time,
+        )
+
+    except RuntimeError as e:
+        msg = str(e)
+        msg_lower = msg.lower()
+
+        if (
+            "403" in msg
+            or "unauthorized" in msg_lower
+            or "access to requested resource is denied" in msg_lower
+            or "forbidden" in msg_lower
+        ):
+            status = 403
+
+        elif "rate limit" in msg_lower or "quota" in msg_lower or "429" in msg:
+            status = 429
+
+        else:
+            status = 500
+
+        return jsonify({
+            "success": False,
+            "error": msg,
+        }), status
+
+    # ---------------- POLL REPORT ----------------
+    doc_id = _wait_for_report(report_id, timeout_sec=600, poll_interval=20)
+
+    if not doc_id:
+        return jsonify({
+            "success": False,
+            "error": "Aged Inventory Surcharge report did not complete",
+            "report_id": report_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        }), 502
+
+    # ---------------- DOWNLOAD REPORT ----------------
+    content = _download_report_document(doc_id)
+
+    if not content:
+        return jsonify({
+            "success": False,
+            "error": "Failed to download Aged Inventory Surcharge report document",
+            "report_id": report_id,
+            "document_id": doc_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        }), 502
+
+    # ---------------- PARSE REPORT ----------------
+    try:
+        rows = _parse_aged_inventory_surcharge_rows(content)
+
+    except Exception as e:
+        logger.exception("Failed to parse aged surcharge report")
+
+        return jsonify({
+            "success": False,
+            "error": f"Failed to parse report: {str(e)}",
+            "report_id": report_id,
+            "document_id": doc_id,
+        }), 500
+
+    rows_in_report = len(rows)
+
+    # ---------------- LOCAL DATE FILTER ----------------
+    rows = _filter_aged_surcharge_rows_by_date(
+        rows=rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # ---------------- SAVE DB ----------------
+    saved_rows = 0
+    skipped_missing_snapshot = 0
+    mapped_product_names = 0
+
+    if store_in_db:
+        try:
+            (
+                saved_rows,
+                skipped_missing_snapshot,
+                mapped_product_names,
+            ) = _upsert_inventory_aged_history_rows(
+                rows=rows,
+                user_id=user_id,
+                marketplace_id=mp,
+                report_id=report_id,
+                document_id=doc_id,
+            )
+
+        except Exception as e:
+            db.session.rollback()
+            logger.exception("Failed to save aged surcharge rows")
+
+            return jsonify({
+                "success": False,
+                "error": f"Failed to save inventory_aged_history rows: {str(e)}",
+                "report_id": report_id,
+                "document_id": doc_id,
+                "start_date": start_date,
+                "end_date": end_date,
+            }), 500
+
+    # ---------------- RESPONSE ----------------
+    return jsonify({
+        "success": True,
+        "marketplace_id": mp,
+        "country": MARKETPLACE_TO_COUNTRY.get(mp),
+        "report_type": AGED_INVENTORY_SURCHARGE_REPORT_TYPE,
+        "report_id": report_id,
+        "document_id": doc_id,
+
+        "mode": mode,
+        "start_date": start_date,
+        "end_date": end_date,
+
+        "rows_in_report": rows_in_report,
+        "count": len(rows),
+
+        "db": {
+            "table": "inventory_aged_history",
+            "store_in_db": store_in_db,
+            "saved_rows": saved_rows,
+            "skipped_missing_snapshot": skipped_missing_snapshot,
+            "mapped_product_names": mapped_product_names,
+        },
+
+        "data": rows,
+    }), 200
+
+
+
