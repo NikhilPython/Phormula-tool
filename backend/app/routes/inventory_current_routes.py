@@ -1,129 +1,3 @@
-# import os
-# import re
-# import math
-# from flask import Blueprint, request, jsonify
-# from sqlalchemy import create_engine, text, inspect
-# from dotenv import load_dotenv
-# import jwt
-# from flask import request, jsonify
-# from sqlalchemy import text, inspect
-# from app.utils.token_utils import get_effective_user_id_from_token
-# from config import Config
-
-
-# SECRET_KEY = Config.SECRET_KEY
-
-# load_dotenv()
-# db_url = os.getenv("DATABASE_URL")
-# primary_engine = create_engine(db_url, pool_pre_ping=True)
-
-# inventory_current_bp = Blueprint("inventory_current",__name__,)
-
-
-# def is_safe_identifier(value):
-#     return bool(re.fullmatch(r"[A-Za-z0-9_]+", str(value)))
-
-
-# def clean_value(value):
-#     if value is None:
-#         return None
-
-#     if isinstance(value, float):
-#         if math.isnan(value) or math.isinf(value):
-#             return None
-
-#     return value
-
-# @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
-# def get_inventory_current_table():
-#     if request.method == "OPTIONS":
-#         return jsonify({"message": "CORS Preflight OK"}), 200
-
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         return jsonify({"error": "Authorization token is missing or invalid"}), 401
-
-#     token = auth_header.split(" ")[1]
-
-#     try:
-#         payload, effective_user_id, member_id = get_effective_user_id_from_token(token)
-#         user_id = payload["user_id"]
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({"error": "Token has expired"}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({"error": "Invalid token"}), 401
-
-#     try:
-#         country_key = request.args.get("country_key")
-#         month_name = request.args.get("month_name")
-#         year = request.args.get("year")
-
-#         if not country_key or not month_name or not year:
-#             return jsonify({
-#                 "success": False,
-#                 "message": "Missing required params: country_key, month_name, year"
-#             }), 400
-
-#         user_id = str(user_id).strip()
-#         country_key = str(country_key).strip().lower()
-#         month_name = str(month_name).strip().lower()
-#         year = str(year).strip()
-
-#         if not all([
-#             is_safe_identifier(user_id),
-#             is_safe_identifier(country_key),
-#             is_safe_identifier(month_name),
-#             is_safe_identifier(year)
-#         ]):
-#             return jsonify({
-#                 "success": False,
-#                 "message": "Invalid table parameters"
-#             }), 400
-
-#         table_name = f"currentinventory_{user_id}_{country_key}_{month_name}{year}_table"
-
-#         inspector = inspect(primary_engine)
-
-#         if table_name not in inspector.get_table_names():
-#             return jsonify({
-#                 "success": False,
-#                 "message": f"Table not found: {table_name}",
-#                 "table_name": table_name,
-#                 "columns": [],
-#                 "rows": []
-#             }), 404
-
-#         query = text(f'SELECT * FROM "{table_name}"')
-
-#         with primary_engine.connect() as connection:
-#             result = connection.execute(query)
-#             columns = list(result.keys())
-
-#             rows = []
-#             for row in result.fetchall():
-#                 row_dict = dict(zip(columns, row))
-#                 cleaned_row = {
-#                     key: clean_value(value)
-#                     for key, value in row_dict.items()
-#                 }
-#                 rows.append(cleaned_row)
-
-#         return jsonify({
-#             "success": True,
-#             "table_name": table_name,
-#             "columns": columns,
-#             "rows": rows,
-#             "total_rows": len(rows)
-#         }), 200
-
-#     except Exception as e:
-#         return jsonify({
-#             "success": False,
-#             "message": "Error fetching inventory current table",
-#             "error": str(e)
-#         }), 500   
-
-
 import os
 import re
 import math
@@ -295,6 +169,50 @@ def build_inventory_categories(rows):
 
     return categories
 
+INVENTORY_AGE_COLUMNS = [
+    "inv-age-0-to-90-days",
+    "inv-age-91-to-180-days",
+    "inv-age-181-to-270-days",
+    "inv-age-271-to-365-days",
+    "inv-age-365-plus-days",
+]
+
+
+def build_inventory_age_summary(rows):
+    totals = {
+        column: 0
+        for column in INVENTORY_AGE_COLUMNS
+    }
+
+    for row in rows:
+        # Skip total row so we calculate from actual SKU/product rows
+        if is_total_row(row):
+            continue
+
+        for column in INVENTORY_AGE_COLUMNS:
+            totals[column] += to_number(row.get(column))
+
+    grand_total = sum(totals.values())
+
+    percentages = {}
+    for column, total in totals.items():
+        if grand_total > 0:
+            percentages[column] = round((total / grand_total) * 100, 2)
+        else:
+            percentages[column] = 0
+
+    return {
+        "total": grand_total,
+        "columns": {
+            column: {
+                "total": totals[column],
+                "percentage_share": percentages[column]
+            }
+            for column in INVENTORY_AGE_COLUMNS
+        }
+    }
+
+
 
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
 def get_inventory_current_table():
@@ -371,6 +289,7 @@ def get_inventory_current_table():
                 rows.append(cleaned_row)
 
         categories = build_inventory_categories(rows)
+        inventory_age_summary = build_inventory_age_summary(rows)
 
         return jsonify({
             "success": True,
@@ -379,6 +298,7 @@ def get_inventory_current_table():
             "rows": rows,
             "total_rows": len(rows),
             "categories": categories,
+            "inventory_age_summary": inventory_age_summary,
             "category_counts": {
                 "liquidate": len(categories["liquidate"]["items"]),
                 "discount": len(categories["discount"]["items"]),
