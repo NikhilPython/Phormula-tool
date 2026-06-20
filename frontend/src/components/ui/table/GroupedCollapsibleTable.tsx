@@ -446,7 +446,7 @@ export default function GroupedCollapsibleTable<RowT>({
       if (item.type === "group") {
         const g = groupMap.get(item.id);
         if (!g) continue;
-        const isCollapsed = collapsed[g.id];
+        const isCollapsed = collapsed[g.id] ?? true;
         out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
       } else {
         const c = singleMap.get(item.key);
@@ -488,14 +488,9 @@ export default function GroupedCollapsibleTable<RowT>({
     | { kind: "blank"; key: string; colSpan: number };
 
   const anyGroupExpanded = useMemo(
-    () => groups.some((g) => collapsed[g.id] === false),
+    () => groups.some((g) => (collapsed[g.id] ?? true) === false),
     [groups, collapsed]
   );
-
-  useEffect(() => {
-    onAnyGroupExpandedChange?.(anyGroupExpanded);
-  }, [anyGroupExpanded, onAnyGroupExpandedChange]);
-
 
   const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
     if (!anyGroupExpanded) return [];
@@ -557,8 +552,7 @@ export default function GroupedCollapsibleTable<RowT>({
           if (item.type === "group") {
             const g = groupMap.get(item.id);
             if (!g) return null;
-
-            const isCollapsed = collapsed[g.id];
+            const isCollapsed = collapsed[g.id] ?? true;
             const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
             if (cols.length === 0) return null;
 
@@ -628,8 +622,8 @@ export default function GroupedCollapsibleTable<RowT>({
 
           const targetGroupId = toggleGroupByColKey?.[c.key];
           const isExpandable = Boolean(targetGroupId);
-          const isTargetCollapsed = targetGroupId ? collapsed[targetGroupId] : true;
-
+          const isTargetCollapsed = targetGroupId ? (collapsed[targetGroupId] ?? true) : true;
+          
           return (
             <th
               key={c.key}

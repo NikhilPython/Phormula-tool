@@ -535,14 +535,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
   // const [showModal, setShowModal] = useState(false);
   const [showModal2, setShowModal2] = useState(false);
   const [mainColCount, setMainColCount] = useState(0);
-  const [anyGroupExpanded, setAnyGroupExpanded] = useState(false);
+  // const [anyGroupExpanded, setAnyGroupExpanded] = useState(false);
   const [summaryCollapsed, setSummaryCollapsed] = useState({
     ads: true,
     other: true,
   });
   const [showAllRows, setShowAllRows] = useState(false);
   const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean> | undefined>(
+    undefined
+  );
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
   };
@@ -674,12 +676,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const isPreviewMode =
     String(month).toUpperCase() === "NA" ||
     String(year).toUpperCase() === "NA";
-
-  // Token (memo once)
-  // const token = useMemo(() => {
-  //   if (typeof window === "undefined") return null;
-  //   return localStorage.getItem("jwtToken");
-  // }, []);
 
   // Persist homeCurrency for global
   const [persistedHomeCurrency, setPersistedHomeCurrency] = useState<string>(() => {
@@ -1163,6 +1159,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ]
       : []),
   ], [hasCm2Data]);
+
+  const anyGroupExpanded = useMemo(() => {
+    if (!groups.length) return false;
+
+    return groups.some((group) => {
+      return (collapsedGroups?.[group.id] ?? true) === false;
+    });
+  }, [groups, collapsedGroups]);
+
+  useEffect(() => {
+    if (!groups.length) return;
+
+    setCollapsedGroups((prev) => {
+      const next: Record<string, boolean> = {};
+
+      groups.forEach((group) => {
+        next[group.id] = prev?.[group.id] ?? true;
+      });
+
+      return next;
+    });
+
+    setAllColumnsExpanded(false);
+  }, [groups]);
 
   const buildAllGroupsCollapsedState = useCallback(
     (collapsedValue: boolean) => {
@@ -1859,7 +1879,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     groups.length > 0 && groups.every((group) => next[group.id] === false)
                   );
                 }}
-                onAnyGroupExpandedChange={setAnyGroupExpanded}
                 tableClassName={[
                   "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
                   anyGroupExpanded
@@ -1918,7 +1937,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 initialCollapsed={{
                   units_breakdown: true,
                   sales: true,
-                  promotions_breakdown: true,
+                  promotional_rebates: true,
                   cogs_breakdown: true,
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,

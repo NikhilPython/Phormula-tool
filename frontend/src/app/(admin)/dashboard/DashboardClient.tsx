@@ -3323,7 +3323,7 @@ export default function DashboardPage() {
 
     const dashboardSteps = [
         { num: 1, label: "Live MTD" },
-        { num: 2, label: "Current Inventory" },
+        { num: 2, label: "Inventory Data" },
         { num: 3, label: "Plotting Graph" },
     ];
 
@@ -9037,7 +9037,7 @@ export default function DashboardPage() {
         { id: "live", label: "MTD Sales" },
         { id: "summary", label: "AI Insights & Recommendations" },
         { id: "productwise", label: "P&L Breakdown" },
-        { id: "inventory", label: "Current Inventory" },
+        { id: "inventory", label: "Inventory Insights" },
     ];
 
     const HASH_TO_TAB: Record<string, TopTab> = {
@@ -9045,14 +9045,14 @@ export default function DashboardPage() {
         "ai-insights": "summary",
         // "mtd-pl": "productwise",
         "pnl-mtd": "productwise",
-        "current-inventory": "inventory",
+        "inventory-insights": "inventory",
     };
 
     const TAB_TO_HASH: Record<TopTab, string> = {
         live: "live-sales",
         summary: "ai-insights",
         productwise: "pnl-mtd",
-        inventory: "current-inventory",
+        inventory: "inventory-insights",
     };
 
     const handleConnectAmazonPreview = () => {
@@ -11317,8 +11317,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
             graphRegionToUse === "Global" ? "Global" : graphRegionToUse;
 
         exportCurrentInventoryExcel({
-            filename: `Current_Inventory_${titleCountry}_${formattedMonthYear}.xlsx`,
-            titleLine: `Amazon ${titleCountry} - Current Inventory - ${formattedMonthYear}`,
+            filename: `Inventory_Insights_${titleCountry}_${formattedMonthYear}.xlsx`,
+            titleLine: `Amazon ${titleCountry} - Inventory_Insights - ${formattedMonthYear}`,
             countryName: countryNameForGraph,
             titleCountry,
             platformLabel: "Phormula",
@@ -11337,9 +11337,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
         profileHomeCurrency,
         currentInventoryExportRows,
     ]);
-
-
-
 
     const mtdCm2ProfitCurrent = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
@@ -13193,34 +13190,13 @@ ${pageLoading
                             </div>
                         </div>
                     </>
-
                 )}
 
-                {/* {amazonIntegrated && graphRegionToUse !== "Global" && ( */}
-                {/* {activeTab === "inventory" && (
-                    <div id="current-inventory" className="scroll-mt-[80px]">
-                        <CurrentInventorySection
-                            region={hasRealInventoryRows ? graphRegionToUse : "UK"}
-                            invLoading={!hasRealInventoryRows && !shouldShowDummyUi && invLoading}
-                            invError={hasRealInventoryRows ? "" : shouldShowDummyUi ? "" : invError}
-                            invRows={finalInventoryRows}
-                            inventoryAlerts={finalInventoryAlerts}
-                            userData={userData}
-                            convertToDisplayCurrency={convertToDisplayCurrency}
-                            displayCurrency={displayCurrency}
-                        />
-                        {!invLoading && !invError && (
-                            <InventoryAgeGraphSection
-                                invRows={invRows}
-                                region={graphRegionToUse}
-                                selectedCountry="uk"
-                            />
-                        )}
-                    </div>
-                )} */}
-
                 {activeTab === "inventory" && (
-                    <div id="current-inventory" className="scroll-mt-[80px] space-y-6">
+                    <div
+                        id="inventory-insights"
+                        className="mt-4 scroll-mt-[80px] space-y-6"
+                    >
                         {inventoryInsightsLoading ? (
                             <div className="min-h-[420px] flex items-center justify-center">
                                 <Loader fullscreen={false} transparent />
