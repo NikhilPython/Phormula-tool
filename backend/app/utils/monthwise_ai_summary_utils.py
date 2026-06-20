@@ -1395,81 +1395,7 @@ def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.Dat
     return pd.DataFrame([row])
 
 
-# def aggregate_monthly_tables_for_yearly_comparison_generic(
-#     *,
-#     user_id: int,
-#     year: int,
-#     fetch_monthly_func,
-# ) -> dict:
-#     """
-#     Finds monthly tables available in selected year,
-#     then aggregates those same months for selected year and previous year.
 
-#     Example:
-#     If selected year has Jan-Apr data,
-#     compare Jan-Apr selected year vs Jan-Apr previous year.
-#     """
-
-#     available_months = []
-
-#     current_detail_frames = []
-#     current_total_frames = []
-
-#     prev_detail_frames = []
-#     prev_total_frames = []
-
-#     for m in range(1, 13):
-#         df_cur = fetch_monthly_func(
-#             user_id=user_id,
-#             timeline=str(m),
-#             year=year,
-#         )
-
-#         if df_cur.empty:
-#             continue
-
-#         available_months.append(m)
-
-#         cur_detail, cur_total = _split_total_row(df_cur)
-
-#         if not cur_detail.empty:
-#             current_detail_frames.append(cur_detail)
-
-#         if not cur_total.empty:
-#             current_total_frames.append(cur_total)
-
-#         df_prev = fetch_monthly_func(
-#             user_id=user_id,
-#             timeline=str(m),
-#             year=year - 1,
-#         )
-
-#         prev_detail, prev_total = _split_total_row(df_prev)
-
-#         if not prev_detail.empty:
-#             prev_detail_frames.append(prev_detail)
-
-#         if not prev_total.empty:
-#             prev_total_frames.append(prev_total)
-
-#     def concat_or_empty(frames):
-#         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-
-#     current_detail_all = concat_or_empty(current_detail_frames)
-#     current_total_all = concat_or_empty(current_total_frames)
-
-#     prev_detail_all = concat_or_empty(prev_detail_frames)
-#     prev_total_all = concat_or_empty(prev_total_frames)
-
-#     return {
-#         "available_months": available_months,
-#         "df_current_detail": current_detail_all,
-#         "df_current_total": aggregate_total_rows_for_partial_year(current_total_all),
-#         "df_prev_detail": prev_detail_all,
-#         "df_prev_total": aggregate_total_rows_for_partial_year(prev_total_all),
-#         "sku_current": compute_sku_precalc(current_detail_all),
-#         "sku_prev": compute_sku_precalc(prev_detail_all),
-#     }
 
 def aggregate_monthly_tables_for_yearly_comparison_generic(
     *,
@@ -1788,76 +1714,7 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
 
     return output
 
-# def build_remaining_skus_aggregate(
-#     sku_current: dict,
-#     sku_prev: dict,
-#     focus_skus: list[str],
-# ) -> dict:
 
-#     focus_set = set(str(s) for s in (focus_skus or []))
-
-#     remaining = [
-#         sku for sku in (set(sku_current.keys()) | set(sku_prev.keys()))
-#         if str(sku) not in focus_set
-#         and str(sku).strip().lower() not in TOTAL_LABELS
-#     ]
-
-#     if not remaining:
-#         return {}
-
-#     def sum_metric(source: dict, metric: str) -> float:
-#         total = 0.0
-#         for sku in remaining:
-#             try:
-#                 total += float(source.get(sku, {}).get(metric, 0.0) or 0.0)
-#             except (TypeError, ValueError):
-#                 continue
-#         return round(total, 2)
-
-#     # --- additive ---
-#     cur_units = sum_metric(sku_current, "total_quantity")
-#     prev_units = sum_metric(sku_prev, "total_quantity")
-
-#     cur_sales = sum_metric(sku_current, "net_sales")
-#     prev_sales = sum_metric(sku_prev, "net_sales")
-
-#     cur_profit = sum_metric(sku_current, "profit")
-#     prev_profit = sum_metric(sku_prev, "profit")
-
-#     # --- recalculated ---
-#     cur_asp = round(cur_sales / cur_units, 2) if cur_units else None
-#     prev_asp = round(prev_sales / prev_units, 2) if prev_units else None
-
-#     cur_ppu = round(cur_profit / cur_units, 2) if cur_units else None
-#     prev_ppu = round(prev_profit / prev_units, 2) if prev_units else None
-
-#     def mk(cur, prev):
-#         if cur is None or prev is None:
-#             return {
-#                 "current": cur,
-#                 "previous": prev,
-#                 "delta": None,
-#                 "delta_pct": None
-#             }
-
-#         delta = round(cur - prev, 2)
-#         pct = round((delta / prev) * 100, 2) if prev != 0 else None
-
-#         return {
-#             "current": round(cur, 2),
-#             "previous": round(prev, 2),
-#             "delta": delta,
-#             "delta_pct": pct
-#         }
-
-#     return {
-#         "product_name": "Other SKUs",
-#         "total_quantity": mk(cur_units, prev_units),
-#         "net_sales": mk(cur_sales, prev_sales),
-#         "profit": mk(cur_profit, prev_profit),
-#         "asp": mk(cur_asp, prev_asp),
-#         "unit_wise_profitability": mk(cur_ppu, prev_ppu),
-#     }
 
 def build_remaining_skus_aggregate(
     sku_current: dict,
