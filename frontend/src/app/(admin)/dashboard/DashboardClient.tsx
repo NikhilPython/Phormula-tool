@@ -9040,14 +9040,14 @@ export default function DashboardPage() {
 
     type TopTab =
         | "live"
-        | "summary"
         | "productwise"
+        | "summary"
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "live", label: "MTD Sales" },
-        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "productwise", label: "P&L Breakdown" },
+        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "inventory", label: "Inventory Insights" },
     ];
 
