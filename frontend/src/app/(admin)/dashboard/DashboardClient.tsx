@@ -1709,7 +1709,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     },
     {
         key: "unfulfillable",
-        label: "Unfulfillable inventory",
+        label: "Unfulfillable Inventory",
         description: "High 365+ days or unfulfillable inventory",
         color: "#3A8EA4",
     },
@@ -1730,22 +1730,28 @@ const INVENTORY_ACTION_META: Record<
         backgroundColor: string;
     }
 > = {
-    liquidate: {
-        label: "Liquidate",
-        description: "High 271–365 days inventory",
+    healthy: {
+        label: "Healthy",
+        description: "Inventory in 0–90 days bucket",
+        color: "#7B9A6D",
+        backgroundColor: "#ffffff",
+    },
+    high_alert: {
+        label: "High Alert",
+        description: "Critical inventory alert SKUs",
         color: "#B75A5A",
         backgroundColor: "#ffffff",
     },
     discount: {
         label: "Discount",
-        description: "High 181–270 days inventory",
-        color: "#ED9F50",
+        description: "Inventory in 91–180 days bucket",
+        color: "#7B9A6D",
         backgroundColor: "#ffffff",
     },
-    monitor: {
-        label: "Monitor",
-        description: "Ageing or watchlist inventory",
-        color: "#FDD36F",
+    liquidate: {
+        label: "Liquidate",
+        description: "Inventory older than 180 days",
+        color: "#ED9F50",
         backgroundColor: "#ffffff",
     },
     unfulfillable: {
@@ -1755,7 +1761,7 @@ const INVENTORY_ACTION_META: Record<
         backgroundColor: "#ffffff",
     },
     estimated_storage_cost: {
-        label: "Storage Cost",
+        label: "Estimate Storage",
         description: "Estimated next-month storage cost",
         color: "#C49466",
         backgroundColor: "#ffffff",
@@ -2102,53 +2108,199 @@ const buildInventoryInsightsFromResponses = (
             ? trendDataFromSummary
             : trendDataFromInventoryCurrent;
 
-    const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
+    // const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
 
-    const actions: ActionCardItem[] = Object.entries(INVENTORY_ACTION_META).map(
-        ([key, meta]) => {
-            const categoryFromResponse = latestResponse?.categories?.[key] as any;
+    // const actions: ActionCardItem[] = Object.entries(INVENTORY_ACTION_META).map(
+    //     ([key, meta]) => {
+    //         const categoryFromResponse = latestResponse?.categories?.[key] as any;
 
-            const labelFromApi =
-                categoryFromResponse?.name ||
-                categoryFromResponse?.label ||
-                meta.label;
+    //         const labelFromApi =
+    //             categoryFromResponse?.name ||
+    //             categoryFromResponse?.label ||
+    //             meta.label;
 
-            const descriptionFromApi =
-                categoryFromResponse?.description || meta.description;
+    //         const descriptionFromApi =
+    //             categoryFromResponse?.description || meta.description;
 
-            const count =
-                inventoryToNum(latestResponse?.category_counts?.[key]) ||
-                inventoryToNum(categoryFromResponse?.items?.length);
+    //         const count =
+    //             inventoryToNum(latestResponse?.category_counts?.[key]) ||
+    //             inventoryToNum(categoryFromResponse?.items?.length);
 
-            if (key === "estimated_storage_cost") {
-                return {
-                    key,
-                    label: labelFromApi,
-                    description: descriptionFromApi,
-                    count,
-                    displayValue: formatInventoryStorageCost(
-                        storageCostTotal,
+    //         if (key === "estimated_storage_cost") {
+    //             return {
+    //                 key,
+    //                 label: labelFromApi,
+    //                 description: descriptionFromApi,
+    //                 count,
+    //                 displayValue: formatInventoryStorageCost(
+    //                     storageCostTotal,
+    //                     countryName,
+    //                     homeCurrency
+    //                 ),
+    //                 valueSuffix: "Storage Cost",
+    //                 color: meta.color,
+    //                 backgroundColor: meta.backgroundColor,
+    //             };
+    //         }
+
+    //         return {
+    //             key,
+    //             label: labelFromApi,
+    //             description: descriptionFromApi,
+    //             count,
+    //             displayValue: count,
+    //             valueSuffix: "SKUs",
+    //             color: meta.color,
+    //             backgroundColor: meta.backgroundColor,
+    //         };
+    //     }
+    // );
+
+    const healthyRows = latestRows.filter((row) =>
+        hasInventoryValue(row, "inv-age-0-to-90-days")
+    );
+
+    const highAlertRows = latestRows.filter((row) => hasHighAlert(row));
+
+    const discountRows = latestRows.filter((row) =>
+        hasInventoryValue(row, "inv-age-91-to-180-days")
+    );
+
+    const liquidateRows = latestRows.filter((row) =>
+        hasOlderThan180Inventory(row)
+    );
+
+    const unfulfillableRows = latestRows.filter((row) =>
+        inventoryToNum(row?.["unfulfillable-quantity"]) > 0
+    );
+
+    const estimatedStorageCategory =
+        latestResponse?.categories?.estimated_storage_cost as any;
+
+    const storageCostTotal =
+        getEstimatedStorageCostTotal(latestResponse) ||
+        latestRows.reduce(
+            (sum, row) =>
+                sum + inventoryToNum(row?.["estimated-storage-cost-next-month"]),
+            0
+        );
+
+    const previousStorageCostTotal = inventoryToNum(
+        estimatedStorageCategory?.previous_storage_cost
+    );
+
+    const storageCostDelta = storageCostTotal - previousStorageCostTotal;
+
+    const storageCostDeltaPercentage =
+        previousStorageCostTotal > 0
+            ? (storageCostDelta / Math.abs(previousStorageCostTotal)) * 100
+            : null;
+
+    const storageCostRows = latestRows.filter((row) =>
+        inventoryToNum(row?.["estimated-storage-cost-next-month"]) > 0
+    );
+
+    const actions: ActionCardItem[] = [
+        {
+            key: "healthy",
+            label: INVENTORY_ACTION_META.healthy.label,
+            description: INVENTORY_ACTION_META.healthy.description,
+            count: getUniqueSkuCount(healthyRows),
+            displayValue: getUniqueSkuCount(healthyRows),
+            skuCount: getUniqueSkuCount(healthyRows),
+            unitCount: sumInventoryUnitsByKeys(healthyRows, [
+                "inv-age-0-to-90-days",
+            ]),
+            color: INVENTORY_ACTION_META.healthy.color,
+            backgroundColor: INVENTORY_ACTION_META.healthy.backgroundColor,
+        },
+        {
+            key: "high_alert",
+            label: INVENTORY_ACTION_META.high_alert.label,
+            description: INVENTORY_ACTION_META.high_alert.description,
+            count: getUniqueSkuCount(highAlertRows),
+            displayValue: getUniqueSkuCount(highAlertRows),
+            skuCount: getUniqueSkuCount(highAlertRows),
+            unitCount: sumInventoryUnitsByKeys(highAlertRows, [
+                "inv-age-0-to-90-days",
+                "inv-age-91-to-180-days",
+                "inv-age-181-to-270-days",
+                "inv-age-271-to-365-days",
+                "inv-age-365-plus-days",
+            ]),
+            color: INVENTORY_ACTION_META.high_alert.color,
+            backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
+        },
+        {
+            key: "discount",
+            label: INVENTORY_ACTION_META.discount.label,
+            description: INVENTORY_ACTION_META.discount.description,
+            count: getUniqueSkuCount(discountRows),
+            displayValue: getUniqueSkuCount(discountRows),
+            skuCount: getUniqueSkuCount(discountRows),
+            unitCount: sumInventoryUnitsByKeys(discountRows, [
+                "inv-age-91-to-180-days",
+            ]),
+            color: INVENTORY_ACTION_META.discount.color,
+            backgroundColor: INVENTORY_ACTION_META.discount.backgroundColor,
+        },
+        {
+            key: "liquidate",
+            label: INVENTORY_ACTION_META.liquidate.label,
+            description: INVENTORY_ACTION_META.liquidate.description,
+            count: getUniqueSkuCount(liquidateRows),
+            displayValue: getUniqueSkuCount(liquidateRows),
+            skuCount: getUniqueSkuCount(liquidateRows),
+            unitCount: sumInventoryUnitsByKeys(liquidateRows, [
+                "inv-age-181-to-270-days",
+                "inv-age-271-to-365-days",
+                "inv-age-365-plus-days",
+            ]),
+            color: INVENTORY_ACTION_META.liquidate.color,
+            backgroundColor: INVENTORY_ACTION_META.liquidate.backgroundColor,
+        },
+        {
+            key: "unfulfillable",
+            label: INVENTORY_ACTION_META.unfulfillable.label,
+            description: INVENTORY_ACTION_META.unfulfillable.description,
+            count: getUniqueSkuCount(unfulfillableRows),
+            displayValue: getUniqueSkuCount(unfulfillableRows),
+            skuCount: getUniqueSkuCount(unfulfillableRows),
+            unitCount: unfulfillableRows.reduce(
+                (sum, row) => sum + inventoryToNum(row?.["unfulfillable-quantity"]),
+                0
+            ),
+            color: INVENTORY_ACTION_META.unfulfillable.color,
+            backgroundColor: INVENTORY_ACTION_META.unfulfillable.backgroundColor,
+        },
+        {
+            key: "estimated_storage_cost",
+            label: INVENTORY_ACTION_META.estimated_storage_cost.label,
+            description: INVENTORY_ACTION_META.estimated_storage_cost.description,
+            count: getUniqueSkuCount(storageCostRows),
+            displayValue: formatInventoryStorageCost(
+                storageCostTotal,
+                countryName,
+                homeCurrency
+            ),
+            deltaValue:
+                previousStorageCostTotal > 0
+                    ? formatInventoryStorageCost(
+                        storageCostDelta,
                         countryName,
                         homeCurrency
-                    ),
-                    valueSuffix: "Storage Cost",
-                    color: meta.color,
-                    backgroundColor: meta.backgroundColor,
-                };
-            }
-
-            return {
-                key,
-                label: labelFromApi,
-                description: descriptionFromApi,
-                count,
-                displayValue: count,
-                valueSuffix: "SKUs",
-                color: meta.color,
-                backgroundColor: meta.backgroundColor,
-            };
+                    )
+                    : undefined,
+            deltaPercentage: storageCostDeltaPercentage,
+            skuCount: getUniqueSkuCount(storageCostRows),
+            unitCount: storageCostRows.reduce(
+                (sum, row) => sum + getRowAgeingTotalUnits(row),
+                0
+            ),
+            color: INVENTORY_ACTION_META.estimated_storage_cost.color,
+            backgroundColor: INVENTORY_ACTION_META.estimated_storage_cost.backgroundColor,
         }
-    );
+    ];
 
     return {
         heatmapBuckets: INVENTORY_BUCKETS,
@@ -2167,6 +2319,60 @@ const buildInventoryInsightsFromResponses = (
         actions,
         actionLogic: INVENTORY_ACTION_LOGIC,
     };
+};
+
+const getUniqueSkuCount = (rows: InventoryCurrentRow[]) => {
+    const skus = new Set<string>();
+
+    rows.forEach((row) => {
+        const sku = getInventoryRowSku(row);
+        if (sku) skus.add(sku);
+    });
+
+    return skus.size;
+};
+
+const sumInventoryUnitsByKeys = (
+    rows: InventoryCurrentRow[],
+    keys: string[]
+) => {
+    return rows.reduce((sum, row) => {
+        return (
+            sum +
+            keys.reduce(
+                (rowSum, key) => rowSum + inventoryToNum(row?.[key]),
+                0
+            )
+        );
+    }, 0);
+};
+
+const getRowAgeingTotalUnits = (row: InventoryCurrentRow) => {
+    return sumInventoryUnitsByKeys([row], [
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+    ]);
+};
+
+const hasInventoryValue = (row: InventoryCurrentRow, key: string) => {
+    return inventoryToNum(row?.[key]) > 0;
+};
+
+const hasOlderThan180Inventory = (row: InventoryCurrentRow) => {
+    return (
+        inventoryToNum(row?.["inv-age-181-to-270-days"]) > 0 ||
+        inventoryToNum(row?.["inv-age-271-to-365-days"]) > 0 ||
+        inventoryToNum(row?.["inv-age-365-plus-days"]) > 0
+    );
+};
+
+const hasHighAlert = (row: InventoryCurrentRow) => {
+    return String(row?.["Inventory Alerts"] || "")
+        .trim()
+        .toLowerCase() === "high alert";
 };
 
 export default function DashboardPage() {
@@ -11957,7 +12163,7 @@ ${pageLoading
                 buttonText="Complete Setup"
                 onAction={handleConnectAmazonPreview}
             >
-                {["summary", "productwise", "inventory"].includes(activeTab) && (
+                {["summary", "productwise"].includes(activeTab) && (
                     <DashboardStickyKpis items={stickyKpiItems} />
                 )}
 

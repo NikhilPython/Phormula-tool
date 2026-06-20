@@ -76,7 +76,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                 {hasActions && (
                     <ActionBasedDashboard
                         title="Action-Based Dashboard"
-                        subtitle="Group SKUs by recommended action"
+                        subtitle=""
                         actions={actions}
                         actionLogic={actionLogic}
                         onViewDetails={onActionViewDetails}
