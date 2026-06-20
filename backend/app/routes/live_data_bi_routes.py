@@ -2845,14 +2845,40 @@ def live_mtd_vs_previous():
             excel_live_recommendations[sku] = rec
 
         # -------------------------------------------------
-        # 🔥 SKU-LEVEL INVENTORY FLAGS (FOR PROMPT-2)
+        # 🔥 SKU-LEVEL INVENTORY FLAGS
+        # Alerts/recommendations are still generated ONLY inside
+        # generate_sku_inventory_flags().
+        #
+        # Route only passes the correct coverage source because
+        # frontend_all_action_rows already has current_inventory
+        # and coverage_ratio_months.
         # -------------------------------------------------
+
+        coverage_override_by_sku = {}
+
+        for row in (frontend_all_action_rows or all_action_rows or []):
+            sku = str(row.get("sku") or "").strip().upper()
+            if not sku:
+                continue
+
+            cov = row.get("coverage_ratio_months")
+
+            if cov is None:
+                cov = row.get("inventory_coverage_ratio")
+
+            if cov is not None:
+                coverage_override_by_sku[sku] = cov
+
         try:
             sku_inventory_flags = generate_sku_inventory_flags(
                 user_id=user_id,
                 country=country,
                 focus_skus=all_action_skus,
+                coverage_override_by_sku=coverage_override_by_sku,
             )
+
+            print("[DEBUG] coverage_override_by_sku:", coverage_override_by_sku)
+            print("[DEBUG] sku_inventory_flags:", json.dumps(sku_inventory_flags, indent=2, default=str))    
         except Exception as e:
             print("[WARN] Failed to build SKU inventory flags:", e)
             sku_inventory_flags = {}
@@ -3078,6 +3104,37 @@ def live_mtd_vs_previous():
         for sku, action in sku_strategy_actions.items():
             if sku in excel_live_recommendations:
                 action["recommendation"] = excel_live_recommendations.get(sku, "")
+
+        # -------------------------------------------------
+        # ✅ Inventory recommendation must come ONLY from
+        # generate_sku_inventory_flags()
+        # Route should not create inventory alert logic.
+        # -------------------------------------------------
+        for sku, action in sku_strategy_actions.items():
+            sku_key = str(sku or "").strip().upper()
+
+            inv_flag = sku_inventory_flags.get(sku_key)
+
+            if not inv_flag:
+                # No deterministic inventory flag found for this SKU.
+                # Clear AI/cache inventory text so wrong "stable" does not show.
+                action["inventory_recommendation"] = ""
+                action["inventory_alert"] = "No alert"
+                action["inventory_alert_type"] = "none"
+                action["inventory_coverage_ratio"] = None
+                action["coverage_ratio_months"] = None
+                action["long_term_aged_units"] = 0
+                action["estimated_storage_cost"] = 0
+                continue
+
+            action["inventory_recommendation"] = inv_flag.get("inventory_recommendation", "")
+            action["inventory_alert"] = inv_flag.get("inventory_alert", "No alert")
+            action["inventory_alert_type"] = inv_flag.get("inventory_alert_type", "none")
+            action["inventory_coverage_ratio"] = inv_flag.get("inventory_coverage_ratio")
+            action["coverage_ratio_months"] = inv_flag.get("coverage_ratio_months")
+            action["long_term_aged_units"] = inv_flag.get("long_term_aged_units", 0)
+            action["estimated_storage_cost"] = inv_flag.get("estimated_storage_cost", 0)
+
         remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
         remaining_skus_journey = strategy_parsed.get("remaining_skus_journey_summary")
 

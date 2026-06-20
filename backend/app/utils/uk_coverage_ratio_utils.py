@@ -213,28 +213,112 @@ def fetch_sku_product_mapping(user_id: int) -> pd.DataFrame:
     return df
 
 
+# def compute_inventory_coverage_ratio(user_id: int, country: str) -> pd.DataFrame:
+#     inv_df = fetch_available_inventory(user_id)
+#     sales_df = fetch_last_30_days_units(user_id, country)
+
+#     df = inv_df.merge(sales_df, on="sku", how="left")
+#     df["last_30_days_units"] = df["last_30_days_units"].fillna(0.0)
+
+#     df["inventory_coverage_ratio"] = df.apply(
+#         lambda r: round(r["available"] / r["last_30_days_units"], 2)
+#         if r["last_30_days_units"] > 0 else None,
+#         axis=1,
+#     )
+
+#     try:
+#         sku_map_df = fetch_sku_product_mapping(user_id)
+
+#         if not sku_map_df.empty:
+#             sku_map_df = sku_map_df[["sku", "product_name"]].drop_duplicates("sku")
+#             df = df.merge(
+#                 sku_map_df,
+#                 on="sku",
+#                 how="left"
+#             )
+#         else:
+#             df["product_name"] = None
+
+#     except Exception:
+#         df["product_name"] = None
+
+#     df = df[
+#         ["sku", "product_name", "available", "last_30_days_units", "inventory_coverage_ratio"]
+#     ]
+
+#     return df
+
 def compute_inventory_coverage_ratio(user_id: int, country: str) -> pd.DataFrame:
     inv_df = fetch_available_inventory(user_id)
     sales_df = fetch_last_30_days_units(user_id, country)
 
+    if inv_df is None or inv_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "sku",
+                "product_name",
+                "available",
+                "last_30_days_units",
+                "inventory_coverage_ratio",
+            ]
+        )
+
+    inv_df = inv_df.copy()
+    sales_df = sales_df.copy() if sales_df is not None else pd.DataFrame(columns=["sku", "last_30_days_units"])
+
+    # ✅ Normalize SKU on both sides before merge
+    inv_df["sku"] = inv_df["sku"].astype(str).str.strip().str.upper()
+    sales_df["sku"] = sales_df["sku"].astype(str).str.strip().str.upper()
+
+    # ✅ Clean invalid SKU values
+    inv_df = inv_df[
+        ~inv_df["sku"].str.lower().isin(["", "nan", "none", "null", "0"])
+    ]
+
+    sales_df = sales_df[
+        ~sales_df["sku"].str.lower().isin(["", "nan", "none", "null", "0"])
+    ]
+
+    # ✅ Force numeric
+    inv_df["available"] = pd.to_numeric(inv_df.get("available", 0), errors="coerce").fillna(0.0)
+
+    if "last_30_days_units" not in sales_df.columns:
+        sales_df["last_30_days_units"] = 0.0
+
+    sales_df["last_30_days_units"] = pd.to_numeric(
+        sales_df["last_30_days_units"],
+        errors="coerce",
+    ).fillna(0.0)
+
+    # ✅ If sales_df has duplicate SKU rows, aggregate before merge
+    sales_df = (
+        sales_df.groupby("sku", as_index=False)["last_30_days_units"]
+        .sum()
+    )
+
     df = inv_df.merge(sales_df, on="sku", how="left")
-    df["last_30_days_units"] = df["last_30_days_units"].fillna(0.0)
+    df["last_30_days_units"] = pd.to_numeric(
+        df["last_30_days_units"],
+        errors="coerce",
+    ).fillna(0.0)
 
     df["inventory_coverage_ratio"] = df.apply(
-        lambda r: round(r["available"] / r["last_30_days_units"], 2)
-        if r["last_30_days_units"] > 0 else None,
+        lambda r: round(float(r["available"]) / float(r["last_30_days_units"]), 2)
+        if float(r["last_30_days_units"] or 0) > 0 else None,
         axis=1,
     )
 
     try:
         sku_map_df = fetch_sku_product_mapping(user_id)
 
-        if not sku_map_df.empty:
+        if sku_map_df is not None and not sku_map_df.empty:
             sku_map_df = sku_map_df[["sku", "product_name"]].drop_duplicates("sku")
+            sku_map_df["sku"] = sku_map_df["sku"].astype(str).str.strip().str.upper()
+
             df = df.merge(
                 sku_map_df,
                 on="sku",
-                how="left"
+                how="left",
             )
         else:
             df["product_name"] = None
@@ -243,9 +327,13 @@ def compute_inventory_coverage_ratio(user_id: int, country: str) -> pd.DataFrame
         df["product_name"] = None
 
     df = df[
-        ["sku", "product_name", "available", "last_30_days_units", "inventory_coverage_ratio"]
+        [
+            "sku",
+            "product_name",
+            "available",
+            "last_30_days_units",
+            "inventory_coverage_ratio",
+        ]
     ]
 
-    return df
-
-    
+    return df    

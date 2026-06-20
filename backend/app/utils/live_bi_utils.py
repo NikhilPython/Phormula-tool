@@ -602,7 +602,9 @@ def fetch_transit_time(user_id: int, marketplace: str, country: str):
         "marketplace": row.marketplace,
         "country": row.country,
     }
+
 # -----------------------------------------------------------------------------
+
 def fetch_inventory_aged_by_user(user_id: int, country: str) -> pd.DataFrame:
     marketplace_id = marketplace_id_for_country(country)
 
@@ -3697,116 +3699,208 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_
 
     return alerts
 
-
 def generate_sku_inventory_flags(
     user_id: int,
     country: str,
     focus_skus: list[str] | None = None,
+    coverage_override_by_sku: dict | None = None,
 ) -> dict:
     """
     Returns SKU-level inventory flags including:
     - alert_type
     - numeric signals
-    - inventory_recommendation (ready sentence)
+    - inventory_recommendation
+
+    IMPORTANT:
+    - All inventory alert logic stays inside this function.
+    - Route may pass coverage_override_by_sku only as a data source.
     """
 
     flags: dict[str, dict] = {}
 
+    # -------------------------------------------------
+    # 1. Build coverage map
+    # -------------------------------------------------
     coverage_df = compute_inventory_coverage_ratio(user_id, country)
 
-    coverage_map = {}
+    coverage_map: dict[str, float | None] = {}
+
     if coverage_df is not None and not coverage_df.empty:
         for _, r in coverage_df.iterrows():
             sku = str(r.get("sku") or "").strip()
             if not sku:
                 continue
-            cov = r.get("inventory_coverage_ratio")
-            coverage_map[sku] = float(cov) if cov is not None else None
 
+            cov = pd.to_numeric(
+                r.get("inventory_coverage_ratio"),
+                errors="coerce",
+            )
+
+            coverage_map[sku.upper()] = float(cov) if pd.notna(cov) else None
+
+    # -------------------------------------------------
+    # 2. Override coverage from route/card rows if supplied
+    # This fixes cases where all_action_rows has 0.58
+    # but compute_inventory_coverage_ratio() returns 0/missing.
+    # -------------------------------------------------
+    for sku, cov in (coverage_override_by_sku or {}).items():
+        sku_key = str(sku or "").strip().upper()
+        if not sku_key:
+            continue
+
+        cov_num = pd.to_numeric(cov, errors="coerce")
+
+        if pd.notna(cov_num):
+            coverage_map[sku_key] = float(cov_num)
+
+    # -------------------------------------------------
+    # 3. Fetch inventory aged
+    # -------------------------------------------------
     inv_df = fetch_inventory_aged_by_user(user_id, country)
 
-    focus_set = set([str(x).strip() for x in (focus_skus or [])]) if focus_skus else None
+    focus_set = (
+        {str(x).strip().upper() for x in focus_skus if str(x).strip()}
+        if focus_skus
+        else None
+    )
 
     def _num(v):
         try:
-            if v is None or (isinstance(v, float) and np.isnan(v)):
+            if v is None or pd.isna(v):
                 return 0.0
             return float(v)
-        except:
+        except Exception:
             return 0.0
 
-    if inv_df is None or inv_df.empty:
+    # -------------------------------------------------
+    # 4. Build inventory aged map
+    # -------------------------------------------------
+    inv_by_sku = {}
+
+    if inv_df is not None and not inv_df.empty:
+        for _, r in inv_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            inv_by_sku[sku.upper()] = r
+
+    # -------------------------------------------------
+    # 5. Candidate SKUs
+    # Use union so low-coverage SKUs still get alerts
+    # even if inventory_aged row is missing.
+    # -------------------------------------------------
+    candidate_skus = set(coverage_map.keys()) | set(inv_by_sku.keys())
+
+    if focus_set:
+        candidate_skus = candidate_skus & focus_set
+
+    if not candidate_skus:
         return flags
 
-    for _, r in inv_df.iterrows():
-        sku = str(r.get("sku") or "").strip()
-        if not sku:
-            continue
+    # -------------------------------------------------
+    # 6. Generate flags
+    # -------------------------------------------------
+    for sku_key in sorted(candidate_skus):
+        r = inv_by_sku.get(sku_key)
 
-        if focus_set and sku not in focus_set:
-            continue
+        coverage_ratio = coverage_map.get(sku_key)
 
-        coverage_ratio = coverage_map.get(sku)
+        # If no inventory_aged row exists, all age/cost values remain 0.
+        if r is None:
+            legacy_aged_units = 0.0
+            detailed_aged_units = 0.0
+            estimated_storage_cost = 0.0
+        else:
+            # ✅ SUPPORT BOTH SCHEMAS WITHOUT DOUBLE COUNTING
+            # Legacy schema and detailed schema overlap.
+            # Do NOT add both together.
+            legacy_aged_units = (
+                _num(r.get("inv-age-181-to-270-days"))
+                + _num(r.get("inv-age-271-to-365-days"))
+                + _num(r.get("inv-age-365-plus-days"))
+            )
 
+            detailed_aged_units = (
+                _num(r.get("inv-age-181-to-330-days"))
+                + _num(r.get("inv-age-331-to-365-days"))
+                + _num(r.get("inv-age-366-to-455-days"))
+                + _num(r.get("inv-age-456-plus-days"))
+            )
 
-        # ✅ SUPPORT BOTH SCHEMAS
-        aged_1 = _num(r.get("inv-age-181-to-270-days"))
-        aged_2 = _num(r.get("inv-age-271-to-365-days"))
-        aged_3 = _num(r.get("inv-age-365-plus-days"))
+            estimated_storage_cost = _num(
+                r.get("estimated-storage-cost-next-month")
+            )
 
-        aged_alt_1 = _num(r.get("inv-age-181-to-330-days"))
-        aged_alt_2 = _num(r.get("inv-age-331-to-365-days"))
+        # Prefer detailed schema if it exists, else fallback to legacy schema.
+        if detailed_aged_units > 0:
+            long_term_aged_units = detailed_aged_units
+        else:
+            long_term_aged_units = legacy_aged_units
 
-        long_term_aged_units = aged_1 + aged_2 + aged_3 + aged_alt_1 + aged_alt_2
         overaged = long_term_aged_units > 0
 
-        estimated_storage_cost = _num(r.get("estimated-storage-cost-next-month"))
-
+        # -------------------------------------------------
+        # Alert logic
+        # -------------------------------------------------
         alert_type = "none"
         alert = "No alert"
 
-        if coverage_ratio is not None and coverage_ratio <= 2:
+        if coverage_ratio is not None and coverage_ratio > 0 and coverage_ratio <= 2:
             alert_type = "supply"
             alert = "High alert"
 
-        elif coverage_ratio is not None and coverage_ratio <= 5:
+        elif coverage_ratio is not None and coverage_ratio > 2 and coverage_ratio <= 5:
             alert_type = "supply"
             alert = "Please send shipment"
 
-        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
+        elif coverage_ratio is not None and coverage_ratio >= 6:
             alert_type = "excess"
             alert = "High inventory coverage ratio"
-
-        elif estimated_storage_cost > 100:
-            alert_type = "cost"
-            alert = "High storage cost"
 
         elif overaged:
             alert_type = "overaged"
             alert = "Long-term aged inventory"
 
-        # -------------------------
+        elif estimated_storage_cost > 100:
+            alert_type = "cost"
+            alert = "High storage cost"
+
+        # -------------------------------------------------
         # Deterministic sentence
-        # -------------------------
-        cov_str = round(float(coverage_ratio), 1) if coverage_ratio is not None else None
+        # -------------------------------------------------
+        cov_str = (
+            round(float(coverage_ratio), 1)
+            if coverage_ratio is not None
+            else None
+        )
 
         inventory_recommendation = "Inventory position is stable."
 
         if alert == "High alert" and cov_str is not None:
             inventory_recommendation = (
-                f"Your coverage ratio is {cov_str} months. Please immediately send stock to avoid stock-out."
+                f"Your coverage ratio is {cov_str} months. "
+                f"Please immediately send stock to avoid stock-out."
             )
 
         elif alert == "Please send shipment" and cov_str is not None:
             inventory_recommendation = (
-                f"Your coverage ratio is {cov_str} months. Please supply inventory soon to avoid stock-out risk."
+                f"Your coverage ratio is {cov_str} months. "
+                f"Please supply inventory soon to avoid stock-out risk."
             )
 
         elif alert == "High inventory coverage ratio" and cov_str is not None:
-            inventory_recommendation = (
-                f"Your coverage ratio is {cov_str} months, which may increase storage cost. "
-                f"Please improve sell-through to avoid excess storage fees."
-            )
+            if overaged:
+                inventory_recommendation = (
+                    f"Your coverage ratio is {cov_str} months and "
+                    f"{int(long_term_aged_units)} units are ageing long-term. "
+                    f"Improve sell-through or reduce replenishment to avoid excess storage fees."
+                )
+            else:
+                inventory_recommendation = (
+                    f"Your coverage ratio is {cov_str} months, which may increase storage cost. "
+                    f"Please improve sell-through to avoid excess storage fees."
+                )
 
         elif alert == "Long-term aged inventory":
             inventory_recommendation = (
@@ -3816,22 +3910,21 @@ def generate_sku_inventory_flags(
 
         elif alert == "High storage cost":
             inventory_recommendation = (
-                f"Estimated storage cost is {round(estimated_storage_cost,2)}. "
+                f"Estimated storage cost is {round(estimated_storage_cost, 2)}. "
                 f"Reduce inventory exposure to control storage expense."
             )
 
-        flags[sku] = {
+        flags[sku_key] = {
             "inventory_alert": alert,
             "inventory_alert_type": alert_type,
             "inventory_coverage_ratio": coverage_ratio,
+            "coverage_ratio_months": coverage_ratio,
             "long_term_aged_units": int(long_term_aged_units),
-            "estimated_storage_cost": round(estimated_storage_cost,2),
+            "estimated_storage_cost": round(estimated_storage_cost, 2),
             "inventory_recommendation": inventory_recommendation,
         }
 
     return flags
-
-
 
 
 def generate_live_insight_with_app_context(app, item, country, prev_label, curr_label, user_id, month2):
