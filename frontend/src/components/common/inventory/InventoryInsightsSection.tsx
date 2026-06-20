@@ -20,6 +20,7 @@ import ActionBasedDashboard, {
     ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
 
+
 type InventoryInsightsSectionProps = {
     heatmapBuckets: AgeingBucket[];
     heatmapData: AgeingRiskHeatmapRow[];
@@ -31,7 +32,6 @@ type InventoryInsightsSectionProps = {
     trendData: AgeingTrendItem[];
     trendLineColor: string;
 
-    // ✅ Add these
     trendBucketOptions?: AgeingTrendBucketOption[];
     onTrendBucketChange?: (bucketValue: string) => void;
 
@@ -39,6 +39,10 @@ type InventoryInsightsSectionProps = {
     actionLogic: ActionLogicItem[];
 
     onActionViewDetails?: (action: ActionCardItem) => void;
+
+    // ✅ new
+    onDownloadInventoryExcel?: () => void;
+    canDownloadInventoryExcel?: boolean;
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
@@ -54,6 +58,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     actions,
     actionLogic,
     onActionViewDetails,
+    onDownloadInventoryExcel,
+    canDownloadInventoryExcel = false,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -74,6 +80,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         actions={actions}
                         actionLogic={actionLogic}
                         onViewDetails={onActionViewDetails}
+                        onDownloadInventoryExcel={onDownloadInventoryExcel}
+                        canDownloadInventoryExcel={canDownloadInventoryExcel}
                     />
                 )}
 
