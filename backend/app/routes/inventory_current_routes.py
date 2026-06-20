@@ -2,6 +2,10 @@ import os
 import re
 import math
 import jwt
+import pandas as pd
+import numpy as np
+from datetime import date, datetime, timedelta
+from calendar import monthrange
 from flask import Blueprint, request, jsonify
 from sqlalchemy import create_engine, text, inspect
 from dotenv import load_dotenv
@@ -58,6 +62,179 @@ def to_number(value):
     except ValueError:
         return 0
 
+def get_previous_month_range(month_number, year_int):
+    """
+    Given current selected month/year, return full previous month range.
+    Example:
+      current = June 2026
+      previous = May 1, 2026 to May 31, 2026
+    """
+    month_number = int(month_number)
+    year_int = int(year_int)
+
+    if month_number == 1:
+        prev_month = 12
+        prev_year = year_int - 1
+    else:
+        prev_month = month_number - 1
+        prev_year = year_int
+
+    last_day_prev = monthrange(prev_year, prev_month)[1]
+
+    return {
+        "start": date(prev_year, prev_month, 1),
+        "end": date(prev_year, prev_month, last_day_prev),
+        "month": prev_month,
+        "year": prev_year,
+    }
+
+
+def construct_prev_platform_fee_table_name(user_id, country_key, month_number, year_int):
+    """
+    Matches historic monthly table naming used elsewhere:
+      user_{user_id}_{country}_{month}_{year}_data
+
+    If your actual historic table naming is different, update this one function only.
+    """
+    month_text = calendar_month_name[int(month_number)].lower()
+    return f"user_{user_id}_{country_key}_{month_text}{year_int}_data"
+
+
+def fetch_previous_platform_fee_as_storage_cost(user_id, country_key, month_number, year_int):
+    """
+    Calculates previous month platform fees using the same logic as Live BI previous-period logic.
+
+    It:
+    - Reads previous month historical table
+    - Uses other_transaction_fees if present and non-zero, otherwise total
+    - Excludes transfer/disbursement/order payment rows
+    - Excludes advertising rows
+    - Includes service/platform fee rows containing:
+      fba, storage, disposal, subscription, longterm, referral, commission
+    - Returns positive absolute total
+    """
+
+    prev_range = get_previous_month_range(month_number, year_int)
+
+    table_name = construct_prev_platform_fee_table_name(
+        user_id=user_id,
+        country_key=country_key,
+        month_number=prev_range["month"],
+        year_int=prev_range["year"],
+    )
+
+    if not is_safe_identifier(table_name):
+        return {
+            "value": 0,
+            "source_table": table_name,
+            "period": {
+                "start": prev_range["start"].isoformat(),
+                "end": prev_range["end"].isoformat(),
+            },
+            "error": "Invalid historical table name",
+        }
+
+    inspector = inspect(primary_engine)
+
+    if table_name not in inspector.get_table_names():
+        return {
+            "value": 0,
+            "source_table": table_name,
+            "period": {
+                "start": prev_range["start"].isoformat(),
+                "end": prev_range["end"].isoformat(),
+            },
+            "error": f"Historical table not found: {table_name}",
+        }
+
+    query = text(f"""
+        SELECT *
+        FROM (
+            SELECT
+                *,
+                NULLIF(NULLIF(date_time, '0'), '')::timestamp AS date_ts
+            FROM "{table_name}"
+        ) t
+        WHERE date_ts >= :start_date
+          AND date_ts < :end_date_plus_one
+    """)
+
+    params = {
+        "start_date": datetime.combine(prev_range["start"], datetime.min.time()),
+        "end_date_plus_one": datetime.combine(
+            prev_range["end"] + timedelta(days=1),
+            datetime.min.time()
+        ),
+    }
+
+    with primary_engine.connect() as connection:
+        df = pd.read_sql(query, connection, params=params)
+
+    if df is None or df.empty:
+        return {
+            "value": 0,
+            "source_table": table_name,
+            "period": {
+                "start": prev_range["start"].isoformat(),
+                "end": prev_range["end"].isoformat(),
+            },
+            "error": None,
+        }
+
+    for col in ["type", "description"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    t = df["type"].fillna("").astype(str).str.lower()
+    d = df["description"].fillna("").astype(str).str.lower()
+
+    if "other_transaction_fees" in df.columns:
+        amount = df["other_transaction_fees"].apply(to_number)
+        if float(np.nansum(amount.values)) == 0.0:
+            amount = df["total"].apply(to_number) if "total" in df.columns else pd.Series([0] * len(df))
+    else:
+        amount = df["total"].apply(to_number) if "total" in df.columns else pd.Series([0] * len(df))
+
+    ignore = (
+        t.str.contains("transfer|disbursement", na=False)
+        | d.str.contains("disbursement", na=False)
+        | d.str.contains("order payment", na=False)
+    )
+
+    is_ads = (
+        t.str.contains(r"productadspayment|sellerdealpayment", na=False)
+        | d.str.contains(r"productadspayment|sellerdealcomplete", na=False)
+        | d.str.contains(r"dealperformanceevent|dealparticipationevent", na=False)
+        | d.str.contains(r"couponparticipationevent|couponperformanceevent", na=False)
+        | d.str.contains(r"\bcoupon\b", na=False)
+    ) & (~ignore)
+
+    is_platform_fee = (
+        (
+            t.str.contains("servicefee", na=False)
+            | d.str.contains(r"\bfee\b", na=False)
+        )
+        & d.str.contains(
+            r"fba|storage|disposal|subscription|longterm|long term|referral|commission",
+            na=False
+        )
+    ) & (~ignore) & (~is_ads)
+
+    previous_platform_fee = float(np.nansum(amount[is_platform_fee].values))
+
+    return {
+        "value": abs(previous_platform_fee),
+        "source_table": table_name,
+        "period": {
+            "start": prev_range["start"].isoformat(),
+            "end": prev_range["end"].isoformat(),
+        },
+        "error": None,
+    }
+
+
+
+
 
 def is_total_row(row):
     sku = str(row.get("SKU") or "").strip()
@@ -76,6 +253,7 @@ def build_inventory_item(row, trigger_columns):
         item[column] = clean_value(row.get(column))
 
     return item
+
 def build_inventory_categories(rows):
     categories = {
         "liquidate": {
@@ -292,6 +470,28 @@ def get_inventory_current_table():
 
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
+
+        current_month_number = MONTH_NAME_TO_NUMBER.get(month_name)
+
+        previous_storage_cost = {
+            "value": 0,
+            "source_table": None,
+            "period": None,
+            "error": None,
+        }
+
+        if current_month_number:
+            previous_storage_cost = fetch_previous_platform_fee_as_storage_cost(
+                user_id=user_id,
+                country_key=country_key,
+                month_number=current_month_number,
+                year_int=int(year),
+            )
+
+        categories["estimated_storage_cost"]["previous_storage_cost"] = previous_storage_cost["value"]
+        categories["estimated_storage_cost"]["previous_storage_cost_source"] = previous_storage_cost["source_table"]
+        categories["estimated_storage_cost"]["previous_storage_cost_period"] = previous_storage_cost["period"]
+        categories["estimated_storage_cost"]["previous_storage_cost_error"] = previous_storage_cost["error"]
 
         return jsonify({
             "success": True,
