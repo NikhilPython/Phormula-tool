@@ -1023,8 +1023,8 @@ const AppSidebar: React.FC = () => {
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
         },
         {
-          name: "Current Inventory",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
+          name: "Inventory Insights",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-insights`,
         },
       ],
     },
