@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
 
 export type AgeingBucket = {
@@ -20,6 +21,7 @@ type AgeingRiskHeatmapProps = {
     subtitle?: string;
     data: AgeingRiskHeatmapRow[];
     buckets: AgeingBucket[];
+    defaultVisibleRows?: number;
 };
 
 const getHeatColor = (
@@ -45,7 +47,17 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     subtitle = "Quickly identify products with old inventory",
     data,
     buckets,
+    defaultVisibleRows = 10,
 }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const canCollapse = data.length > defaultVisibleRows;
+
+    const visibleData = useMemo(() => {
+        if (!canCollapse || isExpanded) return data;
+        return data.slice(0, defaultVisibleRows);
+    }, [data, canCollapse, isExpanded, defaultVisibleRows]);
+
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -56,10 +68,29 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         align="left"
                         textSize="2xl"
                     />
+
                 </div>
 
-                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                    {data.length} Products
+                <div className="flex items-center gap-2">
+                    {canCollapse && (
+                        <button
+                            type="button"
+                            onClick={() => setIsExpanded((prev) => !prev)}
+                            title={isExpanded ? "Collapse rows" : "Expand rows"}
+                            aria-label={isExpanded ? "Collapse rows" : "Expand rows"}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+                        >
+                            {isExpanded ? (
+                                <RiCollapseDiagonalFill className="h-4 w-4" />
+                            ) : (
+                                <RiExpandDiagonalFill className="h-4 w-4" />
+                            )}
+                        </button>
+                    )}
+
+                    {/* <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {data.length} Products
+                    </div> */}
                 </div>
             </div>
 
@@ -97,7 +128,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     </thead>
 
                     <tbody>
-                        {data.map((row) => {
+                        {visibleData.map((row) => {
                             const calculatedTotal = buckets.reduce(
                                 (sum, bucket) => sum + Number(row[bucket.key] || 0),
                                 0
@@ -155,6 +186,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     </tbody>
                 </table>
             </div>
+
         </div>
     );
 };
