@@ -76,15 +76,14 @@ interface ProductJourneyInlineGraphProps {
   displayCurrency?: CurrencyCode;
   isOtherSkus?: boolean;
   otherSkuProductNames?: string[];
-  onLoadingChange?: (loading: boolean) => void;
 }
+
 const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   productname,
   countryName = "global",
   displayCurrency,
   isOtherSkus = false,
   otherSkuProductNames = [],
-  onLoadingChange,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -258,12 +257,11 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     const cleanProductName = String(productname || "").trim();
 
     if (!cleanProductName) {
-  setLoading(false);
-  onLoadingChange?.(false);
-  setError("");
-  setJourneyData({ uk: [], global: [], us: [], ca: [] });
-  return;
-}
+      setLoading(false);
+      setError("");
+      setJourneyData({ uk: [], global: [], us: [], ca: [] });
+      return;
+    }
 
     const fetchKey = [
       cleanProductName.toLowerCase(),
@@ -279,9 +277,9 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     const ac = new AbortController();
 
     const fetchJourneyData = async () => {
-  setLoading(true);
-  onLoadingChange?.(true);
-  setError("");
+      setLoading(true);
+      setError("");
+
       try {
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -438,9 +436,8 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         setError(err?.message || "Failed to fetch data from server");
         setJourneyData({ uk: [], global: [], us: [], ca: [] });
       } finally {
-  setLoading(false);
-  onLoadingChange?.(false);
-}
+        setLoading(false);
+      }
     };
 
     fetchJourneyData();
@@ -454,7 +451,6 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     chartCurrency,
     isOtherSkus,
     otherSkuKey,
-     onLoadingChange,
   ]);
 
   const visibleCountries: CountryKey[] =
@@ -722,7 +718,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
 
               if (lowerLabel.includes("asp")) return `${datasetLabel}: ${formatAsp(value)}`;
               if (lowerLabel.includes("mix")) return `${datasetLabel}: ${formatPercent(value)}`;
-              if (lowerLabel.includes("unit")) return `${datasetLabel}: ${formatUnits(value)}`;
+              if (lowerLabel.includes("units")) return `${datasetLabel}: ${formatUnits(value)}`;
 
               return `${datasetLabel}: ${formatCurrency(value)}`;
             },
@@ -825,6 +821,11 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
 
   return (
     <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      {loading && (
+        <div className="flex min-h-[380px] items-center justify-center rounded-md bg-slate-50/50">
+          <Loader fullscreen={false} transparent />
+        </div>
+      )}
 
       {error && !loading && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -876,32 +877,33 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
             </div>
 
             <div
-              className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md  bg-white ${isDraggingChart ? "cursor-grabbing" : "cursor-grab"
-                }`}
-              onMouseDown={() => setIsDraggingChart(true)}
-              onMouseUp={() => setIsDraggingChart(false)}
-              onMouseLeave={() => setIsDraggingChart(false)}
-              onTouchStart={() => setIsDraggingChart(true)}
-              onTouchEnd={() => setIsDraggingChart(false)}
-            >
-              {chartJSData?.labels?.length ? (
-                <>
-                  {/* left/right drag indicators */}
+  className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md  bg-white ${
+    isDraggingChart ? "cursor-grabbing" : "cursor-grab"
+  }`}
+  onMouseDown={() => setIsDraggingChart(true)}
+  onMouseUp={() => setIsDraggingChart(false)}
+  onMouseLeave={() => setIsDraggingChart(false)}
+  onTouchStart={() => setIsDraggingChart(true)}
+  onTouchEnd={() => setIsDraggingChart(false)}
+>
+  {chartJSData?.labels?.length ? (
+    <>
+      {/* left/right drag indicators */}
+     
 
+      {/* center hint */}
+      {!isDraggingChart && allLabels.length > 12 && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+          ← Drag to view more months →
+        </div>
+      )}
 
-                  {/* center hint */}
-                  {!isDraggingChart && allLabels.length > 12 && (
-                    <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-                      ← Drag to view more months →
-                    </div>
-                  )}
-
-                  <Line data={chartJSData} options={chartOptions} />
-                </>
-              ) : (
-                <p className="text-sm text-charcoal-500">No chart data available</p>
-              )}
-            </div>
+      <Line data={chartJSData} options={chartOptions} />
+    </>
+  ) : (
+    <p className="text-sm text-charcoal-500">No chart data available</p>
+  )}
+</div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-[13px] font-semibold text-gray-700">
               {activeTab === "sales_cm1" && (

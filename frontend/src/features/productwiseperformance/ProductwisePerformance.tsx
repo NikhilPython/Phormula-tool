@@ -269,7 +269,7 @@ const [summaryLoading, setSummaryLoading] = useState(false);
 const [summaryError, setSummaryError] = useState<string | null>(null);
   const [activePlatform, setActivePlatform] =
     useState<PlatformId>("global");
-    const [journeyGraphLoading, setJourneyGraphLoading] = useState(false);
+    
   const [data, setData] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -1149,25 +1149,17 @@ const parsePerformanceSummarySections = (summary: string) => {
     }
 
     if (isHeading(line)) {
-  const title = normalizeTitle(line);
+      const title = normalizeTitle(line);
 
-  const baseId =
-    title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
-    `section-${index}`;
+      currentSection = {
+        id: title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        title,
+        bullets: [],
+      };
 
-  const duplicateCount = sections.filter((section) =>
-    section.id === baseId || section.id.startsWith(`${baseId}-`)
-  ).length;
-
-  currentSection = {
-    id: duplicateCount > 0 ? `${baseId}-${duplicateCount + 1}` : baseId,
-    title,
-    bullets: [],
-  };
-
-  sections.push(currentSection);
-  return;
-}
+      sections.push(currentSection);
+      return;
+    }
 
     if (!currentSection) {
       currentSection = {
@@ -1288,12 +1280,12 @@ const graphYear =
       </div>
 
       <div className="space-y-2 p-3">
-        {sections.map((section, index) => {
+        {sections.map((section) => {
           const isOpen = openSummarySection === section.id;
 
           return (
             <div
-              key={`${section.id}-${index}`}
+              key={section.id}
               className="overflow-hidden rounded-xl border border-slate-200 bg-white"
             >
               <button
@@ -1477,17 +1469,16 @@ const graphYear =
 
 <div className="mt-5">
   <ProductJourneyInlineGraph
-  productname={graphProductName || ""}
-  countryName={graphCountryName}
-  displayCurrency={homeCurrency as any}
-  isOtherSkus={!!insightData.isOtherSkus}
-  otherSkuProductNames={
-    insightData.isOtherSkus
-      ? (insightData.includedSkus || []).map((item) => item.product_name)
-      : []
-  }
-  onLoadingChange={setJourneyGraphLoading}
-/>
+    productname={graphProductName || ""}
+    countryName={graphCountryName}
+    displayCurrency={homeCurrency as any}
+    isOtherSkus={!!insightData.isOtherSkus}
+    otherSkuProductNames={
+      insightData.isOtherSkus
+        ? (insightData.includedSkus || []).map((item) => item.product_name)
+        : []
+    }
+  />
 </div>
 
       <div className="mt-5 pb-2 w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -2276,34 +2267,28 @@ const graphYear =
     });
   }, [visibleCountryCards]);
 
-  const pageLoading =
-  insightsLoading ||
-  summaryLoading ||
-  journeyGraphLoading ||
-  (!!selectedSku && !skuInsights[selectedSku]);
-
-
+  const isMultiCountry = visibleCountryCards.length > 1;
 
  return (
   <div className="w-full space-y-4">
-    {pageLoading ? (
-      <Loader fullscreen transparent />
-    ) : (
-      <>
-        {insightsError && (
-          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {insightsError}
-          </div>
-        )}
+    {insightsError && (
+      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {insightsError}
+      </div>
+    )}
 
-        {renderInlineAiInsightSection()}
+    {insightsLoading && (
+      <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <Loader fullscreen={false} transparent />
+      </div>
+    )}
 
-        {!selectedSku && !sharedInsightData?.blocks?.length && (
-          <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
-            No SKU-wise insight data available for this period.
-          </div>
-        )}
-      </>
+    {!insightsLoading && renderInlineAiInsightSection()}
+
+    {!selectedSku && !sharedInsightData?.blocks?.length && (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
+        No SKU-wise insight data available for this period.
+      </div>
     )}
   </div>
 );
