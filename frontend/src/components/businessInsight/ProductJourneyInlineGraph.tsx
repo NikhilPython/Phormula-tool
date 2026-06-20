@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -85,12 +85,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   isOtherSkus = false,
   otherSkuProductNames = [],
 }) => {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<TrendTab>("sales_cm1");
   const [isDraggingChart, setIsDraggingChart] = useState(false);
-
-  const lastFetchKeyRef = useRef("");
 
   const [selectedCountries, setSelectedCountries] = useState<Record<CountryKey, boolean>>({
     uk: true,
@@ -263,22 +261,12 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
       return;
     }
 
-    const fetchKey = [
-      cleanProductName.toLowerCase(),
-      scope,
-      chartCurrency,
-      isOtherSkus ? "other" : "normal",
-      otherSkuKey,
-    ].join("::");
-
-    if (lastFetchKeyRef.current === fetchKey) return;
-    lastFetchKeyRef.current = fetchKey;
-
     const ac = new AbortController();
 
     const fetchJourneyData = async () => {
-      setLoading(true);
-      setError("");
+  setLoading(true);
+  setError("");
+  setJourneyData({ uk: [], global: [], us: [], ca: [] });
 
       try {
         const token =
@@ -296,39 +284,47 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
           (_, i) => START_YEAR + i
         );
 
-        const responses = await Promise.all(
-          yearsToFetch.map(async (yr) => {
-            const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  product_name: cleanProductName,
-                  time_range: "Yearly",
-                  year: yr,
-                  quarter: null,
-                  countries: countriesToRequest,
-                  home_currency: chartCurrency,
-                  other_sku_product_names: isOtherSkus ? otherSkuProductNames : [],
-                }),
-                cache: "no-store",
-                signal: ac.signal,
-              }
-            );
+        const responses: { year: number; json: ApiResponse }[] = [];
 
-            const json: ApiResponse = await response.json().catch(() => ({} as ApiResponse));
+for (const yr of yearsToFetch) {
+  if (ac.signal.aborted) return;
 
-            if (!response.ok) {
-              throw new Error(json?.error || json?.message || `HTTP error! status: ${response.status}`);
-            }
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        product_name: cleanProductName,
+        time_range: "Yearly",
+        year: yr,
+        quarter: null,
+        countries: countriesToRequest,
+        home_currency: chartCurrency,
+        other_sku_product_names: isOtherSkus ? otherSkuProductNames : [],
+      }),
+      cache: "no-store",
+      signal: ac.signal,
+    }
+  );
 
-            return { year: yr, json };
-          })
-        );
+  const json: ApiResponse = await response
+    .json()
+    .catch(() => ({} as ApiResponse));
+
+  if (!response.ok) {
+    throw new Error(
+      json?.error ||
+        json?.message ||
+        `HTTP error! status: ${response.status}`
+    );
+  }
+
+  responses.push({ year: yr, json });
+}
 
         const todayEnd = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         const startDate = new Date(START_YEAR, 0, 1);
@@ -821,11 +817,6 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
 
   return (
     <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      {loading && (
-        <div className="flex min-h-[380px] items-center justify-center rounded-md bg-slate-50/50">
-          <Loader fullscreen={false} transparent />
-        </div>
-      )}
 
       {error && !loading && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -836,7 +827,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         </div>
       )}
 
-      {!loading && !error && (
+      {!error && (
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
@@ -886,23 +877,21 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   onTouchStart={() => setIsDraggingChart(true)}
   onTouchEnd={() => setIsDraggingChart(false)}
 >
-  {chartJSData?.labels?.length ? (
-    <>
-      {/* left/right drag indicators */}
-     
+ {loading ? (
+  <Loader fullscreen={false} transparent />
+) : chartJSData?.labels?.length ? (
+  <>
+    {!isDraggingChart && allLabels.length > 12 && (
+      <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+        ← Drag to view more months →
+      </div>
+    )}
 
-      {/* center hint */}
-      {!isDraggingChart && allLabels.length > 12 && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-          ← Drag to view more months →
-        </div>
-      )}
-
-      <Line data={chartJSData} options={chartOptions} />
-    </>
-  ) : (
-    <p className="text-sm text-charcoal-500">No chart data available</p>
-  )}
+    <Line data={chartJSData} options={chartOptions} />
+  </>
+) : (
+  <p className="text-sm text-charcoal-500">No chart data available</p>
+)}
 </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-[13px] font-semibold text-gray-700">

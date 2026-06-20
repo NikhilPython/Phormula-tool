@@ -1149,17 +1149,25 @@ const parsePerformanceSummarySections = (summary: string) => {
     }
 
     if (isHeading(line)) {
-      const title = normalizeTitle(line);
+  const title = normalizeTitle(line);
 
-      currentSection = {
-        id: title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-        title,
-        bullets: [],
-      };
+  const baseId =
+    title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+    `section-${index}`;
 
-      sections.push(currentSection);
-      return;
-    }
+  const duplicateCount = sections.filter((section) =>
+    section.id === baseId || section.id.startsWith(`${baseId}-`)
+  ).length;
+
+  currentSection = {
+    id: duplicateCount > 0 ? `${baseId}-${duplicateCount + 1}` : baseId,
+    title,
+    bullets: [],
+  };
+
+  sections.push(currentSection);
+  return;
+}
 
     if (!currentSection) {
       currentSection = {
@@ -1280,12 +1288,12 @@ const graphYear =
       </div>
 
       <div className="space-y-2 p-3">
-        {sections.map((section) => {
+       {sections.map((section, index) => {
           const isOpen = openSummarySection === section.id;
 
           return (
             <div
-              key={section.id}
+              key={`${section.id}-${index}`}
               className="overflow-hidden rounded-xl border border-slate-200 bg-white"
             >
               <button
