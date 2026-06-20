@@ -512,6 +512,64 @@ class UserObjective(db.Model):
             f"objective_month={self.objective_month}, "
             f"growth_intent={self.growth_intent}>"
         )
+    
+class ProductAISummary(db.Model):
+    __tablename__ = "product_ai_summary"
+    __bind_key__ = "chatbot"
+
+    id = Column(Integer, primary_key=True)
+
+    user_id = Column(Integer, nullable=False, index=True)
+
+    product_name = Column(Text, nullable=False)
+    sku = Column(String(255), nullable=True)
+
+    # us, uk, global, global_inr, global_gbp, global_cad
+    country = Column(String(50), nullable=False, index=True)
+
+    home_currency = Column(String(10), nullable=False)
+
+    # Example: 2026_Q1, 2026_Q2
+    quarter_key = Column(String(20), nullable=False, index=True)
+
+    summary = Column(Text, nullable=False)
+    summary_payload = Column(JSONB, nullable=True)
+
+    generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "product_name",
+            "country",
+            "home_currency",
+            "quarter_key",
+            name="uq_product_ai_summary_user_product_country_currency_quarter"
+        ),
+        Index(
+            "idx_product_ai_summary_lookup",
+            "user_id",
+            "country",
+            "home_currency",
+            "quarter_key"
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<ProductAISummary user_id={self.user_id}, "
+            f"product_name={self.product_name}, "
+            f"country={self.country}, "
+            f"quarter_key={self.quarter_key}>"
+        )
+
 
 
 # ------------------------------------------------- Shopify Models -------------------------------------------------

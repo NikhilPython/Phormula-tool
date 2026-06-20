@@ -26,6 +26,7 @@ SECRET_KEY = Config.SECRET_KEY
 db_url = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL')
 db_url2 = os.getenv('DATABASE_AMAZON_URL')
+db_url_chatbot = os.getenv('DATABASE_CHATBOT_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -52,6 +53,15 @@ admin_engine = create_engine(
 
 amazon_engine = create_engine(
     db_url2,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=1,
+    max_overflow=1,
+    pool_timeout=30,
+)
+
+chatbot_engine = create_engine(
+    db_url_chatbot,
     pool_pre_ping=True,
     pool_recycle=1800,
     pool_size=1,
@@ -112,6 +122,33 @@ inventory_marketplace_map = {
     "uk": "A1F83G8C2ARO7P",
     "us": "ATVPDKIKX0DER"
 }
+
+# =====================================================
+# Product AI Summary constants
+# =====================================================
+
+PRODUCT_SUMMARY_QUARTER_START_MONTHS = {
+    1: 1,   # Jan
+    2: 4,   # Apr
+    3: 7,   # Jul
+    4: 10,  # Oct
+}
+
+PRODUCT_SUMMARY_MONTH_NAME_TO_NUM = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
 
 def get_monthly_inventory_units(
     user_id,
@@ -1714,3 +1751,1172 @@ def product_best_performance():
         return jsonify({'error': str(e)}), 500
 
 
+############################################# Product Summary ########################################################################
+
+# =====================================================
+# Product AI Summary helpers
+# =====================================================
+
+def get_product_summary_quarter_info(today=None):
+    """
+    Regeneration dates:
+    Jan 2, Apr 2, Jul 2, Oct 2.
+
+    If current quarter summary exists -> return it.
+    If not exists and date is before quarter regeneration date -> return previous summary.
+    If not exists and date is on/after regeneration date -> generate new summary.
+    """
+    today = today or datetime.now()
+
+    quarter = ((today.month - 1) // 3) + 1
+    quarter_start_month = PRODUCT_SUMMARY_QUARTER_START_MONTHS[quarter]
+    regenerate_date = datetime(today.year, quarter_start_month, 2)
+
+    return {
+        "quarter": quarter,
+        "quarter_key": f"{today.year}_Q{quarter}",
+        "quarter_start_month": quarter_start_month,
+        "regenerate_date": regenerate_date,
+        "can_regenerate": today >= regenerate_date,
+    }
+
+
+def normalize_product_summary_country(country, home_currency):
+    """
+    Normalizes frontend country value.
+
+    us -> us
+    uk -> uk
+    global + USD -> global
+    global + INR -> global_inr
+    global + GBP -> global_gbp
+    global + CAD -> global_cad
+    """
+    country = (country or "us").strip().lower()
+    home_currency = (home_currency or "USD").strip().lower()
+
+    if country.startswith("uk"):
+        return "uk"
+
+    if country.startswith("us"):
+        return "us"
+
+    if country.startswith("global"):
+        if home_currency == "inr":
+            return "global_inr"
+        if home_currency == "gbp":
+            return "global_gbp"
+        if home_currency == "cad":
+            return "global_cad"
+        return "global"
+
+    return "us"
+
+
+def get_current_quarter_saved_product_summary(
+    user_id,
+    product_name,
+    country,
+    home_currency,
+    quarter_key
+):
+    """
+    Reads current quarter product summary from chatbot DB.
+    """
+    query = text("""
+        SELECT
+            id,
+            summary,
+            summary_payload,
+            generated_at,
+            quarter_key
+        FROM product_ai_summary
+        WHERE user_id = :user_id
+          AND LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+          AND LOWER(TRIM(country)) = LOWER(TRIM(:country))
+          AND LOWER(TRIM(home_currency)) = LOWER(TRIM(:home_currency))
+          AND quarter_key = :quarter_key
+        LIMIT 1
+    """)
+
+    with chatbot_engine.connect() as conn:
+        row = conn.execute(query, {
+            "user_id": int(user_id),
+            "product_name": product_name,
+            "country": country,
+            "home_currency": home_currency.upper(),
+            "quarter_key": quarter_key,
+        }).fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "id": row.id,
+        "summary": row.summary,
+        "summary_payload": row.summary_payload,
+        "generated_at": row.generated_at,
+        "quarter_key": row.quarter_key,
+    }
+
+
+def get_latest_saved_product_summary_any_quarter(
+    user_id,
+    product_name,
+    country,
+    home_currency
+):
+    """
+    Reads latest previous summary from chatbot DB.
+    Used before quarter regeneration date.
+    """
+    query = text("""
+        SELECT
+            id,
+            summary,
+            summary_payload,
+            generated_at,
+            quarter_key
+        FROM product_ai_summary
+        WHERE user_id = :user_id
+          AND LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+          AND LOWER(TRIM(country)) = LOWER(TRIM(:country))
+          AND LOWER(TRIM(home_currency)) = LOWER(TRIM(:home_currency))
+        ORDER BY generated_at DESC
+        LIMIT 1
+    """)
+
+    with chatbot_engine.connect() as conn:
+        row = conn.execute(query, {
+            "user_id": int(user_id),
+            "product_name": product_name,
+            "country": country,
+            "home_currency": home_currency.upper(),
+        }).fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "id": row.id,
+        "summary": row.summary,
+        "summary_payload": row.summary_payload,
+        "generated_at": row.generated_at,
+        "quarter_key": row.quarter_key,
+    }
+
+
+def save_product_ai_summary(
+    user_id,
+    product_name,
+    sku,
+    country,
+    home_currency,
+    quarter_key,
+    summary,
+    summary_payload
+):
+    """
+    Saves generated summary into chatbot DB.
+    No manual regeneration.
+    One row per user + product + country + home_currency + quarter.
+    """
+    query = text("""
+        INSERT INTO product_ai_summary (
+            user_id,
+            product_name,
+            sku,
+            country,
+            home_currency,
+            quarter_key,
+            summary,
+            summary_payload,
+            generated_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :user_id,
+            :product_name,
+            :sku,
+            :country,
+            :home_currency,
+            :quarter_key,
+            :summary,
+            CAST(:summary_payload AS JSONB),
+            NOW(),
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (
+            user_id,
+            product_name,
+            country,
+            home_currency,
+            quarter_key
+        )
+        DO UPDATE SET
+            sku = EXCLUDED.sku,
+            summary = EXCLUDED.summary,
+            summary_payload = EXCLUDED.summary_payload,
+            generated_at = NOW(),
+            updated_at = NOW()
+        RETURNING id, generated_at
+    """)
+
+    with chatbot_engine.begin() as conn:
+        row = conn.execute(query, {
+            "user_id": int(user_id),
+            "product_name": product_name,
+            "sku": sku,
+            "country": country,
+            "home_currency": home_currency.upper(),
+            "quarter_key": quarter_key,
+            "summary": summary,
+            "summary_payload": json.dumps(summary_payload),
+        }).fetchone()
+
+    return {
+        "id": row.id,
+        "generated_at": row.generated_at,
+    }
+
+
+def resolve_product_summary_sku(conn, user_id, product_name, country):
+    """
+    Resolve SKU from sku_{user_id}_data_table for us/uk.
+    For global summary, we compare countries using product_name.
+    """
+    if country not in ("uk", "us"):
+        return None
+
+    table_name = f"sku_{user_id}_data_table"
+    sku_column = "sku_uk" if country == "uk" else "sku_us"
+
+    inspector = inspect(conn)
+
+    if not inspector.has_table(table_name):
+        return None
+
+    query = text(f"""
+        SELECT {sku_column}
+        FROM "{table_name}"
+        WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+           OR LOWER(TRIM({sku_column})) = LOWER(TRIM(:product_name))
+        LIMIT 1
+    """)
+
+    row = conn.execute(query, {
+        "product_name": product_name
+    }).fetchone()
+
+    return row[0] if row and row[0] else None
+
+def parse_product_summary_table_name(table_name, user_id, country):
+    """
+    Strict table matching.
+
+    UK/US accepted:
+    skuwisemonthly_{user_id}_uk_may2026
+    skuwisemonthly_{user_id}_us_may2026
+
+    UK/US rejected:
+    skuwisemonthly_{user_id}_uk_may2026_table
+    skuwisemonthly_{user_id}_us_may2026_table
+
+    Global accepted:
+    skuwisemonthly_{user_id}_global_may2026_table
+    skuwisemonthly_{user_id}_global_inr_may2026_table
+    skuwisemonthly_{user_id}_global_gbp_may2026_table
+    skuwisemonthly_{user_id}_global_cad_may2026_table
+    """
+
+    table_lower = table_name.lower()
+    country = (country or "").lower()
+
+    prefix = f"skuwisemonthly_{user_id}_{country}_".lower()
+
+    if not table_lower.startswith(prefix):
+        return None
+
+    # UK/US must only use non-global monthly tables.
+    # Example accepted: skuwisemonthly_123_uk_may2026
+    # Example rejected: skuwisemonthly_123_uk_may2026_table
+    if country in ("uk", "us") and table_lower.endswith("_table"):
+        return None
+
+    # Global/global currency tables must use _table.
+    # Example accepted: skuwisemonthly_123_global_gbp_may2026_table
+    if country.startswith("global") and not table_lower.endswith("_table"):
+        return None
+
+    suffix = table_lower.replace(prefix, "")
+
+    # Remove _table only after confirming it is a global table.
+    if country.startswith("global") and suffix.endswith("_table"):
+        suffix = suffix[:-6]
+
+    month_name = "".join(ch for ch in suffix if ch.isalpha())
+    year_text = "".join(ch for ch in suffix if ch.isdigit())
+
+    if month_name not in PRODUCT_SUMMARY_MONTH_NAME_TO_NUM:
+        return None
+
+    if not year_text:
+        return None
+
+    return {
+        "month_name": month_name,
+        "month": month_name.capitalize(),
+        "month_num": PRODUCT_SUMMARY_MONTH_NAME_TO_NUM[month_name],
+        "year": int(year_text[:4]),
+    }
+
+def fetch_month_end_inventory_lookup(user_id, country, sku_list):
+    """
+    Month-end inventory from monthwise_inventory.
+
+    Rules:
+    - monthwise_inventory.msku = skuwisemonthly sku.
+    - Country is separated by marketplace_id.
+    - For each sku + marketplace_id + disposition + month,
+      take the LAST available date in that month.
+    - Use ending_warehouse_balance from that last date.
+    """
+
+    country = (country or "").strip().lower()
+
+    sku_list = [
+        str(sku).strip()
+        for sku in (sku_list or [])
+        if str(sku).strip()
+    ]
+
+    if not sku_list:
+        return {}
+
+    # For global summary, combine UK + US inventory.
+    if country.startswith("global"):
+        marketplace_ids = [
+            inventory_marketplace_map["uk"],
+            inventory_marketplace_map["us"]
+        ]
+    else:
+        normalized_country = normalize_sku_country(country)
+        marketplace_id = inventory_marketplace_map.get(normalized_country)
+
+        if not marketplace_id:
+            return {}
+
+        marketplace_ids = [marketplace_id]
+
+    sku_placeholders = ", ".join(
+        [f":sku_{i}" for i in range(len(sku_list))]
+    )
+
+    marketplace_placeholders = ", ".join(
+        [f":marketplace_{i}" for i in range(len(marketplace_ids))]
+    )
+
+    params = {
+        "user_id": int(user_id)
+    }
+
+    for i, sku in enumerate(sku_list):
+        params[f"sku_{i}"] = sku.lower()
+
+    for i, marketplace_id in enumerate(marketplace_ids):
+        params[f"marketplace_{i}"] = marketplace_id
+
+    query = text(f"""
+        WITH base AS (
+            SELECT
+                LOWER(TRIM(msku)) AS msku,
+                marketplace_id,
+                UPPER(TRIM(COALESCE(disposition, ''))) AS disposition,
+                date::date AS snapshot_date,
+                EXTRACT(YEAR FROM date::date)::int AS year,
+                EXTRACT(MONTH FROM date::date)::int AS month,
+                COALESCE(ending_warehouse_balance, 0) AS ending_warehouse_balance
+            FROM monthwise_inventory
+            WHERE user_id = :user_id
+              AND marketplace_id IN ({marketplace_placeholders})
+              AND LOWER(TRIM(msku)) IN ({sku_placeholders})
+        ),
+        last_dates AS (
+            SELECT
+                msku,
+                marketplace_id,
+                disposition,
+                year,
+                month,
+                MAX(snapshot_date) AS last_snapshot_date
+            FROM base
+            GROUP BY
+                msku,
+                marketplace_id,
+                disposition,
+                year,
+                month
+        )
+        SELECT
+            b.msku,
+            b.marketplace_id,
+            b.disposition,
+            b.year,
+            b.month,
+            SUM(b.ending_warehouse_balance) AS ending_warehouse_balance
+        FROM base b
+        INNER JOIN last_dates ld
+            ON b.msku = ld.msku
+           AND b.marketplace_id = ld.marketplace_id
+           AND b.disposition = ld.disposition
+           AND b.year = ld.year
+           AND b.month = ld.month
+           AND b.snapshot_date = ld.last_snapshot_date
+        GROUP BY
+            b.msku,
+            b.marketplace_id,
+            b.disposition,
+            b.year,
+            b.month
+    """)
+
+    lookup = {}
+
+    try:
+        with amazon_engine.connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+
+        for row in rows:
+            key = (
+                str(row.msku).strip().lower(),
+                int(row.year),
+                int(row.month)
+            )
+
+            if key not in lookup:
+                lookup[key] = {
+                    "sellable_inventory": 0,
+                    "damaged_inventory": 0,
+                    "expired_inventory": 0,
+                    "total_inventory": 0,
+                }
+
+            disposition = str(row.disposition or "").upper()
+            units = float(row.ending_warehouse_balance or 0)
+
+            if disposition == "SELLABLE":
+                lookup[key]["sellable_inventory"] += units
+
+            elif disposition in (
+                "DEFECTIVE",
+                "WAREHOUSE_DAMAGED",
+                "CUSTOMER_DAMAGED"
+            ):
+                lookup[key]["damaged_inventory"] += units
+
+            elif disposition == "EXPIRED":
+                lookup[key]["expired_inventory"] += units
+
+            lookup[key]["total_inventory"] = (
+                lookup[key]["sellable_inventory"]
+                + lookup[key]["damaged_inventory"]
+                + lookup[key]["expired_inventory"]
+            )
+
+        return lookup
+
+    except Exception as e:
+        print(f"Month-end inventory lookup error for {country}: {str(e)}")
+        return {}
+
+
+def fetch_product_summary_history_for_country(
+    conn,
+    inspector,
+    all_tables,
+    user_id,
+    product_name,
+    country,
+    home_currency
+):
+    """
+    Reads all available skuwisemonthly tables for one country.
+
+    Metrics:
+    product_name, sku, total_quantity, net_sales, asp, profit, sales_mix, profit_mix.
+    """
+    history = []
+    resolved_sku = None
+    inventory_lookup = {}
+
+    if country in ("uk", "us"):
+        resolved_sku = resolve_product_summary_sku(
+            conn=conn,
+            user_id=user_id,
+            product_name=product_name,
+            country=country
+        )
+
+    if resolved_sku:
+        inventory_lookup = fetch_month_end_inventory_lookup(
+            user_id=int(user_id),
+            country=country,
+            sku_list=[resolved_sku]
+        )
+
+    for table_name in all_tables:
+        parsed = parse_product_summary_table_name(
+            table_name=table_name,
+            user_id=user_id,
+            country=country
+        )
+
+        if not parsed:
+            continue
+
+        try:
+            columns = [
+                col["name"]
+                for col in inspector.get_columns(table_name)
+            ]
+
+            if "product_name" not in columns:
+                continue
+
+            if "net_sales" not in columns:
+                continue
+
+            quantity_col = None
+            if "total_quantity" in columns:
+                quantity_col = "total_quantity"
+            elif "quantity" in columns:
+                quantity_col = "quantity"
+
+            profit_col = None
+            if "profit" in columns:
+                profit_col = "profit"
+            elif "cm1_profit" in columns:
+                profit_col = "cm1_profit"
+
+            if not quantity_col or not profit_col:
+                continue
+
+            has_sku_col = "sku" in columns
+            has_sales_mix_col = "sales_mix" in columns
+            has_profit_mix_col = "profit_mix" in columns
+
+            sku_select = "MAX(sku)" if has_sku_col else "NULL"
+            sales_mix_select = "COALESCE(SUM(sales_mix), 0)" if has_sales_mix_col else "0"
+            profit_mix_select = "COALESCE(SUM(profit_mix), 0)" if has_profit_mix_col else "0"
+
+            where_condition = """
+                LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+            """
+
+            if has_sku_col:
+                where_condition = """
+                    LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                    OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
+                """
+
+            query = text(f"""
+                SELECT
+                    MAX(product_name) AS product_name,
+                    {sku_select} AS sku,
+                    COALESCE(SUM("{quantity_col}"), 0) AS total_quantity,
+                    COALESCE(SUM(net_sales), 0) AS net_sales,
+                    COALESCE(SUM("{profit_col}"), 0) AS profit,
+                    {sales_mix_select} AS sales_mix,
+                    {profit_mix_select} AS profit_mix
+                FROM "{table_name}"
+                WHERE {where_condition}
+            """)
+
+            row = conn.execute(query, {
+                "product_name": product_name
+            }).fetchone()
+
+            total_quantity = float(row.total_quantity or 0)
+            net_sales = float(row.net_sales or 0)
+            profit = float(row.profit or 0)
+
+            if total_quantity == 0 and net_sales == 0 and profit == 0:
+                continue
+
+            conversion_rate = 1.0
+
+            # UK/US source tables need currency conversion.
+            # Global tables are already saved in selected global currency table.
+            if country in ("uk", "us"):
+                source_currency = country_currency_map.get(country)
+                target_currency = home_currency.lower()
+
+                if source_currency and target_currency:
+                    with admin_engine.connect() as admin_conn:
+                        conversion_rate = get_conversion_rate(
+                            admin_conn,
+                            source_currency,
+                            target_currency,
+                            parsed["month_name"],
+                            parsed["year"]
+                        )
+
+                net_sales *= conversion_rate
+                profit *= conversion_rate
+
+            asp = net_sales / total_quantity if total_quantity else 0
+
+            row_sku = row.sku if row.sku else resolved_sku
+
+            if row_sku:
+                row_sku = str(row_sku).strip()
+
+            if not resolved_sku and row_sku:
+                resolved_sku = row_sku
+
+            # If SKU was found from skuwisemonthly row and inventory was not loaded yet,
+            # load inventory now.
+            if row_sku and not inventory_lookup:
+                inventory_lookup = fetch_month_end_inventory_lookup(
+                    user_id=int(user_id),
+                    country=country,
+                    sku_list=[row_sku]
+                )
+
+            inventory_key = (
+                str(row_sku or "").strip().lower(),
+                int(parsed["year"]),
+                int(parsed["month_num"])
+            )
+
+            inventory_data = inventory_lookup.get(inventory_key, {
+                "sellable_inventory": 0,
+                "damaged_inventory": 0,
+                "expired_inventory": 0,
+                "total_inventory": 0,
+            })
+
+            history.append({
+                "country": country,
+                "product_name": row.product_name or product_name,
+                "sku": row_sku,
+                "month": parsed["month"],
+                "month_num": parsed["month_num"],
+                "year": parsed["year"],
+
+                "total_quantity": round(total_quantity, 2),
+                "net_sales": round(net_sales, 2),
+                "asp": round(asp, 2),
+                "profit": round(profit, 2),
+                "sales_mix": round(float(row.sales_mix or 0), 2),
+                "profit_mix": round(float(row.profit_mix or 0), 2),
+
+                "sellable_inventory": round(float(inventory_data.get("sellable_inventory") or 0), 2),
+                "damaged_inventory": round(float(inventory_data.get("damaged_inventory") or 0), 2),
+                "expired_inventory": round(float(inventory_data.get("expired_inventory") or 0), 2),
+                "total_inventory": round(float(inventory_data.get("total_inventory") or 0), 2),
+
+                "conversion_rate_applied": conversion_rate,
+            })
+
+        except Exception as e:
+            print(f"Product summary history error for {table_name}: {str(e)}")
+            continue
+
+    history.sort(key=lambda x: (x["year"], x["month_num"]))
+
+    return {
+        "country": country,
+        "sku": resolved_sku,
+        "history": history,
+    }
+
+
+def summarize_product_summary_history(history):
+    """
+    Creates summary numbers for AI prompt.
+    """
+    if not history:
+        return {
+            "months_count": 0,
+            "total_quantity": 0,
+            "net_sales": 0,
+            "profit": 0,
+            "avg_asp": 0,
+            "avg_sales_mix": 0,
+            "avg_profit_mix": 0,
+
+            "latest_sellable_inventory": 0,
+            "latest_damaged_inventory": 0,
+            "latest_expired_inventory": 0,
+            "latest_total_inventory": 0,
+
+            "latest_month": None,
+            "best_sales_month": None,
+            "best_profit_month": None,
+        }
+
+    total_quantity = sum(float(item.get("total_quantity") or 0) for item in history)
+    net_sales = sum(float(item.get("net_sales") or 0) for item in history)
+    profit = sum(float(item.get("profit") or 0) for item in history)
+
+    avg_asp = net_sales / total_quantity if total_quantity else 0
+
+    avg_sales_mix = (
+        sum(float(item.get("sales_mix") or 0) for item in history) / len(history)
+    )
+
+    avg_profit_mix = (
+        sum(float(item.get("profit_mix") or 0) for item in history) / len(history)
+    )
+
+    latest_month = history[-1]
+
+    latest_sellable_inventory = float(
+        latest_month.get("sellable_inventory") or 0
+    )
+
+    latest_damaged_inventory = float(
+        latest_month.get("damaged_inventory") or 0
+    )
+
+    latest_expired_inventory = float(
+        latest_month.get("expired_inventory") or 0
+    )
+
+    latest_total_inventory = float(
+        latest_month.get("total_inventory") or 0
+    )
+
+    best_sales_month = max(
+        history,
+        key=lambda item: float(item.get("net_sales") or 0)
+    )
+
+    best_profit_month = max(
+        history,
+        key=lambda item: float(item.get("profit") or 0)
+    )
+
+    return {
+        "months_count": len(history),
+        "total_quantity": round(total_quantity, 2),
+        "net_sales": round(net_sales, 2),
+        "profit": round(profit, 2),
+        "avg_asp": round(avg_asp, 2),
+        "avg_sales_mix": round(avg_sales_mix, 2),
+        "avg_profit_mix": round(avg_profit_mix, 2),
+
+        "latest_sellable_inventory": round(latest_sellable_inventory, 2),
+        "latest_damaged_inventory": round(latest_damaged_inventory, 2),
+        "latest_expired_inventory": round(latest_expired_inventory, 2),
+        "latest_total_inventory": round(latest_total_inventory, 2),
+
+        "latest_month": latest_month,
+        "best_sales_month": best_sales_month,
+        "best_profit_month": best_profit_month,
+    }
+
+
+def build_product_summary_payload(user_id, product_name, country, home_currency):
+    """
+    country us/uk:
+        one country history.
+
+    country global/global_inr/global_gbp/global_cad:
+        UK + US + selected global currency history for comparison.
+    """
+    normalized_country = normalize_product_summary_country(
+        country=country,
+        home_currency=home_currency
+    )
+
+    if normalized_country.startswith("global"):
+        countries_to_fetch = ["uk", "us", normalized_country]
+    else:
+        countries_to_fetch = [normalized_country]
+
+    with user_engine.connect() as conn:
+        inspector = inspect(conn)
+        all_tables = inspector.get_table_names()
+
+        countries_payload = []
+        resolved_sku = None
+
+        for country_item in countries_to_fetch:
+            country_result = fetch_product_summary_history_for_country(
+                conn=conn,
+                inspector=inspector,
+                all_tables=all_tables,
+                user_id=user_id,
+                product_name=product_name,
+                country=country_item,
+                home_currency=home_currency
+            )
+
+            history = country_result.get("history") or []
+
+            if not resolved_sku and country_result.get("sku"):
+                resolved_sku = country_result.get("sku")
+
+            countries_payload.append({
+                "country": country_item,
+                "sku": country_result.get("sku"),
+                "summary_metrics": summarize_product_summary_history(history),
+                "monthly_history": history,
+            })
+
+    return {
+        "product_name": product_name,
+        "sku": resolved_sku,
+        "country": normalized_country,
+        "home_currency": home_currency.upper(),
+        "countries": countries_payload,
+    }
+
+
+def build_product_summary_ai_prompt(product_name, country, home_currency, payload):
+    return f"""
+You are an ecommerce product performance analyst.
+
+Your job is to explain the product performance in very simple business language.
+The summary should be easy to understand for everyone:
+- warehouse or packing team
+- account manager
+- founder or business owner
+- finance or operations team
+
+Avoid technical jargon unless you explain it in simple words.
+
+Product:
+{product_name}
+
+Country mode:
+{country}
+
+Currency:
+{home_currency.upper()}
+
+Important metrics available in the data:
+- product_name
+- sku
+- total_quantity
+- net_sales
+- asp
+- profit
+- sales_mix
+- profit_mix
+- sellable_inventory
+- damaged_inventory
+- expired_inventory
+- total_inventory
+
+Metric meanings:
+- total_quantity means how many units were sold.
+- net_sales means sales revenue after adjustments.
+- asp means average selling price per unit.
+- profit means estimated product profit.
+- sales_mix means how much this product contributes to total sales.
+- profit_mix means how much this product contributes to total profit.
+- sellable_inventory means units available to sell.
+- damaged_inventory means units not in good sellable condition.
+- expired_inventory means units expired or unusable.
+- total_inventory means all counted inventory from the latest month-end inventory snapshot.
+
+Output format:
+Use plain text only.
+Do not use markdown headings.
+Do not use tables.
+Use short bullet points.
+Keep the tone clear, practical, and business-friendly.
+Do not include action points or recommendations.
+End with a clear conclusion.
+
+Required summary structure:
+
+1. Start with a simple one-line overall summary.
+Example style:
+- This product is growing steadily with strong sales, but inventory should be watched closely.
+
+2. Product snapshot:
+Include:
+- Product name
+- SKU
+- Country
+- Total units sold
+- Total net sales
+- Total profit
+- Average selling price
+- Latest sellable inventory
+- Latest damaged or expired inventory if available
+
+3. Sales performance:
+Explain in simple language:
+- Whether units sold are increasing, decreasing, or inconsistent.
+- Which month had the strongest sales.
+- Whether sales are healthy or weak.
+- Mention important numbers from the data.
+
+4. Profit performance:
+Explain:
+- Whether profit is improving, declining, or inconsistent.
+- Which month had the strongest profit.
+- Whether the product is profitable overall.
+- Mention if sales are growing but profit is not growing at the same pace.
+
+5. Price / ASP performance:
+Explain:
+- Whether average selling price is increasing, decreasing, or stable.
+- If ASP is falling, explain that the product is selling at a lower average price.
+- If ASP is rising, explain that the product is earning more per unit sold.
+- Keep this section simple.
+
+6. Sales mix and profit mix:
+Explain:
+- Whether this product is becoming more or less important in the business.
+- Use simple wording like:
+  "This product is taking a bigger share of total sales"
+  or
+  "This product is contributing less than before."
+
+7. Inventory position:
+Use latest month-end inventory.
+Explain:
+- Whether sellable inventory looks healthy, low, or high compared with recent sales.
+- If sales are strong and sellable inventory is low, mention possible stockout risk.
+- If sales are slowing and inventory is high, mention possible overstock risk.
+- If damaged or expired inventory exists, mention it as an operational issue.
+- If inventory is zero or missing, say inventory data is not available or not showing for the latest month.
+
+8. Conclusion:
+End with a short conclusion that summarizes:
+- Overall product health
+- Main strength
+- Main concern, if any
+
+Rules:
+- Do not invent numbers.
+- Only use numbers present in the provided data.
+- Do not include action points.
+- Do not include recommendations.
+- Do not tell the user what to do next.
+- If data is missing, clearly say it is missing.
+- Avoid complex financial language.
+- Use currency symbol or currency code where helpful.
+- If country mode is global/global_inr/global_gbp/global_cad, compare UK vs US vs global performance and clearly say which country looks stronger.
+- Make the final summary useful for both operational teams and management.
+
+Data:
+{json.dumps(payload, indent=2)}
+"""
+
+
+def generate_product_ai_summary(product_name, country, home_currency, payload):
+    """
+    OpenAI summary generation.
+    Uses existing OpenAI client from this file.
+    """
+    prompt = build_product_summary_ai_prompt(
+        product_name=product_name,
+        country=country,
+        home_currency=home_currency,
+        payload=payload
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You explain ecommerce product performance in simple, practical language "
+                        "that warehouse teams, packing teams, account managers, finance teams, "
+                        "and business owners can all understand. "
+                        "Use plain text and short bullet points only. "
+                        "Do not give action points or recommendations. "
+                        "Do not tell the user what to do next. "
+                        "End with a clear conclusion."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            max_tokens=1000
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print("Product AI Summary OpenAI Error:", str(e))
+        return None
+
+
+@skuwise_bp.route('/ProductSummaryAI', methods=['POST'])
+def product_summary_ai():
+    try:
+        # ==============================
+        # AUTH
+        # ==============================
+        auth_header = request.headers.get('Authorization')
+
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({
+                'error': 'Authorization token missing or invalid'
+            }), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
+            user_id = str(payload.get('user_id'))
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        # ==============================
+        # REQUEST
+        # ==============================
+        data = request.get_json() or {}
+
+        product_name = data.get("product_name")
+        country = data.get("country", "us")
+        home_currency = (data.get("home_currency") or "USD").strip().upper()
+
+        if not product_name:
+            return jsonify({
+                "error": "product_name is required"
+            }), 400
+
+        normalized_country = normalize_product_summary_country(
+            country=country,
+            home_currency=home_currency
+        )
+
+        # ==============================
+        # QUARTER CACHE LOGIC
+        # ==============================
+        quarter_info = get_product_summary_quarter_info()
+        quarter_key = quarter_info["quarter_key"]
+
+        current_quarter_summary = get_current_quarter_saved_product_summary(
+            user_id=user_id,
+            product_name=product_name,
+            country=normalized_country,
+            home_currency=home_currency,
+            quarter_key=quarter_key
+        )
+
+        # If current quarter summary exists, always return it.
+        if current_quarter_summary:
+            return jsonify({
+                "success": True,
+                "source": "cache_current_quarter",
+                "product_name": product_name,
+                "country": normalized_country,
+                "home_currency": home_currency,
+                "quarter_key": quarter_key,
+                "generated_at": current_quarter_summary["generated_at"],
+                "summary": current_quarter_summary["summary"],
+                "summary_payload": current_quarter_summary["summary_payload"],
+            }), 200
+
+        latest_saved_summary = get_latest_saved_product_summary_any_quarter(
+            user_id=user_id,
+            product_name=product_name,
+            country=normalized_country,
+            home_currency=home_currency
+        )
+
+        # If old summary exists and quarter regeneration date has not arrived,
+        # keep showing the previous summary.
+        if latest_saved_summary and not quarter_info["can_regenerate"]:
+            return jsonify({
+                "success": True,
+                "source": "cache_previous_quarter",
+                "product_name": product_name,
+                "country": normalized_country,
+                "home_currency": home_currency,
+                "quarter_key": latest_saved_summary["quarter_key"],
+                "current_quarter_key": quarter_key,
+                "next_regeneration_date": quarter_info["regenerate_date"].strftime("%Y-%m-%d"),
+                "generated_at": latest_saved_summary["generated_at"],
+                "summary": latest_saved_summary["summary"],
+                "summary_payload": latest_saved_summary["summary_payload"],
+            }), 200
+
+        # ==============================
+        # FIRST-TIME GENERATION OR QUARTERLY AUTO REGENERATION
+        # ==============================
+        summary_payload = build_product_summary_payload(
+            user_id=user_id,
+            product_name=product_name,
+            country=normalized_country,
+            home_currency=home_currency
+        )
+
+        has_any_history = any(
+            country_block.get("monthly_history")
+            for country_block in summary_payload.get("countries", [])
+        )
+
+        if not has_any_history:
+            return jsonify({
+                "success": True,
+                "source": "no_history",
+                "product_name": product_name,
+                "country": normalized_country,
+                "home_currency": home_currency,
+                "message": "No product history found for summary generation",
+                "summary": None,
+                "summary_payload": summary_payload,
+            }), 200
+
+        summary = generate_product_ai_summary(
+            product_name=product_name,
+            country=normalized_country,
+            home_currency=home_currency,
+            payload=summary_payload
+        )
+
+        if not summary:
+            return jsonify({
+                "success": False,
+                "error": "AI summary generation failed"
+            }), 500
+
+        saved = save_product_ai_summary(
+            user_id=user_id,
+            product_name=product_name,
+            sku=summary_payload.get("sku"),
+            country=normalized_country,
+            home_currency=home_currency,
+            quarter_key=quarter_key,
+            summary=summary,
+            summary_payload=summary_payload
+        )
+
+        return jsonify({
+            "success": True,
+            "source": "generated",
+            "product_name": product_name,
+            "sku": summary_payload.get("sku"),
+            "country": normalized_country,
+            "home_currency": home_currency,
+            "quarter_key": quarter_key,
+            "generated_at": saved["generated_at"],
+            "summary": summary,
+            "summary_payload": summary_payload,
+        }), 200
+
+    except Exception as e:
+        print("ProductSummaryAI ERROR:", str(e))
+        return jsonify({
+            "error": str(e)
+        }), 500
