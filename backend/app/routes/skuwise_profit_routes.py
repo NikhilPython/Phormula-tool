@@ -2612,7 +2612,7 @@ Metric meanings:
 - total_quantity means how many units were sold.
 - net_sales means sales revenue after adjustments.
 - asp means average selling price per unit.
-- profit means estimated product profit.
+- profit means estimated product CM1 profit.
 - sales_mix means how much this product contributes to total sales.
 - profit_mix means how much this product contributes to total profit.
 - sellable_inventory means units available to sell at month end.
@@ -2642,11 +2642,11 @@ Explain briefly:
 - Mention the strongest sales month with month and year.
 - Mention total units sold only if useful.
 
-3. Profit performance:
+3. CM1 Profit performance:
 Explain briefly:
-- Whether profit is improving, declining, or inconsistent.
-- Mention the strongest profit month with month and year.
-- Mention total profit only if useful.
+- Whether CM1 profit is improving, declining, or inconsistent.
+- Mention the strongest CM1 profit month with month and year.
+- Mention total CM1 profit only if useful.
 
 4. Price / ASP performance:
 Explain briefly:
@@ -2735,6 +2735,7 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
                         "You explain ecommerce product performance in simple, practical language "
                         "that warehouse teams, packing teams, account managers, finance teams, "
                         "and business owners can all understand. "
+                        "Refer to profit as CM1 profit. "
                         "Use plain text and short bullet points only. "
                         "Do not give action points, recommendations, or advice. "
                         "Do not use the word should. "

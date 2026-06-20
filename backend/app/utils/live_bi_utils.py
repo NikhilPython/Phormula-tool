@@ -2751,6 +2751,115 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
 
     return sku_map, totals
 
+def fetch_current_inventory_snapshot(
+    user_id: int,
+    country: str,
+    year: int,
+    month: int,
+) -> tuple[dict, dict]:
+    """
+    Reads frontend-only inventory data from:
+      currentinventory_{user_id}_{country_key}_{month_name}{year}_table
+
+    Columns:
+      SKU
+      available
+      Coverage Ratio (In Months)
+
+    This is NOT for AI.
+    This is only for frontend payload enrichment.
+    """
+
+    country_key = str(country or "uk").strip().lower()
+
+    COUNTRY_MAP = {
+        "usa": "us",
+        "united states": "us",
+        "united states of america": "us",
+        "gb": "uk",
+        "great britain": "uk",
+        "united kingdom": "uk",
+    }
+
+    country_key = COUNTRY_MAP.get(country_key, country_key)
+
+    month = int(month)
+    year = int(year)
+    month_str = month_name[month].lower()
+
+    table = f"currentinventory_{int(user_id)}_{country_key}_{month_str}{year}_table"
+
+    try:
+        with engine_hist.connect() as conn:
+            df = pd.read_sql(
+                text(f"""
+                    SELECT
+                        "SKU" AS sku,
+                        "available" AS available,
+                        "Coverage Ratio (In Months)" AS coverage_ratio_months
+                    FROM {table}
+                """),
+                conn,
+            )
+    except Exception as e:
+        print(f"[WARN] Could not read frontend inventory table {table}: {e}")
+        return {}, {
+            "available_total": 0.0,
+            "avg_coverage_ratio_months": 0.0,
+            "source_table": table,
+        }
+
+    if df is None or df.empty or "sku" not in df.columns:
+        return {}, {
+            "available_total": 0.0,
+            "avg_coverage_ratio_months": 0.0,
+            "source_table": table,
+        }
+
+    df = df.copy()
+
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df = df[
+        df["sku"].notna()
+        & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
+    ].copy()
+
+    if df.empty:
+        return {}, {
+            "available_total": 0.0,
+            "avg_coverage_ratio_months": 0.0,
+            "source_table": table,
+        }
+
+    df["available"] = safe_num(df.get("available", 0.0))
+    df["coverage_ratio_months"] = safe_num(df.get("coverage_ratio_months", 0.0))
+
+    sku_map = {}
+
+    for _, r in df.iterrows():
+        sku = str(r.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        sku_map[sku] = {
+            "current_inventory": round(float(r.get("available") or 0.0), 2),
+            "coverage_ratio_months": round(float(r.get("coverage_ratio_months") or 0.0), 2),
+        }
+
+    avg_cov = float(df["coverage_ratio_months"].replace(0, np.nan).mean())
+    if np.isnan(avg_cov):
+        avg_cov = 0.0
+
+    totals = {
+        "available_total": round(float(df["available"].sum()), 2),
+        "avg_coverage_ratio_months": round(avg_cov, 2),
+        "source_table": table,
+    }
+
+    return sku_map, totals
+
+
+
 def select_focus_skus_by_sales_mix_from_rows(
     sku_rows: list[dict],
     threshold: float = 80.0,
@@ -3062,6 +3171,18 @@ def build_ai_summary(
     ads_sku_map = {}
     ads_monthly_totals = {"ads_spend": 0.0, "cm2_profit": 0.0}
 
+    # =========================================================
+    # ✅ Frontend-only Inventory Enrichment
+    # This will NOT be passed into product_action_context / AI prompt.
+    # It is only for the recommendation cards on frontend.
+    # =========================================================
+    frontend_inventory_sku_map = {}
+    frontend_inventory_totals = {
+        "available_total": 0.0,
+        "avg_coverage_ratio_months": 0.0,
+        "source_table": None,
+    }
+
     resolved_country = (country or (currency or {}).get("country") or "uk").strip().lower()
 
     # Resolve year/month safely
@@ -3069,6 +3190,23 @@ def build_ai_summary(
         today_local = date.today()
         current_year = current_year or today_local.year
         current_month = current_month or today_local.month
+
+    if user_id:
+        try:
+            frontend_inventory_sku_map, frontend_inventory_totals = fetch_current_inventory_snapshot(
+                user_id=int(user_id),
+                country=resolved_country,
+                year=int(current_year),
+                month=int(current_month),
+            )
+        except Exception as e:
+            print("[WARN] Frontend inventory enrichment failed:", e)
+            frontend_inventory_sku_map = {}
+            frontend_inventory_totals = {
+                "available_total": 0.0,
+                "avg_coverage_ratio_months": 0.0,
+                "source_table": None,
+            }
 
     if user_id:
         try:
@@ -3127,10 +3265,158 @@ def build_ai_summary(
         if str(row.get("sku") or "").strip()
     ]    
 
+    # =========================================================
+    # ✅ Frontend-only Inventory Attachment
+    # These enriched rows are used only in payload["sku_tables"].
+    # Do NOT use these rows in product_action_context.
+    # =========================================================
+
+    def _frontend_inventory_lookup(sku_value):
+        sku_clean = safe_strip(sku_value, default="")
+        if not sku_clean:
+            return {
+                "current_inventory": 0.0,
+                "coverage_ratio_months": 0.0,
+            }
+
+        # exact match first
+        if sku_clean in frontend_inventory_sku_map:
+            return frontend_inventory_sku_map.get(sku_clean) or {
+                "current_inventory": 0.0,
+                "coverage_ratio_months": 0.0,
+            }
+
+        # case-insensitive fallback
+        sku_lower = sku_clean.lower()
+        for inv_sku, inv_payload in frontend_inventory_sku_map.items():
+            if str(inv_sku).strip().lower() == sku_lower:
+                return inv_payload or {
+                    "current_inventory": 0.0,
+                    "coverage_ratio_months": 0.0,
+                }
+
+        return {
+            "current_inventory": 0.0,
+            "coverage_ratio_months": 0.0,
+        }
+
+
+    def _attach_frontend_inventory_to_row(row: dict) -> dict:
+        if not isinstance(row, dict):
+            return row
+
+        row = dict(row)
+
+        sku = safe_strip(row.get("sku"), default="")
+        inv = _frontend_inventory_lookup(sku)
+
+        row["current_inventory"] = round(
+            float(inv.get("current_inventory", 0.0) or 0.0),
+            2,
+        )
+        row["coverage_ratio_months"] = round(
+            float(inv.get("coverage_ratio_months", 0.0) or 0.0),
+            2,
+        )
+
+        return row
+
+
+    def _build_frontend_focus_sku_rows(all_rows: list[dict], focus_sku_keys: list[str]) -> list[dict]:
+        focus_set = set(
+            str(x).strip()
+            for x in (focus_sku_keys or [])
+            if str(x).strip()
+        )
+
+        rows = []
+
+        for row in all_rows or []:
+            if not isinstance(row, dict):
+                continue
+
+            sku = safe_strip(row.get("sku"), default="")
+            if sku and sku in focus_set:
+                rows.append(_attach_frontend_inventory_to_row(row))
+
+        return rows
+
+
+    def _build_frontend_all_sku_rows(all_rows: list[dict]) -> list[dict]:
+        return [
+            _attach_frontend_inventory_to_row(row)
+            for row in (all_rows or [])
+            if isinstance(row, dict)
+        ]
+
+
+    def _attach_frontend_inventory_to_remaining_segment(
+        remaining_row: dict | None,
+        raw_remaining: dict | None,
+    ) -> dict | None:
+        if not remaining_row:
+            return remaining_row
+
+        remaining_row = dict(remaining_row)
+
+        included_products = []
+        total_inventory = 0.0
+
+        weighted_coverage_num = 0.0
+        weighted_coverage_den = 0.0
+
+        for product in (raw_remaining or {}).get("included_products", []):
+            sku = safe_strip(product.get("sku"), default="")
+            product_name = product.get("product_name") or sku
+
+            inv = _frontend_inventory_lookup(sku)
+
+            current_inventory = float(inv.get("current_inventory", 0.0) or 0.0)
+            coverage_ratio = float(inv.get("coverage_ratio_months", 0.0) or 0.0)
+
+            total_inventory += current_inventory
+
+            # Weighted coverage ratio by available units
+            if current_inventory > 0 and coverage_ratio > 0:
+                weighted_coverage_num += coverage_ratio * current_inventory
+                weighted_coverage_den += current_inventory
+
+            included_products.append({
+                "sku": sku,
+                "product_name": product_name,
+                "current_inventory": round(current_inventory, 2),
+                "coverage_ratio_months": round(coverage_ratio, 2),
+            })
+
+        remaining_row["current_inventory"] = round(total_inventory, 2)
+        remaining_row["coverage_ratio_months"] = (
+            round(weighted_coverage_num / weighted_coverage_den, 2)
+            if weighted_coverage_den
+            else 0.0
+        )
+
+        remaining_row["included_products"] = included_products
+        remaining_row["included_product_count"] = len(included_products)
+
+        return remaining_row
+
+
+    frontend_all_sku_rows = _build_frontend_all_sku_rows(top_80_skus)
+
+    frontend_focus_sku_rows = _build_frontend_focus_sku_rows(
+        top_80_skus,
+        focus_skus,
+    )
+
+    frontend_remaining_skus_aggregate = _attach_frontend_inventory_to_remaining_segment(
+        remaining_growth_row,
+        remaining_segment_raw,
+    )
+
 
 
     # =========================================================
-    # PAYLOAD (UNCHANGED STRUCTURE)
+    # PAYLOAD
     # =========================================================
     payload = {
         "periods": {
@@ -3159,18 +3445,22 @@ def build_ai_summary(
             "unit_profit_index_pct": up_pct,
         },
         "sku_tables": {
-            # Existing table
-            "top_80_skus": top_80_skus,
+            # Frontend table rows enriched with:
+            # current_inventory + coverage_ratio_months
+            "top_80_skus": frontend_all_sku_rows,
 
-            # ✅ Only 5 focus SKUs
+            # Focus SKU keys
             "focus_skus": focus_skus,
 
-            # ✅ Every available SKU for journey + recommendations
-            "all_individual_skus": all_individual_skus,
-            "all_sku_action_rows": all_sku_action_rows,
+            # Focus SKU rows for frontend cards
+            "focus_sku_rows": frontend_focus_sku_rows,
 
-            # ✅ One aggregated Remaining SKUs row
-            "remaining_skus_aggregate": remaining_growth_row,
+            # Every available SKU for frontend
+            "all_individual_skus": all_individual_skus,
+            "all_sku_action_rows": frontend_all_sku_rows,
+
+            # Aggregated Remaining SKUs card for frontend
+            "remaining_skus_aggregate": frontend_remaining_skus_aggregate,
         },
 
         "sku_context": sku_context,
@@ -3824,14 +4114,14 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
 
         country_key = COUNTRY_MAP.get(country_key, country_key)
 
-        print("[LIVE INSIGHT START]", {
-            "input_country": country,
-            "country_key": country_key,
-            "sku": sku,
-            "product_name": product_name,
-            "key": key,
-            "user_id": user_id,
-        })
+        # print("[LIVE INSIGHT START]", {
+        #     "input_country": country,
+        #     "country_key": country_key,
+        #     "sku": sku,
+        #     "product_name": product_name,
+        #     "key": key,
+        #     "user_id": user_id,
+        # })
 
         # -------------------------------------------------
         # Resolve latest month for strategy engine
@@ -3953,12 +4243,7 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
             )
 
 
-            print("[COUNTRY SUMMARY RAW]", {
-                "country_key": country_key,
-                "key": key,
-                "summary_type": type(summary_result).__name__,
-                "summary_keys": list(summary_result.keys()) if isinstance(summary_result, dict) else None,
-            })
+            
 
             sku_actions = (
                 summary_result.get("sku_actions")
