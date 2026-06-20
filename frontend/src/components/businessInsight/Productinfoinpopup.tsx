@@ -1029,19 +1029,30 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               </div>
             </div>
 
-            <div
-              className={`flex h-[380px] max-h-[500px] items-center justify-center rounded-md ${isDraggingChart ? "cursor-grabbing" : "cursor-grab"
-                }`}
-              onMouseDown={() => setIsDraggingChart(true)}
-              onMouseUp={() => setIsDraggingChart(false)}
-              onMouseLeave={() => setIsDraggingChart(false)}
-            >
-              {chartJSData?.labels?.length ? (
-                <Line data={chartJSData} options={chartOptions} />
-              ) : (
-                <p>No chart data available</p>
-              )}
-            </div>
+           <div
+  className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md bg-white ${
+    isDraggingChart ? "cursor-grabbing" : "cursor-grab"
+  }`}
+  onMouseDown={() => setIsDraggingChart(true)}
+  onMouseUp={() => setIsDraggingChart(false)}
+  onMouseLeave={() => setIsDraggingChart(false)}
+  onTouchStart={() => setIsDraggingChart(true)}
+  onTouchEnd={() => setIsDraggingChart(false)}
+>
+  {chartJSData?.labels?.length ? (
+    <>
+      {!isDraggingChart && allLabels.length > 12 && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+          ← Drag to view more months →
+        </div>
+      )}
+
+      <Line data={chartJSData} options={chartOptions} />
+    </>
+  ) : (
+    <p>No chart data available</p>
+  )}
+</div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-[13px] font-semibold text-gray-700">
               {activeTab === "sales_cm1" && (
