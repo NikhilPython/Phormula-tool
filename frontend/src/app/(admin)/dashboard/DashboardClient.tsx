@@ -11124,6 +11124,45 @@ Keep enough stock for validation but avoid over-committing too early.`,
         [getLiveBiProductRows]
     );
 
+    const getPnlDrawerInventoryValues = (source: any) => {
+    const currentInventory = Number(
+        source?.current_inventory ??
+        source?.currentInventory ??
+        source?.["Current Inventory"] ??
+        source?.["Available Inventory"] ??
+        source?.["Available Quantity"] ??
+        0
+    );
+
+    const stockCover = Number(
+        source?.coverage_ratio_months ??
+        source?.coverageRatioMonths ??
+        source?.["Coverage Ratio (In Months)"] ??
+        source?.["Stock Cover"] ??
+        0
+    );
+
+    return {
+        currentInventory: Number.isFinite(currentInventory) ? currentInventory : 0,
+        stockCover: Number.isFinite(stockCover) ? stockCover : 0,
+    };
+};
+
+const buildPnlDrawerInventoryMetrics = (source: any): MetricItem[] => {
+    const { currentInventory, stockCover } = getPnlDrawerInventoryValues(source);
+
+    return [
+        {
+            label: "Current Inventory",
+            value: `${Math.round(currentInventory).toLocaleString()} units`,
+        },
+        {
+            label: "Stock Cover (Months)",
+            value: stockCover.toFixed(2),
+        },
+    ];
+};
+
     const buildDrawerMetricsForPnlRow = useCallback(
         (pnlRow: MonthlySkuwiseTableRow, liveRow?: any): MetricItem[] => {
             const source = liveRow || pnlRow;
@@ -11230,6 +11269,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ),
                     color: profitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
                 },
+                ...buildPnlDrawerInventoryMetrics(source),
             ];
         },
         [
