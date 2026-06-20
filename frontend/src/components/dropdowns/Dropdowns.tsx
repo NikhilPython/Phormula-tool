@@ -7322,7 +7322,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         onAction={handleConnectAmazonPreview}
       >
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
-        {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && (
+        {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && activeTab !== "inventoryInsights" &&(
 
           <div className="flex flex-col gap-5 w-full mt-4">
             {/* Summary Cards */}
