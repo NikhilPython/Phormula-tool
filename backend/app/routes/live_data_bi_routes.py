@@ -2036,12 +2036,20 @@ def live_mtd_vs_previous():
                 "portfolio_recommendation": portfolio_recommendation,
 
                 "categorized_growth": {
-                    "top_80_products": (
-                        top_80_skus + ([other_products_total_row] if other_products_total_row else [])
-                    ),
-                    "other_products": other_skus,
-                    "other_products_total": other_products_total_row,
-                },
+                # Keep old key name, but return frontend-enriched focus rows
+                # so existing frontend cards can access:
+                # current_inventory + coverage_ratio_months
+                "top_80_skus": frontend_focus_sku_rows or top_80_skus,
+
+                "new_skus": new_skus,
+                "reviving_skus": reviving_skus,
+                "other_skus": other_skus,
+
+                "top_80_total": top_80_total_row,
+                "new_skus_total": new_skus_total_row,
+                "reviving_skus_total": reviving_skus_total_row,
+                "other_total": other_total_row,
+            },
                 # ✅ ADD THIS BACK FOR GLOBAL CHARTS
                 "daily_series": {
                     "current_mtd_global": current_mtd_global,
@@ -2656,6 +2664,21 @@ def live_mtd_vs_previous():
             if r.get("sku")
         ][:5]
 
+        # -------------------------------------------------
+        # ✅ Frontend-only card rows
+        # These rows include:
+        # current_inventory + coverage_ratio_months
+        # They are used only for frontend cards.
+        # -------------------------------------------------
+        frontend_focus_sku_rows = sku_tables_from_payload.get("focus_sku_rows") or []
+        frontend_all_action_rows = sku_tables_from_payload.get("all_sku_action_rows") or []
+        frontend_remaining_skus_aggregate = sku_tables_from_payload.get("remaining_skus_aggregate")
+
+        # -------------------------------------------------
+        # ✅ AI/action rows
+        # Keep these from product_action_context so inventory is NOT passed to AI.
+        # These rows are used later for sku_live_context, ads context, time series, Prompt-2, etc.
+        # -------------------------------------------------
         all_action_skus = product_action_context.get("action_skus") or [
             str(r.get("sku")).strip()
             for r in (all_skus_for_actions or [])
@@ -2667,9 +2690,10 @@ def live_mtd_vs_previous():
             if r.get("sku")
         ]
 
-        # Prefer the Remaining SKUs aggregate created inside build_ai_summary()
+        # Prefer frontend-enriched Remaining SKUs for response/cards.
+        # This should not be sent to AI.
         remaining_growth_row = (
-            sku_tables_from_payload.get("remaining_skus_aggregate")
+            frontend_remaining_skus_aggregate
             or remaining_growth_row
         )
 
@@ -2968,11 +2992,13 @@ def live_mtd_vs_previous():
 
                     # ✅ One aggregated Remaining SKUs card
                     "remaining_skus_context": {
-                        "aggregated_metrics": remaining_growth_row,
+                        # Use AI-safe remaining row from product_action_context.
+                        # Do NOT pass frontend inventory fields to AI.
+                        "aggregated_metrics": product_action_context.get("remaining_skus") or {},
                         "time_series": remaining_series,
                         "included_products": (
-                            remaining_growth_row.get("included_products", [])
-                            if isinstance(remaining_growth_row, dict)
+                            (product_action_context.get("remaining_skus") or {}).get("included_products", [])
+                            if isinstance(product_action_context.get("remaining_skus"), dict)
                             else []
                         ),
                         "instruction": (
@@ -2980,7 +3006,7 @@ def live_mtd_vs_previous():
                             "Return remaining_skus_journey_summary, remaining_skus_recommendation, "
                             "remaining_skus_ads_recommendation, and remaining_skus_inventory_recommendation."
                         ),
-                    } if remaining_growth_row else {},
+                    } if product_action_context.get("remaining_skus") else {},
                 }
                 # print("\n========== PROMPT 2 STRATEGY PAYLOAD ==========")
                 # print(json.dumps(strategy_debug_payload, indent=2, default=str))
@@ -3309,6 +3335,23 @@ def live_mtd_vs_previous():
             # ✅ Focus/Action metadata for frontend
             "focus_skus": focus_skus_for_cards,
             "all_action_skus": all_action_skus,
+
+            # -------------------------------------------------
+            # ✅ Frontend recommendation card data
+            # Use this for the cards shown under Recommendations.
+            # Each SKU row includes:
+            # current_inventory + coverage_ratio_months
+            # -------------------------------------------------
+            "recommendation_card_rows": {
+                "focus_skus": frontend_focus_sku_rows,
+                "remaining_skus": frontend_remaining_skus_aggregate,
+                "all_skus": frontend_all_action_rows,
+            },
+
+            # Optional direct aliases if frontend wants simpler access
+            "focus_sku_rows": frontend_focus_sku_rows,
+            "all_action_rows": frontend_all_action_rows,
+            "remaining_skus_aggregate": frontend_remaining_skus_aggregate,
 
             # 🔥 Remaining SKUs
             "remaining_skus_recommendation": remaining_skus_reco,
