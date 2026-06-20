@@ -202,20 +202,23 @@ export function exportCurrentInventoryExcel(params: {
 
   if (!dataRows?.length) return;
 
-  const preferredHeaders = [
-    "S.No.",
-    "Product Name",
-    "SKU",
-    "MTD Sales",
-    "Sales Last 30 Days",
-    "Sales Rank",
-    "Current Inventory",
-    "Inventory 180+ Days",
-    "Estimated Storage Cost",
-    "Inventory Coverage Ratio",
-    "Inventory Alerts",
-  ];
-
+const preferredHeaders = [
+  "S.No.",
+  "Product Name",
+  "SKU",
+  "MTD Sales",
+  "Sales Last 30 Days",
+  "Sales Rank",
+  "Current Inventory",
+  "Inventory 0-90 Days",
+  "Inventory 91-180 Days",
+  "Inventory 181-270 Days",
+  "Inventory 271-365 Days",
+  "Inventory 365+ Days",
+  "Estimated Storage Cost",
+  "Inventory Coverage Ratio",
+  "Inventory Alerts",
+];
   const sourceHeaders = Object.keys(dataRows[0] || {});
   const headers = preferredHeaders.filter((h) => sourceHeaders.includes(h));
   const headerCount = headers.length || 1;
@@ -265,20 +268,32 @@ export function exportCurrentInventoryExcel(params: {
 
   ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
 
-  ws["!cols"] = headers.map((h) => {
-    if (h === "S.No.") return { wch: 8 };
-    if (h === "Product Name") return { wch: 24 };
-    if (h === "SKU") return { wch: 18 };
-    if (h === "MTD Sales") return { wch: 14 };
-    if (h === "Sales Last 30 Days") return { wch: 18 };
-    if (h === "Sales Rank") return { wch: 14 };
-    if (h === "Current Inventory") return { wch: 18 };
-    if (h === "Inventory 180+ Days") return { wch: 20 };
-    if (h === "Estimated Storage Cost") return { wch: 26 };
-    if (h === "Inventory Coverage Ratio") return { wch: 24 };
-    if (h === "Inventory Alerts") return { wch: 24 };
-    return { wch: Math.min(Math.max(String(h).length + 2, 12), 28) };
-  });
+ws["!cols"] = headers.map((h) => {
+  if (h === "S.No.") return { wch: 8 };
+  if (h === "Product Name") return { wch: 24 };
+  if (h === "SKU") return { wch: 18 };
+  if (h === "MTD Sales") return { wch: 14 };
+  if (h === "Sales Last 30 Days") return { wch: 18 };
+  if (h === "Sales Rank") return { wch: 14 };
+  if (h === "Current Inventory") return { wch: 18 };
+
+  if (
+    [
+      "Inventory 0-90 Days",
+      "Inventory 91-180 Days",
+      "Inventory 181-270 Days",
+      "Inventory 271-365 Days",
+      "Inventory 365+ Days",
+    ].includes(h)
+  ) {
+    return { wch: 20 };
+  }
+
+  if (h === "Estimated Storage Cost") return { wch: 26 };
+  if (h === "Inventory Coverage Ratio") return { wch: 24 };
+  if (h === "Inventory Alerts") return { wch: 24 };
+  return { wch: Math.min(Math.max(String(h).length + 2, 12), 28) };
+});
 
   applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
@@ -298,13 +313,17 @@ export function exportCurrentInventoryExcel(params: {
 };
   }
 
- const INTEGER_COLUMNS = new Set([
+const INTEGER_COLUMNS = new Set([
   "S.No.",
   "MTD Sales",
   "Sales Last 30 Days",
   "Sales Rank",
   "Current Inventory",
-  "Inventory 180+ Days",
+  "Inventory 0-90 Days",
+  "Inventory 91-180 Days",
+  "Inventory 181-270 Days",
+  "Inventory 271-365 Days",
+  "Inventory 365+ Days",
 ]);
 
 const DECIMAL_COLUMNS = new Set([
@@ -416,19 +435,23 @@ export async function exportGlobalCurrentInventoryExcel(params: {
   workbook.creator = companyName || "Skinelements";
   workbook.created = new Date();
 
-  const headers = [
-    "S.No.",
-    "Product Name",
-    "SKU",
-    "MTD Sales",
-    "Sales Last 30 Days",
-    "Sales Rank",
-    "Current Inventory",
-    "Inventory 180+ Days",
-    "Estimated Storage Cost",
-    "Inventory Coverage Ratio",
-    "Inventory Alerts",
-  ];
+const headers = [
+  "S.No.",
+  "Product Name",
+  "SKU",
+  "MTD Sales",
+  "Sales Last 30 Days",
+  "Sales Rank",
+  "Current Inventory",
+  "Inventory 0-90 Days",
+  "Inventory 91-180 Days",
+  "Inventory 181-270 Days",
+  "Inventory 271-365 Days",
+  "Inventory 365+ Days",
+  "Estimated Storage Cost",
+  "Inventory Coverage Ratio",
+  "Inventory Alerts",
+];
 
 const tableBorder = {
   top: { style: "thin" as const, color: { argb: "FF000000" } },
@@ -518,20 +541,24 @@ const tableBorder = {
         if (n !== null && header !== "SKU" && header !== "Inventory Alerts") {
           cell.value = n;
 
-          if (
-            [
-              "S.No.",
-              "MTD Sales",
-              "Sales Last 30 Days",
-              "Sales Rank",
-              "Current Inventory",
-              "Inventory 180+ Days",
-            ].includes(header)
-          ) {
-            cell.numFmt = "#,##0";
-          } else {
-            cell.numFmt = "#,##0.00";
-          }
+         if (
+  [
+    "S.No.",
+    "MTD Sales",
+    "Sales Last 30 Days",
+    "Sales Rank",
+    "Current Inventory",
+    "Inventory 0-90 Days",
+    "Inventory 91-180 Days",
+    "Inventory 181-270 Days",
+    "Inventory 271-365 Days",
+    "Inventory 365+ Days",
+  ].includes(header)
+) {
+  cell.numFmt = "#,##0";
+} else {
+  cell.numFmt = "#,##0.00";
+}
         } else {
           cell.value = value ?? "";
         }
@@ -553,7 +580,7 @@ const tableBorder = {
       });
     });
 
-    ws.columns = [
+ws.columns = [
   { width: 8 },   // S.No.
   { width: 28 },  // Product Name
   { width: 18 },  // SKU
@@ -561,7 +588,11 @@ const tableBorder = {
   { width: 18 },  // Sales Last 30 Days
   { width: 14 },  // Sales Rank
   { width: 18 },  // Current Inventory
-  { width: 20 },  // Inventory 180+ Days
+  { width: 20 },  // Inventory 0-90 Days
+  { width: 20 },  // Inventory 91-180 Days
+  { width: 20 },  // Inventory 181-270 Days
+  { width: 20 },  // Inventory 271-365 Days
+  { width: 20 },  // Inventory 365+ Days
   { width: 26 },  // Estimated Storage Cost
   { width: 24 },  // Inventory Coverage Ratio
   { width: 30 },  // Inventory Alerts

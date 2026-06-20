@@ -4405,7 +4405,7 @@ export default function LiveBusinessClient({
                 </div>
 
                 {/* 3) Recommended Actions (cards) */}
-                {/* {(
+                {(
                   isGlobalData()
                     ? globalRecommendationCards.length > 0
                     : (
@@ -4726,8 +4726,8 @@ export default function LiveBusinessClient({
                     </div>
                   )}
 
-                }
-                {isGlobalData() ? (
+                {/* 4) Inventory Insight */}
+                {/* {isGlobalData() ? (
                   <GlobalInventoryInsights />
                 ) : (
                   <SingleCountryInventoryInsights />

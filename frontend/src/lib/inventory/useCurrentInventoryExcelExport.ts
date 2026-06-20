@@ -64,6 +64,52 @@ const getNumberByPossibleKeys = (row: InventoryRow, possible: string[]) => {
   return foundKey ? toNumberSafe(row[foundKey]) : 0;
 };
 
+const getInventoryAgeBucketsForExport = (row: InventoryRow) => {
+  const inventory0To90 = getNumberByPossibleKeys(row, [
+    "inv-age-0-to-90-days",
+    "inv_age_0_to_90_days",
+    "Inventory Age 0 to 90 Days",
+    "inv age 0 to 90 days",
+  ]);
+
+  const inventory91To180 = getNumberByPossibleKeys(row, [
+    "inv-age-91-to-180-days",
+    "inv_age_91_to_180_days",
+    "Inventory Age 91 to 180 Days",
+    "inv age 91 to 180 days",
+  ]);
+
+  const inventory181To270 = getNumberByPossibleKeys(row, [
+    "inv-age-181-to-270-days",
+    "inv_age_181_to_270_days",
+    "Inventory Age 181 to 270 Days",
+    "inv age 181 to 270 days",
+  ]);
+
+  const inventory271To365 = getNumberByPossibleKeys(row, [
+    "inv-age-271-to-365-days",
+    "inv_age_271_to_365_days",
+    "Inventory Age 271 to 365 Days",
+    "inv age 271 to 365 days",
+  ]);
+
+  const inventory365Plus = getNumberByPossibleKeys(row, [
+    "inv-age-365-plus-days",
+    "inv_age_365_plus_days",
+    "Inventory Age 365+ Days",
+    "inv age 365 plus days",
+    "inv-age-365+-days",
+  ]);
+
+  return {
+    inventory0To90,
+    inventory91To180,
+    inventory181To270,
+    inventory271To365,
+    inventory365Plus,
+  };
+};
+
 const isInventoryTotalRow = (r: InventoryRow) => {
   const name = String(r["Product Name"] ?? "").trim().toLowerCase();
   const sku = String(r["SKU"] ?? "").trim().toLowerCase();
@@ -192,23 +238,31 @@ export function useCurrentInventoryExcelExport({
         sales30Key ? (row as any)[sales30Key] : 0
       );
 
-      const inventory180Plus =
-        getNumberByPossibleKeys(row, [
-          "inv-age-181-to-270-days",
-          "inv_age_181_to_270_days",
-          "Inventory Age 181 to 270 Days",
-        ]) +
-        getNumberByPossibleKeys(row, [
-          "inv-age-271-to-365-days",
-          "inv_age_271_to_365_days",
-          "Inventory Age 271 to 365 Days",
-        ]) +
-        getNumberByPossibleKeys(row, [
-          "inv-age-365-plus-days",
-          "inv_age_365_plus_days",
-          "Inventory Age 365+ Days",
-          "inv age 365 plus days",
-        ]);
+      // const inventory180Plus =
+      //   getNumberByPossibleKeys(row, [
+      //     "inv-age-181-to-270-days",
+      //     "inv_age_181_to_270_days",
+      //     "Inventory Age 181 to 270 Days",
+      //   ]) +
+      //   getNumberByPossibleKeys(row, [
+      //     "inv-age-271-to-365-days",
+      //     "inv_age_271_to_365_days",
+      //     "Inventory Age 271 to 365 Days",
+      //   ]) +
+      //   getNumberByPossibleKeys(row, [
+      //     "inv-age-365-plus-days",
+      //     "inv_age_365_plus_days",
+      //     "Inventory Age 365+ Days",
+      //     "inv age 365 plus days",
+      //   ]);
+
+      const {
+  inventory0To90,
+  inventory91To180,
+  inventory181To270,
+  inventory271To365,
+  inventory365Plus,
+} = getInventoryAgeBucketsForExport(row);
 
       const estimatedStorage = toNumberSafe(
         (row as any)["estimated-storage-cost-next-month"] ||
@@ -228,7 +282,12 @@ export function useCurrentInventoryExcelExport({
         "Sales Last 30 Days": salesLast30Days,
         "Sales Rank": salesRank,
         "Current Inventory": currentInventory,
-        "Inventory 180+ Days": inventory180Plus,
+        // "Inventory 180+ Days": inventory180Plus,
+        "Inventory 0-90 Days": inventory0To90,
+"Inventory 91-180 Days": inventory91To180,
+"Inventory 181-270 Days": inventory181To270,
+"Inventory 271-365 Days": inventory271To365,
+"Inventory 365+ Days": inventory365Plus,
         "Estimated Storage Cost": estimatedStorage,
         "Inventory Coverage Ratio":
           salesLast30Days > 0 ? currentInventory / salesLast30Days : 0,
@@ -253,7 +312,12 @@ export function useCurrentInventoryExcelExport({
         acc["MTD Sales"] += toNumberSafe(row["MTD Sales"]);
         acc["Sales Last 30 Days"] += toNumberSafe(row["Sales Last 30 Days"]);
         acc["Current Inventory"] += toNumberSafe(row["Current Inventory"]);
-        acc["Inventory 180+ Days"] += toNumberSafe(row["Inventory 180+ Days"]);
+        // acc["Inventory 180+ Days"] += toNumberSafe(row["Inventory 180+ Days"]);
+        acc["Inventory 0-90 Days"] += toNumberSafe(row["Inventory 0-90 Days"]);
+acc["Inventory 91-180 Days"] += toNumberSafe(row["Inventory 91-180 Days"]);
+acc["Inventory 181-270 Days"] += toNumberSafe(row["Inventory 181-270 Days"]);
+acc["Inventory 271-365 Days"] += toNumberSafe(row["Inventory 271-365 Days"]);
+acc["Inventory 365+ Days"] += toNumberSafe(row["Inventory 365+ Days"]);
         acc["Estimated Storage Cost"] += toNumberSafe(
           row["Estimated Storage Cost"]
         );
@@ -261,18 +325,23 @@ export function useCurrentInventoryExcelExport({
         return acc;
       },
       {
-        "S.No.": "",
-        "Product Name": "Total",
-        SKU: "",
-        "MTD Sales": 0,
-        "Sales Last 30 Days": 0,
-        "Sales Rank": "",
-        "Current Inventory": 0,
-        "Inventory 180+ Days": 0,
-        "Estimated Storage Cost": 0,
-        "Inventory Coverage Ratio": 0,
-        "Inventory Alerts": "",
-      }
+  "S.No.": "",
+  "Product Name": "Total",
+  SKU: "",
+  "MTD Sales": 0,
+  "Sales Last 30 Days": 0,
+  "Sales Rank": "",
+  "Current Inventory": 0,
+  // "Inventory 180+ Days": 0,
+  "Inventory 0-90 Days": 0,
+"Inventory 91-180 Days": 0,
+"Inventory 181-270 Days": 0,
+"Inventory 271-365 Days": 0,
+"Inventory 365+ Days": 0,
+  "Estimated Storage Cost": 0,
+  "Inventory Coverage Ratio": 0,
+  "Inventory Alerts": "",
+}
     );
 
     totalRow["Inventory Coverage Ratio"] =
@@ -338,23 +407,31 @@ export function useCurrentInventoryExcelExport({
             sales30Key ? (row as any)[sales30Key] : 0
           );
 
-          const inventory180Plus =
-            getNumberByPossibleKeys(row, [
-              "inv-age-181-to-270-days",
-              "inv_age_181_to_270_days",
-              "Inventory Age 181 to 270 Days",
-            ]) +
-            getNumberByPossibleKeys(row, [
-              "inv-age-271-to-365-days",
-              "inv_age_271_to_365_days",
-              "Inventory Age 271 to 365 Days",
-            ]) +
-            getNumberByPossibleKeys(row, [
-              "inv-age-365-plus-days",
-              "inv_age_365_plus_days",
-              "Inventory Age 365+ Days",
-              "inv age 365 plus days",
-            ]);
+          // const inventory180Plus =
+          //   getNumberByPossibleKeys(row, [
+          //     "inv-age-181-to-270-days",
+          //     "inv_age_181_to_270_days",
+          //     "Inventory Age 181 to 270 Days",
+          //   ]) +
+          //   getNumberByPossibleKeys(row, [
+          //     "inv-age-271-to-365-days",
+          //     "inv_age_271_to_365_days",
+          //     "Inventory Age 271 to 365 Days",
+          //   ]) +
+          //   getNumberByPossibleKeys(row, [
+          //     "inv-age-365-plus-days",
+          //     "inv_age_365_plus_days",
+          //     "Inventory Age 365+ Days",
+          //     "inv age 365 plus days",
+          //   ]);
+
+          const {
+  inventory0To90,
+  inventory91To180,
+  inventory181To270,
+  inventory271To365,
+  inventory365Plus,
+} = getInventoryAgeBucketsForExport(row);
 
           const estimatedStorageRaw = toNumberSafe(
             (row as any)["estimated-storage-cost-next-month"] ||
@@ -375,7 +452,12 @@ export function useCurrentInventoryExcelExport({
                 (row as any)["sales-rank"] || (row as any)["Sales Rank"]
               ),
               "Current Inventory": currentInventory,
-              "Inventory 180+ Days": inventory180Plus,
+              // "Inventory 180+ Days": inventory180Plus,
+              "Inventory 0-90 Days": inventory0To90,
+"Inventory 91-180 Days": inventory91To180,
+"Inventory 181-270 Days": inventory181To270,
+"Inventory 271-365 Days": inventory271To365,
+"Inventory 365+ Days": inventory365Plus,
               "Estimated Storage Cost": convertToDisplayCurrency(
                 estimatedStorageRaw,
                 sourceCurrency
@@ -400,7 +482,12 @@ export function useCurrentInventoryExcelExport({
           acc["MTD Sales"] += toNumberSafe(row["MTD Sales"]);
           acc["Sales Last 30 Days"] += toNumberSafe(row["Sales Last 30 Days"]);
           acc["Current Inventory"] += toNumberSafe(row["Current Inventory"]);
-          acc["Inventory 180+ Days"] += toNumberSafe(row["Inventory 180+ Days"]);
+          // acc["Inventory 180+ Days"] += toNumberSafe(row["Inventory 180+ Days"]);
+          acc["Inventory 0-90 Days"] += toNumberSafe(row["Inventory 0-90 Days"]);
+acc["Inventory 91-180 Days"] += toNumberSafe(row["Inventory 91-180 Days"]);
+acc["Inventory 181-270 Days"] += toNumberSafe(row["Inventory 181-270 Days"]);
+acc["Inventory 271-365 Days"] += toNumberSafe(row["Inventory 271-365 Days"]);
+acc["Inventory 365+ Days"] += toNumberSafe(row["Inventory 365+ Days"]);
           acc["Estimated Storage Cost"] += toNumberSafe(
             row["Estimated Storage Cost"]
           );
@@ -415,7 +502,12 @@ export function useCurrentInventoryExcelExport({
           "Sales Last 30 Days": 0,
           "Sales Rank": "",
           "Current Inventory": 0,
-          "Inventory 180+ Days": 0,
+          // "Inventory 180+ Days": 0,
+          "Inventory 0-90 Days": 0,
+"Inventory 91-180 Days": 0,
+"Inventory 181-270 Days": 0,
+"Inventory 271-365 Days": 0,
+"Inventory 365+ Days": 0,
           "Estimated Storage Cost": 0,
           "Inventory Coverage Ratio": 0,
           "Inventory Alerts": "",
