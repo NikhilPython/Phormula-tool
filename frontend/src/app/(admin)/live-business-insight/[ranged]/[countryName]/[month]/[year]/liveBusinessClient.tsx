@@ -341,7 +341,7 @@ export default function LiveBusinessClient({
   asOf,
   startDay,
   endDay,
-   formattedMonthYear, // ✅ add this
+  formattedMonthYear, // ✅ add this
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -3603,10 +3603,10 @@ export default function LiveBusinessClient({
     return Object.values(countryObj || {})[0] as any;
   };
 
-const globalRecommendationCards = useMemo(() => {
-  if (!isGlobalData()) return [];
+  const globalRecommendationCards = useMemo(() => {
+    if (!isGlobalData()) return [];
 
-  const getNetSalesValue = (row: any) => {
+    const getNetSalesValue = (row: any) => {
       return Number(
         row?.net_sales_curr ??
         row?.net_sales_month2 ??
@@ -3714,15 +3714,15 @@ const globalRecommendationCards = useMemo(() => {
       : top80Rows;
 
     return finalRows.map((row) => {
-  const rawProductName = row.product_name || "";
+      const rawProductName = row.product_name || "";
 
-  const isOtherSkuCard =
-    isOthersCardName(rawProductName) ||
-    row === otherCardRow;
+      const isOtherSkuCard =
+        isOthersCardName(rawProductName) ||
+        row === otherCardRow;
 
-  const productName = isOtherSkuCard ? "Other SKUs" : rawProductName;
+      const productName = isOtherSkuCard ? "Other SKUs" : rawProductName;
 
-  const journey = getGlobalProductJourney(rawProductName);
+      const journey = getGlobalProductJourney(rawProductName);
 
       const ukAction = getFirstCountryAction(journey, "uk");
       const usAction = getFirstCountryAction(journey, "us");
@@ -4405,7 +4405,7 @@ const globalRecommendationCards = useMemo(() => {
                 </div>
 
                 {/* 3) Recommended Actions (cards) */}
-                {(
+                {/* {(
                   isGlobalData()
                     ? globalRecommendationCards.length > 0
                     : (
@@ -4615,61 +4615,61 @@ const globalRecommendationCards = useMemo(() => {
                             );
                           })}
 
-{!isGlobalData() && effectiveRemainingSkusBlock && (() => {
-  const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
+                        {!isGlobalData() && effectiveRemainingSkusBlock && (() => {
+                          const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
 
-  const otherIdx = sortedRecommendations.length;
-  const displayNumber = otherIdx + 1;
-  const otherCardName = "Other SKUs";
+                          const otherIdx = sortedRecommendations.length;
+                          const displayNumber = otherIdx + 1;
+                          const otherCardName = "Other SKUs";
 
-  const borderColor = topBorderColors[otherIdx % topBorderColors.length];
+                          const borderColor = topBorderColors[otherIdx % topBorderColors.length];
 
-  return (
-    <motion.div
-      key="other-skus-card"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
-      className={[
-        "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-        "border-t-4",
-        "p-3 space-y-3",
-      ].join(" ")}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-          {displayNumber}. {otherCardName}
-        </div>
+                          return (
+                            <motion.div
+                              key="other-skus-card"
+                              initial={{ opacity: 0, y: 16 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
+                              className={[
+                                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                                "border-t-4",
+                                "p-3 space-y-3",
+                              ].join(" ")}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+                                  {displayNumber}. {otherCardName}
+                                </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
-            const otherSourceRow = buildOtherSkusAggregateItem();
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const parsedOther = parseOtherSkusBlock(effectiveRemainingSkusBlock);
+                                    const otherSourceRow = buildOtherSkusAggregateItem();
 
-            setSelectedSkuItem(otherSourceRow);
-            setSelectedSku("__OTHER_SKUS__");
+                                    setSelectedSkuItem(otherSourceRow);
+                                    setSelectedSku("__OTHER_SKUS__");
 
-            setSelectedRec({
-              productName: otherCardName,
-              metrics: parsedOther.metrics,
-              journeyPoints: parsedOther.journeyPoints,
-              recommendationPoints: parsedOther.recommendationPoints,
-              advertisingPoints: parsedOther.advertisingPoints,
-              inventoryPoints: parsedOther.inventoryPoints,
-              showChart: true,
+                                    setSelectedRec({
+                                      productName: otherCardName,
+                                      metrics: parsedOther.metrics,
+                                      journeyPoints: parsedOther.journeyPoints,
+                                      recommendationPoints: parsedOther.recommendationPoints,
+                                      advertisingPoints: parsedOther.advertisingPoints,
+                                      inventoryPoints: parsedOther.inventoryPoints,
+                                      showChart: true,
 
-              isOtherSkus: true,
-              otherSkuProductNames: getOtherSkuProductNames(),
-            });
+                                      isOtherSkus: true,
+                                      otherSkuProductNames: getOtherSkuProductNames(),
+                                    });
 
-            setRecDrawerOpen(true);
-          }}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
-        >
-          Detailed View
-        </button>
-      </div>
+                                    setRecDrawerOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
+                                >
+                                  Detailed View
+                                </button>
+                              </div>
 
                               {parsedOther.metrics?.length > 0 && (
                                 <div className="grid grid-cols-3 gap-2">
@@ -4726,12 +4726,12 @@ const globalRecommendationCards = useMemo(() => {
                     </div>
                   )}
 
-                {/* 4) Inventory Insight */}
+                }
                 {isGlobalData() ? (
                   <GlobalInventoryInsights />
                 ) : (
                   <SingleCountryInventoryInsights />
-                )}
+                )} */}
 
               </div>
             )}
@@ -4928,16 +4928,16 @@ const globalRecommendationCards = useMemo(() => {
         objectiveContext={objectiveContext}
         countryName={countryName}
       /> */}
-     <SkuRecommendationDrawer
-  open={recDrawerOpen}
-  onClose={() => setRecDrawerOpen(false)}
-  selectedRec={selectedRec}
-  objectiveContext={objectiveContext}
-  countryName={countryName}
-  sourceCountryName={sourceCountryName || countryName}
-  displayCurrency={displayCurrency}
-  formattedMonthYear={drawerMonthYear} // ✅ add this
-/>
+      <SkuRecommendationDrawer
+        open={recDrawerOpen}
+        onClose={() => setRecDrawerOpen(false)}
+        selectedRec={selectedRec}
+        objectiveContext={objectiveContext}
+        countryName={countryName}
+        sourceCountryName={sourceCountryName || countryName}
+        displayCurrency={displayCurrency}
+        formattedMonthYear={drawerMonthYear} // ✅ add this
+      />
     </>
   );
 };

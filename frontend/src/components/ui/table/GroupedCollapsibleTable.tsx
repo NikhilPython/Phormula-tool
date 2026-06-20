@@ -534,7 +534,7 @@ export default function GroupedCollapsibleTable<RowT>({
   );
 
   const renderTableHead = () => (
-    <thead className="sticky top-0 z-10 font-bold">
+    <thead className="font-bold">
       {/* -------- Header Row 1 -------- */}
       <tr className={headerRow1ClassName}>
         {leftCols.map((c) => (
@@ -623,7 +623,7 @@ export default function GroupedCollapsibleTable<RowT>({
           const targetGroupId = toggleGroupByColKey?.[c.key];
           const isExpandable = Boolean(targetGroupId);
           const isTargetCollapsed = targetGroupId ? (collapsed[targetGroupId] ?? true) : true;
-          
+
           return (
             <th
               key={c.key}
@@ -821,6 +821,27 @@ export default function GroupedCollapsibleTable<RowT>({
   if (bodyMaxHeight) {
     return (
       <div className="w-full">
+        {/* Fixed header table */}
+        <div
+          className="w-full"
+          style={{
+            paddingRight: scrollbarWidth ? `${scrollbarWidth}px` : undefined,
+            boxSizing: "border-box",
+          }}
+        >
+          <table
+            className={tableClassName}
+            style={{
+              tableLayout: "fixed",
+              width: "100%",
+            }}
+          >
+            {renderColGroup()}
+            {renderTableHead()}
+          </table>
+        </div>
+
+        {/* Scrollable rows only */}
         <div
           ref={scrollContainerRef}
           className="w-full overflow-y-auto"
@@ -832,12 +853,11 @@ export default function GroupedCollapsibleTable<RowT>({
           <table
             className={tableClassName}
             style={{
-              // tableLayout: "fixed",
+              tableLayout: "fixed",
               width: "100%",
             }}
           >
             {renderColGroup()}
-            {renderTableHead()}
 
             <tbody>
               {renderSignRow()}
@@ -846,6 +866,7 @@ export default function GroupedCollapsibleTable<RowT>({
           </table>
         </div>
 
+        {/* Pinned total + summary */}
         <div
           className="w-full"
           style={{
@@ -863,9 +884,7 @@ export default function GroupedCollapsibleTable<RowT>({
             {renderColGroup()}
 
             {pinnedRows.length > 0 && (
-              <tbody>
-                {renderBodyRows(pinnedRows, scrollRows.length)}
-              </tbody>
+              <tbody>{renderBodyRows(pinnedRows, scrollRows.length)}</tbody>
             )}
 
             {renderSummaryFooter()}
@@ -874,7 +893,6 @@ export default function GroupedCollapsibleTable<RowT>({
       </div>
     );
   }
-
   /**
    * Normal mode:
    * Everything stays in one table
