@@ -1690,33 +1690,39 @@ const AGEING_TREND_BUCKET_OPTIONS = [
 
 const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
-        key: "liquidate",
-        label: "Liquidate",
-        description: "High 271–365 days inventory",
+        key: "healthy",
+        label: "Healthy",
+        description: "Inventory in 0–90 days bucket",
+        color: "#7B9A6D",
+    },
+    {
+        key: "high_alert",
+        label: "High Alert",
+        description: "Critical inventory alert SKUs",
         color: "#B75A5A",
     },
     {
         key: "discount",
         label: "Discount",
-        description: "High 181–270 days inventory",
-        color: "#ED9F50",
-    },
-    {
-        key: "monitor",
-        label: "Monitor",
-        description: "Inventory in 0–90 or 91–180 day buckets",
+        description: "Inventory in 91–180 days bucket",
         color: "#7B9A6D",
     },
     {
+        key: "liquidate",
+        label: "Liquidate",
+        description: "Inventory older than 180 days",
+        color: "#ED9F50",
+    },
+    {
         key: "unfulfillable",
-        label: "Unfulfillable Inventory",
-        description: "High 365+ days or unfulfillable inventory",
+        label: "Unfulfillable inventory",
+        description: "Remove/Dispose",
         color: "#3A8EA4",
     },
     {
         key: "estimated_storage_cost",
-        label: "Storage Cost",
-        description: "SKUs with estimated next-month storage cost",
+        label: "Estimate Storage",
+        description: "Estimated next-month storage cost",
         color: "#C49466",
     },
 ];
