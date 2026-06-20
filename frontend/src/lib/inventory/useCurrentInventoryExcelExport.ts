@@ -126,6 +126,15 @@ const isInventoryTotalRow = (r: InventoryRow) => {
   );
 };
 
+const hasAnyAgeingInventoryForExport = (row: Record<string, any>) => {
+  return (
+    toNumberSafe(row["Inventory 0-90 Days"]) > 0 ||
+    toNumberSafe(row["Inventory 91-180 Days"]) > 0 ||
+    toNumberSafe(row["Inventory 181-270 Days"]) > 0 ||
+    toNumberSafe(row["Inventory 271-365 Days"]) > 0 ||
+    toNumberSafe(row["Inventory 365+ Days"]) > 0
+  );
+};
 
 export function useCurrentInventoryExcelExport({
   region,
@@ -305,7 +314,13 @@ export function useCurrentInventoryExcelExport({
       );
     });
 
-    const finalRows = sortedRows.map((r, i) => buildRow(r, i));
+  const finalRows = sortedRows
+  .map((r, i) => buildRow(r, i))
+  .filter((row) => hasAnyAgeingInventoryForExport(row))
+  .map((row, index) => ({
+    ...row,
+    "S.No.": index + 1,
+  }));
 
     const totalRow = finalRows.reduce<Record<string, any>>(
       (acc, row) => {
@@ -472,10 +487,13 @@ acc["Inventory 365+ Days"] += toNumberSafe(row["Inventory 365+ Days"]);
         })
         .sort((a, b) => b.mtdSales - a.mtdSales);
 
-      const finalRows = mappedRows.map((item, index) => ({
-        ...item.exportRow,
-        "S.No.": index + 1,
-      }));
+const finalRows = mappedRows
+  .map((item) => item.exportRow)
+  .filter((row) => hasAnyAgeingInventoryForExport(row))
+  .map((row, index) => ({
+    ...row,
+    "S.No.": index + 1,
+  }));
 
       const totalRow = finalRows.reduce<Record<string, any>>(
         (acc, row) => {
