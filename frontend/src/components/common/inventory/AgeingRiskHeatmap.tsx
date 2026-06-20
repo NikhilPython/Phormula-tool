@@ -13,7 +13,9 @@ export type AgeingRiskHeatmapRow = {
     sku?: string;
     totalUnits?: number;
     coverageRatio?: number;
-    [bucketKey: string]: string | number | undefined;
+    isOthersRow?: boolean;
+    isTotalRow?: boolean;
+    [bucketKey: string]: string | number | boolean | undefined;
 };
 
 type AgeingRiskHeatmapProps = {
@@ -42,6 +44,56 @@ const getHeatColor = (
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 };
 
+const buildAggregateRow = (
+    label: string,
+    rows: AgeingRiskHeatmapRow[],
+    buckets: AgeingBucket[],
+    flags?: {
+        isOthersRow?: boolean;
+        isTotalRow?: boolean;
+    }
+): AgeingRiskHeatmapRow => {
+    const aggregate: AgeingRiskHeatmapRow = {
+        productName: label,
+        sku: label.toUpperCase().replace(/\s+/g, "_"),
+        isOthersRow: flags?.isOthersRow,
+        isTotalRow: flags?.isTotalRow,
+    };
+
+    buckets.forEach((bucket) => {
+        aggregate[bucket.key] = rows.reduce(
+            (sum, row) => sum + Number(row[bucket.key] || 0),
+            0
+        );
+    });
+
+    aggregate.totalUnits = buckets.reduce(
+        (sum, bucket) => sum + Number(aggregate[bucket.key] || 0),
+        0
+    );
+
+    // Weighted average coverage ratio for aggregate rows.
+    const weightedCoverageTotal = rows.reduce((sum, row) => {
+        const calculatedTotal = buckets.reduce(
+            (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
+            0
+        );
+
+        const rowTotal = Number(row.totalUnits ?? calculatedTotal);
+        const coverageRatio = Number(row.coverageRatio ?? 0);
+
+        if (!rowTotal || !Number.isFinite(coverageRatio)) return sum;
+
+        return sum + coverageRatio * rowTotal;
+    }, 0);
+
+    aggregate.coverageRatio = aggregate.totalUnits
+        ? weightedCoverageTotal / aggregate.totalUnits
+        : 0;
+
+    return aggregate;
+};
+
 const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     title = "Ageing Risk Heatmap",
     subtitle = "Quickly identify products with old inventory",
@@ -53,10 +105,28 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const canCollapse = data.length > defaultVisibleRows;
 
-    const visibleData = useMemo(() => {
-        if (!canCollapse || isExpanded) return data;
-        return data.slice(0, defaultVisibleRows);
-    }, [data, canCollapse, isExpanded, defaultVisibleRows]);
+    const displayRows = useMemo(() => {
+        const totalRow = buildAggregateRow("Total", data, buckets, {
+            isTotalRow: true,
+        });
+
+        if (!canCollapse || isExpanded) {
+            return [...data, totalRow];
+        }
+
+        const mainRows = data.slice(0, defaultVisibleRows);
+        const otherRows = data.slice(defaultVisibleRows);
+
+        if (!otherRows.length) {
+            return [...mainRows, totalRow];
+        }
+
+        const othersRow = buildAggregateRow("Others", otherRows, buckets, {
+            isOthersRow: true,
+        });
+
+        return [...mainRows, othersRow, totalRow];
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -68,7 +138,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         align="left"
                         textSize="2xl"
                     />
-
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -87,10 +156,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             )}
                         </button>
                     )}
-
-                    {/* <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {data.length} Products
-                    </div> */}
                 </div>
             </div>
 
@@ -122,13 +187,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             </th>
 
                             <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
-                                Coverage Ratio
+                                Coverage Ratio(in Months)
                             </th>
                         </tr>
                     </thead>
 
                     <tbody>
-                        {visibleData.map((row) => {
+                        {displayRows.map((row) => {
                             const calculatedTotal = buckets.reduce(
                                 (sum, bucket) => sum + Number(row[bucket.key] || 0),
                                 0
@@ -137,9 +202,23 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             const totalUnits = Number(row.totalUnits ?? calculatedTotal);
                             const coverageRatio = Number(row.coverageRatio ?? 0);
 
+                            const isAggregateRow = row.isOthersRow || row.isTotalRow;
+
                             return (
-                                <tr key={row.sku || row.productName}>
-                                    <td className="border-t border-slate-100 px-3 py-2 text-left font-semibold text-slate-900">
+                                <tr
+                                    key={row.sku || row.productName}
+                                    className={
+                                        row.isTotalRow
+                                            ? "bg-slate-100"
+                                            : row.isOthersRow
+                                                ? ""
+                                                : ""
+                                    }
+                                >
+                                    <td
+                                        className={`border-t border-slate-100 px-3 py-2 text-left text-slate-900 ${isAggregateRow ? "font-bold" : "font-semibold"
+                                            }`}
+                                    >
                                         {row.productName}
                                     </td>
 
@@ -156,7 +235,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                                 title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(1)}%)`}
                                             >
                                                 <div
-                                                    className="flex h-12 items-center justify-center text-[11px] font-semibold text-slate-900"
+                                                    className={`flex h-12 items-center justify-center text-[11px] text-slate-900 ${isAggregateRow ? "font-bold" : "font-semibold"
+                                                        }`}
                                                     style={{
                                                         background: getHeatColor(
                                                             bucket.color,
@@ -165,7 +245,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                                         ),
                                                     }}
                                                 >
-                                                    {value.toLocaleString()}
+                                                    {value === 0 ? "-" : value.toLocaleString()}
                                                 </div>
                                             </td>
                                         );
@@ -177,7 +257,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                                     <td className="border-t border-slate-100 px-3 py-2 text-center font-semibold text-slate-900">
                                         {Number.isFinite(coverageRatio) && coverageRatio > 0
-                                            ? `${coverageRatio.toFixed(2)} Months`
+                                            ? coverageRatio.toFixed(2)
                                             : "-"}
                                     </td>
                                 </tr>
@@ -186,7 +266,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     </tbody>
                 </table>
             </div>
-
         </div>
     );
 };

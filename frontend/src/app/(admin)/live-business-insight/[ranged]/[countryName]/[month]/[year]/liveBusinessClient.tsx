@@ -109,6 +109,8 @@ interface SkuItem {
   product_sales_month2?: number;
   profit_percentage_month1?: number;
   profit_percentage_month2?: number;
+  coverage_ratio_months?: number;
+  current_inventory?: number;
   'Gross Sales Growth (%)'?: {
     category: string;
     value: number;
@@ -165,6 +167,8 @@ interface ApiResponse {
     previous?: PeriodInfo;
     current_mtd?: PeriodInfo;
   };
+  all_action_rows?: SkuItem[];
+  remaining_skus_aggregate?: SkuItem | null;
   categorized_growth?: CategorizedGrowth;
   insights?: Record<string, SkuInsight>;
   ai_insights?: Record<string, SkuInsight>;
@@ -594,6 +598,8 @@ export default function LiveBusinessClient({
     other_total: null,
     all_skus_total: null,
   });
+  const [allActionRows, setAllActionRows] = useState<SkuItem[]>([]);
+  const [remainingSkusAggregate, setRemainingSkusAggregate] = useState<SkuItem | null>(null);
 
   const getCurrencySymbolForExcel = () => {
     return currencyCodeToSymbol(displayCurrency);
@@ -883,7 +889,22 @@ export default function LiveBusinessClient({
       color: getGrowth("Profit Per Unit") < 0 ? "#FF5C5C" : "#5EA68E",
     });
 
-    return m;
+    const coverageRatio = Number(
+      (item as any).coverage_ratio_months ??
+      (item as any).coverageRatioMonths ??
+      0
+    );
+
+    const currentInventory = Number(
+      (item as any).current_inventory ??
+      (item as any).currentInventory ??
+      0
+    );
+
+    m.push(buildStockCoverMetric(item));
+    m.push(buildCurrentInventoryUnitsMetric(item));
+
+    return sortMetricsByOrder(m);
   };
 
   const cleanPoint = (value: string) =>
@@ -1292,6 +1313,8 @@ export default function LiveBusinessClient({
   };
 
   const hydrateFromPayload = (payload: ApiResponse) => {
+    setAllActionRows(payload.all_action_rows || []);
+    setRemainingSkusAggregate(payload.remaining_skus_aggregate || null);
     const newPeriods = payload.periods || null;
 
     const rawCat = payload.categorized_growth || {
@@ -1407,6 +1430,9 @@ export default function LiveBusinessClient({
             generate_ai_insights: generateInsights ? "true" : "false",
           },
       });
+
+      setAllActionRows(res.data.all_action_rows || []);
+      setRemainingSkusAggregate(res.data.remaining_skus_aggregate || null);
 
       const newPeriods = res.data.periods || null;
       const rawCat = res.data.categorized_growth || {
@@ -2363,16 +2389,77 @@ export default function LiveBusinessClient({
     });
   };
 
+  const getInventoryMetricValues = (row: any) => {
+    const coverageRatio = Number(
+      row?.coverage_ratio_months ??
+      row?.coverageRatioMonths ??
+      0
+    );
+
+    const currentInventory = Number(
+      row?.current_inventory ??
+      row?.currentInventory ??
+      0
+    );
+
+    return {
+      coverageRatio: Number.isFinite(coverageRatio) ? coverageRatio : 0,
+      currentInventory: Number.isFinite(currentInventory) ? currentInventory : 0,
+    };
+  };
+
+  const buildStockCoverMetric = (row: any) => {
+    const { coverageRatio } = getInventoryMetricValues(row);
+
+    return {
+      label: "Stock Cover (Months)",
+      value: `${coverageRatio.toFixed(2)}`,
+    };
+  };
+
+  const buildCurrentInventoryUnitsMetric = (row: any) => {
+    const { currentInventory } = getInventoryMetricValues(row);
+
+    return {
+      label: "Current Inventory",
+      value: `${Math.round(currentInventory).toLocaleString()} units`,
+    };
+  };
+
+  const buildDrawerMetrics = (
+    metrics: { label: string; value: string; color?: string }[],
+    sourceRow: any
+  ) => {
+    const baseMetrics = metrics.filter((m) => {
+      const label = m.label.trim().toLowerCase();
+      return (
+        label !== "current inventory" &&
+        label !== "stock cover" &&
+        label !== "stock cover (months)" &&
+        label !== "current inventory units"
+      );
+    });
+
+    return sortMetricsByOrder([
+      ...baseMetrics,
+      buildStockCoverMetric(sourceRow),
+      buildCurrentInventoryUnitsMetric(sourceRow),
+    ]);
+  };
+
   const sortMetricsByOrder = (
     metrics: { label: string; value: string; color?: string }[]
   ) => {
     const order = [
-      "units",
-      "net sales",
-      "asp",
-      "cm1 profit",
-      "cm1 profit per unit",
-    ];
+  "units",
+  "net sales",
+  "asp",
+  "cm1 profit",
+  "cm1 profit per unit",
+  "current inventory",
+  "stock cover (months)",
+  "stock cover",
+];
 
     return [...metrics].sort((a, b) => {
       const aIndex = order.indexOf(a.label.trim().toLowerCase());
@@ -2395,25 +2482,59 @@ export default function LiveBusinessClient({
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
     for (const line of lines.slice(1)) {
       const metricMatch = line.match(metricRegex);
+
       if (metricMatch) {
         const label = metricMatch[1];
         const rawMetricValue = metricMatch[2];
-        const value = convertMetricValueString(rawMetricValue, label);
+
+        const value =
+          label.trim().toLowerCase() === "current inventory"
+            ? rawMetricValue
+            : convertMetricValueString(rawMetricValue, label);
 
         metrics.push({
           label,
           value,
           color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
         });
+
         continue;
       }
+
       insightParts.push(line);
+    }
+
+    const sourceRow = getRecommendationSourceRow(productName) as any;
+
+    const hasStockCoverMetric = metrics.some((m) => {
+      const label = m.label.trim().toLowerCase();
+      return (
+  label === "stock cover" ||
+  label === "stock cover (months)" ||
+  label === "current inventory"
+);
+    });
+
+    if (sourceRow && !hasStockCoverMetric) {
+      const coverageRatio = Number(
+        sourceRow.coverage_ratio_months ??
+        sourceRow.coverageRatioMonths ??
+        0
+      );
+
+      const currentInventory = Number(
+        sourceRow.current_inventory ??
+        sourceRow.currentInventory ??
+        0
+      );
+
+      metrics.push(buildStockCoverMetric(sourceRow));
     }
 
     const insightText = insightParts.join("\n").trim();
@@ -2431,9 +2552,11 @@ export default function LiveBusinessClient({
   };
 
 
+
+
   const buildOtherSkusAggregateItem = useCallback((): SkuItem | null => {
     const rows = categorizedGrowth.other_skus || [];
-    const total = categorizedGrowth.other_total as any;
+    const total = (remainingSkusAggregate || categorizedGrowth.other_total) as any;
 
     if (!rows.length && !total) return null;
 
@@ -2445,7 +2568,7 @@ export default function LiveBusinessClient({
       );
 
     const qtyCurr =
-      Number(total?.quantity_month2 ?? total?.quantity_curr ?? 0) ||
+      Number(total?.quantity_month2 ?? total?.quantity_curr ?? total?.quantity ?? 0) ||
       rows.reduce(
         (s, r: any) => s + Number(r.quantity_month2 ?? r.quantity_curr ?? r.quantity ?? 0),
         0
@@ -2459,7 +2582,7 @@ export default function LiveBusinessClient({
       );
 
     const netSalesCurr =
-      Number(total?.net_sales_month2 ?? total?.net_sales_curr ?? 0) ||
+      Number(total?.net_sales_month2 ?? total?.net_sales_curr ?? total?.net_sales ?? 0) ||
       rows.reduce(
         (s, r: any) => s + Number(r.net_sales_month2 ?? r.net_sales_curr ?? r.net_sales ?? 0),
         0
@@ -2473,77 +2596,181 @@ export default function LiveBusinessClient({
       );
 
     const profitCurr =
-      Number(total?.profit_month2 ?? total?.profit_curr ?? 0) ||
+      Number(total?.profit_month2 ?? total?.profit_curr ?? total?.profit ?? 0) ||
       rows.reduce(
         (s, r: any) => s + Number(r.profit_month2 ?? r.profit_curr ?? r.profit ?? 0),
         0
       );
 
-    const aspPrev = qtyPrev > 0 ? netSalesPrev / qtyPrev : 0;
-    const aspCurr = qtyCurr > 0 ? netSalesCurr / qtyCurr : 0;
+    const aspPrev =
+      Number(total?.asp_prev ?? total?.asp_month1 ?? 0) ||
+      (qtyPrev > 0 ? netSalesPrev / qtyPrev : 0);
 
-    const unitProfitPrev = qtyPrev > 0 ? profitPrev / qtyPrev : 0;
-    const unitProfitCurr = qtyCurr > 0 ? profitCurr / qtyCurr : 0;
+    const aspCurr =
+      Number(total?.asp_curr ?? total?.asp_month2 ?? total?.asp ?? 0) ||
+      (qtyCurr > 0 ? netSalesCurr / qtyCurr : 0);
+
+    const unitProfitPrev =
+      Number(total?.unit_wise_profitability_prev ?? total?.unit_wise_profitability_month1 ?? 0) ||
+      (qtyPrev > 0 ? profitPrev / qtyPrev : 0);
+
+    const unitProfitCurr =
+      Number(total?.unit_wise_profitability_curr ?? total?.unit_wise_profitability_month2 ?? total?.unit_wise_profitability ?? 0) ||
+      (qtyCurr > 0 ? profitCurr / qtyCurr : 0);
 
     const pct = (prev: number, curr: number) =>
       prev ? ((curr - prev) / prev) * 100 : 0;
 
+    const getGrowthValueFromTotal = (frontKey: string, backendKey: string) => {
+      const raw = total?.[frontKey] ?? total?.[backendKey];
+      const value = typeof raw === "object" ? raw?.value : raw;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+
     return {
       product_name: "Other SKUs",
+
       quantity_month1: qtyPrev,
       quantity_month2: qtyCurr,
+      quantity_prev: qtyPrev,
+      quantity_curr: qtyCurr,
+
       net_sales_month1: netSalesPrev,
       net_sales_month2: netSalesCurr,
+      net_sales_prev: netSalesPrev,
+      net_sales_curr: netSalesCurr,
+
       profit_month1: profitPrev,
       profit_month2: profitCurr,
+      profit_prev: profitPrev,
+      profit_curr: profitCurr,
+
       asp_month1: aspPrev,
       asp_month2: aspCurr,
+      asp_prev: aspPrev,
+      asp_curr: aspCurr,
+
       unit_wise_profitability_month1: unitProfitPrev,
       unit_wise_profitability_month2: unitProfitCurr,
+      unit_wise_profitability_prev: unitProfitPrev,
+      unit_wise_profitability_curr: unitProfitCurr,
 
-      ["Unit Growth"]: { value: pct(qtyPrev, qtyCurr), category: "" },
-      ["ASP Growth"]: { value: pct(aspPrev, aspCurr), category: "" },
-      ["Sales Growth"]: { value: pct(netSalesPrev, netSalesCurr), category: "" },
-      ["CM1 Profit Impact"]: { value: pct(profitPrev, profitCurr), category: "" },
-      ["Profit Per Unit"]: { value: pct(unitProfitPrev, unitProfitCurr), category: "" },
-      ["Sales Mix Change"]: { value: 0, category: "" },
+      coverage_ratio_months: Number(total?.coverage_ratio_months ?? 0),
+      current_inventory: Number(total?.current_inventory ?? 0),
+      included_product_count: Number(total?.included_product_count ?? rows.length ?? 0),
+
+      ["Unit Growth"]: {
+        value: getGrowthValueFromTotal("Unit Growth", "Unit Growth (%)") ?? pct(qtyPrev, qtyCurr),
+        category: "",
+      },
+      ["ASP Growth"]: {
+        value: getGrowthValueFromTotal("ASP Growth", "ASP Growth (%)") ?? pct(aspPrev, aspCurr),
+        category: "",
+      },
+      ["Sales Growth"]: {
+        value:
+          getGrowthValueFromTotal("Sales Growth", "Net Sales Growth (%)") ??
+          getGrowthValueFromTotal("Net Sales Growth", "Net Sales Growth (%)") ??
+          pct(netSalesPrev, netSalesCurr),
+        category: "",
+      },
+      ["CM1 Profit Impact"]: {
+        value:
+          getGrowthValueFromTotal("CM1 Profit Impact", "CM1 Profit Impact (%)") ??
+          pct(profitPrev, profitCurr),
+        category: "",
+      },
+      ["Profit Per Unit"]: {
+        value:
+          getGrowthValueFromTotal("Profit Per Unit", "Profit Per Unit (%)") ??
+          pct(unitProfitPrev, unitProfitCurr),
+        category: "",
+      },
+      ["Sales Mix Change"]: {
+        value: getGrowthValueFromTotal("Sales Mix Change", "Sales Mix Change (%)") ?? 0,
+        category: "",
+      },
     };
-  }, [categorizedGrowth.other_skus, categorizedGrowth.other_total]);
+  }, [
+    categorizedGrowth.other_skus,
+    categorizedGrowth.other_total,
+    remainingSkusAggregate,
+  ]);
+
+  const normalizeProductKey = (value: any) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^product\s*:\s*/i, "")
+    .replace(/^\d+\.\s*/, "")
+    .replace(/\s*\+\s*/g, " + ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const isComboProductName = (value: string) =>
+  normalizeProductKey(value).includes(" + ");
 
   const getRecommendationSourceRow = useCallback(
-    (productName: string) => {
-      if (isOthersCardName(productName)) {
-        return buildOtherSkusAggregateItem();
-      }
+  (productName: string) => {
+    if (isOthersCardName(productName)) {
+      return buildOtherSkusAggregateItem();
+    }
 
-      const allRows = [
-        ...(categorizedGrowth.top_80_skus || []),
-        ...(categorizedGrowth.new_skus || []),
-        ...(categorizedGrowth.reviving_skus || []),
-        ...(categorizedGrowth.other_skus || []),
-      ];
+    const normalized = normalizeProductKey(productName);
+    if (!normalized) return null;
 
-      const normalized = String(productName || "").trim().toLowerCase();
+    const allRows = [
+      ...(allActionRows || []),
+      ...(categorizedGrowth.top_80_skus || []),
+      ...(categorizedGrowth.new_skus || []),
+      ...(categorizedGrowth.reviving_skus || []),
+      ...(categorizedGrowth.other_skus || []),
+    ];
 
-      return (
-        allRows.find((row) => {
-          const rowName = String(row.product_name || "").trim().toLowerCase();
-          return (
-            rowName === normalized ||
-            rowName.includes(normalized) ||
-            normalized.includes(rowName)
-          );
-        }) || null
-      );
-    },
-    [
-      categorizedGrowth.top_80_skus,
-      categorizedGrowth.new_skus,
-      categorizedGrowth.reviving_skus,
-      categorizedGrowth.other_skus,
-      buildOtherSkusAggregateItem,
-    ]
-  );
+    // 1) Exact product_name match first
+    const exactMatch = allRows.find((row) => {
+      const rowName = normalizeProductKey(row.product_name || "");
+      return rowName === normalized;
+    });
+
+    if (exactMatch) return exactMatch;
+
+    // 2) Exact SKU match, if backend/card ever uses SKU as key
+    const skuMatch = allRows.find((row) => {
+      const rowSku = normalizeProductKey(row.sku || "");
+      return rowSku && rowSku === normalized;
+    });
+
+    if (skuMatch) return skuMatch;
+
+    // 3) For combo products like Classic + Passion Fruit,
+    // do NOT use includes matching, otherwise Classic will be picked incorrectly.
+    if (isComboProductName(productName)) {
+      return null;
+    }
+
+    // 4) Safe fallback only for non-combo product names
+    return (
+      allRows.find((row) => {
+        const rowName = normalizeProductKey(row.product_name || "");
+        if (!rowName) return false;
+
+        if (isComboProductName(rowName)) return false;
+
+        return rowName === normalized;
+      }) || null
+    );
+  },
+  [
+    allActionRows,
+    categorizedGrowth.top_80_skus,
+    categorizedGrowth.new_skus,
+    categorizedGrowth.reviving_skus,
+    categorizedGrowth.other_skus,
+    buildOtherSkusAggregateItem,
+  ]
+);
 
   const parseOtherSkusBlock = (raw: string) => {
     const lines = (raw || "")
@@ -2555,7 +2782,7 @@ export default function LiveBusinessClient({
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
@@ -2564,7 +2791,10 @@ export default function LiveBusinessClient({
       if (metricMatch) {
         const label = metricMatch[1];
         const rawMetricValue = metricMatch[2];
-        const value = convertMetricValueString(rawMetricValue, label);
+        const value =
+          label.trim().toLowerCase() === "current inventory"
+            ? rawMetricValue
+            : convertMetricValueString(rawMetricValue, label);
 
         metrics.push({
           label,
@@ -2574,6 +2804,33 @@ export default function LiveBusinessClient({
         continue;
       }
       insightParts.push(line);
+    }
+
+    const sourceRow = getRecommendationSourceRow(productName) as any;
+
+    const hasStockCoverMetric = metrics.some((m) => {
+      const label = m.label.trim().toLowerCase();
+      return (
+  label === "stock cover" ||
+  label === "stock cover (months)" ||
+  label === "current inventory"
+);
+    });
+
+    if (sourceRow && !hasStockCoverMetric) {
+      const coverageRatio = Number(
+        sourceRow.coverage_ratio_months ??
+        sourceRow.coverageRatioMonths ??
+        0
+      );
+
+      const currentInventory = Number(
+        sourceRow.current_inventory ??
+        sourceRow.currentInventory ??
+        0
+      );
+
+      metrics.push(buildStockCoverMetric(sourceRow));
     }
 
     const insightText = insightParts.join("\n").trim();
@@ -2635,6 +2892,8 @@ export default function LiveBusinessClient({
       return <span key={i}>{p.value}</span>;
     });
   };
+
+
 
 
 
@@ -3727,6 +3986,18 @@ export default function LiveBusinessClient({
       const ukAction = getFirstCountryAction(journey, "uk");
       const usAction = getFirstCountryAction(journey, "us");
 
+      const coverageRatio = Number(
+        row.coverage_ratio_months ??
+        row.coverageRatioMonths ??
+        0
+      );
+
+      const currentInventory = Number(
+        row.current_inventory ??
+        row.currentInventory ??
+        0
+      );
+
       const metrics = [
         {
           label: "Units",
@@ -3772,6 +4043,10 @@ export default function LiveBusinessClient({
             ),
             getGrowthValue(row, "Profit Per Unit (%)")
           ),
+        },
+        {
+          label: "Current inventory",
+          value: `${Number.isFinite(coverageRatio) ? coverageRatio.toFixed(2) : "0.00"} months\n${Number.isFinite(currentInventory) ? Math.round(currentInventory).toLocaleString() : "0"} units`,
         },
       ];
 
@@ -4486,7 +4761,7 @@ export default function LiveBusinessClient({
 
                                             return (
                                               <>
-                                                <span className="text-slate-900 truncate">
+                                                <span className="text-slate-900 whitespace-pre-line">
                                                   {mainValue}
                                                 </span>
 
@@ -4545,7 +4820,7 @@ export default function LiveBusinessClient({
 
                                       setSelectedRec({
                                         productName: parsed.productName,
-                                        metrics: parsed.metrics,
+                                        metrics: buildDrawerMetrics(parsed.metrics, sourceRow),
                                         journeyPoints: parsed.journeyPoints,
                                         recommendationPoints: parsed.recommendationPoints,
                                         advertisingPoints: parsed.advertisingPoints,
@@ -4586,7 +4861,7 @@ export default function LiveBusinessClient({
 
                                             return (
                                               <>
-                                                <span className="text-slate-900 truncate">
+                                                <span className="text-slate-900 whitespace-pre-line">
                                                   {mainValue}
                                                 </span>
 
@@ -4652,7 +4927,7 @@ export default function LiveBusinessClient({
 
                                     setSelectedRec({
                                       productName: otherCardName,
-                                      metrics: parsedOther.metrics,
+                                      metrics: buildDrawerMetrics(parsedOther.metrics, otherSourceRow),
                                       journeyPoints: parsedOther.journeyPoints,
                                       recommendationPoints: parsedOther.recommendationPoints,
                                       advertisingPoints: parsedOther.advertisingPoints,
@@ -4692,7 +4967,7 @@ export default function LiveBusinessClient({
 
                                           return (
                                             <>
-                                              <span className="text-slate-900 truncate">
+                                              <span className="text-slate-900 whitespace-pre-line">
                                                 {mainValue}
                                               </span>
                                               {percentPart && (
