@@ -1,4 +1,6 @@
 import React from "react";
+import PageBreadcrumb from "../PageBreadCrumb";
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 export type ActionCardItem = {
     key: string;
@@ -25,6 +27,8 @@ type ActionBasedDashboardProps = {
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
     onViewDetails?: (action: ActionCardItem) => void;
+    onDownloadInventoryExcel?: () => void;
+    canDownloadInventoryExcel?: boolean;
 };
 
 const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
@@ -32,15 +36,35 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
     subtitle = "Group SKUs by recommended action",
     actions,
     actionLogic,
+    onDownloadInventoryExcel,
+    canDownloadInventoryExcel = false,
 }) => {
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-4">
-                <h3 className="text-lg font-extrabold uppercase text-slate-900">
-                    {title}
-                </h3>
-                <p className="mt-1 text-sm text-slate-900">{subtitle}</p>
+            <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <PageBreadcrumb
+                        pageTitle={title}
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                    />
+
+                    {subtitle && (
+                        <p className="mt-1 text-xs 2xl:text-sm text-charcoal-400">
+                            {subtitle}
+                        </p>
+                    )}
+                </div>
+
+                {onDownloadInventoryExcel && (
+                    <DownloadIconButton
+                        onClick={onDownloadInventoryExcel}
+                        disabled={!canDownloadInventoryExcel}
+                    />
+                )}
             </div>
+
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {actions.map((action) => (
@@ -48,7 +72,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                         key={action.key}
                         className="rounded-xl border border-t-4 p-4 text-center"
                         style={{
-                            backgroundColor: action.backgroundColor,
+                            backgroundColor: "#ffffff",
                             borderColor: action.color,
                             borderTopColor: action.color,
                         }}
@@ -72,26 +96,6 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                 ))}
             </div>
 
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <h4 className="mb-3 font-bold text-slate-900">Action Logic</h4>
-
-                <div className="grid grid-cols-1 gap-x-5 gap-y-2 text-xs lg:grid-cols-2">
-                    {actions
-                        .map((action) =>
-                            actionLogic.find((logic) => logic.key === action.key)
-                        )
-                        .filter((logic): logic is ActionLogicItem => Boolean(logic))
-                        .map((logic) => (
-                            <p key={logic.key} className="m-0 text-slate-900">
-                                <span
-                                    className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: logic.color }}
-                                />
-                                <b>{logic.label}:</b> {logic.description}
-                            </p>
-                        ))}
-                </div>
-            </div>
         </div>
     );
 };

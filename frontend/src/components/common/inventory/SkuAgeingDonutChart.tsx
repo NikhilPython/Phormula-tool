@@ -84,14 +84,12 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                 content={
                                     <ChartTooltipContent
                                         hideLabel
-                                        formatter={(
-                                            value: number | string | undefined,
-                                            _name: string,
-                                            item: any
-                                        ) => {
+                                        formatter={(value, _name, item) => {
                                             const payload = item.payload as DonutChartItem & {
                                                 percentage: number;
                                             };
+
+                                            const displayValue = Array.isArray(value) ? value[0] : value;
 
                                             return (
                                                 <div className="flex min-w-[185px] items-center justify-between gap-4 text-xs">
@@ -106,7 +104,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                                     </div>
 
                                                     <span className="font-semibold text-slate-900">
-                                                        {Number(value ?? 0).toLocaleString()} (
+                                                        {Number(displayValue ?? 0).toLocaleString()} (
                                                         {payload.percentage.toFixed(1)}%)
                                                     </span>
                                                 </div>

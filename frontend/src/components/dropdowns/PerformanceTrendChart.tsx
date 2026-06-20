@@ -292,6 +292,7 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
 
       const ns = s.net_sales as any;
       const un = s.units as any;
+      const asp = s.asp as any;
 
       const pointsByPosition = new Map<string, GenericPoint>();
 
@@ -302,6 +303,7 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
           x: relativePos,
           net_sales: typeof ns?.[k] === "number" ? ns[k] : null,
           units: typeof un?.[k] === "number" ? un[k] : null,
+          asp: typeof asp?.[k] === "number" ? asp[k] : null,
           monthLabel: k ?? null,
         });
       });
@@ -312,6 +314,7 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
             x: pos,
             net_sales: null,
             units: null,
+            asp: null,
             monthLabel: null,
           }
         );
@@ -332,9 +335,11 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
     for (const s of seriesArr) {
       const ns = s.net_sales as any;
       const un = s.units as any;
+      const asp = s.asp as any;
 
       if (ns && !Array.isArray(ns)) Object.keys(ns).forEach((k) => set.add(k));
       if (un && !Array.isArray(un)) Object.keys(un).forEach((k) => set.add(k));
+      if (asp && !Array.isArray(asp)) Object.keys(asp).forEach((k) => set.add(k));
     }
     xAxis = sortKeysForX(Array.from(set));
   }
@@ -345,6 +350,7 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
   const outSeries: GenericSeries[] = seriesArr.map((s) => {
     const ns = s.net_sales as TrendBucketOrArray | undefined;
     const un = s.units as TrendBucketOrArray | undefined;
+    const asp = s.asp as TrendBucketOrArray | undefined;
 
     const m = xType === "day" ? parseMonthLabel(s.label) : null;
     const monthLen = m ? daysInMonth(m.year, m.monthIdx) : null;
@@ -353,6 +359,7 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
       x,
       net_sales: getValueForX(ns, x, dayIndexBase),
       units: getValueForX(un, x, dayIndexBase),
+      asp: getValueForX(asp, x, dayIndexBase),
     }));
 
     return { name: s.label, kind, points, monthLen };
@@ -361,7 +368,14 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
   return { xAxis, series: outSeries };
 };
 
+const getMetricValue = (pt: GenericPoint | undefined, metric: ChartMetric) => {
+  if (!pt) return null;
 
+  if (metric === "units") return pt.units ?? null;
+  if (metric === "asp") return pt.asp ?? null;
+
+  return pt.net_sales ?? null;
+};
 
 const LiveLineChart: React.FC<{
   xAxisData: string[];
@@ -570,7 +584,13 @@ const LiveLineChart: React.FC<{
     }, [isMonthAbbrAxis, fullYearXAxis, filteredXAxis]);
 
     const yAxisName =
-      metric === "net_sales" ? (currencySymbol ? `(${currencySymbol})` : "Sales") : "Units (in nos.)";
+      metric === "units"
+        ? "Units (in nos.)"
+        : metric === "asp"
+          ? `ASP ${currencySymbol ? `(${currencySymbol})` : ""}`
+          : currencySymbol
+            ? `(${currencySymbol})`
+            : "Sales";
 
     const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
 
@@ -625,9 +645,14 @@ const LiveLineChart: React.FC<{
               const displayValue =
                 value == null
                   ? "-"
-                  : metric === "net_sales"
-                    ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
-                    : `${Number(value).toLocaleString()}`;
+                  : metric === "units"
+                    ? Number(value).toLocaleString()
+                    : metric === "asp"
+                      ? `${currencySymbol ?? ""}${Number(value).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`
+                      : `${currencySymbol ?? ""}${fmtNumber(Number(value))}`;
 
               const suffix =
                 isQuarterCompare && monthLabel ? ` <span style="color:#6B7280;">(${monthLabel})</span>` : "";
@@ -731,15 +756,12 @@ const LiveLineChart: React.FC<{
         const lineColor = colorMap[ser.name] ?? GREY;
 
         const realPointCount = ser.points.filter((pt) => {
-          const v = metric === "units" ? pt.units : pt.net_sales;
+          const v = getMetricValue(pt, metric);
           return typeof v === "number" && !isNaN(v);
         }).length;
 
         const mapByX = new Map(ser.points.map((p) => [p.x, p] as const));
 
-        // For month-abbr full-year axis:
-        // - fill missing months with 0 (not null) so the line continues flat at 0.
-        // This produces exactly the behavior in your screenshot (Jan value -> Feb 0 -> flat).
         const aligned = effectiveXAxis.map((x) => {
           if (isPadX(x)) return mapByX.get(effectiveXAxis[0]);
           return mapByX.get(x);
@@ -782,7 +804,7 @@ const LiveLineChart: React.FC<{
 
             // pad category: duplicate first value
             if (isPadX(xRaw)) {
-              const vPad = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+           const vPad = getMetricValue(p, metric);
               if (p && (p as any).monthLabel != null) {
                 return vPad == null ? null : { value: vPad, monthLabel: (p as any).monthLabel };
               }
@@ -792,7 +814,7 @@ const LiveLineChart: React.FC<{
             // Month-abbr axis (Jan..Dec): fill missing months with 0
             if (isMonthAbbrAxis) {
               const monthIdx = MONTH_ABBR_TO_IDX[String(xRaw).toLowerCase()];
-              const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+              const v = getMetricValue(p, metric);
 
               const isCurrentOngoingYearSeries =
                 range === "yearly" &&
@@ -841,7 +863,7 @@ const LiveLineChart: React.FC<{
               return null;
             }
 
-            const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+            const v = getMetricValue(p, metric);
 
             if (p && (p as any).monthLabel != null) {
               return v == null ? null : { value: v, monthLabel: (p as any).monthLabel };
@@ -927,7 +949,11 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   const isPreviewMode = props.isPreviewMode ?? false;
 
   useEffect(() => {
-    if (props.metric === "net_sales" || props.metric === "units") {
+    if (
+      props.metric === "net_sales" ||
+      props.metric === "units" ||
+      props.metric === "asp"
+    ) {
       setChartMetric(props.metric);
     }
   }, [props.metric]);
@@ -991,6 +1017,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
               options={[
                 { value: "net_sales", label: "Net Sales" },
                 { value: "units", label: "Units" },
+                { value: "asp", label: "ASP" },
               ]}
               textSizeClass="text-xs"
               className="border-[#D9D9D9E5] bg-white"

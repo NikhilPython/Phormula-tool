@@ -1079,9 +1079,9 @@ const graphYear =
     <div className="">
       <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+          {/* <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
             Product Name
-          </div>
+          </div> */}
 
          <div className="flex flex-wrap items-center gap-3">
   <span className="text-base font-bold text-[#414042] sm:text-xl lg:text-lg 2xl:text-2xl">

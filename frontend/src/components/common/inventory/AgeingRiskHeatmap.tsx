@@ -1,4 +1,5 @@
 import React from "react";
+import PageBreadcrumb from "../PageBreadCrumb";
 
 export type AgeingBucket = {
     key: string;
@@ -49,10 +50,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
-                    <h3 className="text-lg font-extrabold uppercase text-slate-900">
-                        {title}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+                    <PageBreadcrumb
+                        pageTitle={title}
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                    />
                 </div>
 
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">

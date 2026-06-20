@@ -12,12 +12,14 @@ import SkuAgeingDonutChart, {
 
 import AgeingTrendChart, {
     AgeingTrendItem,
+    AgeingTrendBucketOption,
 } from "@/components/common/inventory/AgeingTrendChart";
 
 import ActionBasedDashboard, {
     ActionCardItem,
     ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
+
 
 type InventoryInsightsSectionProps = {
     heatmapBuckets: AgeingBucket[];
@@ -30,10 +32,17 @@ type InventoryInsightsSectionProps = {
     trendData: AgeingTrendItem[];
     trendLineColor: string;
 
+    trendBucketOptions?: AgeingTrendBucketOption[];
+    onTrendBucketChange?: (bucketValue: string) => void;
+
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
 
     onActionViewDetails?: (action: ActionCardItem) => void;
+
+    // ✅ new
+    onDownloadInventoryExcel?: () => void;
+    canDownloadInventoryExcel?: boolean;
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
@@ -44,10 +53,13 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     trendSelectedBucket,
     trendData,
     trendLineColor,
+    trendBucketOptions = [],
+    onTrendBucketChange,
     actions,
     actionLogic,
-
     onActionViewDetails,
+    onDownloadInventoryExcel,
+    canDownloadInventoryExcel = false,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -68,6 +80,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         actions={actions}
                         actionLogic={actionLogic}
                         onViewDetails={onActionViewDetails}
+                        onDownloadInventoryExcel={onDownloadInventoryExcel}
+                        canDownloadInventoryExcel={canDownloadInventoryExcel}
                     />
                 )}
 
@@ -89,6 +103,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                                 selectedBucket={trendSelectedBucket}
                                 data={trendData}
                                 lineColor={trendLineColor}
+                                bucketOptions={trendBucketOptions}
+                                onBucketChange={onTrendBucketChange}
                             />
                         )}
 

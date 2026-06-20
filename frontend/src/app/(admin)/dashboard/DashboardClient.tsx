@@ -12,7 +12,8 @@ import DashboardBargraphCard from "@/components/dashboard/DashboardBargraphCard"
 import SalesTargetCard from "@/components/dashboard/SalesTargetCard";
 import SalesTargetStatsCard from "@/components/dashboard/SalesTargetStatsCard";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
-import CurrentInventorySection from "@/components/dashboard/CurrentInventorySection";
+// import CurrentInventorySection from "@/components/dashboard/CurrentInventorySection";
+import { useCurrentInventoryExcelExport } from "@/lib/inventory/useCurrentInventoryExcelExport";
 import { RootState } from "@/lib/store";
 import { useAmazonConnections } from "@/lib/utils/useAmazonConnections";
 import HashScroll from "@/components/common/HashScroll";
@@ -67,6 +68,26 @@ import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
+import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
+
+import type {
+    AgeingBucket,
+    AgeingRiskHeatmapRow,
+} from "@/components/common/inventory/AgeingRiskHeatmap";
+
+import type {
+    DonutChartItem,
+} from "@/components/common/inventory/SkuAgeingDonutChart";
+
+import type {
+    AgeingTrendItem,
+} from "@/components/common/inventory/AgeingTrendChart";
+
+import type {
+    ActionCardItem,
+    ActionLogicItem,
+} from "@/components/common/inventory/ActionBasedDashboard";
+
 
 const TERM_DEFINITIONS: Record<string, string> = {
     product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -434,6 +455,89 @@ type UiAlert = {
     title: string;
     message: string;
     variant: "success" | "error" | "warning" | "info";
+};
+
+type InventoryCurrentRow = Record<string, any>;
+
+type InventoryCurrentApiResponse = {
+    success: boolean;
+    table_name?: string;
+    columns?: string[];
+    rows?: InventoryCurrentRow[];
+    total_rows?: number;
+    categories?: Record<
+        string,
+        {
+            items?: any[];
+            product_count?: number;
+            sku_count?: number;
+            name?: string;
+            label?: string;
+            description?: string;
+        }
+    >;
+    category_counts?: Record<string, number>;
+    month?: string;
+    year?: number;
+    country_key?: string;
+    inventory_age_summary?: {
+        total?: number;
+        columns?: Record<
+            string,
+            {
+                total?: number;
+                percentage_share?: number;
+            }
+        >;
+    };
+    message?: string;
+};
+
+type InventoryAgeSummaryItem = {
+    month: string;
+    month_number?: number;
+    year: number;
+    age_bucket: string;
+    column: string;
+    units: number;
+};
+
+type InventoryAgeMonthSummaryItem = {
+    month: string;
+    month_number: number;
+    year: number;
+    source?: string;
+    totals: Record<string, number>;
+};
+
+type InventoryAgeSummaryApiResponse = {
+    success: boolean;
+    table_name?: string;
+    month?: string;
+    year?: number;
+    country_key?: string;
+    totals?: Record<string, number>;
+    age_summary?: InventoryAgeSummaryItem[];
+    month_summary?: InventoryAgeMonthSummaryItem[];
+    message?: string;
+};
+
+type InventoryInsightsData = {
+    heatmapBuckets: AgeingBucket[];
+    heatmapData: AgeingRiskHeatmapRow[];
+    donutSku: string;
+    donutData: DonutChartItem[];
+    donutTotalUnits: number;
+    trendSelectedBucket: string;
+    trendData: AgeingTrendItem[];
+    trendLineColor: string;
+    trendBucketOptions: {
+        label: string;
+        value: string;
+        color: string;
+    }[];
+    actions: ActionCardItem[];
+    actionLogic: ActionLogicItem[];
 };
 
 /* ===================== SMALL HELPERS ===================== */
@@ -1539,6 +1643,521 @@ const sliceByDayRange = (
     });
 };
 
+
+const inventoryMonthIndexMap: Record<string, number> = {
+    january: 0,
+    february: 1,
+    march: 2,
+    april: 3,
+    may: 4,
+    june: 5,
+    july: 6,
+    august: 7,
+    september: 8,
+    october: 9,
+    november: 10,
+    december: 11,
+};
+
+const INVENTORY_BUCKETS: AgeingBucket[] = [
+    { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
+    { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
+    { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
+    { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+    { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
+];
+
+const AGEING_TREND_BUCKET_OPTIONS = [
+    {
+        label: "181–270 Days",
+        value: "181-270 days",
+        column: "inv-age-181-to-270-days",
+        color: "#FDD36F",
+    },
+    {
+        label: "271–365 Days",
+        value: "271-365 days",
+        column: "inv-age-271-to-365-days",
+        color: "#ED9F50",
+    },
+    {
+        label: "365+ Days",
+        value: "365+ days",
+        column: "inv-age-365-plus-days",
+        color: "#B75A5A",
+    },
+];
+
+const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
+    {
+        key: "liquidate",
+        label: "Liquidate",
+        description: "High 271–365 days inventory",
+        color: "#B75A5A",
+    },
+    {
+        key: "discount",
+        label: "Discount",
+        description: "High 181–270 days inventory",
+        color: "#ED9F50",
+    },
+    {
+        key: "monitor",
+        label: "Monitor",
+        description: "Inventory in 0–90 or 91–180 day buckets",
+        color: "#7B9A6D",
+    },
+    {
+        key: "unfulfillable",
+        label: "Unfulfillable inventory",
+        description: "High 365+ days or unfulfillable inventory",
+        color: "#3A8EA4",
+    },
+    {
+        key: "estimated_storage_cost",
+        label: "Storage Cost",
+        description: "SKUs with estimated next-month storage cost",
+        color: "#C49466",
+    },
+];
+
+const INVENTORY_ACTION_META: Record<
+    string,
+    {
+        label: string;
+        description: string;
+        color: string;
+        backgroundColor: string;
+    }
+> = {
+    liquidate: {
+        label: "Liquidate",
+        description: "High 271–365 days inventory",
+        color: "#B75A5A",
+        backgroundColor: "#ffffff",
+    },
+    discount: {
+        label: "Discount",
+        description: "High 181–270 days inventory",
+        color: "#ED9F50",
+        backgroundColor: "#ffffff",
+    },
+    monitor: {
+        label: "Monitor",
+        description: "Ageing or watchlist inventory",
+        color: "#FDD36F",
+        backgroundColor: "#ffffff",
+    },
+    unfulfillable: {
+        label: "Unfulfillable inventory",
+        description: "Remove/Dispose",
+        color: "#3A8EA4",
+        backgroundColor: "#ffffff",
+    },
+    estimated_storage_cost: {
+        label: "Storage Cost",
+        description: "Estimated next-month storage cost",
+        color: "#C49466",
+        backgroundColor: "#ffffff",
+    },
+};
+
+const inventoryToNum = (v: any) => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+    const n = Number(String(v).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+};
+
+const getInventoryRowSku = (row: InventoryCurrentRow) =>
+    String(row?.SKU ?? row?.sku ?? "").trim();
+
+const getInventoryRowProductName = (row: InventoryCurrentRow) =>
+    String(row?.["Product Name"] ?? row?.product_name ?? "").trim();
+
+const isInventoryInsightsTotalRow = (row: InventoryCurrentRow) => {
+    const sku = getInventoryRowSku(row).toLowerCase();
+    const product = getInventoryRowProductName(row).toLowerCase();
+
+    return sku === "total" || product === "total" || sku === "grand total" || product === "grand total";
+};
+
+const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
+    inventoryToNum(row?.[key]);
+
+const getShortMonthLabel = (monthName?: string) => {
+    const clean = String(monthName || "").trim();
+    return clean ? clean.slice(0, 3) : "-";
+};
+
+const getMonthYearFromInventoryTableName = (tableName?: string) => {
+    const match = String(tableName || "").match(/_([a-z]+)(\d{4})_table$/i);
+
+    if (!match) {
+        return {
+            month: "",
+            year: 0,
+            month_number: 0,
+        };
+    }
+
+    const month = match[1].toLowerCase();
+    const year = Number(match[2]);
+    const month_number = (inventoryMonthIndexMap[month] ?? -1) + 1;
+
+    return {
+        month,
+        year,
+        month_number,
+    };
+};
+
+const getInventoryCurrencySymbol = (countryName: string, homeCurrency?: string) => {
+    const v =
+        String(countryName || "").toLowerCase() === "global"
+            ? String(homeCurrency || "usd").toLowerCase()
+            : String(countryName || "").toLowerCase();
+
+    switch (v) {
+        case "usd":
+        case "us":
+        case "global":
+            return "$";
+        case "gbp":
+        case "uk":
+            return "£";
+        case "cad":
+        case "ca":
+        case "canada":
+            return "C$";
+        case "inr":
+        case "india":
+            return "₹";
+        default:
+            return "¤";
+    }
+};
+
+const formatInventoryStorageCost = (
+    value: number,
+    countryName: string,
+    homeCurrency?: string
+) => {
+    const symbol = getInventoryCurrencySymbol(countryName, homeCurrency);
+
+    return `${symbol}${value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+};
+
+const getEstimatedStorageCostTotal = (
+    latestResponse?: InventoryCurrentApiResponse
+) => {
+    const storageItems =
+        latestResponse?.categories?.estimated_storage_cost?.items ?? [];
+
+    const totalRow = storageItems.find((item: any) => {
+        const productName = String(item?.product_name || "")
+            .trim()
+            .toLowerCase();
+
+        const sku = String(item?.sku || "")
+            .trim()
+            .toLowerCase();
+
+        return productName === "total" || sku === "total" || sku === "";
+    });
+
+    if (totalRow) {
+        return inventoryToNum(totalRow?.["estimated-storage-cost-next-month"]);
+    }
+
+    return storageItems.reduce(
+        (sum: number, item: any) =>
+            sum + inventoryToNum(item?.["estimated-storage-cost-next-month"]),
+        0
+    );
+};
+
+const buildAgeingTrendDataFromSummary = (
+    ageSummaryResponses: InventoryAgeSummaryApiResponse[],
+    bucketColumn: string
+): AgeingTrendItem[] => {
+    const monthMap = new Map<
+        string,
+        {
+            month: string;
+            month_number: number;
+            year: number;
+            value: number;
+        }
+    >();
+
+    for (const res of ageSummaryResponses || []) {
+        if (!res?.success) continue;
+
+        if (Array.isArray(res.month_summary) && res.month_summary.length > 0) {
+            for (const item of res.month_summary) {
+                const key = `${item.year}-${item.month_number}`;
+
+                monthMap.set(key, {
+                    month: item.month,
+                    month_number: item.month_number,
+                    year: item.year,
+                    value: inventoryToNum(item.totals?.[bucketColumn]),
+                });
+            }
+
+            continue;
+        }
+
+        if (Array.isArray(res.age_summary) && res.age_summary.length > 0) {
+            for (const item of res.age_summary) {
+                if (item.column !== bucketColumn) continue;
+
+                const monthNumber =
+                    item.month_number ??
+                    inventoryMonthIndexMap[item.month.toLowerCase()] + 1;
+
+                const key = `${item.year}-${monthNumber}`;
+
+                monthMap.set(key, {
+                    month: item.month,
+                    month_number: monthNumber,
+                    year: item.year,
+                    value: inventoryToNum(item.units),
+                });
+            }
+
+            continue;
+        }
+
+        if (res.month && res.year && res.totals) {
+            const monthNumber = inventoryMonthIndexMap[res.month.toLowerCase()] + 1;
+            const key = `${res.year}-${monthNumber}`;
+
+            monthMap.set(key, {
+                month: res.month,
+                month_number: monthNumber,
+                year: res.year,
+                value: inventoryToNum(res.totals?.[bucketColumn]),
+            });
+        }
+    }
+
+    return Array.from(monthMap.values())
+        .sort((a, b) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.month_number - b.month_number;
+        })
+        .map((item) => ({
+            label: getShortMonthLabel(item.month),
+            value: item.value,
+        }));
+};
+
+const buildAgeingTrendDataFromInventoryCurrent = (
+    inventoryResponses: InventoryCurrentApiResponse[],
+    bucketColumn: string
+): AgeingTrendItem[] => {
+    return (inventoryResponses || [])
+        .filter((res) => res?.success)
+        .map((res) => {
+            const parsed = getMonthYearFromInventoryTableName(res.table_name);
+
+            const month = String(res.month || "").toLowerCase() || parsed.month;
+            const year = Number(res.year || 0) || parsed.year;
+            const month_number =
+                (inventoryMonthIndexMap[month] ?? -1) + 1 || parsed.month_number;
+
+            return {
+                month,
+                year,
+                month_number,
+                value: inventoryToNum(
+                    res.inventory_age_summary?.columns?.[bucketColumn]?.total
+                ),
+            };
+        })
+        .filter((item) => item.month && item.year && item.month_number)
+        .sort((a, b) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.month_number - b.month_number;
+        })
+        .map((item) => ({
+            label: getShortMonthLabel(item.month),
+            value: item.value,
+        }));
+};
+
+const buildInventoryInsightsFromResponses = (
+    responses: InventoryCurrentApiResponse[],
+    ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
+    countryName: string,
+    homeCurrency?: string,
+    selectedTrendBucketValue: string = "365+ days"
+): InventoryInsightsData => {
+    const validResponses = responses.filter((res) => res?.success);
+    const latestResponse = validResponses[validResponses.length - 1];
+
+    const latestRows = (latestResponse?.rows ?? []).filter(
+        (row) => !isInventoryInsightsTotalRow(row)
+    );
+
+    const heatmapData: AgeingRiskHeatmapRow[] = latestRows
+        .map((row) => {
+            const sku = getInventoryRowSku(row);
+            const productName = getInventoryRowProductName(row);
+
+            const zeroToNinety = getInventoryAgeValue(row, "inv-age-0-to-90-days");
+            const ninetyOneToOneEighty = getInventoryAgeValue(row, "inv-age-91-to-180-days");
+            const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, "inv-age-181-to-270-days");
+            const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
+            const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
+
+            const totalUnits =
+                zeroToNinety +
+                ninetyOneToOneEighty +
+                oneEightyOneToTwoSeventy +
+                twoSeventyOneToThreeSixtyFive +
+                threeSixtyFivePlus;
+
+            return {
+                productName: productName || sku || "-",
+                sku,
+                zeroToNinety,
+                ninetyOneToOneEighty,
+                oneEightyOneToTwoSeventy,
+                twoSeventyOneToThreeSixtyFive,
+                threeSixtyFivePlus,
+                totalUnits,
+                coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
+            };
+        })
+        .filter((row) => row.productName && Number(row.totalUnits) > 0)
+        .sort((a, b) => b.totalUnits - a.totalUnits);
+
+    const overallAgeing = latestRows.reduce(
+        (acc, row) => {
+            acc.zeroToNinety += getInventoryAgeValue(row, "inv-age-0-to-90-days");
+            acc.ninetyOneToOneEighty += getInventoryAgeValue(row, "inv-age-91-to-180-days");
+            acc.oneEightyOneToTwoSeventy += getInventoryAgeValue(row, "inv-age-181-to-270-days");
+            acc.twoSeventyOneToThreeSixtyFive += getInventoryAgeValue(row, "inv-age-271-to-365-days");
+            acc.threeSixtyFivePlus += getInventoryAgeValue(row, "inv-age-365-plus-days");
+
+            return acc;
+        },
+        {
+            zeroToNinety: 0,
+            ninetyOneToOneEighty: 0,
+            oneEightyOneToTwoSeventy: 0,
+            twoSeventyOneToThreeSixtyFive: 0,
+            threeSixtyFivePlus: 0,
+        }
+    );
+
+    const donutData: DonutChartItem[] = [
+        { bucket: "0–90 Days", units: overallAgeing.zeroToNinety, color: "#B8C78C" },
+        { bucket: "91–180 Days", units: overallAgeing.ninetyOneToOneEighty, color: "#7B9A6D" },
+        { bucket: "181–270 Days", units: overallAgeing.oneEightyOneToTwoSeventy, color: "#FDD36F" },
+        { bucket: "271–365 Days", units: overallAgeing.twoSeventyOneToThreeSixtyFive, color: "#ED9F50" },
+        { bucket: "365+ Days", units: overallAgeing.threeSixtyFivePlus, color: "#B75A5A" },
+    ].filter((item) => item.units > 0);
+
+    const donutTotalUnits = donutData.reduce(
+        (sum, item) => sum + inventoryToNum(item.units),
+        0
+    );
+
+    const selectedTrendBucket =
+        AGEING_TREND_BUCKET_OPTIONS.find(
+            (bucket) => bucket.value === selectedTrendBucketValue
+        ) || AGEING_TREND_BUCKET_OPTIONS[2];
+
+    const trendDataFromSummary = buildAgeingTrendDataFromSummary(
+        ageSummaryResponses,
+        selectedTrendBucket.column
+    );
+
+    const trendDataFromInventoryCurrent = buildAgeingTrendDataFromInventoryCurrent(
+        validResponses,
+        selectedTrendBucket.column
+    );
+
+    const trendData =
+        trendDataFromSummary.length > 0
+            ? trendDataFromSummary
+            : trendDataFromInventoryCurrent;
+
+    const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
+
+    const actions: ActionCardItem[] = Object.entries(INVENTORY_ACTION_META).map(
+        ([key, meta]) => {
+            const categoryFromResponse = latestResponse?.categories?.[key] as any;
+
+            const labelFromApi =
+                categoryFromResponse?.name ||
+                categoryFromResponse?.label ||
+                meta.label;
+
+            const descriptionFromApi =
+                categoryFromResponse?.description || meta.description;
+
+            const count =
+                inventoryToNum(latestResponse?.category_counts?.[key]) ||
+                inventoryToNum(categoryFromResponse?.items?.length);
+
+            if (key === "estimated_storage_cost") {
+                return {
+                    key,
+                    label: labelFromApi,
+                    description: descriptionFromApi,
+                    count,
+                    displayValue: formatInventoryStorageCost(
+                        storageCostTotal,
+                        countryName,
+                        homeCurrency
+                    ),
+                    valueSuffix: "Storage Cost",
+                    color: meta.color,
+                    backgroundColor: meta.backgroundColor,
+                };
+            }
+
+            return {
+                key,
+                label: labelFromApi,
+                description: descriptionFromApi,
+                count,
+                displayValue: count,
+                valueSuffix: "SKUs",
+                color: meta.color,
+                backgroundColor: meta.backgroundColor,
+            };
+        }
+    );
+
+    return {
+        heatmapBuckets: INVENTORY_BUCKETS,
+        heatmapData,
+        donutSku: "Overall",
+        donutData,
+        donutTotalUnits,
+        trendSelectedBucket: selectedTrendBucket.value,
+        trendData,
+        trendLineColor: selectedTrendBucket.color,
+        trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+            label: bucket.label,
+            value: bucket.value,
+            color: bucket.color,
+        })),
+        actions,
+        actionLogic: INVENTORY_ACTION_LOGIC,
+    };
+};
+
 export default function DashboardPage() {
     const router = useRouter();
     const params = useParams();
@@ -1825,6 +2444,18 @@ export default function DashboardPage() {
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
+
+    const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
+        useState<string>("365+ days");
+
+    const [inventoryInsightsData, setInventoryInsightsData] =
+        useState<InventoryInsightsData | null>(null);
+
+    const [inventoryInsightsLoading, setInventoryInsightsLoading] =
+        useState(false);
+
+    const [inventoryInsightsError, setInventoryInsightsError] =
+        useState<string | null>(null);
 
     type PlSortConfig = {
         key: string;
@@ -2988,9 +3619,191 @@ export default function DashboardPage() {
         }
     }, [inventoryCountry, invMonthYear.month, invMonthYear.year, isMonthYearNA]);
 
-    // useEffect(() => {
-    //     fetchInventory();
-    // }, [fetchInventory]);
+
+
+    const fetchSingleMonthInventoryCurrentForInsights = useCallback(
+        async (
+            monthName: string,
+            yearValue: string,
+            countryValue: string,
+            signal?: AbortSignal
+        ): Promise<InventoryCurrentApiResponse> => {
+            const token =
+                typeof window !== "undefined"
+                    ? localStorage.getItem("jwtToken")
+                    : null;
+
+            if (!token) {
+                throw new Error("Missing token");
+            }
+
+            const url = new URL(`${baseURL}/inventory_current`);
+
+            url.searchParams.set("country_key", String(countryValue).toLowerCase());
+            url.searchParams.set("month_name", String(monthName).toLowerCase());
+            url.searchParams.set("year", String(yearValue));
+
+            const res = await fetch(url.toString(), {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+                cache: "no-store",
+                signal,
+            });
+
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(
+                    json?.message ||
+                    json?.error ||
+                    `Failed to fetch inventory for ${monthName} ${yearValue}`
+                );
+            }
+
+            return json;
+        },
+        []
+    );
+
+    const fetchSingleMonthInventoryAgeSummaryForInsights = useCallback(
+        async (
+            monthName: string,
+            yearValue: string,
+            countryValue: string,
+            signal?: AbortSignal
+        ): Promise<InventoryAgeSummaryApiResponse> => {
+            const token =
+                typeof window !== "undefined"
+                    ? localStorage.getItem("jwtToken")
+                    : null;
+
+            if (!token) {
+                throw new Error("Missing token");
+            }
+
+            const url = new URL(`${baseURL}/inventory_current_age_summary`);
+
+            url.searchParams.set("country_key", String(countryValue).toLowerCase());
+            url.searchParams.set("month_name", String(monthName).toLowerCase());
+            url.searchParams.set("year", String(yearValue));
+
+            const res = await fetch(url.toString(), {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+                cache: "no-store",
+                signal,
+            });
+
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(
+                    json?.message ||
+                    json?.error ||
+                    `Failed to fetch inventory age summary for ${monthName} ${yearValue}`
+                );
+            }
+
+            return json;
+        },
+        []
+    );
+
+    const fetchInventoryInsights = useCallback(async () => {
+        if (isMonthYearNA) {
+            setInventoryInsightsData(null);
+            setInventoryInsightsError(null);
+            setInventoryInsightsLoading(false);
+            return;
+        }
+
+        const ac = new AbortController();
+
+        try {
+            setInventoryInsightsLoading(true);
+            setInventoryInsightsError(null);
+
+            const country = inventoryCountry;
+            const month = invMonthYear.month;
+            const year = invMonthYear.year;
+
+            const [inventoryRes, ageSummaryRes] = await Promise.allSettled([
+                fetchSingleMonthInventoryCurrentForInsights(
+                    month,
+                    year,
+                    country,
+                    ac.signal
+                ),
+                fetchSingleMonthInventoryAgeSummaryForInsights(
+                    month,
+                    year,
+                    country,
+                    ac.signal
+                ),
+            ]);
+
+            if (inventoryRes.status !== "fulfilled") {
+                throw new Error(
+                    inventoryRes.reason?.message || "No inventory insights data found"
+                );
+            }
+
+            const inventoryResponses = [inventoryRes.value];
+
+            const ageSummaryResponses =
+                ageSummaryRes.status === "fulfilled" ? [ageSummaryRes.value] : [];
+
+            const builtInventoryInsights = buildInventoryInsightsFromResponses(
+                inventoryResponses,
+                ageSummaryResponses,
+                country,
+                profileHomeCurrency,
+                selectedAgeingTrendBucket
+            );
+
+            setInventoryInsightsData(builtInventoryInsights);
+        } catch (e: any) {
+            if (e?.name === "AbortError") return;
+
+            setInventoryInsightsData(null);
+            setInventoryInsightsError(
+                e?.message || "Failed to fetch inventory insights"
+            );
+        } finally {
+            setInventoryInsightsLoading(false);
+        }
+    }, [
+        isMonthYearNA,
+        inventoryCountry,
+        invMonthYear.month,
+        invMonthYear.year,
+        profileHomeCurrency,
+        selectedAgeingTrendBucket,
+        fetchSingleMonthInventoryCurrentForInsights,
+        fetchSingleMonthInventoryAgeSummaryForInsights,
+    ]);
+
+    useEffect(() => {
+        if (activeTab !== "inventory") return;
+        if (inventoryInsightsData) return;
+        if (inventoryInsightsLoading) return;
+        if (isMonthYearNA) return;
+
+        void fetchInventoryInsights().then(() => {
+            triggerCachePost();
+        });
+    }, [
+        activeTab,
+        inventoryInsightsData,
+        inventoryInsightsLoading,
+        isMonthYearNA,
+        fetchInventoryInsights,
+        triggerCachePost,
+    ]);
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
@@ -3893,6 +4706,9 @@ export default function DashboardPage() {
             setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
             await fetchInventory();
 
+            setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
+            await fetchInventoryInsights();
+
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
@@ -3946,7 +4762,7 @@ export default function DashboardPage() {
         fetchPrevTargetSummary,
         fetchPreviousSkuwiseGlobal,
         fetchAmazon,
-        // fetchBiSeries,
+        fetchInventoryInsights,
         fetchLiveBiPayload,
         fetchShopify,
         fetchShopifyPrev,
@@ -4056,6 +4872,10 @@ export default function DashboardPage() {
 
         setInvRows(parsed?.invRows ?? []);
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
+        setInventoryInsightsData(parsed?.inventoryInsightsData ?? null);
+        setInventoryInsightsError(parsed?.inventoryInsightsError ?? null);
+        setSelectedAgeingTrendBucket(parsed?.selectedAgeingTrendBucket ?? "365+ days");
+        setInventoryInsightsLoading(false);
         setMonthlySpRows(parsed?.monthlySpRows ?? []);
         setMonthlySpTotalSpend(parsed?.monthlySpTotalSpend ?? null);
 
@@ -7740,6 +8560,11 @@ export default function DashboardPage() {
 
             invRows,
             inventoryAlerts,
+
+            inventoryInsightsData,
+            inventoryInsightsError,
+            selectedAgeingTrendBucket,
+
             monthlySpRows,
             monthlySpTotalSpend,
 
@@ -7770,6 +8595,9 @@ export default function DashboardPage() {
         biAlignedTotals,
         invRows,
         inventoryAlerts,
+        inventoryInsightsData,
+        inventoryInsightsError,
+        selectedAgeingTrendBucket,
         monthlySpRows,
         monthlySpTotalSpend,
         targetSummaries,
@@ -9862,6 +10690,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
             ? dummyInventoryAlerts
             : {};
 
+    const {
+        downloadInventoryExcel,
+        canDownloadInventoryExcel,
+    } = useCurrentInventoryExcelExport({
+        region: hasRealInventoryRows ? graphRegionToUse : "UK",
+        invRows: finalInventoryRows,
+        inventoryAlerts: finalInventoryAlerts,
+        userData,
+        convertToDisplayCurrency,
+        selectedInventoryCountry: globalMtdCountry,
+    });
+
     const finalTargetData = shouldShowDummyUi ? dummyTargetData : targetData;
 
     const finalTargetsTodayHome = shouldShowDummyUi
@@ -11738,23 +12578,23 @@ ${pageLoading
                         ) : (
                             showLiveBI && (
                                 <LiveBusinessClient
-  countryName={countryName}
-  sourceCountryName={countryName}
-  ranged="MTD"
-  month={(currMonthName || "").toLowerCase()}
-  year={String(currYear)}
-  initialData={finalLiveBiPayload}
-  disableAutoFetch
-  formattedMonthYear={formattedMonthYear} // ✅ add this
-  onGenerateInsights={async () => {
-    if (shouldShowDummyUi) return;
+                                    countryName={countryName}
+                                    sourceCountryName={countryName}
+                                    ranged="MTD"
+                                    month={(currMonthName || "").toLowerCase()}
+                                    year={String(currYear)}
+                                    initialData={finalLiveBiPayload}
+                                    disableAutoFetch
+                                    formattedMonthYear={formattedMonthYear} // ✅ add this
+                                    onGenerateInsights={async () => {
+                                        if (shouldShowDummyUi) return;
 
-    await fetchLiveBiPayload({
-      generateInsights: true,
-      skipLoader: true,
-    });
-  }}
-/>
+                                        await fetchLiveBiPayload({
+                                            generateInsights: true,
+                                            skipLoader: true,
+                                        });
+                                    }}
+                                />
                             )
                         )}
                     </div>
@@ -12357,7 +13197,7 @@ ${pageLoading
                 )}
 
                 {/* {amazonIntegrated && graphRegionToUse !== "Global" && ( */}
-                {activeTab === "inventory" && (
+                {/* {activeTab === "inventory" && (
                     <div id="current-inventory" className="scroll-mt-[80px]">
                         <CurrentInventorySection
                             region={hasRealInventoryRows ? graphRegionToUse : "UK"}
@@ -12375,6 +13215,49 @@ ${pageLoading
                                 region={graphRegionToUse}
                                 selectedCountry="uk"
                             />
+                        )}
+                    </div>
+                )} */}
+
+                {activeTab === "inventory" && (
+                    <div id="current-inventory" className="scroll-mt-[80px] space-y-6">
+                        {inventoryInsightsLoading ? (
+                            <div className="min-h-[420px] flex items-center justify-center">
+                                <Loader fullscreen={false} transparent />
+                            </div>
+                        ) : inventoryInsightsError ? (
+                            <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">⚠️</span>
+                                    <p className="font-semibold text-red-700">
+                                        Unable to Load Inventory Insights
+                                    </p>
+                                </div>
+
+                                <p className="text-sm text-red-600">
+                                    {inventoryInsightsError}
+                                </p>
+                            </div>
+                        ) : inventoryInsightsData ? (
+                            <InventoryInsightsSection
+                                heatmapBuckets={inventoryInsightsData.heatmapBuckets}
+                                heatmapData={inventoryInsightsData.heatmapData}
+                                donutData={inventoryInsightsData.donutData}
+                                donutTotalUnits={inventoryInsightsData.donutTotalUnits}
+                                trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+                                trendData={inventoryInsightsData.trendData}
+                                trendLineColor={inventoryInsightsData.trendLineColor}
+                                trendBucketOptions={inventoryInsightsData.trendBucketOptions}
+                                onTrendBucketChange={setSelectedAgeingTrendBucket}
+                                actions={inventoryInsightsData.actions}
+                                actionLogic={inventoryInsightsData.actionLogic}
+                                onDownloadInventoryExcel={downloadInventoryExcel}
+                                canDownloadInventoryExcel={canDownloadInventoryExcel}
+                            />
+                        ) : (
+                            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+                                No inventory insights found for the selected period.
+                            </div>
                         )}
                     </div>
                 )}

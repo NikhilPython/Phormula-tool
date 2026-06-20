@@ -1061,15 +1061,6 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(year)}#cash-flow`,
         },
         {
-          name: "SKU wise Profit",
-          path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${encodeURIComponent(
-              ranged
-            )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-              month
-            )}/${encodeURIComponent(year)}#skuwise-profit`,
-        },
-        {
           name: "AI Insights",
           path: ({ ranged, countryName, month, year }) =>
             `/pnl-dashboard/${encodeURIComponent(
@@ -1077,6 +1068,24 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
               month
             )}/${encodeURIComponent(year)}#ai-insights`,
+          },
+          {
+            name: "SKU Journey",
+            path: ({ ranged, countryName, month, year }) =>
+              `/pnl-dashboard/${encodeURIComponent(
+                ranged
+              )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
+                month
+              )}/${encodeURIComponent(year)}#skuwise-profit`,
+          },
+        {
+          name: "Inventory Insights",
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(
+              ranged
+            )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
+              month
+            )}/${encodeURIComponent(year)}#inventory-insights`,
         },
       ],
     },
