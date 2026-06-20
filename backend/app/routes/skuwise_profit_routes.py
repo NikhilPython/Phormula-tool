@@ -2014,7 +2014,7 @@ def resolve_product_summary_sku(conn, user_id, product_name, country):
 
 def parse_product_summary_table_name(table_name, user_id, country):
     """
-    Strict table matching.
+    Exact table matching.
 
     UK/US accepted:
     skuwisemonthly_{user_id}_uk_may2026
@@ -2022,7 +2022,8 @@ def parse_product_summary_table_name(table_name, user_id, country):
 
     UK/US rejected:
     skuwisemonthly_{user_id}_uk_may2026_table
-    skuwisemonthly_{user_id}_us_may2026_table
+    skuwisemonthly_{user_id}_uk_may2026_backup
+    skuwisemonthly_{user_id}_uk_may2026_old
 
     Global accepted:
     skuwisemonthly_{user_id}_global_may2026_table
@@ -2031,30 +2032,27 @@ def parse_product_summary_table_name(table_name, user_id, country):
     skuwisemonthly_{user_id}_global_cad_may2026_table
     """
 
-    table_lower = table_name.lower()
-    country = (country or "").lower()
+    table_lower = str(table_name or "").strip().lower()
+    country = str(country or "").strip().lower()
+    user_id = str(user_id).strip()
 
-    prefix = f"skuwisemonthly_{user_id}_{country}_".lower()
+    prefix = f"skuwisemonthly_{user_id}_{country}_"
 
     if not table_lower.startswith(prefix):
         return None
 
-    # UK/US must only use non-global monthly tables.
-    # Example accepted: skuwisemonthly_123_uk_may2026
-    # Example rejected: skuwisemonthly_123_uk_may2026_table
+    # UK/US must not use _table suffix.
     if country in ("uk", "us") and table_lower.endswith("_table"):
         return None
 
-    # Global/global currency tables must use _table.
-    # Example accepted: skuwisemonthly_123_global_gbp_may2026_table
+    # Global tables must use _table suffix.
     if country.startswith("global") and not table_lower.endswith("_table"):
         return None
 
-    suffix = table_lower.replace(prefix, "")
+    suffix = table_lower.replace(prefix, "", 1)
 
-    # Remove _table only after confirming it is a global table.
-    if country.startswith("global") and suffix.endswith("_table"):
-        suffix = suffix[:-6]
+    if country.startswith("global"):
+        suffix = suffix[:-6]  # remove "_table"
 
     month_name = "".join(ch for ch in suffix if ch.isalpha())
     year_text = "".join(ch for ch in suffix if ch.isdigit())
@@ -2065,11 +2063,22 @@ def parse_product_summary_table_name(table_name, user_id, country):
     if not year_text:
         return None
 
+    year = int(year_text[:4])
+
+    # Final exact table validation.
+    if country in ("uk", "us"):
+        expected_table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
+    else:
+        expected_table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}_table"
+
+    if table_lower != expected_table_name.lower():
+        return None
+
     return {
         "month_name": month_name,
         "month": month_name.capitalize(),
         "month_num": PRODUCT_SUMMARY_MONTH_NAME_TO_NUM[month_name],
-        "year": int(year_text[:4]),
+        "year": year,
     }
 
 def fetch_month_end_inventory_lookup(user_id, country, sku_list):
@@ -2244,8 +2253,9 @@ def fetch_product_summary_history_for_country(
     """
     Reads all available skuwisemonthly tables for one country.
 
-    Metrics:
+    Uses exact columns only:
     product_name, sku, total_quantity, net_sales, asp, profit, sales_mix, profit_mix.
+    No fallback columns.
     """
     history = []
     resolved_sku = None
@@ -2266,6 +2276,17 @@ def fetch_product_summary_history_for_country(
             sku_list=[resolved_sku]
         )
 
+    required_cols = {
+        "product_name",
+        "sku",
+        "total_quantity",
+        "net_sales",
+        "asp",
+        "profit",
+        "sales_mix",
+        "profit_mix",
+    }
+
     for table_name in all_tables:
         parsed = parse_product_summary_table_name(
             table_name=table_name,
@@ -2282,54 +2303,27 @@ def fetch_product_summary_history_for_country(
                 for col in inspector.get_columns(table_name)
             ]
 
-            if "product_name" not in columns:
+            missing_cols = required_cols - set(columns)
+
+            if missing_cols:
+                print(f"Skipping table {table_name}: missing required columns {missing_cols}")
                 continue
-
-            if "net_sales" not in columns:
-                continue
-
-            quantity_col = None
-            if "total_quantity" in columns:
-                quantity_col = "total_quantity"
-            elif "quantity" in columns:
-                quantity_col = "quantity"
-
-            profit_col = None
-            if "profit" in columns:
-                profit_col = "profit"
-            elif "cm1_profit" in columns:
-                profit_col = "cm1_profit"
-
-            if not quantity_col or not profit_col:
-                continue
-
-            has_sku_col = "sku" in columns
-            has_sales_mix_col = "sales_mix" in columns
-            has_profit_mix_col = "profit_mix" in columns
-
-            sku_select = "MAX(sku)" if has_sku_col else "NULL"
-            sales_mix_select = "COALESCE(SUM(sales_mix), 0)" if has_sales_mix_col else "0"
-            profit_mix_select = "COALESCE(SUM(profit_mix), 0)" if has_profit_mix_col else "0"
 
             where_condition = """
                 LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
             """
-
-            if has_sku_col:
-                where_condition = """
-                    LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
-                    OR LOWER(TRIM(sku)) = LOWER(TRIM(:product_name))
-                """
 
             query = text(f"""
                 SELECT
                     MAX(product_name) AS product_name,
-                    {sku_select} AS sku,
-                    COALESCE(SUM("{quantity_col}"), 0) AS total_quantity,
+                    MAX(sku) AS sku,
+                    COALESCE(SUM(total_quantity), 0) AS total_quantity,
                     COALESCE(SUM(net_sales), 0) AS net_sales,
-                    COALESCE(SUM("{profit_col}"), 0) AS profit,
-                    {sales_mix_select} AS sales_mix,
-                    {profit_mix_select} AS profit_mix
+                    COALESCE(SUM(asp), 0) AS asp,
+                    COALESCE(SUM(profit), 0) AS profit,
+                    COALESCE(SUM(sales_mix), 0) AS sales_mix,
+                    COALESCE(SUM(profit_mix), 0) AS profit_mix
                 FROM "{table_name}"
                 WHERE {where_condition}
             """)
@@ -2340,7 +2334,10 @@ def fetch_product_summary_history_for_country(
 
             total_quantity = float(row.total_quantity or 0)
             net_sales = float(row.net_sales or 0)
+            asp = float(row.asp or 0)
             profit = float(row.profit or 0)
+            sales_mix = float(row.sales_mix or 0)
+            profit_mix = float(row.profit_mix or 0)
 
             if total_quantity == 0 and net_sales == 0 and profit == 0:
                 continue
@@ -2364,11 +2361,10 @@ def fetch_product_summary_history_for_country(
                         )
 
                 net_sales *= conversion_rate
+                asp *= conversion_rate
                 profit *= conversion_rate
 
-            asp = net_sales / total_quantity if total_quantity else 0
-
-            row_sku = row.sku if row.sku else resolved_sku
+            row_sku = row.sku
 
             if row_sku:
                 row_sku = str(row_sku).strip()
@@ -2376,8 +2372,6 @@ def fetch_product_summary_history_for_country(
             if not resolved_sku and row_sku:
                 resolved_sku = row_sku
 
-            # If SKU was found from skuwisemonthly row and inventory was not loaded yet,
-            # load inventory now.
             if row_sku and not inventory_lookup:
                 inventory_lookup = fetch_month_end_inventory_lookup(
                     user_id=int(user_id),
@@ -2399,6 +2393,7 @@ def fetch_product_summary_history_for_country(
             })
 
             history.append({
+                "source_table": table_name,
                 "country": country,
                 "product_name": row.product_name or product_name,
                 "sku": row_sku,
@@ -2410,8 +2405,8 @@ def fetch_product_summary_history_for_country(
                 "net_sales": round(net_sales, 2),
                 "asp": round(asp, 2),
                 "profit": round(profit, 2),
-                "sales_mix": round(float(row.sales_mix or 0), 2),
-                "profit_mix": round(float(row.profit_mix or 0), 2),
+                "sales_mix": round(sales_mix, 2),
+                "profit_mix": round(profit_mix, 2),
 
                 "sellable_inventory": round(float(inventory_data.get("sellable_inventory") or 0), 2),
                 "damaged_inventory": round(float(inventory_data.get("damaged_inventory") or 0), 2),
@@ -2581,7 +2576,7 @@ def build_product_summary_ai_prompt(product_name, country, home_currency, payloa
     return f"""
 You are an ecommerce product performance analyst.
 
-Your job is to explain the product performance in very simple business language.
+Your job is to explain product performance in very simple business language.
 The summary should be easy to understand for everyone:
 - warehouse or packing team
 - account manager
@@ -2620,17 +2615,18 @@ Metric meanings:
 - profit means estimated product profit.
 - sales_mix means how much this product contributes to total sales.
 - profit_mix means how much this product contributes to total profit.
-- sellable_inventory means units available to sell.
+- sellable_inventory means units available to sell at month end.
 - damaged_inventory means units not in good sellable condition.
 - expired_inventory means units expired or unusable.
-- total_inventory means all counted inventory from the latest month-end inventory snapshot.
+- total_inventory means all counted inventory from the month-end inventory snapshot.
 
 Output format:
 Use plain text only.
 Do not use markdown headings.
 Do not use tables.
 Use short bullet points.
-Keep the tone clear, practical, and business-friendly.
+Keep the summary short and clear.
+Do not include a separate Product snapshot section.
 Do not include action points or recommendations.
 End with a clear conclusion.
 
@@ -2638,75 +2634,79 @@ Required summary structure:
 
 1. Start with a simple one-line overall summary.
 Example style:
-- This product is growing steadily with strong sales, but inventory should be watched closely.
+- This product is selling well and making profit, while inventory has moved up and down compared with monthly sales.
 
-2. Product snapshot:
-Include:
-- Product name
-- SKU
-- Country
-- Total units sold
-- Total net sales
-- Total profit
-- Average selling price
-- Latest sellable inventory
-- Latest damaged or expired inventory if available
-
-3. Sales performance:
-Explain in simple language:
+2. Sales performance:
+Explain briefly:
 - Whether units sold are increasing, decreasing, or inconsistent.
-- Which month had the strongest sales.
-- Whether sales are healthy or weak.
-- Mention important numbers from the data.
+- Mention the strongest sales month with month and year.
+- Mention total units sold only if useful.
 
-4. Profit performance:
-Explain:
+3. Profit performance:
+Explain briefly:
 - Whether profit is improving, declining, or inconsistent.
-- Which month had the strongest profit.
-- Whether the product is profitable overall.
-- Mention if sales are growing but profit is not growing at the same pace.
+- Mention the strongest profit month with month and year.
+- Mention total profit only if useful.
 
-5. Price / ASP performance:
-Explain:
+4. Price / ASP performance:
+Explain briefly:
 - Whether average selling price is increasing, decreasing, or stable.
-- If ASP is falling, explain that the product is selling at a lower average price.
-- If ASP is rising, explain that the product is earning more per unit sold.
+- When mentioning ASP, include the month and year if it comes from a monthly value.
 - Keep this section simple.
 
-6. Sales mix and profit mix:
-Explain:
+5. Sales mix and profit mix:
+Explain briefly:
 - Whether this product is becoming more or less important in the business.
-- Use simple wording like:
-  "This product is taking a bigger share of total sales"
-  or
-  "This product is contributing less than before."
+- Use simple wording.
 
-7. Inventory position:
-Use latest month-end inventory.
-Explain:
-- Whether sellable inventory looks healthy, low, or high compared with recent sales.
-- If sales are strong and sellable inventory is low, mention possible stockout risk.
-- If sales are slowing and inventory is high, mention possible overstock risk.
-- If damaged or expired inventory exists, mention it as an operational issue.
-- If inventory is zero or missing, say inventory data is not available or not showing for the latest month.
+6. Inventory movement:
+Explain inventory as a historical summary, not as advice.
+Compare sellable_inventory with total_quantity month by month.
+Mention:
+- The month and year when sellable inventory was highest, and how many units were sold in that same month.
+- The month and year when sellable inventory was lowest, and how many units were sold in that same month.
+- The latest month and year inventory level, and how it compares with units sold in that same month.
+- Whether inventory has generally increased, decreased, or moved unevenly over time.
+- Whether inventory was usually higher than monthly sales, lower than monthly sales, or close to monthly sales.
+- If damaged or expired inventory exists, mention the month and year.
+- If inventory is zero or missing, say inventory data is not available or not showing for that month.
 
-8. Conclusion:
-End with a short conclusion that summarizes:
+Do not say:
+- monitor inventory
+- watch inventory
+- inventory needs attention
+- inventory needs monitoring
+- avoid stockouts
+- avoid overstock
+- take action
+- if sales continue
+- recommendation
+- should
+
+7. Conclusion:
+End with a short conclusion covering:
 - Overall product health
 - Main strength
 - Main concern, if any
 
 Rules:
+- Keep the total summary concise.
 - Do not invent numbers.
 - Only use numbers present in the provided data.
+- Whenever you mention a monthly metric, include the month and year.
+  Example: "March 2026 had the strongest sales with 354 units."
 - Do not include action points.
 - Do not include recommendations.
 - Do not tell the user what to do next.
+- Do not use advice-style language.
+- Do not use the word "should".
+- Do not say "needs monitoring", "watch closely", or "needs attention".
+- Inventory must be summarized as what happened historically.
+- When discussing inventory, compare sellable_inventory against total_quantity for the same month.
 - If data is missing, clearly say it is missing.
 - Avoid complex financial language.
 - Use currency symbol or currency code where helpful.
 - If country mode is global/global_inr/global_gbp/global_cad, compare UK vs US vs global performance and clearly say which country looks stronger.
-- Make the final summary useful for both operational teams and management.
 
 Data:
 {json.dumps(payload, indent=2)}
@@ -2736,8 +2736,9 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
                         "that warehouse teams, packing teams, account managers, finance teams, "
                         "and business owners can all understand. "
                         "Use plain text and short bullet points only. "
-                        "Do not give action points or recommendations. "
-                        "Do not tell the user what to do next. "
+                        "Do not give action points, recommendations, or advice. "
+                        "Do not use the word should. "
+                        "Describe inventory as a historical comparison with sales, not as something to monitor. "
                         "End with a clear conclusion."
                     )
                 },
