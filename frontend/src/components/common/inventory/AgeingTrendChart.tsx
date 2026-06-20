@@ -1,18 +1,23 @@
-import React from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+"use client";
+
+import React, { useMemo } from "react";
+import dynamic from "next/dynamic";
+import { ApexOptions } from "apexcharts";
+import PageBreadcrumb from "../PageBreadCrumb";
+
+const ReactApexChart = dynamic(() => import("react-apexcharts"), {
+  ssr: false,
+});
 
 export type AgeingTrendItem = {
   label: string;
   value: number;
+};
+
+export type AgeingTrendBucketOption = {
+  label: string;
+  value: string;
+  color: string;
 };
 
 type AgeingTrendChartProps = {
@@ -22,6 +27,9 @@ type AgeingTrendChartProps = {
   data: AgeingTrendItem[];
   lineColor: string;
   showChange?: boolean;
+
+  bucketOptions?: AgeingTrendBucketOption[];
+  onBucketChange?: (bucketValue: string) => void;
 };
 
 const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
@@ -31,80 +39,200 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   data,
   lineColor,
   showChange = true,
+  bucketOptions = [],
+  onBucketChange,
 }) => {
-  const firstValue = data[0]?.value ?? 0;
-  const lastValue = data[data.length - 1]?.value ?? 0;
+  const currentMonthShort = new Date().toLocaleString("default", {
+    month: "short",
+  });
+
+  const getShortMonth = (label: string) => {
+    const monthPart = label.split(" ")[0];
+
+    const date = new Date(`${monthPart} 1, 2000`);
+
+    if (Number.isNaN(date.getTime())) {
+      return monthPart;
+    }
+
+    return date.toLocaleString("default", {
+      month: "short",
+    });
+  };
+
+  const chartData = useMemo(() => {
+    return data.filter((item) => {
+      const itemMonth = getShortMonth(item.label).toLowerCase();
+
+      return itemMonth !== currentMonthShort.toLowerCase();
+    });
+  }, [data, currentMonthShort]);
+
+  const firstValue = chartData[0]?.value ?? 0;
+  const lastValue = chartData[chartData.length - 1]?.value ?? 0;
 
   const changePercent =
     firstValue > 0 ? ((lastValue - firstValue) / firstValue) * 100 : 0;
 
-  const gradientId = `ageingTrendFill-${selectedBucket.replace(/\W/g, "")}`;
+  const categories = useMemo(
+    () => chartData.map((item) => getShortMonth(item.label)),
+    [chartData]
+  );
+
+  const series = useMemo(
+    () => [
+      {
+        name: selectedBucket,
+        data: chartData.map((item) => Number(item.value || 0)),
+      },
+    ],
+    [chartData, selectedBucket]
+  );
+
+  const options: ApexOptions = useMemo(
+    () => ({
+      legend: {
+        show: false,
+        position: "top",
+        horizontalAlign: "left",
+      },
+      colors: [lineColor || "#465FFF"],
+      chart: {
+        fontFamily: "Outfit, sans-serif",
+        height: 310,
+        type: "area",
+        toolbar: {
+          show: false,
+        },
+        zoom: {
+          enabled: false,
+        },
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+      },
+      fill: {
+        type: "gradient",
+        gradient: {
+          opacityFrom: 0.35,
+          opacityTo: 0,
+        },
+      },
+      markers: {
+        size: 0,
+        strokeColors: "#fff",
+        strokeWidth: 2,
+        hover: {
+          size: 6,
+        },
+      },
+      grid: {
+        borderColor: "#E5E7EB",
+        xaxis: {
+          lines: {
+            show: false,
+          },
+        },
+        yaxis: {
+          lines: {
+            show: true,
+          },
+        },
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      tooltip: {
+        enabled: true,
+        y: {
+          formatter: (value) => `${Number(value).toLocaleString()} units`,
+          title: {
+            formatter: () => selectedBucket,
+          },
+        },
+      },
+      xaxis: {
+        type: "category",
+        categories,
+        axisBorder: {
+          show: false,
+        },
+        axisTicks: {
+          show: false,
+        },
+        tooltip: {
+          enabled: false,
+        },
+        labels: {
+          style: {
+            fontSize: "12px",
+            colors: "#6B7280",
+          },
+        },
+      },
+      yaxis: {
+        labels: {
+          style: {
+            fontSize: "12px",
+            colors: ["#6B7280"],
+          },
+          formatter: (value) => {
+            return Number(value).toLocaleString();
+          },
+        },
+        title: {
+          text: "",
+          style: {
+            fontSize: "0px",
+          },
+        },
+      },
+    }),
+    [categories, lineColor, selectedBucket]
+  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <h3 className="text-lg font-extrabold uppercase text-slate-900">
-            {title}
-          </h3>
-          <p className="mt-1 text-sm text-slate-900">{subtitle}</p>
+      <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <PageBreadcrumb
+          pageTitle={title}
+          variant="page"
+          align="left"
+          textSize="2xl"
+        />
+
+        <div className="flex items-center gap-2 text-sm sm:justify-end">
+          <span className="whitespace-nowrap">Ageing Bucket</span>
+
+          <select
+            value={selectedBucket}
+            onChange={(e) => onBucketChange?.(e.target.value)}
+            className="rounded-md border border-slate-300 bg-white px-4 py-1.5 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
+          >
+            {bucketOptions.length > 0 ? (
+              bucketOptions.map((bucket) => (
+                <option key={bucket.value} value={bucket.value}>
+                  {bucket.label}
+                </option>
+              ))
+            ) : (
+              <option value={selectedBucket}>{selectedBucket}</option>
+            )}
+          </select>
         </div>
-
-        {showChange && (
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-center">
-            <span className="block text-xs text-slate-700">Change</span>
-            <strong
-              className={`text-lg ${
-                changePercent >= 0 ? "text-red-600" : "text-green-600"
-              }`}
-            >
-              {changePercent >= 0 ? "+" : ""}
-              {changePercent.toFixed(1)}%
-            </strong>
-          </div>
-        )}
       </div>
 
-      <div className="mb-3 flex items-center gap-2 text-sm">
-        <span>Ageing Bucket</span>
-        <strong className="rounded-md border border-slate-300 bg-white px-4 py-1.5">
-          {selectedBucket}
-        </strong>
+      <div className="max-w-full overflow-x-auto custom-scrollbar">
+        <div id="ageingTrendChart" className="min-w-[650px]">
+          <ReactApexChart
+            options={options}
+            series={series}
+            type="area"
+            height={310}
+          />
+        </div>
       </div>
-
-      <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={data}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={lineColor} stopOpacity={0.25} />
-              <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-
-          <XAxis dataKey="label" />
-          <YAxis />
-
-          <Tooltip formatter={(value) => [`${value} units`, selectedBucket]} />
-
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={lineColor}
-            fill={`url(#${gradientId})`}
-            strokeWidth={2}
-          />
-
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={lineColor}
-            strokeWidth={2}
-            dot={{ r: 4 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
     </div>
   );
 };

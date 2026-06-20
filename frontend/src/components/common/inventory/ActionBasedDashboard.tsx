@@ -1,4 +1,5 @@
 import React from "react";
+import PageBreadcrumb from "../PageBreadCrumb";
 
 export type ActionCardItem = {
     key: string;
@@ -36,11 +37,14 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-4">
-                <h3 className="text-lg font-extrabold uppercase text-slate-900">
-                    {title}
-                </h3>
-                <p className="mt-1 text-sm text-slate-900">{subtitle}</p>
+                <PageBreadcrumb
+                    pageTitle={title}
+                    variant="page"
+                    align="left"
+                    textSize="2xl"
+                />
             </div>
+
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {actions.map((action) => (
@@ -72,7 +76,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                 ))}
             </div>
 
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            {/* <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <h4 className="mb-3 font-bold text-slate-900">Action Logic</h4>
 
                 <div className="grid grid-cols-1 gap-x-5 gap-y-2 text-xs lg:grid-cols-2">
@@ -91,7 +95,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                             </p>
                         ))}
                 </div>
-            </div>
+            </div> */}
         </div>
     );
 };

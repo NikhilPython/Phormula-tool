@@ -12,6 +12,7 @@ import SkuAgeingDonutChart, {
 
 import AgeingTrendChart, {
     AgeingTrendItem,
+    AgeingTrendBucketOption,
 } from "@/components/common/inventory/AgeingTrendChart";
 
 import ActionBasedDashboard, {
@@ -30,6 +31,10 @@ type InventoryInsightsSectionProps = {
     trendData: AgeingTrendItem[];
     trendLineColor: string;
 
+    // ✅ Add these
+    trendBucketOptions?: AgeingTrendBucketOption[];
+    onTrendBucketChange?: (bucketValue: string) => void;
+
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
 
@@ -44,9 +49,10 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     trendSelectedBucket,
     trendData,
     trendLineColor,
+    trendBucketOptions = [],
+    onTrendBucketChange,
     actions,
     actionLogic,
-
     onActionViewDetails,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
@@ -89,6 +95,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                                 selectedBucket={trendSelectedBucket}
                                 data={trendData}
                                 lineColor={trendLineColor}
+                                bucketOptions={trendBucketOptions}
+                                onBucketChange={onTrendBucketChange}
                             />
                         )}
 
