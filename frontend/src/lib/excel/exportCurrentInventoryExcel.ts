@@ -155,6 +155,26 @@ const toNumberLoose = (v: any): number | null => {
   return isFinite(n) ? n : null;
 };
 
+const INVENTORY_AGEING_HEADERS = [
+  "Inventory 0-90 Days",
+  "Inventory 91-180 Days",
+  "Inventory 181-270 Days",
+  "Inventory 271-365 Days",
+  "Inventory 365+ Days",
+];
+
+const isZeroOnlyAgeingColumn = (
+  rows: Record<string, any>[],
+  header: string
+) => {
+  if (!INVENTORY_AGEING_HEADERS.includes(header)) return false;
+
+  return (rows || []).every((row) => {
+    const n = toNumberLoose(row?.[header]);
+    return !n;
+  });
+};
+
 // Decide if a summary label should be treated as a percentage
 const isPercentLabel = (label: string) => {
   const s = (label || "").toLowerCase();
@@ -219,9 +239,13 @@ const preferredHeaders = [
   "Inventory Coverage Ratio",
   "Inventory Alerts",
 ];
-  const sourceHeaders = Object.keys(dataRows[0] || {});
-  const headers = preferredHeaders.filter((h) => sourceHeaders.includes(h));
-  const headerCount = headers.length || 1;
+const sourceHeaders = Object.keys(dataRows[0] || {});
+const headers = preferredHeaders.filter((h) => sourceHeaders.includes(h));
+const headerCount = headers.length || 1;
+
+const hiddenAgeingHeaders = new Set(
+  headers.filter((h) => isZeroOnlyAgeingColumn(dataRows, h))
+);
 
   if (!headers.length) return;
 
@@ -269,30 +293,28 @@ const preferredHeaders = [
   ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
 
 ws["!cols"] = headers.map((h) => {
-  if (h === "S.No.") return { wch: 8 };
-  if (h === "Product Name") return { wch: 24 };
-  if (h === "SKU") return { wch: 18 };
-  if (h === "MTD Sales") return { wch: 14 };
-  if (h === "Sales Last 30 Days") return { wch: 18 };
-  if (h === "Sales Rank") return { wch: 14 };
-  if (h === "Current Inventory") return { wch: 18 };
+  const hidden = hiddenAgeingHeaders.has(h);
 
-  if (
-    [
-      "Inventory 0-90 Days",
-      "Inventory 91-180 Days",
-      "Inventory 181-270 Days",
-      "Inventory 271-365 Days",
-      "Inventory 365+ Days",
-    ].includes(h)
-  ) {
-    return { wch: 20 };
+  if (h === "S.No.") return { wch: 8, hidden };
+  if (h === "Product Name") return { wch: 24, hidden };
+  if (h === "SKU") return { wch: 18, hidden };
+  if (h === "MTD Sales") return { wch: 14, hidden };
+  if (h === "Sales Last 30 Days") return { wch: 18, hidden };
+  if (h === "Sales Rank") return { wch: 14, hidden };
+  if (h === "Current Inventory") return { wch: 18, hidden };
+
+  if (INVENTORY_AGEING_HEADERS.includes(h)) {
+    return { wch: 20, hidden };
   }
 
-  if (h === "Estimated Storage Cost") return { wch: 26 };
-  if (h === "Inventory Coverage Ratio") return { wch: 24 };
-  if (h === "Inventory Alerts") return { wch: 24 };
-  return { wch: Math.min(Math.max(String(h).length + 2, 12), 28) };
+  if (h === "Estimated Storage Cost") return { wch: 26, hidden };
+  if (h === "Inventory Coverage Ratio") return { wch: 24, hidden };
+  if (h === "Inventory Alerts") return { wch: 24, hidden };
+
+  return {
+    wch: Math.min(Math.max(String(h).length + 2, 12), 28),
+    hidden,
+  };
 });
 
   applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
@@ -485,6 +507,10 @@ const tableBorder = {
 
     const headerCount = headers.length;
 
+    const hiddenAgeingHeaders = new Set(
+  headers.filter((h) => isZeroOnlyAgeingColumn(rows, h))
+);
+
     const currencySymbol = getCurrencySymbol({
   countryName: "global",
   homeCurrencyCode: homeCurrencyCode || "USD",
@@ -580,23 +606,27 @@ const tableBorder = {
       });
     });
 
-ws.columns = [
-  { width: 8 },   // S.No.
-  { width: 28 },  // Product Name
-  { width: 18 },  // SKU
-  { width: 14 },  // MTD Sales
-  { width: 18 },  // Sales Last 30 Days
-  { width: 14 },  // Sales Rank
-  { width: 18 },  // Current Inventory
-  { width: 20 },  // Inventory 0-90 Days
-  { width: 20 },  // Inventory 91-180 Days
-  { width: 20 },  // Inventory 181-270 Days
-  { width: 20 },  // Inventory 271-365 Days
-  { width: 20 },  // Inventory 365+ Days
-  { width: 26 },  // Estimated Storage Cost
-  { width: 24 },  // Inventory Coverage Ratio
-  { width: 30 },  // Inventory Alerts
-];
+ws.columns = headers.map((h) => {
+  const hidden = hiddenAgeingHeaders.has(h);
+
+  if (h === "S.No.") return { width: 8, hidden };
+  if (h === "Product Name") return { width: 28, hidden };
+  if (h === "SKU") return { width: 18, hidden };
+  if (h === "MTD Sales") return { width: 14, hidden };
+  if (h === "Sales Last 30 Days") return { width: 18, hidden };
+  if (h === "Sales Rank") return { width: 14, hidden };
+  if (h === "Current Inventory") return { width: 18, hidden };
+
+  if (INVENTORY_AGEING_HEADERS.includes(h)) {
+    return { width: 20, hidden };
+  }
+
+  if (h === "Estimated Storage Cost") return { width: 26, hidden };
+  if (h === "Inventory Coverage Ratio") return { width: 24, hidden };
+  if (h === "Inventory Alerts") return { width: 30, hidden };
+
+  return { width: 16, hidden };
+});
   };
 
   addInventorySheet("UK Current Inventory", ukRows, "UK");

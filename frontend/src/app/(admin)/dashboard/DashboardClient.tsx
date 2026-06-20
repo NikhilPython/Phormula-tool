@@ -2036,7 +2036,18 @@ const buildInventoryInsightsFromResponses = (
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
             };
         })
-        .filter((row) => row.productName && Number(row.totalUnits) > 0)
+        .filter((row) => {
+            const hasProduct = Boolean(String(row.productName || "").trim());
+
+            const hasAnyAgeingInventory =
+                Number(row.zeroToNinety || 0) > 0 ||
+                Number(row.ninetyOneToOneEighty || 0) > 0 ||
+                Number(row.oneEightyOneToTwoSeventy || 0) > 0 ||
+                Number(row.twoSeventyOneToThreeSixtyFive || 0) > 0 ||
+                Number(row.threeSixtyFivePlus || 0) > 0;
+
+            return hasProduct && hasAnyAgeingInventory;
+        })
         .sort((a, b) => b.totalUnits - a.totalUnits);
 
     const overallAgeing = latestRows.reduce(
@@ -9029,14 +9040,14 @@ export default function DashboardPage() {
 
     type TopTab =
         | "live"
-        | "summary"
         | "productwise"
+        | "summary"
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "live", label: "MTD Sales" },
-        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "productwise", label: "P&L Breakdown" },
+        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "inventory", label: "Inventory Insights" },
     ];
 

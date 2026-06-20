@@ -1015,12 +1015,12 @@ const AppSidebar: React.FC = () => {
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#live-sales`,
         },
         {
-          name: "AI Insights",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
-        },
-        {
           name: "P&L Breakdown",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
+        },
+        {
+          name: "AI Insights",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
         {
           name: "Inventory Insights",
