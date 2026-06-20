@@ -850,7 +850,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                 return `${datasetLabel}: ${formatPercent(value)}`;
               }
 
-              if (lowerLabel.includes("units")) {
+              if (lowerLabel.includes("unit")) {
                 return `${datasetLabel}: ${formatUnits(value)}`;
               }
 

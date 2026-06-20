@@ -144,7 +144,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       <div className="relative flex items-center">
         <input
           type="text"
-          placeholder="Search products, SKUs..."
+          placeholder="Search products"
           className="
   w-full
   rounded-lg
