@@ -3258,6 +3258,58 @@ def live_mtd_vs_previous():
             currency_symbol=currency["symbol"],
         )    
 
+        # =========================================================
+        # ✅ Attach frontend-only inventory fields to categorized_growth
+        # Source: frontend_all_action_rows from build_ai_summary()
+        # This does NOT call AI and does NOT change AI payload.
+        # =========================================================
+
+        frontend_inventory_by_sku = {}
+
+        for row in (frontend_all_action_rows or []):
+            sku = str(row.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            frontend_inventory_by_sku[sku] = {
+                "current_inventory": row.get("current_inventory", 0.0),
+                "coverage_ratio_months": row.get("coverage_ratio_months", 0.0),
+            }
+
+        def _attach_inventory_to_categorized_row(row):
+            if not isinstance(row, dict):
+                return row
+
+            row = dict(row)
+
+            sku = str(row.get("sku") or "").strip()
+            inv = frontend_inventory_by_sku.get(sku, {})
+
+            row["current_inventory"] = inv.get("current_inventory", 0.0)
+            row["coverage_ratio_months"] = inv.get("coverage_ratio_months", 0.0)
+
+            return row
+
+        categorized_top_80_skus = [
+            _attach_inventory_to_categorized_row(row)
+            for row in (top_80_skus or [])
+        ]
+
+        categorized_new_skus = [
+            _attach_inventory_to_categorized_row(row)
+            for row in (new_skus or [])
+        ]
+
+        categorized_reviving_skus = [
+            _attach_inventory_to_categorized_row(row)
+            for row in (reviving_skus or [])
+        ]
+
+        categorized_other_skus = [
+            _attach_inventory_to_categorized_row(row)
+            for row in (other_skus or [])
+        ]
+
         # ---------------------------
         # FINAL RESPONSE PAYLOAD
         # ---------------------------
@@ -3279,10 +3331,10 @@ def live_mtd_vs_previous():
             },
             "aligned_totals": aligned_totals_payload,
             "categorized_growth": {
-                "top_80_skus": top_80_skus,
-                "new_skus": new_skus,
-                "reviving_skus": reviving_skus,
-                "other_skus": other_skus,
+                "top_80_skus": categorized_top_80_skus,
+                "new_skus": categorized_new_skus,
+                "reviving_skus": categorized_reviving_skus,
+                "other_skus": categorized_other_skus,
 
                 "top_80_total": top_80_total_row,
                 "new_skus_total": new_skus_total_row,
