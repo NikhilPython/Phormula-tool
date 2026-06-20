@@ -35,23 +35,22 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
     title = "Action-Based Dashboard",
     subtitle = "Group SKUs by recommended action",
     actions,
-    actionLogic,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
 }) => {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                     <PageBreadcrumb
                         pageTitle={title}
                         variant="page"
                         align="left"
-                        textSize="2xl"
+                        textSize="xl"
                     />
 
                     {subtitle && (
-                        <p className="mt-1 text-xs 2xl:text-sm text-charcoal-400">
+                        <p className="mt-0.5 text-xs text-charcoal-400">
                             {subtitle}
                         </p>
                     )}
@@ -65,37 +64,35 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                 )}
             </div>
 
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                 {actions.map((action) => (
                     <div
                         key={action.key}
-                        className="rounded-xl border border-t-4 p-4 text-center"
+                        className="rounded-lg border border-t-4 px-3 py-2.5 text-center"
                         style={{
                             backgroundColor: "#ffffff",
                             borderColor: action.color,
                             borderTopColor: action.color,
                         }}
                     >
-                        <h4 className="text-base font-bold text-slate-900">
+                        <h4 className="truncate text-sm font-bold text-slate-900">
                             {action.label}
                         </h4>
 
-                        <p className="my-2 min-h-9 text-xs text-slate-900">
+                        <p className="mx-auto mt-1 h-8 max-w-[210px] overflow-hidden text-[11px] leading-4 text-slate-700">
                             {action.description}
                         </p>
 
-                        <strong className="block text-3xl font-extrabold text-slate-900">
+                        <strong className="mt-2 block text-2xl font-extrabold leading-none text-slate-900">
                             {action.displayValue ?? action.count}
                         </strong>
 
-                        <span className="mb-2 block text-xs font-bold text-slate-900">
+                        <span className="mt-1 block text-[11px] font-bold leading-none text-slate-900">
                             {action.valueSuffix ?? "SKUs"}
                         </span>
                     </div>
                 ))}
             </div>
-
         </div>
     );
 };

@@ -3188,32 +3188,38 @@ const INVENTORY_ACTION_META: Record<
     label: string;
     description: string;
     color: string;
+    backgroundColor: string;
   }
 > = {
   liquidate: {
     label: "Liquidate",
     description: "High 271–365 days inventory",
     color: "#B75A5A",
+    backgroundColor: "#fff0f0",
   },
   discount: {
     label: "Discount",
     description: "High 181–270 days inventory",
     color: "#ED9F50",
+    backgroundColor: "#fff4e8",
   },
   monitor: {
     label: "Monitor",
     description: "Ageing or watchlist inventory",
     color: "#FDD36F",
+    backgroundColor: "#fffbea",
   },
   unfulfillable: {
     label: "Unfulfillable inventory",
     description: "Remove/Dispose",
     color: "#3A8EA4",
+    backgroundColor: "#eef9fc",
   },
   estimated_storage_cost: {
     label: "Storage Cost",
     description: "Estimated next-month storage cost",
     color: "#C49466",
+    backgroundColor: "#fff7ed",
   },
 };
 
@@ -3595,9 +3601,9 @@ const buildInventoryInsightsFromResponses = (
           ),
           valueSuffix: "Storage Cost",
           color: meta.color,
+          backgroundColor: meta.backgroundColor,
         };
       }
-
       return {
         key,
         label: labelFromApi,
@@ -3606,6 +3612,7 @@ const buildInventoryInsightsFromResponses = (
         displayValue: count,
         valueSuffix: "SKUs",
         color: meta.color,
+        backgroundColor: meta.backgroundColor,
       };
     }
   );
@@ -3664,7 +3671,7 @@ const inventoryActions: ActionCardItem[] = [
     description: "High 271–365 or 365+",
     count: 8,
     color: "#B75A5A",
-    backgroundColor: "#fff0f0",
+    backgroundColor: "#ffffff",
   },
   {
     key: "discount",
@@ -3672,7 +3679,7 @@ const inventoryActions: ActionCardItem[] = [
     description: "High 181–270",
     count: 14,
     color: "#ED9F50",
-    backgroundColor: "#fff4e8",
+    backgroundColor: "#ffffff",
   },
   {
     key: "monitor",
@@ -3680,7 +3687,7 @@ const inventoryActions: ActionCardItem[] = [
     description: "High 91–180",
     count: 22,
     color: "#f4b400",
-    backgroundColor: "#fffbea",
+    backgroundColor: "#ffffff",
   },
   {
     key: "reorder",
@@ -3688,7 +3695,7 @@ const inventoryActions: ActionCardItem[] = [
     description: "Healthy & fast moving",
     count: 16,
     color: "#4caf50",
-    backgroundColor: "#effaf0",
+    backgroundColor: "#ffffff",
   },
   {
     key: "remove",
@@ -3696,32 +3703,37 @@ const inventoryActions: ActionCardItem[] = [
     description: "High 365+",
     count: 3,
     color: "#6a5acd",
-    backgroundColor: "#f3f0ff",
+    backgroundColor: "#ffffff",
   },
 ];
 
 const inventoryActionLogic: ActionLogicItem[] = [
   {
+    key: "reorder",
     label: "Reorder",
     description: "Mostly 0–90 days and fast selling",
     color: "#B8C78C",
   },
   {
+    key: "monitor",
     label: "Monitor",
     description: "High 91–180 days inventory",
     color: "#7B9A6D",
   },
   {
+    key: "discount",
     label: "Discount",
     description: "High 181–270 days inventory",
     color: "#ED9F50",
   },
   {
+    key: "liquidate",
     label: "Liquidate",
     description: "High 271–365 days inventory",
     color: "#B75A5A",
   },
   {
+    key: "remove",
     label: "Remove/Dispose",
     description: "High 365+ days inventory",
     color: "#b91c1c",
