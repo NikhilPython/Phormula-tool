@@ -99,7 +99,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
       colors: [lineColor || "#465FFF"],
       chart: {
         fontFamily: "Outfit, sans-serif",
-        height: 310,
+        height: "100%",
         type: "area",
         toolbar: {
           show: false,
@@ -165,6 +165,8 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           enabled: false,
         },
         labels: {
+          rotate: 0,
+          trim: true,
           style: {
             fontSize: "12px",
             colors: "#6B7280",
@@ -193,8 +195,8 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   );
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+    <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px]">
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <PageBreadcrumb
           pageTitle={title}
           variant="page"
@@ -202,13 +204,15 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           textSize="2xl"
         />
 
-        <div className="flex items-center gap-2 text-sm sm:justify-end">
-          <span className="whitespace-nowrap">Ageing Bucket</span>
+        <div className="flex w-full flex-col gap-2 text-sm sm:flex-row sm:items-center xl:w-auto xl:justify-end">
+          <span className="whitespace-nowrap font-medium text-slate-700">
+            Ageing Bucket
+          </span>
 
           <select
             value={selectedBucket}
             onChange={(e) => onBucketChange?.(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-4 py-1.5 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
+            className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20 sm:w-[200px]"
           >
             {bucketOptions.length > 0 ? (
               bucketOptions.map((bucket) => (
@@ -223,15 +227,13 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto custom-scrollbar">
-        <div id="ageingTrendChart" className="min-w-[650px]">
-          <ReactApexChart
-            options={options}
-            series={series}
-            type="area"
-            height={310}
-          />
-        </div>
+      <div className="min-h-0 flex-1">
+        <ReactApexChart
+          options={options}
+          series={series}
+          type="area"
+          height="100%"
+        />
       </div>
     </div>
   );
