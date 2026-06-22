@@ -3033,6 +3033,11 @@ def finances_mtd_transactions():
         ads_total_product_spend = 0.0
         ads_total_display_spend = 0.0
         ads_total_brand_spend = 0.0
+
+        ads_total_sp_ads_sales = 0.0
+        ads_total_sd_ads_sales = 0.0
+        ads_total_sb_ads_sales = 0.0
+
         ads_agg = pd.DataFrame()
 
         try:
@@ -3064,6 +3069,23 @@ def finances_mtd_transactions():
                 ads_total_product_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "product_spend"], errors="coerce").fillna(0.0).sum()) if "product_spend" in ads_df.columns else 0.0
                 ads_total_display_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "display_spend"], errors="coerce").fillna(0.0).sum()) if "display_spend" in ads_df.columns else 0.0
                 ads_total_brand_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "brand_spend"], errors="coerce").fillna(0.0).sum()) if "brand_spend" in ads_df.columns else 0.0
+                ads_total_sp_ads_sales = float(
+                    pd.to_numeric(ads_df.loc[gt_mask, "sp_ads_sales"], errors="coerce")
+                    .fillna(0.0)
+                    .sum()
+                ) if "sp_ads_sales" in ads_df.columns else 0.0
+
+                ads_total_sd_ads_sales = float(
+                    pd.to_numeric(ads_df.loc[gt_mask, "sd_ads_sales"], errors="coerce")
+                    .fillna(0.0)
+                    .sum()
+                ) if "sd_ads_sales" in ads_df.columns else 0.0
+
+                ads_total_sb_ads_sales = float(
+                    pd.to_numeric(ads_df.loc[gt_mask, "sb_ads_sales"], errors="coerce")
+                    .fillna(0.0)
+                    .sum()
+                ) if "sb_ads_sales" in ads_df.columns else 0.0
             else:
                 # safe sums even if columns missing
                 for c in ["product_spend", "display_spend", "brand_spend"]:
@@ -3072,6 +3094,9 @@ def finances_mtd_transactions():
                 ads_total_product_spend = float(pd.to_numeric(ads_df["product_spend"], errors="coerce").fillna(0.0).sum())
                 ads_total_display_spend = float(pd.to_numeric(ads_df["display_spend"], errors="coerce").fillna(0.0).sum())
                 ads_total_brand_spend = float(pd.to_numeric(ads_df["brand_spend"], errors="coerce").fillna(0.0).sum())
+                ads_total_sp_ads_sales = float(pd.to_numeric(ads_df["sp_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sp_ads_sales" in ads_df.columns else 0.0
+                ads_total_sd_ads_sales = float(pd.to_numeric(ads_df["sd_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sd_ads_sales" in ads_df.columns else 0.0
+                ads_total_sb_ads_sales = float(pd.to_numeric(ads_df["sb_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sb_ads_sales" in ads_df.columns else 0.0
 
             ads_df = ads_df[ads_df["products"] != ""].copy()
 
@@ -3315,14 +3340,15 @@ def finances_mtd_transactions():
         total_row["ads_impressions"] = float(df_sku["ads_impressions"].sum()) if "ads_impressions" in df_sku.columns else 0.0
         total_row["ads_clicks"] = float(df_sku["ads_clicks"].sum()) if "ads_clicks" in df_sku.columns else 0.0
         total_row["ads_sale_units"] = float(df_sku["ads_sale_units"].sum()) if "ads_sale_units" in df_sku.columns else 0.0
-        total_row["sp_ads_sales"] = float(df_sku["sp_ads_sales"].sum()) if "sp_ads_sales" in df_sku.columns else 0.0
-        total_row["sd_ads_sales"] = float(df_sku["sd_ads_sales"].sum()) if "sd_ads_sales" in df_sku.columns else 0.0
-        total_row["sb_ads_sales"] = float(df_sku["sb_ads_sales"].sum()) if "sb_ads_sales" in df_sku.columns else 0.0
+        total_row["sp_ads_sales"] = round(float(ads_total_sp_ads_sales or 0.0), 2)
+        total_row["sd_ads_sales"] = round(float(ads_total_sd_ads_sales or 0.0), 2)
+        total_row["sb_ads_sales"] = round(float(ads_total_sb_ads_sales or 0.0), 2)
 
-        total_row["ads_sale_amount"] = (
+        total_row["ads_sale_amount"] = round(
             total_row["sp_ads_sales"]
             + total_row["sd_ads_sales"]
-            + total_row["sb_ads_sales"]
+            + total_row["sb_ads_sales"],
+            2
         )
 
         total_row["product_spend"] = round(float(ads_total_product_spend or 0.0), 2)
