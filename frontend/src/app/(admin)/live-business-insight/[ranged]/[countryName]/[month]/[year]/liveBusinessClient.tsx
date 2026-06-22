@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from "xlsx-js-style";
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
-import { IoDownload } from 'react-icons/io5';
+import { IoDownload, IoRefresh } from 'react-icons/io5';
 import { BsStars } from 'react-icons/bs';
 import { FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import Loader from '@/components/loader/Loader';
@@ -163,6 +163,15 @@ interface PeriodInfo {
 
 interface ApiResponse {
   message?: string;
+   ai_last_refreshed_at?: {
+    iso?: string | null;
+    display?: string | null;
+    date?: string | null;
+    time?: string | null;
+    timezone?: string | null;
+    timezone_label?: string | null;
+  };
+
   periods?: {
     previous?: PeriodInfo;
     current_mtd?: PeriodInfo;
@@ -648,6 +657,8 @@ export default function LiveBusinessClient({
   const [month2Label, setMonth2Label] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [portfolioRecommendation, setPortfolioRecommendation] = useState<string>("");
+  const [aiLastRefreshedAt, setAiLastRefreshedAt] = useState<string>("");
+const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
 
   // overall bullets from backend
   const [summaryText, setSummaryText] = useState<string>("");
@@ -1351,6 +1362,7 @@ export default function LiveBusinessClient({
     setObjectiveContext(payload.objective_context || null);
     setAdsRecommendation(payload.ads_recommendation || "");
     setInventorySummary(payload.inventory_summary || null);
+    setAiLastRefreshedAt(payload.ai_last_refreshed_at?.display || "");
 
     const liveInsights = isGlobalData()
       ? buildGlobalSkuInsights(payload)
@@ -1397,15 +1409,18 @@ export default function LiveBusinessClient({
     return parsePortfolioInventoryBlock(portfolioInventoryBlock);
   }, [portfolioInventoryBlock]);
 
-  const fetchLiveBi = async (generateInsights: boolean = false) => {
-    setError(null);
+const fetchLiveBi = async (
+  generateInsights: boolean = false,
+  manualAiRefresh: boolean = false
+) => {
+  setError(null);
 
-    if (!generateInsights) {
-      setSkuInsights({});
-      setSelectedSku(null);
-      setModalOpen(false);
-      setPageLoading(true);
-    }
+  if (!generateInsights && !manualAiRefresh) {
+    setSkuInsights({});
+    setSelectedSku(null);
+    setModalOpen(false);
+    setPageLoading(true);
+  }
 
     try {
       const liveMtdParams = getLiveMtdParams({
@@ -1415,21 +1430,23 @@ export default function LiveBusinessClient({
         endDay,
       });
 
-      const res = await api.get<ApiResponse>('/live_mtd_bi', {
-        params: normalizedCountry === "global"
-          ? {
-            countryName: "global",
-            ...liveMtdParams,
-            generate_ai_insights: "false",
-          }
-          : {
-            countryName: normalizedCountry,
-            ranged,
-            month,
-            year,
-            generate_ai_insights: generateInsights ? "true" : "false",
-          },
-      });
+     const res = await api.get<ApiResponse>('/live_mtd_bi', {
+  params: normalizedCountry === "global"
+    ? {
+      countryName: "global",
+      ...liveMtdParams,
+      generate_ai_insights: "false",
+      manual_ai_refresh: manualAiRefresh ? "true" : "false",
+    }
+    : {
+      countryName: normalizedCountry,
+      ranged,
+      month,
+      year,
+      generate_ai_insights: generateInsights ? "true" : "false",
+      manual_ai_refresh: manualAiRefresh ? "true" : "false",
+    },
+});
 
       setAllActionRows(res.data.all_action_rows || []);
       setRemainingSkusAggregate(res.data.remaining_skus_aggregate || null);
@@ -1472,9 +1489,10 @@ export default function LiveBusinessClient({
       setInventorySummary(inventoryFromApi);
       setRemainingSkusBlock(remainingBlock);
       setPortfolioRecommendation(portfolioRecFromApi);
-      setPortfolioInventoryBlock(portfolioInventoryFromApi);
-      setObjectiveContext(res.data.objective_context || null);
-      setInsightDate(getTodayKey());
+setPortfolioInventoryBlock(portfolioInventoryFromApi);
+setObjectiveContext(res.data.objective_context || null);
+setAiLastRefreshedAt(res.data.ai_last_refreshed_at?.display || "");
+setInsightDate(getTodayKey());
 
       const liveInsights = normalizedCountry === "global"
         ? buildGlobalSkuInsights(res.data)
@@ -1489,9 +1507,9 @@ export default function LiveBusinessClient({
         err?.response?.data?.error ||
         'An error occurred while fetching live BI data.'
       );
-    } finally {
-      if (!generateInsights) setPageLoading(false);
-    }
+   } finally {
+  if (!generateInsights && !manualAiRefresh) setPageLoading(false);
+}
   };
 
   // useEffect(() => {
@@ -1554,19 +1572,39 @@ export default function LiveBusinessClient({
   // };
 
   const analyzeSkus = async () => {
-    setLoadingInsight(true);
-    try {
-      if (onGenerateInsights) {
-        await onGenerateInsights();
-        return;
-      }
-      await fetchLiveBi(normalizedCountry === "global" ? false : true);
-    } catch (err: any) {
-      console.error('generate insights error:', err?.response?.data || err.message);
-    } finally {
-      setLoadingInsight(false);
+  setLoadingInsight(true);
+  try {
+    if (onGenerateInsights) {
+      await onGenerateInsights();
+      return;
     }
-  };
+    await fetchLiveBi(normalizedCountry === "global" ? false : true);
+  } catch (err: any) {
+    console.error('generate insights error:', err?.response?.data || err.message);
+  } finally {
+    setLoadingInsight(false);
+  }
+};
+
+const handleManualAiRefresh = async () => {
+  setManualAiRefreshing(true);
+  setError(null);
+
+  try {
+    // Refresh only cached AI summary + recommendations.
+    // generate_ai_insights stays false, manual_ai_refresh becomes true.
+    await fetchLiveBi(false, true);
+  } catch (err: any) {
+    console.error("manual ai refresh error:", err?.response?.data || err.message);
+    setError(
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      "Failed to refresh AI summary and recommendations."
+    );
+  } finally {
+    setManualAiRefreshing(false);
+  }
+};
 
   // =========================
   // Insight helpers
@@ -4634,14 +4672,38 @@ export default function LiveBusinessClient({
                   <div className="flex-1">
                     {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
                       <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full h-full flex flex-col">
-                        <PageBreadcrumb
-                          pageTitle={isGlobalData() ? "Global Business Summary" : "Business Summary"}
-                          variant="page"
-                          align="left"
-                        />
+  <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
+      <PageBreadcrumb
+        pageTitle={isGlobalData() ? "Global Business Summary" : "Business Summary"}
+        variant="page"
+        align="left"
+      />
 
-                        {summaryText && (
-                          <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
+      {aiLastRefreshedAt && (
+        <span className="text-[10px] 2xl:text-xs text-slate-500 leading-5">
+          Last updated: {aiLastRefreshedAt}
+        </span>
+      )}
+    </div>
+
+    <button
+  type="button"
+  onClick={handleManualAiRefresh}
+  disabled={manualAiRefreshing}
+  className="shrink-0 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-2 text-charcoal-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+  title={manualAiRefreshing ? "Refreshing..." : "Refresh business summary and recommendations"}
+  aria-label="Refresh business summary and recommendations"
+>
+  <IoRefresh
+    size={16}
+    className={manualAiRefreshing ? "animate-spin" : ""}
+  />
+</button>
+  </div>
+
+  {summaryText && (
+    <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
                             {splitIntoPoints(summaryText).map((point, index) => (
                               <li key={index}>{point}</li>
                             ))}

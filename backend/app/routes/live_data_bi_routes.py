@@ -24,7 +24,8 @@ from app.utils.uk_prompts_utils import get_excel_recommendation_from_live_contex
 import hashlib
 import json
 from flask import current_app
-from datetime import datetime, date
+from datetime import datetime, date, timezone
+from zoneinfo import ZoneInfo
 from app import db
 from app.models.user_models import LiveAISummary
 
@@ -786,31 +787,44 @@ def safe_json_load(val):
     except Exception:
         return {}
 
-# def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
+def format_ai_last_refreshed_at(dt, country: str) -> dict:
+    """
+    Returns AI refresh timestamp for frontend display.
 
-#     record = LiveAISummary.query.filter_by(
-#         user_id=user_id,
-#         country=country,
-#         start_date=start_date,
-#         end_date=end_date
-#     ).first()
+    UK       -> Europe/London, shows BST/GMT automatically
+    US/global -> America/Los_Angeles, shows PDT/PST automatically
+    """
+    if not dt:
+        return {
+            "iso": None,
+            "display": None,
+            "timezone": None,
+            "timezone_label": None,
+        }
 
-#     if not record:
-#         return None
+    # DB stores datetime.utcnow(), so if naive, treat it as UTC.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
 
-#     # objective changed
-#     if record.objective_hash != objective_hash:
-#         return None
+    country_lower = str(country or "").strip().lower()
 
-#     # next day rerun
-#     if not record.created_at or record.created_at.date() < date.today():
-#         return None
+    if country_lower == "uk":
+        tz_name = "Europe/London"
+    else:
+        # us and global
+        tz_name = "America/Los_Angeles"
 
-#     return {
-#     "analysis": safe_json_load(record.analysis),
-#     "summary": safe_json_load(record.summary),
-#     "strategy": safe_json_load(record.strategy)
-#     }
+    local_dt = dt.astimezone(ZoneInfo(tz_name))
+    tz_label = local_dt.tzname()  # BST/GMT or PDT/PST
+
+    return {
+        "iso": local_dt.isoformat(),
+        "display": local_dt.strftime("%d %b %Y, %I:%M %p ") + tz_label,
+        "date": local_dt.strftime("%d %b %Y"),
+        "time": local_dt.strftime("%I:%M %p"),
+        "timezone": tz_name,
+        "timezone_label": tz_label,
+    }
 
 def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
 
@@ -837,10 +851,11 @@ def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
     # etc.
 
     return {
-        "analysis": safe_json_load(record.analysis),
-        "summary": safe_json_load(record.summary),
-        "strategy": safe_json_load(record.strategy),
-    }
+    "analysis": safe_json_load(record.analysis),
+    "summary": safe_json_load(record.summary),
+    "strategy": safe_json_load(record.strategy),
+    "created_at": record.created_at,
+}
 
 
 
@@ -884,6 +899,7 @@ def save_live_ai_cache(
         db.session.add(record)
 
     db.session.commit()
+    return record
 
 
 
@@ -931,6 +947,11 @@ def live_mtd_vs_previous():
 
         generate_ai_insights = (
             request.args.get("generate_ai_insights", "false").lower()
+            in ("true", "1", "yes")
+        )
+
+        manual_ai_refresh = (
+            request.args.get("manual_ai_refresh", "false").lower()
             in ("true", "1", "yes")
         )
 
@@ -1124,55 +1145,7 @@ def live_mtd_vs_previous():
                 "code": "USD",
             }
 
-            # # -------------------------------------------------
-            # # GLOBAL: Portfolio inventory blocks by available country only
-            # # -------------------------------------------------
-            # available_countries = (
-            #     current_global_payload.get("available_countries")
-            #     or previous_global_payload.get("available_countries")
-            #     or []
-            # )
-
-            # try:
-            #     inv_df = fetch_inventory_aged_by_user(user_id, country)
-            #     portfolio_inventory_alerts_uk = {}
-            #     portfolio_inventory_alerts_us = {}
-
-            #     portfolio_inventory_block_uk = ""
-            #     portfolio_inventory_block_us = ""
-
-            #     if "uk" in available_countries:
-            #         portfolio_inventory_alerts_uk = build_portfolio_inventory_alerts(
-            #             inv_df,
-            #             user_id=user_id,
-            #             country="uk",
-            #         )
-
-            #         portfolio_inventory_block_uk = render_portfolio_inventory_block(
-            #             inventory_alerts=portfolio_inventory_alerts_uk,
-            #             currency_symbol="£",
-            #         )
-
-            #     if "us" in available_countries:
-            #         portfolio_inventory_alerts_us = build_portfolio_inventory_alerts(
-            #             inv_df,
-            #             user_id=user_id,
-            #             country="us",
-            #         )
-
-            #         portfolio_inventory_block_us = render_portfolio_inventory_block(
-            #             inventory_alerts=portfolio_inventory_alerts_us,
-            #             currency_symbol="$",
-            #         )
-
-            # except Exception as e:
-            #     print("[WARN] Failed to build global portfolio inventory blocks:", e)
-
-            #     portfolio_inventory_alerts_uk = {}
-            #     portfolio_inventory_alerts_us = {}
-
-            #     portfolio_inventory_block_uk = ""
-            #     portfolio_inventory_block_us = ""
+            
 
             # -------------------------------------------------
             # GLOBAL: Portfolio inventory blocks by available country only
@@ -1546,13 +1519,24 @@ def live_mtd_vs_previous():
 
             objective_hash = generate_objective_hash(user_objective)
 
-            cached_ai = get_cached_live_ai(
-                user_id=user_id,
-                country="global",
-                start_date=curr_start,
-                end_date=ai_refresh_slot,
-                objective_hash=objective_hash,
-            )
+            cached_ai = None
+            ai_cache_record = None
+            ai_last_refreshed_at = None
+
+            if not manual_ai_refresh:
+                cached_ai = get_cached_live_ai(
+                    user_id=user_id,
+                    country="global",
+                    start_date=curr_start,
+                    end_date=ai_refresh_slot,
+                    objective_hash=objective_hash,
+                )
+
+                if cached_ai:
+                    ai_last_refreshed_at = format_ai_last_refreshed_at(
+                        cached_ai.get("created_at"),
+                        "global",
+                    )
 
             analysis = {}
             summary_out = {
@@ -1738,7 +1722,7 @@ def live_mtd_vs_previous():
 
             if not cached_ai:
                 try:
-                    save_live_ai_cache(
+                    ai_cache_record = save_live_ai_cache(
                         user_id=user_id,
                         country="global",
                         start_date=curr_start,
@@ -1748,8 +1732,19 @@ def live_mtd_vs_previous():
                         summary=summary_out,
                         strategy=global_strategy_parsed,
                     )
+
+                    ai_last_refreshed_at = format_ai_last_refreshed_at(
+                        ai_cache_record.created_at,
+                        "global",
+                    )
+
                 except Exception as e:
                     print("[WARN] Failed to save global AI cache:", e)
+
+                    ai_last_refreshed_at = format_ai_last_refreshed_at(
+                        datetime.utcnow(),
+                        "global",
+                    )
 
             
             recommended_actions_uk = build_global_country_recommendations(
@@ -2001,9 +1996,10 @@ def live_mtd_vs_previous():
 
 
             response_payload = {
-            "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
-            "country": "global",
-            "currency": currency,
+                "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
+                "country": "global",
+                "currency": currency,
+                "ai_last_refreshed_at": ai_last_refreshed_at,
 
             "portfolio_inventory_block": {
                 "uk": portfolio_inventory_block_uk if "uk" in available_countries else "",
@@ -2707,16 +2703,26 @@ def live_mtd_vs_previous():
         analysis = {}
         summary_out = {"summary_text": "", "metric_bullets": []}
         strategy_parsed = {}
+        cached_ai = None
+        ai_cache_record = None
+        ai_last_refreshed_at = None
 
         try:
 
-            cached_ai = get_cached_live_ai(
-                user_id=user_id,
-                country=country,
-                start_date=curr_start,
-                end_date=ai_refresh_slot,
-                objective_hash=objective_hash,
-            )
+            if not manual_ai_refresh:
+                cached_ai = get_cached_live_ai(
+                    user_id=user_id,
+                    country=country,
+                    start_date=curr_start,
+                    end_date=ai_refresh_slot,
+                    objective_hash=objective_hash,
+                )
+
+                if cached_ai:
+                    ai_last_refreshed_at = format_ai_last_refreshed_at(
+                        cached_ai.get("created_at"),
+                        country,
+                    )
 
             if cached_ai:
                 analysis = cached_ai.get("analysis", {}) or {}
@@ -2877,8 +2883,8 @@ def live_mtd_vs_previous():
                 coverage_override_by_sku=coverage_override_by_sku,
             )
 
-            print("[DEBUG] coverage_override_by_sku:", coverage_override_by_sku)
-            print("[DEBUG] sku_inventory_flags:", json.dumps(sku_inventory_flags, indent=2, default=str))    
+            # print("[DEBUG] coverage_override_by_sku:", coverage_override_by_sku)
+            # print("[DEBUG] sku_inventory_flags:", json.dumps(sku_inventory_flags, indent=2, default=str))    
         except Exception as e:
             print("[WARN] Failed to build SKU inventory flags:", e)
             sku_inventory_flags = {}
@@ -3066,7 +3072,7 @@ def live_mtd_vs_previous():
         # SAVE AI CACHE
         # ====================================================
         if not cached_ai:
-            save_live_ai_cache(
+            ai_cache_record = save_live_ai_cache(
                 user_id=user_id,
                 country=country,
                 start_date=curr_start,
@@ -3075,6 +3081,11 @@ def live_mtd_vs_previous():
                 analysis=analysis,
                 summary=summary_out,
                 strategy=strategy_parsed
+            )
+
+            ai_last_refreshed_at = format_ai_last_refreshed_at(
+                ai_cache_record.created_at,
+                country,
             )
 
         # Safe extraction (always executes)
@@ -3373,6 +3384,10 @@ def live_mtd_vs_previous():
         response_payload = {
            
             "message": "Live MTD vs previous-month-same-period comparison",
+            "country": country,
+            "currency": currency,
+            "ai_last_refreshed_at": ai_last_refreshed_at,
+            
             "objective_context": {
                 "growth_intent": user_objective.get("growth_intent"),
                 "profit_priority": user_objective.get("profit_priority"),

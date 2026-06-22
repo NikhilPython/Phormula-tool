@@ -6544,6 +6544,59 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return json;
   };
 
+  const fetchInventoryCurrentByPeriod = async (
+    signal?: AbortSignal
+  ): Promise<InventoryCurrentApiResponse> => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    if (!token) {
+      throw new Error("Missing token");
+    }
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
+    );
+
+    url.searchParams.set("country_key", String(countryName).toLowerCase());
+    url.searchParams.set("year", String(selectedYear));
+
+    if (range === "monthly") {
+      url.searchParams.set("range_type", "monthly");
+      url.searchParams.set("month_name", String(selectedMonth).toLowerCase());
+    }
+
+    if (range === "quarterly") {
+      url.searchParams.set("range_type", "quarter_months");
+      url.searchParams.set("quarter", String(selectedQuarter));
+    }
+
+    if (range === "yearly") {
+      url.searchParams.set("range_type", "yearly");
+    }
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      signal,
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        json?.message ||
+        json?.error ||
+        `Failed to fetch inventory data for ${range}`
+      );
+    }
+
+    return json;
+  };
+
   const fetchSingleMonthInventoryAgeSummary = async (
     monthName: string,
     yearValue: string,
@@ -6604,6 +6657,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
+  const getInventoryAgeSummaryMonthsForYear = () => {
+    return allMonths.map((m) => m.toLowerCase());
+  };
+
   useEffect(() => {
     if (isDemoMode) {
       setInventoryRawResponses(null);
@@ -6645,13 +6702,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    const monthsToFetch = getInventoryMonthsForSelectedRange();
+    // const monthsToFetch = getInventoryMonthsForSelectedRange();
 
-    if (!monthsToFetch.length) {
-      setInventoryInsightsData(null);
-      setInventoryRawResponses(null);
-      return;
-    }
+    // if (!monthsToFetch.length) {
+    //   setInventoryInsightsData(null);
+    //   setInventoryRawResponses(null);
+    //   return;
+    // }
+
+    const ageSummaryMonthsToFetch = getInventoryAgeSummaryMonthsForYear();
 
     const ac = new AbortController();
 
@@ -6660,20 +6719,35 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         setInventoryInsightsLoading(true);
         setInventoryInsightsError(null);
 
-        const [inventoryResults, ageSummaryResults] = await Promise.all([
-          Promise.allSettled(
-            monthsToFetch.map((monthName) =>
-              fetchSingleMonthInventoryCurrent(
-                monthName,
-                selectedYear,
-                countryName,
-                ac.signal
-              )
-            )
-          ),
+        // const [inventoryResults, ageSummaryResults] = await Promise.all([
+        //   Promise.allSettled(
+        //     monthsToFetch.map((monthName) =>
+        //       fetchSingleMonthInventoryCurrent(
+        //         monthName,
+        //         selectedYear,
+        //         countryName,
+        //         ac.signal
+        //       )
+        //     )
+        //   ),
+
+        //   Promise.allSettled(
+        //     monthsToFetch.map((monthName) =>
+        //       fetchSingleMonthInventoryAgeSummary(
+        //         monthName,
+        //         selectedYear,
+        //         countryName,
+        //         ac.signal
+        //       )
+        //     )
+        //   ),
+        // ]);
+
+        const [inventoryResult, ageSummaryResults] = await Promise.all([
+          fetchInventoryCurrentByPeriod(ac.signal),
 
           Promise.allSettled(
-            monthsToFetch.map((monthName) =>
+            ageSummaryMonthsToFetch.map((monthName) =>
               fetchSingleMonthInventoryAgeSummary(
                 monthName,
                 selectedYear,
@@ -6684,12 +6758,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ),
         ]);
 
-        const fulfilledInventory = inventoryResults
-          .filter(
-            (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
-              result.status === "fulfilled"
-          )
-          .map((result) => result.value);
+        // const fulfilledInventory = inventoryResults
+        //   .filter(
+        //     (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
+        //       result.status === "fulfilled"
+        //   )
+        //   .map((result) => result.value);
+
+        const fulfilledInventory: InventoryCurrentApiResponse[] =
+          inventoryResult?.success ? [inventoryResult] : [];
 
         const fulfilledAgeSummary = ageSummaryResults
           .filter(
@@ -6700,15 +6777,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )
           .map((result) => result.value);
 
-        if (!fulfilledInventory.length) {
-          const firstError = inventoryResults.find(
-            (result): result is PromiseRejectedResult =>
-              result.status === "rejected"
-          );
+        // if (!fulfilledInventory.length) {
+        //   const firstError = inventoryResults.find(
+        //     (result): result is PromiseRejectedResult =>
+        //       result.status === "rejected"
+        //   );
 
-          throw new Error(
-            firstError?.reason?.message || "No inventory data found"
-          );
+        //   throw new Error(
+        //     firstError?.reason?.message || "No inventory data found"
+        //   );
+        // }
+
+        if (!fulfilledInventory.length) {
+          throw new Error("No inventory data found");
         }
 
 
@@ -7322,7 +7403,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         onAction={handleConnectAmazonPreview}
       >
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
-        {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && activeTab !== "inventoryInsights" &&(
+        {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && activeTab !== "inventoryInsights" && (
 
           <div className="flex flex-col gap-5 w-full mt-4">
             {/* Summary Cards */}
