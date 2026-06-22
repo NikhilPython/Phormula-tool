@@ -124,6 +124,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                 outerRadius="82%"
                                 paddingAngle={1.5}
                                 strokeWidth={4}
+                                isAnimationActive={false}
                             >
                                 <Label
                                     content={({ viewBox }) => {
@@ -221,4 +222,4 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     );
 };
 
-export default SkuAgeingDonutChart;
+export default React.memo(SkuAgeingDonutChart);

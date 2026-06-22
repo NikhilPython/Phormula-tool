@@ -123,4 +123,4 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     );
 };
 
-export default InventoryInsightsSection;
+export default React.memo(InventoryInsightsSection);
