@@ -781,6 +781,34 @@ def generate_objective_hash(obj):
         json.dumps(obj, sort_keys=True).encode()
     ).hexdigest()
 
+def generate_live_ai_cache_hash(user_objective, prev_totals, curr_totals):
+    """
+    AI cache should refresh when:
+    - user objective changes
+    - previous/current business totals change
+
+    This prevents stale Business Summary numbers from being reused.
+    """
+    cache_signature = {
+        "objective": user_objective,
+        "prev": {
+            "quantity": round(float(prev_totals.get("quantity") or 0), 2),
+            "net_sales": round(float(prev_totals.get("net_sales") or 0), 2),
+            "profit": round(float(prev_totals.get("profit") or 0), 2),
+            "total_asp": round(float(prev_totals.get("total_asp") or 0), 2),
+            "unit_wise_profitability": round(float(prev_totals.get("unit_wise_profitability") or 0), 2),
+        },
+        "curr": {
+            "quantity": round(float(curr_totals.get("quantity") or 0), 2),
+            "net_sales": round(float(curr_totals.get("net_sales") or 0), 2),
+            "profit": round(float(curr_totals.get("profit") or 0), 2),
+            "total_asp": round(float(curr_totals.get("total_asp") or 0), 2),
+            "unit_wise_profitability": round(float(curr_totals.get("unit_wise_profitability") or 0), 2),
+        },
+    }
+
+    return generate_objective_hash(cache_signature)
+
 def safe_json_load(val):
     try:
         return json.loads(val) if val else {}
@@ -1517,7 +1545,11 @@ def live_mtd_vs_previous():
                 "acos": acos_context,
             }
 
-            objective_hash = generate_objective_hash(user_objective)
+            objective_hash = generate_live_ai_cache_hash(
+                user_objective=user_objective,
+                prev_totals=prev_totals,
+                curr_totals=curr_totals,
+            )
 
             cached_ai = None
             ai_cache_record = None
@@ -2560,13 +2592,33 @@ def live_mtd_vs_previous():
 
         # ---------------------------
         # AI SUMMARY (ONCE)
+        # Use the SAME previous-period totals source as the dashboard/KPI cards,
+        # so Business Summary previous values match cards.
         # ---------------------------
-        prev_totals = aggregate_totals(prev_data_aligned)
-        prev_totals["total_asp"] = compute_total_asp(prev_data_aligned)
-        prev_totals["unit_wise_profitability"] = compute_total_unit_profitability(prev_data_aligned)
+        prev_totals = totals_from_daily_series(prev_daily_aligned)
+
+        prev_totals["total_asp"] = (
+            prev_totals["net_sales"] / prev_totals["quantity"]
+            if prev_totals.get("quantity") else 0.0
+        )
+
+        prev_totals["unit_wise_profitability"] = (
+            prev_totals["profit"] / prev_totals["quantity"]
+            if prev_totals.get("quantity") else 0.0
+        )
 
         # ✅ Current AI totals come from skuwisemonthly TOTAL row / monthly table
         curr_totals = curr_ai_totals
+
+        curr_totals["total_asp"] = curr_totals.get("total_asp") or (
+            curr_totals["net_sales"] / curr_totals["quantity"]
+            if curr_totals.get("quantity") else 0.0
+        )
+
+        curr_totals["unit_wise_profitability"] = curr_totals.get("unit_wise_profitability") or (
+            curr_totals["profit"] / curr_totals["quantity"]
+            if curr_totals.get("quantity") else 0.0
+        )
 
         sku_context = build_sku_context(growth_data, max_items=5)
         estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id, country)
@@ -2697,7 +2749,11 @@ def live_mtd_vs_previous():
         # AI CACHE CHECK
         # ====================================================
 
-        objective_hash = generate_objective_hash(user_objective)
+        objective_hash = generate_live_ai_cache_hash(
+            user_objective=user_objective,
+            prev_totals=prev_totals,
+            curr_totals=curr_totals,
+        )
 
         # default safe values
         analysis = {}
