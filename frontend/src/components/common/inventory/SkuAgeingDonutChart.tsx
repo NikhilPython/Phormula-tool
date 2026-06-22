@@ -64,19 +64,19 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     }, [chartData]);
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            {/* <div className="mb-4">
-                <h3 className="text-lg font-extrabold uppercase text-slate-900">
-                    {title}
-                </h3>
-            </div> */}
-            <PageBreadcrumb pageTitle="Ageing Donut Chart" variant="page" align="left" textSize="2xl" />
+       <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 min-[1700px]:min-h-[360px] min-[1700px]:p-4">
+            <PageBreadcrumb
+                pageTitle={title}
+                variant="page"
+                align="left"
+                textSize="2xl"
+            />
 
-            <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="flex justify-center">
+            <div className="mt-4 flex flex-1 flex-col gap-5 min-[1700px]:flex-row min-[1700px]:items-center min-[1700px]:gap-4">
+                <div className="flex min-w-0 justify-center min-[1700px]:w-[42%] min-[1700px]:shrink-0">
                     <ChartContainer
                         config={chartConfig}
-                        className="mx-auto aspect-square h-[330px] max-h-[330px] w-full max-w-[330px]"
+                       className="mx-auto aspect-square h-[230px] max-h-[230px] w-full max-w-[230px] sm:h-[270px] sm:max-h-[270px] sm:max-w-[270px] xl:h-[300px] xl:max-h-[300px] xl:max-w-[300px] min-[1700px]:h-[220px] min-[1700px]:max-h-[220px] min-[1700px]:max-w-[220px]"
                     >
                         <PieChart>
                             <ChartTooltip
@@ -89,7 +89,9 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                                 percentage: number;
                                             };
 
-                                            const displayValue = Array.isArray(value) ? value[0] : value;
+                                            const displayValue = Array.isArray(value)
+                                                ? value[0]
+                                                : value;
 
                                             return (
                                                 <div className="flex min-w-[185px] items-center justify-between gap-4 text-xs">
@@ -118,10 +120,11 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                 data={chartData}
                                 dataKey="units"
                                 nameKey="bucket"
-                                innerRadius={82}
-                                outerRadius={125}
+                                innerRadius="58%"
+                                outerRadius="82%"
                                 paddingAngle={1.5}
                                 strokeWidth={4}
+                                isAnimationActive={false}
                             >
                                 <Label
                                     content={({ viewBox }) => {
@@ -136,7 +139,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                                     <tspan
                                                         x={viewBox.cx}
                                                         y={(viewBox.cy || 0) - 6}
-                                                        className="fill-muted-foreground text-sm font-medium"
+                                                        className="fill-muted-foreground text-xs font-medium sm:text-sm"
                                                     >
                                                         Total Units
                                                     </tspan>
@@ -144,7 +147,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                                     <tspan
                                                         x={viewBox.cx}
                                                         y={(viewBox.cy || 0) + 22}
-                                                        className="fill-foreground text-2xl font-bold"
+                                                        className="fill-foreground text-xl font-bold sm:text-2xl"
                                                     >
                                                         {finalTotal.toLocaleString()}
                                                     </tspan>
@@ -160,15 +163,17 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                     </ChartContainer>
                 </div>
 
-                <div className="overflow-hidden rounded-lg p-2">
-                    <table className="w-full border-separate border-spacing-0 text-xs">
+                <div className="w-full min-w-0 rounded-lg min-[1700px]:flex-1">
+                    <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
                         <thead>
                             <tr className="text-slate-600">
-                                <th className="px-3 py-2 text-left font-semibold">
+                                <th className="w-[48%] px-3 py-2 text-left font-semibold">
                                     Ageing Bucket
                                 </th>
-                                <th className="px-3 py-2 text-center font-semibold">Units</th>
-                                <th className="px-3 py-2 text-center font-semibold">
+                                <th className="w-[24%] px-3 py-2 text-center font-semibold">
+                                    Units
+                                </th>
+                                <th className="w-[28%] px-3 py-2 text-center font-semibold">
                                     % of Total
                                 </th>
                             </tr>
@@ -199,7 +204,9 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                             ))}
 
                             <tr className="font-bold text-slate-900">
-                                <td className="border-t border-slate-300 px-3 py-2">Total</td>
+                                <td className="border-t border-slate-300 px-3 py-2">
+                                    Total
+                                </td>
                                 <td className="border-t border-slate-300 px-3 py-2 text-center">
                                     {finalTotal.toLocaleString()}
                                 </td>
@@ -215,4 +222,4 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     );
 };
 
-export default SkuAgeingDonutChart;
+export default React.memo(SkuAgeingDonutChart);

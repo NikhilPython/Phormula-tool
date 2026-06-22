@@ -2674,6 +2674,14 @@ export default function DashboardPage() {
     const [inventoryInsightsData, setInventoryInsightsData] =
         useState<InventoryInsightsData | null>(null);
 
+    const [inventoryInsightResponses, setInventoryInsightResponses] = useState<
+        InventoryCurrentApiResponse[]
+    >([]);
+
+    const [inventoryAgeSummaryResponses, setInventoryAgeSummaryResponses] = useState<
+        InventoryAgeSummaryApiResponse[]
+    >([]);
+
     const [inventoryInsightsLoading, setInventoryInsightsLoading] =
         useState(false);
 
@@ -3980,6 +3988,10 @@ export default function DashboardPage() {
             const ageSummaryResponses =
                 ageSummaryRes.status === "fulfilled" ? [ageSummaryRes.value] : [];
 
+            // ✅ Save raw responses so dropdown can rebuild only trend chart later
+            setInventoryInsightResponses(inventoryResponses);
+            setInventoryAgeSummaryResponses(ageSummaryResponses);
+
             const builtInventoryInsights = buildInventoryInsightsFromResponses(
                 inventoryResponses,
                 ageSummaryResponses,
@@ -4009,6 +4021,45 @@ export default function DashboardPage() {
         fetchSingleMonthInventoryCurrentForInsights,
         fetchSingleMonthInventoryAgeSummaryForInsights,
     ]);
+
+    const handleAgeingTrendBucketChange = useCallback(
+        (bucketValue: string) => {
+            setSelectedAgeingTrendBucket(bucketValue);
+
+            setInventoryInsightsData((prev) => {
+                if (!prev) return prev;
+
+                const selectedBucket =
+                    AGEING_TREND_BUCKET_OPTIONS.find(
+                        (bucket) => bucket.value === bucketValue
+                    ) || AGEING_TREND_BUCKET_OPTIONS[2];
+
+                const trendDataFromSummary = buildAgeingTrendDataFromSummary(
+                    inventoryAgeSummaryResponses,
+                    selectedBucket.column
+                );
+
+                const trendDataFromInventoryCurrent =
+                    buildAgeingTrendDataFromInventoryCurrent(
+                        inventoryInsightResponses,
+                        selectedBucket.column
+                    );
+
+                const trendData =
+                    trendDataFromSummary.length > 0
+                        ? trendDataFromSummary
+                        : trendDataFromInventoryCurrent;
+
+                return {
+                    ...prev,
+                    trendSelectedBucket: selectedBucket.value,
+                    trendData,
+                    trendLineColor: selectedBucket.color,
+                };
+            });
+        },
+        [inventoryAgeSummaryResponses, inventoryInsightResponses]
+    );
 
     useEffect(() => {
         if (activeTab !== "inventory") return;
@@ -11131,43 +11182,43 @@ Keep enough stock for validation but avoid over-committing too early.`,
     );
 
     const getPnlDrawerInventoryValues = (source: any) => {
-    const currentInventory = Number(
-        source?.current_inventory ??
-        source?.currentInventory ??
-        source?.["Current Inventory"] ??
-        source?.["Available Inventory"] ??
-        source?.["Available Quantity"] ??
-        0
-    );
+        const currentInventory = Number(
+            source?.current_inventory ??
+            source?.currentInventory ??
+            source?.["Current Inventory"] ??
+            source?.["Available Inventory"] ??
+            source?.["Available Quantity"] ??
+            0
+        );
 
-    const stockCover = Number(
-        source?.coverage_ratio_months ??
-        source?.coverageRatioMonths ??
-        source?.["Coverage Ratio (In Months)"] ??
-        source?.["Stock Cover"] ??
-        0
-    );
+        const stockCover = Number(
+            source?.coverage_ratio_months ??
+            source?.coverageRatioMonths ??
+            source?.["Coverage Ratio (In Months)"] ??
+            source?.["Stock Cover"] ??
+            0
+        );
 
-    return {
-        currentInventory: Number.isFinite(currentInventory) ? currentInventory : 0,
-        stockCover: Number.isFinite(stockCover) ? stockCover : 0,
+        return {
+            currentInventory: Number.isFinite(currentInventory) ? currentInventory : 0,
+            stockCover: Number.isFinite(stockCover) ? stockCover : 0,
+        };
     };
-};
 
-const buildPnlDrawerInventoryMetrics = (source: any): MetricItem[] => {
-    const { currentInventory, stockCover } = getPnlDrawerInventoryValues(source);
+    const buildPnlDrawerInventoryMetrics = (source: any): MetricItem[] => {
+        const { currentInventory, stockCover } = getPnlDrawerInventoryValues(source);
 
-    return [
-        {
-            label: "Current Inventory",
-            value: `${Math.round(currentInventory).toLocaleString()} units`,
-        },
-        {
-            label: "Stock Cover (Months)",
-            value: stockCover.toFixed(2),
-        },
-    ];
-};
+        return [
+            {
+                label: "Current Inventory",
+                value: `${Math.round(currentInventory).toLocaleString()} units`,
+            },
+            {
+                label: "Stock Cover (Months)",
+                value: stockCover.toFixed(2),
+            },
+        ];
+    };
 
     const buildDrawerMetricsForPnlRow = useCallback(
         (pnlRow: MonthlySkuwiseTableRow, liveRow?: any): MetricItem[] => {
@@ -13483,11 +13534,11 @@ ${pageLoading
                                 heatmapData={inventoryInsightsData.heatmapData}
                                 donutData={inventoryInsightsData.donutData}
                                 donutTotalUnits={inventoryInsightsData.donutTotalUnits}
-                                trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+                                trendSelectedBucket={selectedAgeingTrendBucket}
                                 trendData={inventoryInsightsData.trendData}
                                 trendLineColor={inventoryInsightsData.trendLineColor}
                                 trendBucketOptions={inventoryInsightsData.trendBucketOptions}
-                                onTrendBucketChange={setSelectedAgeingTrendBucket}
+                                onTrendBucketChange={handleAgeingTrendBucketChange}
                                 actions={inventoryInsightsData.actions}
                                 actionLogic={inventoryInsightsData.actionLogic}
                                 onDownloadInventoryExcel={downloadInventoryExcel}

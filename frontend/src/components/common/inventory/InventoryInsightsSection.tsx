@@ -94,33 +94,33 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                     />
                 )}
 
-                {(hasTrend || hasDonut) && (
-                    <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                        {hasTrend && (
-                            <AgeingTrendChart
-                                title="Ageing Trend Over Time"
-                                subtitle="Track how old inventory is increasing or decreasing"
-                                selectedBucket={trendSelectedBucket}
-                                data={trendData}
-                                lineColor={trendLineColor}
-                                bucketOptions={trendBucketOptions}
-                                onBucketChange={onTrendBucketChange}
-                            />
-                        )}
+               {(hasTrend || hasDonut) && (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-stretch">
+        {hasTrend && (
+            <AgeingTrendChart
+                title="Ageing Trend Over Time"
+                subtitle="Track how old inventory is increasing or decreasing"
+                selectedBucket={trendSelectedBucket}
+                data={trendData}
+                lineColor={trendLineColor}
+                bucketOptions={trendBucketOptions}
+                onBucketChange={onTrendBucketChange}
+            />
+        )}
 
-                        {hasDonut && (
-                            <SkuAgeingDonutChart
-                                title="Ageing Donut Chart"
-                                subtitle="Overall inventory ageing distribution across all SKUs"
-                                data={donutData}
-                                totalUnits={donutTotalUnits}
-                            />
-                        )}
-                    </div>
-                )}
+        {hasDonut && (
+            <SkuAgeingDonutChart
+                title="Ageing Donut Chart"
+                subtitle="Overall inventory ageing distribution across all SKUs"
+                data={donutData}
+                totalUnits={donutTotalUnits}
+            />
+        )}
+    </div>
+)}
             </div>
         </div>
     );
 };
 
-export default InventoryInsightsSection;
+export default React.memo(InventoryInsightsSection);
