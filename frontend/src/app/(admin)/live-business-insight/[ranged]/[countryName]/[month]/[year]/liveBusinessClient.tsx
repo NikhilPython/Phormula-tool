@@ -2413,7 +2413,7 @@ export default function LiveBusinessClient({
 
     return {
       label: "Stock Cover (Months)",
-      value: `${coverageRatio.toFixed(2)}`,
+      value: `${coverageRatio.toFixed(1)}`,
     };
   };
 
@@ -2451,15 +2451,15 @@ export default function LiveBusinessClient({
     metrics: { label: string; value: string; color?: string }[]
   ) => {
     const order = [
-  "units",
-  "net sales",
-  "asp",
-  "cm1 profit",
-  "cm1 profit per unit",
-  "current inventory",
-  "stock cover (months)",
-  "stock cover",
-];
+      "units",
+      "net sales",
+      "asp",
+      "cm1 profit",
+      "cm1 profit per unit",
+      "current inventory",
+      "stock cover (months)",
+      "stock cover",
+    ];
 
     return [...metrics].sort((a, b) => {
       const aIndex = order.indexOf(a.label.trim().toLowerCase());
@@ -2515,10 +2515,10 @@ export default function LiveBusinessClient({
     const hasStockCoverMetric = metrics.some((m) => {
       const label = m.label.trim().toLowerCase();
       return (
-  label === "stock cover" ||
-  label === "stock cover (months)" ||
-  label === "current inventory"
-);
+        label === "stock cover" ||
+        label === "stock cover (months)" ||
+        label === "current inventory"
+      );
     });
 
     if (sourceRow && !hasStockCoverMetric) {
@@ -2699,78 +2699,78 @@ export default function LiveBusinessClient({
   ]);
 
   const normalizeProductKey = (value: any) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^product\s*:\s*/i, "")
-    .replace(/^\d+\.\s*/, "")
-    .replace(/\s*\+\s*/g, " + ")
-    .replace(/\s+/g, " ")
-    .trim();
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^product\s*:\s*/i, "")
+      .replace(/^\d+\.\s*/, "")
+      .replace(/\s*\+\s*/g, " + ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-const isComboProductName = (value: string) =>
-  normalizeProductKey(value).includes(" + ");
+  const isComboProductName = (value: string) =>
+    normalizeProductKey(value).includes(" + ");
 
   const getRecommendationSourceRow = useCallback(
-  (productName: string) => {
-    if (isOthersCardName(productName)) {
-      return buildOtherSkusAggregateItem();
-    }
+    (productName: string) => {
+      if (isOthersCardName(productName)) {
+        return buildOtherSkusAggregateItem();
+      }
 
-    const normalized = normalizeProductKey(productName);
-    if (!normalized) return null;
+      const normalized = normalizeProductKey(productName);
+      if (!normalized) return null;
 
-    const allRows = [
-      ...(allActionRows || []),
-      ...(categorizedGrowth.top_80_skus || []),
-      ...(categorizedGrowth.new_skus || []),
-      ...(categorizedGrowth.reviving_skus || []),
-      ...(categorizedGrowth.other_skus || []),
-    ];
+      const allRows = [
+        ...(allActionRows || []),
+        ...(categorizedGrowth.top_80_skus || []),
+        ...(categorizedGrowth.new_skus || []),
+        ...(categorizedGrowth.reviving_skus || []),
+        ...(categorizedGrowth.other_skus || []),
+      ];
 
-    // 1) Exact product_name match first
-    const exactMatch = allRows.find((row) => {
-      const rowName = normalizeProductKey(row.product_name || "");
-      return rowName === normalized;
-    });
-
-    if (exactMatch) return exactMatch;
-
-    // 2) Exact SKU match, if backend/card ever uses SKU as key
-    const skuMatch = allRows.find((row) => {
-      const rowSku = normalizeProductKey(row.sku || "");
-      return rowSku && rowSku === normalized;
-    });
-
-    if (skuMatch) return skuMatch;
-
-    // 3) For combo products like Classic + Passion Fruit,
-    // do NOT use includes matching, otherwise Classic will be picked incorrectly.
-    if (isComboProductName(productName)) {
-      return null;
-    }
-
-    // 4) Safe fallback only for non-combo product names
-    return (
-      allRows.find((row) => {
+      // 1) Exact product_name match first
+      const exactMatch = allRows.find((row) => {
         const rowName = normalizeProductKey(row.product_name || "");
-        if (!rowName) return false;
-
-        if (isComboProductName(rowName)) return false;
-
         return rowName === normalized;
-      }) || null
-    );
-  },
-  [
-    allActionRows,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_skus,
-    categorizedGrowth.reviving_skus,
-    categorizedGrowth.other_skus,
-    buildOtherSkusAggregateItem,
-  ]
-);
+      });
+
+      if (exactMatch) return exactMatch;
+
+      // 2) Exact SKU match, if backend/card ever uses SKU as key
+      const skuMatch = allRows.find((row) => {
+        const rowSku = normalizeProductKey(row.sku || "");
+        return rowSku && rowSku === normalized;
+      });
+
+      if (skuMatch) return skuMatch;
+
+      // 3) For combo products like Classic + Passion Fruit,
+      // do NOT use includes matching, otherwise Classic will be picked incorrectly.
+      if (isComboProductName(productName)) {
+        return null;
+      }
+
+      // 4) Safe fallback only for non-combo product names
+      return (
+        allRows.find((row) => {
+          const rowName = normalizeProductKey(row.product_name || "");
+          if (!rowName) return false;
+
+          if (isComboProductName(rowName)) return false;
+
+          return rowName === normalized;
+        }) || null
+      );
+    },
+    [
+      allActionRows,
+      categorizedGrowth.top_80_skus,
+      categorizedGrowth.new_skus,
+      categorizedGrowth.reviving_skus,
+      categorizedGrowth.other_skus,
+      buildOtherSkusAggregateItem,
+    ]
+  );
 
   const parseOtherSkusBlock = (raw: string) => {
     const lines = (raw || "")
@@ -2811,10 +2811,10 @@ const isComboProductName = (value: string) =>
     const hasStockCoverMetric = metrics.some((m) => {
       const label = m.label.trim().toLowerCase();
       return (
-  label === "stock cover" ||
-  label === "stock cover (months)" ||
-  label === "current inventory"
-);
+        label === "stock cover" ||
+        label === "stock cover (months)" ||
+        label === "current inventory"
+      );
     });
 
     if (sourceRow && !hasStockCoverMetric) {
@@ -4779,18 +4779,54 @@ const isComboProductName = (value: string) =>
                                   </div>
                                 )}
 
-                                {card.recommendationPoints?.length > 0 && (
-                                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                                    {card.recommendationPoints.map((line, i) => (
-                                      <p key={i}>{line}</p>
-                                    ))}
-                                  </div>
-                                )}
+                                {(() => {
+                                  const cardInventoryPoints = [
+                                    ...(card.inventoryPoints || []),
+                                    ...(card.recommendationPoints || []).filter((p) => /inventory/i.test(p)),
+                                    ...(card.advertisingPoints || []).filter((p) => /inventory/i.test(p)),
+                                  ];
+
+                                  const cardActionPoints = (card.recommendationPoints || []).filter(
+                                    (p) => !/inventory/i.test(p)
+                                  );
+
+                                  return (
+                                   <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+  {cardActionPoints[0] && (
+    <div className="flex gap-2">
+      <span className="shrink-0 font-semibold">1.</span>
+      <span className="line-clamp-2">
+        {cardActionPoints[0]}
+      </span>
+    </div>
+  )}
+
+  {cardInventoryPoints[0] && (
+    <div className="flex gap-2">
+      <span className="shrink-0 font-semibold">2.</span>
+      <span className="line-clamp-2">
+        {cardInventoryPoints[0].replace(/^•\s*/, "")}
+      </span>
+    </div>
+  )}
+</div>
+                                  );
+                                })()}
                               </motion.div>
                             );
                           })
                           : sortedRecommendations.map(({ key, text, parsed, netSales }, idx) => {
-                            const recommendationPoints = parsed.recommendationPoints;
+                            const recommendationPoints = parsed.recommendationPoints || [];
+
+                            const inventoryPoints = [
+                              ...(parsed.inventoryPoints || []),
+                              ...(parsed.recommendationPoints || []).filter((p) => /inventory/i.test(p)),
+                              ...(parsed.advertisingPoints || []).filter((p) => /inventory/i.test(p)),
+                            ];
+
+                            const actionPoints = recommendationPoints.filter(
+                              (p) => !/inventory/i.test(p)
+                            );
 
                             return (
                               <motion.div
@@ -4879,13 +4915,27 @@ const isComboProductName = (value: string) =>
                                   </div>
                                 )}
 
-                                {recommendationPoints?.length > 0 && (
-                                  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                                    <div className="line-clamp-2">
-                                      {recommendationPoints[0]}
-                                    </div>
-                                  </div>
-                                )}
+                               {(actionPoints.length > 0 || inventoryPoints.length > 0) && (
+  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+    {actionPoints[0] && (
+      <div className="flex gap-2">
+        <span className="shrink-0 font-semibold">1.</span>
+        <span className="line-clamp-2">
+          {actionPoints[0]}
+        </span>
+      </div>
+    )}
+
+    {inventoryPoints[0] && (
+      <div className="flex gap-2">
+        <span className="shrink-0 font-semibold">2.</span>
+        <span className="line-clamp-2">
+          {inventoryPoints[0].replace(/^•\s*/, "")}
+        </span>
+      </div>
+    )}
+  </div>
+)}
                               </motion.div>
                             );
                           })}
@@ -4987,13 +5037,39 @@ const isComboProductName = (value: string) =>
                                 </div>
                               )}
 
-                              {parsedOther.recommendationPoints?.length > 0 && (
-                                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                                  <div className="line-clamp-2">
-                                    {parsedOther.recommendationPoints[0]}
-                                  </div>
-                                </div>
-                              )}
+                              {(() => {
+                                const otherInventoryPoints = [
+                                  ...(parsedOther.inventoryPoints || []),
+                                  ...(parsedOther.recommendationPoints || []).filter((p) => /inventory/i.test(p)),
+                                  ...(parsedOther.advertisingPoints || []).filter((p) => /inventory/i.test(p)),
+                                ];
+
+                                const otherActionPoints = (parsedOther.recommendationPoints || []).filter(
+                                  (p) => !/inventory/i.test(p)
+                                );
+
+                                return (
+                                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+  {otherActionPoints[0] && (
+    <div className="flex gap-2">
+      <span className="shrink-0 font-semibold">1.</span>
+      <span className="line-clamp-2">
+        {otherActionPoints[0]}
+      </span>
+    </div>
+  )}
+
+  {otherInventoryPoints[0] && (
+    <div className="flex gap-2">
+      <span className="shrink-0 font-semibold">2.</span>
+      <span className="line-clamp-2">
+        {otherInventoryPoints[0].replace(/^•\s*/, "")}
+      </span>
+    </div>
+  )}
+</div>
+                                );
+                              })()}
                             </motion.div>
                           );
                         })()}

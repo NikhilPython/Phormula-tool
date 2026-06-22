@@ -64,7 +64,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     }, [chartData]);
 
     return (
-        <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+       <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 min-[1700px]:min-h-[360px] min-[1700px]:p-4">
             <PageBreadcrumb
                 pageTitle={title}
                 variant="page"
@@ -72,11 +72,11 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                 textSize="2xl"
             />
 
-            <div className="mt-4 flex flex-1 flex-col gap-5">
-                <div className="flex min-w-0 justify-center">
+            <div className="mt-4 flex flex-1 flex-col gap-5 min-[1700px]:flex-row min-[1700px]:items-center min-[1700px]:gap-4">
+                <div className="flex min-w-0 justify-center min-[1700px]:w-[42%] min-[1700px]:shrink-0">
                     <ChartContainer
                         config={chartConfig}
-                        className="mx-auto aspect-square h-[230px] max-h-[230px] w-full max-w-[230px] sm:h-[270px] sm:max-h-[270px] sm:max-w-[270px] xl:h-[300px] xl:max-h-[300px] xl:max-w-[300px]"
+                       className="mx-auto aspect-square h-[230px] max-h-[230px] w-full max-w-[230px] sm:h-[270px] sm:max-h-[270px] sm:max-w-[270px] xl:h-[300px] xl:max-h-[300px] xl:max-w-[300px] min-[1700px]:h-[220px] min-[1700px]:max-h-[220px] min-[1700px]:max-w-[220px]"
                     >
                         <PieChart>
                             <ChartTooltip
@@ -162,7 +162,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                     </ChartContainer>
                 </div>
 
-                <div className="w-full min-w-0 rounded-lg">
+                <div className="w-full min-w-0 rounded-lg min-[1700px]:flex-1">
                     <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
                         <thead>
                             <tr className="text-slate-600">

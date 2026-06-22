@@ -195,7 +195,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   );
 
   return (
-    <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px]">
+   <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px] min-[1700px]:min-h-[360px] min-[1700px]:p-4">
       <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <PageBreadcrumb
           pageTitle={title}
@@ -227,7 +227,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 min-[1700px]:h-[260px] min-[1700px]:flex-none">
         <ReactApexChart
           options={options}
           series={series}
