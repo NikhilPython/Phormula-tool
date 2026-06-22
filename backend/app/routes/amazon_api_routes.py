@@ -3045,6 +3045,9 @@ def finances_mtd_transactions():
                     spend,
                     sale_units,
                     sale_amount,
+                    sp_ads_sales,
+                    sd_ads_sales,
+                    sb_ads_sales,
                     product_spend,
                     display_spend,
                     brand_spend
@@ -3077,13 +3080,13 @@ def finances_mtd_transactions():
                 ads_df["ad_type"] = ""
             ads_df["ad_type"] = ads_df["ad_type"].fillna("").astype(str).str.strip()
 
-            for col in ["impressions", "clicks", "spend", "sale_units", "sale_amount", "product_spend", "display_spend", "brand_spend"]:
+            for col in ["impressions", "clicks", "spend", "sale_units", "sale_amount", "sp_ads_sales", "sd_ads_sales", "sb_ads_sales", "product_spend", "display_spend", "brand_spend"]:
                 if col not in ads_df.columns:
                     ads_df[col] = 0.0
                 ads_df[col] = pd.to_numeric(ads_df[col], errors="coerce").fillna(0.0)
 
             ads_num = ads_df.groupby("products", as_index=False)[
-                ["impressions", "clicks", "spend", "sale_units", "sale_amount", "product_spend", "display_spend", "brand_spend"]
+                ["impressions", "clicks", "spend", "sale_units", "sale_amount","sp_ads_sales" ,"sd_ads_sales", "sb_ads_sales", "product_spend", "display_spend", "brand_spend"]
             ].sum()
 
             ads_type = (
@@ -3104,6 +3107,9 @@ def finances_mtd_transactions():
                     "clicks": "ads_clicks",
                     "sale_units": "ads_sale_units",
                     "sale_amount": "ads_sale_amount",
+                    "sp_ads_sales": "sp_ads_sales",
+                    "sd_ads_sales": "sd_ads_sales",
+                    "sb_ads_sales": "sb_ads_sales",
                 },
                 inplace=True,
             )
@@ -3141,10 +3147,16 @@ def finances_mtd_transactions():
         )
 
         # ensure ads metrics exist
-        for col in ["ads_impressions", "ads_clicks", "ads_sale_units", "ads_sale_amount"]:
+        for col in ["ads_impressions", "ads_clicks", "ads_sale_units", "ads_sale_amount","sp_ads_sales","sd_ads_sales","sb_ads_sales",]:
             if col not in df_sku.columns:
                 df_sku[col] = 0.0
             df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
+
+        df_sku["ads_sale_amount"] = (
+            df_sku["sp_ads_sales"]
+            + df_sku["sd_ads_sales"]
+            + df_sku["sb_ads_sales"]
+        )
 
         # total-only breakup columns
         # total-only breakup columns
@@ -3303,7 +3315,15 @@ def finances_mtd_transactions():
         total_row["ads_impressions"] = float(df_sku["ads_impressions"].sum()) if "ads_impressions" in df_sku.columns else 0.0
         total_row["ads_clicks"] = float(df_sku["ads_clicks"].sum()) if "ads_clicks" in df_sku.columns else 0.0
         total_row["ads_sale_units"] = float(df_sku["ads_sale_units"].sum()) if "ads_sale_units" in df_sku.columns else 0.0
-        total_row["ads_sale_amount"] = float(df_sku["ads_sale_amount"].sum()) if "ads_sale_amount" in df_sku.columns else 0.0
+        total_row["sp_ads_sales"] = float(df_sku["sp_ads_sales"].sum()) if "sp_ads_sales" in df_sku.columns else 0.0
+        total_row["sd_ads_sales"] = float(df_sku["sd_ads_sales"].sum()) if "sd_ads_sales" in df_sku.columns else 0.0
+        total_row["sb_ads_sales"] = float(df_sku["sb_ads_sales"].sum()) if "sb_ads_sales" in df_sku.columns else 0.0
+
+        total_row["ads_sale_amount"] = (
+            total_row["sp_ads_sales"]
+            + total_row["sd_ads_sales"]
+            + total_row["sb_ads_sales"]
+        )
 
         total_row["product_spend"] = round(float(ads_total_product_spend or 0.0), 2)
         total_row["display_spend"] = round(float(ads_total_display_spend or 0.0), 2)

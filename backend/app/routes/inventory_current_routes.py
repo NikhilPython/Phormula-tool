@@ -393,6 +393,342 @@ def build_inventory_age_summary(rows):
     }
 
 
+QUARTER_MONTHS = {
+    "q1": ["march", "february", "january"],
+    "q2": ["june", "may", "april"],
+    "q3": ["september", "august", "july"],
+    "q4": ["december", "november", "october"],
+}
+
+AGE_TIER_TO_COLUMN = {
+    # 181-270
+    "181-210": "inv-age-181-to-270-days",
+    "181-210 days": "inv-age-181-to-270-days",
+    "181 to 210 days": "inv-age-181-to-270-days",
+    "181-210-days": "inv-age-181-to-270-days",
+    "211-240": "inv-age-181-to-270-days",
+    "211-240 days": "inv-age-181-to-270-days",
+    "211 to 240 days": "inv-age-181-to-270-days",
+    "211-240-days": "inv-age-181-to-270-days",
+    "241-270": "inv-age-181-to-270-days",
+    "241-270 days": "inv-age-181-to-270-days",
+    "241 to 270 days": "inv-age-181-to-270-days",
+    "241-270-days": "inv-age-181-to-270-days",
+
+    # 271-365
+    "271-300": "inv-age-271-to-365-days",
+    "271-300 days": "inv-age-271-to-365-days",
+    "271 to 300 days": "inv-age-271-to-365-days",
+    "271-300-days": "inv-age-271-to-365-days",
+    "301-330": "inv-age-271-to-365-days",
+    "301-330 days": "inv-age-271-to-365-days",
+    "301 to 330 days": "inv-age-271-to-365-days",
+    "301-330-days": "inv-age-271-to-365-days",
+    "331-365": "inv-age-271-to-365-days",
+    "331-365 days": "inv-age-271-to-365-days",
+    "331 to 365 days": "inv-age-271-to-365-days",
+    "331-365-days": "inv-age-271-to-365-days",
+
+    # 365+
+    "365+": "inv-age-365-plus-days",
+    "365+ days": "inv-age-365-plus-days",
+    "365 plus days": "inv-age-365-plus-days",
+    "365-plus-days": "inv-age-365-plus-days",
+    "366-455": "inv-age-365-plus-days",
+    "366-455 days": "inv-age-365-plus-days",
+    "366 to 455 days": "inv-age-365-plus-days",
+    "366-455-days": "inv-age-365-plus-days",
+    "456+": "inv-age-365-plus-days",
+    "456+ days": "inv-age-365-plus-days",
+    "456 plus days": "inv-age-365-plus-days",
+    "456-plus-days": "inv-age-365-plus-days",
+}
+
+
+def get_previous_completed_month(today=None):
+    today = today or date.today()
+
+    if today.month == 1:
+        return 12, today.year - 1
+
+    return today.month - 1, today.year
+
+
+def get_inventory_current_candidate_months(range_type, month_name=None, quarter=None, year=None):
+    """
+    Returns months in priority order.
+
+    monthly:
+      requested month only
+
+    quarter_months / quarterly:
+      Q2 => june, may, april
+
+    yearly:
+      previous completed month based on current date
+      example: current month June => May
+    """
+
+    range_type = str(range_type or "monthly").strip().lower()
+    month_name = str(month_name or "").strip().lower()
+    quarter = str(quarter or "").strip().lower()
+
+    if range_type in ("quarter_months", "quarterly", "quarter"):
+        if not quarter and month_name:
+            month_num = MONTH_NAME_TO_NUMBER.get(month_name)
+
+            if month_num in (1, 2, 3):
+                quarter = "q1"
+            elif month_num in (4, 5, 6):
+                quarter = "q2"
+            elif month_num in (7, 8, 9):
+                quarter = "q3"
+            elif month_num in (10, 11, 12):
+                quarter = "q4"
+
+        return QUARTER_MONTHS.get(quarter, [])
+
+    if range_type == "yearly":
+        prev_month_num, prev_year = get_previous_completed_month()
+        return [calendar_month_name[prev_month_num].lower()]
+
+    if month_name:
+        return [month_name]
+
+    return []
+
+
+def build_current_inventory_table_name(user_id, country_key, month_name, year):
+    return f"currentinventory_{user_id}_{country_key}_{month_name}{year}_table"
+
+
+def fetch_rows_from_current_inventory_table(table_name):
+    query = text(f'SELECT * FROM "{table_name}"')
+
+    with primary_engine.connect() as connection:
+        result = connection.execute(query)
+        columns = list(result.keys())
+
+        rows = []
+        for row in result.fetchall():
+            row_dict = dict(zip(columns, row))
+            cleaned_row = {
+                key: clean_value(value)
+                for key, value in row_dict.items()
+            }
+            rows.append(cleaned_row)
+
+    return columns, rows
+
+
+def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, year):
+    """
+    Fallback source:
+      public.inventory_aged_history
+
+    Converts history rows into the same shape as currentinventory table rows:
+      SKU
+      Product Name
+      inv-age-0-to-90-days
+      inv-age-91-to-180-days
+      inv-age-181-to-270-days
+      inv-age-271-to-365-days
+      inv-age-365-plus-days
+      unfulfillable-quantity
+      estimated-storage-cost-next-month
+    """
+
+    month_number = MONTH_NAME_TO_NUMBER.get(month_name)
+
+    if not month_number:
+        return [], []
+
+    marketplace_id = get_marketplace_id(country_key)
+
+    where_country_sql = ""
+    params = {
+        "user_id": int(user_id),
+        "year": int(year),
+        "month": int(month_number),
+    }
+
+    if marketplace_id:
+        where_country_sql = "AND marketplace_id = :marketplace_id"
+        params["marketplace_id"] = marketplace_id
+    else:
+        # fallback if marketplace_id is not mapped
+        where_country_sql = "AND LOWER(COALESCE(country, '')) = :country_key"
+        params["country_key"] = country_key.lower()
+
+    query = text(f"""
+        SELECT
+            sku,
+            COALESCE(product_name, '') AS product_name,
+            surcharge_age_tier,
+            COALESCE(SUM(qty_charged), 0) AS qty_charged,
+            COALESCE(SUM(amount_charged), 0) AS amount_charged,
+            MAX(snapshot_date) AS snapshot_date
+        FROM public.inventory_aged_history
+        WHERE user_id = :user_id
+          {where_country_sql}
+          AND snapshot_date IS NOT NULL
+          AND EXTRACT(YEAR FROM snapshot_date)::int = :year
+          AND EXTRACT(MONTH FROM snapshot_date)::int = :month
+        GROUP BY sku, product_name, surcharge_age_tier
+    """)
+
+    with amazon_engine.connect() as connection:
+        history_rows = connection.execute(query, params).mappings().all()
+
+    if not history_rows:
+        return [], []
+
+    grouped = {}
+
+    for row in history_rows:
+        sku = str(row["sku"] or "").strip()
+        product_name = str(row["product_name"] or "").strip()
+        age_tier = str(row["surcharge_age_tier"] or "").strip().lower()
+
+        key = (sku, product_name)
+
+        if key not in grouped:
+            grouped[key] = {
+                "SKU": sku,
+                "Product Name": product_name,
+                "inv-age-0-to-90-days": 0,
+                "inv-age-91-to-180-days": 0,
+                "inv-age-181-to-270-days": 0,
+                "inv-age-271-to-365-days": 0,
+                "inv-age-365-plus-days": 0,
+                "unfulfillable-quantity": 0,
+                "estimated-storage-cost-next-month": 0,
+                "snapshot_date": clean_value(row["snapshot_date"]),
+            }
+
+        target_column = AGE_TIER_TO_COLUMN.get(age_tier)
+
+        if target_column:
+            grouped[key][target_column] += to_number(row["qty_charged"])
+
+        grouped[key]["estimated-storage-cost-next-month"] += to_number(row["amount_charged"])
+
+    rows = list(grouped.values())
+
+    total_row = {
+        "SKU": "",
+        "Product Name": "Total",
+        "inv-age-0-to-90-days": sum(to_number(r.get("inv-age-0-to-90-days")) for r in rows),
+        "inv-age-91-to-180-days": sum(to_number(r.get("inv-age-91-to-180-days")) for r in rows),
+        "inv-age-181-to-270-days": sum(to_number(r.get("inv-age-181-to-270-days")) for r in rows),
+        "inv-age-271-to-365-days": sum(to_number(r.get("inv-age-271-to-365-days")) for r in rows),
+        "inv-age-365-plus-days": sum(to_number(r.get("inv-age-365-plus-days")) for r in rows),
+        "unfulfillable-quantity": 0,
+        "estimated-storage-cost-next-month": sum(
+            to_number(r.get("estimated-storage-cost-next-month")) for r in rows
+        ),
+        "snapshot_date": None,
+    }
+
+    rows.append(total_row)
+
+    columns = [
+        "SKU",
+        "Product Name",
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+        "unfulfillable-quantity",
+        "estimated-storage-cost-next-month",
+        "snapshot_date",
+    ]
+
+    return columns, rows
+
+
+def resolve_inventory_current_source(user_id, country_key, range_type, month_name, year, quarter):
+    """
+    Priority:
+      1. currentinventory dynamic table
+      2. inventory_aged_history fallback
+
+    For quarter:
+      Q2 checks june, then may, then april.
+
+    For yearly:
+      checks previous completed month.
+    """
+
+    inspector = inspect(primary_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    candidate_months = get_inventory_current_candidate_months(
+        range_type=range_type,
+        month_name=month_name,
+        quarter=quarter,
+        year=year,
+    )
+
+    tried_sources = []
+
+    # 1. Try dynamic currentinventory tables first
+    for candidate_month in candidate_months:
+        table_name = build_current_inventory_table_name(
+            user_id=user_id,
+            country_key=country_key,
+            month_name=candidate_month,
+            year=year,
+        )
+
+        tried_sources.append(table_name)
+
+        if table_name in existing_tables:
+            columns, rows = fetch_rows_from_current_inventory_table(table_name)
+
+            return {
+                "found": True,
+                "source_type": "currentinventory_table",
+                "source_name": table_name,
+                "selected_month": candidate_month,
+                "columns": columns,
+                "rows": rows,
+                "tried_sources": tried_sources,
+            }
+
+    # 2. Fallback to public.inventory_aged_history
+    for candidate_month in candidate_months:
+        columns, rows = fetch_rows_from_inventory_aged_history(
+            user_id=user_id,
+            country_key=country_key,
+            month_name=candidate_month,
+            year=year,
+        )
+
+        tried_sources.append(f"inventory_aged_history:{candidate_month}{year}")
+
+        if rows:
+            return {
+                "found": True,
+                "source_type": "inventory_aged_history",
+                "source_name": "public.inventory_aged_history",
+                "selected_month": candidate_month,
+                "columns": columns,
+                "rows": rows,
+                "tried_sources": tried_sources,
+            }
+
+    return {
+        "found": False,
+        "source_type": None,
+        "source_name": None,
+        "selected_month": None,
+        "columns": [],
+        "rows": [],
+        "tried_sources": tried_sources,
+    }
+
 
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
 def get_inventory_current_table():
@@ -418,60 +754,99 @@ def get_inventory_current_table():
         month_name = request.args.get("month_name")
         year = request.args.get("year")
 
-        if not country_key or not month_name or not year:
+        # Supports:
+        # range_type=monthly
+        # range_type=quarter_months&quarter=Q2
+        # range_type=yearly
+        range_type = (
+            request.args.get("range_type")
+            or request.args.get("range")
+            or request.args.get("period")
+            or "monthly"
+        )
+
+        quarter = request.args.get("quarter")
+
+        if not country_key or not year:
             return jsonify({
                 "success": False,
-                "message": "Missing required params: country_key, month_name, year"
+                "message": "Missing required params: country_key, year"
+            }), 400
+
+        if str(range_type).lower() == "monthly" and not month_name:
+            return jsonify({
+                "success": False,
+                "message": "Missing required param for monthly: month_name"
+            }), 400
+
+        if str(range_type).lower() in ("quarter_months", "quarterly", "quarter") and not quarter and not month_name:
+            return jsonify({
+                "success": False,
+                "message": "Missing required param for quarter_months: quarter or month_name"
             }), 400
 
         user_id = str(user_id).strip()
         country_key = str(country_key).strip().lower()
-        month_name = str(month_name).strip().lower()
+        month_name = str(month_name or "").strip().lower()
         year = str(year).strip()
+        range_type = str(range_type or "monthly").strip().lower()
+        quarter = str(quarter or "").strip().lower()
 
-        if not all([
-            is_safe_identifier(user_id),
-            is_safe_identifier(country_key),
-            is_safe_identifier(month_name),
-            is_safe_identifier(year)
-        ]):
+        identifiers_to_check = [user_id, country_key, year]
+
+        if month_name:
+            identifiers_to_check.append(month_name)
+
+        if quarter:
+            identifiers_to_check.append(quarter)
+
+        if not all(is_safe_identifier(value) for value in identifiers_to_check):
             return jsonify({
                 "success": False,
                 "message": "Invalid table parameters"
             }), 400
 
-        table_name = f"currentinventory_{user_id}_{country_key}_{month_name}{year}_table"
-
-        inspector = inspect(primary_engine)
-
-        if table_name not in inspector.get_table_names():
+        if month_name and month_name not in MONTH_NAME_TO_NUMBER:
             return jsonify({
                 "success": False,
-                "message": f"Table not found: {table_name}",
-                "table_name": table_name,
+                "message": f"Invalid month_name: {month_name}"
+            }), 400
+
+        if range_type in ("quarter_months", "quarterly", "quarter"):
+            if quarter and quarter not in QUARTER_MONTHS:
+                return jsonify({
+                    "success": False,
+                    "message": "Invalid quarter. Use Q1, Q2, Q3, or Q4"
+                }), 400
+
+        source_result = resolve_inventory_current_source(
+            user_id=user_id,
+            country_key=country_key,
+            range_type=range_type,
+            month_name=month_name,
+            year=year,
+            quarter=quarter,
+        )
+
+        if not source_result["found"]:
+            return jsonify({
+                "success": False,
+                "message": "No current inventory table or inventory_aged_history data found",
+                "source_type": None,
+                "source_name": None,
+                "selected_month": None,
                 "columns": [],
-                "rows": []
+                "rows": [],
+                "tried_sources": source_result["tried_sources"],
             }), 404
 
-        query = text(f'SELECT * FROM "{table_name}"')
-
-        with primary_engine.connect() as connection:
-            result = connection.execute(query)
-            columns = list(result.keys())
-
-            rows = []
-            for row in result.fetchall():
-                row_dict = dict(zip(columns, row))
-                cleaned_row = {
-                    key: clean_value(value)
-                    for key, value in row_dict.items()
-                }
-                rows.append(cleaned_row)
+        rows = source_result["rows"]
+        columns = source_result["columns"]
 
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
-        current_month_number = MONTH_NAME_TO_NUMBER.get(month_name)
+        selected_month_number = MONTH_NAME_TO_NUMBER.get(source_result["selected_month"])
 
         previous_storage_cost = {
             "value": 0,
@@ -480,11 +855,11 @@ def get_inventory_current_table():
             "error": None,
         }
 
-        if current_month_number:
+        if selected_month_number:
             previous_storage_cost = fetch_previous_platform_fee_as_storage_cost(
                 user_id=user_id,
                 country_key=country_key,
-                month_number=current_month_number,
+                month_number=selected_month_number,
                 year_int=int(year),
             )
 
@@ -495,10 +870,22 @@ def get_inventory_current_table():
 
         return jsonify({
             "success": True,
-            "table_name": table_name,
+            "range_type": range_type,
+            "requested_month": month_name or None,
+            "requested_quarter": quarter or None,
+            "selected_month": source_result["selected_month"],
+            "year": int(year),
+            "country_key": country_key,
+
+            "source_type": source_result["source_type"],
+            "source_name": source_result["source_name"],
+            "table_name": source_result["source_name"] if source_result["source_type"] == "currentinventory_table" else None,
+            "tried_sources": source_result["tried_sources"],
+
             "columns": columns,
             "rows": rows,
             "total_rows": len(rows),
+
             "categories": categories,
             "inventory_age_summary": inventory_age_summary,
             "category_counts": {
@@ -517,6 +904,7 @@ def get_inventory_current_table():
             "error": str(e)
         }), 500
     
+       
 
 from calendar import month_name as calendar_month_name
 
@@ -837,4 +1225,3 @@ def get_inventory_current_age_summary():
         }), 500
     
 
-    
