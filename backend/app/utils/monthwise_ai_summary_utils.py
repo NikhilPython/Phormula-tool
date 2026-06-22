@@ -2076,9 +2076,43 @@ def build_comparison_label(period: str, timeline: str, year: int):
 
     return ""
 
+def fetch_high_alert_threshold(user_id: int, country: str):
+    query = text("""
+        SELECT
+            transit_time,
+            stock_unit
+        FROM public.country_profile
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+        LIMIT 1
+    """)
+
+    with phormula_engine.connect() as conn:
+        row = conn.execute(query, {
+            "user_id": user_id,
+            "country": str(country or "").strip().lower(),
+        }).fetchone()
+
+    if not row:
+        return None
+
+    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
+    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+
+    if pd.isna(transit_time) or pd.isna(stock_unit):
+        return None
+
+    return float(transit_time) + float(stock_unit)
+
 def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country: str) -> dict:
     """
     Returns SKU-level inventory risk flags + classified alert.
+
+    High alert rule:
+        coverage_ratio <= transit_time + stock_unit
+
+    Fallback:
+        if country_profile is missing, old threshold 2 is used.
     """
 
     if inventory_df.empty:
@@ -2087,12 +2121,24 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
     df = inventory_df.copy()
 
     # -------------------------------
+    # Dynamic High Alert threshold
+    # -------------------------------
+    high_alert_threshold = fetch_high_alert_threshold(user_id, country)
+
+    if high_alert_threshold is None:
+        high_alert_threshold = 2.0
+
+    # -------------------------------
     # Safe numeric coercion
     # -------------------------------
     numeric_cols = [
-        "age_0_90", "age_91_180", "age_181_270",
-        "age_271_365", "age_365_plus",
-        "storage_cost_next_month", "unfulfillable_qty"
+        "age_0_90",
+        "age_91_180",
+        "age_181_270",
+        "age_271_365",
+        "age_365_plus",
+        "storage_cost_next_month",
+        "unfulfillable_qty",
     ]
 
     for col in numeric_cols:
@@ -2107,20 +2153,33 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
     coverage_df = compute_inventory_coverage_ratio(user_id, country)
 
     coverage_map = {}
-    if not coverage_df.empty:
-        coverage_map = dict(
-            zip(
-                coverage_df["sku"],
-                coverage_df["inventory_coverage_ratio"]
+
+    if coverage_df is not None and not coverage_df.empty:
+        for _, r in coverage_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            cov = pd.to_numeric(
+                r.get("inventory_coverage_ratio"),
+                errors="coerce",
             )
-        )
+
+            coverage_map[sku.upper()] = float(cov) if pd.notna(cov) else None
 
     sku_inventory_flags = {}
 
     for _, row in df.iterrows():
+        sku = str(row["sku"] or "").strip()
+        if not sku:
+            continue
 
-        sku = str(row["sku"])
-        coverage_ratio = coverage_map.get(sku)
+        sku_key = sku.upper()
+
+        coverage_ratio = coverage_map.get(sku_key)
+
+        cov_num = pd.to_numeric(coverage_ratio, errors="coerce")
+        coverage_ratio = float(cov_num) if pd.notna(cov_num) else None
 
         aged_181_plus = int(row["aged_181_plus"])
         long_term_aged = int(row["age_365_plus"])
@@ -2136,26 +2195,34 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
         alert = None
         alert_type = None
 
-        # 1️⃣ SUPPLY (highest priority)
-        if coverage_ratio is not None and coverage_ratio <= 2:
+        # 1. SUPPLY RISK
+        if (
+            coverage_ratio is not None
+            and coverage_ratio > 0
+            and coverage_ratio <= high_alert_threshold
+        ):
             alert = "High alert"
             alert_type = "supply"
 
-        elif coverage_ratio is not None and coverage_ratio <= 5:
+        elif (
+            coverage_ratio is not None
+            and coverage_ratio > high_alert_threshold
+            and coverage_ratio <= 5
+        ):
             alert = "Please send shipment"
             alert_type = "supply"
 
-        # 2️⃣ EXCESS INVENTORY
+        # 2. EXCESS INVENTORY
         elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
             alert = "High inventory coverage ratio"
             alert_type = "excess"
 
-        # 3️⃣ HIGH STORAGE COST
+        # 3. HIGH STORAGE COST
         elif estimated_storage_cost > 100:
             alert = "High storage cost"
             alert_type = "cost"
 
-        # 4️⃣ OVERAGED PRIORITY
+        # 4. OVERAGED PRIORITY
         if overaged:
             alert = "Long-term aged inventory"
             alert_type = "overaged"
@@ -2167,12 +2234,14 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
             "long_term_aged_units": long_term_aged,
             "unfulfillable_qty": unfulfillable_qty,
             "inventory_coverage_ratio": coverage_ratio,
+            "high_alert_threshold": high_alert_threshold,
             "estimated_storage_cost": estimated_storage_cost,
             "inventory_alert": alert,
-            "inventory_alert_type": alert_type
+            "inventory_alert_type": alert_type,
         }
 
     return sku_inventory_flags
+
 
 def render_month_end_summary(
     *,

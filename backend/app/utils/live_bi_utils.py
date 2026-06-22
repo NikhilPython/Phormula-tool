@@ -3621,13 +3621,44 @@ def club_inventory_alerts_by_type(
 
     return {"summary": summary}
 
+def fetch_high_alert_threshold(user_id: int, country: str):
+    query = text("""
+        SELECT
+            transit_time,
+            stock_unit
+        FROM public.country_profile
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+        LIMIT 1
+    """)
 
+    with engine_hist.connect() as conn:
+        row = conn.execute(query, {
+            "user_id": user_id,
+            "country": str(country).strip().lower(),
+        }).fetchone()
+
+    if not row:
+        return None
+
+    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
+    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+
+    if pd.isna(transit_time) or pd.isna(stock_unit):
+        return None
+
+    return float(transit_time) + float(stock_unit)
 
 
 def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_df: pd.DataFrame = None) -> dict:
     alerts = {}
 
-    # Use passed current-inventory coverage first
+    high_alert_threshold = fetch_high_alert_threshold(user_id, country)
+
+    # fallback old logic if country_profile is missing
+    if high_alert_threshold is None:
+        high_alert_threshold = 2
+
     coverage_map = {}
 
     if coverage_df is not None and not coverage_df.empty:
@@ -3672,13 +3703,13 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_
         alert_type = "none"
 
         if pd.notna(coverage_ratio):
-            if coverage_ratio <= 2 and coverage_ratio > 0:
+            if coverage_ratio <= high_alert_threshold and coverage_ratio > 0:
                 alert = "High alert"
-                alert_type = "supply_high"
+                alert_type = "supply"
 
             elif coverage_ratio <= 5 and coverage_ratio > 0:
                 alert = "Please send shipment"
-                alert_type = "supply_medium"
+                alert_type = "supply"
 
             elif coverage_ratio >= 6:
                 alert = "High inventory coverage ratio."
@@ -3695,6 +3726,7 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_
         alerts[str(sku_raw).strip().upper()] = {
             "alert": alert,
             "alert_type": alert_type,
+            "high_alert_threshold": high_alert_threshold,
         }
 
     return alerts
@@ -3712,11 +3744,21 @@ def generate_sku_inventory_flags(
     - inventory_recommendation
 
     IMPORTANT:
-    - All inventory alert logic stays inside this function.
+    - High alert logic uses:
+        coverage_ratio <= transit_time + stock_unit
     - Route may pass coverage_override_by_sku only as a data source.
     """
 
     flags: dict[str, dict] = {}
+
+    # -------------------------------------------------
+    # 0. Dynamic High Alert threshold
+    # -------------------------------------------------
+    high_alert_threshold = fetch_high_alert_threshold(user_id, country)
+
+    # Fallback old logic if country_profile is missing/incomplete
+    if high_alert_threshold is None:
+        high_alert_threshold = 2.0
 
     # -------------------------------------------------
     # 1. Build coverage map
@@ -3740,8 +3782,6 @@ def generate_sku_inventory_flags(
 
     # -------------------------------------------------
     # 2. Override coverage from route/card rows if supplied
-    # This fixes cases where all_action_rows has 0.58
-    # but compute_inventory_coverage_ratio() returns 0/missing.
     # -------------------------------------------------
     for sku, cov in (coverage_override_by_sku or {}).items():
         sku_key = str(sku or "").strip().upper()
@@ -3806,6 +3846,9 @@ def generate_sku_inventory_flags(
 
         coverage_ratio = coverage_map.get(sku_key)
 
+        cov_num = pd.to_numeric(coverage_ratio, errors="coerce")
+        coverage_ratio = float(cov_num) if pd.notna(cov_num) else None
+
         # If no inventory_aged row exists, all age/cost values remain 0.
         if r is None:
             legacy_aged_units = 0.0
@@ -3813,8 +3856,6 @@ def generate_sku_inventory_flags(
             estimated_storage_cost = 0.0
         else:
             # ✅ SUPPORT BOTH SCHEMAS WITHOUT DOUBLE COUNTING
-            # Legacy schema and detailed schema overlap.
-            # Do NOT add both together.
             legacy_aged_units = (
                 _num(r.get("inv-age-181-to-270-days"))
                 + _num(r.get("inv-age-271-to-365-days"))
@@ -3846,11 +3887,19 @@ def generate_sku_inventory_flags(
         alert_type = "none"
         alert = "No alert"
 
-        if coverage_ratio is not None and coverage_ratio > 0 and coverage_ratio <= 2:
+        if (
+            coverage_ratio is not None
+            and coverage_ratio > 0
+            and coverage_ratio <= high_alert_threshold
+        ):
             alert_type = "supply"
             alert = "High alert"
 
-        elif coverage_ratio is not None and coverage_ratio > 2 and coverage_ratio <= 5:
+        elif (
+            coverage_ratio is not None
+            and coverage_ratio > high_alert_threshold
+            and coverage_ratio <= 5
+        ):
             alert_type = "supply"
             alert = "Please send shipment"
 
@@ -3919,6 +3968,7 @@ def generate_sku_inventory_flags(
             "inventory_alert_type": alert_type,
             "inventory_coverage_ratio": coverage_ratio,
             "coverage_ratio_months": coverage_ratio,
+            "high_alert_threshold": high_alert_threshold,
             "long_term_aged_units": int(long_term_aged_units),
             "estimated_storage_cost": round(estimated_storage_cost, 2),
             "inventory_recommendation": inventory_recommendation,
@@ -3937,247 +3987,6 @@ def generate_live_insight_with_app_context(app, item, country, prev_label, curr_
             user_id,
             month2
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
