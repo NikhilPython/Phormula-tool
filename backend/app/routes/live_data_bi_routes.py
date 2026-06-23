@@ -333,6 +333,15 @@ def build_global_country_recommendations(
                 "previous": growth_row.get("profit_prev"),
                 "current": growth_row.get("profit_curr"),
             },
+            "cm2_profit": {
+                "previous": r.get("cm2_profit_prev", 0),
+                "current": r.get("cm2_profit_curr", 0),
+                "growth_pct": r.get("cm2_profit_growth_pct", 0),
+            },
+            "cm2_margin": {
+                "previous": r.get("cm2_margin_prev", 0),
+                "current": r.get("cm2_margin_curr", 0),
+            },
             "profit_per_unit": {
                 "previous": growth_row.get("unit_wise_profitability_prev"),
                 "current": growth_row.get("unit_wise_profitability_curr"),
@@ -2183,38 +2192,38 @@ def live_mtd_vs_previous():
 
             curr_ai_fee_totals = totals_from_daily_series(curr_daily)
 
-        # -------------------------------------------------
-        # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
-        # -------------------------------------------------
-        ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
-            user_id=user_id,
-            country=country,
-            year=curr_start.year,
-            month=curr_start.month,
-        )
+        # # -------------------------------------------------
+        # # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
+        # # -------------------------------------------------
+        # ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
+        #     user_id=user_id,
+        #     country=country,
+        #     year=curr_start.year,
+        #     month=curr_start.month,
+        # )
 
-        ads_sku_map = {str(k).strip(): v for k, v in (ads_sku_map or {}).items()}
+        # ads_sku_map = {str(k).strip(): v for k, v in (ads_sku_map or {}).items()}
 
-        for row in (curr_ai_data or []):
-            sku = str(row.get("sku") or "").strip()
-            if not sku:
-                continue
+        # for row in (curr_ai_data or []):
+        #     sku = str(row.get("sku") or "").strip()
+        #     if not sku:
+        #         continue
 
-            ads_info = ads_sku_map.get(sku, {})
-            ads_spend = float(ads_info.get("ads_spend", 0.0) or 0.0)
-            cm2_profit = float(ads_info.get("cm2_profit", 0.0) or 0.0)
+        #     ads_info = ads_sku_map.get(sku, {})
+        #     ads_spend = float(ads_info.get("ads_spend", 0.0) or 0.0)
+        #     cm2_profit = float(ads_info.get("cm2_profit", 0.0) or 0.0)
 
-            net_sales = float(row.get("net_sales", 0.0) or 0.0)
+        #     net_sales = float(row.get("net_sales", 0.0) or 0.0)
 
-            row["ads_spend_curr"] = ads_spend
-            row["cm2_profit_curr"] = cm2_profit
+        #     row["ads_spend_curr"] = ads_spend
+        #     row["cm2_profit_curr"] = cm2_profit
 
-            if net_sales > 0:
-                row["acos_curr"] = round((ads_spend / net_sales) * 100.0, 2)
-                row["cm2_margin_curr"] = round((cm2_profit / net_sales) * 100.0, 2)
-            else:
-                row["acos_curr"] = 0.0
-                row["cm2_margin_curr"] = 0.0
+        #     if net_sales > 0:
+        #         row["acos_curr"] = round((ads_spend / net_sales) * 100.0, 2)
+        #         row["cm2_margin_curr"] = round((cm2_profit / net_sales) * 100.0, 2)
+        #     else:
+        #         row["acos_curr"] = 0.0
+        #         row["cm2_margin_curr"] = 0.0
 
 
         # ---------------------------
@@ -2860,9 +2869,18 @@ def live_mtd_vs_previous():
                 "previous": growth_row.get("net_sales_prev"),
                 "current": growth_row.get("net_sales_curr"),
             },
-            "cm1_profit": {
+                        "cm1_profit": {
                 "previous": growth_row.get("profit_prev"),
                 "current": growth_row.get("profit_curr"),
+            },
+            "cm2_profit": {
+                "previous": r.get("cm2_profit_prev", 0),
+                "current": r.get("cm2_profit_curr", 0),
+                "growth_pct": r.get("cm2_profit_growth_pct", 0),
+            },
+            "cm2_margin": {
+                "previous": r.get("cm2_margin_prev", 0),
+                "current": r.get("cm2_margin_curr", 0),
             },
             "profit_per_unit": {
                 "previous": growth_row.get("unit_wise_profitability_prev"),
@@ -2875,6 +2893,7 @@ def live_mtd_vs_previous():
                 "asp": (growth_row.get("ASP Growth (%)") or {}).get("value"),
                 "net_sales": (growth_row.get("Net Sales Growth (%)") or {}).get("value"),
                 "cm1_profit": (growth_row.get("CM1 Profit Impact (%)") or {}).get("value"),
+                "cm2_profit": r.get("cm2_profit_growth_pct", 0),
                 "profit_per_unit": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
             }
         })
@@ -2961,16 +2980,54 @@ def live_mtd_vs_previous():
 
             sku_ads_context.append({
                 "sku": sku,
+
+                # Previous month full-table values
+                "ads_spend_prev": r.get("ads_spend_prev", 0),
+                "acos_prev": r.get("acos_prev", 0),
+                "cm2_profit_prev": r.get("cm2_profit_prev", 0),
+                "cm2_margin_prev": r.get("cm2_margin_prev", 0),
+                "net_sales_prev": r.get("net_sales_prev", 0),
+
+                # Current month full-table values
                 "ads_spend_curr": r.get("ads_spend_curr", 0),
                 "acos_curr": r.get("acos_curr", 0),
                 "cm2_profit_curr": r.get("cm2_profit_curr", 0),
                 "cm2_margin_curr": r.get("cm2_margin_curr", 0),
                 "net_sales_curr": r.get("net_sales_curr", 0),
+
+                # Movement
+                "cm2_profit_growth_pct": r.get("cm2_profit_growth_pct", 0),
             })
 
+        ads_monthly_from_payload = payload_ai.get("ads_monthly", {}) or {}
+
         ads_monthly = {
-            "total_ads_spend": ads_monthly_totals.get("ads_spend", 0),
-            "total_cm2_profit": ads_monthly_totals.get("cm2_profit", 0),
+            "previous": ads_monthly_from_payload.get("previous", {}),
+            "current": ads_monthly_from_payload.get("current", {}),
+
+            # Backward-compatible current aliases
+            "total_ads_spend": (
+                ads_monthly_from_payload.get("current", {}).get("ads_spend_total", 0)
+                if isinstance(ads_monthly_from_payload.get("current"), dict)
+                else ads_monthly_from_payload.get("ads_spend_total", 0)
+            ),
+            "total_cm2_profit": (
+                ads_monthly_from_payload.get("current", {}).get("cm2_profit_total", 0)
+                if isinstance(ads_monthly_from_payload.get("current"), dict)
+                else ads_monthly_from_payload.get("cm2_profit_total", 0)
+            ),
+
+            # New previous totals
+            "total_ads_spend_prev": (
+                ads_monthly_from_payload.get("previous", {}).get("ads_spend_total", 0)
+                if isinstance(ads_monthly_from_payload.get("previous"), dict)
+                else 0
+            ),
+            "total_cm2_profit_prev": (
+                ads_monthly_from_payload.get("previous", {}).get("cm2_profit_total", 0)
+                if isinstance(ads_monthly_from_payload.get("previous"), dict)
+                else 0
+            ),
         }
 
         # -------------------------------------------------
@@ -3388,17 +3445,28 @@ def live_mtd_vs_previous():
         # This does NOT call AI and does NOT change AI payload.
         # =========================================================
 
+                # =========================================================
+        # ✅ Attach frontend-only inventory + Ads/CM2 fields to categorized_growth
+        # Source: frontend_all_action_rows from build_ai_summary()
+        # This does NOT call AI and does NOT change AI payload.
+        # =========================================================
+
         frontend_inventory_by_sku = {}
+        frontend_enriched_by_sku = {}
 
         for row in (frontend_all_action_rows or []):
             sku = str(row.get("sku") or "").strip()
             if not sku:
                 continue
 
+            # Used only for inventory fields
             frontend_inventory_by_sku[sku] = {
                 "current_inventory": row.get("current_inventory", 0.0),
                 "coverage_ratio_months": row.get("coverage_ratio_months", 0.0),
             }
+
+            # Used for Ads / CM2 fields
+            frontend_enriched_by_sku[sku] = row
 
         def _attach_inventory_to_categorized_row(row):
             if not isinstance(row, dict):
@@ -3407,10 +3475,61 @@ def live_mtd_vs_previous():
             row = dict(row)
 
             sku = str(row.get("sku") or "").strip()
-            inv = frontend_inventory_by_sku.get(sku, {})
 
-            row["current_inventory"] = inv.get("current_inventory", 0.0)
-            row["coverage_ratio_months"] = inv.get("coverage_ratio_months", 0.0)
+            inv = frontend_inventory_by_sku.get(sku, {})
+            enriched = frontend_enriched_by_sku.get(sku, {})
+
+            # Inventory fields
+            row["current_inventory"] = inv.get(
+                "current_inventory",
+                row.get("current_inventory", 0.0),
+            )
+            row["coverage_ratio_months"] = inv.get(
+                "coverage_ratio_months",
+                row.get("coverage_ratio_months", 0.0),
+            )
+
+            # Ads / CM2 fields
+            row["ads_spend_prev"] = enriched.get(
+                "ads_spend_prev",
+                row.get("ads_spend_prev", 0.0),
+            )
+            row["ads_spend_curr"] = enriched.get(
+                "ads_spend_curr",
+                row.get("ads_spend_curr", 0.0),
+            )
+
+            row["acos_prev"] = enriched.get(
+                "acos_prev",
+                row.get("acos_prev", 0.0),
+            )
+            row["acos_curr"] = enriched.get(
+                "acos_curr",
+                row.get("acos_curr", 0.0),
+            )
+
+            row["cm2_profit_prev"] = enriched.get(
+                "cm2_profit_prev",
+                row.get("cm2_profit_prev", 0.0),
+            )
+            row["cm2_profit_curr"] = enriched.get(
+                "cm2_profit_curr",
+                row.get("cm2_profit_curr", 0.0),
+            )
+
+            row["cm2_margin_prev"] = enriched.get(
+                "cm2_margin_prev",
+                row.get("cm2_margin_prev", 0.0),
+            )
+            row["cm2_margin_curr"] = enriched.get(
+                "cm2_margin_curr",
+                row.get("cm2_margin_curr", 0.0),
+            )
+
+            row["cm2_profit_growth_pct"] = enriched.get(
+                "cm2_profit_growth_pct",
+                row.get("cm2_profit_growth_pct", 0.0),
+            )
 
             return row
 
@@ -3443,6 +3562,7 @@ def live_mtd_vs_previous():
             "country": country,
             "currency": currency,
             "ai_last_refreshed_at": ai_last_refreshed_at,
+            "ads_monthly": payload_ai.get("ads_monthly", {}),
             
             "objective_context": {
                 "growth_intent": user_objective.get("growth_intent"),

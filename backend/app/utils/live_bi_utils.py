@@ -2676,6 +2676,124 @@ def run_inventory_ai_summary(inventory_summary: dict) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
+def fetch_skuwisemonthly_ads_cm2_by_month(
+    user_id: int,
+    country: str,
+    year: int,
+    month: int,
+) -> tuple[dict, dict]:
+    """
+    Reads skuwisemonthly table for a full month.
+
+    Table format:
+      skuwisemonthly_{user_id}_{country}_{month_name}_{year}
+
+    Required columns:
+      sku, product_name, cm2_profit
+
+    Optional column:
+      ads_spend
+
+    Since this table has no date/time column, this always returns full-month values.
+    """
+
+    country = str(country or "uk").strip().lower()
+    month = int(month)
+    year = int(year)
+
+    mn = month_name[month].lower()
+    table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}_{int(year)}"
+
+    try:
+        with engine_hist.connect() as conn:
+            df = pd.read_sql(
+                text(f"""
+                    SELECT
+                        sku,
+                        product_name,
+                        cm2_profit,
+                        ads_spend
+                    FROM {table}
+                """),
+                conn,
+            )
+    except Exception as e:
+        print(f"[WARN] Could not read CM2 from {table}: {e}")
+        return {}, {
+            "ads_spend": 0.0,
+            "cm2_profit": 0.0,
+            "source_table": table,
+        }
+
+    if df is None or df.empty or "sku" not in df.columns:
+        return {}, {
+            "ads_spend": 0.0,
+            "cm2_profit": 0.0,
+            "source_table": table,
+        }
+
+    df = df.copy()
+
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df.loc[
+        df["sku"].str.lower().isin(["", "none", "nan", "null"]),
+        "sku"
+    ] = None
+
+    if "product_name" not in df.columns:
+        df["product_name"] = None
+
+    if "cm2_profit" not in df.columns:
+        df["cm2_profit"] = 0.0
+    else:
+        df["cm2_profit"] = safe_num(df["cm2_profit"])
+
+    if "ads_spend" not in df.columns:
+        df["ads_spend"] = 0.0
+    else:
+        df["ads_spend"] = safe_num(df["ads_spend"])
+
+    total_row = df[df["sku"].fillna("").str.lower().eq("total")]
+
+    if not total_row.empty:
+        totals = {
+            "ads_spend": float(safe_num(total_row["ads_spend"]).sum()),
+            "cm2_profit": float(safe_num(total_row["cm2_profit"]).sum()),
+            "source_table": table,
+        }
+    else:
+        sku_only = df[
+            df["sku"].notna()
+            & ~df["sku"].str.lower().eq("total")
+        ]
+
+        totals = {
+            "ads_spend": float(safe_num(sku_only["ads_spend"]).sum()),
+            "cm2_profit": float(safe_num(sku_only["cm2_profit"]).sum()),
+            "source_table": table,
+        }
+
+    sku_df = df[
+        df["sku"].notna()
+        & ~df["sku"].str.lower().eq("total")
+    ]
+
+    sku_map = {}
+
+    for _, r in sku_df.iterrows():
+        sku = str(r.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        sku_map[sku] = {
+            "product_name": r.get("product_name"),
+            "ads_spend": float(r.get("ads_spend") or 0.0),
+            "cm2_profit": float(r.get("cm2_profit") or 0.0),
+        }
+
+    return sku_map, totals
+
+
 def fetch_skuwisemonthly_ads_cm2_current_month(
     user_id: int,
     country: str,
@@ -2683,75 +2801,15 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
     month: int,
 ) -> tuple[dict, dict]:
     """
-    Reads current month's skuwisemonthly table for:
-      sku, ads_spend, cm2_profit
-    Returns:
-      sku_map: {sku: {"ads_spend": float, "cm2_profit": float}}
-      totals:  {"ads_spend": float, "cm2_profit": float}  (prefers TOTAL row if present)
-    Safe behavior:
-      - if table/cols missing -> empty map + 0 totals
-      - removes TOTAL from sku_map
+    Backward-compatible wrapper.
+    Existing code can still call this for current month.
     """
-    country = (country or "uk").strip().lower()
-    month = int(month)
-    year = int(year)
-
-    mn = month_name[month].lower()
-    table = f"skuwisemonthly_{user_id}_{country}_{mn}_{year}"
-
-    try:
-        with engine_hist.connect() as conn:
-            df = pd.read_sql(
-                text(f"SELECT sku, ads_spend, cm2_profit FROM {table}"),
-                conn,
-            )
-    except Exception as e:
-        print(f"[WARN] Could not read ads/cm2 from {table}: {e}")
-        return {}, {"ads_spend": 0.0, "cm2_profit": 0.0}
-
-    if df is None or df.empty or "sku" not in df.columns:
-        return {}, {"ads_spend": 0.0, "cm2_profit": 0.0}
-
-    df = df.copy()
-    df["sku"] = df["sku"].astype(str).str.strip()
-    df.loc[df["sku"].str.lower().isin(["none", "nan", "null", ""]), "sku"] = None
-
-    # if cols missing (shouldn't for current month, but safe)
-    if "ads_spend" not in df.columns:
-        df["ads_spend"] = 0.0
-    if "cm2_profit" not in df.columns:
-        df["cm2_profit"] = 0.0
-
-    df["ads_spend"] = safe_num(df["ads_spend"])
-    df["cm2_profit"] = safe_num(df["cm2_profit"])
-
-    # Totals: prefer TOTAL row if present
-    total_row = df[df["sku"].fillna("").str.lower() == "total"]
-    if not total_row.empty:
-        totals = {
-            "ads_spend": float(safe_num(total_row["ads_spend"]).sum()),
-            "cm2_profit": float(safe_num(total_row["cm2_profit"]).sum()),
-        }
-    else:
-        totals = {
-            "ads_spend": float(safe_num(df["ads_spend"]).sum()),
-            "cm2_profit": float(safe_num(df["cm2_profit"]).sum()),
-        }
-
-    # SKU map excluding TOTAL + nulls
-    sku_df = df[df["sku"].notna() & (df["sku"].str.lower() != "total")]
-
-    sku_map: dict[str, dict] = {}
-    for _, r in sku_df.iterrows():
-        sku = str(r["sku"]).strip()
-        if not sku:
-            continue
-        sku_map[sku] = {
-            "ads_spend": float(r.get("ads_spend") or 0.0),
-            "cm2_profit": float(r.get("cm2_profit") or 0.0),
-        }
-
-    return sku_map, totals
+    return fetch_skuwisemonthly_ads_cm2_by_month(
+        user_id=user_id,
+        country=country,
+        year=year,
+        month=month,
+    )
 
 def fetch_current_inventory_snapshot(
     user_id: int,
@@ -2989,28 +3047,60 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     prev_profit = sum(safe0(r.get("profit_prev")) for r in remaining)
     curr_profit = sum(safe0(r.get("profit_curr")) for r in remaining)
 
+    # ✅ CM2 values are attached in build_ai_summary before this function is called
+    prev_cm2_profit = sum(safe0(r.get("cm2_profit_prev")) for r in remaining)
+    curr_cm2_profit = sum(safe0(r.get("cm2_profit_curr")) for r in remaining)
+
     prev_asp = prev_sales / prev_qty if prev_qty else None
     curr_asp = curr_sales / curr_qty if curr_qty else None
 
     prev_ppu = prev_profit / prev_qty if prev_qty else None
     curr_ppu = curr_profit / curr_qty if curr_qty else None
 
+    cm2_profit_growth_pct = (
+        round(((curr_cm2_profit - prev_cm2_profit) / prev_cm2_profit) * 100.0, 2)
+        if prev_cm2_profit
+        else 0.0
+    )
+
+    cm2_margin_prev = (
+        round((prev_cm2_profit / prev_sales) * 100.0, 2)
+        if prev_sales
+        else 0.0
+    )
+
+    cm2_margin_curr = (
+        round((curr_cm2_profit / curr_sales) * 100.0, 2)
+        if curr_sales
+        else 0.0
+    )
+
     return {
         "sku": "REMAINING_SEGMENT",
         "product_name": "Remaining SKUs",
 
-        # ✅ NEW
         "included_products": included_products,
         "included_product_count": len(included_products),
 
         "quantity_prev": prev_qty,
         "quantity_curr": curr_qty,
+
         "net_sales_prev": prev_sales,
         "net_sales_curr": curr_sales,
+
         "profit_prev": prev_profit,
         "profit_curr": curr_profit,
+
+        # ✅ CM2 values for Remaining SKUs card
+        "cm2_profit_prev": prev_cm2_profit,
+        "cm2_profit_curr": curr_cm2_profit,
+        "cm2_profit_growth_pct": cm2_profit_growth_pct,
+        "cm2_margin_prev": cm2_margin_prev,
+        "cm2_margin_curr": cm2_margin_curr,
+
         "asp_prev": prev_asp,
         "asp_curr": curr_asp,
+
         "unit_wise_profitability_prev": prev_ppu,
         "unit_wise_profitability_curr": curr_ppu,
     }
@@ -3116,62 +3206,33 @@ def build_ai_summary(
         "X001VGZOM9",
     }
 
-    # Remove them from top_80_skus
+    # Remove skipped SKUs from top_80_skus
     top_80_skus = [
         row for row in (top_80_skus or [])
         if row.get("sku") not in SKUS_TO_SKIP
     ]
 
-    # ✅ Build focus_skus from filtered top_80_skus
-    # Logic:
-    # - rank by sales_mix / Sales Mix (Current)
-    # - stop once cumulative sales mix reaches 80%
-    # - but always return at least 5 SKUs if available
-    # - fallback to net_sales top 5 if sales_mix is missing
-    focus_skus = select_focus_skus_by_sales_mix_from_rows(
-        sku_rows=top_80_skus,
-        threshold=80.0,
-        min_focus=5,
-    )
-
-    # ✅ Build aggregated remaining segment
-    remaining_segment_raw = build_remaining_skus_aggregate(
-        top_80_skus=top_80_skus,
-        focus_skus=focus_skus,
-    )
-
-    remaining_growth_row = None
-
-    if remaining_segment_raw:
-        remaining_growth_row = calculate_growth(
-            prev_data=[{
-                "sku": remaining_segment_raw["sku"],
-                "product_name": remaining_segment_raw["product_name"],
-                "quantity": remaining_segment_raw["quantity_prev"],
-                "net_sales": remaining_segment_raw["net_sales_prev"],
-                "profit": remaining_segment_raw["profit_prev"],
-                "asp": remaining_segment_raw["asp_prev"],
-                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_prev"],
-                "sales_mix": 0,
-            }],
-            curr_data=[{
-                "sku": remaining_segment_raw["sku"],
-                "product_name": remaining_segment_raw["product_name"],
-                "quantity": remaining_segment_raw["quantity_curr"],
-                "net_sales": remaining_segment_raw["net_sales_curr"],
-                "profit": remaining_segment_raw["profit_curr"],
-                "asp": remaining_segment_raw["asp_curr"],
-                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_curr"],
-                "sales_mix": 0,
-            }],
-            key="sku"
-        )[0]    
-
     # =========================================================
-    # ✅ SKU-Level Ads + CM2 Enrichment (Current Month Only)
+    # ✅ SKU-Level Ads + CM2 Enrichment
+    # Current month = current skuwisemonthly full table
+    # Previous month = previous skuwisemonthly full table
+    # IMPORTANT:
+    # This must happen BEFORE focus_skus / Remaining SKUs are built,
+    # so Remaining SKUs can aggregate cm2_profit_prev/curr.
     # =========================================================
-    ads_sku_map = {}
-    ads_monthly_totals = {"ads_spend": 0.0, "cm2_profit": 0.0}
+    curr_ads_sku_map = {}
+    curr_ads_monthly_totals = {
+        "ads_spend": 0.0,
+        "cm2_profit": 0.0,
+        "source_table": None,
+    }
+
+    prev_ads_sku_map = {}
+    prev_ads_monthly_totals = {
+        "ads_spend": 0.0,
+        "cm2_profit": 0.0,
+        "source_table": None,
+    }
 
     # =========================================================
     # ✅ Frontend-only Inventory Enrichment
@@ -3193,6 +3254,17 @@ def build_ai_summary(
         current_year = current_year or today_local.year
         current_month = current_month or today_local.month
 
+    current_year = int(current_year)
+    current_month = int(current_month)
+
+    # Previous month for full-month skuwisemonthly CM2
+    previous_year = current_year
+    previous_month = current_month - 1
+
+    if previous_month == 0:
+        previous_month = 12
+        previous_year -= 1
+
     if user_id:
         try:
             frontend_inventory_sku_map, frontend_inventory_totals = fetch_current_inventory_snapshot(
@@ -3212,44 +3284,176 @@ def build_ai_summary(
 
     if user_id:
         try:
-            ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
+            # Current CM2 from current month's skuwisemonthly table
+            curr_ads_sku_map, curr_ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_by_month(
                 user_id=int(user_id),
                 country=resolved_country,
                 year=int(current_year),
                 month=int(current_month),
             )
-        except Exception as e:
-            print("[WARN] Ads enrichment failed:", e)
-            ads_sku_map = {}
-            ads_monthly_totals = {"ads_spend": 0.0, "cm2_profit": 0.0}
 
-    # Attach ads data to each SKU row
+            # Previous CM2 from previous month's skuwisemonthly table
+            # No date filtering because skuwisemonthly has no date/time column
+            prev_ads_sku_map, prev_ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_by_month(
+                user_id=int(user_id),
+                country=resolved_country,
+                year=int(previous_year),
+                month=int(previous_month),
+            )
+
+        except Exception as e:
+            print("[WARN] Ads/CM2 enrichment failed:", e)
+
+            curr_ads_sku_map = {}
+            curr_ads_monthly_totals = {
+                "ads_spend": 0.0,
+                "cm2_profit": 0.0,
+                "source_table": None,
+            }
+
+            prev_ads_sku_map = {}
+            prev_ads_monthly_totals = {
+                "ads_spend": 0.0,
+                "cm2_profit": 0.0,
+                "source_table": None,
+            }
+
+    # Attach previous + current ads/CM2 data to each SKU row
     for row in (top_80_skus or []):
         sku = safe_strip(row.get("sku"), default="")
         if not sku:
             continue
 
-        ads_data = ads_sku_map.get(sku, {})
-        ads_spend = float(ads_data.get("ads_spend", 0.0))
-        cm2_profit = float(ads_data.get("cm2_profit", 0.0))
+        curr_ads_data = curr_ads_sku_map.get(sku, {})
+        prev_ads_data = prev_ads_sku_map.get(sku, {})
+
+        ads_spend_curr = float(curr_ads_data.get("ads_spend", 0.0))
+        cm2_profit_curr = float(curr_ads_data.get("cm2_profit", 0.0))
+
+        ads_spend_prev = float(prev_ads_data.get("ads_spend", 0.0))
+        cm2_profit_prev = float(prev_ads_data.get("cm2_profit", 0.0))
 
         net_sales_curr = safe_float_local(row.get("net_sales_curr"))
         if net_sales_curr is None:
             net_sales_curr = safe_float_local(row.get("net_sales"))
         net_sales_curr = float(net_sales_curr or 0.0)
 
-        acos = 0.0
-        if net_sales_curr != 0.0:
-            acos = round((ads_spend / net_sales_curr) * 100.0, 2)
+        net_sales_prev = safe_float_local(row.get("net_sales_prev"))
+        net_sales_prev = float(net_sales_prev or 0.0)
 
-        cm2_margin = 0.0
-        if net_sales_curr != 0.0:
-            cm2_margin = round((cm2_profit / net_sales_curr) * 100.0, 2)
+        acos_curr = (
+            round((ads_spend_curr / net_sales_curr) * 100.0, 2)
+            if net_sales_curr
+            else 0.0
+        )
 
-        row["ads_spend_curr"] = round(ads_spend, 2)
-        row["acos_curr"] = acos
-        row["cm2_profit_curr"] = round(cm2_profit, 2)
-        row["cm2_margin_curr"] = cm2_margin
+        acos_prev = (
+            round((ads_spend_prev / net_sales_prev) * 100.0, 2)
+            if net_sales_prev
+            else 0.0
+        )
+
+        cm2_margin_curr = (
+            round((cm2_profit_curr / net_sales_curr) * 100.0, 2)
+            if net_sales_curr
+            else 0.0
+        )
+
+        cm2_margin_prev = (
+            round((cm2_profit_prev / net_sales_prev) * 100.0, 2)
+            if net_sales_prev
+            else 0.0
+        )
+
+        cm2_profit_growth_pct = (
+            round(((cm2_profit_curr - cm2_profit_prev) / cm2_profit_prev) * 100.0, 2)
+            if cm2_profit_prev
+            else 0.0
+        )
+
+        row["ads_spend_prev"] = round(ads_spend_prev, 2)
+        row["ads_spend_curr"] = round(ads_spend_curr, 2)
+
+        row["acos_prev"] = acos_prev
+        row["acos_curr"] = acos_curr
+
+        row["cm2_profit_prev"] = round(cm2_profit_prev, 2)
+        row["cm2_profit_curr"] = round(cm2_profit_curr, 2)
+
+        row["cm2_margin_prev"] = cm2_margin_prev
+        row["cm2_margin_curr"] = cm2_margin_curr
+
+        row["cm2_profit_growth_pct"] = cm2_profit_growth_pct
+
+    # ✅ Build focus_skus from filtered and CM2-enriched top_80_skus
+    # Logic:
+    # - rank by sales_mix / Sales Mix (Current)
+    # - stop once cumulative sales mix reaches 80%
+    # - but always return at least 5 SKUs if available
+    # - fallback to net_sales top 5 if sales_mix is missing
+    focus_skus = select_focus_skus_by_sales_mix_from_rows(
+        sku_rows=top_80_skus,
+        threshold=80.0,
+        min_focus=5,
+    )
+
+    # ✅ Build aggregated Remaining SKUs after CM2 enrichment
+    remaining_segment_raw = build_remaining_skus_aggregate(
+        top_80_skus=top_80_skus,
+        focus_skus=focus_skus,
+    )
+
+    remaining_growth_row = None
+
+    if remaining_segment_raw:
+        remaining_growth_row = calculate_growth(
+            prev_data=[{
+                "sku": remaining_segment_raw["sku"],
+                "product_name": remaining_segment_raw["product_name"],
+                "quantity": remaining_segment_raw["quantity_prev"],
+                "net_sales": remaining_segment_raw["net_sales_prev"],
+                "profit": remaining_segment_raw["profit_prev"],
+                "cm2_profit": remaining_segment_raw.get("cm2_profit_prev", 0.0),
+                "asp": remaining_segment_raw["asp_prev"],
+                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_prev"],
+                "sales_mix": 0,
+            }],
+            curr_data=[{
+                "sku": remaining_segment_raw["sku"],
+                "product_name": remaining_segment_raw["product_name"],
+                "quantity": remaining_segment_raw["quantity_curr"],
+                "net_sales": remaining_segment_raw["net_sales_curr"],
+                "profit": remaining_segment_raw["profit_curr"],
+                "cm2_profit": remaining_segment_raw.get("cm2_profit_curr", 0.0),
+                "asp": remaining_segment_raw["asp_curr"],
+                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_curr"],
+                "sales_mix": 0,
+            }],
+            key="sku"
+        )[0]
+
+        # Add CM2 fields back to remaining_growth_row because calculate_growth()
+        # does not currently include cm2_profit in growth_field_mapping.
+        remaining_growth_row["cm2_profit_prev"] = round(
+            safe0(remaining_segment_raw.get("cm2_profit_prev")),
+            2,
+        )
+        remaining_growth_row["cm2_profit_curr"] = round(
+            safe0(remaining_segment_raw.get("cm2_profit_curr")),
+            2,
+        )
+        remaining_growth_row["cm2_profit_growth_pct"] = remaining_segment_raw.get(
+            "cm2_profit_growth_pct",
+            0.0,
+        )
+        remaining_growth_row["cm2_margin_prev"] = remaining_segment_raw.get(
+            "cm2_margin_prev",
+            0.0,
+        )
+        remaining_growth_row["cm2_margin_curr"] = remaining_segment_raw.get(
+            "cm2_margin_curr",
+            0.0,
+        )    
 
     # =========================================================
     # ✅ All SKU Action Context
@@ -3511,10 +3715,20 @@ def build_ai_summary(
             "change": roas_change,
         },
         "ads_monthly": {
-            "year": int(current_year),
-            "month": int(current_month),
-            "ads_spend_total": round(ads_monthly_totals.get("ads_spend", 0.0), 2),
-            "cm2_profit_total": round(ads_monthly_totals.get("cm2_profit", 0.0), 2),
+            "previous": {
+                "year": int(previous_year),
+                "month": int(previous_month),
+                "ads_spend_total": round(prev_ads_monthly_totals.get("ads_spend", 0.0), 2),
+                "cm2_profit_total": round(prev_ads_monthly_totals.get("cm2_profit", 0.0), 2),
+                "source_table": prev_ads_monthly_totals.get("source_table"),
+            },
+            "current": {
+                "year": int(current_year),
+                "month": int(current_month),
+                "ads_spend_total": round(curr_ads_monthly_totals.get("ads_spend", 0.0), 2),
+                "cm2_profit_total": round(curr_ads_monthly_totals.get("cm2_profit", 0.0), 2),
+                "source_table": curr_ads_monthly_totals.get("source_table"),
+            },
         },
 
         "estimated_platform_fees_next_month": estimated_storage_cost_next_month,
