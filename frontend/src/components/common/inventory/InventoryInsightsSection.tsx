@@ -105,11 +105,6 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                             <AgeingTrendChart
                                 title="Ageing Trend Over Time"
                                 subtitle="Track how old inventory is increasing or decreasing"
-                                selectedBucket={trendSelectedBucket}
-                                data={trendData}
-                                lineColor={trendLineColor}
-                                bucketOptions={trendBucketOptions}
-                                onBucketChange={onTrendBucketChange}
                                 allSeriesData={trendAllSeriesData}
                             />
                         )}

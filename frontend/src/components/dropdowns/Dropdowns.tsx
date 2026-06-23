@@ -3612,35 +3612,7 @@ const buildInventoryInsightsFromResponses = (
     0
   );
 
-  const isAllTrendSelected = selectedTrendBucketValue === "all";
-
-  const selectedTrendBucket =
-    AGEING_TREND_BUCKET_OPTIONS.find(
-      (bucket) => bucket.value === selectedTrendBucketValue
-    ) || AGEING_TREND_BUCKET_OPTIONS[2];
-
-  const trendSelectedBucket = isAllTrendSelected
-    ? "all"
-    : selectedTrendBucket.value;
-
-  const trendDataFromSummary: AgeingTrendItem[] = isAllTrendSelected
-    ? []
-    : buildAgeingTrendDataFromSummary(
-      ageSummaryResponses,
-      selectedTrendBucket.column
-    );
-
-  const trendDataFromInventoryCurrent: AgeingTrendItem[] = isAllTrendSelected
-    ? []
-    : buildAgeingTrendDataFromInventoryCurrent(
-      validResponses,
-      selectedTrendBucket.column
-    );
-
-  const trendData: AgeingTrendItem[] =
-    trendDataFromSummary.length > 0
-      ? trendDataFromSummary
-      : trendDataFromInventoryCurrent;
+  const trendData: AgeingTrendItem[] = [];
 
   const trendAllSeriesData = AGEING_TREND_BUCKET_OPTIONS.map((bucket) => {
     const dataFromSummary = buildAgeingTrendDataFromSummary(
@@ -3816,12 +3788,17 @@ const buildInventoryInsightsFromResponses = (
     donutSku: "Overall",
     donutData,
     donutTotalUnits,
-    trendSelectedBucket,
-    trendData,
-    trendLineColor: isAllTrendSelected
-      ? "#B75A5A"
-      : selectedTrendBucket.color,
 
+    // ✅ always all now
+    trendSelectedBucket: "all",
+
+    // ✅ not used anymore by the chart, but keep it for type compatibility
+    trendData,
+
+    // ✅ not used anymore by the chart, but keep it for type compatibility
+    trendLineColor: "#B75A5A",
+
+    // ✅ this is what the chart will use
     trendAllSeriesData,
 
     trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
@@ -3846,7 +3823,7 @@ const donutData: DonutChartItem[] = [
 
 const donutTotalUnits = 760;
 
-const trendSelectedBucket = "365+ Days";
+const trendSelectedBucket = "all";
 
 const trendData: AgeingTrendItem[] = [
   { label: "Jan", value: 80 },
@@ -6701,9 +6678,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         donutSku: selectedDonutSku,
         donutData,
         donutTotalUnits,
-        trendSelectedBucket,
+
+        trendSelectedBucket: "all",
         trendData,
-        trendLineColor,
+        trendLineColor: "#B75A5A",
+
+        // ✅ required by InventoryInsightsData
+        trendAllSeriesData,
 
         trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
           label: bucket.label,
@@ -6807,17 +6788,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )
           .map((result) => result.value);
 
-        // if (!fulfilledInventory.length) {
-        //   const firstError = inventoryResults.find(
-        //     (result): result is PromiseRejectedResult =>
-        //       result.status === "rejected"
-        //   );
-
-        //   throw new Error(
-        //     firstError?.reason?.message || "No inventory data found"
-        //   );
-        // }
-
         if (!fulfilledInventory.length) {
           throw new Error("No inventory data found");
         }
@@ -6834,7 +6804,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             fulfilledAgeSummary,
             effectiveCountryName,
             effectiveHomeCurrency,
-            selectedAgeingTrendBucket
+            "all"
           )
         );
       } finally {

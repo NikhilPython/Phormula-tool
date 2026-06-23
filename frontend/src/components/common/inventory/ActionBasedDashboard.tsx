@@ -109,19 +109,26 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center gap-1 text-charcoal-500">
-                                {/* <span className="text-xl font-extrabold leading-none">
+                                <span className="text-xl font-extrabold leading-none">
                                     {typeof action.skuCount === "number"
                                         ? `${action.skuCount.toLocaleString()} SKUs`
                                         : `${action.count.toLocaleString()} SKUs`}
                                 </span>
 
-                                {typeof action.unitCount === "number" && (
+                                {/* {typeof action.unitCount === "number" && (
                                     <span className="text-xs font-semibold leading-none">
                                         {action.unitCount.toLocaleString()} Units
                                     </span>
                                 )} */}
 
-                                {action.key === "high_alert" ? (
+                                {typeof action.unitCount === "number" && (
+                                    <span className="text-xs font-semibold leading-none">
+                                        {action.unitCount.toLocaleString()}{" "}
+                                        {action.key === "high_alert" ? "Units Remaining" : "Units"}
+                                    </span>
+                                )}
+
+                                {/* {action.key === "high_alert" ? (
                                     <span className="text-xl font-extrabold leading-none">
                                         {typeof action.skuCount === "number"
                                             ? `${action.skuCount.toLocaleString()} SKUs`
@@ -141,7 +148,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                             </span>
                                         )}
                                     </>
-                                )}
+                                )} */}
                             </div>
                         )}
 
