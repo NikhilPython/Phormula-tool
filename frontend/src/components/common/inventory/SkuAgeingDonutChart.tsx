@@ -107,7 +107,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
 
                                                     <span className="font-semibold text-slate-900">
                                                         {Number(displayValue ?? 0).toLocaleString()} (
-                                                        {payload.percentage.toFixed(1)}%)
+                                                        {payload.percentage.toFixed(2)}%)
                                                     </span>
                                                 </div>
                                             );
@@ -198,7 +198,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                     </td>
 
                                     <td className="border-t border-slate-200 px-3 py-2 text-center text-slate-700">
-                                        {item.percentage.toFixed(1)}%
+                                        {item.percentage.toFixed(2)}%
                                     </td>
                                 </tr>
                             ))}

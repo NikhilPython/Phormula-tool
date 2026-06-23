@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
+import DataTable, { ColumnDef, Row } from "@/components/ui/table/DataTable";
 
 export type AgeingBucket = {
     key: string;
@@ -26,6 +27,8 @@ type AgeingRiskHeatmapProps = {
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
 };
+
+type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
 
 const getHeatColor = (
     bucketColor: string,
@@ -78,7 +81,6 @@ const buildAggregateRow = (
         0
     );
 
-    // Weighted average coverage ratio for aggregate rows.
     const weightedCoverageTotal = rows.reduce((sum, row) => {
         const calculatedTotal = buckets.reduce(
             (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
@@ -105,34 +107,146 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     subtitle = "Quickly identify products with old inventory",
     data,
     buckets,
-    defaultVisibleRows = 10,
+    defaultVisibleRows = 9,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const canCollapse = data.length > defaultVisibleRows;
 
-    const displayRows = useMemo(() => {
+    const displayRows = useMemo<HeatmapTableRow[]>(() => {
         const totalRow = buildAggregateRow("Total", data, buckets, {
             isTotalRow: true,
         });
 
         if (!canCollapse || isExpanded) {
-            return [...data, totalRow];
+            return [...data, totalRow] as HeatmapTableRow[];
         }
 
         const mainRows = data.slice(0, defaultVisibleRows);
         const otherRows = data.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
-            return [...mainRows, totalRow];
+            return [...mainRows, totalRow] as HeatmapTableRow[];
         }
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
         });
 
-        return [...mainRows, othersRow, totalRow];
+        return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
     }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
+
+const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
+    const heatmapHeaderClassName = "!py-4 h-12";
+
+    const bucketColumns: ColumnDef<HeatmapTableRow>[] = buckets.map((bucket) => ({
+        key: bucket.key,
+        width: "120px",
+        header: bucket.label,
+        headerClassName: heatmapHeaderClassName,
+        cellClassName: "!p-0",
+        render: (row) => {
+            const calculatedTotal = buckets.reduce(
+                (sum, b) => sum + Number(row[b.key] || 0),
+                0
+            );
+
+            const totalUnits = Number(row.totalUnits ?? calculatedTotal);
+            const value = Number(row[bucket.key] || 0);
+            const percentage = totalUnits ? (value / totalUnits) * 100 : 0;
+
+            return (
+                <div
+                    title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(
+                        1
+                    )}%)`}
+                    className="flex h-10 items-center justify-center text-charcoal-500"
+                    style={{
+                        background:
+                            row.isTotalRow && value === 0
+                                ? "#EFEFEF"
+                                : getHeatColor(bucket.color, value, totalUnits),
+                    }}
+                >
+                    {value === 0 ? "-" : value.toLocaleString()}
+                </div>
+            );
+        },
+    }));
+
+    return [
+        {
+            key: "sno",
+            header: "S.No.",
+            width: "70px",
+            headerClassName: heatmapHeaderClassName,
+            render: (row, _value, rowIndex) => {
+                if (row.isTotalRow) return "";
+
+                return <span>{rowIndex + 1}</span>;
+            },
+        },
+        {
+            key: "productName",
+            header: "Product Name",
+            width: "240px",
+            headerClassName: heatmapHeaderClassName,
+            cellClassName: "text-left",
+            render: (row) => <span>{row.productName}</span>,
+        },
+        ...bucketColumns,
+        {
+            key: "totalUnits",
+            header: "Sellable Units",
+            width: "130px",
+            headerClassName: heatmapHeaderClassName,
+            render: (row) => {
+                const calculatedTotal = buckets.reduce(
+                    (sum, bucket) => sum + Number(row[bucket.key] || 0),
+                    0
+                );
+
+                const totalUnits = Number(row.totalUnits ?? calculatedTotal);
+
+                return <span>{totalUnits.toLocaleString()}</span>;
+            },
+        },
+        {
+            key: "unsellableUnits",
+            header: "Unsellable Units",
+            width: "150px",
+            headerClassName: heatmapHeaderClassName,
+            render: (row) => {
+                const unsellableUnits = Number(row.unsellableUnits || 0);
+
+                return (
+                    <span>
+                        {unsellableUnits > 0
+                            ? unsellableUnits.toLocaleString()
+                            : "-"}
+                    </span>
+                );
+            },
+        },
+        {
+            key: "coverageRatio",
+            header: "Coverage Ratio(in Months)",
+            width: "220px",
+            headerClassName: heatmapHeaderClassName,
+            render: (row) => {
+                const coverageRatio = Number(row.coverageRatio ?? 0);
+
+                return (
+                    <span>
+                        {Number.isFinite(coverageRatio) && coverageRatio > 0
+                            ? coverageRatio.toFixed(2)
+                            : "-"}
+                    </span>
+                );
+            },
+        },
+    ];
+}, [buckets]);
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -165,123 +279,24 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-separate border-spacing-0 text-xs">
-                    <thead>
-                        <tr className="text-slate-600">
-                            <th className="px-3 py-2 text-left font-semibold">
-                                Product Name
-                            </th>
-
-                            {buckets.map((bucket) => (
-                                <th
-                                    key={bucket.key}
-                                    className="px-3 py-2 text-center font-semibold"
-                                >
-                                    <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-                                        <span
-                                            className="h-2 w-2 rounded-full"
-                                            style={{ backgroundColor: bucket.color }}
-                                        />
-                                        {bucket.label}
-                                    </div>
-                                </th>
-                            ))}
-
-                            <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
-                                Sellable Units
-                            </th>
-
-                            <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
-                                Unsellable Units
-                            </th>
-
-                            <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
-                                Coverage Ratio(in Months)
-                            </th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        {displayRows.map((row) => {
-                            const calculatedTotal = buckets.reduce(
-                                (sum, bucket) => sum + Number(row[bucket.key] || 0),
-                                0
-                            );
-
-                            const totalUnits = Number(row.totalUnits ?? calculatedTotal);
-                            const coverageRatio = Number(row.coverageRatio ?? 0);
-
-                            const isAggregateRow = row.isOthersRow || row.isTotalRow;
-
-                            return (
-                                <tr
-                                    key={row.sku || row.productName}
-                                    className={
-                                        row.isTotalRow
-                                            ? "bg-slate-100"
-                                            : row.isOthersRow
-                                                ? ""
-                                                : ""
-                                    }
-                                >
-                                    <td
-                                        className={`border-t border-slate-100 px-3 py-2 text-left text-slate-900 ${isAggregateRow ? "font-bold" : "font-semibold"
-                                            }`}
-                                    >
-                                        {row.productName}
-                                    </td>
-
-                                    {buckets.map((bucket) => {
-                                        const value = Number(row[bucket.key] || 0);
-                                        const percentage = totalUnits
-                                            ? (value / totalUnits) * 100
-                                            : 0;
-
-                                        return (
-                                            <td
-                                                key={bucket.key}
-                                                className="border-t border-slate-100 px-0 py-0 text-center"
-                                                title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(1)}%)`}
-                                            >
-                                                <div
-                                                    className={`flex h-12 items-center justify-center text-[11px] text-slate-900 ${isAggregateRow ? "font-bold" : "font-semibold"
-                                                        }`}
-                                                    style={{
-                                                        background: getHeatColor(
-                                                            bucket.color,
-                                                            value,
-                                                            totalUnits
-                                                        ),
-                                                    }}
-                                                >
-                                                    {value === 0 ? "-" : value.toLocaleString()}
-                                                </div>
-                                            </td>
-                                        );
-                                    })}
-
-                                    <td className="border-t border-slate-100 px-3 py-2 text-center font-bold text-slate-900">
-                                        {totalUnits.toLocaleString()}
-                                    </td>
-
-                                    <td className="border-t border-slate-100 px-3 py-2 text-center font-bold text-slate-900">
-                                        {Number(row.unsellableUnits || 0) > 0
-                                            ? Number(row.unsellableUnits || 0).toLocaleString()
-                                            : "-"}
-                                    </td>
-
-                                    <td className="border-t border-slate-100 px-3 py-2 text-center font-semibold text-slate-900">
-                                        {Number.isFinite(coverageRatio) && coverageRatio > 0
-                                            ? coverageRatio.toFixed(2)
-                                            : "-"}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+            <DataTable<HeatmapTableRow>
+                columns={columns}
+                data={displayRows}
+                paginate={false}
+                scrollY={false}
+                stickyHeader
+                zebra={false}
+                showCellTitle={false}
+                headerMaxWidth={120}
+                tableClassName="ageing-risk-heatmap-table"
+                rowClassName={(row) =>
+                    row.isTotalRow
+                        ? "bg-[#EFEFEF] font-semibold"
+                        : row.isOthersRow
+                            ? ""
+                            : ""
+                }
+            />
         </div>
     );
 };
