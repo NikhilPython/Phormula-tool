@@ -1011,16 +1011,16 @@ const AppSidebar: React.FC = () => {
       ),
       subItems: [
         {
+          name: "AI Insights",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
+        },
+        {
           name: "MTD Sales",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#live-sales`,
         },
         {
           name: "P&L Breakdown",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
-        },
-        {
-          name: "AI Insights",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
         {
           name: "Inventory Insights",
@@ -1033,6 +1033,15 @@ const AppSidebar: React.FC = () => {
       name: "FINANCIAL METRICS",
       icon: <LuLayoutDashboard className={iconSize} />,
       subItems: [
+        {
+          name: "AI Insights",
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(
+              ranged
+            )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
+              month
+            )}/${encodeURIComponent(year)}#ai-insights`,
+        },
         {
           name: "Finance Dashboard",
           path: ({ ranged, countryName, month, year }) =>
@@ -1061,23 +1070,14 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(year)}#cash-flow`,
         },
         {
-          name: "AI Insights",
+          name: "SKU Journey",
           path: ({ ranged, countryName, month, year }) =>
             `/pnl-dashboard/${encodeURIComponent(
               ranged
             )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
               month
-            )}/${encodeURIComponent(year)}#ai-insights`,
-          },
-          {
-            name: "SKU Journey",
-            path: ({ ranged, countryName, month, year }) =>
-              `/pnl-dashboard/${encodeURIComponent(
-                ranged
-              )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-                month
-              )}/${encodeURIComponent(year)}#skuwise-profit`,
-          },
+            )}/${encodeURIComponent(year)}#skuwise-profit`,
+        },
         {
           name: "Inventory Insights",
           path: ({ ranged, countryName, month, year }) =>

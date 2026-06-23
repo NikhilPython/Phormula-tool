@@ -2619,10 +2619,10 @@ const TAB_LABELS: Record<DashboardTab, string> = {
 };
 
 const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
+  { value: "businessSummary", label: TAB_LABELS.businessSummary },
   { value: "graphs", label: TAB_LABELS.graphs },
   { value: "skuBreakdown", label: TAB_LABELS.skuBreakdown },
   { value: "cashFlow", label: TAB_LABELS.cashFlow },
-  { value: "businessSummary", label: TAB_LABELS.businessSummary },
   { value: "skuwiseProfit", label: TAB_LABELS.skuwiseProfit },
   { value: "inventoryInsights", label: TAB_LABELS.inventoryInsights },
 ];
