@@ -1274,7 +1274,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     Metrics
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                     {sortedMetrics.map((m, i) => (
                       <div
                         key={i}
@@ -1341,7 +1341,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         {bestPerformanceError}
                       </div>
                     ) : bestPerformanceData ? (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                         {[
                           {
                             label: "Units",
