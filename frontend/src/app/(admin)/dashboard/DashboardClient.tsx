@@ -9308,9 +9308,9 @@ export default function DashboardPage() {
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
+        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "live", label: "MTD Sales" },
         { id: "productwise", label: "P&L Breakdown" },
-        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "inventory", label: "Inventory Insights" },
     ];
 
