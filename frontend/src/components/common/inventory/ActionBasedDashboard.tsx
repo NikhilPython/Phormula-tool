@@ -70,7 +70,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                         key={action.key}
                         className="rounded-lg border border-t-4 px-3 py-2.5 text-center"
                         style={{
-                            backgroundColor: action.backgroundColor || "#ffffff",
+                            backgroundColor: "#ffffff",
                             borderColor: action.color,
                             borderTopColor: action.color,
                         }}

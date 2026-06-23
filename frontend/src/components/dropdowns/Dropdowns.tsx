@@ -3051,10 +3051,10 @@ const DEMO_TARGET_SUMMARY = {
 };
 
 const heatmapBuckets: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
-  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
-  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
@@ -3124,10 +3124,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
 const selectedDonutSku = "SKU-B";
 
 const INVENTORY_BUCKETS: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
-  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
-  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
@@ -3169,7 +3169,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     key: "discount",
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
   },
   {
     key: "liquidate",
@@ -3215,7 +3215,7 @@ const INVENTORY_ACTION_META: Record<
   discount: {
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
     backgroundColor: "#ffffff",
   },
   liquidate: {
@@ -3545,6 +3545,8 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
+      const unsellableUnits = toNum(row?.["unfulfillable-quantity"]);
+
       return {
         productName: productName || sku || "-",
         sku,
@@ -3554,11 +3556,10 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
         totalUnits,
+        unsellableUnits,
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
       };
     })
-    .filter((row) => row.productName && Number(row.totalUnits) > 0)
-    .sort((a, b) => b.totalUnits - a.totalUnits);
 
   const overallAgeing = latestRows.reduce(
     (acc, row) => {
@@ -3583,22 +3584,22 @@ const buildInventoryInsightsFromResponses = (
     {
       bucket: "0–90 Days",
       units: overallAgeing.zeroToNinety,
-      color: "#B8C78C",
+      color: "#7B9A6D",
     },
     {
       bucket: "91–180 Days",
       units: overallAgeing.ninetyOneToOneEighty,
-      color: "#7B9A6D",
+      color: "#FDD36F",
     },
     {
       bucket: "181–270 Days",
       units: overallAgeing.oneEightyOneToTwoSeventy,
-      color: "#FDD36F",
+      color: "#ED9F50",
     },
     {
       bucket: "271–365 Days",
       units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-      color: "#ED9F50",
+      color: "#C49466",
     },
     {
       bucket: "365+ Days",
@@ -3814,10 +3815,10 @@ const buildInventoryInsightsFromResponses = (
 
 
 const donutData: DonutChartItem[] = [
-  { bucket: "0–90 Days", units: 120, color: "#B8C78C" },
-  { bucket: "91–180 Days", units: 240, color: "#7B9A6D" },
-  { bucket: "181–270 Days", units: 180, color: "#FDD36F" },
-  { bucket: "271–365 Days", units: 90, color: "#ED9F50" },
+  { bucket: "0–90 Days", units: 120, color: "#7B9A6D" },
+  { bucket: "91–180 Days", units: 240, color: "#FDD36F" },
+  { bucket: "181–270 Days", units: 180, color: "#ED9F50" },
+  { bucket: "271–365 Days", units: 90, color: "#C49466" },
   { bucket: "365+ Days", units: 130, color: "#B75A5A" },
 ];
 
@@ -3909,7 +3910,7 @@ const inventoryActions: ActionCardItem[] = [
     displayValue: 3,
     skuCount: 3,
     unitCount: 4,
-    color: "#7B9A6D",
+    color: "#FDD36F",
     backgroundColor: "#ffffff",
   },
   {
@@ -3966,7 +3967,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
     key: "discount",
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
   },
   {
     key: "liquidate",
