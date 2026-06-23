@@ -12,6 +12,7 @@ export type AgeingRiskHeatmapRow = {
     productName: string;
     sku?: string;
     totalUnits?: number;
+    unsellableUnits?: number;
     coverageRatio?: number;
     isOthersRow?: boolean;
     isTotalRow?: boolean;
@@ -69,6 +70,11 @@ const buildAggregateRow = (
 
     aggregate.totalUnits = buckets.reduce(
         (sum, bucket) => sum + Number(aggregate[bucket.key] || 0),
+        0
+    );
+
+    aggregate.unsellableUnits = rows.reduce(
+        (sum, row) => sum + Number(row.unsellableUnits || 0),
         0
     );
 
@@ -183,7 +189,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             ))}
 
                             <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
-                                Total Units
+                                Sellable Units
+                            </th>
+
+                            <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
+                                Unsellable Units
                             </th>
 
                             <th className="whitespace-nowrap px-3 py-2 text-center font-semibold">
@@ -253,6 +263,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                                     <td className="border-t border-slate-100 px-3 py-2 text-center font-bold text-slate-900">
                                         {totalUnits.toLocaleString()}
+                                    </td>
+
+                                    <td className="border-t border-slate-100 px-3 py-2 text-center font-bold text-slate-900">
+                                        {Number(row.unsellableUnits || 0) > 0
+                                            ? Number(row.unsellableUnits || 0).toLocaleString()
+                                            : "-"}
                                     </td>
 
                                     <td className="border-t border-slate-100 px-3 py-2 text-center font-semibold text-slate-900">

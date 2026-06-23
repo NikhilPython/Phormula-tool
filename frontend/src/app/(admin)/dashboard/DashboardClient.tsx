@@ -81,6 +81,7 @@ import type {
 
 import type {
     AgeingTrendItem,
+    AgeingTrendAllSeriesItem,
 } from "@/components/common/inventory/AgeingTrendChart";
 
 import type {
@@ -531,11 +532,15 @@ type InventoryInsightsData = {
     trendSelectedBucket: string;
     trendData: AgeingTrendItem[];
     trendLineColor: string;
+
+    trendAllSeriesData: AgeingTrendAllSeriesItem[];
+
     trendBucketOptions: {
         label: string;
         value: string;
         color: string;
     }[];
+
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
 };
@@ -1660,10 +1665,10 @@ const inventoryMonthIndexMap: Record<string, number> = {
 };
 
 const INVENTORY_BUCKETS: AgeingBucket[] = [
-    { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
-    { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
-    { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
-    { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+    { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+    { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+    { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+    { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
     { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
@@ -1698,14 +1703,14 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
         key: "high_alert",
         label: "High Alert",
-        description: "Critical inventory alert SKUs",
+        description: "Shipment Required",
         color: "#B75A5A",
     },
     {
         key: "discount",
         label: "Discount",
         description: "Inventory in 91–180 days bucket",
-        color: "#7B9A6D",
+        color: "#FDD36F",
     },
     {
         key: "liquidate",
@@ -1722,7 +1727,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
         key: "estimated_storage_cost",
         label: "Estimate Storage",
-        description: "Estimated next-month storage cost",
+        description: "Estimated current month storage cost",
         color: "#C49466",
     },
 ];
@@ -1744,14 +1749,14 @@ const INVENTORY_ACTION_META: Record<
     },
     high_alert: {
         label: "High Alert",
-        description: "Critical inventory alert SKUs",
+        description: "Shipment Required",
         color: "#B75A5A",
         backgroundColor: "#ffffff",
     },
     discount: {
         label: "Discount",
         description: "Inventory in 91–180 days bucket",
-        color: "#7B9A6D",
+        color: "#FDD36F",
         backgroundColor: "#ffffff",
     },
     liquidate: {
@@ -1768,7 +1773,7 @@ const INVENTORY_ACTION_META: Record<
     },
     estimated_storage_cost: {
         label: "Estimate Storage",
-        description: "Estimated next-month storage cost",
+        description: "Estimated current month storage cost",
         color: "#C49466",
         backgroundColor: "#ffffff",
     },
@@ -2036,6 +2041,8 @@ const buildInventoryInsightsFromResponses = (
                 twoSeventyOneToThreeSixtyFive +
                 threeSixtyFivePlus;
 
+            const unsellableUnits = inventoryToNum(row?.["unfulfillable-quantity"]);
+
             return {
                 productName: productName || sku || "-",
                 sku,
@@ -2045,22 +2052,10 @@ const buildInventoryInsightsFromResponses = (
                 twoSeventyOneToThreeSixtyFive,
                 threeSixtyFivePlus,
                 totalUnits,
+                unsellableUnits,
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
             };
         })
-        .filter((row) => {
-            const hasProduct = Boolean(String(row.productName || "").trim());
-
-            const hasAnyAgeingInventory =
-                Number(row.zeroToNinety || 0) > 0 ||
-                Number(row.ninetyOneToOneEighty || 0) > 0 ||
-                Number(row.oneEightyOneToTwoSeventy || 0) > 0 ||
-                Number(row.twoSeventyOneToThreeSixtyFive || 0) > 0 ||
-                Number(row.threeSixtyFivePlus || 0) > 0;
-
-            return hasProduct && hasAnyAgeingInventory;
-        })
-        .sort((a, b) => b.totalUnits - a.totalUnits);
 
     const overallAgeing = latestRows.reduce(
         (acc, row) => {
@@ -2082,10 +2077,10 @@ const buildInventoryInsightsFromResponses = (
     );
 
     const donutData: DonutChartItem[] = [
-        { bucket: "0–90 Days", units: overallAgeing.zeroToNinety, color: "#B8C78C" },
-        { bucket: "91–180 Days", units: overallAgeing.ninetyOneToOneEighty, color: "#7B9A6D" },
-        { bucket: "181–270 Days", units: overallAgeing.oneEightyOneToTwoSeventy, color: "#FDD36F" },
-        { bucket: "271–365 Days", units: overallAgeing.twoSeventyOneToThreeSixtyFive, color: "#ED9F50" },
+        { bucket: "0–90 Days", units: overallAgeing.zeroToNinety, color: "#7B9A6D" },
+        { bucket: "91–180 Days", units: overallAgeing.ninetyOneToOneEighty, color: "#FDD36F" },
+        { bucket: "181–270 Days", units: overallAgeing.oneEightyOneToTwoSeventy, color: "#ED9F50" },
+        { bucket: "271–365 Days", units: overallAgeing.twoSeventyOneToThreeSixtyFive, color: "#C49466" },
         { bucket: "365+ Days", units: overallAgeing.threeSixtyFivePlus, color: "#B75A5A" },
     ].filter((item) => item.units > 0);
 
@@ -2094,25 +2089,54 @@ const buildInventoryInsightsFromResponses = (
         0
     );
 
+    const isAllTrendSelected = selectedTrendBucketValue === "all";
+
     const selectedTrendBucket =
         AGEING_TREND_BUCKET_OPTIONS.find(
             (bucket) => bucket.value === selectedTrendBucketValue
         ) || AGEING_TREND_BUCKET_OPTIONS[2];
 
-    const trendDataFromSummary = buildAgeingTrendDataFromSummary(
-        ageSummaryResponses,
-        selectedTrendBucket.column
-    );
+    const trendDataFromSummary = isAllTrendSelected
+        ? []
+        : buildAgeingTrendDataFromSummary(
+            ageSummaryResponses,
+            selectedTrendBucket.column
+        );
 
-    const trendDataFromInventoryCurrent = buildAgeingTrendDataFromInventoryCurrent(
-        validResponses,
-        selectedTrendBucket.column
-    );
+    const trendDataFromInventoryCurrent = isAllTrendSelected
+        ? []
+        : buildAgeingTrendDataFromInventoryCurrent(
+            validResponses,
+            selectedTrendBucket.column
+        );
 
     const trendData =
         trendDataFromSummary.length > 0
             ? trendDataFromSummary
             : trendDataFromInventoryCurrent;
+
+    const trendAllSeriesData: AgeingTrendAllSeriesItem[] =
+        AGEING_TREND_BUCKET_OPTIONS.map((bucket) => {
+            const dataFromSummary = buildAgeingTrendDataFromSummary(
+                ageSummaryResponses,
+                bucket.column
+            );
+
+            const dataFromInventoryCurrent = buildAgeingTrendDataFromInventoryCurrent(
+                validResponses,
+                bucket.column
+            );
+
+            return {
+                bucketValue: bucket.value,
+                bucketLabel: bucket.label,
+                color: bucket.color,
+                data:
+                    dataFromSummary.length > 0
+                        ? dataFromSummary
+                        : dataFromInventoryCurrent,
+            };
+        });
 
     // const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
 
@@ -2314,14 +2338,25 @@ const buildInventoryInsightsFromResponses = (
         donutSku: "Overall",
         donutData,
         donutTotalUnits,
-        trendSelectedBucket: selectedTrendBucket.value,
+
+        trendSelectedBucket: isAllTrendSelected
+            ? "all"
+            : selectedTrendBucket.value,
+
         trendData,
-        trendLineColor: selectedTrendBucket.color,
+
+        trendLineColor: isAllTrendSelected
+            ? "#B75A5A"
+            : selectedTrendBucket.color,
+
+        trendAllSeriesData,
+
         trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
             label: bucket.label,
             value: bucket.value,
             color: bucket.color,
         })),
+
         actions,
         actionLogic: INVENTORY_ACTION_LOGIC,
     };
@@ -4029,18 +4064,23 @@ export default function DashboardPage() {
             setInventoryInsightsData((prev) => {
                 if (!prev) return prev;
 
+                const isAllTrendSelected = bucketValue === "all";
+
                 const selectedBucket =
                     AGEING_TREND_BUCKET_OPTIONS.find(
                         (bucket) => bucket.value === bucketValue
                     ) || AGEING_TREND_BUCKET_OPTIONS[2];
 
-                const trendDataFromSummary = buildAgeingTrendDataFromSummary(
-                    inventoryAgeSummaryResponses,
-                    selectedBucket.column
-                );
+                const trendDataFromSummary = isAllTrendSelected
+                    ? []
+                    : buildAgeingTrendDataFromSummary(
+                        inventoryAgeSummaryResponses,
+                        selectedBucket.column
+                    );
 
-                const trendDataFromInventoryCurrent =
-                    buildAgeingTrendDataFromInventoryCurrent(
+                const trendDataFromInventoryCurrent = isAllTrendSelected
+                    ? []
+                    : buildAgeingTrendDataFromInventoryCurrent(
                         inventoryInsightResponses,
                         selectedBucket.column
                     );
@@ -4050,11 +4090,43 @@ export default function DashboardPage() {
                         ? trendDataFromSummary
                         : trendDataFromInventoryCurrent;
 
+                const trendAllSeriesData: AgeingTrendAllSeriesItem[] =
+                    AGEING_TREND_BUCKET_OPTIONS.map((bucket) => {
+                        const dataFromSummary = buildAgeingTrendDataFromSummary(
+                            inventoryAgeSummaryResponses,
+                            bucket.column
+                        );
+
+                        const dataFromInventoryCurrent =
+                            buildAgeingTrendDataFromInventoryCurrent(
+                                inventoryInsightResponses,
+                                bucket.column
+                            );
+
+                        return {
+                            bucketValue: bucket.value,
+                            bucketLabel: bucket.label,
+                            color: bucket.color,
+                            data:
+                                dataFromSummary.length > 0
+                                    ? dataFromSummary
+                                    : dataFromInventoryCurrent,
+                        };
+                    });
+
                 return {
                     ...prev,
-                    trendSelectedBucket: selectedBucket.value,
+                    trendSelectedBucket: isAllTrendSelected
+                        ? "all"
+                        : selectedBucket.value,
+
                     trendData,
-                    trendLineColor: selectedBucket.color,
+
+                    trendLineColor: isAllTrendSelected
+                        ? "#B75A5A"
+                        : selectedBucket.color,
+
+                    trendAllSeriesData,
                 };
             });
         },
@@ -13536,6 +13608,7 @@ ${pageLoading
                                 donutTotalUnits={inventoryInsightsData.donutTotalUnits}
                                 trendSelectedBucket={selectedAgeingTrendBucket}
                                 trendData={inventoryInsightsData.trendData}
+                                trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
                                 trendLineColor={inventoryInsightsData.trendLineColor}
                                 trendBucketOptions={inventoryInsightsData.trendBucketOptions}
                                 onTrendBucketChange={handleAgeingTrendBucketChange}

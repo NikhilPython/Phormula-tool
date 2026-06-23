@@ -46,6 +46,7 @@ import type {
 
 import type {
   AgeingTrendItem,
+  AgeingTrendAllSeriesItem,
 } from "@/components/common/inventory/AgeingTrendChart";
 
 import type {
@@ -232,6 +233,8 @@ type InventoryInsightsData = {
   trendSelectedBucket: string;
   trendData: AgeingTrendItem[];
   trendLineColor: string;
+
+  trendAllSeriesData: AgeingTrendAllSeriesItem[];
 
   trendBucketOptions: {
     label: string;
@@ -3048,10 +3051,10 @@ const DEMO_TARGET_SUMMARY = {
 };
 
 const heatmapBuckets: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
-  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
-  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
@@ -3121,10 +3124,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
 const selectedDonutSku = "SKU-B";
 
 const INVENTORY_BUCKETS: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#B8C78C" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#7B9A6D" },
-  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#FDD36F" },
-  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#ED9F50" },
+  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
@@ -3159,14 +3162,14 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "high_alert",
     label: "High Alert",
-    description: "Critical inventory alert SKUs",
+    description: "Shipment Required",
     color: "#B75A5A",
   },
   {
     key: "discount",
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
   },
   {
     key: "liquidate",
@@ -3183,7 +3186,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated next-month storage cost",
+    description: "Estimated current month storage cost",
     color: "#C49466",
   },
 ];
@@ -3205,14 +3208,14 @@ const INVENTORY_ACTION_META: Record<
   },
   high_alert: {
     label: "High Alert",
-    description: "Critical inventory alert SKUs",
+    description: "Shipment Required",
     color: "#B75A5A",
     backgroundColor: "#ffffff",
   },
   discount: {
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
     backgroundColor: "#ffffff",
   },
   liquidate: {
@@ -3229,7 +3232,7 @@ const INVENTORY_ACTION_META: Record<
   },
   estimated_storage_cost: {
     label: "Estimate Storage",
-    description: "Estimated next-month storage cost",
+    description: "Estimated current month storage cost",
     color: "#C49466",
     backgroundColor: "#ffffff",
   },
@@ -3542,6 +3545,8 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
+      const unsellableUnits = toNum(row?.["unfulfillable-quantity"]);
+
       return {
         productName: productName || sku || "-",
         sku,
@@ -3551,11 +3556,10 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
         totalUnits,
+        unsellableUnits,
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
       };
     })
-    .filter((row) => row.productName && Number(row.totalUnits) > 0)
-    .sort((a, b) => b.totalUnits - a.totalUnits);
 
   const overallAgeing = latestRows.reduce(
     (acc, row) => {
@@ -3580,22 +3584,22 @@ const buildInventoryInsightsFromResponses = (
     {
       bucket: "0–90 Days",
       units: overallAgeing.zeroToNinety,
-      color: "#B8C78C",
+      color: "#7B9A6D",
     },
     {
       bucket: "91–180 Days",
       units: overallAgeing.ninetyOneToOneEighty,
-      color: "#7B9A6D",
+      color: "#FDD36F",
     },
     {
       bucket: "181–270 Days",
       units: overallAgeing.oneEightyOneToTwoSeventy,
-      color: "#FDD36F",
+      color: "#ED9F50",
     },
     {
       bucket: "271–365 Days",
       units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-      color: "#ED9F50",
+      color: "#C49466",
     },
     {
       bucket: "365+ Days",
@@ -3609,76 +3613,28 @@ const buildInventoryInsightsFromResponses = (
     0
   );
 
-  const selectedTrendBucket =
-    AGEING_TREND_BUCKET_OPTIONS.find(
-      (bucket) => bucket.value === selectedTrendBucketValue
-    ) || AGEING_TREND_BUCKET_OPTIONS[2];
+  const trendData: AgeingTrendItem[] = [];
 
-  const trendSelectedBucket = selectedTrendBucket.value;
-
-  const trendDataFromSummary: AgeingTrendItem[] = buildAgeingTrendDataFromSummary(
-    ageSummaryResponses,
-    selectedTrendBucket.column
-  );
-
-  const trendDataFromInventoryCurrent: AgeingTrendItem[] =
-    buildAgeingTrendDataFromInventoryCurrent(
-      validResponses,
-      selectedTrendBucket.column
+  const trendAllSeriesData = AGEING_TREND_BUCKET_OPTIONS.map((bucket) => {
+    const dataFromSummary = buildAgeingTrendDataFromSummary(
+      ageSummaryResponses,
+      bucket.column
     );
 
-  const trendData: AgeingTrendItem[] =
-    trendDataFromSummary.length > 0
-      ? trendDataFromSummary
-      : trendDataFromInventoryCurrent;
+    const dataFromInventoryCurrent = buildAgeingTrendDataFromInventoryCurrent(
+      validResponses,
+      bucket.column
+    );
 
-  // const storageCostTotal = getEstimatedStorageCostTotal(latestResponse);
-
-  // const actions: ActionCardItem[] = Object.entries(INVENTORY_ACTION_META).map(
-  //   ([key, meta]) => {
-  //     const categoryFromResponse = latestResponse?.categories?.[key] as any;
-
-  //     const labelFromApi =
-  //       categoryFromResponse?.name ||
-  //       categoryFromResponse?.label ||
-  //       meta.label;
-
-  //     const descriptionFromApi =
-  //       categoryFromResponse?.description ||
-  //       meta.description;
-
-  //     const count =
-  //       toNum(latestResponse?.category_counts?.[key]) ||
-  //       toNum(categoryFromResponse?.items?.length);
-
-  //     if (key === "estimated_storage_cost") {
-  //       return {
-  //         key,
-  //         label: labelFromApi,
-  //         description: descriptionFromApi,
-  //         count,
-  //         displayValue: formatInventoryStorageCost(
-  //           storageCostTotal,
-  //           countryName,
-  //           homeCurrency
-  //         ),
-  //         valueSuffix: "Storage Cost",
-  //         color: meta.color,
-  //         backgroundColor: meta.backgroundColor,
-  //       };
-  //     }
-  //     return {
-  //       key,
-  //       label: labelFromApi,
-  //       description: descriptionFromApi,
-  //       count,
-  //       displayValue: count,
-  //       valueSuffix: "SKUs",
-  //       color: meta.color,
-  //       backgroundColor: meta.backgroundColor,
-  //     };
-  //   }
-  // );
+    return {
+      bucketValue: bucket.value,
+      bucketLabel: bucket.label,
+      color: bucket.color,
+      data: dataFromSummary.length > 0
+        ? dataFromSummary
+        : dataFromInventoryCurrent,
+    };
+  });
 
   const healthyRows = latestRows.filter((row) =>
     hasInventoryValue(row, "inv-age-0-to-90-days")
@@ -3833,9 +3789,18 @@ const buildInventoryInsightsFromResponses = (
     donutSku: "Overall",
     donutData,
     donutTotalUnits,
-    trendSelectedBucket,
+
+    // ✅ always all now
+    trendSelectedBucket: "all",
+
+    // ✅ not used anymore by the chart, but keep it for type compatibility
     trendData,
-    trendLineColor: selectedTrendBucket.color,
+
+    // ✅ not used anymore by the chart, but keep it for type compatibility
+    trendLineColor: "#B75A5A",
+
+    // ✅ this is what the chart will use
+    trendAllSeriesData,
 
     trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
       label: bucket.label,
@@ -3850,16 +3815,16 @@ const buildInventoryInsightsFromResponses = (
 
 
 const donutData: DonutChartItem[] = [
-  { bucket: "0–90 Days", units: 120, color: "#B8C78C" },
-  { bucket: "91–180 Days", units: 240, color: "#7B9A6D" },
-  { bucket: "181–270 Days", units: 180, color: "#FDD36F" },
-  { bucket: "271–365 Days", units: 90, color: "#ED9F50" },
+  { bucket: "0–90 Days", units: 120, color: "#7B9A6D" },
+  { bucket: "91–180 Days", units: 240, color: "#FDD36F" },
+  { bucket: "181–270 Days", units: 180, color: "#ED9F50" },
+  { bucket: "271–365 Days", units: 90, color: "#C49466" },
   { bucket: "365+ Days", units: 130, color: "#B75A5A" },
 ];
 
 const donutTotalUnits = 760;
 
-const trendSelectedBucket = "365+ Days";
+const trendSelectedBucket = "all";
 
 const trendData: AgeingTrendItem[] = [
   { label: "Jan", value: 80 },
@@ -3871,6 +3836,46 @@ const trendData: AgeingTrendItem[] = [
   { label: "Jul", value: 260 },
   { label: "Aug", value: 210 },
 ];
+
+const trendAllSeriesData = [
+  {
+    bucketValue: "181-270 days",
+    bucketLabel: "181–270 Days",
+    color: "#FDD36F",
+    data: [
+      { label: "Jan", value: 40 },
+      { label: "Feb", value: 70 },
+      { label: "Mar", value: 110 },
+      { label: "Apr", value: 150 },
+      { label: "May", value: 170 },
+      { label: "Jun", value: 160 },
+      { label: "Jul", value: 145 },
+      { label: "Aug", value: 130 },
+    ],
+  },
+  {
+    bucketValue: "271-365 days",
+    bucketLabel: "271–365 Days",
+    color: "#ED9F50",
+    data: [
+      { label: "Jan", value: 60 },
+      { label: "Feb", value: 90 },
+      { label: "Mar", value: 120 },
+      { label: "Apr", value: 180 },
+      { label: "May", value: 210 },
+      { label: "Jun", value: 200 },
+      { label: "Jul", value: 190 },
+      { label: "Aug", value: 170 },
+    ],
+  },
+  {
+    bucketValue: "365+ days",
+    bucketLabel: "365+ Days",
+    color: "#B75A5A",
+    data: trendData,
+  },
+];
+
 
 const trendLineColor = "#B75A5A";
 
@@ -3889,7 +3894,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "high_alert",
     label: "High Alert",
-    description: "Critical inventory alert SKUs",
+    description: "Shipment Required",
     count: 3,
     displayValue: 3,
     skuCount: 3,
@@ -3905,7 +3910,7 @@ const inventoryActions: ActionCardItem[] = [
     displayValue: 3,
     skuCount: 3,
     unitCount: 4,
-    color: "#7B9A6D",
+    color: "#FDD36F",
     backgroundColor: "#ffffff",
   },
   {
@@ -3933,7 +3938,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated next-month storage cost",
+    description: "Estimated currnt month storage cost",
     count: 11,
     displayValue: "£428.12",
     deltaValue: "£194.42",
@@ -3955,14 +3960,14 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "high_alert",
     label: "High Alert",
-    description: "Critical inventory alert SKUs",
+    description: "Shipment Required",
     color: "#B75A5A",
   },
   {
     key: "discount",
     label: "Discount",
     description: "Inventory in 91–180 days bucket",
-    color: "#7B9A6D",
+    color: "#FDD36F",
   },
   {
     key: "liquidate",
@@ -3979,7 +3984,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated next-month storage cost",
+    description: "Estimated current month storage cost",
     color: "#C49466",
   },
 ];
@@ -4166,6 +4171,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           trendSelectedBucket,
           trendData,
           trendLineColor,
+
+          // ✅ add this
+          trendAllSeriesData,
 
           trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
             label: bucket.label,
@@ -6671,9 +6679,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         donutSku: selectedDonutSku,
         donutData,
         donutTotalUnits,
-        trendSelectedBucket,
+
+        trendSelectedBucket: "all",
         trendData,
-        trendLineColor,
+        trendLineColor: "#B75A5A",
+
+        // ✅ required by InventoryInsightsData
+        trendAllSeriesData,
 
         trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
           label: bucket.label,
@@ -6777,17 +6789,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           )
           .map((result) => result.value);
 
-        // if (!fulfilledInventory.length) {
-        //   const firstError = inventoryResults.find(
-        //     (result): result is PromiseRejectedResult =>
-        //       result.status === "rejected"
-        //   );
-
-        //   throw new Error(
-        //     firstError?.reason?.message || "No inventory data found"
-        //   );
-        // }
-
         if (!fulfilledInventory.length) {
           throw new Error("No inventory data found");
         }
@@ -6804,7 +6805,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             fulfilledAgeSummary,
             effectiveCountryName,
             effectiveHomeCurrency,
-            selectedAgeingTrendBucket
+            "all"
           )
         );
       } finally {
@@ -8673,6 +8674,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   trendData={inventoryInsightsData.trendData}
                   trendLineColor={inventoryInsightsData.trendLineColor}
                   trendBucketOptions={inventoryInsightsData.trendBucketOptions}
+                  trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
                   onTrendBucketChange={setSelectedAgeingTrendBucket}
                   actions={inventoryInsightsData.actions}
                   actionLogic={inventoryInsightsData.actionLogic}

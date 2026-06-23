@@ -70,7 +70,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                         key={action.key}
                         className="rounded-lg border border-t-4 px-3 py-2.5 text-center"
                         style={{
-                            backgroundColor: action.backgroundColor || "#ffffff",
+                            backgroundColor: "#ffffff",
                             borderColor: action.color,
                             borderTopColor: action.color,
                         }}
@@ -115,11 +115,40 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                         : `${action.count.toLocaleString()} SKUs`}
                                 </span>
 
-                                {typeof action.unitCount === "number" && (
+                                {/* {typeof action.unitCount === "number" && (
                                     <span className="text-xs font-semibold leading-none">
                                         {action.unitCount.toLocaleString()} Units
                                     </span>
+                                )} */}
+
+                                {typeof action.unitCount === "number" && (
+                                    <span className="text-xs font-semibold leading-none">
+                                        {action.unitCount.toLocaleString()}{" "}
+                                        {action.key === "high_alert" ? "Units Remaining" : "Units"}
+                                    </span>
                                 )}
+
+                                {/* {action.key === "high_alert" ? (
+                                    <span className="text-xl font-extrabold leading-none">
+                                        {typeof action.skuCount === "number"
+                                            ? `${action.skuCount.toLocaleString()} SKUs`
+                                            : `${action.count.toLocaleString()} SKUs`}
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className="text-xl font-extrabold leading-none">
+                                            {typeof action.skuCount === "number"
+                                                ? `${action.skuCount.toLocaleString()} SKUs`
+                                                : `${action.count.toLocaleString()} SKUs`}
+                                        </span>
+
+                                        {typeof action.unitCount === "number" && (
+                                            <span className="text-xs font-semibold leading-none">
+                                                {action.unitCount.toLocaleString()} Units
+                                            </span>
+                                        )}
+                                    </>
+                                )} */}
                             </div>
                         )}
 

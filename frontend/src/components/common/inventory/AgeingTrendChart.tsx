@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { ApexOptions } from "apexcharts";
 import PageBreadcrumb from "../PageBreadCrumb";
 
-const ReactApexChart = dynamic(() => import("react-apexcharts"), {
+const ReactECharts = dynamic(() => import("echarts-for-react"), {
   ssr: false,
 });
 
@@ -20,183 +19,223 @@ export type AgeingTrendBucketOption = {
   color: string;
 };
 
+export type AgeingTrendAllSeriesItem = {
+  bucketValue: string;
+  bucketLabel: string;
+  color: string;
+  data: AgeingTrendItem[];
+};
+
 type AgeingTrendChartProps = {
   title?: string;
   subtitle?: string;
-  selectedBucket: string;
-  data: AgeingTrendItem[];
-  lineColor: string;
-  showChange?: boolean;
+  allSeriesData?: AgeingTrendAllSeriesItem[];
+};
 
-  bucketOptions?: AgeingTrendBucketOption[];
-  onBucketChange?: (bucketValue: string) => void;
+const getShortMonth = (label: string) => {
+  const monthPart = label.split(" ")[0];
+  const date = new Date(`${monthPart} 1, 2000`);
+
+  if (Number.isNaN(date.getTime())) {
+    return monthPart;
+  }
+
+  return date.toLocaleString("default", {
+    month: "short",
+  });
 };
 
 const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   title = "Ageing Trend Over Time",
-  subtitle = "Track how old inventory is increasing or decreasing",
-  selectedBucket,
-  data,
-  lineColor,
-  showChange = true,
-  bucketOptions = [],
-  onBucketChange,
+  allSeriesData = [],
 }) => {
+  const echartsInstanceRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const currentMonthShort = new Date().toLocaleString("default", {
     month: "short",
   });
 
-  const getShortMonth = (label: string) => {
-    const monthPart = label.split(" ")[0];
-
-    const date = new Date(`${monthPart} 1, 2000`);
-
-    if (Number.isNaN(date.getTime())) {
-      return monthPart;
-    }
-
-    return date.toLocaleString("default", {
-      month: "short",
+  const filterCurrentMonth = (items: AgeingTrendItem[]) => {
+    return items.filter((item) => {
+      const itemMonth = getShortMonth(item.label).toLowerCase();
+      return itemMonth !== currentMonthShort.toLowerCase();
     });
   };
 
-  const chartData = useMemo(() => {
-    return data.filter((item) => {
-      const itemMonth = getShortMonth(item.label).toLowerCase();
+  const allChartSeriesData = useMemo(() => {
+    return allSeriesData.map((bucket) => ({
+      ...bucket,
+      data: filterCurrentMonth(bucket.data),
+    }));
+  }, [allSeriesData, currentMonthShort]);
 
-      return itemMonth !== currentMonthShort.toLowerCase();
+  const categories = useMemo(() => {
+    if (allChartSeriesData.length > 0) {
+      return allChartSeriesData[0].data.map((item) => getShortMonth(item.label));
+    }
+
+    return [];
+  }, [allChartSeriesData]);
+
+  const chartSeries = useMemo(() => {
+    return allChartSeriesData.map((bucket) => ({
+      name: bucket.bucketLabel,
+      color: bucket.color,
+      data: bucket.data.map((item) => Number(item.value || 0)),
+    }));
+  }, [allChartSeriesData]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => {
+      try {
+        echartsInstanceRef.current?.resize();
+      } catch { }
     });
-  }, [data, currentMonthShort]);
 
-  const firstValue = chartData[0]?.value ?? 0;
-  const lastValue = chartData[chartData.length - 1]?.value ?? 0;
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  const changePercent =
-    firstValue > 0 ? ((lastValue - firstValue) / firstValue) * 100 : 0;
-
-  const categories = useMemo(
-    () => chartData.map((item) => getShortMonth(item.label)),
-    [chartData]
-  );
-
-  const series = useMemo(
-    () => [
-      {
-        name: selectedBucket,
-        data: chartData.map((item) => Number(item.value || 0)),
-      },
-    ],
-    [chartData, selectedBucket]
-  );
-
-  const options: ApexOptions = useMemo(
+  const option = useMemo(
     () => ({
-      legend: {
-        show: false,
-        position: "top",
-        horizontalAlign: "left",
-      },
-      colors: [lineColor || "#465FFF"],
-      chart: {
-        fontFamily: "Outfit, sans-serif",
-        height: "100%",
-        type: "area",
-        toolbar: {
-          show: false,
-        },
-        zoom: {
-          enabled: false,
-        },
-      },
-      stroke: {
-        curve: "smooth",
-        width: 2,
-      },
-      fill: {
-        type: "gradient",
-        gradient: {
-          opacityFrom: 0.35,
-          opacityTo: 0,
-        },
-      },
-      markers: {
-        size: 0,
-        strokeColors: "#fff",
-        strokeWidth: 2,
-        hover: {
-          size: 6,
-        },
-      },
-      grid: {
-        borderColor: "#E5E7EB",
-        xaxis: {
-          lines: {
-            show: false,
-          },
-        },
-        yaxis: {
-          lines: {
-            show: true,
-          },
-        },
-      },
-      dataLabels: {
-        enabled: false,
-      },
       tooltip: {
-        enabled: true,
-        y: {
-          formatter: (value) => `${Number(value).toLocaleString()} units`,
-          title: {
-            formatter: () => selectedBucket,
-          },
+        trigger: "axis",
+        textStyle: {
+          fontSize: 12,
+          color: "#414042",
+        },
+        formatter: (params: any) => {
+          const header = params?.[0]?.axisValue ?? "";
+
+          const lines = (params || []).map((p: any) => {
+            const value =
+              p?.data == null ? "-" : Number(p.data).toLocaleString();
+
+            return `
+              <div style="font-size:12px; line-height:1.4; color:#414042;">
+                <span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${p.color};border-radius:0;"></span>
+                <span>${p.seriesName}: </span>
+                <span style="color:#414042;">${value} units</span>
+              </div>
+            `;
+          });
+
+          return `
+            <div style="font-size:12px; color:#414042;">
+              <div style="font-weight:600; margin-bottom:4px; color:#414042;">
+                ${header}
+              </div>
+              ${lines.join("")}
+            </div>
+          `;
         },
       },
-      xaxis: {
+
+      legend: {
+        show: true,
+        top: 10,
+        left: "left",
+        orient: "horizontal",
+        icon: "rect",
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 14,
+        textStyle: {
+          fontSize: 12,
+          color: "#6B7280",
+          padding: [0, 6, 0, 6],
+        },
+        data: chartSeries.map((series) => series.name),
+      },
+
+      grid: {
+        left: 46,
+        right: 16,
+        top: 62,
+        bottom: 44,
+      },
+
+      xAxis: {
         type: "category",
-        categories,
-        axisBorder: {
-          show: false,
+        data: categories,
+        boundaryGap: false,
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
         },
-        axisTicks: {
-          show: false,
+        axisTick: {
+          lineStyle: {
+            color: "#D1D5DB",
+          },
         },
-        tooltip: {
-          enabled: false,
+        axisLabel: {
+          color: "#6B7280",
+          fontSize: 12,
         },
-        labels: {
-          rotate: 0,
-          trim: true,
-          style: {
-            fontSize: "12px",
-            colors: "#6B7280",
+      },
+
+      yAxis: {
+        type: "value",
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
+        },
+        axisLabel: {
+          margin: 2,
+          color: "#6B7280",
+          fontSize: 12,
+          formatter: (value: number) => Number(value).toLocaleString(),
+        },
+        splitLine: {
+          lineStyle: {
+            color: "#E5E7EB",
           },
         },
       },
-      yaxis: {
-        labels: {
-          style: {
-            fontSize: "12px",
-            colors: ["#6B7280"],
+
+      series: chartSeries.map((series) => ({
+        name: series.name,
+        type: "line",
+        smooth: true,
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: 7,
+        emphasis: {
+          scale: true,
+          itemStyle: {
+            color: series.color,
           },
-          formatter: (value) => {
-            return Number(value).toLocaleString();
-          },
+          symbolSize: 11,
         },
-        title: {
-          text: "",
-          style: {
-            fontSize: "0px",
-          },
+        lineStyle: {
+          color: series.color,
+          width: 2,
         },
-      },
+        itemStyle: {
+          color: series.color,
+          borderWidth: 0,
+        },
+        areaStyle: {
+          opacity: 0.08,
+          color: series.color,
+        },
+        data: series.data,
+      })),
     }),
-    [categories, lineColor, selectedBucket]
+    [categories, chartSeries]
   );
 
   return (
-   <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px] min-[1700px]:min-h-[360px] min-[1700px]:p-4">
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="shrink-0 flex items-center gap-3 w-full">
         <PageBreadcrumb
           pageTitle={title}
           variant="page"
@@ -204,36 +243,52 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           textSize="2xl"
         />
 
-        <div className="flex w-full flex-col gap-2 text-sm sm:flex-row sm:items-center xl:w-auto xl:justify-end">
-          <span className="whitespace-nowrap font-medium text-slate-700">
-            Ageing Bucket
-          </span>
+        {/* <div
+          className="flex items-center shrink-0"
+          data-no-expand
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <span className="whitespace-nowrap font-medium text-slate-700">
+              Ageing Bucket
+            </span>
 
-          <select
-            value={selectedBucket}
-            onChange={(e) => onBucketChange?.(e.target.value)}
-            className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20 sm:w-[200px]"
-          >
-            {bucketOptions.length > 0 ? (
-              bucketOptions.map((bucket) => (
-                <option key={bucket.value} value={bucket.value}>
-                  {bucket.label}
-                </option>
-              ))
-            ) : (
-              <option value={selectedBucket}>{selectedBucket}</option>
-            )}
-          </select>
-        </div>
+            <select
+              value={selectedBucket}
+              onChange={(e) => onBucketChange?.(e.target.value)}
+              className="h-10 min-w-[200px] rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
+            >
+              <option value="all">All</option>
+
+              {bucketOptions.length > 0 ? (
+                bucketOptions.map((bucket) => (
+                  <option key={bucket.value} value={bucket.value}>
+                    {bucket.label}
+                  </option>
+                ))
+              ) : (
+                <option value={selectedBucket}>{selectedBucket}</option>
+              )}
+            </select>
+          </div>
+        </div> */}
       </div>
 
-      <div className="min-h-0 flex-1 min-[1700px]:h-[260px] min-[1700px]:flex-none">
-        <ReactApexChart
-          options={options}
-          series={series}
-          type="area"
-          height="100%"
-        />
+      <div className="mt-2 flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] overflow-hidden">
+        <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
+          <ReactECharts
+            option={option}
+            style={{ width: "100%", height: "100%" }}
+            opts={{ renderer: "canvas" }}
+            onChartReady={(instance) => {
+              echartsInstanceRef.current = instance;
+              try {
+                instance.resize();
+              } catch { }
+            }}
+          />
+        </div>
       </div>
     </div>
   );
