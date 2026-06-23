@@ -3051,6 +3051,19 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     prev_cm2_profit = sum(safe0(r.get("cm2_profit_prev")) for r in remaining)
     curr_cm2_profit = sum(safe0(r.get("cm2_profit_curr")) for r in remaining)
 
+    # ✅ NEW: Remaining SKUs CM2 profit per unit
+    prev_cm2_profit_per_unit = (
+        round(prev_cm2_profit / prev_qty, 2)
+        if prev_qty
+        else 0.0
+    )
+
+    curr_cm2_profit_per_unit = (
+        round(curr_cm2_profit / curr_qty, 2)
+        if curr_qty
+        else 0.0
+    )
+
     prev_asp = prev_sales / prev_qty if prev_qty else None
     curr_asp = curr_sales / curr_qty if curr_qty else None
 
@@ -3094,6 +3107,11 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
         # ✅ CM2 values for Remaining SKUs card
         "cm2_profit_prev": prev_cm2_profit,
         "cm2_profit_curr": curr_cm2_profit,
+
+        # ✅ NEW
+        "cm2_profit_per_unit_prev": prev_cm2_profit_per_unit,
+        "cm2_profit_per_unit_curr": curr_cm2_profit_per_unit,
+
         "cm2_profit_growth_pct": cm2_profit_growth_pct,
         "cm2_margin_prev": cm2_margin_prev,
         "cm2_margin_curr": cm2_margin_curr,
@@ -3380,6 +3398,22 @@ def build_ai_summary(
         row["cm2_profit_prev"] = round(cm2_profit_prev, 2)
         row["cm2_profit_curr"] = round(cm2_profit_curr, 2)
 
+        # ✅ NEW: CM2 profit per unit
+        quantity_prev = float(safe_float_local(row.get("quantity_prev")) or 0.0)
+        quantity_curr = float(safe_float_local(row.get("quantity_curr")) or 0.0)
+
+        row["cm2_profit_per_unit_prev"] = (
+            round(cm2_profit_prev / quantity_prev, 2)
+            if quantity_prev
+            else 0.0
+        )
+
+        row["cm2_profit_per_unit_curr"] = (
+            round(cm2_profit_curr / quantity_curr, 2)
+            if quantity_curr
+            else 0.0
+        )
+
         row["cm2_margin_prev"] = cm2_margin_prev
         row["cm2_margin_curr"] = cm2_margin_curr
 
@@ -3442,6 +3476,17 @@ def build_ai_summary(
             safe0(remaining_segment_raw.get("cm2_profit_curr")),
             2,
         )
+
+        # ✅ NEW
+        remaining_growth_row["cm2_profit_per_unit_prev"] = round(
+            safe0(remaining_segment_raw.get("cm2_profit_per_unit_prev")),
+            2,
+        )
+        remaining_growth_row["cm2_profit_per_unit_curr"] = round(
+            safe0(remaining_segment_raw.get("cm2_profit_per_unit_curr")),
+            2,
+        )
+
         remaining_growth_row["cm2_profit_growth_pct"] = remaining_segment_raw.get(
             "cm2_profit_growth_pct",
             0.0,
@@ -3453,7 +3498,7 @@ def build_ai_summary(
         remaining_growth_row["cm2_margin_curr"] = remaining_segment_raw.get(
             "cm2_margin_curr",
             0.0,
-        )    
+        )  
 
     # =========================================================
     # ✅ All SKU Action Context

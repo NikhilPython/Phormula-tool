@@ -338,6 +338,10 @@ def build_global_country_recommendations(
                 "current": r.get("cm2_profit_curr", 0),
                 "growth_pct": r.get("cm2_profit_growth_pct", 0),
             },
+            "cm2_profit_per_unit": {
+                "previous": r.get("cm2_profit_per_unit_prev", 0),
+                "current": r.get("cm2_profit_per_unit_curr", 0),
+            },
             "cm2_margin": {
                 "previous": r.get("cm2_margin_prev", 0),
                 "current": r.get("cm2_margin_curr", 0),
@@ -2985,6 +2989,7 @@ def live_mtd_vs_previous():
                 "ads_spend_prev": r.get("ads_spend_prev", 0),
                 "acos_prev": r.get("acos_prev", 0),
                 "cm2_profit_prev": r.get("cm2_profit_prev", 0),
+                "cm2_profit_per_unit_prev": r.get("cm2_profit_per_unit_prev", 0),
                 "cm2_margin_prev": r.get("cm2_margin_prev", 0),
                 "net_sales_prev": r.get("net_sales_prev", 0),
 
@@ -2992,6 +2997,7 @@ def live_mtd_vs_previous():
                 "ads_spend_curr": r.get("ads_spend_curr", 0),
                 "acos_curr": r.get("acos_curr", 0),
                 "cm2_profit_curr": r.get("cm2_profit_curr", 0),
+                "cm2_profit_per_unit_curr": r.get("cm2_profit_per_unit_curr", 0),
                 "cm2_margin_curr": r.get("cm2_margin_curr", 0),
                 "net_sales_curr": r.get("net_sales_curr", 0),
 
@@ -3388,7 +3394,21 @@ def live_mtd_vs_previous():
         # ✅ NEW CM2 totals (portfolio-level)
         total_current_profit_cm2 = total_current_profit - total_current_advertising - total_current_platform_fees
         total_previous_profit_cm2 = total_previous_profit - total_previous_advertising - total_previous_platform_fees
+        
+        total_current_quantity = float(curr_aligned_totals.get("quantity", 0) or 0)
+        total_previous_quantity = float(prev_aligned_totals.get("quantity", 0) or 0)
 
+        total_current_cm2_profit_per_unit = (
+            total_current_profit_cm2 / total_current_quantity
+            if total_current_quantity
+            else 0.0
+        )
+
+        total_previous_cm2_profit_per_unit = (
+            total_previous_profit_cm2 / total_previous_quantity
+            if total_previous_quantity
+            else 0.0
+        )
         # ---------------------------
         # PROFIT % (CM2 Margin %)
         # ---------------------------
@@ -3432,6 +3452,8 @@ def live_mtd_vs_previous():
             "total_previous_profit_cm2": total_previous_profit_cm2,
             "total_current_rembursement_fee": total_current_rembursement_fee,
             "total_previous_rembursement_fee": total_previous_rembursement_fee,
+            "total_current_cm2_profit_per_unit": total_current_cm2_profit_per_unit,
+            "total_previous_cm2_profit_per_unit": total_previous_cm2_profit_per_unit,
         }
         # --- build inventory block ---
         portfolio_inventory_block = render_portfolio_inventory_block(
@@ -3515,6 +3537,16 @@ def live_mtd_vs_previous():
             row["cm2_profit_curr"] = enriched.get(
                 "cm2_profit_curr",
                 row.get("cm2_profit_curr", 0.0),
+            )
+
+            # ✅ NEW: CM2 profit per unit
+            row["cm2_profit_per_unit_prev"] = enriched.get(
+                "cm2_profit_per_unit_prev",
+                row.get("cm2_profit_per_unit_prev", 0.0),
+            )
+            row["cm2_profit_per_unit_curr"] = enriched.get(
+                "cm2_profit_per_unit_curr",
+                row.get("cm2_profit_per_unit_curr", 0.0),
             )
 
             row["cm2_margin_prev"] = enriched.get(
