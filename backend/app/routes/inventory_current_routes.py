@@ -454,24 +454,20 @@ def get_previous_completed_month(today=None):
     return today.month - 1, today.year
 
 
-def get_inventory_current_candidate_months(range_type, month_name=None, quarter=None, year=None):
-    """
-    Returns months in priority order.
-
-    monthly:
-      requested month only
-
-    quarter_months / quarterly:
-      Q2 => june, may, april
-
-    yearly:
-      previous completed month based on current date
-      example: current month June => May
-    """
+def get_inventory_current_candidate_months(range_type, month_name=None, quarter=None, year=None, today=None):
+    
+    today = today or date.today()
 
     range_type = str(range_type or "monthly").strip().lower()
     month_name = str(month_name or "").strip().lower()
     quarter = str(quarter or "").strip().lower()
+
+    year_int = None
+    if year:
+        try:
+            year_int = int(year)
+        except (TypeError, ValueError):
+            year_int = None
 
     if range_type in ("quarter_months", "quarterly", "quarter"):
         if not quarter and month_name:
@@ -486,16 +482,30 @@ def get_inventory_current_candidate_months(range_type, month_name=None, quarter=
             elif month_num in (10, 11, 12):
                 quarter = "q4"
 
-        return QUARTER_MONTHS.get(quarter, [])
+        candidate_months = list(QUARTER_MONTHS.get(quarter, []))
+
+        current_month_name = calendar_month_name[today.month].lower()
+
+        # Skip ongoing/current month only when selected year is current year
+        # and current month belongs to selected quarter.
+        if year_int == today.year and current_month_name in candidate_months:
+            candidate_months = [
+                month
+                for month in candidate_months
+                if month != current_month_name
+            ]
+
+        return candidate_months
 
     if range_type == "yearly":
-        prev_month_num, prev_year = get_previous_completed_month()
+        prev_month_num, prev_year = get_previous_completed_month(today=today)
         return [calendar_month_name[prev_month_num].lower()]
 
     if month_name:
         return [month_name]
 
     return []
+
 
 
 def build_current_inventory_table_name(user_id, country_key, month_name, year):
