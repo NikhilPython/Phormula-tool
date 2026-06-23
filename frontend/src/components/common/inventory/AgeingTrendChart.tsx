@@ -20,6 +20,13 @@ export type AgeingTrendBucketOption = {
   color: string;
 };
 
+export type AgeingTrendAllSeriesItem = {
+  bucketValue: string;
+  bucketLabel: string;
+  color: string;
+  data: AgeingTrendItem[];
+};
+
 type AgeingTrendChartProps = {
   title?: string;
   subtitle?: string;
@@ -30,6 +37,9 @@ type AgeingTrendChartProps = {
 
   bucketOptions?: AgeingTrendBucketOption[];
   onBucketChange?: (bucketValue: string) => void;
+
+  // ✅ new
+  allSeriesData?: AgeingTrendAllSeriesItem[];
 };
 
 const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
@@ -41,6 +51,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   showChange = true,
   bucketOptions = [],
   onBucketChange,
+  allSeriesData = [],
 }) => {
   const currentMonthShort = new Date().toLocaleString("default", {
     month: "short",
@@ -60,13 +71,66 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
     });
   };
 
-  const chartData = useMemo(() => {
-    return data.filter((item) => {
-      const itemMonth = getShortMonth(item.label).toLowerCase();
+  const isAllSelected = selectedBucket === "all";
 
+  const filterCurrentMonth = (items: AgeingTrendItem[]) => {
+    return items.filter((item) => {
+      const itemMonth = getShortMonth(item.label).toLowerCase();
       return itemMonth !== currentMonthShort.toLowerCase();
     });
+  };
+
+  const chartData = useMemo(() => {
+    return filterCurrentMonth(data);
   }, [data, currentMonthShort]);
+
+  const allChartSeriesData = useMemo(() => {
+    return allSeriesData.map((bucket) => ({
+      ...bucket,
+      data: filterCurrentMonth(bucket.data),
+    }));
+  }, [allSeriesData, currentMonthShort]);
+
+  const categories = useMemo(() => {
+    if (isAllSelected && allChartSeriesData.length > 0) {
+      return allChartSeriesData[0].data.map((item) => getShortMonth(item.label));
+    }
+
+    return chartData.map((item) => getShortMonth(item.label));
+  }, [chartData, allChartSeriesData, isAllSelected]);
+
+  const selectedBucketLabel =
+    bucketOptions.find((bucket) => bucket.value === selectedBucket)?.label ||
+    selectedBucket;
+
+  const series = useMemo(() => {
+    if (isAllSelected) {
+      return allChartSeriesData.map((bucket) => ({
+        name: bucket.bucketLabel,
+        data: bucket.data.map((item) => Number(item.value || 0)),
+      }));
+    }
+
+    return [
+      {
+        name: selectedBucketLabel,
+        data: chartData.map((item) => Number(item.value || 0)),
+      },
+    ];
+  }, [
+    chartData,
+    selectedBucketLabel,
+    isAllSelected,
+    allChartSeriesData,
+  ]);
+
+  const chartColors = useMemo(() => {
+    if (isAllSelected) {
+      return allChartSeriesData.map((bucket) => bucket.color);
+    }
+
+    return [lineColor || "#465FFF"];
+  }, [isAllSelected, allChartSeriesData, lineColor]);
 
   const firstValue = chartData[0]?.value ?? 0;
   const lastValue = chartData[chartData.length - 1]?.value ?? 0;
@@ -74,29 +138,14 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   const changePercent =
     firstValue > 0 ? ((lastValue - firstValue) / firstValue) * 100 : 0;
 
-  const categories = useMemo(
-    () => chartData.map((item) => getShortMonth(item.label)),
-    [chartData]
-  );
-
-  const series = useMemo(
-    () => [
-      {
-        name: selectedBucket,
-        data: chartData.map((item) => Number(item.value || 0)),
-      },
-    ],
-    [chartData, selectedBucket]
-  );
-
   const options: ApexOptions = useMemo(
     () => ({
       legend: {
-        show: false,
+        show: isAllSelected,
         position: "top",
         horizontalAlign: "left",
       },
-      colors: [lineColor || "#465FFF"],
+      colors: chartColors,
       chart: {
         fontFamily: "Outfit, sans-serif",
         height: "100%",
@@ -148,7 +197,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         y: {
           formatter: (value) => `${Number(value).toLocaleString()} units`,
           title: {
-            formatter: () => selectedBucket,
+            formatter: (seriesName) => seriesName,
           },
         },
       },
@@ -191,11 +240,11 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         },
       },
     }),
-    [categories, lineColor, selectedBucket]
+    [categories, chartColors, selectedBucket, isAllSelected]
   );
 
   return (
-   <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px] min-[1700px]:min-h-[360px] min-[1700px]:p-4">
+    <div className="flex h-full min-h-[460px] w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:min-h-[620px] min-[1700px]:min-h-[360px] min-[1700px]:p-4">
       <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <PageBreadcrumb
           pageTitle={title}
@@ -208,12 +257,13 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           <span className="whitespace-nowrap font-medium text-slate-700">
             Ageing Bucket
           </span>
-
           <select
             value={selectedBucket}
             onChange={(e) => onBucketChange?.(e.target.value)}
             className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20 sm:w-[200px]"
           >
+            <option value="all">All</option>
+
             {bucketOptions.length > 0 ? (
               bucketOptions.map((bucket) => (
                 <option key={bucket.value} value={bucket.value}>
