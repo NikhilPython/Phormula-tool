@@ -1697,7 +1697,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
         key: "healthy",
         label: "Healthy",
-        description: "Inventory in 0–90 days bucket",
+        description: "Stock covers 0–90 days",
         color: "#7B9A6D",
     },
     {
@@ -1709,25 +1709,25 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
         key: "discount",
         label: "Discount",
-        description: "Inventory in 91–180 days bucket",
+        description: "Stock aged 91–180 days",
         color: "#FDD36F",
     },
     {
         key: "liquidate",
         label: "Liquidate",
-        description: "Inventory older than 180 days",
+        description: "Stock older than 180 days",
         color: "#ED9F50",
     },
     {
         key: "unfulfillable",
-        label: "Unfulfillable inventory",
-        description: "Remove/Dispose",
+        label: "Unfulfillable",
+        description: "Remove or dispose stock",
         color: "#3A8EA4",
     },
     {
         key: "estimated_storage_cost",
         label: "Estimate Storage",
-        description: "Estimated current month storage cost",
+        description: "Monthly storage estimate",
         color: "#C49466",
     },
 ];
@@ -1743,7 +1743,7 @@ const INVENTORY_ACTION_META: Record<
 > = {
     healthy: {
         label: "Healthy",
-        description: "Inventory in 0–90 days bucket",
+        description: "Stock covers 0–90 days",
         color: "#7B9A6D",
         backgroundColor: "#ffffff",
     },
@@ -1755,25 +1755,25 @@ const INVENTORY_ACTION_META: Record<
     },
     discount: {
         label: "Discount",
-        description: "Inventory in 91–180 days bucket",
+        description: "Stock aged 91–180 days",
         color: "#FDD36F",
         backgroundColor: "#ffffff",
     },
     liquidate: {
         label: "Liquidate",
-        description: "Inventory older than 180 days",
+        description: "Stock older than 180 days",
         color: "#ED9F50",
         backgroundColor: "#ffffff",
     },
     unfulfillable: {
-        label: "Unfulfillable inventory",
-        description: "Remove/Dispose",
+        label: "Unfulfillable",
+        description: "Remove or dispose stock",
         color: "#3A8EA4",
         backgroundColor: "#ffffff",
     },
     estimated_storage_cost: {
         label: "Estimate Storage",
-        description: "Estimated current month storage cost",
+        description: "Monthly storage estimate",
         color: "#C49466",
         backgroundColor: "#ffffff",
     },
