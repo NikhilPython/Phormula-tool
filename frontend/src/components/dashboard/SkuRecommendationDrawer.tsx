@@ -104,6 +104,8 @@ const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "cm2 profit",
+  "cm2 profit per unit",
   "cm1 profit",
   "cm1 profit per unit",
 ];
