@@ -3186,7 +3186,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
   },
 ];
@@ -3232,7 +3232,7 @@ const INVENTORY_ACTION_META: Record<
   },
   estimated_storage_cost: {
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
     backgroundColor: "#ffffff",
   },
@@ -3938,7 +3938,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated currnt month storage cost",
+    description: "Monthly storage estimate",
     count: 11,
     displayValue: "£428.12",
     deltaValue: "£194.42",
@@ -3984,7 +3984,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
   },
 ];

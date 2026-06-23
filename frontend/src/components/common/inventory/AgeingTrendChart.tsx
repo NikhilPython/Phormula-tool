@@ -153,10 +153,10 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
       },
 
       grid: {
-        left: 46,
-        right: 16,
-        top: 62,
-        bottom: 44,
+        left: 40,
+        right: 12,
+        top: 48,
+        bottom: 32,
       },
 
       xAxis: {
@@ -234,7 +234,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   );
 
   return (
-    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 xl:p-5">
       <div className="shrink-0 flex items-center gap-3 w-full">
         <PageBreadcrumb
           pageTitle={title}
@@ -275,7 +275,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         </div> */}
       </div>
 
-      <div className="mt-2 flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] overflow-hidden">
+      <div className="mt-1 flex-1 min-h-[220px] md:min-h-[240px] lg:min-h-[260px] xl:min-h-[280px] 2xl:min-h-[340px] overflow-hidden">
         <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
           <ReactECharts
             option={option}
