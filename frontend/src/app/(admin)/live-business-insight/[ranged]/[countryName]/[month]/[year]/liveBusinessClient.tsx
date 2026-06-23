@@ -3,9 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from "xlsx-js-style";
-import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import { IoDownload, IoRefresh } from 'react-icons/io5';
-import { BsStars } from 'react-icons/bs';
 import { FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import Loader from '@/components/loader/Loader';
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
@@ -16,7 +14,6 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { motion } from "framer-motion";
 import SkuRecommendationDrawer from '@/components/dashboard/SkuRecommendationDrawer';
-import InventoryInsightsSection from "@/components/businessInsight/InventoryInsightsSection";
 import {
   exportSkuAnalysisMtdExcel
 } from "@/lib/excel/exportCurrentInventoryExcel";
@@ -116,6 +113,10 @@ interface SkuItem {
     value: number;
   };
   [key: string]: any;
+  cm2_profit_curr?: number;
+cm2_profit_prev?: number;
+cm2_profit_per_unit_curr?: number;
+cm2_profit_per_unit_prev?: number;
 }
 
 interface CategorizedGrowth {
@@ -163,7 +164,7 @@ interface PeriodInfo {
 
 interface ApiResponse {
   message?: string;
-   ai_last_refreshed_at?: {
+  ai_last_refreshed_at?: {
     iso?: string | null;
     display?: string | null;
     date?: string | null;
@@ -414,7 +415,7 @@ export default function LiveBusinessClient({
         const rate = Number(row?.conversion_rate);
         return Number.isFinite(rate) && rate > 0 ? rate : null;
       };
-
+      
       const getInverseRate = (from: string, to: string) => {
         const inverse = getDirectRate(to, from);
         if (!inverse || inverse <= 0) return null;
@@ -545,6 +546,151 @@ export default function LiveBusinessClient({
     };
   }, [displayCurrency]);
 
+  const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string" && value.trim() === "") return false;
+
+  const n = Number(value);
+  return Number.isFinite(n);
+};
+
+const getPctGrowth = (prevValue: any, currValue: any) => {
+  const prev = Number(prevValue || 0);
+  const curr = Number(currValue || 0);
+
+  if (!prev) return 0;
+
+  return ((curr - prev) / Math.abs(prev)) * 100;
+};
+
+const hasCm2ProfitData = (row: any) => {
+  return (
+    hasValue(row?.cm2_profit_curr) &&
+    hasValue(row?.cm2_profit_per_unit_curr)
+  );
+};
+
+const formatMetricValueWithGrowth = (
+  actualValue: number,
+  growthValue: number,
+  type: "money" | "number" = "money"
+) => {
+  const sign = growthValue > 0 ? "+" : "";
+  const growthText = `${sign}${growthValue.toFixed(2)}%`;
+
+  const mainValue =
+    type === "number"
+      ? Number(actualValue || 0).toLocaleString()
+      : formatDisplayAmount(
+          convertToDisplayCurrency(Number(actualValue || 0), sourceCurrency)
+        );
+
+  return `${mainValue} (${growthText})`;
+};
+
+const buildProfitMetricCards = (
+  item: any,
+  getGrowth?: (key: string) => number
+) => {
+  if (hasCm2ProfitData(item)) {
+    const cm2ProfitCurr = Number(item?.cm2_profit_curr || 0);
+    const cm2ProfitPrev = Number(item?.cm2_profit_prev || 0);
+
+    const cm2ProfitPerUnitCurr = Number(item?.cm2_profit_per_unit_curr || 0);
+    const cm2ProfitPerUnitPrev = Number(item?.cm2_profit_per_unit_prev || 0);
+
+    const cm2ProfitGrowth = hasValue(item?.cm2_profit_growth_pct)
+  ? Number(item.cm2_profit_growth_pct)
+  : getPctGrowth(cm2ProfitPrev, cm2ProfitCurr);
+    const cm2ProfitPerUnitGrowth = getPctGrowth(
+      cm2ProfitPerUnitPrev,
+      cm2ProfitPerUnitCurr
+    );
+
+    return [
+      {
+        label: "CM2 profit",
+        value: formatMetricValueWithGrowth(
+          cm2ProfitCurr,
+          cm2ProfitGrowth,
+          "money"
+        ),
+        color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+      },
+      {
+        label: "CM2 profit per unit",
+        value: formatMetricValueWithGrowth(
+          cm2ProfitPerUnitCurr,
+          cm2ProfitPerUnitGrowth,
+          "money"
+        ),
+        color: cm2ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+      },
+    ];
+  }
+
+  const cm1ProfitCurr = Number(
+    item?.profit_month2 ??
+      item?.profit_curr ??
+      item?.profit ??
+      0
+  );
+
+  const cm1ProfitPerUnitCurr = Number(
+    item?.unit_wise_profitability_month2 ??
+      item?.unit_wise_profitability_curr ??
+      item?.unit_wise_profitability ??
+      0
+  );
+
+  const cm1ProfitGrowth = getGrowth?.("CM1 Profit Impact") ?? 0;
+  const cm1ProfitPerUnitGrowth = getGrowth?.("Profit Per Unit") ?? 0;
+
+  return [
+    {
+      label: "CM1 profit",
+      value: formatMetricValueWithGrowth(
+        cm1ProfitCurr,
+        cm1ProfitGrowth,
+        "money"
+      ),
+      color: cm1ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+    },
+    {
+      label: "CM1 profit per unit",
+      value: formatMetricValueWithGrowth(
+        cm1ProfitPerUnitCurr,
+        cm1ProfitPerUnitGrowth,
+        "money"
+      ),
+      color: cm1ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+    },
+  ];
+};
+
+const replaceProfitMetricsWithCm2IfAvailable = (
+  metrics: { label: string; value: string; color?: string }[],
+  sourceRow: any
+) => {
+  if (!sourceRow || !hasCm2ProfitData(sourceRow)) return metrics;
+
+  const filteredMetrics = metrics.filter((m) => {
+    const label = m.label.trim().toLowerCase();
+
+    return (
+      label !== "cm1 profit" &&
+      label !== "cm1 profit per unit" &&
+      label !== "cm2 profit" &&
+      label !== "cm2 profit per unit"
+    );
+  });
+
+  return [
+    ...filteredMetrics,
+    ...buildProfitMetricCards(sourceRow),
+  ];
+};
+
   const detectCurrencyFromMetric = (raw: string): CurrencyCode => {
     const v = String(raw || "").trim().toUpperCase();
 
@@ -580,9 +726,11 @@ export default function LiveBusinessClient({
       const normalizedLabel = label.trim().toLowerCase();
 
       const formatted =
-        normalizedLabel === "net sales" || normalizedLabel === "cm1 profit"
-          ? formatDisplayAmountNoDecimals(converted)
-          : formatDisplayAmount(converted);
+  normalizedLabel === "net sales" ||
+  normalizedLabel === "cm1 profit" ||
+  normalizedLabel === "cm2 profit"
+    ? formatDisplayAmountNoDecimals(converted)
+    : formatDisplayAmount(converted);
 
       return `${formatted}${percentPart ? ` ${percentPart}` : ""}`;
     };
@@ -610,9 +758,6 @@ export default function LiveBusinessClient({
   const [allActionRows, setAllActionRows] = useState<SkuItem[]>([]);
   const [remainingSkusAggregate, setRemainingSkusAggregate] = useState<SkuItem | null>(null);
 
-  const getCurrencySymbolForExcel = () => {
-    return currencyCodeToSymbol(displayCurrency);
-  };
 
   const titleCountry = useMemo(() => {
     const c = (countryName || "").toLowerCase();
@@ -658,7 +803,7 @@ export default function LiveBusinessClient({
   const [error, setError] = useState<string | null>(null);
   const [portfolioRecommendation, setPortfolioRecommendation] = useState<string>("");
   const [aiLastRefreshedAt, setAiLastRefreshedAt] = useState<string>("");
-const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
+  const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
 
   // overall bullets from backend
   const [summaryText, setSummaryText] = useState<string>("");
@@ -723,19 +868,6 @@ const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
   };
 
 
-  const getMonthYearFromLabel = (label?: string) => {
-    if (!label) return { month: '', year: '' };
-    const parts = label.split(' ');
-    return {
-      month: parts[0] ?? '',
-      year: parts[1] ?? '',
-    };
-  };
-
-  const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
-  const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
-
-
   const splitIntoPoints = (value: string): string[] => {
     if (!value) return [];
 
@@ -782,15 +914,6 @@ const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
       advertisingPoints: splitIntoPoints(adsText),
       inventoryPoints: splitIntoPoints(invText),
     };
-  };
-
-
-
-  const fmtPct = (v?: any) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return "";
-    const sign = n > 0 ? "+" : "";
-    return `${sign}${n.toFixed(2)}%`;
   };
 
   const buildMetricsForSku = (item: SkuItem) => {
@@ -870,35 +993,7 @@ const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
       color: getGrowth("ASP Growth") < 0 ? "#FF5C5C" : "#5EA68E",
     });
 
-    m.push({
-      label: "CM1 profit",
-      value: formatValueWithGrowth(
-        Number(
-          (item as any).profit_month2 ??
-          (item as any).profit_curr ??
-          item.profit ??
-          0
-        ),
-        getGrowth("CM1 Profit Impact"),
-        "money"
-      ),
-      color: getGrowth("CM1 Profit Impact") < 0 ? "#FF5C5C" : "#5EA68E",
-    });
-
-    m.push({
-      label: "CM1 profit per unit",
-      value: formatValueWithGrowth(
-        Number(
-          (item as any).unit_wise_profitability_month2 ??
-          (item as any).unit_wise_profitability_curr ??
-          item.unit_wise_profitability ??
-          0
-        ),
-        getGrowth("Profit Per Unit"),
-        "money"
-      ),
-      color: getGrowth("Profit Per Unit") < 0 ? "#FF5C5C" : "#5EA68E",
-    });
+   m.push(...buildProfitMetricCards(item, getGrowth));
 
     const coverageRatio = Number(
       (item as any).coverage_ratio_months ??
@@ -1027,24 +1122,6 @@ const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
         )
         .filter(Boolean),
 
-      showChart: true,
-    };
-  };
-
-  const buildSelectedRecFromInsight = (
-    item: SkuItem | null,
-    insightText: string,
-    productName: string
-  ) => {
-    const sections = extractSections(insightText || "");
-
-    return {
-      productName: productName || item?.product_name || "Details",
-      metrics: item ? buildMetricsForSku(item) : [],
-      journeyPoints: sections.journeyPoints,
-      recommendationPoints: sections.recommendationPoints,
-      advertisingPoints: sections.advertisingPoints,
-      inventoryPoints: sections.inventoryPoints,
       showChart: true,
     };
   };
@@ -1409,18 +1486,18 @@ const [manualAiRefreshing, setManualAiRefreshing] = useState<boolean>(false);
     return parsePortfolioInventoryBlock(portfolioInventoryBlock);
   }, [portfolioInventoryBlock]);
 
-const fetchLiveBi = async (
-  generateInsights: boolean = false,
-  manualAiRefresh: boolean = false
-) => {
-  setError(null);
+  const fetchLiveBi = async (
+    generateInsights: boolean = false,
+    manualAiRefresh: boolean = false
+  ) => {
+    setError(null);
 
-  if (!generateInsights && !manualAiRefresh) {
-    setSkuInsights({});
-    setSelectedSku(null);
-    setModalOpen(false);
-    setPageLoading(true);
-  }
+    if (!generateInsights && !manualAiRefresh) {
+      setSkuInsights({});
+      setSelectedSku(null);
+      setModalOpen(false);
+      setPageLoading(true);
+    }
 
     try {
       const liveMtdParams = getLiveMtdParams({
@@ -1430,23 +1507,23 @@ const fetchLiveBi = async (
         endDay,
       });
 
-     const res = await api.get<ApiResponse>('/live_mtd_bi', {
-  params: normalizedCountry === "global"
-    ? {
-      countryName: "global",
-      ...liveMtdParams,
-      generate_ai_insights: "false",
-      manual_ai_refresh: manualAiRefresh ? "true" : "false",
-    }
-    : {
-      countryName: normalizedCountry,
-      ranged,
-      month,
-      year,
-      generate_ai_insights: generateInsights ? "true" : "false",
-      manual_ai_refresh: manualAiRefresh ? "true" : "false",
-    },
-});
+      const res = await api.get<ApiResponse>('/live_mtd_bi', {
+        params: normalizedCountry === "global"
+          ? {
+            countryName: "global",
+            ...liveMtdParams,
+            generate_ai_insights: "false",
+            manual_ai_refresh: manualAiRefresh ? "true" : "false",
+          }
+          : {
+            countryName: normalizedCountry,
+            ranged,
+            month,
+            year,
+            generate_ai_insights: generateInsights ? "true" : "false",
+            manual_ai_refresh: manualAiRefresh ? "true" : "false",
+          },
+      });
 
       setAllActionRows(res.data.all_action_rows || []);
       setRemainingSkusAggregate(res.data.remaining_skus_aggregate || null);
@@ -1489,10 +1566,10 @@ const fetchLiveBi = async (
       setInventorySummary(inventoryFromApi);
       setRemainingSkusBlock(remainingBlock);
       setPortfolioRecommendation(portfolioRecFromApi);
-setPortfolioInventoryBlock(portfolioInventoryFromApi);
-setObjectiveContext(res.data.objective_context || null);
-setAiLastRefreshedAt(res.data.ai_last_refreshed_at?.display || "");
-setInsightDate(getTodayKey());
+      setPortfolioInventoryBlock(portfolioInventoryFromApi);
+      setObjectiveContext(res.data.objective_context || null);
+      setAiLastRefreshedAt(res.data.ai_last_refreshed_at?.display || "");
+      setInsightDate(getTodayKey());
 
       const liveInsights = normalizedCountry === "global"
         ? buildGlobalSkuInsights(res.data)
@@ -1507,9 +1584,9 @@ setInsightDate(getTodayKey());
         err?.response?.data?.error ||
         'An error occurred while fetching live BI data.'
       );
-   } finally {
-  if (!generateInsights && !manualAiRefresh) setPageLoading(false);
-}
+    } finally {
+      if (!generateInsights && !manualAiRefresh) setPageLoading(false);
+    }
   };
 
   // useEffect(() => {
@@ -1572,39 +1649,39 @@ setInsightDate(getTodayKey());
   // };
 
   const analyzeSkus = async () => {
-  setLoadingInsight(true);
-  try {
-    if (onGenerateInsights) {
-      await onGenerateInsights();
-      return;
+    setLoadingInsight(true);
+    try {
+      if (onGenerateInsights) {
+        await onGenerateInsights();
+        return;
+      }
+      await fetchLiveBi(normalizedCountry === "global" ? false : true);
+    } catch (err: any) {
+      console.error('generate insights error:', err?.response?.data || err.message);
+    } finally {
+      setLoadingInsight(false);
     }
-    await fetchLiveBi(normalizedCountry === "global" ? false : true);
-  } catch (err: any) {
-    console.error('generate insights error:', err?.response?.data || err.message);
-  } finally {
-    setLoadingInsight(false);
-  }
-};
+  };
 
-const handleManualAiRefresh = async () => {
-  setManualAiRefreshing(true);
-  setError(null);
+  const handleManualAiRefresh = async () => {
+    setManualAiRefreshing(true);
+    setError(null);
 
-  try {
-    // Refresh only cached AI summary + recommendations.
-    // generate_ai_insights stays false, manual_ai_refresh becomes true.
-    await fetchLiveBi(false, true);
-  } catch (err: any) {
-    console.error("manual ai refresh error:", err?.response?.data || err.message);
-    setError(
-      err?.response?.data?.error ||
-      err?.response?.data?.message ||
-      "Failed to refresh AI summary and recommendations."
-    );
-  } finally {
-    setManualAiRefreshing(false);
-  }
-};
+    try {
+      // Refresh only cached AI summary + recommendations.
+      // generate_ai_insights stays false, manual_ai_refresh becomes true.
+      await fetchLiveBi(false, true);
+    } catch (err: any) {
+      console.error("manual ai refresh error:", err?.response?.data || err.message);
+      setError(
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Failed to refresh AI summary and recommendations."
+      );
+    } finally {
+      setManualAiRefreshing(false);
+    }
+  };
 
   // =========================
   // Insight helpers
@@ -1639,49 +1716,6 @@ const handleManualAiRefresh = async () => {
 
   // ---------- TOP SECTION HELPERS (add above exportToExcel) ----------
 
-
-  const buildTopAoA = ({
-    headerCount,
-    title,
-    companyName,
-    brandName,
-    profitColIndex1Based,
-    extraLines = [],
-  }: {
-    headerCount: number;
-    title: string;
-    companyName: string;
-    brandName: string;
-    profitColIndex1Based: number; // Excel-style 1-based
-    extraLines?: string[];
-  }) => {
-    const aoa: any[][] = [];
-
-    // Row 1: Title
-    const titleRow = new Array(headerCount).fill("");
-    titleRow[0] = title || "";
-    aoa.push(titleRow);
-
-    // Row 2: Company left + Brand right (anchored near profit column)
-    const companyBrandRow = new Array(headerCount).fill("");
-    companyBrandRow[0] = `Company Name : ${companyName || ""}`;
-
-    const profit0Based = Math.max(0, profitColIndex1Based - 1);
-    companyBrandRow[Math.min(headerCount - 1, profit0Based)] = `${brandName || ""}`;
-    aoa.push(companyBrandRow);
-
-    // Row 3+: extra lines (Currency/Country/Platform etc.)
-    for (const line of extraLines) {
-      const r = new Array(headerCount).fill("");
-      r[0] = line;
-      aoa.push(r);
-    }
-
-    // blank row
-    aoa.push(new Array(headerCount).fill(""));
-
-    return aoa;
-  };
 
   const applyTopStyles = (
     ws: XLSX.WorkSheet,
@@ -1831,248 +1865,6 @@ const handleManualAiRefresh = async () => {
     headerRows.forEach((r) => applyBoldRow(ws, r));
   };
 
-  const boldTotalRowsByProductColumn = (
-    ws: XLSX.WorkSheet,
-    productColIndex0Based: number = 1,  // col B by default
-    totalLabels: string[] = ["total", "grand total", "others"]
-  ) => {
-    const ref = ws["!ref"];
-    if (!ref) return;
-    const range = XLSX.utils.decode_range(ref);
-
-    for (let R = range.s.r; R <= range.e.r; R++) {
-      const productAddr = XLSX.utils.encode_cell({ r: R, c: productColIndex0Based });
-      const v = String(ws[productAddr]?.v ?? "").trim().toLowerCase();
-      if (!v) continue;
-
-      if (totalLabels.includes(v)) {
-        applyBoldRow(ws, R);
-      }
-    }
-  };
-
-  // =========================
-  // Export to Excel
-  // =========================
-
-  const exportToExcel = (rows: SkuItem[] = [], filename = "sku_analysis.xlsx") => {
-    const currentMonthLabel = month2Label.split(" ")[0] || "Current";
-
-    // ✅ Always export ALL rows, not visible/sliced rows
-    const exportRows =
-      activeTab === "all_skus"
-        ? allSkuRows
-        : cleanSkuRows(getTabRows(activeTab));
-
-    const totalCm1ProfitMonth2 = allSkuRows.reduce(
-      (s, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const totalNetSalesMonth2 = allSkuRows.reduce(
-      (s, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const getGrowthValue = (row: any, key: string) => {
-      const raw = row?.[key];
-      const value = typeof raw === "object" ? raw?.value : raw;
-      const n = Number(value);
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    const fmtPctValue = (value: any) => {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return "0.00%";
-      const sign = n > 0 ? "+" : "";
-      return `${sign}${n.toFixed(2)}%`;
-    };
-
-    const getSalesMix = (row: any) => {
-      const mix =
-        row?.["Sales Mix (Month2)"] ??
-        row?.sales_mix_month2 ??
-        row?.sales_mix_curr ??
-        row?.sales_mix;
-
-      if (mix != null && Number.isFinite(Number(mix))) {
-        return `${Number(mix).toFixed(2)}%`;
-      }
-
-      const ns = convertToDisplayCurrency(
-        row?.net_sales_month2 ?? row?.net_sales_curr ?? row?.net_sales ?? 0,
-        sourceCurrency
-      );
-
-      return totalNetSalesMonth2 > 0
-        ? `${((ns / totalNetSalesMonth2) * 100).toFixed(2)}%`
-        : "0.00%";
-    };
-
-    const getProfitMix = (row: any) => {
-      const profit = convertToDisplayCurrency(
-        row?.profit_month2 ?? row?.profit_curr ?? row?.profit ?? 0,
-        sourceCurrency
-      );
-
-      return totalCm1ProfitMonth2 > 0
-        ? `${((profit / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
-        : "0.00%";
-    };
-
-    type ExcelRow = {
-      "S.No.": number | string;
-      "Product Name": string;
-      [key: string]: string | number;
-    };
-
-    const excelRows: ExcelRow[] = exportRows.map((item, index) => ({
-      "S.No.": index + 1,
-      "Product Name": capitalizeWords(item.product_name || item.sku || "N/A"),
-      [`Sales Mix (${currentMonthLabel})`]: getSalesMix(item),
-      [`Profit Mix (${currentMonthLabel})`]: getProfitMix(item),
-      "Sales Mix Change (%)": fmtPctValue(getGrowthValue(item, "Sales Mix Change")),
-      "Unit Growth (%)": fmtPctValue(getGrowthValue(item, "Unit Growth")),
-      "ASP Growth (%)": fmtPctValue(getGrowthValue(item, "ASP Growth")),
-      "Net Sales Growth (%)": fmtPctValue(
-        getGrowthValue(item, "Sales Growth") || getGrowthValue(item, "Net Sales Growth")
-      ),
-      "CM1 Profit Per Unit (%)": fmtPctValue(getGrowthValue(item, "Profit Per Unit")),
-      "CM1 Profit Impact (%)": fmtPctValue(getGrowthValue(item, "CM1 Profit Impact")),
-    }));
-
-
-    // ✅ Total row
-    const qtyPrev = allSkuRows.reduce(
-      (s: number, r: any) => s + Number(r?.quantity_month1 ?? r?.quantity_prev ?? 0),
-      0
-    );
-
-    const qtyCurr = allSkuRows.reduce(
-      (s: number, r: any) =>
-        s + Number(r?.quantity_month2 ?? r?.quantity_curr ?? r?.quantity ?? 0),
-      0
-    );
-
-    const nsPrev = allSkuRows.reduce(
-      (s: number, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.net_sales_month1 ?? r?.net_sales_prev ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const nsCurr = allSkuRows.reduce(
-      (s: number, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const profitPrev = allSkuRows.reduce(
-      (s: number, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.profit_month1 ?? r?.profit_prev ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const profitCurr = allSkuRows.reduce(
-      (s: number, r: any) =>
-        s +
-        convertToDisplayCurrency(
-          r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0,
-          sourceCurrency
-        ),
-      0
-    );
-
-    const aspPrev = qtyPrev > 0 ? nsPrev / qtyPrev : 0;
-    const aspCurr = qtyCurr > 0 ? nsCurr / qtyCurr : 0;
-
-    const unitProfitPrev = qtyPrev > 0 ? profitPrev / qtyPrev : 0;
-    const unitProfitCurr = qtyCurr > 0 ? profitCurr / qtyCurr : 0;
-
-    const pct = (prev: number, curr: number) =>
-      prev ? ((curr - prev) / prev) * 100 : 0;
-
-    excelRows.push({
-      "S.No.": 0,
-      "Product Name": "Total",
-      [`Sales Mix (${currentMonthLabel})`]: "100.00%",
-      [`Profit Mix (${currentMonthLabel})`]: "100.00%",
-      "Sales Mix Change (%)": "0.00%",
-      "Unit Growth (%)": fmtPctValue(pct(qtyPrev, qtyCurr)),
-      "ASP Growth (%)": fmtPctValue(pct(aspPrev, aspCurr)),
-      "Net Sales Growth (%)": fmtPctValue(pct(nsPrev, nsCurr)),
-      "CM1 Profit Per Unit (%)": fmtPctValue(pct(unitProfitPrev, unitProfitCurr)),
-      "CM1 Profit Impact (%)": fmtPctValue(pct(profitPrev, profitCurr)),
-    });
-
-    const ws = XLSX.utils.json_to_sheet(excelRows);
-
-    // ✅ Column widths
-    ws["!cols"] = [
-      { wch: 8 },
-      { wch: 28 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 26 },
-      { wch: 24 },
-    ];
-
-    // ✅ Style header and total row
-    const range = XLSX.utils.decode_range(ws["!ref"] || "A1:J1");
-
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const headerAddr = XLSX.utils.encode_cell({ r: 0, c: C });
-      if (ws[headerAddr]) {
-        ws[headerAddr].s = {
-          font: { bold: true, color: { rgb: "FFF2C2" } },
-          fill: { fgColor: { rgb: "5EA68E" } },
-          alignment: { horizontal: "center", vertical: "center" },
-        };
-      }
-    }
-
-    const totalRowIndex = excelRows.length;
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c: C });
-      if (ws[addr]) {
-        ws[addr].s = {
-          font: { bold: true },
-          fill: { fgColor: { rgb: "D9D9D9" } },
-          alignment: { horizontal: "center", vertical: "center" },
-        };
-      }
-    }
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "SKU Analysis");
-    XLSX.writeFile(wb, filename);
-  };
-
   // =====================
 
   // =========================
@@ -2188,244 +1980,6 @@ const handleManualAiRefresh = async () => {
   const asGrowth = (v: number | null): GrowthCategory | undefined =>
     v == null ? undefined : { value: v, category: "" };
 
-  const renderFormattedInsight = (raw: string) => {
-    if (!raw) return null;
-
-    const lines = raw
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    const SECTION_ORDER = [
-      'Details',
-      'Observations',
-      'Improvements',
-      'Unit Growth',
-      'ASP',
-      'Sales',
-      'Profit',
-      'Unit Profitability',
-      'Summary',
-    ];
-
-    const LIST_SECTIONS = new Set([
-      'Observations',
-      'Improvements',
-      'Unit Growth',
-      'ASP',
-      'Sales',
-      'Profit',
-      'Unit Profitability',
-    ]);
-
-    const headingOf = (line: string): string | null => {
-      const m =
-        line.match(/^details\s+for/i)
-          ? ['Details']
-          : line.match(/^(observations)\s*:?\s*$/i)
-            ? ['Observations']
-            : line.match(/^(improvements)\s*:?\s*$/i)
-              ? ['Improvements']
-              : line.match(/^(unit\s+growth)\s*:?\s*$/i)
-                ? ['Unit Growth']
-                : line.match(/^(asp)\s*:?\s*$/i)
-                  ? ['ASP']
-                  : line.match(/^(sales)\s*:?\s*$/i)
-                    ? ['Sales']
-                    : line.match(/^(profit)\s*:?\s*$/i)
-                      ? ['Profit']
-                      : line.match(/^(unit\s+profitability)\s*:?\s*$/i)
-                        ? ['Unit Profitability']
-                        : line.match(/^(summary)\s*:?\s*$/i)
-                          ? ['Summary']
-                          : null;
-      return m ? m[0] : null;
-    };
-
-    const sections: Record<string, string[]> = {};
-    let current: string | null = null;
-
-    for (const line of lines) {
-      const hd = headingOf(line);
-      if (hd) {
-        current = hd;
-        if (!sections[current]) sections[current] = [];
-        if (current === 'Details') sections[current].push(line);
-        continue;
-      }
-      if (!current) current = 'Details';
-      if (!sections[current]) sections[current] = [];
-      const isLabel = !!line.match(
-        /^(observations|improvements|unit\s+growth|asp|sales|profit|unit\s+profitability|summary)\s*:?\s*$/i
-      );
-      if (isLabel) continue;
-      sections[current].push(line);
-    }
-
-    const clean = (s: string) =>
-      s.replace(/^[•\-\u2013\u2014]\s+/, '').replace(/^\d+\.\s+/, '');
-
-    return SECTION_ORDER.filter((sec) => sections[sec]?.length).map((sec, idx) => {
-      const content = sections[sec];
-      const isList = LIST_SECTIONS.has(sec);
-
-      return (
-        <div key={idx} className="insight-section" style={{ marginBottom: 12 }}>
-          {(isList || sec === 'Summary') && (
-            <strong style={{ display: 'block', marginBottom: 6 }}>
-              {sec}
-            </strong>
-          )}
-
-          {isList ? (
-            <ul className="list-disc" style={{ margin: '6px 0 10px 20px', padding: 0 }}>
-              {content.map((line, i) => {
-                const trimmed = clean(line);
-
-                const isSubHeading =
-                  /^[A-Za-z][A-Za-z\s\/]+:?$/i.test(trimmed) &&
-                  !trimmed.match(/\d|%|,/) &&
-                  trimmed.split(/\s+/).length <= 5;
-
-                if (isSubHeading) {
-                  const label = trimmed.replace(/:$/, '').trim();
-                  return (
-                    <li
-                      key={i}
-                      style={{
-                        listStyle: 'none',
-                        marginTop: 10,
-                        marginBottom: 4,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 14,
-                          color: '#374151',
-                          borderLeft: '3px solid #60a68e',
-                          paddingLeft: 8,
-                        }}
-                      >
-                        {label}
-                      </span>
-                    </li>
-                  );
-                }
-
-                return (
-                  <li
-                    key={i}
-                    style={{
-                      marginBottom: 4,
-                      lineHeight: 1.6,
-                      fontSize: 13,
-                    }}
-                  >
-                    {highlightInsightText(trimmed)}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <div>
-              {content.map((line, i) => (
-                <p
-                  key={i}
-                  style={{
-                    margin: '4px 0',
-                    lineHeight: 1.6,
-                    fontSize: 13,
-                  }}
-                >
-                  {highlightInsightText(line)}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {sec === 'Summary' && (
-            <div style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  gap: 12,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setFbType('like')}
-                  title="Like"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    opacity: fbType === 'like' ? 1 : 0.6,
-                  }}
-                >
-                  <FaThumbsUp size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFbType('dislike')}
-                  title="Dislike"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    opacity: fbType === 'dislike' ? 1 : 0.6,
-                  }}
-                >
-                  <FaThumbsDown size={18} />
-                </button>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  backgroundColor: '#f1f1f1',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                }}
-              >
-                <input
-                  type="text"
-                  placeholder="Add a Comment......"
-                  value={fbText}
-                  onChange={(e) => setFbText(e.target.value)}
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    background: 'transparent',
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={submitSummaryFeedback}
-                  disabled={fbSubmitting}
-                  className="styled-button"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {fbSubmitting ? 'Submitting...' : 'Submit'}
-                </button>
-              </div>
-
-              {fbSuccess && (
-                <div style={{ color: '#2e7d32', fontWeight: 600, marginTop: 6 }}>
-                  Feedback submitted!
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    });
-  };
 
   const getInventoryMetricValues = (row: any) => {
     const coverageRatio = Number(
@@ -2488,16 +2042,18 @@ const handleManualAiRefresh = async () => {
   const sortMetricsByOrder = (
     metrics: { label: string; value: string; color?: string }[]
   ) => {
-    const order = [
-      "units",
-      "net sales",
-      "asp",
-      "cm1 profit",
-      "cm1 profit per unit",
-      "current inventory",
-      "stock cover (months)",
-      "stock cover",
-    ];
+   const order = [
+  "units",
+  "net sales",
+  "asp",
+  "cm2 profit",
+  "cm2 profit per unit",
+  "cm1 profit",
+  "cm1 profit per unit",
+  "current inventory",
+  "stock cover (months)",
+  "stock cover",
+];
 
     return [...metrics].sort((a, b) => {
       const aIndex = order.indexOf(a.label.trim().toLowerCase());
@@ -2520,7 +2076,7 @@ const handleManualAiRefresh = async () => {
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
+  /^(ASP|Units|Net sales|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
@@ -2575,19 +2131,32 @@ const handleManualAiRefresh = async () => {
       metrics.push(buildStockCoverMetric(sourceRow));
     }
 
-    const insightText = insightParts.join("\n").trim();
-    const sections = extractSections(insightText);
+    const finalMetrics = replaceProfitMetricsWithCm2IfAvailable(
+  metrics,
+  sourceRow
+);
 
-    return {
-      productName,
-      metrics: sortMetricsByOrder(metrics),
-      insightText,
-      journeyPoints: sections.journeyPoints,
-      recommendationPoints: sections.recommendationPoints,
-      advertisingPoints: sections.advertisingPoints,
-      inventoryPoints: sections.inventoryPoints,
-    };
+const insightText = insightParts.join("\n").trim();
+const sections = extractSections(insightText);
+
+return {
+  productName,
+  metrics: sortMetricsByOrder(finalMetrics),
+  insightText,
+  journeyPoints: sections.journeyPoints,
+  recommendationPoints: sections.recommendationPoints,
+  advertisingPoints: sections.advertisingPoints,
+  inventoryPoints: sections.inventoryPoints,
+};
   };
+
+ const cleanInventoryCardPoint = (point: string) => {
+  return String(point || "")
+    .replace(/^•\s*/, "")
+    .replace(/^Inventory action:\s*Your coverage ratio is\s*[\d.]+\s*months\.?\s*/i, "")
+    .replace(/^and\s+/i, "")
+    .trim();
+};
 
 
 
@@ -2656,6 +2225,30 @@ const handleManualAiRefresh = async () => {
       Number(total?.unit_wise_profitability_curr ?? total?.unit_wise_profitability_month2 ?? total?.unit_wise_profitability ?? 0) ||
       (qtyCurr > 0 ? profitCurr / qtyCurr : 0);
 
+      const hasCm2Data =
+  hasCm2ProfitData(total) ||
+  rows.some((r: any) => hasCm2ProfitData(r));
+
+const cm2ProfitPrev = hasCm2Data
+  ? Number(total?.cm2_profit_prev ?? 0) ||
+    rows.reduce((s, r: any) => s + Number(r.cm2_profit_prev ?? 0), 0)
+  : 0;
+
+const cm2ProfitCurr = hasCm2Data
+  ? Number(total?.cm2_profit_curr ?? 0) ||
+    rows.reduce((s, r: any) => s + Number(r.cm2_profit_curr ?? 0), 0)
+  : 0;
+
+const cm2ProfitPerUnitPrev = hasCm2Data
+  ? Number(total?.cm2_profit_per_unit_prev ?? 0) ||
+    (qtyPrev > 0 ? cm2ProfitPrev / qtyPrev : 0)
+  : 0;
+
+const cm2ProfitPerUnitCurr = hasCm2Data
+  ? Number(total?.cm2_profit_per_unit_curr ?? 0) ||
+    (qtyCurr > 0 ? cm2ProfitCurr / qtyCurr : 0)
+  : 0;
+
     const pct = (prev: number, curr: number) =>
       prev ? ((curr - prev) / prev) * 100 : 0;
 
@@ -2666,8 +2259,8 @@ const handleManualAiRefresh = async () => {
       return Number.isFinite(n) ? n : null;
     };
 
-    return {
-      product_name: "Other SKUs",
+    const otherSkuItem: any = {
+  product_name: "Other SKUs",
 
       quantity_month1: qtyPrev,
       quantity_month2: qtyCurr,
@@ -2729,7 +2322,16 @@ const handleManualAiRefresh = async () => {
         value: getGrowthValueFromTotal("Sales Mix Change", "Sales Mix Change (%)") ?? 0,
         category: "",
       },
+      
     };
+    if (hasCm2Data) {
+  otherSkuItem.cm2_profit_prev = cm2ProfitPrev;
+  otherSkuItem.cm2_profit_curr = cm2ProfitCurr;
+  otherSkuItem.cm2_profit_per_unit_prev = cm2ProfitPerUnitPrev;
+  otherSkuItem.cm2_profit_per_unit_curr = cm2ProfitPerUnitCurr;
+}
+
+return otherSkuItem;
   }, [
     categorizedGrowth.other_skus,
     categorizedGrowth.other_total,
@@ -2820,7 +2422,7 @@ const handleManualAiRefresh = async () => {
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
+  /^(ASP|Units|Net sales|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
@@ -2871,64 +2473,23 @@ const handleManualAiRefresh = async () => {
       metrics.push(buildStockCoverMetric(sourceRow));
     }
 
-    const insightText = insightParts.join("\n").trim();
-    const sections = extractSections(insightText);
+    const finalMetrics = replaceProfitMetricsWithCm2IfAvailable(
+  metrics,
+  sourceRow
+);
 
-    return {
-      productName,
-      metrics: sortMetricsByOrder(metrics),
-      insightText,
-      journeyPoints: sections.journeyPoints,
-      recommendationPoints: sections.recommendationPoints,
-      advertisingPoints: sections.advertisingPoints,
-      inventoryPoints: sections.inventoryPoints,
-    };
-  };
+const insightText = insightParts.join("\n").trim();
+const sections = extractSections(insightText);
 
-  const formatBulletLine = (line: string) => {
-    if (!line) return null;
-
-    const reDelta = /(increased|decreased)\s+by\s+(-?\d+(?:\.\d+)?)\s*(%?)/gi;
-    const out: any[] = [];
-    let lastIndex = 0;
-
-    let match: RegExpExecArray | null;
-    while ((match = reDelta.exec(line)) !== null) {
-      const [full, verb, num, suffixRaw] = match;
-      const start = match.index;
-      const end = start + full.length;
-
-      if (start > lastIndex) out.push({ type: 'text', value: line.slice(lastIndex, start) });
-
-      out.push({ type: 'text', value: `${verb} by ` });
-
-      const isIncrease = String(verb).toLowerCase() === 'increased';
-      const suffix = suffixRaw || '';
-
-      out.push({
-        type: 'num',
-        value: `${Number(num).toFixed(2)}${suffix}`,
-        color: isIncrease ? '#5EA68E' : '#FF5C5C',
-      });
-
-      lastIndex = end;
-    }
-
-    if (lastIndex < line.length) out.push({ type: 'text', value: line.slice(lastIndex) });
-
-    const hasDelta = out.some((p) => p.type === 'num');
-    if (!hasDelta) return highlightInsightText(line);
-
-    return out.map((p, i) => {
-      if (p.type === 'num') {
-        return (
-          <span key={i} style={{ color: p.color, fontWeight: 700 }}>
-            {p.value}
-          </span>
-        );
-      }
-      return <span key={i}>{p.value}</span>;
-    });
+return {
+  productName,
+  metrics: sortMetricsByOrder(finalMetrics),
+  insightText,
+  journeyPoints: sections.journeyPoints,
+  recommendationPoints: sections.recommendationPoints,
+  advertisingPoints: sections.advertisingPoints,
+  inventoryPoints: sections.inventoryPoints,
+};
   };
 
 
@@ -3204,10 +2765,6 @@ const handleManualAiRefresh = async () => {
     return ((curr - prev) / prev) * 100;
   };
 
-  const safePct = (prev: number, curr: number) => {
-    if (!prev || prev === 0 || curr == null) return null;
-    return ((curr - prev) / prev) * 100;
-  };
 
   const makeGrowth = (prev: number, curr: number): GrowthCategory | undefined => {
     const v = calcGrowthValue(prev, curr);
@@ -3756,28 +3313,6 @@ const handleManualAiRefresh = async () => {
     return 'bg-white';
   };
 
-  const extractActionLines = (text: string): string[] => {
-    if (!text) return [];
-
-    return text
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l =>
-        /^Action\s*:|^(Increase|Maintain|Decrease|Check|Review)/i.test(l)
-      );
-  };
-
-
-  const summaryMetricPoints = overallSummary.filter(
-    (b) => /%|£|\$/.test(b)
-  );
-
-  const summaryNarrative =
-    overallSummary.find((b) =>
-      b.toLowerCase().includes("business experienced")
-    ) ||
-    overallSummary[overallSummary.length - 1]; // safe fallback
-
   const ObjectiveCards = ({
     objective,
     isGlobal = false,
@@ -4061,27 +3596,51 @@ const handleManualAiRefresh = async () => {
             getGrowthValue(row, "ASP Growth (%)")
           ),
         },
-        {
-          label: "CM1 profit",
-          value: formatGlobalMetricValue(
-            Number(row.profit_curr || row.profit_month2 || row.profit || 0),
-            getGrowthValue(row, "CM1 Profit Impact (%)"),
-            "money",
-            "CM1 profit"
-          ),
-        },
-        {
-          label: "CM1 profit per unit",
-          value: formatGlobalMetricValue(
-            Number(
-              row.unit_wise_profitability_curr ||
+        ...(hasCm2ProfitData(row)
+  ? [
+      {
+        label: "CM2 profit",
+        value: formatGlobalMetricValue(
+          Number(row.cm2_profit_curr || 0),
+          getPctGrowth(row.cm2_profit_prev, row.cm2_profit_curr),
+          "money",
+          "CM2 profit"
+        ),
+      },
+      {
+        label: "CM2 profit per unit",
+        value: formatGlobalMetricValue(
+          Number(row.cm2_profit_per_unit_curr || 0),
+          getPctGrowth(
+            row.cm2_profit_per_unit_prev,
+            row.cm2_profit_per_unit_curr
+          )
+        ),
+      },
+    ]
+  : [
+      {
+        label: "CM1 profit",
+        value: formatGlobalMetricValue(
+          Number(row.profit_curr || row.profit_month2 || row.profit || 0),
+          getGrowthValue(row, "CM1 Profit Impact (%)"),
+          "money",
+          "CM1 profit"
+        ),
+      },
+      {
+        label: "CM1 profit per unit",
+        value: formatGlobalMetricValue(
+          Number(
+            row.unit_wise_profitability_curr ||
               row.unit_wise_profitability_month2 ||
               row.unit_wise_profitability ||
               0
-            ),
-            getGrowthValue(row, "Profit Per Unit (%)")
           ),
-        },
+          getGrowthValue(row, "Profit Per Unit (%)")
+        ),
+      },
+    ]),
         {
           label: "Current inventory",
           value: `${Number.isFinite(coverageRatio) ? coverageRatio.toFixed(2) : "0.00"} months\n${Number.isFinite(currentInventory) ? Math.round(currentInventory).toLocaleString() : "0"} units`,
@@ -4488,49 +4047,6 @@ const handleManualAiRefresh = async () => {
     );
   };
 
-  const SingleCountryInventoryInsights = () => {
-    const inventory = parseSingleCountryInventoryItems(portfolioInventoryBlock);
-
-    const rows = [
-      {
-        label: "Ageing Inventory",
-        value: inventory.ageingInventory,
-      },
-      {
-        label: "High Coverage SKUs",
-        value: inventory.highCoverage,
-      },
-      {
-        label: "Unfulfillable Inventory",
-        value: inventory.unfulfillableInventory,
-      },
-      {
-        label: "Est. Storage Cost",
-        value: inventory.estimatedStorageCost,
-      },
-    ];
-
-    const hasRows = rows.some((row) => row.value !== undefined);
-    if (!hasRows) return null;
-
-    return (
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-            Inventory Insights
-          </span>
-        </div>
-
-        <InventoryCard
-          title=""
-          rows={rows}
-          showHeader={false}
-          accentClass={getInventoryAccentClass(normalizedCountry)}
-        />
-      </div>
-    );
-  };
-
   const effectiveRemainingSkusBlock = useMemo(() => {
     return normalizeTextBlock(remainingSkusBlock) || buildOthersActionFromCategorizedGrowth();
   }, [remainingSkusBlock, buildOthersActionFromCategorizedGrowth]);
@@ -4672,38 +4188,38 @@ const handleManualAiRefresh = async () => {
                   <div className="flex-1">
                     {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
                       <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full h-full flex flex-col">
-  <div className="flex items-start justify-between gap-3">
-    <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
-      <PageBreadcrumb
-        pageTitle={isGlobalData() ? "Global Business Summary" : "Business Summary"}
-        variant="page"
-        align="left"
-      />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
+                            <PageBreadcrumb
+                              pageTitle={isGlobalData() ? "Global Business Summary" : "Business Summary"}
+                              variant="page"
+                              align="left"
+                            />
 
-      {aiLastRefreshedAt && (
-        <span className="text-[10px] 2xl:text-xs text-slate-500 leading-5">
-          Last updated: {aiLastRefreshedAt}
-        </span>
-      )}
-    </div>
+                            {aiLastRefreshedAt && (
+                              <span className="text-[10px] 2xl:text-xs text-slate-500 leading-5">
+                                Last updated: {aiLastRefreshedAt}
+                              </span>
+                            )}
+                          </div>
 
-    <button
-  type="button"
-  onClick={handleManualAiRefresh}
-  disabled={manualAiRefreshing}
-  className="shrink-0 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-2 text-charcoal-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-  title={manualAiRefreshing ? "Refreshing..." : "Refresh business summary and recommendations"}
-  aria-label="Refresh business summary and recommendations"
->
-  <IoRefresh
-    size={16}
-    className={manualAiRefreshing ? "animate-spin" : ""}
-  />
-</button>
-  </div>
+                          <button
+                            type="button"
+                            onClick={handleManualAiRefresh}
+                            disabled={manualAiRefreshing}
+                            className="shrink-0 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white p-2 text-charcoal-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title={manualAiRefreshing ? "Refreshing..." : "Refresh business summary and recommendations"}
+                            aria-label="Refresh business summary and recommendations"
+                          >
+                            <IoRefresh
+                              size={16}
+                              className={manualAiRefreshing ? "animate-spin" : ""}
+                            />
+                          </button>
+                        </div>
 
-  {summaryText && (
-    <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
+                        {summaryText && (
+                          <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
                             {splitIntoPoints(summaryText).map((point, index) => (
                               <li key={index}>{point}</li>
                             ))}
@@ -4853,25 +4369,25 @@ const handleManualAiRefresh = async () => {
                                   );
 
                                   return (
-                                   <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-  {cardActionPoints[0] && (
-    <div className="flex gap-2">
-      <span className="shrink-0 font-semibold">1.</span>
-      <span className="line-clamp-2">
-        {cardActionPoints[0]}
-      </span>
-    </div>
-  )}
+                                    <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                      {cardActionPoints[0] && (
+                                        <div className="flex gap-2">
+                                          <span className="shrink-0 font-semibold">1.</span>
+                                          <span className="line-clamp-2">
+                                            {cardActionPoints[0]}
+                                          </span>
+                                        </div>
+                                      )}
 
-  {cardInventoryPoints[0] && (
-    <div className="flex gap-2">
-      <span className="shrink-0 font-semibold">2.</span>
-      <span className="line-clamp-2">
-        {cardInventoryPoints[0].replace(/^•\s*/, "")}
-      </span>
-    </div>
-  )}
-</div>
+                                      {cardInventoryPoints[0] && (
+                                        <div className="flex gap-2">
+                                          <span className="shrink-0 font-semibold">2.</span>
+                                          <span className="line-clamp-2">
+                                            {cleanInventoryCardPoint(cardInventoryPoints[0])}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
                                   );
                                 })()}
                               </motion.div>
@@ -4977,27 +4493,27 @@ const handleManualAiRefresh = async () => {
                                   </div>
                                 )}
 
-                               {(actionPoints.length > 0 || inventoryPoints.length > 0) && (
-  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-    {actionPoints[0] && (
-      <div className="flex gap-2">
-        <span className="shrink-0 font-semibold">1.</span>
-        <span className="line-clamp-2">
-          {actionPoints[0]}
-        </span>
-      </div>
-    )}
+                                {(actionPoints.length > 0 || inventoryPoints.length > 0) && (
+                                  <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                    {actionPoints[0] && (
+                                      <div className="flex gap-2">
+                                        <span className="shrink-0 font-semibold">1.</span>
+                                        <span className="line-clamp-2">
+                                          {actionPoints[0]}
+                                        </span>
+                                      </div>
+                                    )}
 
-    {inventoryPoints[0] && (
-      <div className="flex gap-2">
-        <span className="shrink-0 font-semibold">2.</span>
-        <span className="line-clamp-2">
-          {inventoryPoints[0].replace(/^•\s*/, "")}
-        </span>
-      </div>
-    )}
-  </div>
-)}
+                                    {inventoryPoints[0] && (
+                                      <div className="flex gap-2">
+                                        <span className="shrink-0 font-semibold">2.</span>
+                                        <span className="line-clamp-2">
+                                          {cleanInventoryCardPoint(inventoryPoints[0])}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </motion.div>
                             );
                           })}
@@ -5111,25 +4627,25 @@ const handleManualAiRefresh = async () => {
                                 );
 
                                 return (
-                                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-  {otherActionPoints[0] && (
-    <div className="flex gap-2">
-      <span className="shrink-0 font-semibold">1.</span>
-      <span className="line-clamp-2">
-        {otherActionPoints[0]}
-      </span>
-    </div>
-  )}
+                                  <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                    {otherActionPoints[0] && (
+                                      <div className="flex gap-2">
+                                        <span className="shrink-0 font-semibold">1.</span>
+                                        <span className="line-clamp-2">
+                                          {otherActionPoints[0]}
+                                        </span>
+                                      </div>
+                                    )}
 
-  {otherInventoryPoints[0] && (
-    <div className="flex gap-2">
-      <span className="shrink-0 font-semibold">2.</span>
-      <span className="line-clamp-2">
-        {otherInventoryPoints[0].replace(/^•\s*/, "")}
-      </span>
-    </div>
-  )}
-</div>
+                                    {otherInventoryPoints[0] && (
+                                      <div className="flex gap-2">
+                                        <span className="shrink-0 font-semibold">2.</span>
+                                        <span className="line-clamp-2">
+                                          {cleanInventoryCardPoint(otherInventoryPoints[0])}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
                                 );
                               })()}
                             </motion.div>
