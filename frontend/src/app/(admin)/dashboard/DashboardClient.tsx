@@ -13101,11 +13101,9 @@ ${pageLoading
                                             onSortChange={setPlSortConfig}
                                             showSignRowInBody
                                             getSignForCol={getAdsSignForCol}
-                                            bodyMaxHeight={
-                                                shouldScrollMtdProductwiseTable
-                                                    ? mtdProductwiseTableScrollHeight
-                                                    : undefined
-                                            }
+                                            stickyTop={74}
+                                            bodyMaxHeight={430}
+                                            stickyHeader={false}
                                             isTotalRow={(row) => {
                                                 const name = String(row?.product_name || "").trim().toLowerCase();
                                                 const sku = String(row?.sku || "").trim().toUpperCase();

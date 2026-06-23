@@ -55,6 +55,8 @@ type Props<RowT> = {
   headerRow1ClassName?: string;
   headerRow2ClassName?: string;
   summary?: SummaryBlock<RowT>;
+  stickyHeader?: boolean;
+  stickyTop?: number;
 
   getSortValue?: (row: RowT, colKey: string) => string | number | null | undefined;
   isTotalRow?: (row: RowT) => boolean;
@@ -122,6 +124,8 @@ export default function GroupedCollapsibleTable<RowT>({
   getRowKey,
   onAnyGroupExpandedChange,
   leftCols,
+   stickyHeader = false,
+  stickyTop = 0,
   groups,
   singleCols,
   layout,
@@ -464,6 +468,35 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const headerRow1Ref = useRef<HTMLTableRowElement | null>(null);
+const [headerRow1Height, setHeaderRow1Height] = useState(0);
+const anyGroupExpanded = useMemo(
+    () => groups.some((g) => (collapsed[g.id] ?? true) === false),
+    [groups, collapsed]
+  );
+
+useEffect(() => {
+  if (!stickyHeader) return;
+
+  const el = headerRow1Ref.current;
+  if (!el) return;
+
+  const measure = () => {
+    setHeaderRow1Height(el.getBoundingClientRect().height);
+  };
+
+  measure();
+
+  const observer = new ResizeObserver(measure);
+  observer.observe(el);
+
+  window.addEventListener("resize", measure);
+
+  return () => {
+    observer.disconnect();
+    window.removeEventListener("resize", measure);
+  };
+}, [stickyHeader, anyGroupExpanded, visibleLeafCols.length]);
 
   useEffect(() => {
     if (!bodyMaxHeight) return;
@@ -487,10 +520,7 @@ export default function GroupedCollapsibleTable<RowT>({
     | { kind: "col"; col: LeafCol<RowT>; colSpan: 1 }
     | { kind: "blank"; key: string; colSpan: number };
 
-  const anyGroupExpanded = useMemo(
-    () => groups.some((g) => (collapsed[g.id] ?? true) === false),
-    [groups, collapsed]
-  );
+  
 
   const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
     if (!anyGroupExpanded) return [];
@@ -516,7 +546,24 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const cellPadding = "px-2 sm:px-3 py-3";
   const thBase =
-    `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
+  `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
+
+const getStickyHeaderClass = (row: 1 | 2) => {
+  if (!stickyHeader) return "";
+
+  return [
+    "sticky",
+    row === 1 ? "z-40" : "z-30",
+  ].join(" ");
+};
+
+const getStickyHeaderStyle = (row: 1 | 2): React.CSSProperties | undefined => {
+  if (!stickyHeader) return undefined;
+
+  return {
+    top: row === 1 ? stickyTop : stickyTop + headerRow1Height,
+  };
+};
 
   /* ---------------- Render ---------------- */
 
@@ -536,14 +583,15 @@ export default function GroupedCollapsibleTable<RowT>({
   const renderTableHead = () => (
     <thead className="font-bold">
       {/* -------- Header Row 1 -------- */}
-      <tr className={headerRow1ClassName}>
+      <tr ref={headerRow1Ref} className={headerRow1ClassName}>
         {leftCols.map((c) => (
           <th
-            key={c.key}
-            rowSpan={anyGroupExpanded ? 2 : 1}
-            className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
-              }`}
-          >
+  key={c.key}
+  rowSpan={anyGroupExpanded ? 2 : 1}
+  style={getStickyHeaderStyle(1)}
+  className={`${thBase} ${getStickyHeaderClass(1)} ${headerRow1ClassName} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+    }`}
+>
             {renderHeaderContent(c)}
           </th>
         ))}
@@ -564,11 +612,12 @@ export default function GroupedCollapsibleTable<RowT>({
 
             return (
               <th
-                key={g.id}
-                colSpan={cols.length}
-                rowSpan={groupRowSpan}
-                className={`${thBase} text-center ${g.headerClassName || ""}`}
-              >
+  key={g.id}
+  colSpan={cols.length}
+  rowSpan={groupRowSpan}
+  style={getStickyHeaderStyle(1)}
+  className={`${thBase} ${getStickyHeaderClass(1)} ${headerRow1ClassName} text-center ${g.headerClassName || ""}`}
+>
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
                   {/* Title row */}
                   <span className="block w-full min-w-0 whitespace-normal break-words text-center">
@@ -626,11 +675,12 @@ export default function GroupedCollapsibleTable<RowT>({
 
           return (
             <th
-              key={c.key}
-              rowSpan={anyGroupExpanded ? 2 : 1}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
-                }`}
-            >
+  key={c.key}
+  rowSpan={anyGroupExpanded ? 2 : 1}
+  style={getStickyHeaderStyle(1)}
+  className={`${thBase} ${getStickyHeaderClass(1)} ${headerRow1ClassName} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+    }`}
+>
               {renderHeaderContent(c, {
                 isExpandable,
                 isCollapsed: isTargetCollapsed,
@@ -649,9 +699,10 @@ export default function GroupedCollapsibleTable<RowT>({
         <tr className={headerRow2ClassName}>
           {row2Cells.map((c) => (
             <th
-              key={c.key}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-            >
+  key={c.key}
+  style={getStickyHeaderStyle(2)}
+  className={`${thBase} ${getStickyHeaderClass(2)} ${headerRow2ClassName} ${alignClass(c.align)} ${c.thClassName || ""}`}
+>
               {renderHeaderContent(c)}
             </th>
           ))}
@@ -820,7 +871,7 @@ export default function GroupedCollapsibleTable<RowT>({
    */
   if (bodyMaxHeight) {
     return (
-      <div className="w-full">
+       <div className="w-full overflow-x-auto">
         {/* Fixed header table */}
         <div
           className="w-full"
@@ -832,7 +883,6 @@ export default function GroupedCollapsibleTable<RowT>({
           <table
             className={tableClassName}
             style={{
-              tableLayout: "fixed",
               width: "100%",
             }}
           >
@@ -843,13 +893,14 @@ export default function GroupedCollapsibleTable<RowT>({
 
         {/* Scrollable rows only */}
         <div
-          ref={scrollContainerRef}
-          className="w-full overflow-y-auto"
-          style={{
-            maxHeight: `${bodyMaxHeight}px`,
-            scrollbarGutter: "stable",
-          }}
-        >
+  ref={scrollContainerRef}
+  className="w-full overflow-y-auto overscroll-contain"
+  style={{
+    height: `${bodyMaxHeight}px`,
+    maxHeight: `${bodyMaxHeight}px`,
+    scrollbarGutter: "stable",
+  }}
+>
           <table
             className={tableClassName}
             style={{
@@ -898,6 +949,7 @@ export default function GroupedCollapsibleTable<RowT>({
    * Everything stays in one table
    */
   return (
+  <div className="w-full overflow-x-auto">
     <table className={tableClassName}>
       {renderColGroup()}
       {renderTableHead()}
@@ -909,5 +961,6 @@ export default function GroupedCollapsibleTable<RowT>({
 
       {renderSummaryFooter()}
     </table>
-  );
+  </div>
+);
 }
