@@ -1788,21 +1788,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
-const productRowCount = displayRows.filter((row) => {
-  const name = String((row as any)?.product_name || "").trim().toLowerCase();
-  const sku = String((row as any)?.sku || "").trim().toLowerCase();
+  const productRowCount = displayRows.filter((row) => {
+    const name = String((row as any)?.product_name || "").trim().toLowerCase();
+    const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
-  return name !== "total" && sku !== "total";
-}).length;
+    return name !== "total" && sku !== "total" && name !== "others";
+  }).length;
 
-const VISIBLE_PRODUCT_ROWS = 15;
+  const VISIBLE_PRODUCT_ROWS = 15;
 
-const SIGN_ROW_HEIGHT = 42;
-const PRODUCT_ROW_HEIGHT = 40;
+  const HEADER_HEIGHT = 48;
+  const SIGN_ROW_HEIGHT = 30;
+  const PRODUCT_ROW_HEIGHT = 35;
+  // const TOTAL_ROW_HEIGHT = 40;
 
-const tableScrollHeight =
-  SIGN_ROW_HEIGHT +
-  PRODUCT_ROW_HEIGHT * Math.min(productRowCount, VISIBLE_PRODUCT_ROWS);
+  const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
+
+  const tableScrollHeight =
+    SIGN_ROW_HEIGHT +
+    PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
 
   return (
     <>
@@ -1857,17 +1861,16 @@ const tableScrollHeight =
           )}
 
           <div
-  className={[
-    "w-full rounded-xl border border-gray-300",
-    anyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
-  ].join(" ")}
->
+            className={[
+              "w-full rounded-xl border border-gray-300",
+              anyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+            ].join(" ")}
+          >
             <div className={anyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
               <GroupedCollapsibleTable<TableRow>
                 rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
-                stickyHeader={false}
                 singleCols={SINGLE_COLS}
                 collapsedState={collapsedGroups}
                 onCollapsedChange={(next) => {
@@ -1886,7 +1889,11 @@ const tableScrollHeight =
                   key: "net_sales",
                   direction: "desc",
                 }}
-                bodyMaxHeight={tableScrollHeight}
+                bodyMaxHeight={
+                  shouldScrollTable
+                    ? tableScrollHeight
+                    : undefined
+                }
                 onSortChange={setTableSort}
                 getSortValue={(row, colKey) => {
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
