@@ -671,8 +671,28 @@ const buildProfitMetricCards = (
 };
 
 const buildAdsMetric = (item: any) => {
-  const adsSpendCurr = Number(item?.ads_spend_curr ?? 0);
-  const adsSpendGrowthPct = Number(item?.ads_spend_growth_pct ?? 0);
+  const adsSpendCurr = Number(
+    item?.ads_spend_curr ??
+      item?.ads_spend_month2 ??
+      item?.ads_spend ??
+      item?.total_ads ??
+      item?.advertising_fees ??
+      0
+  );
+
+  const adsSpendPrev = Number(
+    item?.ads_spend_prev ??
+      item?.ads_spend_month1 ??
+      item?.ads_spend_previous ??
+      0
+  );
+
+  const adsSpendGrowthPct =
+    item?.ads_spend_growth_pct != null
+      ? Number(item.ads_spend_growth_pct)
+      : adsSpendPrev
+        ? ((adsSpendCurr - adsSpendPrev) / Math.abs(adsSpendPrev)) * 100
+        : 0;
 
   const sign = adsSpendGrowthPct > 0 ? "+" : "";
   const growthText = `${sign}${adsSpendGrowthPct.toFixed(2)}%`;
@@ -2260,6 +2280,52 @@ return {
       Number(total?.unit_wise_profitability_curr ?? total?.unit_wise_profitability_month2 ?? total?.unit_wise_profitability ?? 0) ||
       (qtyCurr > 0 ? profitCurr / qtyCurr : 0);
 
+    const adsSpendPrev =
+  Number(
+    total?.ads_spend_prev ??
+      total?.ads_spend_month1 ??
+      total?.ads_spend_previous ??
+      0
+  ) ||
+  rows.reduce(
+    (s, r: any) =>
+      s +
+      Number(
+        r?.ads_spend_prev ??
+          r?.ads_spend_month1 ??
+          r?.ads_spend_previous ??
+          0
+      ),
+    0
+  );
+
+const adsSpendCurr =
+  Number(
+    total?.ads_spend_curr ??
+      total?.ads_spend_month2 ??
+      total?.ads_spend ??
+      total?.total_ads ??
+      total?.advertising_fees ??
+      0
+  ) ||
+  rows.reduce(
+    (s, r: any) =>
+      s +
+      Number(
+        r?.ads_spend_curr ??
+          r?.ads_spend_month2 ??
+          r?.ads_spend ??
+          r?.total_ads ??
+          r?.advertising_fees ??
+          0
+      ),
+    0
+  );
+
+const adsSpendGrowthPct =
+  Number(total?.ads_spend_growth_pct ?? total?.["Ads Growth"] ?? total?.["Ads Growth (%)"]) ||
+  (adsSpendPrev ? ((adsSpendCurr - adsSpendPrev) / Math.abs(adsSpendPrev)) * 100 : 0);
+
       const hasCm2Data =
   hasCm2ProfitData(total) ||
   rows.some((r: any) => hasCm2ProfitData(r));
@@ -2296,6 +2362,9 @@ const cm2ProfitPerUnitCurr = hasCm2Data
 
     const otherSkuItem: any = {
   product_name: "Other SKUs",
+  ads_spend_prev: adsSpendPrev,
+ads_spend_curr: adsSpendCurr,
+ads_spend_growth_pct: adsSpendGrowthPct,
 
       quantity_month1: qtyPrev,
       quantity_month2: qtyCurr,
