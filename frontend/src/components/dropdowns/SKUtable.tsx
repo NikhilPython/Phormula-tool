@@ -1855,416 +1855,413 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
-const VISIBLE_PRODUCT_ROWS = 13.61;
+  const VISIBLE_PRODUCT_ROWS = 13.61;
 
-const HEADER_HEIGHT = 48;
-const SIGN_ROW_HEIGHT = 30;
-const PRODUCT_ROW_HEIGHT = 35;
-// const TOTAL_ROW_HEIGHT = 40;
+  const SIGN_ROW_HEIGHT = 30;
+  const PRODUCT_ROW_HEIGHT = 35;
+  // const TOTAL_ROW_HEIGHT = 40;
 
-const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
+  const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
 
-const tableScrollHeight =
-  SIGN_ROW_HEIGHT +
-  PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
+  const tableScrollHeight =
+    SIGN_ROW_HEIGHT +
+    PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
 
-return (
-  <>
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-      <div className="mb-4 flex  gap-3 flex-row items-center justify-between">
-        <div className="flex flex-wrap items-baseline gap-0 sm:gap-2 justify-left sm:justify-start">
-          <PageBreadcrumb pageTitle={getTitle()} variant="page" textSize="2xl" />
-          <span className="text-[#5EA68E] text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold">({currencySymbol})</span>
+  return (
+    <>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+        <div className="mb-4 flex  gap-3 flex-row items-center justify-between">
+          <div className="flex flex-wrap items-baseline gap-0 sm:gap-2 justify-left sm:justify-start">
+            <PageBreadcrumb pageTitle={getTitle()} variant="page" textSize="2xl" />
+            <span className="text-[#5EA68E] text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold">({currencySymbol})</span>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setShowAllRows((prev) => !prev)}
+              title={showAllRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllRows ? "Collapse rows" : "Expand all rows"}
+              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              {showAllRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleAllColumns}
+              title={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
+              aria-label={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
+              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              {allColumnsExpanded ? (
+                <RiLayoutColumnLine size={18} className="font-extrabold" />
+              ) : (
+                <RiLayoutColumnFill size={18} className="font-extrabold" />
+              )}
+            </button>
+
+            {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
+          </div>
         </div>
-
-        <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setShowAllRows((prev) => !prev)}
-            title={showAllRows ? "Collapse rows" : "Expand all rows"}
-            aria-label={showAllRows ? "Collapse rows" : "Expand all rows"}
-            className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-          >
-            {showAllRows ? (
-              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-            ) : (
-              <RiExpandDiagonalFill size={18} className="font-extrabold" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleToggleAllColumns}
-            title={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
-            aria-label={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
-            className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-          >
-            {allColumnsExpanded ? (
-              <RiLayoutColumnLine size={18} className="font-extrabold" />
-            ) : (
-              <RiLayoutColumnFill size={18} className="font-extrabold" />
-            )}
-          </button>
-
-          {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
-        </div>
-      </div>
-
-      <div
-        className={`transition-opacity opacity-100
-            }`}
-      >
-        {showModal2 && (
-          <CustomModal onClose={() => setShowModal2(false)}>
-            <SkuMultiCountryUpload onClose={() => setShowModal2(false)} onComplete={() => setShowModal2(false)} />
-          </CustomModal>
-        )}
 
         <div
-          className={[
-            "w-full rounded-xl border border-gray-300",
-            anyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
-          ].join(" ")}
+          className={`transition-opacity opacity-100
+            }`}
         >
-          <div className={anyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
-            <GroupedCollapsibleTable<TableRow>
-              rows={noDataFound ? [] : displayRows}
-              leftCols={LEFT_COLS}
-              groups={groups}
-              singleCols={SINGLE_COLS}
-              collapsedState={collapsedGroups}
-              onCollapsedChange={(next) => {
-                setCollapsedGroups(next);
-                setAllColumnsExpanded(
-                  groups.length > 0 && groups.every((group) => next[group.id] === false)
-                );
-              }}
-              tableClassName={[
-                "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
-                anyGroupExpanded
-                  ? "table-auto min-w-[1200px]"
-                  : "table-fixed",
-              ].join(" ")}
-              defaultSort={{
-                key: "net_sales",
-                direction: "desc",
-              }}
-              bodyMaxHeight={
-                shouldScrollTable
-                  ? tableScrollHeight
-                  : undefined
-              }
-              onSortChange={setTableSort}
-              getSortValue={(row, colKey) => {
-                if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
-                if (colKey === "net_sales") return toNumber((row as any).net_sales);
-                if (colKey === "profit") return toNumber((row as any).profit);
-                if (colKey === "cm2_profit") return toNumber((row as any).cm2_profit);
-                if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
-                if (colKey === "acos") return getAcosPercentage(row);
-                if (colKey === "product_spend") return toNumber((row as any).product_spend);
-                if (colKey === "display_spend") return toNumber((row as any).display_spend);
-                if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
-                return toNumber((row as any)[colKey]);
-              }}
-              isTotalRow={(row) => {
-                const name = String((row as any)?.product_name || "").trim().toLowerCase();
-                const sku = String((row as any)?.sku || "").trim().toLowerCase();
+          {showModal2 && (
+            <CustomModal onClose={() => setShowModal2(false)}>
+              <SkuMultiCountryUpload onClose={() => setShowModal2(false)} onComplete={() => setShowModal2(false)} />
+            </CustomModal>
+          )}
 
-                return name === "total" || sku === "total";
-              }}
-              layout={[
-                { type: "group" as const, id: "units_breakdown" },
-                { type: "single" as const, key: "asp" },
+          <div
+            className={[
+              "w-full rounded-xl border border-gray-300",
+              anyGroupExpanded ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden",
+            ].join(" ")}
+          >
+            <div className={anyGroupExpanded ? "min-w-max" : "w-full"}>
+              <GroupedCollapsibleTable<TableRow>
+                rows={noDataFound ? [] : displayRows}
+                leftCols={LEFT_COLS}
+                groups={groups}
+                singleCols={SINGLE_COLS}
+                collapsedState={collapsedGroups}
+                onCollapsedChange={(next) => {
+                  setCollapsedGroups(next);
+                  setAllColumnsExpanded(
+                    groups.length > 0 && groups.every((group) => next[group.id] === false)
+                  );
+                }}
+                tableClassName={[
+                  "border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                  anyGroupExpanded ? "table-fixed" : "w-full table-fixed",
+                ].join(" ")}
+                defaultSort={{
+                  key: "net_sales",
+                  direction: "desc",
+                }}
+                bodyMaxHeight={
+                  shouldScrollTable
+                    ? tableScrollHeight
+                    : undefined
+                }
+                onSortChange={setTableSort}
+                getSortValue={(row, colKey) => {
+                  if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
+                  if (colKey === "net_sales") return toNumber((row as any).net_sales);
+                  if (colKey === "profit") return toNumber((row as any).profit);
+                  if (colKey === "cm2_profit") return toNumber((row as any).cm2_profit);
+                  if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
+                  if (colKey === "acos") return getAcosPercentage(row);
+                  if (colKey === "product_spend") return toNumber((row as any).product_spend);
+                  if (colKey === "display_spend") return toNumber((row as any).display_spend);
+                  if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
+                  return toNumber((row as any)[colKey]);
+                }}
+                isTotalRow={(row) => {
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
-                { type: "group" as const, id: "sales" },
-                { type: "group" as const, id: "promotional_rebates" },
+                  return name === "total" || sku === "total";
+                }}
+                layout={[
+                  { type: "group" as const, id: "units_breakdown" },
+                  { type: "single" as const, key: "asp" },
 
-                { type: "single" as const, key: "cost_of_unit_sold" },
+                  { type: "group" as const, id: "sales" },
+                  { type: "group" as const, id: "promotional_rebates" },
 
-                { type: "group" as const, id: "amazon_breakdown" },
-                { type: "group" as const, id: "other_transactions_breakdown" },
-                { type: "group" as const, id: "profit_breakdown" },
+                  { type: "single" as const, key: "cost_of_unit_sold" },
 
-                ...(hasCm2Data
-                  ? [
-                    { type: "group" as const, id: "ads_spend_breakdown" },
-                    { type: "single" as const, key: "acos" },
-                    { type: "group" as const, id: "cm2_profit_breakdown" },
-                  ]
-                  : []),
-              ]}
-              initialCollapsed={{
-                units_breakdown: true,
-                sales: true,
-                promotional_rebates: true,
-                cogs_breakdown: true,
-                amazon_breakdown: true,
-                other_transactions_breakdown: true,
-                profit_breakdown: true,
-                ...(hasCm2Data
-                  ? {
-                    ads_spend_breakdown: true,
-                    cm2_profit_breakdown: true,
-                  }
-                  : {}),
-              }}
-              toggleGroupByColKey={{
-                net_units_sold: "units_breakdown",
-                net_sales: "sales",
-                amazon_fee: "amazon_breakdown",
-                other_transactions: "other_transactions_breakdown",
-                profit: "profit_breakdown",
-                ...(hasCm2Data
-                  ? {
-                    ads_spend: "ads_spend_breakdown",
-                    product_spend: "ads_spend_breakdown",
-                    display_spend: "ads_spend_breakdown",
-                    cm2_profit: "cm2_profit_breakdown",
-                  }
-                  : {}),
-              }}
-              onVisibleColCountChange={setMainColCount}
-              showSignRowInBody
-              getSignForCol={getSignForCol}
-              getRowClassName={(row, index) => {
-                const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  { type: "group" as const, id: "amazon_breakdown" },
+                  { type: "group" as const, id: "other_transactions_breakdown" },
+                  { type: "group" as const, id: "profit_breakdown" },
 
-                if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                if (!showAllRows && name === "others") return "";
+                  ...(hasCm2Data
+                    ? [
+                      { type: "group" as const, id: "ads_spend_breakdown" },
+                      { type: "single" as const, key: "acos" },
+                      { type: "group" as const, id: "cm2_profit_breakdown" },
+                    ]
+                    : []),
+                ]}
+                initialCollapsed={{
+                  units_breakdown: true,
+                  sales: true,
+                  promotional_rebates: true,
+                  cogs_breakdown: true,
+                  amazon_breakdown: true,
+                  other_transactions_breakdown: true,
+                  profit_breakdown: true,
+                  ...(hasCm2Data
+                    ? {
+                      ads_spend_breakdown: true,
+                      cm2_profit_breakdown: true,
+                    }
+                    : {}),
+                }}
+                toggleGroupByColKey={{
+                  net_units_sold: "units_breakdown",
+                  net_sales: "sales",
+                  amazon_fee: "amazon_breakdown",
+                  other_transactions: "other_transactions_breakdown",
+                  profit: "profit_breakdown",
+                  ...(hasCm2Data
+                    ? {
+                      ads_spend: "ads_spend_breakdown",
+                      product_spend: "ads_spend_breakdown",
+                      display_spend: "ads_spend_breakdown",
+                      cm2_profit: "cm2_profit_breakdown",
+                    }
+                    : {}),
+                }}
+                onVisibleColCountChange={setMainColCount}
+                showSignRowInBody
+                getSignForCol={getSignForCol}
+                getRowClassName={(row, index) => {
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
-                return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-              }}
-              getValue={(row, colKey, rowIndex) => {
-                // const name = String((row as any)?.product_name || "").trim().toLowerCase();
-                // const isTotal = name === "total";
+                  if (name === "total") return "bg-[#EFEFEF] font-semibold";
+                  if (!showAllRows && name === "others") return "";
 
-                const name = String((row as any)?.product_name || "").trim().toLowerCase();
-                const isTotal = name === "total";
-                const isOthers = name === "others";
-                if (colKey === "sno") return isTotal ? "" : rowIndex + 1;
+                  return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                }}
+                getValue={(row, colKey, rowIndex) => {
+                  // const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  // const isTotal = name === "total";
+
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const isTotal = name === "total";
+                  const isOthers = name === "others";
+                  if (colKey === "sno") return isTotal ? "" : rowIndex + 1;
 
 
-                if (colKey === "product_name") {
-                  const displayName = getDisplayProductNameFromRow(row);
+                  if (colKey === "product_name") {
+                    const displayName = getDisplayProductNameFromRow(row);
 
-                  // ✅ ONLY "Others" in green
-                  if (isOthers) {
+                    // ✅ ONLY "Others" in green
+                    if (isOthers) {
+                      return (
+                        <span className="inline-block max-w-[220px] truncate text-[#60a68e]">
+                          {displayName}
+                        </span>
+                      );
+                    }
+
+                    // clickable products
+                    if (!isTotal) {
+                      return (
+                        <div
+                          onClick={() => handleProductClick(row)}
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 text-[#60a68e]"
+                          title={String(displayName || "")}
+                        >
+                          <span className="min-w-0 truncate">
+                            {String(displayName || "-")}
+                          </span>
+
+                          {!isOthers && renderNetSalesDelta(row)}
+                        </div>
+                      );
+                    }
+
+                    // Total row
                     return (
-                      <span className="inline-block max-w-[220px] truncate text-[#60a68e]">
-                        {displayName}
+                      <span className="inline-block max-w-[220px] truncate font-semibold">
+                        {String(displayName || "-")}
                       </span>
                     );
                   }
 
-                  // clickable products
-                  if (!isTotal) {
-                    return (
-                      <div
-                        onClick={() => handleProductClick(row)}
-                        className="flex w-full cursor-pointer items-center justify-between gap-3 text-[#60a68e]"
-                        title={String(displayName || "")}
-                      >
-                        <span className="min-w-0 truncate">
-                          {String(displayName || "-")}
-                        </span>
-
-                        {!isOthers && renderNetSalesDelta(row)}
-                      </div>
-                    );
+                  // ✅ FIX: show SKU as text (do NOT send to formatValue)
+                  if (colKey === "sku") {
+                    if (isOthers || isTotal) return "-"; // or "" if you want blank
+                    return !isMissingName((row as any).sku) ? String((row as any).sku) : "-";
                   }
 
-                  // Total row
-                  return (
-                    <span className="inline-block max-w-[220px] truncate font-semibold">
-                      {String(displayName || "-")}
-                    </span>
-                  );
-                }
+                  if (colKey === "unit_wise_cm2_profitability") {
+                    return formatValue(getCm2PerUnit(row), colKey);
+                  }
 
-                // ✅ FIX: show SKU as text (do NOT send to formatValue)
-                if (colKey === "sku") {
-                  if (isOthers || isTotal) return "-"; // or "" if you want blank
-                  return !isMissingName((row as any).sku) ? String((row as any).sku) : "-";
-                }
+                  if (colKey === "cm2_margins") {
+                    return formatValue(getCm2Percentage(row), "cm2_margins");
+                  }
 
-                if (colKey === "unit_wise_cm2_profitability") {
-                  return formatValue(getCm2PerUnit(row), colKey);
-                }
+                  if (colKey === "acos") {
+                    return formatValue(getAcosPercentage(row), "acos");
+                  }
 
-                if (colKey === "cm2_margins") {
-                  return formatValue(getCm2Percentage(row), "cm2_margins");
-                }
+                  // ✅ round Ads Spend expanded columns without decimals
+                  if (
+                    colKey === "product_spend" ||
+                    colKey === "display_spend" ||
+                    colKey === "brand_spend" ||
+                    colKey === "ads_spend"
+                  ) {
+                    return formatRoundedPlain((row as any)[colKey]);
+                  }
 
-                if (colKey === "acos") {
-                  return formatValue(getAcosPercentage(row), "acos");
-                }
+                  return formatValue((row as any)[colKey], colKey);
 
-                // ✅ round Ads Spend expanded columns without decimals
-                if (
-                  colKey === "product_spend" ||
-                  colKey === "display_spend" ||
-                  colKey === "brand_spend" ||
-                  colKey === "ads_spend"
-                ) {
-                  return formatRoundedPlain((row as any)[colKey]);
-                }
+                }}
+                summary={{
+                  enabled: !noDataFound && mainColCount > 0,
 
-                return formatValue((row as any)[colKey], colKey);
+                  rows: [
+                    {
+                      type: "section",
+                      id: "ads",
+                      label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+                      endValue: formatValue(totals.advertising_total, "advertising_total"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "ads_1",
+                          label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(visibilityAdsValue, "brand_spend"),
+                        },
+                        {
+                          id: "ads_2",
+                          label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
+                        },
+                      ],
+                    },
 
-              }}
-              summary={{
-                enabled: !noDataFound && mainColCount > 0,
+                    {
+                      type: "section",
+                      id: "other",
+                      label: "Other Transactions",
+                      endValue: formatValue(totals.other_transactions, "other_transactions"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "other_1",
+                          label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.platform_fee, "platform_fee"),
+                        },
+                        {
+                          id: "other_2",
+                          label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                        },
+                        {
+                          id: "other_misc",
+                          label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                          midValue: formatValue(totals.misc_transaction, "misc_transaction"),
+                        },
+                        {
+                          id: "other_3",
+                          label: (
+                            <>
+                              Reimbursement for lost Inventory
+                              {totals.reimbursement_lost_inventory_units
+                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                                : " "}
+                              <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.lost_total, "lost_total"),
+                        },
+                      ],
+                    },
 
-                rows: [
-                  {
-                    type: "section",
-                    id: "ads",
-                    label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
-                    endValue: formatValue(totals.advertising_total, "advertising_total"),
-                    defaultCollapsed: true,
-                    children: [
-                      {
-                        id: "ads_1",
-                        label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatValue(visibilityAdsValue, "brand_spend"),
-                      },
-                      {
-                        id: "ads_2",
-                        label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
-                      },
-                    ],
-                  },
+                    ...((countryName || "").toLowerCase() === "us" ||
+                      (countryName || "").toLowerCase() === "global"
+                      ? [
+                        {
+                          type: "fixed" as const,
+                          id: "ship",
+                          label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
+                        },
+                      ]
+                      : []),
 
-                  {
-                    type: "section",
-                    id: "other",
-                    label: "Other Transactions",
-                    endValue: formatValue(totals.other_transactions, "other_transactions"),
-                    defaultCollapsed: true,
-                    children: [
-                      {
-                        id: "other_1",
-                        label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatValue(totals.platform_fee, "platform_fee"),
-                      },
-                      {
-                        id: "other_2",
-                        label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
-                      },
-                      {
-                        id: "other_misc",
-                        label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-                        midValue: formatValue(totals.misc_transaction, "misc_transaction"),
-                      },
-                      {
-                        id: "other_3",
-                        label: (
-                          <>
-                            Reimbursement for lost Inventory
-                            {totals.reimbursement_lost_inventory_units
-                              ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                              : " "}
-                            <strong className="text-green-500">(+)</strong>
-                          </>
-                        ),
-                        midValue: formatValue(totals.lost_total, "lost_total"),
-                      },
-                    ],
-                  },
+                    {
+                      type: "fixed",
+                      id: "cm2_profit",
+                      label: "CM2 Profit/Loss",
+                      endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+                    },
+                    {
+                      type: "fixed",
+                      id: "cm2_margins",
+                      label: "CM2 Margins",
+                      endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
+                    },
+                    {
+                      type: "fixed",
+                      id: "tacos",
+                      label: "TACoS (Total Advertising Cost of Sale)",
+                      endValue: `${formatValue(frontendTacos, "acos")}`,
+                    },
 
-                  ...((countryName || "").toLowerCase() === "us" ||
-                    (countryName || "").toLowerCase() === "global"
-                    ? [
-                      {
-                        type: "fixed" as const,
-                        id: "ship",
-                        label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        endValue: formatValue(totals.shipment_charges, "shipment_charges"),
-                      },
-                    ]
-                    : []),
+                    // ✅ Now Net Reimbursement appears below TACoS and remains collapsible
+                    {
+                      type: "section",
+                      id: "net_reimb",
+                      label: "Net Reimbursement",
+                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "net_reimb_debt_payment",
+                          label: (
+                            <>
+                              Charged <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.debt_payment, "debt_payment"),
+                        },
+                        {
+                          id: "net_reimb_disbursement",
+                          label: (
+                            <>
+                              Disbursement <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.disbursement, "disbursement"),
+                        },
+                      ],
+                    },
 
-                  {
-                    type: "fixed",
-                    id: "cm2_profit",
-                    label: "CM2 Profit/Loss",
-                    endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
-                  },
-                  {
-                    type: "fixed",
-                    id: "cm2_margins",
-                    label: "CM2 Margins",
-                    endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
-                  },
-                  {
-                    type: "fixed",
-                    id: "tacos",
-                    label: "TACoS (Total Advertising Cost of Sale)",
-                    endValue: `${formatValue(frontendTacos, "acos")}`,
-                  },
+                    {
+                      type: "fixed",
+                      id: "rv_cm2",
+                      label: "Reimbursement vs CM2 Margins",
+                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
+                    },
+                    {
+                      type: "fixed",
+                      id: "rv_sales",
+                      label: "Reimbursement vs Sales",
+                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
+                    },
+                  ],
 
-                  // ✅ Now Net Reimbursement appears below TACoS and remains collapsible
-                  {
-                    type: "section",
-                    id: "net_reimb",
-                    label: "Net Reimbursement",
-                    endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
-                    defaultCollapsed: true,
-                    children: [
-                      {
-                        id: "net_reimb_debt_payment",
-                        label: (
-                          <>
-                            Charged <strong className="text-[#ff5c5c]">(-)</strong>
-                          </>
-                        ),
-                        midValue: formatValue(totals.debt_payment, "debt_payment"),
-                      },
-                      {
-                        id: "net_reimb_disbursement",
-                        label: (
-                          <>
-                            Disbursement <strong className="text-green-500">(+)</strong>
-                          </>
-                        ),
-                        midValue: formatValue(totals.disbursement, "disbursement"),
-                      },
-                    ],
-                  },
+                  valueCols: 2,
+                }}
+              />
+              {noDataFound && (
+                <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
+                  No Data Available for selected period
+                </div>
+              )}
 
-                  {
-                    type: "fixed",
-                    id: "rv_cm2",
-                    label: "Reimbursement vs CM2 Margins",
-                    endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
-                  },
-                  {
-                    type: "fixed",
-                    id: "rv_sales",
-                    label: "Reimbursement vs Sales",
-                    endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
-                  },
-                ],
-
-                valueCols: 2,
-              }}
-            />
-            {noDataFound && (
-              <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
-                No Data Available for selected period
-              </div>
-            )}
-
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    {/* Top & Bottom tables */}
-    {/* <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      {/* Top & Bottom tables */}
+      {/* <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
       
           <div className="flex-1 min-w-0">
@@ -2414,7 +2411,7 @@ return (
         </div>
       </div> */}
 
-    {/* {showModal && selectedProduct && (
+      {/* {showModal && selectedProduct && (
         <Productinfoinpopup
           productname={selectedProduct}
           countryName={countryName}
@@ -2423,8 +2420,8 @@ return (
           onClose={() => setShowModal(false)}
         />
       )} */}
-  </>
-);
+    </>
+  );
 };
 
 export default SKUtable;
