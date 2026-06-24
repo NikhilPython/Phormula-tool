@@ -2962,62 +2962,69 @@ def live_mtd_vs_previous():
         # ---------------------------
         sku_live_context = []
 
-        for r in all_action_rows:
-            sku = r.get("sku")
+        for row in all_action_rows:
+            sku = row.get("sku")
             if not sku:
                 continue
 
-            growth_row = next(
-                (g for g in growth_data if g.get("sku") == sku),
-                None
-            )
-            if not growth_row:
-                continue
+            mtd_ads_change = row.get("mtd_ads_change") or {}
 
             sku_live_context.append({
-            "sku": sku,
+                "sku": sku,
 
-            # ---- Raw previous vs current ----
-            "quantity": {
-                "previous": growth_row.get("quantity_prev"),
-                "current": growth_row.get("quantity_curr"),
-            },
-            "asp": {
-                "previous": growth_row.get("asp_prev"),
-                "current": growth_row.get("asp_curr"),
-            },
-            "net_sales": {
-                "previous": growth_row.get("net_sales_prev"),
-                "current": growth_row.get("net_sales_curr"),
-            },
-                        "cm1_profit": {
-                "previous": growth_row.get("profit_prev"),
-                "current": growth_row.get("profit_curr"),
-            },
-            "cm2_profit": {
-                "previous": r.get("cm2_profit_prev", 0),
-                "current": r.get("cm2_profit_curr", 0),
-                "growth_pct": r.get("cm2_profit_growth_pct", 0),
-            },
-            "cm2_margin": {
-                "previous": r.get("cm2_margin_prev", 0),
-                "current": r.get("cm2_margin_curr", 0),
-            },
-            "profit_per_unit": {
-                "previous": growth_row.get("unit_wise_profitability_prev"),
-                "current": growth_row.get("unit_wise_profitability_curr"),
-            },
+                "quantity": {
+                    "previous": row.get("quantity_prev"),
+                    "current": row.get("quantity_curr"),
+                },
 
-            # 🔥 NEW — percentage movement (very important)
-            "movement_intensity": {
-                "units": (growth_row.get("Unit Growth (%)") or {}).get("value"),
-                "asp": (growth_row.get("ASP Growth (%)") or {}).get("value"),
-                "net_sales": (growth_row.get("Net Sales Growth (%)") or {}).get("value"),
-                "cm1_profit": (growth_row.get("CM1 Profit Impact (%)") or {}).get("value"),
-                "cm2_profit": r.get("cm2_profit_growth_pct", 0),
-                "profit_per_unit": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
-            }
-        })
+                "asp": {
+                    "previous": row.get("asp_prev"),
+                    "current": row.get("asp_curr"),
+                },
+
+                "net_sales": {
+                    "previous": row.get("net_sales_prev"),
+                    "current": row.get("net_sales_curr"),
+                },
+
+                "cm1_profit": {
+                    "previous": row.get("profit_prev"),
+                    "current": row.get("profit_curr"),
+                },
+
+                "profit_per_unit": {
+                    "previous": row.get("unit_wise_profitability_prev"),
+                    "current": row.get("unit_wise_profitability_curr"),
+                },
+
+                # NEW: ads factor for Excel recommendation
+                "ads": {
+                    "spend_previous": row.get("ads_spend_prev", 0),
+                    "spend_current": row.get("ads_spend_curr", 0),
+                    "spend_growth_pct": row.get("ads_spend_growth_pct", 0),
+
+                    "sales_previous": row.get("ads_sales_prev", 0),
+                    "sales_current": row.get("ads_sales_curr", 0),
+                    "sales_growth_pct": row.get("ads_sales_growth_pct", 0),
+
+                    "roas_previous": row.get("roas_prev", 0),
+                    "roas_current": row.get("roas_curr", 0),
+
+                    "acos_previous": row.get("ads_acos_prev", 0),
+                    "acos_current": row.get("ads_acos_curr", 0),
+
+                    "clicks_growth_pct": mtd_ads_change.get("clicks_pct", 0),
+                    "conversion_rate_change": mtd_ads_change.get("conversion_rate_change", 0),
+                },
+
+                "movement_intensity": {
+                    "units": (row.get("Unit Growth (%)") or {}).get("value"),
+                    "asp": (row.get("ASP Growth (%)") or {}).get("value"),
+                    "net_sales": (row.get("Net Sales Growth (%)") or {}).get("value"),
+                    "cm1_profit": (row.get("CM1 Profit Impact (%)") or {}).get("value"),
+                    "profit_per_unit": (row.get("Profit Per Unit (%)") or {}).get("value"),
+                },
+            })
             
         # print("\n========== SKU LIVE CONTEXT GOING TO STRATEGY AI ==========")
         # print(json.dumps(sku_live_context, indent=2, default=str))
@@ -3433,14 +3440,19 @@ def live_mtd_vs_previous():
 
             sku_strategy = sku_strategy_actions.get(sku, {})
 
+            # NEW: Excel recommendation becomes source of truth for main recommendation
+            recommendation_text = excel_live_recommendations.get(
+                sku,
+                sku_strategy.get("recommendation", "Monitor performance"),
+            )
+
             recommended_actions_mtd[sku] = render_live_recommended_action(
                 growth_row=growth_row,
-                recommendation=sku_strategy.get("recommendation", "Monitor performance"),
+                recommendation=recommendation_text,
                 ads_recommendation=sku_strategy.get("ads_recommendation"),
                 inventory_recommendation=sku_strategy.get("inventory_recommendation"),
                 journey_summary=sku_strategy.get("journey_summary"),
                 currency_symbol=currency["symbol"],
-                
             )
 
 

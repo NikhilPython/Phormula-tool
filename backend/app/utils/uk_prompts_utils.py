@@ -3579,6 +3579,29 @@ def get_excel_recommendation(
         "Maintain current ASP and monitor the performance of this product",
     )
 
+# def get_excel_recommendation_from_metrics(
+#     *,
+#     asp_current: Any,
+#     asp_previous: Any,
+#     units_current: Any,
+#     units_previous: Any,
+#     net_sales_current: Any,
+#     net_sales_previous: Any,
+#     cm1_profit_current: Any,
+#     cm1_profit_previous: Any,
+#     growth_intent: GrowthIntent,
+#     profit_priority: ProfitPriority,
+# ) -> str:
+#     return get_excel_recommendation(
+#         asp_direction=movement_direction(asp_current, asp_previous),
+#         units_direction=movement_direction(units_current, units_previous),
+#         net_sales_direction=movement_direction(net_sales_current, net_sales_previous),
+#         cm1_profit_direction=movement_direction(cm1_profit_current, cm1_profit_previous),
+#         growth_intent=growth_intent,
+#         profit_priority=profit_priority,
+#     )
+
+
 def get_excel_recommendation_from_metrics(
     *,
     asp_current: Any,
@@ -3591,7 +3614,60 @@ def get_excel_recommendation_from_metrics(
     cm1_profit_previous: Any,
     growth_intent: GrowthIntent,
     profit_priority: ProfitPriority,
+
+    # NEW OPTIONAL ADS INPUTS
+    ads_spend_current: Any = None,
+    ads_spend_previous: Any = None,
+    ads_spend_growth_pct: Any = None,
+
+    ads_sales_current: Any = None,
+    ads_sales_previous: Any = None,
+    ads_sales_growth_pct: Any = None,
+
+    ads_clicks_growth_pct: Any = None,
+
+    roas_current: Any = None,
+    roas_previous: Any = None,
+
+    ads_acos_current: Any = None,
+    ads_acos_previous: Any = None,
 ) -> str:
+    asp_pct = pct_change(asp_current, asp_previous)
+    units_pct = pct_change(units_current, units_previous)
+    net_sales_pct = pct_change(net_sales_current, net_sales_previous)
+
+    if ads_spend_growth_pct is not None:
+        ads_spend_pct = safe_pct(ads_spend_growth_pct)
+    else:
+        ads_spend_pct = pct_change(ads_spend_current, ads_spend_previous)
+
+    if ads_sales_growth_pct is not None:
+        ads_sales_pct = safe_pct(ads_sales_growth_pct)
+    else:
+        ads_sales_pct = pct_change(ads_sales_current, ads_sales_previous)
+
+    ads_clicks_pct = safe_pct(ads_clicks_growth_pct)
+
+    # NEW: ads-led decline override
+    ads_driver_recommendation = get_ads_visibility_driver_recommendation(
+        asp_pct=asp_pct,
+        units_pct=units_pct,
+        net_sales_pct=net_sales_pct,
+        ads_spend_pct=ads_spend_pct,
+        ads_sales_pct=ads_sales_pct,
+        ads_clicks_pct=ads_clicks_pct,
+        roas_current=roas_current,
+        roas_previous=roas_previous,
+        ads_acos_current=ads_acos_current,
+        ads_acos_previous=ads_acos_previous,
+        growth_intent=growth_intent,
+        profit_priority=profit_priority,
+    )
+
+    if ads_driver_recommendation:
+        return ads_driver_recommendation
+
+    # OLD Excel logic remains fallback
     return get_excel_recommendation(
         asp_direction=movement_direction(asp_current, asp_previous),
         units_direction=movement_direction(units_current, units_previous),
@@ -3634,19 +3710,48 @@ def build_sku_recommendations_from_excel_logic(
     return output
 
 
+# def get_excel_recommendation_from_live_context(
+#     sku_live_row: dict,
+#     growth_intent: str,
+#     profit_priority: str
+# ):
+#     """
+#     Convert live BI context → Excel rule engine inputs
+#     """
+
+#     asp = sku_live_row.get("asp", {})
+#     units = sku_live_row.get("quantity", {})
+#     net_sales = sku_live_row.get("net_sales", {})
+#     profit = sku_live_row.get("cm1_profit", {})
+
+#     return get_excel_recommendation_from_metrics(
+#         asp_current=asp.get("current"),
+#         asp_previous=asp.get("previous"),
+
+#         units_current=units.get("current"),
+#         units_previous=units.get("previous"),
+
+#         net_sales_current=net_sales.get("current"),
+#         net_sales_previous=net_sales.get("previous"),
+
+#         cm1_profit_current=profit.get("current"),
+#         cm1_profit_previous=profit.get("previous"),
+
+#         growth_intent=growth_intent,
+#         profit_priority=profit_priority,
+#     )
+
+
 def get_excel_recommendation_from_live_context(
     sku_live_row: dict,
     growth_intent: str,
     profit_priority: str
 ):
-    """
-    Convert live BI context → Excel rule engine inputs
-    """
-
-    asp = sku_live_row.get("asp", {})
-    units = sku_live_row.get("quantity", {})
-    net_sales = sku_live_row.get("net_sales", {})
-    profit = sku_live_row.get("cm1_profit", {})
+    asp = sku_live_row.get("asp", {}) or {}
+    units = sku_live_row.get("quantity", {}) or {}
+    net_sales = sku_live_row.get("net_sales", {}) or {}
+    profit = sku_live_row.get("cm1_profit", {}) or {}
+    ads = sku_live_row.get("ads", {}) or {}
 
     return get_excel_recommendation_from_metrics(
         asp_current=asp.get("current"),
@@ -3661,6 +3766,182 @@ def get_excel_recommendation_from_live_context(
         cm1_profit_current=profit.get("current"),
         cm1_profit_previous=profit.get("previous"),
 
+        # NEW ADS INPUTS
+        ads_spend_current=ads.get("spend_current"),
+        ads_spend_previous=ads.get("spend_previous"),
+        ads_spend_growth_pct=ads.get("spend_growth_pct"),
+
+        ads_sales_current=ads.get("sales_current"),
+        ads_sales_previous=ads.get("sales_previous"),
+        ads_sales_growth_pct=ads.get("sales_growth_pct"),
+
+        ads_clicks_growth_pct=ads.get("clicks_growth_pct"),
+
+        roas_current=ads.get("roas_current"),
+        roas_previous=ads.get("roas_previous"),
+
+        ads_acos_current=ads.get("acos_current"),
+        ads_acos_previous=ads.get("acos_previous"),
+
         growth_intent=growth_intent,
         profit_priority=profit_priority,
     )
+
+
+def pct_change(current: Any, previous: Any) -> float:
+    cur = _to_float(current)
+    prev = _to_float(previous)
+
+    if cur is None or prev is None or prev == 0:
+        return 0.0
+
+    return ((cur - prev) / abs(prev)) * 100.0
+
+
+def safe_pct(value: Any, fallback: float = 0.0) -> float:
+    val = _to_float(value)
+    return fallback if val is None else val
+
+def get_ads_visibility_driver_recommendation(
+    *,
+    asp_pct: float,
+    units_pct: float,
+    net_sales_pct: float,
+    ads_spend_pct: float,
+    ads_sales_pct: float,
+    ads_clicks_pct: float,
+    roas_current: Any,
+    roas_previous: Any,
+    ads_acos_current: Any,
+    ads_acos_previous: Any,
+    growth_intent: GrowthIntent,
+    profit_priority: ProfitPriority,
+) -> Optional[str]:
+    roas_curr = _to_float(roas_current) or 0.0
+    roas_prev = _to_float(roas_previous) or 0.0
+    acos_curr = _to_float(ads_acos_current) or 0.0
+    acos_prev = _to_float(ads_acos_previous) or 0.0
+
+    # -------------------------------------------------
+    # 1. DRIVER DETECTION
+    # -------------------------------------------------
+
+    # ASP is negligible only when it moved very little.
+    asp_negligible = abs(asp_pct) <= 2.0
+
+    # ASP is still not the primary driver when ads cut is much stronger
+    # than the ASP increase.
+    #
+    # Example:
+    # Passion Fruit:
+    # ASP +4.92%, Ads -52.79%
+    # Ads cut is more than 3x ASP increase, so ads is stronger driver.
+    asp_not_primary_driver = (
+        asp_negligible
+        or (
+            asp_pct > 0
+            and ads_spend_pct <= -15.0
+            and abs(ads_spend_pct) >= abs(asp_pct) * 3
+        )
+    )
+
+    # Do not require both units and net sales to be down by -10%.
+    # Refill Pack is a soft commercial decline but ads visibility dropped hard.
+    commercial_decline = (
+        units_pct <= -3.0
+        or net_sales_pct <= -3.0
+        or ads_sales_pct <= -20.0
+    )
+
+    # Refill Pack is -19.54%, so -20% was too strict.
+    ads_cut_material = ads_spend_pct <= -15.0
+
+    # Visibility means either traffic/clicks dropped or ad-attributed sales dropped.
+    ads_visibility_down = (
+        ads_clicks_pct <= -20.0
+        or ads_sales_pct <= -20.0
+    )
+
+    if not (
+        asp_not_primary_driver
+        and commercial_decline
+        and ads_cut_material
+        and ads_visibility_down
+    ):
+        return None
+
+    # -------------------------------------------------
+    # 2. EFFICIENCY CHECK
+    # -------------------------------------------------
+
+    ads_efficiency_ok = (
+        (roas_prev > 0 and roas_curr >= roas_prev)
+        or
+        (acos_prev > 0 and acos_curr <= acos_prev)
+    )
+
+    strong_ads_driver = (
+        ads_spend_pct <= -30.0
+        and ads_visibility_down
+    )
+
+    mild_asp_increase = 2.0 < asp_pct <= 6.0
+
+    growth_intent_clean = str(growth_intent or "").strip().lower()
+    profit_priority_clean = str(profit_priority or "").strip().lower()
+
+    # -------------------------------------------------
+    # 3. OBJECTIVE-BASED WORDING
+    # -------------------------------------------------
+
+    if profit_priority_clean == "high" or growth_intent_clean == "conservative":
+        if mild_asp_increase and strong_ads_driver:
+            return (
+                "Do not reduce ASP yet; ads visibility was cut heavily, "
+                "so restore only efficient ads first and monitor demand"
+            )
+
+        if ads_efficiency_ok:
+            return (
+                "Maintain current ASP and selectively restore efficient ads visibility; "
+                "decline appears ads-led, not price-led"
+            )
+
+        return (
+            "Maintain current ASP and review ads visibility carefully before changing price"
+        )
+
+    if growth_intent_clean == "aggressive" or profit_priority_clean == "sacrifice_short_term":
+        if mild_asp_increase and strong_ads_driver:
+            return (
+                "Maintain ASP for now and restore ads visibility to recover units; "
+                "reassess price only if demand does not recover"
+            )
+
+        if ads_efficiency_ok:
+            return (
+                "Maintain current ASP and restore ads visibility to recover units; "
+                "decline appears ads-led, not price-led"
+            )
+
+        return (
+            "Maintain current ASP and test controlled ads visibility recovery before changing price"
+        )
+
+    # Balanced / protect_growth default
+    if mild_asp_increase and strong_ads_driver:
+        return (
+            "Maintain ASP for now and restore ads visibility first; "
+            "ads cut appears to be the stronger driver than pricing"
+        )
+
+    if ads_efficiency_ok:
+        return (
+            "Maintain current ASP and restore efficient ads visibility; "
+            "decline appears ads-led, not price-led"
+        )
+
+    return (
+        "Maintain current ASP and review ads visibility before changing price"
+    )
+
