@@ -114,16 +114,28 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const canCollapse = data.length > defaultVisibleRows;
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
-        const totalRow = buildAggregateRow("Total", data, buckets, {
+        const sortedData = [...data].sort((a, b) => {
+            const aTotal =
+                Number(a.totalUnits) ||
+                buckets.reduce((sum, bucket) => sum + Number(a[bucket.key] || 0), 0);
+
+            const bTotal =
+                Number(b.totalUnits) ||
+                buckets.reduce((sum, bucket) => sum + Number(b[bucket.key] || 0), 0);
+
+            return bTotal - aTotal; // descending
+        });
+
+        const totalRow = buildAggregateRow("Total", sortedData, buckets, {
             isTotalRow: true,
         });
 
         if (!canCollapse || isExpanded) {
-            return [...data, totalRow] as HeatmapTableRow[];
+            return [...sortedData, totalRow] as HeatmapTableRow[];
         }
 
-        const mainRows = data.slice(0, defaultVisibleRows);
-        const otherRows = data.slice(defaultVisibleRows);
+        const mainRows = sortedData.slice(0, defaultVisibleRows);
+        const otherRows = sortedData.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
             return [...mainRows, totalRow] as HeatmapTableRow[];
@@ -191,8 +203,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 header: "Product Name",
                 width: "115px",
                 headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-left text-xs whitespace-normal break-words",
+                cellClassName: "text-left text-sm text-charcoal-500 whitespace-normal break-words",
                 render: (row) => <span>{row.productName}</span>,
+            },
+            {
+                key: "sku",
+                header: "SKU",
+                width: "95px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-sm text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isTotalRow) return "";
+
+                    return <span>{row.sku || "-"}</span>;
+                },
             },
             ...bucketColumns,
             {
@@ -287,7 +311,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 stickyHeader
                 zebra={false}
                 showCellTitle={false}
-                tableClassName="ageing-risk-heatmap-table w-full table-fixed text-xs"
+                tableClassName="ageing-risk-heatmap-table w-full table-fixed text-sm"
                 rowClassName={(row) =>
                     row.isTotalRow
                         ? "bg-[#EFEFEF] font-semibold"
