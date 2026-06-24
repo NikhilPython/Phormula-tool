@@ -5123,15 +5123,15 @@ export default function DashboardPage() {
         return "uk";
     }, [platform]);
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
+    // useEffect(() => {
+    //     if (typeof window === "undefined") return;
 
-        const key = "live-dashboard-cache-init";
+    //     const key = "live-dashboard-cache-init";
 
-        if (!localStorage.getItem(key)) {
-            localStorage.setItem(key, "initialized");
-        }
-    }, []);
+    //     if (!localStorage.getItem(key)) {
+    //         localStorage.setItem(key, "initialized");
+    //     }
+    // }, []);
 
     const hasSavedRef = useRef(false);
     const didBootstrapRef = useRef<string | null>(null);
@@ -5140,39 +5140,33 @@ export default function DashboardPage() {
         async (payload: DashboardCachePayload): Promise<void> => {
             if (typeof window === "undefined") return;
 
-            try {
-                const token = localStorage.getItem("jwtToken");
-                if (!token) return;
+            const token = localStorage.getItem("jwtToken");
+            if (!token) return;
 
-                const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        country: liveDashboardCountry,
-                        platform: String(platform || "").toLowerCase(),
-                        region: String(activeDateRegion || ""),
-                        startDay: selectedStartDay,
-                        endDay: selectedEndDay,
-                        cachePayload: payload,
-                    }),
-                });
+            const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    country: liveDashboardCountry,
+                    platform: String(platform || "").toLowerCase(),
+                    region: String(activeDateRegion || ""),
+                    startDay: selectedStartDay,
+                    endDay: selectedEndDay,
+                    savedAt: Date.now(),
+                    cachePayload: payload,
+                }),
+            });
 
-                const json = await res.json().catch(() => null);
+            const json = await res.json().catch(() => null);
 
-                if (!res.ok || !json?.success) {
-                    throw new Error(
-                        json?.error || `Failed to save dashboard cache (${res.status})`
-                    );
-                }
-
-                return;
-            } catch (err) {
-                console.error(err);
-                return;
+            if (!res.ok || !json?.success) {
+                throw new Error(
+                    json?.error || `Failed to save dashboard cache (${res.status})`
+                );
             }
         },
         [
@@ -5184,19 +5178,19 @@ export default function DashboardPage() {
         ]
     );
 
-    const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
-        if (typeof window === "undefined") return;
+    // const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
+    //     if (typeof window === "undefined") return;
 
-        localStorage.setItem(
-            liveCacheKey,
-            JSON.stringify({
-                ...payload,
-                savedAt: Date.now(),
-            })
-        );
+    //     localStorage.setItem(
+    //         liveCacheKey,
+    //         JSON.stringify({
+    //             ...payload,
+    //             savedAt: Date.now(),
+    //         })
+    //     );
 
-        await saveDashboardCacheToBackend(payload);
-    };
+    //     await saveDashboardCacheToBackend(payload);
+    // };
 
     const formatAppliedRangeLabel = (start: number | null, end: number | null) => {
         if (start == null || end == null) return "Select Date Range";
@@ -5273,28 +5267,12 @@ export default function DashboardPage() {
             throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
         }
 
-        const payload =
-            json?.data?.payload ??
-            json?.payload ??
-            null;
-
-        if (!payload) {
-            return {
-                found: false,
-                payload: null,
-                updatedAt: null,
-            };
-        }
+        const payload = json?.data?.payload ?? null;
 
         return {
-            found: true,
+            found: Boolean(json?.found && payload),
             payload,
-            updatedAt:
-                json?.data?.updated_at ??
-                json?.data?.created_at ??
-                json?.updated_at ??
-                json?.created_at ??
-                null,
+            updatedAt: json?.data?.updated_at ?? json?.data?.created_at ?? null,
         };
     }, [
         liveDashboardCountry,
@@ -5304,60 +5282,60 @@ export default function DashboardPage() {
         selectedEndDay,
     ]);
 
-    const liveCacheKey = useMemo(() => {
-        const country =
-            platform === "amazon-us" ? "us" :
-                platform === "amazon-uk" ? "uk" :
-                    platform === "amazon-ca" ? "ca" :
-                        "global";
+    // const liveCacheKey = useMemo(() => {
+    //     const country =
+    //         platform === "amazon-us" ? "us" :
+    //             platform === "amazon-uk" ? "uk" :
+    //                 platform === "amazon-ca" ? "ca" :
+    //                     "global";
 
-        return `live-dashboard-cache:${country}:${activeDateRegion}`;
-    }, [platform, activeDateRegion]);
+    //     return `live-dashboard-cache:${country}:${activeDateRegion}`;
+    // }, [platform, activeDateRegion]);
 
-    const lastRefreshKey = useMemo(() => {
-        return `${liveCacheKey}:last-updated-at`;
-    }, [liveCacheKey]);
+    // const lastRefreshKey = useMemo(() => {
+    //     return `${liveCacheKey}:last-updated-at`;
+    // }, [liveCacheKey]);
 
-    const restoreLiveCacheFromLocalStorage = useCallback(() => {
-        if (typeof window === "undefined") return false;
+    // const restoreLiveCacheFromLocalStorage = useCallback(() => {
+    //     if (typeof window === "undefined") return false;
 
-        const raw = localStorage.getItem(liveCacheKey);
-        if (!raw) return false;
+    //     const raw = localStorage.getItem(liveCacheKey);
+    //     if (!raw) return false;
 
-        try {
-            const parsed = JSON.parse(raw);
+    //     try {
+    //         const parsed = JSON.parse(raw);
 
-            applyDashboardCachePayload(parsed);
+    //         applyDashboardCachePayload(parsed);
 
-            const normalizeRefreshTimestamp = (value: any): number | null => {
-                if (!value) return null;
+    //         const normalizeRefreshTimestamp = (value: any): number | null => {
+    //             if (!value) return null;
 
-                const numeric = Number(value);
-                if (Number.isFinite(numeric) && numeric > 0) {
-                    return numeric;
-                }
+    //             const numeric = Number(value);
+    //             if (Number.isFinite(numeric) && numeric > 0) {
+    //                 return numeric;
+    //             }
 
-                const parsedDate = new Date(value).getTime();
-                return Number.isFinite(parsedDate) && parsedDate > 0 ? parsedDate : null;
-            };
+    //             const parsedDate = new Date(value).getTime();
+    //             return Number.isFinite(parsedDate) && parsedDate > 0 ? parsedDate : null;
+    //         };
 
-            const restoredLastRefreshAt =
-                normalizeRefreshTimestamp(parsed?.lastRefreshAt) ??
-                normalizeRefreshTimestamp(parsed?.savedAt) ??
-                normalizeRefreshTimestamp(localStorage.getItem(lastRefreshKey));
+    //         const restoredLastRefreshAt =
+    //             normalizeRefreshTimestamp(parsed?.lastRefreshAt) ??
+    //             normalizeRefreshTimestamp(parsed?.savedAt) ??
+    //             normalizeRefreshTimestamp(localStorage.getItem(lastRefreshKey));
 
-            setLastRefreshAt(restoredLastRefreshAt);
+    //         setLastRefreshAt(restoredLastRefreshAt);
 
-            if (restoredLastRefreshAt) {
-                localStorage.setItem(lastRefreshKey, String(restoredLastRefreshAt));
-            }
+    //         if (restoredLastRefreshAt) {
+    //             localStorage.setItem(lastRefreshKey, String(restoredLastRefreshAt));
+    //         }
 
-            return true;
-        } catch (err) {
-            console.error("Failed to restore live cache from localStorage:", err);
-            return false;
-        }
-    }, [liveCacheKey, lastRefreshKey, applyDashboardCachePayload]);
+    //         return true;
+    //     } catch (err) {
+    //         console.error("Failed to restore live cache from localStorage:", err);
+    //         return false;
+    //     }
+    // }, [liveCacheKey, lastRefreshKey, applyDashboardCachePayload]);
 
     const getLiveCacheKey = useCallback(
         (country: "uk" | "us") =>
@@ -5762,22 +5740,168 @@ export default function DashboardPage() {
         return `${diffDay} day ago`;
     }, []);
 
+    // const handleHardRefresh = useCallback(async () => {
+    //     if (typeof window === "undefined") return;
+
+    //     resetStepState();
+
+    //     try {
+    //         await fetchCountryTime();
+
+    //         await runDashboardLoadWithSteps();
+
+    //         const refreshedAt = Date.now();
+
+    //         localStorage.setItem(lastRefreshKey, String(refreshedAt));
+    //         setLastRefreshAt(refreshedAt);
+
+    //         triggerCachePost();
+    //     } catch (err) {
+    //         console.error("Hard refresh failed:", err);
+    //         isManualRefreshRef.current = false;
+    //         shouldPostCacheRef.current = false;
+    //     }
+    // }, [
+    //     fetchCountryTime,
+    //     runDashboardLoadWithSteps,
+    //     triggerCachePost,
+    //     lastRefreshKey,
+    // ]);
+
+    // useEffect(() => {
+    //     if (!fxReady) return;
+
+    //     if (didBootstrapRef.current === liveCacheKey) return;
+
+    //     let cancelled = false;
+
+    //     const bootstrapDashboard = async () => {
+    //         try {
+    //             const cacheResult = await getDashboardCacheFromBackend();
+
+    //             if (cancelled) return;
+
+    //             didBootstrapRef.current = liveCacheKey;
+
+    //             if (cacheResult?.found && cacheResult.payload) {
+    //                 shouldPostCacheRef.current = false;
+    //                 isManualRefreshRef.current = false;
+
+    //                 applyDashboardCachePayload(cacheResult.payload);
+
+    //                 const normalizeRefreshTimestamp = (value: any): number | null => {
+    //                     if (!value) return null;
+
+    //                     const numeric = Number(value);
+    //                     if (Number.isFinite(numeric) && numeric > 0) {
+    //                         return numeric;
+    //                     }
+
+    //                     const parsed = new Date(value).getTime();
+    //                     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    //                 };
+
+    //                 const payloadLastRefreshAt = normalizeRefreshTimestamp(
+    //                     cacheResult.payload?.lastRefreshAt
+    //                 );
+
+    //                 const backendUpdatedAt = normalizeRefreshTimestamp(cacheResult.updatedAt);
+
+    //                 const savedRefreshAt = localStorage.getItem(lastRefreshKey);
+    //                 const savedTs = normalizeRefreshTimestamp(savedRefreshAt);
+
+    //                 const finalRefreshAt =
+    //                     payloadLastRefreshAt ??
+    //                     backendUpdatedAt ??
+    //                     savedTs ??
+    //                     null;
+
+    //                 setLastRefreshAt(finalRefreshAt);
+
+    //                 if (finalRefreshAt) {
+    //                     localStorage.setItem(lastRefreshKey, String(finalRefreshAt));
+    //                 }
+
+    //                 localStorage.setItem(
+    //                     liveCacheKey,
+    //                     JSON.stringify({
+    //                         ...cacheResult.payload,
+    //                         savedAt: Date.now(),
+    //                     })
+    //                 );
+
+    //                 setDashboardBusy(false);
+    //                 setShowDashboardStepLoader(false);
+    //                 setStepProgress((prev) => ({
+    //                     ...prev,
+    //                     active: false,
+    //                 }));
+
+    //                 return;
+    //             }
+
+    //             const restoredFromLocal = restoreLiveCacheFromLocalStorage();
+
+    //             if (restoredFromLocal) {
+    //                 shouldPostCacheRef.current = false;
+    //                 isManualRefreshRef.current = false;
+
+    //                 setDashboardBusy(false);
+    //                 setShowDashboardStepLoader(false);
+    //                 setStepProgress((prev) => ({
+    //                     ...prev,
+    //                     active: false,
+    //                 }));
+
+    //                 return;
+    //             }
+
+    //             await runDashboardLoadWithSteps();
+
+    //             if (cancelled) return;
+
+    //             triggerCachePost();
+    //         } catch (err) {
+    //             console.error("Dashboard bootstrap failed:", err);
+
+    //             didBootstrapRef.current = null;
+
+    //             resetStepState();
+    //             setDashboardBusy(false);
+    //             setShowDashboardStepLoader(false);
+    //         }
+    //     };
+
+    //     bootstrapDashboard();
+
+    //     return () => {
+    //         cancelled = true;
+    //     };
+    // }, [
+    //     fxReady,
+    //     liveCacheKey,
+    //     lastRefreshKey,
+    //     getDashboardCacheFromBackend,
+    //     applyDashboardCachePayload,
+    //     restoreLiveCacheFromLocalStorage,
+    //     runDashboardLoadWithSteps,
+    //     triggerCachePost,
+    // ]);
+
     const handleHardRefresh = useCallback(async () => {
-        if (typeof window === "undefined") return;
-
-        resetStepState();
-
         try {
+            isManualRefreshRef.current = true;
+            shouldPostCacheRef.current = false;
+
             await fetchCountryTime();
 
             await runDashboardLoadWithSteps();
 
             const refreshedAt = Date.now();
-
-            localStorage.setItem(lastRefreshKey, String(refreshedAt));
             setLastRefreshAt(refreshedAt);
 
-            triggerCachePost();
+            shouldPostCacheRef.current = true;
+            setCacheSaveTick((x) => x + 1);
         } catch (err) {
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
@@ -5786,14 +5910,20 @@ export default function DashboardPage() {
     }, [
         fetchCountryTime,
         runDashboardLoadWithSteps,
-        triggerCachePost,
-        lastRefreshKey,
     ]);
 
     useEffect(() => {
         if (!fxReady) return;
 
-        if (didBootstrapRef.current === liveCacheKey) return;
+        const bootstrapKey = [
+            liveDashboardCountry,
+            platform,
+            activeDateRegion,
+            selectedStartDay ?? "na",
+            selectedEndDay ?? "na",
+        ].join(":");
+
+        if (didBootstrapRef.current === bootstrapKey) return;
 
         let cancelled = false;
 
@@ -5803,7 +5933,7 @@ export default function DashboardPage() {
 
                 if (cancelled) return;
 
-                didBootstrapRef.current = liveCacheKey;
+                didBootstrapRef.current = bootstrapKey;
 
                 if (cacheResult?.found && cacheResult.payload) {
                     shouldPostCacheRef.current = false;
@@ -5811,62 +5941,16 @@ export default function DashboardPage() {
 
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    const normalizeRefreshTimestamp = (value: any): number | null => {
-                        if (!value) return null;
+                    const payloadTs = Number(cacheResult.payload?.lastRefreshAt);
+                    const backendTs = cacheResult.updatedAt
+                        ? new Date(cacheResult.updatedAt).getTime()
+                        : null;
 
-                        const numeric = Number(value);
-                        if (Number.isFinite(numeric) && numeric > 0) {
-                            return numeric;
-                        }
-
-                        const parsed = new Date(value).getTime();
-                        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-                    };
-
-                    const payloadLastRefreshAt = normalizeRefreshTimestamp(
-                        cacheResult.payload?.lastRefreshAt
+                    setLastRefreshAt(
+                        Number.isFinite(payloadTs) && payloadTs > 0
+                            ? payloadTs
+                            : backendTs
                     );
-
-                    const backendUpdatedAt = normalizeRefreshTimestamp(cacheResult.updatedAt);
-
-                    const savedRefreshAt = localStorage.getItem(lastRefreshKey);
-                    const savedTs = normalizeRefreshTimestamp(savedRefreshAt);
-
-                    const finalRefreshAt =
-                        payloadLastRefreshAt ??
-                        backendUpdatedAt ??
-                        savedTs ??
-                        null;
-
-                    setLastRefreshAt(finalRefreshAt);
-
-                    if (finalRefreshAt) {
-                        localStorage.setItem(lastRefreshKey, String(finalRefreshAt));
-                    }
-
-                    localStorage.setItem(
-                        liveCacheKey,
-                        JSON.stringify({
-                            ...cacheResult.payload,
-                            savedAt: Date.now(),
-                        })
-                    );
-
-                    setDashboardBusy(false);
-                    setShowDashboardStepLoader(false);
-                    setStepProgress((prev) => ({
-                        ...prev,
-                        active: false,
-                    }));
-
-                    return;
-                }
-
-                const restoredFromLocal = restoreLiveCacheFromLocalStorage();
-
-                if (restoredFromLocal) {
-                    shouldPostCacheRef.current = false;
-                    isManualRefreshRef.current = false;
 
                     setDashboardBusy(false);
                     setShowDashboardStepLoader(false);
@@ -5882,7 +5966,9 @@ export default function DashboardPage() {
 
                 if (cancelled) return;
 
-                triggerCachePost();
+                isManualRefreshRef.current = true;
+                shouldPostCacheRef.current = true;
+                setCacheSaveTick((x) => x + 1);
             } catch (err) {
                 console.error("Dashboard bootstrap failed:", err);
 
@@ -5901,13 +5987,14 @@ export default function DashboardPage() {
         };
     }, [
         fxReady,
-        liveCacheKey,
-        lastRefreshKey,
+        liveDashboardCountry,
+        platform,
+        activeDateRegion,
+        selectedStartDay,
+        selectedEndDay,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
-        restoreLiveCacheFromLocalStorage,
         runDashboardLoadWithSteps,
-        triggerCachePost,
     ]);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
@@ -8881,15 +8968,7 @@ export default function DashboardPage() {
     ]);
 
     const buildDashboardCachePayload = useCallback(() => {
-        const storedLastRefreshAt =
-            typeof window !== "undefined"
-                ? Number(localStorage.getItem(lastRefreshKey))
-                : NaN;
-
-        const finalLastRefreshAt =
-            Number.isFinite(storedLastRefreshAt)
-                ? storedLastRefreshAt
-                : lastRefreshAt;
+        const finalLastRefreshAt = lastRefreshAt ?? Date.now();
 
         return {
             data,
@@ -8924,7 +9003,6 @@ export default function DashboardPage() {
             liveBiReady,
             biStatus,
 
-            // ✅ this is the important part
             lastRefreshAt: finalLastRefreshAt,
             savedAt: Date.now(),
         };
@@ -8955,22 +9033,21 @@ export default function DashboardPage() {
         liveBiReady,
         biStatus,
         lastRefreshAt,
-        lastRefreshKey,
     ]);
 
-    const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
-        if (typeof window === "undefined") return;
+    // const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
+    //     if (typeof window === "undefined") return;
 
-        const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+    //     const payloadToSave = cachePayload ?? buildDashboardCachePayload();
 
-        localStorage.setItem(
-            liveCacheKey,
-            JSON.stringify({
-                ...payloadToSave,
-                savedAt: Date.now(),
-            })
-        );
-    }, [buildDashboardCachePayload, liveCacheKey]);
+    //     localStorage.setItem(
+    //         liveCacheKey,
+    //         JSON.stringify({
+    //             ...payloadToSave,
+    //             savedAt: Date.now(),
+    //         })
+    //     );
+    // }, [buildDashboardCachePayload, liveCacheKey]);
 
     // useEffect(() => {
     //     if (typeof window === "undefined") return;
@@ -8979,6 +9056,63 @@ export default function DashboardPage() {
     //     localStorage.removeItem(liveCacheKey);
     //     localStorage.removeItem("live-dashboard-cache:global:Global");
     // }, [platform, liveCacheKey]);
+
+
+    // useEffect(() => {
+    //     if (!shouldPostCacheRef.current || !isManualRefreshRef.current) return;
+    //     if (!data && !liveBiPayload && !invRows.length) return;
+
+    //     const shouldPersist =
+    //         !pageLoading &&
+    //         !dashboardBusy &&
+    //         !loading &&
+    //         !biLoading &&
+    //         !invLoading &&
+    //         !monthlySpLoading &&
+    //         !shopifyLoading;
+
+    //     if (!shouldPersist) return;
+
+    //     const payload = buildDashboardCachePayload();
+
+    //     try {
+    //         localStorage.setItem(
+    //             liveCacheKey,
+    //             JSON.stringify({
+    //                 ...payload,
+    //                 savedAt: Date.now(),
+    //             })
+    //         );
+
+    //         localStorage.setItem("live-dashboard-cache-init", "initialized");
+    //     } catch (e) {
+    //         console.error("Failed to write local cache:", e);
+    //     }
+
+    //     saveDashboardCacheToBackend(payload)
+    //         .then(() => {
+    //             shouldPostCacheRef.current = false;
+    //             isManualRefreshRef.current = false;
+    //         })
+    // }, [
+    //     buildDashboardCachePayload,
+    //     saveDashboardCacheToBackend,
+    //     liveCacheKey,
+    //     lastRefreshKey,
+    //     pageLoading,
+    //     dashboardBusy,
+    //     loading,
+    //     biLoading,
+    //     invLoading,
+    //     monthlySpLoading,
+    //     shopifyLoading,
+    //     data,
+    //     liveBiPayload,
+    //     invRows,
+    //     monthlySpRows,
+    //     monthlySpTotalSpend,
+    //     cacheSaveTick,
+    // ]);
 
 
     useEffect(() => {
@@ -8998,30 +9132,17 @@ export default function DashboardPage() {
 
         const payload = buildDashboardCachePayload();
 
-        try {
-            localStorage.setItem(
-                liveCacheKey,
-                JSON.stringify({
-                    ...payload,
-                    savedAt: Date.now(),
-                })
-            );
-
-            localStorage.setItem("live-dashboard-cache-init", "initialized");
-        } catch (e) {
-            console.error("Failed to write local cache:", e);
-        }
-
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             })
+            .catch((err) => {
+                console.error("Failed to save dashboard cache to backend:", err);
+            });
     }, [
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
-        liveCacheKey,
-        lastRefreshKey,
         pageLoading,
         dashboardBusy,
         loading,
