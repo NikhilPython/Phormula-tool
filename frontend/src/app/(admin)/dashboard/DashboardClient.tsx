@@ -12190,7 +12190,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
         );
     };
 
-    const MTD_VISIBLE_PRODUCT_ROWS = 15;
+    const MTD_VISIBLE_PRODUCT_ROWS = 8.92;
 
     const MTD_HEADER_ROW_HEIGHT = 60;
     const MTD_SIGN_ROW_HEIGHT = 45;
