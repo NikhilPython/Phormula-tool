@@ -4454,6 +4454,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     [aiProductBlocks, aiSkuActions, nameToSkuMap]
   );
 
+
+  const handleHeatmapProductClick = useCallback(
+  (heatmapRow: AgeingRiskHeatmapRow) => {
+    if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
+      return;
+    }
+
+    const productName = String(heatmapRow.productName || "").trim();
+    const sku = String(heatmapRow.sku || "").trim();
+
+    if (!productName && !sku) {
+      return;
+    }
+
+    openAiProductDrawerByName(productName, sku);
+  },
+  [openAiProductDrawerByName]
+);
+
   useEffect(() => {
     if (!selectedAiProductBlock) return;
 
@@ -8678,6 +8697,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   onTrendBucketChange={setSelectedAgeingTrendBucket}
                   actions={inventoryInsightsData.actions}
                   actionLogic={inventoryInsightsData.actionLogic}
+                  onHeatmapProductClick={handleHeatmapProductClick}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
