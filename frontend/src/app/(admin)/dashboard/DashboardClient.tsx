@@ -1115,7 +1115,7 @@ const ensureSpReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country],
             return_excel: false,
         };
@@ -1178,7 +1178,7 @@ const ensureSdReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country], // ["UK"] or ["US"]
             max_wait_seconds: 900,
             poll_every_seconds: 10,
@@ -1233,7 +1233,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country],
             return_excel: false,
         };
