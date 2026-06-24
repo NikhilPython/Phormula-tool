@@ -1115,7 +1115,7 @@ const ensureSpReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "DAILY",
+            time_unit: "SUMMARY",
             countries: [country],
             return_excel: false,
         };
@@ -1178,7 +1178,7 @@ const ensureSdReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "DAILY",
+            time_unit: "SUMMARY",
             countries: [country], // ["UK"] or ["US"]
             max_wait_seconds: 900,
             poll_every_seconds: 10,
@@ -1233,7 +1233,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "DAILY",
+            time_unit: "SUMMARY",
             countries: [country],
             return_excel: false,
         };
@@ -3051,22 +3051,6 @@ export default function DashboardPage() {
     const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
     const activeDateRegion = graphRegionToUse;
 
-    const liveCacheKey = useMemo(() => {
-        const country =
-            platform === "amazon-us"
-                ? "us"
-                : platform === "amazon-uk"
-                    ? "uk"
-                    : platform === "amazon-ca"
-                        ? "ca"
-                        : "global";
-
-        return `live-dashboard-cache:${country}:${activeDateRegion}`;
-    }, [platform, activeDateRegion]);
-
-    const lastRefreshKey = useMemo(() => {
-        return `${liveCacheKey}:last-updated-at`;
-    }, [liveCacheKey]);
 
 
     const isUsAmazonConnected = useMemo(() => {
@@ -5156,45 +5140,39 @@ export default function DashboardPage() {
         async (payload: DashboardCachePayload): Promise<void> => {
             if (typeof window === "undefined") return;
 
-            const token = localStorage.getItem("jwtToken");
-            if (!token) return;
+            try {
+                const token = localStorage.getItem("jwtToken");
+                if (!token) return;
 
-            const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    country: liveDashboardCountry,
-                    platform: String(platform || "").toLowerCase(),
-                    region: String(activeDateRegion || ""),
-                    startDay: selectedStartDay,
-                    endDay: selectedEndDay,
-                    savedAt: Date.now(),
-                    cachePayload: payload,
-                }),
-            });
+                const res = await fetch(LIVE_DASHBOARD_CACHE_ENDPOINT, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        country: liveDashboardCountry,
+                        platform: String(platform || "").toLowerCase(),
+                        region: String(activeDateRegion || ""),
+                        startDay: selectedStartDay,
+                        endDay: selectedEndDay,
+                        cachePayload: payload,
+                    }),
+                });
 
-            const json = await res.json().catch(() => null);
+                const json = await res.json().catch(() => null);
 
-            if (!res.ok || !json?.success) {
-                throw new Error(
-                    json?.error || `Failed to save dashboard cache (${res.status})`
-                );
-            }
-
-            const updatedAt = json?.data?.updated_at;
-            if (updatedAt) {
-                const ts = new Date(updatedAt).getTime();
-
-                if (Number.isFinite(ts)) {
-                    setLastRefreshAt(ts);
-
-                    // small value only, safe
-                    localStorage.setItem(lastRefreshKey, String(ts));
+                if (!res.ok || !json?.success) {
+                    throw new Error(
+                        json?.error || `Failed to save dashboard cache (${res.status})`
+                    );
                 }
+
+                return;
+            } catch (err) {
+                console.error(err);
+                return;
             }
         },
         [
@@ -5203,11 +5181,22 @@ export default function DashboardPage() {
             activeDateRegion,
             selectedStartDay,
             selectedEndDay,
-            lastRefreshKey,
         ]
     );
 
+    const ensureLocalStorageThenSave = async (payload: DashboardCachePayload) => {
+        if (typeof window === "undefined") return;
 
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payload,
+                savedAt: Date.now(),
+            })
+        );
+
+        await saveDashboardCacheToBackend(payload);
+    };
 
     const formatAppliedRangeLabel = (start: number | null, end: number | null) => {
         if (start == null || end == null) return "Select Date Range";
@@ -5284,7 +5273,10 @@ export default function DashboardPage() {
             throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
         }
 
-        const payload = json?.data?.payload ?? null;
+        const payload =
+            json?.data?.payload ??
+            json?.payload ??
+            null;
 
         if (!payload) {
             return {
@@ -5300,6 +5292,8 @@ export default function DashboardPage() {
             updatedAt:
                 json?.data?.updated_at ??
                 json?.data?.created_at ??
+                json?.updated_at ??
+                json?.created_at ??
                 null,
         };
     }, [
@@ -5310,7 +5304,60 @@ export default function DashboardPage() {
         selectedEndDay,
     ]);
 
+    const liveCacheKey = useMemo(() => {
+        const country =
+            platform === "amazon-us" ? "us" :
+                platform === "amazon-uk" ? "uk" :
+                    platform === "amazon-ca" ? "ca" :
+                        "global";
 
+        return `live-dashboard-cache:${country}:${activeDateRegion}`;
+    }, [platform, activeDateRegion]);
+
+    const lastRefreshKey = useMemo(() => {
+        return `${liveCacheKey}:last-updated-at`;
+    }, [liveCacheKey]);
+
+    const restoreLiveCacheFromLocalStorage = useCallback(() => {
+        if (typeof window === "undefined") return false;
+
+        const raw = localStorage.getItem(liveCacheKey);
+        if (!raw) return false;
+
+        try {
+            const parsed = JSON.parse(raw);
+
+            applyDashboardCachePayload(parsed);
+
+            const normalizeRefreshTimestamp = (value: any): number | null => {
+                if (!value) return null;
+
+                const numeric = Number(value);
+                if (Number.isFinite(numeric) && numeric > 0) {
+                    return numeric;
+                }
+
+                const parsedDate = new Date(value).getTime();
+                return Number.isFinite(parsedDate) && parsedDate > 0 ? parsedDate : null;
+            };
+
+            const restoredLastRefreshAt =
+                normalizeRefreshTimestamp(parsed?.lastRefreshAt) ??
+                normalizeRefreshTimestamp(parsed?.savedAt) ??
+                normalizeRefreshTimestamp(localStorage.getItem(lastRefreshKey));
+
+            setLastRefreshAt(restoredLastRefreshAt);
+
+            if (restoredLastRefreshAt) {
+                localStorage.setItem(lastRefreshKey, String(restoredLastRefreshAt));
+            }
+
+            return true;
+        } catch (err) {
+            console.error("Failed to restore live cache from localStorage:", err);
+            return false;
+        }
+    }, [liveCacheKey, lastRefreshKey, applyDashboardCachePayload]);
 
     const getLiveCacheKey = useCallback(
         (country: "uk" | "us") =>
@@ -5331,11 +5378,8 @@ export default function DashboardPage() {
         if (selectedStartDay != null) params.set("start_day", String(selectedStartDay));
         if (selectedEndDay != null) params.set("end_day", String(selectedEndDay));
 
-        const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params.toString()}`, {
-            headers: {
-                Accept: "application/json",
-                Authorization: `Bearer ${token}`,
-            },
+        const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params}`, {
+            headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
         });
 
         const json = await res.json().catch(() => null);
@@ -5718,61 +5762,118 @@ export default function DashboardPage() {
         return `${diffDay} day ago`;
     }, []);
 
-    const handleHardRefresh = async () => {
-        if (pageLoading || dashboardBusy) return;
+    const handleHardRefresh = useCallback(async () => {
+        if (typeof window === "undefined") return;
 
-        shouldPostCacheRef.current = true;
-        isManualRefreshRef.current = true;
+        resetStepState();
 
-        // remove old large browser cache for this page
-        if (typeof window !== "undefined") {
-            localStorage.removeItem(liveCacheKey);
+        try {
+            await fetchCountryTime();
+
+            await runDashboardLoadWithSteps();
+
+            const refreshedAt = Date.now();
+
+            localStorage.setItem(lastRefreshKey, String(refreshedAt));
+            setLastRefreshAt(refreshedAt);
+
+            triggerCachePost();
+        } catch (err) {
+            console.error("Hard refresh failed:", err);
+            isManualRefreshRef.current = false;
+            shouldPostCacheRef.current = false;
         }
-
-        await runDashboardLoadWithSteps();
-
-        // trigger save effect after state updates
-        setCacheSaveTick((v) => v + 1);
-    };
+    }, [
+        fetchCountryTime,
+        runDashboardLoadWithSteps,
+        triggerCachePost,
+        lastRefreshKey,
+    ]);
 
     useEffect(() => {
         if (!fxReady) return;
-        if (isMonthYearNA) return;
 
-        const bootstrapKey = [
-            liveDashboardCountry,
-            platform,
-            activeDateRegion,
-            selectedStartDay ?? "na",
-            selectedEndDay ?? "na",
-        ].join(":");
-
-        if (didBootstrapRef.current === bootstrapKey) return;
-        didBootstrapRef.current = bootstrapKey;
+        if (didBootstrapRef.current === liveCacheKey) return;
 
         let cancelled = false;
 
         const bootstrapDashboard = async () => {
             try {
-                setDashboardBusy(true);
-
                 const cacheResult = await getDashboardCacheFromBackend();
 
                 if (cancelled) return;
 
+                didBootstrapRef.current = liveCacheKey;
+
                 if (cacheResult?.found && cacheResult.payload) {
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+
                     applyDashboardCachePayload(cacheResult.payload);
 
-                    const updatedAt = cacheResult.updatedAt;
+                    const normalizeRefreshTimestamp = (value: any): number | null => {
+                        if (!value) return null;
 
-                    if (updatedAt) {
-                        const ts = new Date(updatedAt).getTime();
-
-                        if (Number.isFinite(ts)) {
-                            setLastRefreshAt(ts);
-                            localStorage.setItem(lastRefreshKey, String(ts));
+                        const numeric = Number(value);
+                        if (Number.isFinite(numeric) && numeric > 0) {
+                            return numeric;
                         }
+
+                        const parsed = new Date(value).getTime();
+                        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+                    };
+
+                    const payloadLastRefreshAt = normalizeRefreshTimestamp(
+                        cacheResult.payload?.lastRefreshAt
+                    );
+
+                    const backendUpdatedAt = normalizeRefreshTimestamp(cacheResult.updatedAt);
+
+                    const savedRefreshAt = localStorage.getItem(lastRefreshKey);
+                    const savedTs = normalizeRefreshTimestamp(savedRefreshAt);
+
+                    const finalRefreshAt =
+                        payloadLastRefreshAt ??
+                        backendUpdatedAt ??
+                        savedTs ??
+                        null;
+
+                    setLastRefreshAt(finalRefreshAt);
+
+                    if (finalRefreshAt) {
+                        localStorage.setItem(lastRefreshKey, String(finalRefreshAt));
                     }
+
+                    localStorage.setItem(
+                        liveCacheKey,
+                        JSON.stringify({
+                            ...cacheResult.payload,
+                            savedAt: Date.now(),
+                        })
+                    );
+
+                    setDashboardBusy(false);
+                    setShowDashboardStepLoader(false);
+                    setStepProgress((prev) => ({
+                        ...prev,
+                        active: false,
+                    }));
+
+                    return;
+                }
+
+                const restoredFromLocal = restoreLiveCacheFromLocalStorage();
+
+                if (restoredFromLocal) {
+                    shouldPostCacheRef.current = false;
+                    isManualRefreshRef.current = false;
+
+                    setDashboardBusy(false);
+                    setShowDashboardStepLoader(false);
+                    setStepProgress((prev) => ({
+                        ...prev,
+                        active: false,
+                    }));
 
                     return;
                 }
@@ -5781,22 +5882,15 @@ export default function DashboardPage() {
 
                 if (cancelled) return;
 
-                shouldPostCacheRef.current = true;
-                isManualRefreshRef.current = true;
-                setCacheSaveTick((v) => v + 1);
+                triggerCachePost();
             } catch (err) {
                 console.error("Dashboard bootstrap failed:", err);
 
-                if (!cancelled) {
-                    await runDashboardLoadWithSteps();
-                    shouldPostCacheRef.current = true;
-                    isManualRefreshRef.current = true;
-                    setCacheSaveTick((v) => v + 1);
-                }
-            } finally {
-                if (!cancelled) {
-                    setDashboardBusy(false);
-                }
+                didBootstrapRef.current = null;
+
+                resetStepState();
+                setDashboardBusy(false);
+                setShowDashboardStepLoader(false);
             }
         };
 
@@ -5807,16 +5901,13 @@ export default function DashboardPage() {
         };
     }, [
         fxReady,
-        isMonthYearNA,
-        liveDashboardCountry,
-        platform,
-        activeDateRegion,
-        selectedStartDay,
-        selectedEndDay,
+        liveCacheKey,
+        lastRefreshKey,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
+        restoreLiveCacheFromLocalStorage,
         runDashboardLoadWithSteps,
-        lastRefreshKey,
+        triggerCachePost,
     ]);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
@@ -8867,6 +8958,19 @@ export default function DashboardPage() {
         lastRefreshKey,
     ]);
 
+    const saveLiveCacheToLocalStorage = useCallback((cachePayload?: any) => {
+        if (typeof window === "undefined") return;
+
+        const payloadToSave = cachePayload ?? buildDashboardCachePayload();
+
+        localStorage.setItem(
+            liveCacheKey,
+            JSON.stringify({
+                ...payloadToSave,
+                savedAt: Date.now(),
+            })
+        );
+    }, [buildDashboardCachePayload, liveCacheKey]);
 
     // useEffect(() => {
     //     if (typeof window === "undefined") return;
@@ -8894,17 +8998,30 @@ export default function DashboardPage() {
 
         const payload = buildDashboardCachePayload();
 
+        try {
+            localStorage.setItem(
+                liveCacheKey,
+                JSON.stringify({
+                    ...payload,
+                    savedAt: Date.now(),
+                })
+            );
+
+            localStorage.setItem("live-dashboard-cache-init", "initialized");
+        } catch (e) {
+            console.error("Failed to write local cache:", e);
+        }
+
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
             })
-            .catch((err) => {
-                console.error("Failed to save dashboard cache to backend:", err);
-            });
     }, [
         buildDashboardCachePayload,
         saveDashboardCacheToBackend,
+        liveCacheKey,
+        lastRefreshKey,
         pageLoading,
         dashboardBusy,
         loading,
@@ -13517,7 +13634,7 @@ ${pageLoading
                 countryName={countryName}
                 sourceCountryName={countryName}
                 displayCurrency={displayCurrency}
-                formattedMonthYear={formattedMonthYear} // ✅ add this
+                formattedMonthYear={formattedMonthYear}
             />
         </div >
 
