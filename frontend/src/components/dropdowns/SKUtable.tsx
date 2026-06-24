@@ -1922,10 +1922,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div
             className={[
               "w-full rounded-xl border border-gray-300",
-              anyGroupExpanded ? "overflow-x-auto" : "overflow-hidden",
+              anyGroupExpanded ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden",
             ].join(" ")}
           >
-            <div className={anyGroupExpanded ? "min-w-[1200px]" : "w-full"}>
+            <div className={anyGroupExpanded ? "min-w-max" : "w-full"}>
               <GroupedCollapsibleTable<TableRow>
                 rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
@@ -1939,10 +1939,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   );
                 }}
                 tableClassName={[
-                  "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
-                  anyGroupExpanded
-                    ? "table-auto min-w-[1200px]"
-                    : "table-fixed",
+                  "border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                  anyGroupExpanded ? "table-fixed" : "w-full table-fixed",
                 ].join(" ")}
                 defaultSort={{
                   key: "net_sales",

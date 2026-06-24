@@ -438,6 +438,11 @@ export default function GroupedCollapsibleTable<RowT>({
 
   /* ---------------- Visible Columns ---------------- */
 
+  const anyGroupExpanded = useMemo(
+    () => groups.some((g) => (collapsed[g.id] ?? true) === false),
+    [groups, collapsed]
+  );
+
   const visibleLeafCols = useMemo(() => {
     const out: LeafCol<RowT>[] = [];
     out.push(...leftCols);
@@ -456,6 +461,95 @@ export default function GroupedCollapsibleTable<RowT>({
 
     return out;
   }, [leftCols, resolvedLayout, collapsed, groupMap, singleMap]);
+
+  const getMinWidthForCol = (col: LeafCol<RowT>) => {
+    if (col.key === "sno") return 58;
+    if (col.key === "product_name") return 220;
+    if (col.key === "sku") return 135;
+
+    if (
+      col.key === "quantity" ||
+      col.key === "return_quantity" ||
+      col.key === "total_quantity" ||
+      col.key === "net_units_sold"
+    ) {
+      return 125;
+    }
+
+    if (
+      col.key === "asp" ||
+      col.key === "net_sales" ||
+      col.key === "cogs"
+    ) {
+      return 135;
+    }
+
+    if (
+      col.key === "selling_fees" ||
+      col.key === "fba_fees" ||
+      col.key === "marketplace_total" ||
+      col.key === "amazon_fee"
+    ) {
+      return 120;
+    }
+
+    if (
+      col.key === "tax" ||
+      col.key === "credits" ||
+      col.key === "tax_and_credits" ||
+      col.key === "net_taxes" ||
+      col.key === "net_credits" ||
+      col.key === "other_transactions"
+    ) {
+      return 120;
+    }
+
+    if (
+      col.key === "product_spend" ||
+      col.key === "display_spend" ||
+      col.key === "brand_spend" ||
+      col.key === "ads_spend"
+    ) {
+      return 170;
+    }
+
+    if (
+      col.key === "acos" ||
+      col.key.includes("percentage") ||
+      col.key.includes("margins") ||
+      col.key.includes("_per")
+    ) {
+      return 120;
+    }
+
+    if (col.key.includes("profit")) {
+      return 135;
+    }
+
+    if (col.noWrap) return 130;
+
+    return 110;
+  };
+
+  const requiredTableWidth = useMemo(() => {
+    const width = visibleLeafCols.reduce(
+      (sum, col) => sum + getMinWidthForCol(col),
+      0
+    );
+
+    return Math.max(width, 1200);
+  }, [visibleLeafCols]);
+
+  const tableStyle: React.CSSProperties = anyGroupExpanded
+    ? {
+      tableLayout: "fixed",
+      width: `${requiredTableWidth}px`,
+      minWidth: `${requiredTableWidth}px`,
+    }
+    : {
+      tableLayout: "fixed",
+      width: "100%",
+    };
 
   useEffect(() => {
     onVisibleColCountChange?.(visibleLeafCols.length);
@@ -487,10 +581,7 @@ export default function GroupedCollapsibleTable<RowT>({
     | { kind: "col"; col: LeafCol<RowT>; colSpan: 1 }
     | { kind: "blank"; key: string; colSpan: number };
 
-  const anyGroupExpanded = useMemo(
-    () => groups.some((g) => (collapsed[g.id] ?? true) === false),
-    [groups, collapsed]
-  );
+
 
   const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
     if (!anyGroupExpanded) return [];
@@ -524,12 +615,25 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const renderColGroup = () => (
     <colgroup>
-      {visibleLeafCols.map((c) => (
-        <col
-          key={c.key}
-          style={c.width ? { width: c.width } : undefined}
-        />
-      ))}
+      {visibleLeafCols.map((c, index) => {
+        const fixedWidth = getMinWidthForCol(c);
+
+        const widthStyle: React.CSSProperties = anyGroupExpanded
+          ? {
+            width: `${fixedWidth}px`,
+            minWidth: `${fixedWidth}px`,
+          }
+          : c.width
+            ? { width: c.width }
+            : {};
+
+        return (
+          <col
+            key={`${c.key}-${index}`}
+            style={widthStyle}
+          />
+        );
+      })}
     </colgroup>
   );
 
@@ -829,13 +933,7 @@ export default function GroupedCollapsibleTable<RowT>({
             boxSizing: "border-box",
           }}
         >
-          <table
-            className={tableClassName}
-            style={{
-              tableLayout: "fixed",
-              width: "100%",
-            }}
-          >
+          <table className={tableClassName} style={tableStyle}>
             {renderColGroup()}
             {renderTableHead()}
           </table>
@@ -850,13 +948,7 @@ export default function GroupedCollapsibleTable<RowT>({
             scrollbarGutter: "stable",
           }}
         >
-          <table
-            className={tableClassName}
-            style={{
-              tableLayout: "fixed",
-              width: "100%",
-            }}
-          >
+          <table className={tableClassName} style={tableStyle}>
             {renderColGroup()}
 
             <tbody>
@@ -874,13 +966,7 @@ export default function GroupedCollapsibleTable<RowT>({
             boxSizing: "border-box",
           }}
         >
-          <table
-            className={tableClassName}
-            style={{
-              tableLayout: "fixed",
-              width: "100%",
-            }}
-          >
+          <table className={tableClassName} style={tableStyle}>
             {renderColGroup()}
 
             {pinnedRows.length > 0 && (
@@ -898,7 +984,7 @@ export default function GroupedCollapsibleTable<RowT>({
    * Everything stays in one table
    */
   return (
-    <table className={tableClassName}>
+    <table className={tableClassName} style={tableStyle}>
       {renderColGroup()}
       {renderTableHead()}
 

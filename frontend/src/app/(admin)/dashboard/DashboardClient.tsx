@@ -4316,53 +4316,53 @@ export default function DashboardPage() {
     );
 
     const buildAdsMetric = (row: any) => {
-  const adsSpend = toNumberSafe(
-    row?.ads_spend ??
-      row?.total_ads ??
-      row?.advertising_fees ??
-      row?.advertising_total ??
-      0
-  );
+        const adsSpend = toNumberSafe(
+            row?.ads_spend ??
+            row?.total_ads ??
+            row?.advertising_fees ??
+            row?.advertising_total ??
+            0
+        );
 
-  const prevAdsSpend = toNumberSafe(
-    row?.previous_ads_spend ??
-      row?.prev_ads_spend ??
-      row?.ads_spend_prev ??
-      0
-  );
+        const prevAdsSpend = toNumberSafe(
+            row?.previous_ads_spend ??
+            row?.prev_ads_spend ??
+            row?.ads_spend_prev ??
+            0
+        );
 
-  const growthPct =
-    row?.ads_spend_growth_pct != null
-      ? Number(row.ads_spend_growth_pct)
-      : prevAdsSpend
-        ? safeDeltaPct(adsSpend, prevAdsSpend)
-        : 0;
+        const growthPct =
+            row?.ads_spend_growth_pct != null
+                ? Number(row.ads_spend_growth_pct)
+                : prevAdsSpend
+                    ? safeDeltaPct(adsSpend, prevAdsSpend)
+                    : 0;
 
-  const sign = Number(growthPct) > 0 ? "+" : "";
-  const growthText = `${sign}${Number(growthPct || 0).toFixed(2)}%`;
+        const sign = Number(growthPct) > 0 ? "+" : "";
+        const growthText = `${sign}${Number(growthPct || 0).toFixed(2)}%`;
 
-  return {
-    label: "Ads",
-    value: `${formatDisplayAmount(adsSpend)} (${growthText})`,
-    color: "#414042",
-  };
-};
+        return {
+            label: "Ads",
+            value: `${formatDisplayAmount(adsSpend)} (${growthText})`,
+            color: "#414042",
+        };
+    };
 
-const buildDrawerMetricsWithAds = (
-  metrics: { label: string; value: string; color?: string }[] = [],
-  sourceRow: any
-) => {
-  const baseMetrics = metrics.filter((m) => {
-    const label = m.label.trim().toLowerCase();
+    const buildDrawerMetricsWithAds = (
+        metrics: { label: string; value: string; color?: string }[] = [],
+        sourceRow: any
+    ) => {
+        const baseMetrics = metrics.filter((m) => {
+            const label = m.label.trim().toLowerCase();
 
-    return label !== "ads";
-  });
+            return label !== "ads";
+        });
 
-  return [
-    ...baseMetrics,
-    ...(sourceRow ? [buildAdsMetric(sourceRow)] : []),
-  ];
-};
+        return [
+            ...baseMetrics,
+            ...(sourceRow ? [buildAdsMetric(sourceRow)] : []),
+        ];
+    };
 
     const formatAdsNumber = (value: number) =>
         Number.isFinite(value)
@@ -11783,36 +11783,36 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         : parsedRecommendedAction.inventoryPoints;
             }
 
-const rowAny = row as any;
-const liveRowAny = liveRow as any;
+            const rowAny = row as any;
+            const liveRowAny = liveRow as any;
 
-setSelectedRec({
-    productName,
-    metrics: buildDrawerMetricsWithAds(
-        buildDrawerMetricsForPnlRow(row, liveRow),
-        {
-            ...liveRowAny,
-            ...rowAny,
-            ads_spend:
-                rowAny?.ads_spend ??
-                rowAny?.total_ads ??
-                rowAny?.advertising_fees ??
-                rowAny?.advertising_total ??
-                liveRowAny?.ads_spend ??
-                liveRowAny?.ads_spend_curr ??
-                liveRowAny?.total_ads ??
-                liveRowAny?.advertising_fees,
-            ads_spend_growth_pct:
-                rowAny?.ads_spend_growth_pct ??
-                liveRowAny?.ads_spend_growth_pct,
-        }
-    ),
-    journeyPoints,
-    recommendationPoints,
-    advertisingPoints,
-    inventoryPoints,
-    showChart: true,
-});
+            setSelectedRec({
+                productName,
+                metrics: buildDrawerMetricsWithAds(
+                    buildDrawerMetricsForPnlRow(row, liveRow),
+                    {
+                        ...liveRowAny,
+                        ...rowAny,
+                        ads_spend:
+                            rowAny?.ads_spend ??
+                            rowAny?.total_ads ??
+                            rowAny?.advertising_fees ??
+                            rowAny?.advertising_total ??
+                            liveRowAny?.ads_spend ??
+                            liveRowAny?.ads_spend_curr ??
+                            liveRowAny?.total_ads ??
+                            liveRowAny?.advertising_fees,
+                        ads_spend_growth_pct:
+                            rowAny?.ads_spend_growth_pct ??
+                            liveRowAny?.ads_spend_growth_pct,
+                    }
+                ),
+                journeyPoints,
+                recommendationPoints,
+                advertisingPoints,
+                inventoryPoints,
+                showChart: true,
+            });
 
             setRecDrawerOpen(true);
         },
@@ -13255,18 +13255,18 @@ ${pageLoading
                                 <div
                                     className={[
                                         "w-full rounded-xl border border-gray-300",
-                                        productwiseHasExpandedGroups ? "overflow-x-auto" : "overflow-hidden",
+                                        productwiseHasExpandedGroups
+                                            ? "overflow-x-auto overflow-y-hidden"
+                                            : "overflow-hidden",
                                     ].join(" ")}
                                 >
-                                    <div className={productwiseHasExpandedGroups ? "min-w-[1200px]" : "w-full"}>
+                                    <div className={productwiseHasExpandedGroups ? "min-w-max" : "w-full"}>
                                         <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                             rows={finalMonthlySkuwiseRowsForTable}
                                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
                                             tableClassName={[
-                                                "w-full border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
-                                                productwiseHasExpandedGroups
-                                                    ? "table-auto min-w-[1200px]"
-                                                    : "table-fixed",
+                                                "border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                                productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
                                             ].join(" ")}
                                             getRowKey={(row, idx) =>
                                                 row.isTotal
