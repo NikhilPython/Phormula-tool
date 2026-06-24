@@ -4315,6 +4315,55 @@ export default function DashboardPage() {
         [displayCurrency]
     );
 
+    const buildAdsMetric = (row: any) => {
+  const adsSpend = toNumberSafe(
+    row?.ads_spend ??
+      row?.total_ads ??
+      row?.advertising_fees ??
+      row?.advertising_total ??
+      0
+  );
+
+  const prevAdsSpend = toNumberSafe(
+    row?.previous_ads_spend ??
+      row?.prev_ads_spend ??
+      row?.ads_spend_prev ??
+      0
+  );
+
+  const growthPct =
+    row?.ads_spend_growth_pct != null
+      ? Number(row.ads_spend_growth_pct)
+      : prevAdsSpend
+        ? safeDeltaPct(adsSpend, prevAdsSpend)
+        : 0;
+
+  const sign = Number(growthPct) > 0 ? "+" : "";
+  const growthText = `${sign}${Number(growthPct || 0).toFixed(2)}%`;
+
+  return {
+    label: "Ads",
+    value: `${formatDisplayAmount(adsSpend)} (${growthText})`,
+    color: "#414042",
+  };
+};
+
+const buildDrawerMetricsWithAds = (
+  metrics: { label: string; value: string; color?: string }[] = [],
+  sourceRow: any
+) => {
+  const baseMetrics = metrics.filter((m) => {
+    const label = m.label.trim().toLowerCase();
+
+    return label !== "ads";
+  });
+
+  return [
+    ...baseMetrics,
+    ...(sourceRow ? [buildAdsMetric(sourceRow)] : []),
+  ];
+};
+
     const formatAdsNumber = (value: number) =>
         Number.isFinite(value)
             ? value.toLocaleString("en-GB", {
@@ -11734,15 +11783,36 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         : parsedRecommendedAction.inventoryPoints;
             }
 
-            setSelectedRec({
-                productName,
-                metrics: buildDrawerMetricsForPnlRow(row, liveRow),
-                journeyPoints,
-                recommendationPoints,
-                advertisingPoints,
-                inventoryPoints,
-                showChart: true,
-            });
+const rowAny = row as any;
+const liveRowAny = liveRow as any;
+
+setSelectedRec({
+    productName,
+    metrics: buildDrawerMetricsWithAds(
+        buildDrawerMetricsForPnlRow(row, liveRow),
+        {
+            ...liveRowAny,
+            ...rowAny,
+            ads_spend:
+                rowAny?.ads_spend ??
+                rowAny?.total_ads ??
+                rowAny?.advertising_fees ??
+                rowAny?.advertising_total ??
+                liveRowAny?.ads_spend ??
+                liveRowAny?.ads_spend_curr ??
+                liveRowAny?.total_ads ??
+                liveRowAny?.advertising_fees,
+            ads_spend_growth_pct:
+                rowAny?.ads_spend_growth_pct ??
+                liveRowAny?.ads_spend_growth_pct,
+        }
+    ),
+    journeyPoints,
+    recommendationPoints,
+    advertisingPoints,
+    inventoryPoints,
+    showChart: true,
+});
 
             setRecDrawerOpen(true);
         },

@@ -117,6 +117,8 @@ interface SkuItem {
 cm2_profit_prev?: number;
 cm2_profit_per_unit_curr?: number;
 cm2_profit_per_unit_prev?: number;
+ads_spend_curr?: number;
+ads_spend_growth_pct?: number;
 }
 
 interface CategorizedGrowth {
@@ -668,6 +670,22 @@ const buildProfitMetricCards = (
   ];
 };
 
+const buildAdsMetric = (item: any) => {
+  const adsSpendCurr = Number(item?.ads_spend_curr ?? 0);
+  const adsSpendGrowthPct = Number(item?.ads_spend_growth_pct ?? 0);
+
+  const sign = adsSpendGrowthPct > 0 ? "+" : "";
+  const growthText = `${sign}${adsSpendGrowthPct.toFixed(2)}%`;
+
+  return {
+    label: "Ads",
+    value: `${formatDisplayAmount(
+      convertToDisplayCurrency(adsSpendCurr, sourceCurrency)
+    )} (${growthText})`,
+    color: "#414042", // growth black
+  };
+};
+
 const replaceProfitMetricsWithCm2IfAvailable = (
   metrics: { label: string; value: string; color?: string }[],
   sourceRow: any
@@ -994,6 +1012,7 @@ const replaceProfitMetricsWithCm2IfAvailable = (
     });
 
    m.push(...buildProfitMetricCards(item, getGrowth));
+  //  m.push(buildAdsMetric(item));
 
     const coverageRatio = Number(
       (item as any).coverage_ratio_months ??
@@ -1061,8 +1080,10 @@ const replaceProfitMetricsWithCm2IfAvailable = (
 
     return {
       productName,
-      metrics: buildMetricsForSku(item),
-
+      metrics: sortMetricsByOrder([
+  ...buildMetricsForSku(item),
+  buildAdsMetric(item),
+]),
       // ✅ Single-country /live_mtd_bi response
       journeyPoints: toPoints(insight?.product_journey),
       recommendationPoints: toPoints(insight?.recommendation),
@@ -1094,7 +1115,10 @@ const replaceProfitMetricsWithCm2IfAvailable = (
 
     return {
       productName,
-      metrics: buildMetricsForSku(item),
+      metrics: sortMetricsByOrder([
+  ...buildMetricsForSku(item),
+  buildAdsMetric(item),
+]),
 
       // ✅ Global product journey comparison
       journeyPoints: Array.isArray(journey?.journey_comparison)
@@ -2032,11 +2056,12 @@ const replaceProfitMetricsWithCm2IfAvailable = (
       );
     });
 
-    return sortMetricsByOrder([
-      ...baseMetrics,
-      buildStockCoverMetric(sourceRow),
-      buildCurrentInventoryUnitsMetric(sourceRow),
-    ]);
+  return sortMetricsByOrder([
+  ...baseMetrics,
+  ...(sourceRow ? [buildAdsMetric(sourceRow)] : []),
+  buildStockCoverMetric(sourceRow),
+  buildCurrentInventoryUnitsMetric(sourceRow),
+]);
   };
 
   const sortMetricsByOrder = (
@@ -2046,6 +2071,7 @@ const replaceProfitMetricsWithCm2IfAvailable = (
   "units",
   "net sales",
   "asp",
+  "ads",
   "cm2 profit",
   "cm2 profit per unit",
   "cm1 profit",
@@ -2054,6 +2080,8 @@ const replaceProfitMetricsWithCm2IfAvailable = (
   "stock cover (months)",
   "stock cover",
 ];
+
+
 
     return [...metrics].sort((a, b) => {
       const aIndex = order.indexOf(a.label.trim().toLowerCase());
@@ -2076,7 +2104,7 @@ const replaceProfitMetricsWithCm2IfAvailable = (
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-  /^(ASP|Units|Net sales|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
+  /^(ASP|Units|Net sales|Ads|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
@@ -2092,11 +2120,16 @@ const replaceProfitMetricsWithCm2IfAvailable = (
             ? rawMetricValue
             : convertMetricValueString(rawMetricValue, label);
 
-        metrics.push({
-          label,
-          value,
-          color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
-        });
+       metrics.push({
+  label,
+  value,
+  color:
+    label.trim().toLowerCase() === "ads"
+      ? "#414042"
+      : value.includes("-")
+        ? "#FF5C5C"
+        : "#5EA68E",
+});
 
         continue;
       }
@@ -2135,6 +2168,8 @@ const replaceProfitMetricsWithCm2IfAvailable = (
   metrics,
   sourceRow
 );
+
+
 
 const insightText = insightParts.join("\n").trim();
 const sections = extractSections(insightText);
@@ -2422,7 +2457,7 @@ return otherSkuItem;
 
     const metrics: { label: string; value: string; color?: string }[] = [];
     const metricRegex =
-  /^(ASP|Units|Net sales|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
+  /^(ASP|Units|Net sales|Ads|CM2 profit per unit|CM2 profit|CM1 profit per unit|CM1 profit|Current inventory)\s*:\s*(.+)$/i;
 
     const insightParts: string[] = [];
 
@@ -2437,10 +2472,15 @@ return otherSkuItem;
             : convertMetricValueString(rawMetricValue, label);
 
         metrics.push({
-          label,
-          value,
-          color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
-        });
+  label,
+  value,
+  color:
+    label.trim().toLowerCase() === "ads"
+      ? "#414042"
+      : value.includes("-")
+        ? "#FF5C5C"
+        : "#5EA68E",
+});
         continue;
       }
       insightParts.push(line);
@@ -2473,10 +2513,12 @@ return otherSkuItem;
       metrics.push(buildStockCoverMetric(sourceRow));
     }
 
-    const finalMetrics = replaceProfitMetricsWithCm2IfAvailable(
+   const finalMetrics = replaceProfitMetricsWithCm2IfAvailable(
   metrics,
   sourceRow
 );
+
+
 
 const insightText = insightParts.join("\n").trim();
 const sections = extractSections(insightText);
@@ -2871,6 +2913,14 @@ return {
       </em>
     );
   };
+
+  const hideAdsFromRecommendationCard = (
+  metrics: { label: string; value: string; color?: string }[] = []
+) => {
+  return metrics.filter(
+    (m) => m.label.trim().toLowerCase() !== "ads"
+  );
+};
 
   const columns: ColumnDef<BIGridRow>[] = useMemo(() => {
     const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
@@ -4318,9 +4368,9 @@ return {
                                   </button>
                                 </div>
 
-                                {card.metrics?.length > 0 && (
+                               {hideAdsFromRecommendationCard(card.metrics)?.length > 0 && (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {card.metrics.map((m, i) => (
+                                    {hideAdsFromRecommendationCard(card.metrics).map((m, i) => (
                                       <div
                                         key={i}
                                         className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
@@ -4574,9 +4624,9 @@ return {
                                 </button>
                               </div>
 
-                              {parsedOther.metrics?.length > 0 && (
-                                <div className="grid grid-cols-3 gap-2">
-                                  {parsedOther.metrics.map((m, i) => (
+                              {hideAdsFromRecommendationCard(parsedOther.metrics)?.length > 0 && (
+  <div className="grid grid-cols-3 gap-2">
+    {hideAdsFromRecommendationCard(parsedOther.metrics).map((m, i) => (
                                     <div
                                       key={i}
                                       className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
