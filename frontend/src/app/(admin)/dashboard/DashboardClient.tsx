@@ -1115,7 +1115,7 @@ const ensureSpReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country],
             return_excel: false,
         };
@@ -1178,7 +1178,7 @@ const ensureSdReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country], // ["UK"] or ["US"]
             max_wait_seconds: 900,
             poll_every_seconds: 10,
@@ -1233,7 +1233,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
         const body = {
             start_date,
             end_date,
-            time_unit: "SUMMARY",
+            time_unit: "DAILY",
             countries: [country],
             return_excel: false,
         };
@@ -11826,6 +11826,27 @@ Keep enough stock for validation but avoid over-committing too early.`,
         ]
     );
 
+    const handleHeatmapProductClick = useCallback(
+    (heatmapRow: AgeingRiskHeatmapRow) => {
+        if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
+            return;
+        }
+
+        const productName = String(heatmapRow.productName || "").trim();
+        const sku = String(heatmapRow.sku || "").trim();
+
+        if (!productName && !sku) {
+            return;
+        }
+
+        openPnlSkuDrawer({
+            product_name: productName,
+            sku,
+        } as MonthlySkuwiseTableRow);
+    },
+    [openPnlSkuDrawer]
+);
+
     const currentInventoryExportRows = useMemo(() => {
         const rowsToUse = finalInventoryRows || [];
 
@@ -13807,6 +13828,7 @@ ${pageLoading
                                 actionLogic={inventoryInsightsData.actionLogic}
                                 onDownloadInventoryExcel={downloadInventoryExcel}
                                 canDownloadInventoryExcel={canDownloadInventoryExcel}
+                                onHeatmapProductClick={handleHeatmapProductClick}
                             />
                         ) : (
                             <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">

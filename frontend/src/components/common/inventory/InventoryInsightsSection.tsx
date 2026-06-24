@@ -45,6 +45,9 @@ type InventoryInsightsSectionProps = {
 
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
+
+    // ✅ ADD THIS
+    onHeatmapProductClick?: (row: AgeingRiskHeatmapRow) => void;
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
@@ -63,6 +66,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     onActionViewDetails,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
+    onHeatmapProductClick,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -96,6 +100,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         subtitle="Quickly identify products with old inventory"
                         data={heatmapData}
                         buckets={heatmapBuckets}
+                        onProductClick={onHeatmapProductClick}
                     />
                 )}
 

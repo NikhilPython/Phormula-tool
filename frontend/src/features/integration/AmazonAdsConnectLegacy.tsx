@@ -163,7 +163,7 @@ async function ensureSpReportOncePerDay(country: "UK" | "US" | "CA") {
     await postJson(`/api/ads/manager/sp_advertised_product_report`, {
         start_date,
         end_date,
-        time_unit: "SUMMARY",
+        time_unit: "DAILY",
         countries: [country],
         return_excel: false,
     });
@@ -241,7 +241,7 @@ async function seedAdsReportsOnConnect(
     await postJson(`/api/ads/manager/sp_advertised_product_report`, {
         start_date,
         end_date,
-        time_unit: "SUMMARY",
+        time_unit: "DAILY",
         countries: [country],
         return_excel: false,
     });
@@ -253,7 +253,7 @@ async function seedAdsReportsOnConnect(
     await postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
         start_date,
         end_date,
-        time_unit: "SUMMARY",
+        time_unit: "DAILY",
         countries: [country],
         max_wait_seconds: 900,
         poll_every_seconds: 10,

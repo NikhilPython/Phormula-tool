@@ -26,6 +26,9 @@ type AgeingRiskHeatmapProps = {
     data: AgeingRiskHeatmapRow[];
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
+
+    // ✅ ADD THIS
+    onProductClick?: (row: AgeingRiskHeatmapRow) => void;
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
@@ -108,6 +111,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     data,
     buckets,
     defaultVisibleRows = 9,
+    onProductClick,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -198,26 +202,34 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return <span>{rowIndex + 1}</span>;
                 },
             },
-            {
-                key: "productName",
-                header: "Product Name",
-                width: "115px",
-                headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-left text-sm text-charcoal-500 whitespace-normal break-words",
-                render: (row) => <span>{row.productName}</span>,
-            },
-            {
-                key: "sku",
-                header: "SKU",
-                width: "95px",
-                headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-center text-sm text-charcoal-500 whitespace-normal break-words",
-                render: (row) => {
-                    if (row.isTotalRow) return "";
+         {
+    key: "productName",
+    header: "Product Name",
+    width: "115px",
+    headerClassName: heatmapHeaderClassName,
+    cellClassName: "text-left text-xs whitespace-normal break-words",
+    render: (row) => {
+        const canClick =
+            !!onProductClick &&
+            !row.isTotalRow &&
+            !row.isOthersRow &&
+            !!row.productName;
 
-                    return <span>{row.sku || "-"}</span>;
-                },
-            },
+        if (!canClick) {
+            return <span>{row.productName}</span>;
+        }
+
+        return (
+            <button
+                type="button"
+                onClick={() => onProductClick(row)}
+                className="text-left font-medium underline-offset-2 hover:underline text-green-500"
+            >
+                {row.productName}
+            </button>
+        );
+    },
+},
             ...bucketColumns,
             {
                 key: "totalUnits",
@@ -237,7 +249,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             },
             {
                 key: "unsellableUnits",
-                header: "Unsellable Units",
+                header: "Unfulfillable Units",
                 width: "95px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
@@ -270,7 +282,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 },
             },
         ];
-    }, [buckets]);
+    }, [buckets, onProductClick]);
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -96,7 +96,7 @@ const metricColors = [
   "border border-[#FDD36F] border-t-[#FDD36F]", // Units
   "border border-[#75BBDA] border-t-[#75BBDA]", // Net Sales
   "border border-[#B75A5A] border-t-[#B75A5A]", // ASP
-  "border border-[#8B7CF6] border-t-[#8B7CF6]", // Ads
+  "border border-[#C49466] border-t-[#C49466]", // Ads
   "border border-[#7B9A6D] border-t-[#7B9A6D]", // CM2 Profit
   "border border-[#C49466] border-t-[#C49466]", // CM2 Profit Per Unit
   "border border-[#7B9A6D] border-t-[#7B9A6D]", // CM1 Profit
