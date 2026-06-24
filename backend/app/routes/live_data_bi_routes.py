@@ -15,7 +15,8 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,get_ai_refresh_slot)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,fetch_adsdaily_sku_mtd_ads,
+attach_adsdaily_mtd_ads_to_growth_rows, get_ai_refresh_slot)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -2245,6 +2246,60 @@ def live_mtd_vs_previous():
                 "status": "loading",
                 "message": "Data is still syncing. Please wait a few seconds."
             }), 202
+        
+        # -------------------------------------------------
+        # ADSDAILY MTD ADS: previous MTD vs current MTD
+        # Example:
+        #   curr_start/curr_end = 1 Jun to 24 Jun
+        #   prev_start/prev_end = 1 May to 24 May
+        # Aggregated product-wise by SKU.
+        # -------------------------------------------------
+        try:
+            prev_ads_sku_map, prev_ads_totals = fetch_adsdaily_sku_mtd_ads(
+                user_id=user_id,
+                country=country,
+                start_date=prev_start,
+                end_date=prev_end,
+            )
+
+            curr_ads_sku_map, curr_ads_totals = fetch_adsdaily_sku_mtd_ads(
+                user_id=user_id,
+                country=country,
+                start_date=curr_start,
+                end_date=curr_end,
+            )
+
+        except Exception as e:
+            print("[WARN] adsdaily MTD enrichment failed:", e)
+
+            prev_ads_sku_map = {}
+            curr_ads_sku_map = {}
+
+            prev_ads_totals = {
+                "ads_spend": 0.0,
+                "ads_sales": 0.0,
+                "clicks": 0.0,
+                "impressions": 0.0,
+                "sale_units": 0.0,
+                "roas": 0.0,
+                "acos": 0.0,
+                "source_table": None,
+                "start_date": prev_start.isoformat(),
+                "end_date": prev_end.isoformat(),
+            }
+
+            curr_ads_totals = {
+                "ads_spend": 0.0,
+                "ads_sales": 0.0,
+                "clicks": 0.0,
+                "impressions": 0.0,
+                "sale_units": 0.0,
+                "roas": 0.0,
+                "acos": 0.0,
+                "source_table": None,
+                "start_date": curr_start.isoformat(),
+                "end_date": curr_end.isoformat(),
+            }
 
         # ---------------------------
         # FULL PREVIOUS MONTH + DAILY SERIES: UK / US / GLOBAL
@@ -2351,6 +2406,17 @@ def live_mtd_vs_previous():
             key=key_column,
         )
 
+        # -------------------------------------------------
+        # Attach previous/current MTD ads to every SKU row
+        # This must happen BEFORE top_80/new/reviving/other split,
+        # so frontend + AI both receive ads movement.
+        # -------------------------------------------------
+        if key_column == "sku":
+            growth_data = attach_adsdaily_mtd_ads_to_growth_rows(
+                rows=growth_data,
+                prev_ads_sku_map=prev_ads_sku_map,
+                curr_ads_sku_map=curr_ads_sku_map,
+            )
        
 
         prev_keys = {r.get(key_column) for r in prev_data_aligned if r.get(key_column)}
@@ -2708,6 +2774,39 @@ def live_mtd_vs_previous():
             current_month=ranges["meta"]["current_month"],
         )
 
+        payload_ai["ads_mtd"] = {
+        "previous": {
+            "ads_spend": round(prev_ads_totals.get("ads_spend", 0.0), 2),
+            "ads_sales": round(prev_ads_totals.get("ads_sales", 0.0), 2),
+            "clicks": round(prev_ads_totals.get("clicks", 0.0), 2),
+            "impressions": round(prev_ads_totals.get("impressions", 0.0), 2),
+            "sale_units": round(prev_ads_totals.get("sale_units", 0.0), 2),
+            "roas": round(prev_ads_totals.get("roas", 0.0), 2),
+            "acos": round(prev_ads_totals.get("acos", 0.0), 2),
+            "ctr": round(prev_ads_totals.get("ctr", 0.0), 2),
+            "cpc": round(prev_ads_totals.get("cpc", 0.0), 2),
+            "conversion_rate": round(prev_ads_totals.get("conversion_rate", 0.0), 2),
+            "source_table": prev_ads_totals.get("source_table"),
+            "start_date": prev_ads_totals.get("start_date"),
+            "end_date": prev_ads_totals.get("end_date"),
+        },
+        "current": {
+            "ads_spend": round(curr_ads_totals.get("ads_spend", 0.0), 2),
+            "ads_sales": round(curr_ads_totals.get("ads_sales", 0.0), 2),
+            "clicks": round(curr_ads_totals.get("clicks", 0.0), 2),
+            "impressions": round(curr_ads_totals.get("impressions", 0.0), 2),
+            "sale_units": round(curr_ads_totals.get("sale_units", 0.0), 2),
+            "roas": round(curr_ads_totals.get("roas", 0.0), 2),
+            "acos": round(curr_ads_totals.get("acos", 0.0), 2),
+            "ctr": round(curr_ads_totals.get("ctr", 0.0), 2),
+            "cpc": round(curr_ads_totals.get("cpc", 0.0), 2),
+            "conversion_rate": round(curr_ads_totals.get("conversion_rate", 0.0), 2),
+            "source_table": curr_ads_totals.get("source_table"),
+            "start_date": curr_ads_totals.get("start_date"),
+            "end_date": curr_ads_totals.get("end_date"),
+        },
+    }
+
         # ====================================================
         # ✅ ACTION SKU CONTEXT
         # Source of truth from build_ai_summary()
@@ -2983,27 +3082,52 @@ def live_mtd_vs_previous():
                 continue
 
             sku_ads_context.append({
-                "sku": sku,
+            "sku": sku,
+            "product_name": r.get("product_name"),
 
-                # Previous month full-table values
-                "ads_spend_prev": r.get("ads_spend_prev", 0),
-                "acos_prev": r.get("acos_prev", 0),
-                "cm2_profit_prev": r.get("cm2_profit_prev", 0),
-                "cm2_profit_per_unit_prev": r.get("cm2_profit_per_unit_prev", 0),
-                "cm2_margin_prev": r.get("cm2_margin_prev", 0),
-                "net_sales_prev": r.get("net_sales_prev", 0),
+            # Nested MTD ads, easiest for AI to understand
+            "previous_mtd_ads": r.get("mtd_ads_prev", {}),
+            "current_mtd_ads": r.get("mtd_ads_curr", {}),
+            "mtd_ads_change": r.get("mtd_ads_change", {}),
 
-                # Current month full-table values
-                "ads_spend_curr": r.get("ads_spend_curr", 0),
-                "acos_curr": r.get("acos_curr", 0),
-                "cm2_profit_curr": r.get("cm2_profit_curr", 0),
-                "cm2_profit_per_unit_curr": r.get("cm2_profit_per_unit_curr", 0),
-                "cm2_margin_curr": r.get("cm2_margin_curr", 0),
-                "net_sales_curr": r.get("net_sales_curr", 0),
+            # Flat values for compatibility
+            "ads_spend_prev": r.get("ads_spend_prev", 0),
+            "ads_spend_curr": r.get("ads_spend_curr", 0),
 
-                # Movement
-                "cm2_profit_growth_pct": r.get("cm2_profit_growth_pct", 0),
-            })
+            "ads_sales_prev": r.get("ads_sales_prev", 0),
+            "ads_sales_curr": r.get("ads_sales_curr", 0),
+
+            "roas_prev": r.get("roas_prev", 0),
+            "roas_curr": r.get("roas_curr", 0),
+
+            # spend / ad sales
+            "ads_acos_prev": r.get("ads_acos_prev", 0),
+            "ads_acos_curr": r.get("ads_acos_curr", 0),
+
+            # spend / total net sales
+            "tacos_prev": r.get("tacos_prev", 0),
+            "tacos_curr": r.get("tacos_curr", 0),
+            "acos_prev": r.get("acos_prev", 0),
+            "acos_curr": r.get("acos_curr", 0),
+
+            "ads_spend_growth_pct": r.get("ads_spend_growth_pct", 0),
+            "ads_sales_growth_pct": r.get("ads_sales_growth_pct", 0),
+
+            # Business context
+            "net_sales_prev": r.get("net_sales_prev", 0),
+            "net_sales_curr": r.get("net_sales_curr", 0),
+            "quantity_prev": r.get("quantity_prev", 0),
+            "quantity_curr": r.get("quantity_curr", 0),
+
+            # Existing CM2 fields
+            "cm2_profit_prev": r.get("cm2_profit_prev", 0),
+            "cm2_profit_curr": r.get("cm2_profit_curr", 0),
+            "cm2_profit_per_unit_prev": r.get("cm2_profit_per_unit_prev", 0),
+            "cm2_profit_per_unit_curr": r.get("cm2_profit_per_unit_curr", 0),
+            "cm2_margin_prev": r.get("cm2_margin_prev", 0),
+            "cm2_margin_curr": r.get("cm2_margin_curr", 0),
+            "cm2_profit_growth_pct": r.get("cm2_profit_growth_pct", 0),
+        })
 
         ads_monthly_from_payload = payload_ai.get("ads_monthly", {}) or {}
 
@@ -3595,6 +3719,7 @@ def live_mtd_vs_previous():
             "currency": currency,
             "ai_last_refreshed_at": ai_last_refreshed_at,
             "ads_monthly": payload_ai.get("ads_monthly", {}),
+            "ads_mtd": payload_ai.get("ads_mtd", {}),
             
             "objective_context": {
                 "growth_intent": user_objective.get("growth_intent"),

@@ -769,6 +769,361 @@ def totals_from_daily_series(daily_series):
         "advertising": s("advertising"),
     }
 
+def _safe_ads_float(value, default=0.0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _normalise_ads_country(country: str) -> str:
+    country = str(country or "uk").strip().lower()
+
+    aliases = {
+        "united kingdom": "uk",
+        "gb": "uk",
+        "great britain": "uk",
+        "usa": "us",
+        "united states": "us",
+        "united states of america": "us",
+    }
+
+    return aliases.get(country, country)
+
+
+def fetch_adsdaily_sku_mtd_ads(
+    user_id: int,
+    country: str,
+    start_date: date,
+    end_date: date,
+) -> tuple[dict, dict]:
+    """
+    Fetch MTD ads from:
+      adsdaily_{user_id}_{country}_{month}_{year}
+
+    Example if current date is 24 June:
+      current:  adsdaily_1_uk_6_2026, date 1 Jun to 24 Jun
+      previous: adsdaily_1_uk_5_2026, date 1 May to 24 May
+
+    Returns:
+      sku_map[sku] = product-wise ads metrics
+      totals = portfolio ads totals
+    """
+
+    country_key = _normalise_ads_country(country)
+    table_name = f"adsdaily_{int(user_id)}_{country_key}_{int(start_date.month)}_{int(start_date.year)}"
+
+    empty_totals = {
+        "ads_spend": 0.0,
+        "ads_sales": 0.0,
+        "clicks": 0.0,
+        "impressions": 0.0,
+        "sale_units": 0.0,
+        "roas": 0.0,
+        "acos": 0.0,
+        "ctr": 0.0,
+        "cpc": 0.0,
+        "conversion_rate": 0.0,
+        "source_table": table_name,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
+
+    try:
+        with engine_hist.connect() as conn:
+            exists = conn.execute(
+                text("SELECT to_regclass(:table_name)"),
+                {"table_name": f"public.{table_name}"},
+            ).scalar()
+
+            if not exists:
+                print(f"[WARN] adsdaily table missing: {table_name}")
+                return {}, empty_totals
+
+            df = pd.read_sql(
+                text(f"""
+                    SELECT *
+                    FROM {table_name}
+                    WHERE date::date >= :start_date
+                      AND date::date <= :end_date
+                """),
+                conn,
+                params={
+                    "start_date": start_date,
+                    "end_date": end_date,
+                },
+            )
+
+    except Exception as e:
+        print(f"[WARN] failed reading adsdaily MTD table {table_name}: {e}")
+        return {}, empty_totals
+
+    if df is None or df.empty or "sku" not in df.columns:
+        return {}, empty_totals
+
+    df = df.copy()
+
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df = df[
+        df["sku"].notna()
+        & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
+    ].copy()
+
+    if df.empty:
+        return {}, empty_totals
+
+    numeric_cols = [
+        "spend",
+        "ads_spend_total",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
+        "ads_sales_total",
+        "sale_amount",
+        "sp_ads_sales",
+        "sd_ads_sales",
+        "sb_ads_sales",
+        "clicks",
+        "impressions",
+        "sale_units",
+        "advertised_unit_sale",
+        "other_unit_sale",
+        "new_to_brand_sales",
+    ]
+
+    for col in numeric_cols:
+        if col not in df.columns:
+            df[col] = 0.0
+
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    grouped = (
+        df.groupby("sku", as_index=False)
+        .agg({
+            "spend": "sum",
+            "ads_spend_total": "sum",
+            "product_spend": "sum",
+            "display_spend": "sum",
+            "brand_spend": "sum",
+            "ads_sales_total": "sum",
+            "sale_amount": "sum",
+            "sp_ads_sales": "sum",
+            "sd_ads_sales": "sum",
+            "sb_ads_sales": "sum",
+            "clicks": "sum",
+            "impressions": "sum",
+            "sale_units": "sum",
+            "advertised_unit_sale": "sum",
+            "other_unit_sale": "sum",
+            "new_to_brand_sales": "sum",
+        })
+    )
+
+    sku_map = {}
+
+    for _, r in grouped.iterrows():
+        sku = str(r.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        ads_spend = _safe_ads_float(r.get("ads_spend_total"))
+
+        # fallback if ads_spend_total is empty
+        if ads_spend == 0:
+            ads_spend = _safe_ads_float(r.get("spend"))
+
+        ads_sales = _safe_ads_float(r.get("ads_sales_total"))
+        clicks = _safe_ads_float(r.get("clicks"))
+        impressions = _safe_ads_float(r.get("impressions"))
+        sale_units = _safe_ads_float(r.get("sale_units"))
+
+        sku_map[sku] = {
+            "ads_spend": round(ads_spend, 2),
+            "ads_sales": round(ads_sales, 2),
+
+            "spend": round(_safe_ads_float(r.get("spend")), 2),
+            "product_spend": round(_safe_ads_float(r.get("product_spend")), 2),
+            "display_spend": round(_safe_ads_float(r.get("display_spend")), 2),
+            "brand_spend": round(_safe_ads_float(r.get("brand_spend")), 2),
+
+            "sp_ads_sales": round(_safe_ads_float(r.get("sp_ads_sales")), 2),
+            "sd_ads_sales": round(_safe_ads_float(r.get("sd_ads_sales")), 2),
+            "sb_ads_sales": round(_safe_ads_float(r.get("sb_ads_sales")), 2),
+            "sale_amount": round(_safe_ads_float(r.get("sale_amount")), 2),
+
+            "clicks": round(clicks, 2),
+            "impressions": round(impressions, 2),
+            "sale_units": round(sale_units, 2),
+
+            "advertised_unit_sale": round(_safe_ads_float(r.get("advertised_unit_sale")), 2),
+            "other_unit_sale": round(_safe_ads_float(r.get("other_unit_sale")), 2),
+            "new_to_brand_sales": round(_safe_ads_float(r.get("new_to_brand_sales")), 2),
+
+            "roas": round(ads_sales / ads_spend, 2) if ads_spend else 0.0,
+            "acos": round((ads_spend / ads_sales) * 100, 2) if ads_sales else 0.0,
+            "ctr": round((clicks / impressions) * 100, 2) if impressions else 0.0,
+            "cpc": round(ads_spend / clicks, 2) if clicks else 0.0,
+            "conversion_rate": round((sale_units / clicks) * 100, 2) if clicks else 0.0,
+        }
+
+    total_ads_spend = sum(v["ads_spend"] for v in sku_map.values())
+    total_ads_sales = sum(v["ads_sales"] for v in sku_map.values())
+    total_clicks = sum(v["clicks"] for v in sku_map.values())
+    total_impressions = sum(v["impressions"] for v in sku_map.values())
+    total_sale_units = sum(v["sale_units"] for v in sku_map.values())
+
+    totals = {
+        "ads_spend": round(total_ads_spend, 2),
+        "ads_sales": round(total_ads_sales, 2),
+        "clicks": round(total_clicks, 2),
+        "impressions": round(total_impressions, 2),
+        "sale_units": round(total_sale_units, 2),
+        "roas": round(total_ads_sales / total_ads_spend, 2) if total_ads_spend else 0.0,
+        "acos": round((total_ads_spend / total_ads_sales) * 100, 2) if total_ads_sales else 0.0,
+        "ctr": round((total_clicks / total_impressions) * 100, 2) if total_impressions else 0.0,
+        "cpc": round(total_ads_spend / total_clicks, 2) if total_clicks else 0.0,
+        "conversion_rate": round((total_sale_units / total_clicks) * 100, 2) if total_clicks else 0.0,
+        "source_table": table_name,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
+
+    return sku_map, totals
+
+
+def attach_adsdaily_mtd_ads_to_growth_rows(
+    rows: list[dict],
+    prev_ads_sku_map: dict,
+    curr_ads_sku_map: dict,
+) -> list[dict]:
+    """
+    Attach previous/current MTD ads to SKU growth rows.
+    These rows then go to frontend + AI payload.
+    """
+
+    enriched_rows = []
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        row = dict(row)
+
+        sku = str(row.get("sku") or "").strip()
+        prev_ads = prev_ads_sku_map.get(sku, {}) if sku else {}
+        curr_ads = curr_ads_sku_map.get(sku, {}) if sku else {}
+
+        prev_spend = _safe_ads_float(prev_ads.get("ads_spend"))
+        curr_spend = _safe_ads_float(curr_ads.get("ads_spend"))
+
+        prev_sales = _safe_ads_float(prev_ads.get("ads_sales"))
+        curr_sales = _safe_ads_float(curr_ads.get("ads_sales"))
+
+        prev_clicks = _safe_ads_float(prev_ads.get("clicks"))
+        curr_clicks = _safe_ads_float(curr_ads.get("clicks"))
+
+        prev_impressions = _safe_ads_float(prev_ads.get("impressions"))
+        curr_impressions = _safe_ads_float(curr_ads.get("impressions"))
+
+        prev_sale_units = _safe_ads_float(prev_ads.get("sale_units"))
+        curr_sale_units = _safe_ads_float(curr_ads.get("sale_units"))
+
+        prev_net_sales = _safe_ads_float(row.get("net_sales_prev"))
+        curr_net_sales = _safe_ads_float(row.get("net_sales_curr"))
+
+        prev_roas = round(prev_sales / prev_spend, 2) if prev_spend else 0.0
+        curr_roas = round(curr_sales / curr_spend, 2) if curr_spend else 0.0
+
+        prev_ads_acos = round((prev_spend / prev_sales) * 100, 2) if prev_sales else 0.0
+        curr_ads_acos = round((curr_spend / curr_sales) * 100, 2) if curr_sales else 0.0
+
+        prev_tacos = round((prev_spend / prev_net_sales) * 100, 2) if prev_net_sales else 0.0
+        curr_tacos = round((curr_spend / curr_net_sales) * 100, 2) if curr_net_sales else 0.0
+
+        prev_ctr = round((prev_clicks / prev_impressions) * 100, 2) if prev_impressions else 0.0
+        curr_ctr = round((curr_clicks / curr_impressions) * 100, 2) if curr_impressions else 0.0
+
+        prev_cpc = round(prev_spend / prev_clicks, 2) if prev_clicks else 0.0
+        curr_cpc = round(curr_spend / curr_clicks, 2) if curr_clicks else 0.0
+
+        prev_conversion = round((prev_sale_units / prev_clicks) * 100, 2) if prev_clicks else 0.0
+        curr_conversion = round((curr_sale_units / curr_clicks) * 100, 2) if curr_clicks else 0.0
+
+        row["mtd_ads_prev"] = {
+            "ads_spend": round(prev_spend, 2),
+            "ads_sales": round(prev_sales, 2),
+            "roas": prev_roas,
+            "acos": prev_ads_acos,
+            "tacos": prev_tacos,
+            "clicks": round(prev_clicks, 2),
+            "impressions": round(prev_impressions, 2),
+            "ctr": prev_ctr,
+            "cpc": prev_cpc,
+            "sale_units": round(prev_sale_units, 2),
+            "conversion_rate": prev_conversion,
+        }
+
+        row["mtd_ads_curr"] = {
+            "ads_spend": round(curr_spend, 2),
+            "ads_sales": round(curr_sales, 2),
+            "roas": curr_roas,
+            "acos": curr_ads_acos,
+            "tacos": curr_tacos,
+            "clicks": round(curr_clicks, 2),
+            "impressions": round(curr_impressions, 2),
+            "ctr": curr_ctr,
+            "cpc": curr_cpc,
+            "sale_units": round(curr_sale_units, 2),
+            "conversion_rate": curr_conversion,
+        }
+
+        row["mtd_ads_change"] = {
+            "ads_spend_abs": round(curr_spend - prev_spend, 2),
+            "ads_spend_pct": round(((curr_spend - prev_spend) / prev_spend) * 100, 2) if prev_spend else 0.0,
+
+            "ads_sales_abs": round(curr_sales - prev_sales, 2),
+            "ads_sales_pct": round(((curr_sales - prev_sales) / prev_sales) * 100, 2) if prev_sales else 0.0,
+
+            "roas_change": round(curr_roas - prev_roas, 2),
+            "ads_acos_change": round(curr_ads_acos - prev_ads_acos, 2),
+            "tacos_change": round(curr_tacos - prev_tacos, 2),
+
+            "clicks_abs": round(curr_clicks - prev_clicks, 2),
+            "clicks_pct": round(((curr_clicks - prev_clicks) / prev_clicks) * 100, 2) if prev_clicks else 0.0,
+
+            "conversion_rate_change": round(curr_conversion - prev_conversion, 2),
+        }
+
+        # Flat fields for old frontend / AI compatibility
+        row["ads_spend_prev"] = row["mtd_ads_prev"]["ads_spend"]
+        row["ads_spend_curr"] = row["mtd_ads_curr"]["ads_spend"]
+
+        row["ads_sales_prev"] = row["mtd_ads_prev"]["ads_sales"]
+        row["ads_sales_curr"] = row["mtd_ads_curr"]["ads_sales"]
+
+        row["roas_prev"] = row["mtd_ads_prev"]["roas"]
+        row["roas_curr"] = row["mtd_ads_curr"]["roas"]
+
+        # ads_acos = spend / ads sales
+        row["ads_acos_prev"] = row["mtd_ads_prev"]["acos"]
+        row["ads_acos_curr"] = row["mtd_ads_curr"]["acos"]
+
+        # acos/tacos compatibility = spend / total net sales
+        row["acos_prev"] = row["mtd_ads_prev"]["tacos"]
+        row["acos_curr"] = row["mtd_ads_curr"]["tacos"]
+        row["tacos_prev"] = row["mtd_ads_prev"]["tacos"]
+        row["tacos_curr"] = row["mtd_ads_curr"]["tacos"]
+
+        row["ads_spend_growth_pct"] = row["mtd_ads_change"]["ads_spend_pct"]
+        row["ads_sales_growth_pct"] = row["mtd_ads_change"]["ads_sales_pct"]
+
+        enriched_rows.append(row)
+
+    return enriched_rows
+
+
 
 def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     """
@@ -4246,6 +4601,108 @@ def generate_live_insight_with_app_context(app, item, country, prev_label, curr_
             user_id,
             month2
         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
