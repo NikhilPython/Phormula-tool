@@ -3142,7 +3142,7 @@ const AGEING_TREND_BUCKET_OPTIONS = [
     label: "271–365 Days",
     value: "271-365 days",
     column: "inv-age-271-to-365-days",
-    color: "#ED9F50",
+    color: "#C49466",
   },
   {
     label: "365+ Days",
