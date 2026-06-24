@@ -2032,13 +2032,31 @@ def live_mtd_vs_previous():
             )
 
 
-            # -------------------------------------------------
+           # -------------------------------------------------
             # Backward-compatible selected-country chart keys
             # Frontend may still read daily_series.previous/current_mtd
             # -------------------------------------------------
             prev_daily_full = previous_global
             prev_daily_aligned_selected = previous_aligned_global
             curr_daily_selected = current_mtd_global
+
+
+            # -------------------------------------------------
+            # GLOBAL: categorized_growth compatibility defaults
+            # -------------------------------------------------
+            # These variables are normally built in the UK/US branch.
+            # Global branch has its own product_name-based flow, so define safe equivalents
+            # here to preserve the existing frontend response shape.
+
+            frontend_focus_sku_rows = top_80_skus or []
+
+            new_skus = []
+            reviving_skus = []
+
+            top_80_total_row = None
+            new_skus_total_row = None
+            reviving_skus_total_row = None
+            other_total_row = other_products_total_row
 
 
             response_payload = {
@@ -2081,7 +2099,7 @@ def live_mtd_vs_previous():
                 # Keep old key name, but return frontend-enriched focus rows
                 # so existing frontend cards can access:
                 # current_inventory + coverage_ratio_months
-                "top_80_skus": frontend_focus_sku_rows or top_80_skus,
+                "top_80_skus": frontend_focus_sku_rows,
 
                 "new_skus": new_skus,
                 "reviving_skus": reviving_skus,

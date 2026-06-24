@@ -2694,7 +2694,7 @@ export default function DashboardPage() {
     const [invError, setInvError] = useState("");
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
-    const [activeTab, setActiveTab] = useState<TopTab>("live");
+    const [activeTab, setActiveTab] = useState<TopTab>("summary");
     const [summaryLoading, setSummaryLoading] = useState(true);
     const [countryTime, setCountryTime] = useState<CountryTimezoneResponse | null>(null);
     const [countryTimeLoading, setCountryTimeLoading] = useState(false);

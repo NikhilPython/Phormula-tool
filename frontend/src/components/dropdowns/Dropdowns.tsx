@@ -4252,7 +4252,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [adsError, setAdsError] = useState<string | null>(null);
 
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
+  const [activeTab, setActiveTab] = useState<DashboardTab>("businessSummary");
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
     target_sales?: number;
@@ -4264,7 +4264,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash) return;
-    setActiveTab("graphs");
+    setActiveTab("businessSummary");
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
   useEffect(() => {
