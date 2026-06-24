@@ -1227,6 +1227,7 @@ class amazon_sponsored_products(db.Model):
     # report dimensions
     start_date = db.Column(db.Date, nullable=False, index=True)
     end_date = db.Column(db.Date, nullable=False, index=True)
+    time_unit = db.Column(db.String(20), nullable=True, index=True)
     country = db.Column(db.String(8), nullable=True, index=True)
     profile_id = db.Column(db.String(32), nullable=True, index=True)
 
@@ -1295,7 +1296,8 @@ class amazon_sponsored_display_advertised_products(db.Model):
 
     start_date = db.Column(db.Date, nullable=False, index=True)
     end_date = db.Column(db.Date, nullable=False, index=True)
-
+    # SUMMARY or DAILY
+    time_unit = db.Column(db.String(20), nullable=True, index=True)
     country = db.Column(db.String(8), nullable=True)
     profile_id = db.Column(db.String(32), nullable=True, index=True)
 
@@ -1350,7 +1352,8 @@ class amazon_sponsored_brands_keywords(db.Model):
     # report dimensions
     start_date = db.Column(db.Date, nullable=False, index=True)
     end_date = db.Column(db.Date, nullable=False, index=True)
-
+    # SUMMARY or DAILY
+    time_unit = db.Column(db.String(20), nullable=True, index=True)
     country = db.Column(db.String(8), nullable=True, index=True)
     profile_id = db.Column(db.String(32), nullable=True, index=True)
 

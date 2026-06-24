@@ -291,10 +291,83 @@ class AmazonAdsReportingClient:
 
         return resp
 
+    # def create_sp_advertised_product_report(
+    #     self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
+    # ) -> str:
+    #     unique_name = f"SP Advertised Product {start_date} to {end_date} {uuid.uuid4().hex[:8]}"
+
+    #     payload = {
+    #         "name": unique_name,
+    #         "startDate": start_date,
+    #         "endDate": end_date,
+    #         "configuration": {
+    #             "adProduct": "SPONSORED_PRODUCTS",
+    #             "reportTypeId": "spAdvertisedProduct",
+    #             "timeUnit": time_unit,
+    #             "format": "GZIP_JSON",
+    #             "groupBy": ["advertiser"],
+    #             "columns": [
+    #                 "startDate", "endDate",
+    #                 "campaignId", "campaignName",
+    #                 "adGroupId", "adGroupName",
+    #                 "portfolioId",
+    #                 "campaignBudgetCurrencyCode",
+    #                 "advertisedSku", "advertisedAsin",
+    #                 "impressions", "clicks",
+    #                 "clickThroughRate",
+    #                 "cost", "costPerClick",
+    #                 "sales7d", "purchases7d", "unitsSoldClicks7d",
+    #                 "acosClicks7d", "roasClicks7d",
+    #                 "attributedSalesSameSku7d",
+    #                 "salesOtherSku7d",
+    #                 "purchasesSameSku7d",
+    #                 "unitsSoldSameSku7d",
+    #                 "unitsSoldOtherSku7d",
+    #             ],
+    #         },
+    #     }
+
+    #     url = f"{self.base_url}/reporting/reports"
+    #     resp = self.session.post(url, headers=self._headers(), json=payload, timeout=self._timeout())
+
+    #     # success
+    #     if resp.status_code in (200, 202):
+    #         data = resp.json()
+    #         rid = data.get("reportId")
+    #         if not rid:
+    #             raise RuntimeError(f"Missing reportId in response: {data}")
+    #         return str(rid)
+
+    #     # duplicate -> reuse reportId
+    #     if resp.status_code == 425:
+    #         try:
+    #             data = resp.json()
+    #         except Exception:
+    #             data = {"raw": resp.text}
+
+    #         detail = ""
+    #         if isinstance(data, dict):
+    #             detail = str(data.get("detail") or data.get("message") or "")
+
+    #         m = re.search(r"duplicate of\s*:?\s*([0-9a-fA-F-]{16,})", detail)
+    #         if m:
+    #             return m.group(1)
+
+    #         raise RuntimeError(f"Duplicate report but could not parse reportId. Body: {data}")
+
+    #     raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+
     def create_sp_advertised_product_report(
         self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
     ) -> str:
-        unique_name = f"SP Advertised Product {start_date} to {end_date} {uuid.uuid4().hex[:8]}"
+        time_unit = (time_unit or "SUMMARY").upper()
+
+        unique_name = f"SP Advertised Product {start_date} to {end_date} {time_unit} {uuid.uuid4().hex[:8]}"
+
+        # ✅ Amazon rule:
+        # SUMMARY reports support startDate/endDate columns.
+        # DAILY reports support date column instead.
+        date_columns = ["date"] if time_unit == "DAILY" else ["startDate", "endDate"]
 
         payload = {
             "name": unique_name,
@@ -307,7 +380,8 @@ class AmazonAdsReportingClient:
                 "format": "GZIP_JSON",
                 "groupBy": ["advertiser"],
                 "columns": [
-                    "startDate", "endDate",
+                    *date_columns,
+
                     "campaignId", "campaignName",
                     "adGroupId", "adGroupName",
                     "portfolioId",
@@ -541,9 +615,125 @@ class AmazonAdsReportingClient:
 
         return []
 
+    # def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+    #     payload = {
+    #         "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+    #         "startDate": start_date,
+    #         "endDate": end_date,
+    #         "configuration": {
+    #             "adProduct": "SPONSORED_BRANDS",
+    #             "reportTypeId": "sbTargeting",
+    #             "timeUnit": time_unit,
+    #             "format": "GZIP_JSON",
+    #             "groupBy": ["targeting"],
+    #             "columns": [
+    #                 "startDate",
+    #                 "endDate",
+
+    #                 "campaignId",
+    #                 "campaignName",
+    #                 "campaignStatus",
+    #                 "campaignBudgetAmount",
+    #                 "campaignBudgetCurrencyCode",
+    #                 "campaignBudgetType",
+
+    #                 "adGroupId",
+    #                 "adGroupName",
+
+    #                 "keywordId",
+    #                 "keywordBid",
+    #                 "adKeywordStatus",
+    #                 "keywordText",
+    #                 "keywordType",
+
+    #                 "targetingId",
+    #                 "targetingExpression",
+    #                 "targetingText",
+    #                 "targetingType",
+
+    #                 "matchType",
+    #                 "costType",
+
+    #                 "impressions",
+    #                 "topOfSearchImpressionShare",
+    #                 "viewableImpressions",
+    #                 "viewabilityRate",
+    #                 "clicks",
+    #                 "cost",
+
+    #                 "brandedSearches",
+    #                 "brandedSearchesClicks",
+
+    #                 "detailPageViews",
+    #                 "detailPageViewsClicks",
+
+    #                 "addToCart",
+    #                 "addToCartClicks",
+    #                 "addToCartRate",
+    #                 "eCPAddToCart",
+
+    #                 "purchases",
+    #                 "purchasesClicks",
+    #                 "purchasesPromoted",
+
+    #                 "sales",
+    #                 "salesClicks",
+    #                 "salesPromoted",
+
+    #                 "unitsSold",
+    #                 "unitsSoldClicks",
+
+    #                 "newToBrandPurchases",
+    #                 "newToBrandPurchasesClicks",
+    #                 "newToBrandPurchasesPercentage",
+    #                 "newToBrandPurchasesRate",
+
+    #                 "newToBrandSales",
+    #                 "newToBrandSalesClicks",
+    #                 "newToBrandSalesPercentage",
+
+    #                 "newToBrandUnitsSold",
+    #                 "newToBrandUnitsSoldClicks",
+    #                 "newToBrandUnitsSoldPercentage",
+
+    #                 "newToBrandDetailPageViews",
+    #                 "newToBrandDetailPageViewsClicks",
+    #                 "newToBrandDetailPageViewRate",
+    #                 "newToBrandECPDetailPageView",
+
+    #                 "viewClickThroughRate",
+
+    #                 "video5SecondViews",
+    #                 "video5SecondViewRate",
+    #                 "videoFirstQuartileViews",
+    #                 "videoMidpointViews",
+    #                 "videoThirdQuartileViews",
+    #                 "videoCompleteViews",
+    #                 "videoUnmutes",
+
+    #                 "qualifiedBorrows",
+    #                 "qualifiedBorrowsFromClicks",
+    #                 "royaltyQualifiedBorrows",
+    #                 "royaltyQualifiedBorrowsFromClicks",
+
+    #                 "addToList",
+    #                 "addToListFromClicks",
+    #             ],
+    #         },
+    #     }
+
+    #     return self._create_report(payload)
+
     def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+        time_unit = (time_unit or "SUMMARY").upper()
+
+        # ✅ Amazon rule:
+        # DAILY supports "date"
+        # SUMMARY supports "startDate", "endDate"
+        date_columns = ["date"] if time_unit == "DAILY" else ["startDate", "endDate"]
+
         payload = {
-            "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+            "name": f"SB Keyword {start_date} to {end_date} {time_unit} {uuid.uuid4().hex[:8]}",
             "startDate": start_date,
             "endDate": end_date,
             "configuration": {
@@ -553,8 +743,7 @@ class AmazonAdsReportingClient:
                 "format": "GZIP_JSON",
                 "groupBy": ["targeting"],
                 "columns": [
-                    "startDate",
-                    "endDate",
+                    *date_columns,
 
                     "campaignId",
                     "campaignName",
@@ -649,6 +838,7 @@ class AmazonAdsReportingClient:
         }
 
         return self._create_report(payload)
+
  
     def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
         payload = {
@@ -729,34 +919,80 @@ class AmazonAdsReportingClient:
             return data.get("portfolios") or data.get("data") or []
 
         return []
+    
+    # def create_sd_advertised_product_report(
+    #     self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
+    # ) -> str:
+    #     payload = {
+    #         "name": f"SD Advertised Product {start_date} {uuid.uuid4().hex[:6]}",
+    #         "startDate": start_date,
+    #         "endDate": end_date,
+    #         "configuration": {
+    #             "adProduct": "SPONSORED_DISPLAY",
+    #             "reportTypeId": "sdAdvertisedProduct",  # keep this, but validate via /reportTypes if needed
+    #             "timeUnit": time_unit,
+    #             "format": "GZIP_JSON",
+    #             "groupBy": ["advertiser"],  # if this errors later, switch to ["campaign"] or whatever /reportTypes says
+    #             "columns": [
+    #                 "startDate", "endDate",
+    #                 "campaignId", "campaignName",
+    #                 "adGroupId", "adGroupName",
+
+    #                 # ✅ SD uses "promoted*" (per your allowed list)
+    #                 "promotedSku", "promotedAsin",
+
+    #                 "campaignBudgetCurrencyCode",
+
+    #                 # ✅ core metrics that ARE allowed
+    #                 "impressions", "clicks", "cost",
+    #                 "sales", "purchases", "unitsSold",
+
+    #                 # optional (also in your allowed list)
+    #                 "salesClicks", "purchasesClicks", "unitsSoldClicks",
+    #                 "newToBrandSales", "newToBrandPurchases", "newToBrandUnitsSold",
+    #                 "newToBrandSalesClicks", "newToBrandPurchasesClicks", "newToBrandUnitsSoldClicks",
+    #                 "viewabilityRate",
+    #             ],
+    #         },
+    #     }
+    #     return self._create_report(payload)
+
     def create_sd_advertised_product_report(
         self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
     ) -> str:
+        time_unit = (time_unit or "SUMMARY").upper()
+
+        # ✅ Amazon rule:
+        # DAILY supports "date"
+        # SUMMARY supports "startDate", "endDate"
+        date_columns = ["date"] if time_unit == "DAILY" else ["startDate", "endDate"]
+
         payload = {
-            "name": f"SD Advertised Product {start_date} {uuid.uuid4().hex[:6]}",
+            "name": f"SD Advertised Product {start_date} {time_unit} {uuid.uuid4().hex[:6]}",
             "startDate": start_date,
             "endDate": end_date,
             "configuration": {
                 "adProduct": "SPONSORED_DISPLAY",
-                "reportTypeId": "sdAdvertisedProduct",  # keep this, but validate via /reportTypes if needed
+                "reportTypeId": "sdAdvertisedProduct",
                 "timeUnit": time_unit,
                 "format": "GZIP_JSON",
-                "groupBy": ["advertiser"],  # if this errors later, switch to ["campaign"] or whatever /reportTypes says
+                "groupBy": ["advertiser"],
                 "columns": [
-                    "startDate", "endDate",
+                    *date_columns,
+
                     "campaignId", "campaignName",
                     "adGroupId", "adGroupName",
 
-                    # ✅ SD uses "promoted*" (per your allowed list)
+                    # ✅ SD uses promoted*
                     "promotedSku", "promotedAsin",
 
                     "campaignBudgetCurrencyCode",
 
-                    # ✅ core metrics that ARE allowed
+                    # ✅ core metrics
                     "impressions", "clicks", "cost",
                     "sales", "purchases", "unitsSold",
 
-                    # optional (also in your allowed list)
+                    # optional
                     "salesClicks", "purchasesClicks", "unitsSoldClicks",
                     "newToBrandSales", "newToBrandPurchases", "newToBrandUnitsSold",
                     "newToBrandSalesClicks", "newToBrandPurchasesClicks", "newToBrandUnitsSoldClicks",
@@ -764,6 +1000,7 @@ class AmazonAdsReportingClient:
                 ],
             },
         }
+
         return self._create_report(payload)
 
 

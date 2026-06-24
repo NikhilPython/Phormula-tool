@@ -490,8 +490,12 @@ def manager_sp_advertised_product_report():
         # =========================================================
         out = pd.DataFrame()
 
-        out["Start Date"] = start_date
-        out["End Date"] = end_date
+        if time_unit == "DAILY":
+            out["Start Date"] = df.get("date", df.get("startDate", start_date))
+            out["End Date"] = df.get("date", df.get("endDate", df.get("startDate", end_date)))
+        else:
+            out["Start Date"] = df.get("startDate", start_date)
+            out["End Date"] = df.get("endDate", df.get("startDate", end_date))
 
         out["Country"] = df.get("_country", "")
         out["Profile ID"] = df.get("_profileId", "")
@@ -564,14 +568,24 @@ def manager_sp_advertised_product_report():
                 "user_id": user_id,
                 "created_at": now,
                 "updated_at": now,
+                "time_unit": time_unit,
 
-                # ✅ HARD-BIND request dates: never pull from rec
-                "start_date": sd,
-                "end_date": ed,
+                # ✅ DAILY fix:
+                # Save each Amazon row's own date instead of the full request range.
+                # For SUMMARY reports, this will still safely fall back to request dates.
+                "start_date": _to_date(
+                    rec.get("Start Date") or start_date,
+                    strict=True,
+                    field_name="Start Date"
+                ),
+                "end_date": _to_date(
+                    rec.get("End Date") or rec.get("Start Date") or end_date,
+                    strict=True,
+                    field_name="End Date"
+                ),
 
                 "country": (rec.get("Country") or None),
                 "profile_id": str(rec.get("Profile ID") or "") or None,
-
                 "portfolio_id": str(rec.get("Portfolio ID") or "") or None,
                 "currency": rec.get("Currency") or None,
 
@@ -629,6 +643,7 @@ def manager_sp_advertised_product_report():
 
             update_cols = {
                 "updated_at": stmt.excluded.updated_at,
+                "time_unit": stmt.excluded.time_unit,
                 "portfolio_id": stmt.excluded.portfolio_id,
                 "currency": stmt.excluded.currency,
 
@@ -776,31 +791,29 @@ def monthly_sp_sd_to_db():
             return ""
 
         def _apply_filters_if_exist(q, model):
-            """Apply user/country/date filters only if those columns exist on the model."""
+            """Apply user/country/date/time_unit filters only if those columns exist on the model."""
             if hasattr(model, "user_id"):
                 q = q.filter(model.user_id == user_id)
             if hasattr(model, "country"):
                 q = q.filter(model.country == country)
             if hasattr(model, "start_date"):
                 q = q.filter(model.start_date >= first_day, model.start_date <= last_day)
+
+            # ✅ Monthly is now built from DAILY rows.
+            # This allows one fetch only: fetch DAILY once, then create both daily and monthly tables.
+            if hasattr(model, "time_unit"):
+                q = q.filter(func.upper(func.coalesce(model.time_unit, "")) == "DAILY")
+
             return q
 
         # =========================
         # 1) Sponsored Products (SP)
         # =========================
         if "SP" in include:
-            sp_latest_end = None
-            try:
-                sp_latest_end = _latest_end_date_for_month(
-                    amazon_sponsored_products, user_id, country, first_day, last_day
-                )
-            except Exception:
-                sp_latest_end = None
-
+            # ✅ Monthly is built by summing all DAILY SP rows in the month.
+            # Do not filter by latest end_date, otherwise only the last day can be picked.
             q = amazon_sponsored_products.query
             q = _apply_filters_if_exist(q, amazon_sponsored_products)
-            if sp_latest_end and hasattr(amazon_sponsored_products, "end_date"):
-                q = q.filter(amazon_sponsored_products.end_date == sp_latest_end)
 
             sp_rows = q.all()
 
@@ -839,18 +852,10 @@ def monthly_sp_sd_to_db():
         # 2) Sponsored Display (SD)
         # =========================
         if "SD" in include:
-            sd_latest_end = None
-            try:
-                sd_latest_end = _latest_end_date_for_month(
-                    amazon_sponsored_display_advertised_products, user_id, country, first_day, last_day
-                )
-            except Exception:
-                sd_latest_end = None
-
+            # ✅ Monthly is built by summing all DAILY SD rows in the month.
+            # Do not filter by latest end_date, otherwise only the last day can be picked.
             q = amazon_sponsored_display_advertised_products.query
             q = _apply_filters_if_exist(q, amazon_sponsored_display_advertised_products)
-            if sd_latest_end and hasattr(amazon_sponsored_display_advertised_products, "end_date"):
-                q = q.filter(amazon_sponsored_display_advertised_products.end_date == sd_latest_end)
 
             sd_rows = q.all()
 
@@ -890,31 +895,17 @@ def monthly_sp_sd_to_db():
         # 3) Sponsored Brands (SB) - keywords
         # =========================
         if "SB" in include:
-            sb_latest_end = None
-
-            try:
-                sb_latest_end = (
-                    db.session.query(func.max(amazon_sponsored_brands_keywords.end_date))
-                    .filter(
-                        amazon_sponsored_brands_keywords.user_id == user_id,
-                        func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
-                        amazon_sponsored_brands_keywords.start_date >= first_day,
-                        amazon_sponsored_brands_keywords.start_date <= last_day,
-                    )
-                    .scalar()
-                )
-            except Exception:
-                sb_latest_end = None
-
+            # ✅ Monthly is built by summing all DAILY SB rows in the month.
+            # Do not use latest end_date here.
             q = amazon_sponsored_brands_keywords.query.filter(
                 amazon_sponsored_brands_keywords.user_id == user_id,
                 func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
                 amazon_sponsored_brands_keywords.start_date >= first_day,
                 amazon_sponsored_brands_keywords.start_date <= last_day,
-            )
 
-            if sb_latest_end and hasattr(amazon_sponsored_brands_keywords, "end_date"):
-                q = q.filter(amazon_sponsored_brands_keywords.end_date == sb_latest_end)
+                # ✅ Monthly is now built from DAILY rows
+                func.upper(func.coalesce(amazon_sponsored_brands_keywords.time_unit, "")) == "DAILY",
+            )
 
             sb_rows = q.all()
 
@@ -1067,17 +1058,8 @@ def monthly_sp_sd_to_db():
 
         if "SB" in include:
             try:
-                sb_latest_end = (
-                    db.session.query(func.max(amazon_sponsored_brands_keywords.end_date))
-                    .filter(
-                        amazon_sponsored_brands_keywords.user_id == user_id,
-                        func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
-                        amazon_sponsored_brands_keywords.start_date >= first_day,
-                        amazon_sponsored_brands_keywords.start_date <= last_day,
-                    )
-                    .scalar()
-                )
-
+                # ✅ Monthly is now built from DAILY rows.
+                # Sum all daily SB spend in the month. No latest_end_date filter.
                 sb_q = db.session.query(
                     func.coalesce(func.sum(amazon_sponsored_brands_keywords.spend), 0.0)
                 ).filter(
@@ -1085,12 +1067,8 @@ def monthly_sp_sd_to_db():
                     func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
                     amazon_sponsored_brands_keywords.start_date >= first_day,
                     amazon_sponsored_brands_keywords.start_date <= last_day,
+                    func.upper(func.coalesce(amazon_sponsored_brands_keywords.time_unit, "")) == "DAILY",
                 )
-
-                if sb_latest_end and hasattr(amazon_sponsored_brands_keywords, "end_date"):
-                    sb_q = sb_q.filter(
-                        amazon_sponsored_brands_keywords.end_date == sb_latest_end
-                    )
 
                 raw_sb_brand_spend = round(float(sb_q.scalar() or 0.0), 2)
 
@@ -1446,7 +1424,7 @@ def monthly_sp_sd_to_db():
             raise
 
         return jsonify({
-            "message": "Monthly ads table saved to DB successfully (SP + SD + SB) using ONLY latest end_date run (when available)",
+            "message": "Monthly ads table saved to DB successfully (SP + SD + SB) using DAILY rows aggregated for the month",
             "table_name": f"public.{table_name}",
             "country": country,
             "month": month,
@@ -1469,7 +1447,525 @@ def monthly_sp_sd_to_db():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@advertisement_api_routes_bp.route("/api/ads/daily_sp_sd_sb_to_db", methods=["POST"])
+def daily_sp_sd_sb_to_db():
+    """
+    Save daily SKU-wise Sponsored Products + Sponsored Display + Sponsored Brands into:
+      public.adsdaily_{user_id}_{country}_{month}_{year}
 
+    Body:
+      {
+        "month": 5,
+        "year": 2026,
+        "country": "UK",
+        "include": ["SP", "SD", "SB"]
+      }
+
+    IMPORTANT:
+    - This expects raw SP/SD/SB reports to already be synced with time_unit="DAILY".
+    - It stores all dates of the month in one table.
+    - Example table: public.adsdaily_1_UK_5_2026
+    - SKU-wise only: no Grand Total rows.
+    """
+    try:
+        user_id = _require_jwt_user_id()
+        payload = request.get_json(force=True) or {}
+
+        month = int(payload.get("month") or 0)
+        year = int(payload.get("year") or 0)
+        country = str(payload.get("country") or "").upper().strip()
+
+        country_aliases = [country]
+        if country in ("UK", "GB"):
+            country_aliases = ["UK", "GB"]
+
+        include = payload.get("include") or ["SP", "SD", "SB"]
+        include = {str(x).upper().strip() for x in include}
+
+        if country in ("UK", "GB", "US"):
+            include.add("SB")
+
+        if not (1 <= month <= 12):
+            return jsonify({"error": "month must be 1..12"}), 400
+        if not (2000 <= year <= 2100):
+            return jsonify({"error": "year looks invalid"}), 400
+        if not country:
+            return jsonify({"error": "country is required (e.g. UK/US/CA)"}), 400
+        if not include.intersection({"SP", "SD", "SB"}):
+            return jsonify({"error": "include must contain SP and/or SD and/or SB"}), 400
+
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+        frames = []
+
+        def _safe_div_local(a, b):
+            try:
+                a = float(a or 0.0)
+                b = float(b or 0.0)
+                return (a / b) if b else 0.0
+            except Exception:
+                return 0.0
+
+        def _pick_attr_local(obj, names):
+            for n in names:
+                if hasattr(obj, n):
+                    v = getattr(obj, n)
+                    if v is not None and str(v).strip() != "":
+                        return str(v).strip()
+            return ""
+
+        # =========================
+        # 1) Sponsored Products
+        # =========================
+        if "SP" in include:
+            sp_rows = amazon_sponsored_products.query.filter(
+                amazon_sponsored_products.user_id == user_id,
+                amazon_sponsored_products.country.in_(country_aliases),
+                amazon_sponsored_products.start_date >= first_day,
+                amazon_sponsored_products.start_date <= last_day,
+
+                # ✅ Daily table should read DAILY rows only
+                func.upper(func.coalesce(amazon_sponsored_products.time_unit, "")) == "DAILY",
+            ).all()
+
+            if sp_rows:
+                sp_df = pd.DataFrame([{
+                    "date": getattr(r, "start_date", None),
+                    "source": "SP",
+                    "advertised_sku": getattr(r, "advertised_sku", None) or "",
+                    "advertised_asin": getattr(r, "advertised_asin", None) or "",
+                    "currency": getattr(r, "currency", None),
+
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
+                    "spend": float(getattr(r, "spend", 0.0) or 0.0),
+
+                    "sales": float(getattr(r, "sales_7d", 0.0) or 0.0),
+                    "orders": float(getattr(r, "orders_7d", 0.0) or 0.0),
+                    "units": float(getattr(r, "units_7d", 0.0) or 0.0),
+
+                    "sp_ads_sales": float(getattr(r, "sales_7d", 0.0) or 0.0),
+                    "sd_ads_sales": 0.0,
+                    "sb_ads_sales": 0.0,
+
+                    "advertised_unit_sale": float(getattr(r, "adv_sku_units_7d", 0.0) or 0.0),
+                    "other_unit_sale": float(getattr(r, "other_sku_units_7d", 0.0) or 0.0),
+                    "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
+
+                    "product_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                    "display_spend": 0.0,
+                    "brand_spend": 0.0,
+                } for r in sp_rows])
+                frames.append(sp_df)
+
+        # =========================
+        # 2) Sponsored Display
+        # =========================
+        if "SD" in include:
+            sd_rows = amazon_sponsored_display_advertised_products.query.filter(
+                amazon_sponsored_display_advertised_products.user_id == user_id,
+                amazon_sponsored_display_advertised_products.country.in_(country_aliases),
+                amazon_sponsored_display_advertised_products.start_date >= first_day,
+                amazon_sponsored_display_advertised_products.start_date <= last_day,
+
+                # ✅ Daily table should read DAILY rows only
+                func.upper(func.coalesce(amazon_sponsored_display_advertised_products.time_unit, "")) == "DAILY",
+            ).all()
+
+            if sd_rows:
+                sd_df = pd.DataFrame([{
+                    "date": getattr(r, "start_date", None),
+                    "source": "SD",
+                    "advertised_sku": getattr(r, "advertised_sku", None) or "",
+                    "advertised_asin": getattr(r, "advertised_asin", None) or "",
+                    "currency": getattr(r, "currency", None),
+
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
+                    "spend": float(getattr(r, "spend", 0.0) or 0.0),
+
+                    "sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
+                    "orders": float(getattr(r, "orders_14d", 0.0) or 0.0),
+                    "units": float(getattr(r, "units_14d", 0.0) or 0.0),
+
+                    "sp_ads_sales": 0.0,
+                    "sd_ads_sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
+                    "sb_ads_sales": 0.0,
+
+                    "advertised_unit_sale": 0.0,
+                    "other_unit_sale": 0.0,
+                    "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
+
+                    "product_spend": 0.0,
+                    "display_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                    "brand_spend": 0.0,
+                } for r in sd_rows])
+                frames.append(sd_df)
+
+        # =========================
+        # 3) Sponsored Brands
+        # =========================
+        if "SB" in include:
+            sb_rows = amazon_sponsored_brands_keywords.query.filter(
+                amazon_sponsored_brands_keywords.user_id == user_id,
+                func.upper(func.trim(amazon_sponsored_brands_keywords.country)).in_(country_aliases),
+                amazon_sponsored_brands_keywords.start_date >= first_day,
+                amazon_sponsored_brands_keywords.start_date <= last_day,
+
+                # ✅ Daily table should read DAILY rows only
+                func.upper(func.coalesce(amazon_sponsored_brands_keywords.time_unit, "")) == "DAILY",
+            ).all()
+
+            if sb_rows:
+                sb_df = pd.DataFrame([{
+                    "date": getattr(r, "start_date", None),
+                    "source": "SB",
+
+                    # SB keyword data usually cannot map to product SKU/ASIN unless model has those fields.
+                    "advertised_sku": _pick_attr_local(r, ["advertised_sku", "sku", "product_sku"]) or "",
+                    "advertised_asin": _pick_attr_local(r, ["advertised_asin", "asin", "product_asin"]) or "",
+
+                    "currency": getattr(r, "currency", None),
+
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
+                    "spend": float(getattr(r, "spend", 0.0) or 0.0),
+
+                    "sales": float(getattr(r, "sales", 0.0) or 0.0),
+                    "orders": float(getattr(r, "orders", 0.0) or 0.0),
+                    "units": float(getattr(r, "units", 0.0) or 0.0),
+
+                    "sp_ads_sales": 0.0,
+                    "sd_ads_sales": 0.0,
+                    "sb_ads_sales": float(getattr(r, "sales", 0.0) or 0.0),
+
+                    "advertised_unit_sale": 0.0,
+                    "other_unit_sale": 0.0,
+                    "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
+
+                    "product_spend": 0.0,
+                    "display_spend": 0.0,
+                    "brand_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                } for r in sb_rows])
+                frames.append(sb_df)
+
+        if not frames:
+            return jsonify({
+                "error": "No daily ads rows found. First sync SP/SD/SB with time_unit='DAILY' for this month."
+            }), 404
+
+        df = pd.concat(frames, ignore_index=True)
+
+        # Safety
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        df = df[df["date"].notna()]
+
+        for col in [
+            "impressions", "clicks", "spend", "sales", "orders", "units",
+            "advertised_unit_sale", "other_unit_sale", "new_to_brand_sales",
+            "product_spend", "display_spend", "brand_spend",
+            "sp_ads_sales", "sd_ads_sales", "sb_ads_sales",
+        ]:
+            if col not in df.columns:
+                df[col] = 0.0
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+        df["advertised_sku"] = df.get("advertised_sku", "").fillna("").astype(str).str.strip()
+        df["advertised_asin"] = df.get("advertised_asin", "").fillna("").astype(str).str.strip()
+
+        # Optional but useful: remove rows that have neither SKU nor ASIN.
+        # This prevents unmapped SB keyword rows from creating blank SKU rows.
+        df = df[
+            (df["advertised_sku"].str.strip() != "") |
+            (df["advertised_asin"].str.strip() != "")
+        ]
+
+        if df.empty:
+            return jsonify({
+                "error": "No SKU-wise daily ads rows found after removing blank SKU/ASIN rows."
+            }), 404
+
+        # ✅ DAILY + SKU-WISE GROUPING
+        g = df.groupby(["date", "advertised_sku", "advertised_asin"], as_index=False).agg({
+            "impressions": "sum",
+            "clicks": "sum",
+            "spend": "sum",
+            "sales": "sum",
+            "orders": "sum",
+            "units": "sum",
+
+            "advertised_unit_sale": "sum",
+            "other_unit_sale": "sum",
+            "new_to_brand_sales": "sum",
+
+            "product_spend": "sum",
+            "display_spend": "sum",
+            "brand_spend": "sum",
+
+            "sp_ads_sales": "sum",
+            "sd_ads_sales": "sum",
+            "sb_ads_sales": "sum",
+
+            "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x]))),
+        })
+
+        out = pd.DataFrame()
+        out["sno"] = range(1, len(g) + 1)
+        out["date"] = g["date"]
+        out["sku"] = g["advertised_sku"]
+        out["asin"] = g["advertised_asin"]
+
+        def _ad_type_from_source(src):
+            parts = set((src or "").split(","))
+            labels = []
+            if "SD" in parts:
+                labels.append("sponsored_display")
+            if "SP" in parts:
+                labels.append("sponsored_product")
+            if "SB" in parts:
+                labels.append("sponsored_brands")
+            return ", ".join(labels) if labels else None
+
+        out["ad_type"] = g["source"].apply(_ad_type_from_source)
+        out["match_type"] = None
+
+        out["impressions"] = g["impressions"].astype(int)
+        out["clicks"] = g["clicks"].astype(int)
+
+        out["ctr"] = [
+            _safe_div_local(c, i) * 100.0
+            for c, i in zip(g["clicks"].tolist(), g["impressions"].tolist())
+        ]
+
+        out["cpc"] = [
+            _safe_div_local(sp, c)
+            for sp, c in zip(g["spend"].tolist(), g["clicks"].tolist())
+        ]
+
+        out["spend"] = g["spend"].astype(float)
+
+        out["product_spend"] = g["product_spend"].astype(float)
+        out["display_spend"] = g["display_spend"].astype(float)
+        out["brand_spend"] = g["brand_spend"].astype(float)
+
+        out["sale_units"] = g["units"].astype(float)
+        out["sale_amount"] = g["sales"].astype(float)
+
+        out["sp_ads_sales"] = g["sp_ads_sales"].astype(float)
+        out["sd_ads_sales"] = g["sd_ads_sales"].astype(float)
+        out["sb_ads_sales"] = g["sb_ads_sales"].astype(float)
+
+        # ✅ total ads sales + total ads spend
+        out["ads_sales_total"] = (
+            out["sp_ads_sales"] +
+            out["sd_ads_sales"] +
+            out["sb_ads_sales"]
+        )
+
+        out["ads_spend_total"] = (
+            out["product_spend"] +
+            out["display_spend"] +
+            out["brand_spend"]
+        )
+
+        out["advertised_unit_sale"] = g["advertised_unit_sale"].astype(float)
+        out["other_unit_sale"] = g["other_unit_sale"].astype(float)
+        out["new_to_brand_sales"] = g["new_to_brand_sales"].astype(float)
+
+        out["conversion_rate"] = [
+            _safe_div_local(o, c) * 100.0
+            for o, c in zip(g["orders"].tolist(), g["clicks"].tolist())
+        ]
+
+        out["roas"] = [
+            _safe_div_local(sa, sp)
+            for sa, sp in zip(g["sales"].tolist(), g["spend"].tolist())
+        ]
+
+        out["acos"] = [
+            _safe_div_local(sp, sa) * 100.0
+            for sp, sa in zip(g["spend"].tolist(), g["sales"].tolist())
+        ]
+
+        # ✅ SKU-wise only: no Grand Total rows
+
+        out = out.sort_values(
+            by=["date", "sku"],
+            key=lambda s: s.astype(str)
+        ).reset_index(drop=True)
+
+        items = out.where(pd.notnull(out), None).to_dict(orient="records")
+
+        # ✅ dynamic daily table name - one table for full month
+        table_name = _safe_ident(f"adsdaily_{user_id}_{country}_{month}_{year}")
+
+        create_sql = f"""
+        CREATE TABLE IF NOT EXISTS public.{table_name} (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            country VARCHAR(10) NOT NULL,
+            month INT NOT NULL,
+            year INT NOT NULL,
+            date DATE NOT NULL,
+
+            sno INT,
+            sku TEXT,
+            asin VARCHAR(32),
+            ad_type TEXT,
+            match_type TEXT,
+
+            impressions BIGINT,
+            clicks BIGINT,
+            ctr DOUBLE PRECISION,
+            cpc DOUBLE PRECISION,
+            spend DOUBLE PRECISION,
+
+            product_spend DOUBLE PRECISION,
+            display_spend DOUBLE PRECISION,
+            brand_spend DOUBLE PRECISION,
+
+            sale_units DOUBLE PRECISION,
+            sale_amount DOUBLE PRECISION,
+
+            sp_ads_sales DOUBLE PRECISION DEFAULT 0,
+            sd_ads_sales DOUBLE PRECISION DEFAULT 0,
+            sb_ads_sales DOUBLE PRECISION DEFAULT 0,
+
+            ads_sales_total DOUBLE PRECISION DEFAULT 0,
+            ads_spend_total DOUBLE PRECISION DEFAULT 0,
+
+            advertised_unit_sale DOUBLE PRECISION,
+            other_unit_sale DOUBLE PRECISION,
+            new_to_brand_sales DOUBLE PRECISION,
+
+            conversion_rate DOUBLE PRECISION,
+            roas DOUBLE PRECISION,
+            acos DOUBLE PRECISION,
+
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        );
+        """
+
+        insert_sql = f"""
+        INSERT INTO public.{table_name} (
+            user_id, country, month, year, date,
+            sno, sku, asin, ad_type, match_type,
+            impressions, clicks, ctr, cpc, spend,
+            product_spend, display_spend, brand_spend,
+            sale_units, sale_amount,
+            sp_ads_sales, sd_ads_sales, sb_ads_sales,
+            ads_sales_total, ads_spend_total,
+            advertised_unit_sale, other_unit_sale, new_to_brand_sales,
+            conversion_rate, roas, acos
+        ) VALUES (
+            :user_id, :country, :month, :year, :date,
+            :sno, :sku, :asin, :ad_type, :match_type,
+            :impressions, :clicks, :ctr, :cpc, :spend,
+            :product_spend, :display_spend, :brand_spend,
+            :sale_units, :sale_amount,
+            :sp_ads_sales, :sd_ads_sales, :sb_ads_sales,
+            :ads_sales_total, :ads_spend_total,
+            :advertised_unit_sale, :other_unit_sale, :new_to_brand_sales,
+            :conversion_rate, :roas, :acos
+        );
+        """
+
+        try:
+            db.session.execute(text(create_sql))
+
+            
+
+            # ✅ if table already exists, add missing columns safely
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS date DATE;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sku TEXT;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS product_spend DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS display_spend DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS brand_spend DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sp_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sd_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS ads_sales_total DOUBLE PRECISION DEFAULT 0;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS ads_spend_total DOUBLE PRECISION DEFAULT 0;'))
+
+            # ✅ recreate full month every time
+            db.session.execute(text(f"TRUNCATE TABLE public.{table_name};"))
+
+            params = []
+            for r in items:
+                params.append({
+                    "user_id": user_id,
+                    "country": country,
+                    "month": month,
+                    "year": year,
+                    "date": r.get("date"),
+
+                    "sno": r.get("sno"),
+                    "sku": r.get("sku"),
+                    "asin": r.get("asin"),
+                    "ad_type": r.get("ad_type"),
+                    "match_type": r.get("match_type"),
+
+                    "impressions": int(r.get("impressions") or 0),
+                    "clicks": int(r.get("clicks") or 0),
+                    "ctr": float(r.get("ctr") or 0.0),
+                    "cpc": float(r.get("cpc") or 0.0),
+                    "spend": float(r.get("spend") or 0.0),
+
+                    "product_spend": float(r.get("product_spend") or 0.0),
+                    "display_spend": float(r.get("display_spend") or 0.0),
+                    "brand_spend": float(r.get("brand_spend") or 0.0),
+
+                    "sale_units": float(r.get("sale_units") or 0.0),
+                    "sale_amount": float(r.get("sale_amount") or 0.0),
+
+                    "sp_ads_sales": float(r.get("sp_ads_sales") or 0.0),
+                    "sd_ads_sales": float(r.get("sd_ads_sales") or 0.0),
+                    "sb_ads_sales": float(r.get("sb_ads_sales") or 0.0),
+
+                    "ads_sales_total": float(r.get("ads_sales_total") or 0.0),
+                    "ads_spend_total": float(r.get("ads_spend_total") or 0.0),
+
+                    "advertised_unit_sale": float(r.get("advertised_unit_sale") or 0.0),
+                    "other_unit_sale": float(r.get("other_unit_sale") or 0.0),
+                    "new_to_brand_sales": float(r.get("new_to_brand_sales") or 0.0),
+
+                    "conversion_rate": float(r.get("conversion_rate") or 0.0),
+                    "roas": float(r.get("roas") or 0.0),
+                    "acos": float(r.get("acos") or 0.0),
+                })
+
+            if params:
+                db.session.execute(text(insert_sql), params)
+
+            db.session.commit()
+
+        except Exception:
+            db.session.rollback()
+            raise
+
+        return jsonify({
+            "message": "Daily ads table saved to DB successfully (SP + SD + SB) - SKU-wise only",
+            "table_name": f"public.{table_name}",
+            "country": country,
+            "month": month,
+            "year": year,
+            "include": sorted(list(include)),
+            "count": len(items),
+            "items": items,
+        }), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 #------------------------------------------  "monthly" | "quarterly" | "yearly" routes ------------------------------------------#
@@ -1985,12 +2481,33 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
 
         df = pd.DataFrame(rows_all)
 
-        # Delete existing
-        db.session.query(amazon_sponsored_display_advertised_products).filter(
+        # Delete existing rows safely
+        sd_req = _to_date(start_date, strict=True, field_name="start_date")
+        ed_req = _to_date(end_date, strict=True, field_name="end_date")
+
+        delete_q = db.session.query(amazon_sponsored_display_advertised_products).filter(
             amazon_sponsored_display_advertised_products.user_id == user_id,
-            amazon_sponsored_display_advertised_products.start_date == _to_date(start_date),
-            amazon_sponsored_display_advertised_products.end_date == _to_date(end_date),
-        ).delete(synchronize_session=False)
+        )
+
+        if time_unit == "DAILY":
+            # ✅ DAILY reports save one row per day, so delete the whole requested date range
+            delete_q = delete_q.filter(
+                amazon_sponsored_display_advertised_products.start_date >= sd_req,
+                amazon_sponsored_display_advertised_products.start_date <= ed_req,
+            )
+        else:
+            # ✅ SUMMARY reports save one row for the full requested range
+            delete_q = delete_q.filter(
+                amazon_sponsored_display_advertised_products.start_date == sd_req,
+                amazon_sponsored_display_advertised_products.end_date == ed_req,
+            )
+
+        if wanted:
+            delete_q = delete_q.filter(
+                amazon_sponsored_display_advertised_products.country.in_(list(wanted))
+            )
+
+        delete_q.delete(synchronize_session=False)
         db.session.commit()
 
         # numeric conversions
@@ -2016,8 +2533,9 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
                 "user_id": user_id,
                 "created_at": now,
                 "updated_at": now,
-                "start_date": _to_date(start_date),
-                "end_date": _to_date(end_date),
+                "time_unit": time_unit,
+                "start_date": _to_date(rec.get("date") or rec.get("startDate") or start_date),
+                "end_date": _to_date(rec.get("date") or rec.get("endDate") or rec.get("startDate") or end_date),
 
                 "country": rec.get("_country"),
                 "profile_id": str(rec.get("_profileId") or ""),
@@ -2271,8 +2789,16 @@ def manager_sb_keyword_report():
 
         out = pd.DataFrame()
 
-        out["Start Date"] = start_date
-        out["End Date"] = end_date
+        # ✅ IMPORTANT for DAILY reports:
+        # If Amazon returns row-level startDate/endDate, keep those.
+        # Otherwise fallback to request-level start_date/end_date.
+        if time_unit == "DAILY":
+            out["Start Date"] = _txt("date").where(_txt("date").str.strip() != "", start_date)
+            out["End Date"] = out["Start Date"]
+        else:
+            out["Start Date"] = _txt("startDate").where(_txt("startDate").str.strip() != "", start_date)
+            out["End Date"] = _txt("endDate").where(_txt("endDate").str.strip() != "", out["Start Date"])
+
         out["Country"] = _txt("_country")
         out["Profile ID"] = _txt("_profileId")
 
@@ -2535,9 +3061,20 @@ def manager_sb_keyword_report():
                 "user_id": user_id,
                 "created_at": now,
                 "updated_at": now,
+                "time_unit": time_unit,
 
-                "start_date": sd,
-                "end_date": ed,
+                # ✅ IMPORTANT for DAILY reports:
+                # Save each Amazon row's own date instead of the request-level range.
+                "start_date": _to_date(
+                    rec.get("Start Date") or start_date,
+                    strict=True,
+                    field_name="Start Date"
+                ),
+                "end_date": _to_date(
+                    rec.get("End Date") or rec.get("Start Date") or end_date,
+                    strict=True,
+                    field_name="End Date"
+                ),
 
                 "country": (rec.get("Country") or None),
                 "profile_id": str(rec.get("Profile ID") or "") or None,
@@ -2654,6 +3191,7 @@ def manager_sb_keyword_report():
 
             update_cols = {
                 "updated_at": stmt.excluded.updated_at,
+                "time_unit": stmt.excluded.time_unit,
                 "currency": stmt.excluded.currency,
 
                 "portfolio_name": stmt.excluded.portfolio_name,
