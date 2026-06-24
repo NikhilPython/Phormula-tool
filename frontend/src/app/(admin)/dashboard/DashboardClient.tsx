@@ -10237,13 +10237,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
         if (!hash) return;
 
         const nextUrl = `${window.location.pathname}#${hash}`;
-        window.history.pushState(null, "", nextUrl);
 
-        window.dispatchEvent(
-            new CustomEvent("page-hash-navigate", {
-                detail: { hash },
-            })
-        );
+        // Only update URL. Do not trigger scroll on manual tab switch.
+        window.history.replaceState(null, "", nextUrl);
     }, []);
 
     const isStickyGlobal = platform === "global";
@@ -11827,25 +11823,25 @@ Keep enough stock for validation but avoid over-committing too early.`,
     );
 
     const handleHeatmapProductClick = useCallback(
-    (heatmapRow: AgeingRiskHeatmapRow) => {
-        if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
-            return;
-        }
+        (heatmapRow: AgeingRiskHeatmapRow) => {
+            if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
+                return;
+            }
 
-        const productName = String(heatmapRow.productName || "").trim();
-        const sku = String(heatmapRow.sku || "").trim();
+            const productName = String(heatmapRow.productName || "").trim();
+            const sku = String(heatmapRow.sku || "").trim();
 
-        if (!productName && !sku) {
-            return;
-        }
+            if (!productName && !sku) {
+                return;
+            }
 
-        openPnlSkuDrawer({
-            product_name: productName,
-            sku,
-        } as MonthlySkuwiseTableRow);
-    },
-    [openPnlSkuDrawer]
-);
+            openPnlSkuDrawer({
+                product_name: productName,
+                sku,
+            } as MonthlySkuwiseTableRow);
+        },
+        [openPnlSkuDrawer]
+    );
 
     const currentInventoryExportRows = useMemo(() => {
         const rowsToUse = finalInventoryRows || [];

@@ -1,6 +1,5 @@
 import React from "react";
 import PageBreadcrumb from "../PageBreadCrumb";
-import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 export type ActionCardItem = {
     key: string;
@@ -33,37 +32,15 @@ type ActionBasedDashboardProps = {
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
     onViewDetails?: (action: ActionCardItem) => void;
-    onDownloadInventoryExcel?: () => void;
-    canDownloadInventoryExcel?: boolean;
 };
 
 const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
     title = "Action-Based Dashboard",
     subtitle = "Group SKUs by recommended action",
     actions,
-    onDownloadInventoryExcel,
-    canDownloadInventoryExcel = false,
 }) => {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                    <PageBreadcrumb
-                        pageTitle={title}
-                        variant="page"
-                        align="left"
-                        textSize="xl"
-                    />
-                </div>
-
-                {onDownloadInventoryExcel && (
-                    <DownloadIconButton
-                        onClick={onDownloadInventoryExcel}
-                        disabled={!canDownloadInventoryExcel}
-                    />
-                )}
-            </div>
-
+        <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-6 min-[1700px]:grid-cols-6">
                 {actions.map((action) => (
                     <div
@@ -155,7 +132,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                     </div>
                 ))}
             </div>
-        </div>
+        </>
     );
 };
 

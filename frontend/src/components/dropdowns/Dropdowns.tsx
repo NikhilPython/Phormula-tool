@@ -4456,22 +4456,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const handleHeatmapProductClick = useCallback(
-  (heatmapRow: AgeingRiskHeatmapRow) => {
-    if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
-      return;
-    }
+    (heatmapRow: AgeingRiskHeatmapRow) => {
+      if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) {
+        return;
+      }
 
-    const productName = String(heatmapRow.productName || "").trim();
-    const sku = String(heatmapRow.sku || "").trim();
+      const productName = String(heatmapRow.productName || "").trim();
+      const sku = String(heatmapRow.sku || "").trim();
 
-    if (!productName && !sku) {
-      return;
-    }
+      if (!productName && !sku) {
+        return;
+      }
 
-    openAiProductDrawerByName(productName, sku);
-  },
-  [openAiProductDrawerByName]
-);
+      openAiProductDrawerByName(productName, sku);
+    },
+    [openAiProductDrawerByName]
+  );
 
   useEffect(() => {
     if (!selectedAiProductBlock) return;
@@ -7314,18 +7314,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const nextUrl = `${window.location.pathname}#${hash}`;
 
-    if (isDemoMode) {
-      window.history.replaceState(null, "", nextUrl);
-      return;
-    }
-
-    window.history.pushState(null, "", nextUrl);
-
-    window.dispatchEvent(
-      new CustomEvent("page-hash-navigate", {
-        detail: { hash },
-      })
-    );
+    // Only update URL on manual tab switch.
+    // Do not dispatch page-hash-navigate, because that triggers scrollIntoView.
+    window.history.replaceState(null, "", nextUrl);
   };
 
   const handleConnectAmazonPreview = () => {

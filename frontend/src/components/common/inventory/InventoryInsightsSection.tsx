@@ -89,8 +89,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         actions={actions}
                         actionLogic={actionLogic}
                         onViewDetails={onActionViewDetails}
-                        onDownloadInventoryExcel={onDownloadInventoryExcel}
-                        canDownloadInventoryExcel={canDownloadInventoryExcel}
+                    // onDownloadInventoryExcel={onDownloadInventoryExcel}
+                    // canDownloadInventoryExcel={canDownloadInventoryExcel}
                     />
                 )}
 
@@ -101,6 +101,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         data={heatmapData}
                         buckets={heatmapBuckets}
                         onProductClick={onHeatmapProductClick}
+                        onDownloadInventoryExcel={onDownloadInventoryExcel}
+                        canDownloadInventoryExcel={canDownloadInventoryExcel}
                     />
                 )}
 

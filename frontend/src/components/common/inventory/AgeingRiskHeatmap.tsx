@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
 import DataTable, { ColumnDef, Row } from "@/components/ui/table/DataTable";
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 export type AgeingBucket = {
     key: string;
@@ -27,8 +28,10 @@ type AgeingRiskHeatmapProps = {
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
 
-    // ✅ ADD THIS
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
+
+    onDownloadInventoryExcel?: () => void;
+    canDownloadInventoryExcel?: boolean;
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
@@ -112,6 +115,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     buckets,
     defaultVisibleRows = 9,
     onProductClick,
+    onDownloadInventoryExcel,
+    canDownloadInventoryExcel = false,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -323,6 +328,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                 <RiExpandDiagonalFill className="h-4 w-4" />
                             )}
                         </button>
+                    )}
+
+                    {onDownloadInventoryExcel && (
+                        <DownloadIconButton
+                            onClick={onDownloadInventoryExcel}
+                            disabled={!canDownloadInventoryExcel}
+                        />
                     )}
                 </div>
             </div>
