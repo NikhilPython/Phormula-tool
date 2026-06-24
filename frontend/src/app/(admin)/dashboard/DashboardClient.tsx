@@ -13197,7 +13197,7 @@ ${pageLoading
 
                 {activeTab === "productwise" && (
                     <>
-                        <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+                        <div id="pnl-mtd" className="scroll-mt-[10px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
                                 {/* LEFT: Title */}
                                 <div className="flex items-center gap-2">

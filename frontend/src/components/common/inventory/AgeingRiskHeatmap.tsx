@@ -202,34 +202,46 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return <span>{rowIndex + 1}</span>;
                 },
             },
-         {
-    key: "productName",
-    header: "Product Name",
-    width: "115px",
-    headerClassName: heatmapHeaderClassName,
-    cellClassName: "text-left text-xs whitespace-normal break-words",
-    render: (row) => {
-        const canClick =
-            !!onProductClick &&
-            !row.isTotalRow &&
-            !row.isOthersRow &&
-            !!row.productName;
+            {
+                key: "productName",
+                header: "Product Name",
+                width: "115px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-left text-sm text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    const canClick =
+                        !!onProductClick &&
+                        !row.isTotalRow &&
+                        !row.isOthersRow &&
+                        !!row.productName;
 
-        if (!canClick) {
-            return <span>{row.productName}</span>;
-        }
+                    if (!canClick) {
+                        return <span>{row.productName}</span>;
+                    }
 
-        return (
-            <button
-                type="button"
-                onClick={() => onProductClick(row)}
-                className="text-left font-medium underline-offset-2 hover:underline text-green-500"
-            >
-                {row.productName}
-            </button>
-        );
-    },
-},
+                    return (
+                        <button
+                            type="button"
+                            onClick={() => onProductClick(row)}
+                            className="text-left font-medium underline-offset-2  text-green-500"
+                        >
+                            {row.productName}
+                        </button>
+                    );
+                },
+            },
+            {
+                key: "sku",
+                header: "SKU",
+                width: "95px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-sm text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isTotalRow) return "";
+
+                    return <span>{row.sku || "-"}</span>;
+                },
+            },
             ...bucketColumns,
             {
                 key: "totalUnits",

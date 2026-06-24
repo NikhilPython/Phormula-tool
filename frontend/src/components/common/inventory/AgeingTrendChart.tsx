@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import PageBreadcrumb from "../PageBreadCrumb";
 
@@ -52,6 +52,34 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   const echartsInstanceRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const [selectedBuckets, setSelectedBuckets] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setSelectedBuckets((prev) => {
+      const next = { ...prev };
+
+      allSeriesData.forEach((bucket) => {
+        if (next[bucket.bucketValue] === undefined) {
+          next[bucket.bucketValue] = true;
+        }
+      });
+
+      return next;
+    });
+  }, [allSeriesData]);
+
+  const toggleBucket = (bucketValue: string) => {
+    const selectedCount = Object.values(selectedBuckets).filter(Boolean).length;
+    const isChecked = !!selectedBuckets[bucketValue];
+
+    if (isChecked && selectedCount === 1) return;
+
+    setSelectedBuckets((prev) => ({
+      ...prev,
+      [bucketValue]: !isChecked,
+    }));
+  };
+
   const currentMonthShort = new Date().toLocaleString("default", {
     month: "short",
   });
@@ -79,12 +107,14 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
   }, [allChartSeriesData]);
 
   const chartSeries = useMemo(() => {
-    return allChartSeriesData.map((bucket) => ({
-      name: bucket.bucketLabel,
-      color: bucket.color,
-      data: bucket.data.map((item) => Number(item.value || 0)),
-    }));
-  }, [allChartSeriesData]);
+    return allChartSeriesData
+      .filter((bucket) => selectedBuckets[bucket.bucketValue] !== false)
+      .map((bucket) => ({
+        name: bucket.bucketLabel,
+        color: bucket.color,
+        data: bucket.data.map((item) => Number(item.value || 0)),
+      }));
+  }, [allChartSeriesData, selectedBuckets]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -136,7 +166,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
       },
 
       legend: {
-        show: true,
+        show: false,
         top: 10,
         left: "left",
         orient: "horizontal",
@@ -242,37 +272,62 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           align="left"
           textSize="2xl"
         />
+      </div>
 
-        {/* <div
-          className="flex items-center shrink-0"
-          data-no-expand
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center gap-2 text-sm">
-            <span className="whitespace-nowrap font-medium text-slate-700">
-              Ageing Bucket
-            </span>
+      <div
+        data-no-expand
+        className="shrink-0 flex flex-wrap items-center justify-center gap-4 w-full mt-2"
+      >
+        {allChartSeriesData.map((bucket) => {
+          const isChecked = selectedBuckets[bucket.bucketValue] !== false;
 
-            <select
-              value={selectedBucket}
-              onChange={(e) => onBucketChange?.(e.target.value)}
-              className="h-10 min-w-[200px] rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
+          return (
+            <label
+              key={bucket.bucketValue}
+              data-no-expand
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className={[
+                "shrink-0",
+                "flex items-center gap-1 sm:gap-1.5",
+                "font-semibold select-none whitespace-nowrap",
+                "text-[10px] 2xl:text-xs my-1 2xl:my-3",
+                "text-charcoal-500",
+                "cursor-pointer",
+              ].join(" ")}
             >
-              <option value="all">All</option>
+              <span
+                data-no-expand
+                className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                style={{
+                  borderColor: bucket.color,
+                  backgroundColor: isChecked ? bucket.color : "white",
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleBucket(bucket.bucketValue);
+                }}
+              >
+                {isChecked && (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    className="text-white"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                    />
+                  </svg>
+                )}
+              </span>
 
-              {bucketOptions.length > 0 ? (
-                bucketOptions.map((bucket) => (
-                  <option key={bucket.value} value={bucket.value}>
-                    {bucket.label}
-                  </option>
-                ))
-              ) : (
-                <option value={selectedBucket}>{selectedBucket}</option>
-              )}
-            </select>
-          </div>
-        </div> */}
+              <span>{bucket.bucketLabel}</span>
+            </label>
+          );
+        })}
       </div>
 
       <div className="mt-1 flex-1 min-h-[220px] md:min-h-[240px] lg:min-h-[260px] xl:min-h-[280px] 2xl:min-h-[340px] overflow-hidden">
