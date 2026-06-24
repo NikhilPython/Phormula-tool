@@ -64,28 +64,28 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                 )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 min-[1700px]:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-6 min-[1700px]:grid-cols-6">
                 {actions.map((action) => (
                     <div
                         key={action.key}
-                        className="rounded-lg border border-t-4 px-3 py-2.5 text-center"
+                        className="rounded-lg border border-t-4 p-2.5 sm:p-3 text-center"
                         style={{
                             backgroundColor: "#ffffff",
                             borderColor: action.color,
                             borderTopColor: action.color,
                         }}
                     >
-                        <h4 className="truncate text-sm font-bold text-charcoal-500">
+                        <h4 className="truncate text-sm 2xl:text-lg font-bold text-charcoal-500">
                             {action.label}
                         </h4>
 
-                        <p className="mx-auto mt-1 h-8 max-w-[210px] overflow-hidden text-xs leading-4 text-charcoal-500">
+                        <p className="mx-auto mt-1 h-6 max-w-[210px] overflow-hidden text-[10px] sm:text-[10px] 2xl:text-xs leading-4 text-charcoal-500">
                             {action.description}
                         </p>
 
                         {action.key === "estimated_storage_cost" ? (
                             <div className="flex flex-col items-center justify-center gap-1 text-charcoal-500">
-                                <span className="text-xl font-extrabold leading-none">
+                                <span className="text-sm 2xl:text-lg  font-extrabold leading-none">
                                     {action.displayValue ?? action.count}
                                 </span>
 
@@ -93,8 +93,8 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                     <span
                                         className={
                                             action.deltaPercentage <= 0
-                                                ? "text-xs font-bold leading-none text-emerald-600"
-                                                : "text-xs font-bold leading-none text-red-600"
+                                                ? "text-[9.5px] sm:text-[10px] 2xl:text-xs font-bold leading-none text-emerald-600"
+                                                : "text-[9.5px] sm:text-[10px] 2xl:text-xs font-bold leading-none text-red-600"
                                         }
                                         title={
                                             action.deltaValue
@@ -109,7 +109,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center gap-1 text-charcoal-500">
-                                <span className="text-xl font-extrabold leading-none">
+                                <span className="text-sm 2xl:text-lg font-extrabold leading-none">
                                     {typeof action.skuCount === "number"
                                         ? `${action.skuCount.toLocaleString()} SKUs`
                                         : `${action.count.toLocaleString()} SKUs`}
@@ -122,7 +122,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                 )} */}
 
                                 {typeof action.unitCount === "number" && (
-                                    <span className="text-xs font-semibold leading-none">
+                                    <span className="text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none">
                                         {action.unitCount.toLocaleString()}{" "}
                                         {action.key === "high_alert" ? "Units Remaining" : "Units"}
                                     </span>
@@ -152,11 +152,6 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                             </div>
                         )}
 
-                        {action.key === "estimated_storage_cost" && (
-                            <span className="mt-1 block text-xs font-bold leading-none text-charcoal-500">
-                                {/* Storage Cost */}
-                            </span>
-                        )}
                     </div>
                 ))}
             </div>

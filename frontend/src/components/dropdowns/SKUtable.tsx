@@ -1788,14 +1788,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
-  const productRowCount = displayRows.filter((row) => {
-    const name = String((row as any)?.product_name || "").trim().toLowerCase();
-    const sku = String((row as any)?.sku || "").trim().toLowerCase();
+  const productRowCount = useMemo(() => {
+    return (tableData || []).filter((row) => {
+      const name = String((row as any)?.product_name || "").trim().toLowerCase();
+      const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
-    return name !== "total" && sku !== "total" && name !== "others";
-  }).length;
+      return (
+        name !== "total" &&
+        sku !== "total" &&
+        name !== "others" &&
+        sku !== "others"
+      );
+    }).length;
+  }, [tableData]);
 
-  const VISIBLE_PRODUCT_ROWS = 15;
+  const VISIBLE_PRODUCT_ROWS = 13.61;
 
   const HEADER_HEIGHT = 48;
   const SIGN_ROW_HEIGHT = 30;

@@ -104,6 +104,8 @@ const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "cm2 profit",
+  "cm2 profit per unit",
   "cm1 profit",
   "cm1 profit per unit",
 ];
@@ -415,7 +417,7 @@ export default function SkuRecommendationDrawer({
                     Metrics
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
                     {sortedMetrics.map((m, i) => (
                       <div
                         key={i}
@@ -480,7 +482,7 @@ export default function SkuRecommendationDrawer({
                         {bestPerformanceError}
                       </div>
                     ) : bestPerformanceData ? (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3  xl:grid-cols-5">
                         {[
                           {
                             label: "Units",

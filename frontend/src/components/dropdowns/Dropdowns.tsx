@@ -1274,7 +1274,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     Metrics
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                     {sortedMetrics.map((m, i) => (
                       <div
                         key={i}
@@ -1341,7 +1341,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         {bestPerformanceError}
                       </div>
                     ) : bestPerformanceData ? (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                         {[
                           {
                             label: "Units",
@@ -3156,7 +3156,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Inventory in 0–90 days bucket",
+    description: "Stock covers 0–90 days",
     color: "#7B9A6D",
   },
   {
@@ -3168,25 +3168,25 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "discount",
     label: "Discount",
-    description: "Inventory in 91–180 days bucket",
+    description: "Stock aged 91–180 days",
     color: "#FDD36F",
   },
   {
     key: "liquidate",
     label: "Liquidate",
-    description: "Inventory older than 180 days",
+    description: "Stock older than 180 days",
     color: "#ED9F50",
   },
   {
     key: "unfulfillable",
-    label: "Unfulfillable inventory",
-    description: "Remove/Dispose",
+    label: "Unfulfillable",
+    description: "Remove or dispose stock",
     color: "#3A8EA4",
   },
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
   },
 ];
@@ -3202,7 +3202,7 @@ const INVENTORY_ACTION_META: Record<
 > = {
   healthy: {
     label: "Healthy",
-    description: "Inventory in 0–90 days bucket",
+    description: "Stock covers 0–90 days",
     color: "#7B9A6D",
     backgroundColor: "#ffffff",
   },
@@ -3214,25 +3214,25 @@ const INVENTORY_ACTION_META: Record<
   },
   discount: {
     label: "Discount",
-    description: "Inventory in 91–180 days bucket",
+    description: "Stock aged 91–180 days",
     color: "#FDD36F",
     backgroundColor: "#ffffff",
   },
   liquidate: {
     label: "Liquidate",
-    description: "Inventory older than 180 days",
+    description: "Stock older than 180 days",
     color: "#ED9F50",
     backgroundColor: "#ffffff",
   },
   unfulfillable: {
-    label: "Unfulfillable inventory",
-    description: "Remove/Dispose",
+    label: "Unfulfillable",
+    description: "Remove or dispose stock",
     color: "#3A8EA4",
     backgroundColor: "#ffffff",
   },
   estimated_storage_cost: {
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
     backgroundColor: "#ffffff",
   },
@@ -3883,7 +3883,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Inventory in 0–90 days bucket",
+    description: "Stock covers 0–90 days",
     count: 6,
     displayValue: 6,
     skuCount: 6,
@@ -3905,7 +3905,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "discount",
     label: "Discount",
-    description: "Inventory in 91–180 days bucket",
+    description: "Stock aged 91–180 days",
     count: 3,
     displayValue: 3,
     skuCount: 3,
@@ -3916,7 +3916,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "liquidate",
     label: "Liquidate",
-    description: "Inventory older than 180 days",
+    description: "Stock older than 180 days",
     count: 8,
     displayValue: 8,
     skuCount: 8,
@@ -3926,8 +3926,8 @@ const inventoryActions: ActionCardItem[] = [
   },
   {
     key: "unfulfillable",
-    label: "Unfulfillable inventory",
-    description: "Remove/Dispose",
+    label: "Unfulfillable",
+    description: "Remove or dispose stock",
     count: 3,
     displayValue: 3,
     skuCount: 3,
@@ -3938,7 +3938,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated currnt month storage cost",
+    description: "Monthly storage estimate",
     count: 11,
     displayValue: "£428.12",
     deltaValue: "£194.42",
@@ -3954,7 +3954,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Inventory in 0–90 days bucket",
+    description: "Stock covers 0–90 days",
     color: "#7B9A6D",
   },
   {
@@ -3966,25 +3966,25 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "discount",
     label: "Discount",
-    description: "Inventory in 91–180 days bucket",
+    description: "Stock aged 91–180 days",
     color: "#FDD36F",
   },
   {
     key: "liquidate",
     label: "Liquidate",
-    description: "Inventory older than 180 days",
+    description: "Stock older than 180 days",
     color: "#ED9F50",
   },
   {
     key: "unfulfillable",
-    label: "Unfulfillable inventory",
-    description: "Remove/Dispose",
+    label: "Unfulfillable",
+    description: "Remove or dispose stock",
     color: "#3A8EA4",
   },
   {
     key: "estimated_storage_cost",
     label: "Estimate Storage",
-    description: "Estimated current month storage cost",
+    description: "Monthly storage estimate",
     color: "#C49466",
   },
 ];

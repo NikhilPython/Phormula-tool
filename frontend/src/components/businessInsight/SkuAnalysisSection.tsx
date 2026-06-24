@@ -1263,7 +1263,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                                     Metrics
                                                                 </div>
 
-                                                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                                                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                                                                     {sortedMetrics.map((m, i) => {
                                                                         const { main, delta, deltaColor } = splitMetricValue(m.value);
 
@@ -1317,7 +1317,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                                                                 {bestPerformanceError}
                                                             </div>
                                                         ) : bestPerformanceData ? (
-                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                                                                 {[
                                                                     {
                                                                         label: "Units",

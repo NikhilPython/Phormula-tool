@@ -64,7 +64,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     }, [chartData]);
 
     return (
-       <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 min-[1700px]:min-h-[360px] min-[1700px]:p-4">
+        <div className="flex h-full w-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 xl:p-5">
             <PageBreadcrumb
                 pageTitle={title}
                 variant="page"
@@ -72,11 +72,11 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                 textSize="2xl"
             />
 
-            <div className="mt-4 flex flex-1 flex-col gap-5 min-[1700px]:flex-row min-[1700px]:items-center min-[1700px]:gap-4">
-                <div className="flex min-w-0 justify-center min-[1700px]:w-[42%] min-[1700px]:shrink-0">
+            <div className="mt-2 flex flex-1 flex-col gap-3 xl:flex-row xl:items-center xl:gap-4">
+                <div className="flex min-w-0 justify-center xl:w-[42%] xl:shrink-0">
                     <ChartContainer
                         config={chartConfig}
-                       className="mx-auto aspect-square h-[230px] max-h-[230px] w-full max-w-[230px] sm:h-[270px] sm:max-h-[270px] sm:max-w-[270px] xl:h-[300px] xl:max-h-[300px] xl:max-w-[300px] min-[1700px]:h-[220px] min-[1700px]:max-h-[220px] min-[1700px]:max-w-[220px]"
+                        className="mx-auto aspect-square h-[190px] max-h-[190px] w-full max-w-[190px] sm:h-[210px] sm:max-h-[210px] sm:max-w-[210px] xl:h-[220px] xl:max-h-[220px] xl:max-w-[220px] 2xl:h-[260px] 2xl:max-h-[260px] 2xl:max-w-[260px]"
                     >
                         <PieChart>
                             <ChartTooltip
@@ -107,7 +107,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
 
                                                     <span className="font-semibold text-slate-900">
                                                         {Number(displayValue ?? 0).toLocaleString()} (
-                                                        {payload.percentage.toFixed(1)}%)
+                                                        {payload.percentage.toFixed(2)}%)
                                                     </span>
                                                 </div>
                                             );
@@ -164,16 +164,16 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                 </div>
 
                 <div className="w-full min-w-0 rounded-lg min-[1700px]:flex-1">
-                    <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
+                  <table className="w-full table-fixed border-separate border-spacing-0 text-[11px] xl:text-xs">
                         <thead>
                             <tr className="text-slate-600">
-                                <th className="w-[48%] px-3 py-2 text-left font-semibold">
+                                <th className="w-[48%] px-2 py-1.5 text-left font-semibold">
                                     Ageing Bucket
                                 </th>
-                                <th className="w-[24%] px-3 py-2 text-center font-semibold">
+                                <th className="w-[24%] px-2 py-1.5 text-center font-semibold">
                                     Units
                                 </th>
-                                <th className="w-[28%] px-3 py-2 text-center font-semibold">
+                                <th className="w-[28%] px-2 py-1.5 text-center font-semibold">
                                     % of Total
                                 </th>
                             </tr>
@@ -185,7 +185,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                     key={item.bucket}
                                     className="border-t border-slate-200 transition-colors hover:bg-white"
                                 >
-                                    <td className="border-t border-slate-200 px-3 py-2 text-slate-800">
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-slate-800">
                                         <span
                                             className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
                                             style={{ backgroundColor: item.color }}
@@ -193,24 +193,24 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                         {item.bucket}
                                     </td>
 
-                                    <td className="border-t border-slate-200 px-3 py-2 text-center text-slate-700">
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-slate-700">
                                         {item.units.toLocaleString()}
                                     </td>
 
-                                    <td className="border-t border-slate-200 px-3 py-2 text-center text-slate-700">
-                                        {item.percentage.toFixed(1)}%
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-slate-700">
+                                        {item.percentage.toFixed(2)}%
                                     </td>
                                 </tr>
                             ))}
 
                             <tr className="font-bold text-slate-900">
-                                <td className="border-t border-slate-300 px-3 py-2">
+                                <td className="border-t border-slate-300 px-2 py-1.5">
                                     Total
                                 </td>
-                                <td className="border-t border-slate-300 px-3 py-2 text-center">
+                                <td className="border-t border-slate-300 px-2 py-1.5 text-center">
                                     {finalTotal.toLocaleString()}
                                 </td>
-                                <td className="border-t border-slate-300 px-3 py-2 text-center">
+                                <td className="border-t border-slate-300 px-2 py-1.5 text-center">
                                     100%
                                 </td>
                             </tr>
