@@ -54,9 +54,32 @@ db_url  = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  
 db_url2 = os.getenv('DATABASE_AMAZON_URL') or db_url  
 
-PHORMULA_ENGINE = create_engine(db_url, pool_pre_ping=True)
-ADMIN_ENGINE = create_engine(db_url1, pool_pre_ping=True)
-AMAZON_ENGINE = create_engine(db_url2, pool_pre_ping=True)
+PHORMULA_ENGINE = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
+
+ADMIN_ENGINE = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=3,
+    max_overflow=2,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
+
+AMAZON_ENGINE = create_engine(
+    db_url2,
+    pool_pre_ping=True,
+    pool_size=3,
+    max_overflow=2,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
 
 if not db_url:
     raise RuntimeError("DATABASE_URL is not set")
@@ -3672,21 +3695,22 @@ def save_live_dashboard_data():
         return jsonify({"success": False, "error": "Missing token"}), 401
 
     token = auth_header.split(" ")[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = int(payload["user_id"])
+        user_id = int(user_id or payload.get("user_id"))
     except Exception:
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
-    table_name = "live_data"
+    table_name = "live_dashboard_cache"
 
     create_sql = f"""
     CREATE TABLE IF NOT EXISTS public.{table_name} (
         id SERIAL PRIMARY KEY,
         user_id INT NOT NULL,
         country TEXT NOT NULL,
-        platform TEXT,
-        region TEXT,
+        platform TEXT NOT NULL DEFAULT '',
+        region TEXT NOT NULL DEFAULT '',
         start_day INT NULL,
         end_day INT NULL,
         cache_key TEXT NOT NULL UNIQUE,
@@ -3695,36 +3719,64 @@ def save_live_dashboard_data():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE INDEX IF NOT EXISTS idx_live_dashboard_cache_user_country
+    ON public.{table_name} (user_id, country, platform, region);
     """
+
+    def build_cache_key(user_id, country, platform, region, start_day, end_day):
+        return (
+            f"{user_id}:"
+            f"{country}:"
+            f"{platform}:"
+            f"{region}:"
+            f"{start_day if start_day is not None else 'na'}:"
+            f"{end_day if end_day is not None else 'na'}"
+        )
 
     if request.method == "POST":
         body = request.get_json(silent=True) or {}
 
         country = _safe_ident(body.get("country") or "uk")
-        platform = (body.get("platform") or "").strip().lower()
-        region = (body.get("region") or "").strip()
-        start_day = body.get("startDay")
-        end_day = body.get("endDay")
-        cache_payload = body.get("cachePayload") or {}
+        platform = str(body.get("platform") or "").strip().lower()
+        region = str(body.get("region") or "").strip()
+
+        start_day = body.get("startDay", body.get("start_day"))
+        end_day = body.get("endDay", body.get("end_day"))
+
+        start_day = int(start_day) if start_day not in (None, "", "null") else None
+        end_day = int(end_day) if end_day not in (None, "", "null") else None
+
+        cache_payload = body.get("cachePayload")
+        if cache_payload is None:
+            return jsonify({"success": False, "error": "cachePayload is required"}), 400
+
         saved_at = body.get("savedAt") or int(time.time() * 1000)
 
-        cache_key = f"{user_id}:{country}:{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
+        cache_key = build_cache_key(
+            user_id=user_id,
+            country=country,
+            platform=platform,
+            region=region,
+            start_day=start_day,
+            end_day=end_day,
+        )
+
+        upsert_sql = f"""
+        INSERT INTO public.{table_name}
+            (user_id, country, platform, region, start_day, end_day, cache_key, saved_at, payload)
+        VALUES
+            (:user_id, :country, :platform, :region, :start_day, :end_day, :cache_key, :saved_at, CAST(:payload AS jsonb))
+        ON CONFLICT (cache_key)
+        DO UPDATE SET
+            payload = EXCLUDED.payload,
+            saved_at = EXCLUDED.saved_at,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING id, user_id, country, platform, region, start_day, end_day,
+                  cache_key, saved_at, created_at, updated_at
+        """
 
         try:
-            upsert_sql = f"""
-            INSERT INTO public.{table_name}
-            (user_id, country, platform, region, start_day, end_day, cache_key, saved_at, payload)
-            VALUES
-            (:user_id, :country, :platform, :region, :start_day, :end_day, :cache_key, :saved_at, :payload)
-            ON CONFLICT (cache_key)
-            DO UPDATE SET
-                payload = EXCLUDED.payload,
-                saved_at = EXCLUDED.saved_at,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING id, user_id, country, platform, region, start_day, end_day,
-                      cache_key, saved_at, created_at, updated_at
-            """
-
             with PHORMULA_ENGINE.begin() as conn:
                 conn.execute(text(create_sql))
                 row = conn.execute(
@@ -3746,83 +3798,85 @@ def save_live_dashboard_data():
                 "success": True,
                 "table": table_name,
                 "cache_key": cache_key,
-                "data": {
-                    "id": row["id"] if row else None,
-                    "user_id": row["user_id"] if row else user_id,
-                    "country": row["country"] if row else country,
-                    "platform": row["platform"] if row else platform,
-                    "region": row["region"] if row else region,
-                    "start_day": row["start_day"] if row else start_day,
-                    "end_day": row["end_day"] if row else end_day,
-                    "saved_at": row["saved_at"] if row else saved_at,
-                    "created_at": row["created_at"].isoformat() if row and row.get("created_at") else None,
-                    "updated_at": row["updated_at"].isoformat() if row and row.get("updated_at") else None,
-                },
-                "message": "Live dashboard data stored successfully"
+                "data": dict(row) if row else None,
             }), 200
 
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            logging.exception("Failed to save live dashboard cache")
+            return jsonify({
+                "success": False,
+                "error": "Failed to save live dashboard cache",
+                "details": str(e),
+            }), 500
 
     country = _safe_ident(request.args.get("country") or "uk")
-    platform = (request.args.get("platform") or "").strip().lower()
-    region = (request.args.get("region") or "").strip()
+    platform = str(request.args.get("platform") or "").strip().lower()
+    region = str(request.args.get("region") or "").strip()
+
     start_day = request.args.get("start_day")
     end_day = request.args.get("end_day")
 
-    start_day = int(start_day) if start_day not in (None, "", "null", "undefined") else None
-    end_day = int(end_day) if end_day not in (None, "", "null", "undefined") else None
+    start_day = int(start_day) if start_day not in (None, "", "null") else None
+    end_day = int(end_day) if end_day not in (None, "", "null") else None
 
-    cache_key = f"{user_id}:{country}:{platform}:{region}:{start_day if start_day is not None else 'na'}:{end_day if end_day is not None else 'na'}"
+    cache_key = build_cache_key(
+        user_id=user_id,
+        country=country,
+        platform=platform,
+        region=region,
+        start_day=start_day,
+        end_day=end_day,
+    )
+
+    select_sql = f"""
+    SELECT id, user_id, country, platform, region, start_day, end_day,
+           cache_key, saved_at, payload, created_at, updated_at
+    FROM public.{table_name}
+    WHERE cache_key = :cache_key
+    LIMIT 1
+    """
 
     try:
-        select_sql = f"""
-        SELECT id, user_id, country, platform, region, start_day, end_day,
-               cache_key, saved_at, payload, created_at, updated_at
-        FROM public.{table_name}
-        WHERE cache_key = :cache_key
-        LIMIT 1
-        """
-
         with PHORMULA_ENGINE.begin() as conn:
             conn.execute(text(create_sql))
             row = conn.execute(
                 text(select_sql),
-                {"cache_key": cache_key}
+                {"cache_key": cache_key},
             ).mappings().first()
 
         if not row:
             return jsonify({
                 "success": True,
                 "found": False,
-                "table": table_name,
-                "cache_key": cache_key,
-                "data": None
+                "data": None,
             }), 200
+
+        data = dict(row)
 
         return jsonify({
             "success": True,
             "found": True,
-            "table": table_name,
-            "cache_key": cache_key,
             "data": {
-                "id": row["id"],
-                "user_id": row["user_id"],
-                "country": row["country"],
-                "platform": row["platform"],
-                "region": row["region"],
-                "start_day": row["start_day"],
-                "end_day": row["end_day"],
-                "cache_key": row["cache_key"],
-                "saved_at": row["saved_at"],
-                "payload": row["payload"],
-                "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
-                "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
-            }
+                "id": data["id"],
+                "user_id": data["user_id"],
+                "country": data["country"],
+                "platform": data["platform"],
+                "region": data["region"],
+                "start_day": data["start_day"],
+                "end_day": data["end_day"],
+                "cache_key": data["cache_key"],
+                "saved_at": data["saved_at"],
+                "payload": data["payload"],
+                "created_at": data["created_at"],
+                "updated_at": data["updated_at"],
+            },
         }), 200
 
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
+        logging.exception("Failed to fetch live dashboard cache")
+        return jsonify({
+            "success": False,
+            "error": "Failed to fetch live dashboard cache",
+            "details": str(e),
+        }), 500
     
-       
