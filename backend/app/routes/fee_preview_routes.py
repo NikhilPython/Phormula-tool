@@ -20,6 +20,7 @@ from Crypto.Cipher import AES
 from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, request
 from sqlalchemy import Column, Float, Integer, MetaData, String, Table, create_engine, text
+from sqlalchemy.pool import NullPool
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import inspect as sa_inspect  # IMPORTANT: sqlalchemy inspect
@@ -567,10 +568,20 @@ def _run_feepreview_upload_pipeline_from_fee_table(
         ]
     )
 
-    user_engine = create_engine(db_url, pool_pre_ping=True)
+    user_engine = create_engine(
+        db_url,
+        poolclass=NullPool,
+        pool_pre_ping=True,
+    )
+
     metadata = MetaData()
 
-    admin_engine = create_engine(db_url1, pool_pre_ping=True)
+    admin_engine = create_engine(
+        db_url1,
+        poolclass=NullPool,
+        pool_pre_ping=True,
+    )
+
     AdminSession = sessionmaker(bind=admin_engine)
     admin_session = AdminSession()
 
@@ -818,6 +829,10 @@ def _run_feepreview_upload_pipeline_from_fee_table(
             )
         )
         db.session.commit()
+
+    admin_session.close()
+    admin_engine.dispose()
+    user_engine.dispose()
 
     return {"inserted": inserted_rows, "deleted": 0, "table": table_name}
 
