@@ -386,7 +386,8 @@ const LiveLineChart: React.FC<{
   selectedEndDay?: number | null;
   onExportApiReady?: (api: TrendChartExportApi | null) => void;
 
-  // ✅ add these
+  seriesColorMap: Record<string, string>;
+
   range?: "monthly" | "quarterly" | "yearly" | "";
   year?: string;
   isExpanded?: boolean;
@@ -398,8 +399,7 @@ const LiveLineChart: React.FC<{
   selectedStartDay,
   selectedEndDay,
   onExportApiReady,
-
-  // ✅ add these
+  seriesColorMap,
   range,
   year,
   isExpanded,
@@ -592,7 +592,8 @@ const LiveLineChart: React.FC<{
             ? `(${currencySymbol})`
             : "Sales";
 
-    const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
+    // const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
+    const colorMap = seriesColorMap;
 
     useEffect(() => {
       const el = containerRef.current;
@@ -678,6 +679,7 @@ const LiveLineChart: React.FC<{
       },
 
       legend: {
+        show: false,
         top: 10,
         left: "left",
         orient: "horizontal",
@@ -693,7 +695,7 @@ const LiveLineChart: React.FC<{
         data: series.map((s) => s.name),
       },
 
-      grid: { left: 46, right: 16, top: 62, bottom: 44 },
+      grid: { left: 46, right: 16, top: 28, bottom: 44 },
 
       xAxis: {
         type: "category",
@@ -804,7 +806,7 @@ const LiveLineChart: React.FC<{
 
             // pad category: duplicate first value
             if (isPadX(xRaw)) {
-           const vPad = getMetricValue(p, metric);
+              const vPad = getMetricValue(p, metric);
               if (p && (p as any).monthLabel != null) {
                 return vPad == null ? null : { value: vPad, monthLabel: (p as any).monthLabel };
               }
@@ -879,6 +881,8 @@ const LiveLineChart: React.FC<{
       <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
         <ReactECharts
           option={option}
+          notMerge={true}
+          lazyUpdate={false}
           style={{ width: "100%", height: "100%" }}
           opts={{ renderer: "canvas" }}
           onChartReady={(instance) => {
@@ -945,7 +949,7 @@ const buildFallbackTrend = (
 
 export default function PerformanceTrendChart(props: PerformanceTrendChartProps) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
-
+  const [selectedPeriods, setSelectedPeriods] = useState<Record<string, boolean>>({});
   const isPreviewMode = props.isPreviewMode ?? false;
 
   useEffect(() => {
@@ -984,6 +988,44 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
 
     return mappedData;
   }, [props.data, props.range, isPreviewMode]);
+
+  useEffect(() => {
+    const names = mapped.series.map((s) => s.name);
+
+    setSelectedPeriods((prev) => {
+      const next: Record<string, boolean> = {};
+
+      names.forEach((name) => {
+        next[name] = prev[name] ?? true;
+      });
+
+      return next;
+    });
+  }, [mapped.series]);
+
+  const periodColorMap = useMemo(() => {
+    return buildRecencyColorMap(mapped.series.map((s) => s.name));
+  }, [mapped.series]);
+
+  const visibleSeries = useMemo(() => {
+    return mapped.series.filter((s) => selectedPeriods[s.name] !== false);
+  }, [mapped.series, selectedPeriods]);
+
+  const togglePeriod = (name: string) => {
+    const selectedCount = mapped.series.filter(
+      (s) => selectedPeriods[s.name] !== false
+    ).length;
+
+    const isChecked = selectedPeriods[name] !== false;
+
+    // Keep at least one period selected
+    if (isChecked && selectedCount === 1) return;
+
+    setSelectedPeriods((prev) => ({
+      ...prev,
+      [name]: !isChecked,
+    }));
+  };
 
   const hasChartStructure = useMemo(() => {
     return mapped.xAxis.length > 0 && mapped.series.length > 0;
@@ -1042,6 +1084,62 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
         </div>
       </div>
 
+      {hasChartStructure && (
+        <div
+          data-no-expand
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 flex flex-wrap items-center justify-center gap-4 w-full mt-2"
+        >
+          {mapped.series.map((ser) => {
+            const color = periodColorMap[ser.name] ?? GREY;
+            const isChecked = selectedPeriods[ser.name] !== false;
+
+            return (
+              <label
+                key={ser.name}
+                data-no-expand
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={[
+                  "shrink-0",
+                  "flex items-center gap-1 sm:gap-1.5",
+                  "font-semibold select-none whitespace-nowrap",
+                  "text-[10px] 2xl:text-xs my-1",
+                  "text-charcoal-500",
+                  "cursor-pointer",
+                ].join(" ")}
+              >
+                <span
+                  data-no-expand
+                  className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                  style={{
+                    borderColor: color,
+                    backgroundColor: isChecked ? color : "white",
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePeriod(ser.name);
+                  }}
+                >
+                  {isChecked && (
+                    <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                      <path
+                        fill="currentColor"
+                        d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                      />
+                    </svg>
+                  )}
+                </span>
+
+                <span>{ser.name}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && (
           <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
@@ -1058,14 +1156,13 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
         {!loading && !error && hasChartStructure && (
           <LiveLineChart
             xAxisData={mapped.xAxis}
-            series={mapped.series}
+            series={visibleSeries}
             metric={chartMetric}
             currencySymbol={props.currencySymbol}
             selectedStartDay={props.selectedStartDay}
             selectedEndDay={props.selectedEndDay}
             onExportApiReady={props.onExportApiReady}
-
-            // ✅ add these
+            seriesColorMap={periodColorMap}
             range={props.range}
             year={props.year}
             isExpanded={props.isExpanded}
