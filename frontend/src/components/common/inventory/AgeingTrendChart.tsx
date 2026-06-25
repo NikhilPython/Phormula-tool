@@ -56,12 +56,10 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
 
   useEffect(() => {
     setSelectedBuckets((prev) => {
-      const next = { ...prev };
+      const next: Record<string, boolean> = {};
 
       allSeriesData.forEach((bucket) => {
-        if (next[bucket.bucketValue] === undefined) {
-          next[bucket.bucketValue] = true;
-        }
+        next[bucket.bucketValue] = prev[bucket.bucketValue] ?? true;
       });
 
       return next;
@@ -282,11 +280,15 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
           const isChecked = selectedBuckets[bucket.bucketValue] !== false;
 
           return (
-            <label
+            <button
               key={bucket.bucketValue}
+              type="button"
               data-no-expand
-              onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleBucket(bucket.bucketValue);
+              }}
               className={[
                 "shrink-0",
                 "flex items-center gap-1 sm:gap-1.5",
@@ -303,17 +305,12 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
                   borderColor: bucket.color,
                   backgroundColor: isChecked ? bucket.color : "white",
                 }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleBucket(bucket.bucketValue);
-                }}
               >
                 {isChecked && (
                   <svg
                     viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
+                    width="12"
+                    height="12"
                     className="text-white"
                   >
                     <path
@@ -325,7 +322,7 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
               </span>
 
               <span>{bucket.bucketLabel}</span>
-            </label>
+            </button>
           );
         })}
       </div>
@@ -334,6 +331,8 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
         <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
           <ReactECharts
             option={option}
+            notMerge={true}
+            lazyUpdate={false}
             style={{ width: "100%", height: "100%" }}
             opts={{ renderer: "canvas" }}
             onChartReady={(instance) => {
