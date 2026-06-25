@@ -1855,17 +1855,43 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
-  const VISIBLE_PRODUCT_ROWS = 13.61;
+  // const VISIBLE_PRODUCT_ROWS = 13.61;
 
-  const SIGN_ROW_HEIGHT = 30;
-  const PRODUCT_ROW_HEIGHT = 35;
-  // const TOTAL_ROW_HEIGHT = 40;
+  // const SIGN_ROW_HEIGHT = 30;
+  // const PRODUCT_ROW_HEIGHT = 35;
 
-  const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
+  // const shouldScrollTable = showAllRows && productRowCount > VISIBLE_PRODUCT_ROWS;
+
+  // const tableScrollHeight =
+  //   SIGN_ROW_HEIGHT +
+  //   PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
+
+
+
+  const COLLAPSED_VISIBLE_PRODUCT_ROWS = 5.4;
+  // 9 product rows + Others row
+
+  const HEADER_HEIGHT = anyGroupExpanded ? 112 : 64;
+  const SIGN_ROW_HEIGHT = 46;
+  const PRODUCT_ROW_HEIGHT = 46;
+  const TOTAL_ROW_HEIGHT = 52;
+  const SUMMARY_ROW_HEIGHT = 48;
+
+  const COLLAPSED_SUMMARY_ROW_COUNT =
+    (countryName || "").toLowerCase() === "us" ||
+      (countryName || "").toLowerCase() === "global"
+      ? 9
+      : 8;
+
+  const shouldScrollTable =
+    showAllRows && productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
 
   const tableScrollHeight =
+    HEADER_HEIGHT +
     SIGN_ROW_HEIGHT +
-    PRODUCT_ROW_HEIGHT * VISIBLE_PRODUCT_ROWS;
+    PRODUCT_ROW_HEIGHT * COLLAPSED_VISIBLE_PRODUCT_ROWS +
+    TOTAL_ROW_HEIGHT +
+    SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
   return (
     <>
@@ -1922,10 +1948,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div
             className={[
               "w-full rounded-xl border border-gray-300",
-              anyGroupExpanded ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden",
+              shouldScrollTable
+                ? "overflow-hidden"
+                : anyGroupExpanded
+                  ? "overflow-x-auto overflow-y-hidden"
+                  : "overflow-hidden",
             ].join(" ")}
           >
-            <div className={anyGroupExpanded ? "min-w-max" : "w-full"}>
+            <div className="w-full">
               <GroupedCollapsibleTable<TableRow>
                 rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}

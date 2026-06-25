@@ -540,41 +540,38 @@ export default function GroupedCollapsibleTable<RowT>({
     return Math.max(width, 1200);
   }, [visibleLeafCols]);
 
-  const tableStyle: React.CSSProperties = anyGroupExpanded
-    ? {
-      tableLayout: "fixed",
-      width: `${requiredTableWidth}px`,
-      minWidth: `${requiredTableWidth}px`,
-    }
-    : {
-      tableLayout: "fixed",
-      width: "100%",
-    };
+  const tableStyle: React.CSSProperties = {
+    tableLayout: "fixed",
+    width: anyGroupExpanded ? `${requiredTableWidth}px` : "100%",
+    minWidth: anyGroupExpanded ? `${requiredTableWidth}px` : "100%",
+  };
 
   useEffect(() => {
     onVisibleColCountChange?.(visibleLeafCols.length);
   }, [visibleLeafCols.length, onVisibleColCountChange]);
 
 
+  // const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // const [scrollbarWidth, setScrollbarWidth] = useState(0);
+
+  // useEffect(() => {
+  //   if (!bodyMaxHeight) return;
+
+  //   const measure = () => {
+  //     const el = scrollContainerRef.current;
+  //     if (!el) return;
+
+  //     const width = el.offsetWidth - el.clientWidth;
+  //     setScrollbarWidth(width > 0 ? width : 0);
+  //   };
+
+  //   measure();
+
+  //   window.addEventListener("resize", measure);
+  //   return () => window.removeEventListener("resize", measure);
+  // }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
+
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollbarWidth, setScrollbarWidth] = useState(0);
-
-  useEffect(() => {
-    if (!bodyMaxHeight) return;
-
-    const measure = () => {
-      const el = scrollContainerRef.current;
-      if (!el) return;
-
-      const width = el.offsetWidth - el.clientWidth;
-      setScrollbarWidth(width > 0 ? width : 0);
-    };
-
-    measure();
-
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   /* ---------------- Row 2 Headers ---------------- */
   type Row2Cell<RowT> =
@@ -637,8 +634,8 @@ export default function GroupedCollapsibleTable<RowT>({
     </colgroup>
   );
 
-  const renderTableHead = () => (
-    <thead className="font-bold">
+const renderTableHead = () => (
+  <thead className={bodyMaxHeight ? "sticky top-0 z-20 font-bold" : "font-bold"}>
       {/* -------- Header Row 1 -------- */}
       <tr className={headerRow1ClassName}>
         {leftCols.map((c) => (
@@ -924,58 +921,30 @@ export default function GroupedCollapsibleTable<RowT>({
    */
   if (bodyMaxHeight) {
     return (
-      <div className="w-full">
-        {/* Fixed header table */}
-        <div
-          className="w-full"
-          style={{
-            paddingRight: scrollbarWidth ? `${scrollbarWidth}px` : undefined,
-            boxSizing: "border-box",
-          }}
-        >
-          <table className={tableClassName} style={tableStyle}>
-            {renderColGroup()}
-            {renderTableHead()}
-          </table>
-        </div>
+      <div
+        ref={scrollContainerRef}
+        className="w-full overflow-auto"
+        style={{
+          maxHeight: `${bodyMaxHeight}px`,
+          scrollbarGutter: "stable",
+        }}
+      >
+        <table className={tableClassName} style={tableStyle}>
+          {renderColGroup()}
 
-        {/* Scrollable rows only */}
-        <div
-          ref={scrollContainerRef}
-          className="w-full overflow-y-auto"
-          style={{
-            maxHeight: `${bodyMaxHeight}px`,
-            scrollbarGutter: "stable",
-          }}
-        >
-          <table className={tableClassName} style={tableStyle}>
-            {renderColGroup()}
+          <thead className="sticky top-0 z-20 font-bold">
+            {renderTableHead().props.children}
+          </thead>
 
-            <tbody>
-              {renderSignRow()}
-              {renderBodyRows(scrollRows)}
-            </tbody>
-          </table>
-        </div>
+          <tbody>
+            {renderSignRow()}
+            {renderBodyRows(scrollRows)}
+            {pinnedRows.length > 0 &&
+              renderBodyRows(pinnedRows, scrollRows.length)}
+          </tbody>
 
-        {/* Pinned total + summary */}
-        <div
-          className="w-full"
-          style={{
-            paddingRight: scrollbarWidth ? `${scrollbarWidth}px` : undefined,
-            boxSizing: "border-box",
-          }}
-        >
-          <table className={tableClassName} style={tableStyle}>
-            {renderColGroup()}
-
-            {pinnedRows.length > 0 && (
-              <tbody>{renderBodyRows(pinnedRows, scrollRows.length)}</tbody>
-            )}
-
-            {renderSummaryFooter()}
-          </table>
-        </div>
+          {renderSummaryFooter()}
+        </table>
       </div>
     );
   }
@@ -990,7 +959,8 @@ export default function GroupedCollapsibleTable<RowT>({
 
       <tbody>
         {renderSignRow()}
-        {renderBodyRows(sortedRows)}
+        {renderBodyRows(scrollRows)}
+        {pinnedRows.length > 0 && renderBodyRows(pinnedRows, scrollRows.length)}
       </tbody>
 
       {renderSummaryFooter()}
