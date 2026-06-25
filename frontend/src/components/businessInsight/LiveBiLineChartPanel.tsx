@@ -505,7 +505,7 @@ const LiveLineChart: React.FC<{
             option={option}
             notMerge={true}
             lazyUpdate={false}
-            style={{ width: "100%", height: isCompactView ? 244 : 270 }}
+            style={{ width: "100%", height: isCompactView ? 252 : 255 }}
             onChartReady={(instance) => {
               echartsInstanceRef.current = instance as EChartsType;
               try {
@@ -617,7 +617,7 @@ export default function LiveBiLineChartPanel({
         data-no-expand
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        className="shrink-0 flex flex-wrap items-center justify-center gap-4 w-full mt-2"
+        className="shrink-0 flex flex-wrap items-center justify-center gap-3 w-full mt-0"
       >
         {[
           {
@@ -643,7 +643,7 @@ export default function LiveBiLineChartPanel({
                 "shrink-0",
                 "flex items-center gap-1 sm:gap-1.5",
                 "font-semibold select-none whitespace-nowrap",
-                "text-[10px] 2xl:text-xs my-1",
+                "text-[10px] 2xl:text-xs leading-none",
                 "text-charcoal-500",
                 "cursor-pointer",
               ].join(" ")}
@@ -677,7 +677,7 @@ export default function LiveBiLineChartPanel({
         })}
       </div>
 
-      <div className="relative min-h-[260px] mt-1">
+      <div className="relative min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-[260px]">
             <Loader className="bg-[transparent]" />
