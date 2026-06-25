@@ -239,7 +239,6 @@ def get_monthly_inventory_units(
         return inventory_map
 
     except Exception as e:
-        print(f"Inventory fetch error for {country}: {str(e)}")
         return {}
     
 def get_monthly_inventory_units_for_other_skus(
@@ -418,7 +417,6 @@ def get_monthly_total_net_sales_and_profit(conn, inspector, all_tables, user_id,
         return float(row[0] or 0), float(row[1] or 0)
 
     except Exception as e:
-        print(f"Error calculating monthly total for {table_name}: {str(e)}")
         return 0.0, 0.0
 
 def get_exact_other_skus_month_row(
@@ -577,7 +575,6 @@ def get_exact_other_skus_month_row(
         }
 
     except Exception as e:
-        print(f"Exact Other SKUs aggregate error for {table_name}: {str(e)}")
         return None
 
 @skuwise_bp.route('/ProductwisePerformance', methods=['POST'])
@@ -749,7 +746,6 @@ def productwise_performance():
                             }
 
                             if not required_cols.issubset(columns):
-                                print(f"Skipping table {table_name}: required columns missing")
                                 continue
 
                             has_sku_col = 'sku' in columns
@@ -816,7 +812,6 @@ def productwise_performance():
                             total_cost_of_unit_sold += table_cost_of_unit_sold
 
                         except Exception as e:
-                            print(f"Error querying table {table_name}: {str(e)}")
                             continue
 
                     gross_margin = (
@@ -999,7 +994,6 @@ def productwise_performance():
                         other_skus_graph_data[country] = []
 
                 except Exception as e:
-                    print(f"Other SKUs graph error for {country}: {str(e)}")
                     other_skus_graph_data[country] = []
 
         return jsonify({
@@ -1226,7 +1220,6 @@ def generate_ai_insights(prompt):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print("OpenAI Error:", str(e))
         return None
 
 
@@ -1503,7 +1496,6 @@ def productwise_growth_ai():
         })
 
     except Exception as e:
-        print("ProductwiseGrowthAI ERROR:", str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -1695,7 +1687,6 @@ def product_best_performance():
                         'unit_wise_profitability': round(unit_wise_profitability, 2)
                     })
                 except Exception as e:
-                    print(f"Error in table {table_name}: {str(e)}")
                     continue
 
         if not monthly_rows:
@@ -1747,7 +1738,6 @@ def product_best_performance():
         }), 200
 
     except Exception as e:
-        print("ProductBestPerformance ERROR:", str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -2237,7 +2227,6 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
         return lookup
 
     except Exception as e:
-        print(f"Month-end inventory lookup error for {country}: {str(e)}")
         return {}
 
 
@@ -2306,7 +2295,6 @@ def fetch_product_summary_history_for_country(
             missing_cols = required_cols - set(columns)
 
             if missing_cols:
-                print(f"Skipping table {table_name}: missing required columns {missing_cols}")
                 continue
 
             where_condition = """
@@ -2417,7 +2405,6 @@ def fetch_product_summary_history_for_country(
             })
 
         except Exception as e:
-            print(f"Product summary history error for {table_name}: {str(e)}")
             continue
 
     history.sort(key=lambda x: (x["year"], x["month_num"]))
@@ -2755,7 +2742,6 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print("Product AI Summary OpenAI Error:", str(e))
         return None
 
 
@@ -2918,7 +2904,6 @@ def product_summary_ai():
         }), 200
 
     except Exception as e:
-        print("ProductSummaryAI ERROR:", str(e))
         return jsonify({
             "error": str(e)
         }), 500
