@@ -1006,30 +1006,66 @@ def get_inventory_current_age_summary():
         current_month_number = MONTH_NAME_TO_NUMBER[month_name]
         year_int = int(year)
 
-        table_name = f"currentinventory_{user_id}_{country_key}_{month_name}{year}_table"
-
         inspector = inspect(primary_engine)
+        existing_tables = set(inspector.get_table_names(schema="public"))
 
-        if table_name not in inspector.get_table_names():
-            return jsonify({
-                "success": False,
-                "message": f"Table not found: {table_name}",
-                "table_name": table_name,
-                "age_summary": [],
-                "month_summary": [],
-                "totals": {}
-            }), 404
+        month_summary = []
+        tried_sources = []
 
-        previous_month_summary = []
+        # ------------------------------------------------
+        # Check every month from January to selected month
+        # First currentinventory table, then fallback history
+        # ------------------------------------------------
+        for month_number in range(1, current_month_number + 1):
+            month_text = calendar_month_name[month_number].lower()
+            month_display = month_label(month_number)
 
-        # ---------------------------------------------
-        # 1. Previous months from AMAZON DB
-        # ---------------------------------------------
-        if current_month_number > 1:
+            candidate_table_name = (
+                f"currentinventory_{user_id}_{country_key}_{month_text}{year}_table"
+            )
+
+            tried_sources.append(candidate_table_name)
+
+            # ------------------------------------------------
+            # 1. First check currentinventory dynamic table
+            # ------------------------------------------------
+            if candidate_table_name in existing_tables:
+                current_query = text(f'''
+                    SELECT
+                        COALESCE(SUM(CAST(NULLIF("inv-age-181-to-270-days"::text, '') AS NUMERIC)), 0) AS inv_age_181_to_270_days,
+                        COALESCE(SUM(CAST(NULLIF("inv-age-271-to-365-days"::text, '') AS NUMERIC)), 0) AS inv_age_271_to_365_days,
+                        COALESCE(SUM(CAST(NULLIF("inv-age-365-plus-days"::text, '') AS NUMERIC)), 0) AS inv_age_365_plus_days
+                    FROM "{candidate_table_name}"
+                    WHERE LOWER(COALESCE("Product Name"::text, '')) != 'total'
+                ''')
+
+                with primary_engine.connect() as primary_connection:
+                    current_result = primary_connection.execute(current_query).mappings().first()
+
+                month_summary.append({
+                    "month": month_display,
+                    "month_number": month_number,
+                    "year": year_int,
+                    "source": candidate_table_name,
+                    "source_type": "currentinventory_table",
+                    "totals": {
+                        "inv-age-181-to-270-days": float(current_result["inv_age_181_to_270_days"] or 0),
+                        "inv-age-271-to-365-days": float(current_result["inv_age_271_to_365_days"] or 0),
+                        "inv-age-365-plus-days": float(current_result["inv_age_365_plus_days"] or 0)
+                    }
+                })
+
+                continue
+
+            # ------------------------------------------------
+            # 2. If currentinventory table does not exist,
+            #    fallback to inventory_aged_history
+            # ------------------------------------------------
+            history_source = f"inventory_aged_history:{month_text}{year}"
+            tried_sources.append(history_source)
+
             history_query = text("""
                 SELECT
-                    EXTRACT(MONTH FROM snapshot_date)::int AS month_number,
-
                     COALESCE(SUM(
                         CASE
                             WHEN surcharge_age_tier IN (
@@ -1098,68 +1134,29 @@ def get_inventory_current_age_summary():
                   AND marketplace_id = :marketplace_id
                   AND snapshot_date IS NOT NULL
                   AND EXTRACT(YEAR FROM snapshot_date)::int = :year
-                  AND EXTRACT(MONTH FROM snapshot_date)::int >= 1
-                  AND EXTRACT(MONTH FROM snapshot_date)::int < :current_month_number
-                GROUP BY EXTRACT(MONTH FROM snapshot_date)::int
-                ORDER BY month_number ASC
+                  AND EXTRACT(MONTH FROM snapshot_date)::int = :month_number
             """)
 
             with amazon_engine.connect() as amazon_connection:
-                history_rows = amazon_connection.execute(history_query, {
+                history_result = amazon_connection.execute(history_query, {
                     "user_id": int(user_id),
                     "marketplace_id": marketplace_id,
                     "year": year_int,
-                    "current_month_number": current_month_number
-                }).mappings().all()
+                    "month_number": month_number
+                }).mappings().first()
 
-            history_by_month = {
-                int(row["month_number"]): row
-                for row in history_rows
-            }
-
-            for month_number in range(1, current_month_number):
-                row = history_by_month.get(month_number)
-
-                previous_month_summary.append({
-                    "month": month_label(month_number),
-                    "month_number": month_number,
-                    "year": year_int,
-                    "source": "inventory_aged_history",
-                    "totals": {
-                        "inv-age-181-to-270-days": float(row["inv_age_181_to_270_days"] or 0) if row else 0,
-                        "inv-age-271-to-365-days": float(row["inv_age_271_to_365_days"] or 0) if row else 0,
-                        "inv-age-365-plus-days": float(row["inv_age_365_plus_days"] or 0) if row else 0
-                    }
-                })
-
-        # ---------------------------------------------
-        # 2. Current month from PRIMARY DB dynamic table
-        # ---------------------------------------------
-        current_query = text(f'''
-            SELECT
-                COALESCE(SUM(CAST(NULLIF("inv-age-181-to-270-days"::text, '') AS NUMERIC)), 0) AS inv_age_181_to_270_days,
-                COALESCE(SUM(CAST(NULLIF("inv-age-271-to-365-days"::text, '') AS NUMERIC)), 0) AS inv_age_271_to_365_days,
-                COALESCE(SUM(CAST(NULLIF("inv-age-365-plus-days"::text, '') AS NUMERIC)), 0) AS inv_age_365_plus_days
-            FROM "{table_name}"
-            WHERE LOWER(COALESCE("Product Name"::text, '')) != 'total'
-        ''')
-
-        with primary_engine.connect() as primary_connection:
-            current_result = primary_connection.execute(current_query).mappings().first()
-
-        current_month_summary = {
-            "month": month_name.capitalize(),
-            "month_number": current_month_number,
-            "year": year_int,
-            "source": table_name,
-            "totals": {
-                "inv-age-181-to-270-days": float(current_result["inv_age_181_to_270_days"] or 0),
-                "inv-age-271-to-365-days": float(current_result["inv_age_271_to_365_days"] or 0),
-                "inv-age-365-plus-days": float(current_result["inv_age_365_plus_days"] or 0)
-            }
-        }
-
-        month_summary = previous_month_summary + [current_month_summary]
+            month_summary.append({
+                "month": month_display,
+                "month_number": month_number,
+                "year": year_int,
+                "source": "inventory_aged_history",
+                "source_type": "inventory_aged_history",
+                "totals": {
+                    "inv-age-181-to-270-days": float(history_result["inv_age_181_to_270_days"] or 0) if history_result else 0,
+                    "inv-age-271-to-365-days": float(history_result["inv_age_271_to_365_days"] or 0) if history_result else 0,
+                    "inv-age-365-plus-days": float(history_result["inv_age_365_plus_days"] or 0) if history_result else 0
+                }
+            })
 
         age_summary = []
 
@@ -1170,6 +1167,7 @@ def get_inventory_current_age_summary():
                     "month_number": month_row["month_number"],
                     "year": month_row["year"],
                     "source": month_row["source"],
+                    "source_type": month_row["source_type"],
                     "age_bucket": "181-270 days",
                     "column": "inv-age-181-to-270-days",
                     "units": month_row["totals"]["inv-age-181-to-270-days"]
@@ -1179,6 +1177,7 @@ def get_inventory_current_age_summary():
                     "month_number": month_row["month_number"],
                     "year": month_row["year"],
                     "source": month_row["source"],
+                    "source_type": month_row["source_type"],
                     "age_bucket": "271-365 days",
                     "column": "inv-age-271-to-365-days",
                     "units": month_row["totals"]["inv-age-271-to-365-days"]
@@ -1188,6 +1187,7 @@ def get_inventory_current_age_summary():
                     "month_number": month_row["month_number"],
                     "year": month_row["year"],
                     "source": month_row["source"],
+                    "source_type": month_row["source_type"],
                     "age_bucket": "365+ days",
                     "column": "inv-age-365-plus-days",
                     "units": month_row["totals"]["inv-age-365-plus-days"]
@@ -1211,17 +1211,19 @@ def get_inventory_current_age_summary():
 
         return jsonify({
             "success": True,
-            "table_name": table_name,
-            "month": month_name.capitalize(),
+            "requested_month": month_name.capitalize(),
             "year": year_int,
             "country_key": country_key,
             "marketplace_id": marketplace_id,
             "history_range": {
                 "from_month": "January",
-                "to_month": month_label(current_month_number - 1) if current_month_number > 1 else None
+                "to_month": month_name.capitalize()
             },
-            "current_month_source": table_name,
-            "historical_source": "inventory_aged_history",
+            "source_priority": [
+                "currentinventory dynamic table",
+                "inventory_aged_history fallback"
+            ],
+            "tried_sources": tried_sources,
             "totals": grand_totals,
             "month_summary": month_summary,
             "age_summary": age_summary
@@ -1234,4 +1236,5 @@ def get_inventory_current_age_summary():
             "error": str(e)
         }), 500
     
+      
 
