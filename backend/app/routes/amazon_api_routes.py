@@ -57,8 +57,8 @@ db_url2 = os.getenv('DATABASE_AMAZON_URL') or db_url
 PHORMULA_ENGINE = create_engine(
     db_url,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=5,
+    pool_size=2,
+    max_overflow=1,
     pool_timeout=30,
     pool_recycle=1800,
 )
@@ -66,8 +66,8 @@ PHORMULA_ENGINE = create_engine(
 ADMIN_ENGINE = create_engine(
     db_url1,
     pool_pre_ping=True,
-    pool_size=3,
-    max_overflow=2,
+    pool_size=1,
+    max_overflow=1,
     pool_timeout=30,
     pool_recycle=1800,
 )
@@ -75,8 +75,8 @@ ADMIN_ENGINE = create_engine(
 AMAZON_ENGINE = create_engine(
     db_url2,
     pool_pre_ping=True,
-    pool_size=3,
-    max_overflow=2,
+    pool_size=1,
+    max_overflow=1,
     pool_timeout=30,
     pool_recycle=1800,
 )
@@ -3682,10 +3682,6 @@ def finances_mtd_transactions():
 
 
 
-def _safe_ident(value: str) -> str:
-    value = (value or "").lower().strip()
-    value = re.sub(r"[^a-z0-9_]+", "_", value)
-    return value or "uk"
 
 
 @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
