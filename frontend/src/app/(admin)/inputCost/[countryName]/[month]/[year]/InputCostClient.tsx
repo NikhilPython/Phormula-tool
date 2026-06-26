@@ -500,16 +500,24 @@ const getInventoryRowCoverageRatio = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
     'coverageRatio',
     'coverage_ratio',
+    'coverage-ratio',
     'coverage_ratio_in_months',
+    'coverage-ratio-in-months',
     'coverage_ratio_months',
+    'coverage-ratio-months',
     'Coverage Ratio (in Months)',
     'Coverage Ratio (In Months)',
+    'Coverage Ratio In Months',
     'coverage ratio in months',
     'coverage ratio',
     'months_of_cover',
+    'months-of-cover',
     'month_cover',
+    'month-cover',
     'stock_cover_months',
+    'stock-cover-months',
     'cover_months',
+    'cover-months',
   ]);
 };
 
@@ -641,7 +649,7 @@ const buildInventoryInsightsFromResponses = (
   selectedTrendBucket: string,
   countryName: string
 ): InventoryInsightsData => {
-  const rows = inventoryResponses.flatMap((res) => {
+ const rows = inventoryResponses.flatMap((res) => {
   const categoryRows = res?.categories
     ? Object.values(res.categories).flatMap((category) =>
         Array.isArray(category?.items) ? category.items : []
@@ -650,7 +658,11 @@ const buildInventoryInsightsFromResponses = (
 
   const directRows = Array.isArray(res?.rows) ? res.rows : [];
 
-  const merged = categoryRows.length ? categoryRows : directRows;
+  // IMPORTANT:
+  // directRows me coverage ratio aa sakta hai
+  // categoryRows me estimated-storage-cost-next-month aa sakta hai
+  // isliye dono ko combine karna hai, either/or nahi.
+  const merged = [...directRows, ...categoryRows];
 
   const unique = new Map<string, InventoryCurrentRow>();
 
@@ -662,7 +674,28 @@ const buildInventoryInsightsFromResponses = (
 
     if (!key || key === 'total' || key === 'grand total') return;
 
-    unique.set(key, row);
+    const previous = unique.get(key) || {};
+
+    // Merge fields without losing earlier values.
+    // Agar same SKU directRows me coverage ratio hai aur categoryRows me storage cost,
+    // dono same final row me aa jayenge.
+    const next: InventoryCurrentRow = { ...previous };
+
+    Object.entries(row).forEach(([fieldKey, fieldValue]) => {
+      const isEmpty =
+        fieldValue === null ||
+        fieldValue === undefined ||
+        fieldValue === '' ||
+        String(fieldValue).trim().toLowerCase() === 'nan' ||
+        String(fieldValue).trim().toLowerCase() === 'none' ||
+        String(fieldValue).trim().toLowerCase() === 'null';
+
+      if (!isEmpty) {
+        next[fieldKey] = fieldValue;
+      }
+    });
+
+    unique.set(key, next);
   });
 
   return Array.from(unique.values());
