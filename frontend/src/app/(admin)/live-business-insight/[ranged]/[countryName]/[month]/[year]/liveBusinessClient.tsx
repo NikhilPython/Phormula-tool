@@ -4300,6 +4300,16 @@ return {
     return "No data found.";
   };
 
+  const businessSummaryPoints = useMemo(() => {
+  const metricPoints = Array.isArray(overallSummary)
+    ? overallSummary.map(String).filter(Boolean)
+    : [];
+
+  if (metricPoints.length) return metricPoints;
+
+  return splitIntoPoints(summaryText);
+}, [overallSummary, summaryText]);
+
   return (
     <>
       <style>{`
@@ -4366,13 +4376,13 @@ return {
                           </button>
                         </div>
 
-                        {summaryText && (
-                          <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
-                            {splitIntoPoints(summaryText).map((point, index) => (
-                              <li key={index}>{point}</li>
-                            ))}
-                          </ul>
-                        )}
+                        {businessSummaryPoints.length > 0 && (
+  <ul className="mt-3 list-disc pl-5 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1 leading-relaxed space-y-2">
+    {businessSummaryPoints.map((point, index) => (
+      <li key={index}>{point}</li>
+    ))}
+  </ul>
+)}
 
                         {portfolioRecommendation && (
                           <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-1">
