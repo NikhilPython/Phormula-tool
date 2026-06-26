@@ -18,6 +18,10 @@ export type AgeingRiskHeatmapRow = {
     coverageRatio?: number;
     isOthersRow?: boolean;
     isTotalRow?: boolean;
+
+    // ✅ ADD THIS
+    isPercentageRow?: boolean;
+
     [bucketKey: string]: string | number | boolean | undefined;
 };
 
@@ -108,6 +112,29 @@ const buildAggregateRow = (
     return aggregate;
 };
 
+const buildPercentageRow = (
+    totalRow: AgeingRiskHeatmapRow,
+    buckets: AgeingBucket[]
+): AgeingRiskHeatmapRow => {
+    const totalUnits = Number(totalRow.totalUnits || 0);
+
+    const percentageRow: AgeingRiskHeatmapRow = {
+        productName: "% of Total",
+        sku: "-",
+        totalUnits: totalUnits > 0 ? 100 : 0,
+        unsellableUnits: 0,
+        coverageRatio: 0,
+        isPercentageRow: true,
+    };
+
+    buckets.forEach((bucket) => {
+        const value = Number(totalRow[bucket.key] || 0);
+        percentageRow[bucket.key] = totalUnits > 0 ? (value / totalUnits) * 100 : 0;
+    });
+
+    return percentageRow;
+};
+
 const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     title = "Ageing Risk Heatmap",
     subtitle = "Quickly identify products with old inventory",
@@ -139,22 +166,24 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             isTotalRow: true,
         });
 
+        const percentageRow = buildPercentageRow(totalRow, buckets);
+
         if (!canCollapse || isExpanded) {
-            return [...sortedData, totalRow] as HeatmapTableRow[];
+            return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
         }
 
         const mainRows = sortedData.slice(0, defaultVisibleRows);
         const otherRows = sortedData.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
-            return [...mainRows, totalRow] as HeatmapTableRow[];
+            return [...mainRows, totalRow, percentageRow] as HeatmapTableRow[];
         }
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
         });
 
-        return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
+        return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
     }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
 
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
@@ -175,6 +204,40 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                 const totalUnits = Number(row.totalUnits ?? calculatedTotal);
                 const value = Number(row[bucket.key] || 0);
+
+                // ✅ ADD THIS: separate render for "% of Total" row
+                if (row.isPercentageRow) {
+                    const displayValue =
+                        value > 0
+                            ? `${value.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            })}%`
+                            : "-";
+
+                    return (
+                        <div
+                            title={
+                                value > 0
+                                    ? `${bucket.label}: ${displayValue} of total`
+                                    : `${bucket.label}: 0% of total`
+                            }
+                            className={[
+                                "flex h-10 w-full items-center justify-center px-1 text-center text-xs font-semibold",
+                                value > 0 ? "text-charcoal-500" : "text-charcoal-400",
+                            ].join(" ")}
+                            style={{
+                                backgroundColor:
+                                    value > 0
+                                        ? getHeatColor(bucket.color, value, 100)
+                                        : "#EFEFEF",
+                            }}
+                        >
+                            {displayValue}
+                        </div>
+                    );
+                }
+
                 const percentage = totalUnits ? (value / totalUnits) * 100 : 0;
 
                 return (
@@ -182,9 +245,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(
                             1
                         )}%)`}
-                        className="flex h-10 items-center justify-center px-1 text-center text-xs text-charcoal-500"
+                        className="flex h-10 w-full items-center justify-center px-1 text-center text-xs text-charcoal-500"
                         style={{
-                            background:
+                            backgroundColor:
                                 row.isTotalRow && value === 0
                                     ? "#EFEFEF"
                                     : getHeatColor(bucket.color, value, totalUnits),
@@ -203,7 +266,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "48px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row, _value, rowIndex) => {
-                    if (row.isTotalRow) return "";
+                    if (row.isTotalRow || row.isPercentageRow) return "";
                     return <span>{rowIndex + 1}</span>;
                 },
             },
@@ -218,6 +281,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     const canClick =
                         !!onProductClick &&
                         !row.isTotalRow &&
+                        !row.isPercentageRow &&
                         !row.isOthersRow &&
                         !!row.productName;
 
@@ -251,7 +315,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 headerClassName: heatmapHeaderClassName,
                 cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
-                    if (row.isTotalRow) return "";
+                    if (row.isTotalRow || row.isPercentageRow) return "";
 
                     return <span>{row.sku || "-"}</span>;
                 },
@@ -263,6 +327,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "85px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
+                    if (row.isPercentageRow) {
+                        return <span>100%</span>;
+                    }
+
                     const calculatedTotal = buckets.reduce(
                         (sum, bucket) => sum + Number(row[bucket.key] || 0),
                         0
@@ -279,6 +347,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "95px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
+                    if (row.isPercentageRow) return <span>-</span>;
+
                     const unsellableUnits = Number(row.unsellableUnits || 0);
 
                     return (
@@ -296,6 +366,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "110px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
+                    if (row.isPercentageRow) return <span>-</span>;
+
                     const coverageRatio = Number(row.coverageRatio ?? 0);
 
                     return (
@@ -360,9 +432,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 rowClassName={(row) =>
                     row.isTotalRow
                         ? "bg-[#EFEFEF] font-semibold"
-                        : row.isOthersRow
-                            ? ""
-                            : ""
+                        : row.isPercentageRow
+                            ? "bg-[#F8F8F8] font-semibold"
+                            : row.isOthersRow
+                                ? ""
+                                : ""
                 }
             />
         </div>
