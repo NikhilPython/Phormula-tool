@@ -2205,6 +2205,34 @@ return {
 };
   };
 
+  const getRecommendedActionForItem = (item: SkuItem) => {
+  const itemProductName = normalizeProductKey(item.product_name || "");
+  const itemSku = normalizeProductKey(item.sku || "");
+
+  if (!itemProductName && !itemSku) return null;
+
+  const matchedEntry = Object.entries(recommendedActions || {}).find(
+    ([key, text]) => {
+      const parsed = parseRecommendedAction(String(text || ""));
+
+      const keyName = normalizeProductKey(key);
+      const parsedProductName = normalizeProductKey(parsed.productName || "");
+
+      return (
+        keyName === itemSku ||
+        keyName === itemProductName ||
+        parsedProductName === itemProductName ||
+        parsedProductName === itemSku
+      );
+    }
+  );
+
+  if (!matchedEntry) return null;
+
+  const [, text] = matchedEntry;
+  return parseRecommendedAction(String(text || ""));
+};
+
  const cleanInventoryCardPoint = (point: string) => {
   return String(point || "")
     .replace(/^•\s*/, "")
@@ -2942,19 +2970,58 @@ return {
   };
 
   const openRecommendationDrawerForSku = (item: SkuItem) => {
-    const insightEntry = getInsightForItem(item);
-    const insight = insightEntry?.[1] || null;
+  const insightEntry = getInsightForItem(item);
+  const insight = insightEntry?.[1] || null;
 
-    const selected = isGlobalData()
-      ? buildSelectedRecFromGlobalSkuInsight(item, insight)
-      : buildSelectedRecFromSkuInsight(item, insight);
+  const parsedRecommendation = getRecommendedActionForItem(item);
 
-    setSelectedSkuItem(item);
-    setSelectedSku(item.sku || item.product_name);
-    setSelectedRec(selected);
-    setRecDrawerOpen(true);
-  };
+  const insightSelected = isGlobalData()
+    ? buildSelectedRecFromGlobalSkuInsight(item, insight)
+    : buildSelectedRecFromSkuInsight(item, insight);
 
+  const selected = parsedRecommendation
+    ? {
+        productName:
+          item.product_name ||
+          parsedRecommendation.productName ||
+          insightSelected.productName,
+
+        metrics: buildDrawerMetrics(
+          parsedRecommendation.metrics?.length
+            ? parsedRecommendation.metrics
+            : insightSelected.metrics,
+          item
+        ),
+
+        journeyPoints:
+          parsedRecommendation.journeyPoints?.length
+            ? parsedRecommendation.journeyPoints
+            : insightSelected.journeyPoints,
+
+        recommendationPoints:
+          parsedRecommendation.recommendationPoints?.length
+            ? parsedRecommendation.recommendationPoints
+            : insightSelected.recommendationPoints,
+
+        advertisingPoints:
+          parsedRecommendation.advertisingPoints?.length
+            ? parsedRecommendation.advertisingPoints
+            : insightSelected.advertisingPoints,
+
+        inventoryPoints:
+          parsedRecommendation.inventoryPoints?.length
+            ? parsedRecommendation.inventoryPoints
+            : insightSelected.inventoryPoints,
+
+        showChart: true,
+      }
+    : insightSelected;
+
+  setSelectedSkuItem(item);
+  setSelectedSku(item.sku || item.product_name);
+  setSelectedRec(selected);
+  setRecDrawerOpen(true);
+};
   const ProductNameCell = ({ item }: { item: SkuItem }) => (
     <button
       type="button"
