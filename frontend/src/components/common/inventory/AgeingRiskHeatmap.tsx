@@ -116,20 +116,40 @@ const buildPercentageRow = (
     totalRow: AgeingRiskHeatmapRow,
     buckets: AgeingBucket[]
 ): AgeingRiskHeatmapRow => {
-    const totalUnits = Number(totalRow.totalUnits || 0);
+    const sellableUnits = Number(totalRow.totalUnits || 0);
+    const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
+
+    // ✅ Backend percentage_base_total = sellable + unfulfillable
+    // Example: 2788 + 147 = 2935
+    const percentageBaseTotal = sellableUnits + unfulfillableUnits;
 
     const percentageRow: AgeingRiskHeatmapRow = {
         productName: "% of Total",
         sku: "-",
-        totalUnits: totalUnits > 0 ? 100 : 0,
-        unsellableUnits: 0,
+
+        // ✅ Sellable Units percentage
+        totalUnits:
+            percentageBaseTotal > 0
+                ? (sellableUnits / percentageBaseTotal) * 100
+                : 0,
+
+        // ✅ Unfulfillable Units percentage
+        unsellableUnits:
+            percentageBaseTotal > 0
+                ? (unfulfillableUnits / percentageBaseTotal) * 100
+                : 0,
+
         coverageRatio: 0,
         isPercentageRow: true,
     };
 
     buckets.forEach((bucket) => {
         const value = Number(totalRow[bucket.key] || 0);
-        percentageRow[bucket.key] = totalUnits > 0 ? (value / totalUnits) * 100 : 0;
+
+        percentageRow[bucket.key] =
+            percentageBaseTotal > 0
+                ? (value / percentageBaseTotal) * 100
+                : 0;
     });
 
     return percentageRow;
@@ -325,7 +345,18 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
                     if (row.isPercentageRow) {
-                        return <span>100%</span>;
+                        const value = Number(row.totalUnits || 0);
+
+                        return (
+                            <span>
+                                {value > 0
+                                    ? `${value.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}%`
+                                    : "-"}
+                            </span>
+                        );
                     }
 
                     const calculatedTotal = buckets.reduce(
@@ -344,8 +375,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "95px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row) => {
-                    if (row.isPercentageRow) return <span>-</span>;
+                    if (row.isPercentageRow) {
+                        const value = Number(row.unsellableUnits || 0);
 
+                        return (
+                            <span>
+                                {value > 0
+                                    ? `${value.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}%`
+                                    : "-"}
+                            </span>
+                        );
+                    }
                     const unsellableUnits = Number(row.unsellableUnits || 0);
 
                     return (
