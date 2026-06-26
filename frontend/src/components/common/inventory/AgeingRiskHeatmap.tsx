@@ -223,7 +223,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             width: "72px",
             header: bucket.label,
             headerClassName: heatmapHeaderClassName,
-            cellClassName: "!p-0",
+            cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !p-0",
             render: (row) => {
                 const calculatedTotal = buckets.reduce(
                     (sum, b) => sum + Number(row[b.key] || 0),
