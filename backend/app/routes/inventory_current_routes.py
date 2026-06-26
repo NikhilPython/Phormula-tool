@@ -365,6 +365,21 @@ def build_inventory_age_summary(rows):
     }
 
     unfulfillable_total = 0
+    current_month_units_sold_total = 0
+
+    current_month_units_sold_column = None
+
+    # Find dynamic column like:
+    # Current Month Units Sold (June)
+    # Current Month Units Sold (May)
+    for row in rows:
+        for key in row.keys():
+            if str(key).startswith("Current Month Units Sold"):
+                current_month_units_sold_column = key
+                break
+
+        if current_month_units_sold_column:
+            break
 
     for row in rows:
         # Skip total row so we calculate from actual SKU/product rows
@@ -376,11 +391,19 @@ def build_inventory_age_summary(rows):
 
         unfulfillable_total += to_number(row.get("unfulfillable-quantity"))
 
+        if current_month_units_sold_column:
+            current_month_units_sold_total += to_number(
+                row.get(current_month_units_sold_column)
+            )
+
     sellable_total = sum(totals.values())
 
-    # New denominator for % of Total:
-    # ageing/sellable units + unfulfillable units
+    # Existing denominator for ageing bucket %:
+    # sellable ageing units + unfulfillable units
     percentage_base_total = sellable_total + unfulfillable_total
+
+    
+    total_units_with_sold_base = percentage_base_total
 
     percentages = {}
     for column, total in totals.items():
@@ -389,14 +412,50 @@ def build_inventory_age_summary(rows):
         else:
             percentages[column] = 0
 
+    sold_percentage_share = (
+        round((current_month_units_sold_total / total_units_with_sold_base) * 100, 2)
+        if total_units_with_sold_base > 0
+        else 0
+    )
+
+    sellable_percentage_share = (
+        round((sellable_total / total_units_with_sold_base) * 100, 2)
+        if total_units_with_sold_base > 0
+        else 0
+    )
+
+    unfulfillable_percentage_share = (
+        round((unfulfillable_total / total_units_with_sold_base) * 100, 2)
+        if total_units_with_sold_base > 0
+        else 0
+    )
+
     return {
-        # Keep this as the denominator used by donut/table %
+        # Existing ageing denominator
         "total": percentage_base_total,
 
-        # Optional extra values for frontend/debug
         "sellable_total": sellable_total,
         "unfulfillable_total": unfulfillable_total,
         "percentage_base_total": percentage_base_total,
+
+        # New totals with sold units
+        "current_month_units_sold_total": current_month_units_sold_total,
+        "total_units_with_sold_base": total_units_with_sold_base,
+
+        "total_units_summary": {
+            "current_month_units_sold": {
+                "total": current_month_units_sold_total,
+                "percentage_share": sold_percentage_share,
+            },
+            "sellable": {
+                "total": sellable_total,
+                "percentage_share": sellable_percentage_share,
+            },
+            "unfulfillable": {
+                "total": unfulfillable_total,
+                "percentage_share": unfulfillable_percentage_share,
+            },
+        },
 
         "columns": {
             column: {
@@ -406,6 +465,7 @@ def build_inventory_age_summary(rows):
             for column in INVENTORY_AGE_COLUMNS
         }
     }
+
 
 QUARTER_MONTHS = {
     "q1": ["march", "february", "january"],
