@@ -3026,7 +3026,7 @@ return {
     <button
       type="button"
       onClick={() => openRecommendationDrawerForSku(item)}
-      className="text-left font-semibold text-green-500 underline-offset-2 hover:underline"
+      className="text-left font-medium  text-green-500 underline-offset-2 "
     >
       {capitalizeWords(item.product_name || item.sku || "N/A")}
     </button>

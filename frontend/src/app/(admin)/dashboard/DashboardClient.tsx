@@ -12539,7 +12539,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS = 4.85;
     // 9 product rows + Others row
 
-    const MTD_PRODUCTWISE_HEADER_HEIGHT = productwiseHasExpandedGroups ? 112 : 64;
     const MTD_PRODUCTWISE_SIGN_ROW_HEIGHT = 46;
     const MTD_PRODUCTWISE_ROW_HEIGHT = 46;
     const MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT = 52;
@@ -12551,15 +12550,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
             : 8;
 
     const shouldScrollMtdProductwiseTable =
-        showAllMtdProductwiseRows &&
-        mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
+    mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
 
     const mtdProductwiseTableScrollHeight =
-        MTD_PRODUCTWISE_HEADER_HEIGHT +
-        MTD_PRODUCTWISE_SIGN_ROW_HEIGHT +
-        MTD_PRODUCTWISE_ROW_HEIGHT * MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS +
-        MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT +
-        MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
+    MTD_PRODUCTWISE_SIGN_ROW_HEIGHT +
+    MTD_PRODUCTWISE_ROW_HEIGHT * MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS +
+    MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT +
+    MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
 
     return (
         <div className="relative w-full">

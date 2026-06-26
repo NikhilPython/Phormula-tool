@@ -1871,7 +1871,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const COLLAPSED_VISIBLE_PRODUCT_ROWS = 5.4;
   // 9 product rows + Others row
 
-  const HEADER_HEIGHT = anyGroupExpanded ? 112 : 64;
   const SIGN_ROW_HEIGHT = 46;
   const PRODUCT_ROW_HEIGHT = 46;
   const TOTAL_ROW_HEIGHT = 52;
@@ -1883,15 +1882,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ? 9
       : 8;
 
-  const shouldScrollTable =
-    showAllRows && productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
+ const shouldScrollTable =
+  productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
 
-  const tableScrollHeight =
-    HEADER_HEIGHT +
-    SIGN_ROW_HEIGHT +
-    PRODUCT_ROW_HEIGHT * COLLAPSED_VISIBLE_PRODUCT_ROWS +
-    TOTAL_ROW_HEIGHT +
-    SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
+ const tableScrollHeight =
+  SIGN_ROW_HEIGHT +
+  PRODUCT_ROW_HEIGHT * COLLAPSED_VISIBLE_PRODUCT_ROWS +
+  TOTAL_ROW_HEIGHT +
+  SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
   return (
     <>
