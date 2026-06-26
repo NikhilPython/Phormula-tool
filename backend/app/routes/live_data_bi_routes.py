@@ -16,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,fetch_adsdaily_sku_mtd_ads,
-attach_adsdaily_mtd_ads_to_growth_rows, get_ai_refresh_slot)
+attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_current_inventory_snapshot, get_ai_refresh_slot,fetch_live_target_context,fetch_previous_cm2_profit_from_skuwisemonthly)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -811,6 +811,9 @@ def generate_live_ai_cache_hash(user_objective, prev_totals, curr_totals):
             "profit": round(float(prev_totals.get("profit") or 0), 2),
             "total_asp": round(float(prev_totals.get("total_asp") or 0), 2),
             "unit_wise_profitability": round(float(prev_totals.get("unit_wise_profitability") or 0), 2),
+
+            # ✅ NEW: refresh AI summary when previous CM2 changes
+            "cm2_profit": round(float(prev_totals.get("cm2_profit") or 0), 2),
         },
         "curr": {
             "quantity": round(float(curr_totals.get("quantity") or 0), 2),
@@ -818,6 +821,13 @@ def generate_live_ai_cache_hash(user_objective, prev_totals, curr_totals):
             "profit": round(float(curr_totals.get("profit") or 0), 2),
             "total_asp": round(float(curr_totals.get("total_asp") or 0), 2),
             "unit_wise_profitability": round(float(curr_totals.get("unit_wise_profitability") or 0), 2),
+
+            # ✅ refresh AI summary when current CM2 / target changes
+            "cm2_profit": round(float(curr_totals.get("cm2_profit") or 0), 2),
+            "target_sales": round(float(curr_totals.get("target_sales") or 0), 2),
+            "target_achievement_pct": round(float(curr_totals.get("target_achievement_pct") or 0), 2),
+            "target_remaining": round(float(curr_totals.get("target_remaining") or 0), 2),
+            "target_trend_pct": round(float(curr_totals.get("target_trend_pct") or 0), 2),
         },
     }
 
@@ -2707,6 +2717,34 @@ def live_mtd_vs_previous():
         # ✅ Current AI totals come from skuwisemonthly TOTAL row / monthly table
         curr_totals = curr_ai_totals
 
+        # -------------------------------------------------
+        # ✅ CM2 for Business Summary
+        # Previous CM2 must use previous aligned MTD period, not full previous month.
+        # Current CM2 comes from current skuwisemonthly TOTAL row.
+        # -------------------------------------------------
+        prev_ads_for_cm2 = float(prev_fee_totals.get("advertising", 0.0) or 0.0)
+        prev_platform_for_cm2 = float(prev_fee_totals.get("platform_fee", 0.0) or 0.0)
+
+        prev_totals["cm2_profit"] = round(
+            float(prev_totals.get("profit", 0.0) or 0.0)
+            - prev_ads_for_cm2
+            - prev_platform_for_cm2,
+            2,
+        )
+
+        curr_totals["cm2_profit"] = round(
+            float(curr_totals.get("cm2_profit", 0.0) or 0.0),
+            2,
+        )
+
+        print("[DEBUG] CM2 route values:", {
+            "prev_cm1_profit": prev_totals.get("profit"),
+            "prev_ads": prev_ads_for_cm2,
+            "prev_platform_fee": prev_platform_for_cm2,
+            "prev_cm2_profit": prev_totals.get("cm2_profit"),
+            "curr_cm2_profit": curr_totals.get("cm2_profit"),
+        })
+
         curr_totals["total_asp"] = curr_totals.get("total_asp") or (
             curr_totals["net_sales"] / curr_totals["quantity"]
             if curr_totals.get("quantity") else 0.0
@@ -2719,6 +2757,125 @@ def live_mtd_vs_previous():
 
         sku_context = build_sku_context(growth_data, max_items=5)
         estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id, country)
+
+        # -------------------------------------------------
+        # ✅ NEW: Target context for AI summary
+        # -------------------------------------------------
+        target_context = fetch_live_target_context(
+            user_id=user_id,
+            country=country,
+            curr_end=curr_end,
+            current_net_sales=curr_totals.get("net_sales", 0.0),
+        )
+
+        print("[DEBUG] target_context:", target_context)
+
+        # ✅ Add target + CM2 values into curr_totals BEFORE objective_hash
+        curr_totals["cm2_profit"] = curr_totals.get("cm2_profit", 0.0)
+
+        curr_totals["target_sales"] = target_context.get("target_sales", 0.0)
+        curr_totals["target_achievement_pct"] = target_context.get("target_achievement_pct", 0.0)
+        curr_totals["target_remaining"] = target_context.get("target_remaining", 0.0)
+        curr_totals["target_trend_pct"] = target_context.get("target_trend_pct", 0.0)
+
+        # -------------------------------------------------
+        # ✅ NEW: Portfolio coverage context for AI summary
+        # -------------------------------------------------
+        try:
+            _, frontend_inventory_totals = fetch_current_inventory_snapshot(
+                user_id=user_id,
+                country=country,
+                year=ranges["meta"]["current_year"],
+                month=ranges["meta"]["current_month"],
+            )
+        except Exception as e:
+            print("[WARN] Failed to fetch current inventory snapshot for AI summary:", e)
+            frontend_inventory_totals = {
+                "available_total": 0.0,
+                "avg_coverage_ratio_months": 0.0,
+                "source_table": None,
+            }
+
+        inventory_policy_context = fetch_inventory_policy_context(
+            user_id=user_id,
+            country=country,
+        )
+
+        avg_coverage_ratio_months = float(
+            frontend_inventory_totals.get("avg_coverage_ratio_months", 0.0) or 0.0
+        )
+
+        # ✅ Fallback: if inventory snapshot gives 0, calculate avg coverage directly
+        if avg_coverage_ratio_months <= 0:
+            try:
+                coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+                if coverage_df is not None and not coverage_df.empty:
+                    coverage_col = "inventory_coverage_ratio"
+
+                    if coverage_col in coverage_df.columns:
+                        coverage_series = pd.to_numeric(
+                            coverage_df[coverage_col],
+                            errors="coerce",
+                        ).dropna()
+
+                        coverage_series = coverage_series[coverage_series > 0]
+
+                        avg_coverage_ratio_months = (
+                            float(coverage_series.mean())
+                            if not coverage_series.empty
+                            else 0.0
+                        )
+
+            except Exception as e:
+                print("[WARN] Failed to calculate avg coverage ratio directly:", e)
+
+        required_coverage_months = float(
+            inventory_policy_context.get("required_coverage_months", 0.0) or 0.0
+        )
+
+        coverage_gap_months = round(
+            avg_coverage_ratio_months - required_coverage_months,
+            2,
+        )
+
+        # ✅ Tolerance avoids calling very small gaps low/overstock
+        coverage_tolerance_months = 0.25
+
+        if avg_coverage_ratio_months <= 0 or required_coverage_months <= 0:
+            inventory_coverage_status = "insufficient_data"
+        elif avg_coverage_ratio_months < required_coverage_months - coverage_tolerance_months:
+            inventory_coverage_status = "low_stock"
+        elif avg_coverage_ratio_months > required_coverage_months + coverage_tolerance_months:
+            inventory_coverage_status = "overstock"
+        else:
+            inventory_coverage_status = "correct_stock"
+
+
+        portfolio_coverage_context = {
+            "available_total": round(float(frontend_inventory_totals.get("available_total", 0.0) or 0.0), 2),
+            "avg_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
+            "transit_time": inventory_policy_context.get("transit_time", 0.0),
+            "stock_unit": inventory_policy_context.get("stock_unit", 0.0),
+            "required_coverage_months": round(required_coverage_months, 2),
+            "coverage_gap_months": coverage_gap_months,
+            "inventory_coverage_status": inventory_coverage_status,
+            "source_table": frontend_inventory_totals.get("source_table"),
+        }
+
+
+
+        # ✅ NEW: include coverage values in curr_totals so AI cache refreshes when coverage changes
+        curr_totals["avg_coverage_ratio_months"] = portfolio_coverage_context.get("avg_coverage_ratio_months", 0.0)
+        curr_totals["required_coverage_months"] = portfolio_coverage_context.get("required_coverage_months", 0.0)
+        curr_totals["coverage_gap_months"] = portfolio_coverage_context.get("coverage_gap_months", 0.0)
+        curr_totals["inventory_coverage_status"] = portfolio_coverage_context.get("inventory_coverage_status", "insufficient_data")
+        curr_totals["cm2_profit"] = curr_totals.get("cm2_profit", 0.0)
+        # ✅ NEW: include target values in cache hash
+        curr_totals["target_sales"] = target_context.get("target_sales", 0.0)
+        curr_totals["target_achievement_pct"] = target_context.get("target_achievement_pct", 0.0)
+        curr_totals["target_remaining"] = target_context.get("target_remaining", 0.0)
+        curr_totals["target_trend_pct"] = target_context.get("target_trend_pct", 0.0)
 
         currency_map = {
             "uk": {"symbol": "£", "code": "GBP"},
@@ -2768,28 +2925,32 @@ def live_mtd_vs_previous():
         # BUILD PAYLOAD (NO AI HERE)
         # ---------------------------
         payload_ai = build_ai_summary(
-            prev_totals,
-            curr_totals,
+        prev_totals,
+        curr_totals,
 
-            # ✅ CHANGED: pass all SKU rows, not only top_80_skus
-            all_skus_for_actions,
+        # ✅ CHANGED: pass all SKU rows, not only top_80_skus
+        all_skus_for_actions,
 
-            prev_label,
-            curr_label,
-            sku_context=sku_context,
-            inventory_signals=inventory_signals,
-            portfolio_inventory_alerts=portfolio_inventory_alerts, 
-            prev_fee_totals=prev_fee_totals,
-            curr_fee_totals=curr_fee_totals,
-            estimated_storage_cost_next_month=estimated_storage_cost_next_month,
-            currency=currency,
-            user_objective=user_objective,
-            movement_context=movement_context,
-            sku_to_product=sku_to_product, 
-            user_id=user_id,
-            country=country,
-            current_year=ranges["meta"]["current_year"],
-            current_month=ranges["meta"]["current_month"],
+        prev_label,
+        curr_label,
+        sku_context=sku_context,
+        inventory_signals=inventory_signals,
+        portfolio_inventory_alerts=portfolio_inventory_alerts, 
+        prev_fee_totals=prev_fee_totals,
+        curr_fee_totals=curr_fee_totals,
+        estimated_storage_cost_next_month=estimated_storage_cost_next_month,
+        currency=currency,
+        user_objective=user_objective,
+        movement_context=movement_context,
+        sku_to_product=sku_to_product, 
+        user_id=user_id,
+        country=country,
+        current_year=ranges["meta"]["current_year"],
+        current_month=ranges["meta"]["current_month"],
+
+        # ✅ NEW
+        portfolio_coverage_context=portfolio_coverage_context,
+        target_context=target_context,
         )
 
         payload_ai["ads_mtd"] = {
@@ -2926,6 +3087,17 @@ def live_mtd_vs_previous():
                 # ---------------------------
                 # PROMPT-1.5 (EXECUTIVE SUMMARY)
                 # ---------------------------
+                cm2_previous_value = float(prev_totals.get("cm2_profit", 0.0) or 0.0)
+                cm2_current_value = float(curr_totals.get("cm2_profit", 0.0) or 0.0)
+
+                cm2_pct_change_value = (
+                    round(((cm2_current_value - cm2_previous_value) / abs(cm2_previous_value)) * 100, 2)
+                    if cm2_previous_value
+                    else 0.0
+                )
+
+                cm2_absolute_change = cm2_current_value - cm2_previous_value
+
                 summary_numeric_context = {
                     "periods": payload_ai["periods"],
                     "pct_changes": payload_ai["pct_changes"],
@@ -2933,7 +3105,30 @@ def live_mtd_vs_previous():
                     "roas": payload_ai["roas"],
                     "movement_context": payload_ai["movement_context"],
                     "currency": payload_ai["currency"],
+                    "miscellaneous_spend": payload_ai["periods"]["current"].get("miscellaneous_spend", 0.0),
+                    "portfolio_coverage_context": payload_ai.get("portfolio_coverage_context", {}),
+                    "target_context": payload_ai.get("target_context", {}),
+
+                    # ✅ CM2 source of truth for AI summary
+                    "cm2_profit": {
+                        "previous": round(cm2_previous_value, 2),
+                        "current": round(cm2_current_value, 2),
+                        "absolute_change": round(cm2_absolute_change, 2),
+                        "pct_change": cm2_pct_change_value,
+
+                        "current_value_label": f'{payload_ai["currency"]["symbol"]}{cm2_current_value:,.2f}',
+                        "previous_value_label": f'{payload_ai["currency"]["symbol"]}{cm2_previous_value:,.2f}',
+                        "absolute_change_label": f'{payload_ai["currency"]["symbol"]}{cm2_absolute_change:,.2f}',
+
+                        "source_of_truth": (
+                            "Use current_value_label as current CM2 Profit. "
+                            "Use previous_value_label as previous CM2 Profit. "
+                            "Do not use absolute_change_label as current CM2 Profit."
+                        ),
+                    },
                 }
+
+                print("[DEBUG] summary_numeric_context cm2:", summary_numeric_context.get("cm2_profit"))
 
                 summary_out = run_live_prompt_1_5_summary(
                     analysis_output=analysis,
@@ -3758,6 +3953,7 @@ def live_mtd_vs_previous():
                 "time_horizon": user_objective.get("time_horizon"),
             },
             "portfolio_inventory_block": portfolio_inventory_block,
+            "target_context": target_context,
 
             "periods": {
                 "previous": {"label": prev_label},

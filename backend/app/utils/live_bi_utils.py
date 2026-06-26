@@ -1812,15 +1812,31 @@ def fetch_current_ai_values_from_skuwisemonthly(
     df = df.copy()
 
     df["sku"] = df["sku"].astype(str).str.strip()
-    df.loc[df["sku"].str.lower().isin(["none", "nan", "null", ""]), "sku"] = None
+    df.loc[df["sku"].str.lower().isin(["", "none", "nan", "null"]), "sku"] = None
 
-    total_mask = df["sku"].fillna("").str.lower().eq("total")
+    # ✅ Product Name can also contain TOTAL row
+    if "product_name" not in df.columns:
+        df["product_name"] = ""
+    else:
+        df["product_name"] = df["product_name"].astype(str).str.strip()
+
+    # ✅ Robust TOTAL row detection
+    total_mask = (
+        df["sku"].fillna("").astype(str).str.strip().str.lower().isin(["total", "totals", "grand total"])
+        | df["product_name"].fillna("").astype(str).str.strip().str.lower().isin(["total", "totals", "grand total"])
+    )
+
     total_row_df = df[total_mask].copy()
 
+    # ✅ SKU rows should exclude TOTAL row
     sku_df = df[
         df["sku"].notna()
         & ~total_mask
     ].copy()
+
+    print("[DEBUG] skuwisemonthly total row found:", not total_row_df.empty)
+    if not total_row_df.empty:
+        print("[DEBUG] total row total_cm2_profit:", total_row_df.iloc[-1].get("total_cm2_profit"))
 
     if sku_df.empty:
         return [], {}, {}
@@ -1974,27 +1990,39 @@ def fetch_current_ai_values_from_skuwisemonthly(
     fallback_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_ai_data)
 
     curr_ai_totals = {
-        "quantity": get_total(
-            ["total_quantity", "units", "unit_sold"],
-            fallback_totals.get("quantity", 0.0),
-        ),
-        "net_sales": get_total(
-            ["net_sales", "sales", "sales_metric"],
-            fallback_totals.get("net_sales", 0.0),
-        ),
-        "profit": get_total(
-            ["profit", "cm1_profit"],
-            fallback_totals.get("profit", 0.0),
-        ),
-        "total_asp": get_total(
-            ["asp"],
-            fallback_totals.get("total_asp", 0.0),
-        ),
-        "unit_wise_profitability": get_total(
-            ["unit_wise_profitability", "profit_per_unit"],
-            fallback_totals.get("unit_wise_profitability", 0.0),
-        ),
-    }
+    "quantity": get_total(
+        ["total_quantity", "units", "unit_sold"],
+        fallback_totals.get("quantity", 0.0),
+    ),
+    "net_sales": get_total(
+        ["net_sales", "sales", "sales_metric"],
+        fallback_totals.get("net_sales", 0.0),
+    ),
+    "profit": get_total(
+        ["profit", "cm1_profit"],
+        fallback_totals.get("profit", 0.0),
+    ),
+    "total_asp": get_total(
+        ["asp"],
+        fallback_totals.get("total_asp", 0.0),
+    ),
+    "unit_wise_profitability": get_total(
+        ["unit_wise_profitability", "profit_per_unit"],
+        fallback_totals.get("unit_wise_profitability", 0.0),
+    ),
+
+    # ✅ Miscellaneous spend from TOTAL row
+    "miscellaneous_spend": abs(get_total(
+        ["lost_total"],
+        0.0,
+    )),
+
+    # ✅ NEW: Current CM2 Profit from skuwisemonthly TOTAL row
+    "cm2_profit": get_total(
+        ["total_cm2_profit", "cm2_profit"],
+        0.0,
+    ),
+}
 
     # If TOTAL row asp/unit profit is missing or zero, recompute portfolio level
     if not curr_ai_totals["total_asp"]:
@@ -2023,7 +2051,328 @@ def fetch_current_ai_values_from_skuwisemonthly(
 
     return curr_ai_data, curr_ai_totals, curr_ai_fee_totals
 
+def fetch_previous_cm2_profit_from_skuwisemonthly(
+    user_id: int,
+    country: str,
+    prev_start: date,
+) -> dict:
+    """
+    Fetch previous CM2 Profit from previous skuwisemonthly TOTAL row.
 
+    Preferred:
+    - total_cm2_profit from TOTAL row
+
+    Fallback:
+    - cm2_profit - abs(brand_spend) - abs(dealsvouchar_ads)
+      - abs(platform_fee) - abs(shipment_fees)
+    """
+
+    country_lower = str(country or "uk").strip().lower()
+    month_str = month_name[prev_start.month].lower()
+    year = prev_start.year
+
+    candidate_tables = [
+        f"skuwisemonthly_{user_id}_{country_lower}_{month_str}_{year}",
+        f"skuwisemonthly_{user_id}_{country_lower}_{month_str}{year}",
+        f"skuwisemonthly_{user_id}_{country_lower}_{month_str}_{year}_table",
+        f"skuwisemonthly_{user_id}_{country_lower}_{month_str}{year}_table",
+    ]
+
+    def _safe_value(row, candidates):
+        for col in candidates:
+            if col in row.index:
+                val = pd.to_numeric(row.get(col), errors="coerce")
+                if pd.notna(val):
+                    return float(val)
+        return 0.0
+
+    for table_name in candidate_tables:
+        try:
+            with engine_hist.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT to_regclass(:table_name)"),
+                    {"table_name": f"public.{table_name}"},
+                ).scalar()
+
+                if not exists:
+                    continue
+
+                df = pd.read_sql(
+                    text(f'SELECT * FROM "{table_name}"'),
+                    conn,
+                )
+
+            if df is None or df.empty:
+                continue
+
+            df = df.copy()
+
+            if "sku" not in df.columns:
+                df["sku"] = ""
+
+            if "product_name" not in df.columns:
+                df["product_name"] = ""
+
+            sku_series = df["sku"].fillna("").astype(str).str.strip().str.lower()
+            product_series = df["product_name"].fillna("").astype(str).str.strip().str.lower()
+
+            total_mask = (
+                sku_series.isin(["total", "totals", "grand total"])
+                | product_series.isin(["total", "totals", "grand total"])
+            )
+
+            total_row_df = df[total_mask].copy()
+
+            if total_row_df.empty:
+                continue
+
+            total_row = total_row_df.iloc[-1]
+
+            # ✅ Preferred: exact final CM2 from monthly TOTAL row
+            total_cm2_profit = _safe_value(
+                total_row,
+                ["total_cm2_profit"],
+            )
+
+            if total_cm2_profit != 0:
+                return {
+                    "cm2_profit": round(total_cm2_profit, 2),
+                    "source_table": table_name,
+                    "source_column": "total_cm2_profit",
+                    "source": "previous_skuwisemonthly_total_row",
+                }
+
+            # ✅ Fallback: same finance route logic
+            cm2_profit_productwise = _safe_value(
+                total_row,
+                ["cm2_profit"],
+            )
+
+            brand_spend = _safe_value(
+                total_row,
+                ["brand_spend"],
+            )
+
+            dealsvouchar_ads = _safe_value(
+                total_row,
+                ["dealsvouchar_ads", "dealsvoucher_ads"],
+            )
+
+            platform_fee = _safe_value(
+                total_row,
+                ["platform_fee"],
+            )
+
+            shipment_fees = _safe_value(
+                total_row,
+                ["shipment_fees", "shipment_fee"],
+            )
+
+            calculated_total_cm2 = (
+                cm2_profit_productwise
+                - abs(brand_spend)
+                - abs(dealsvouchar_ads)
+                - abs(platform_fee)
+                - abs(shipment_fees)
+            )
+
+            return {
+                "cm2_profit": round(calculated_total_cm2, 2),
+                "source_table": table_name,
+                "source_column": "calculated_from_total_row",
+                "source": "previous_skuwisemonthly_formula",
+            }
+
+        except Exception as e:
+            print(f"[WARN] Failed to fetch previous CM2 from {table_name}:", e)
+            continue
+
+    return {
+        "cm2_profit": 0.0,
+        "source_table": None,
+        "source_column": None,
+        "source": "not_found",
+    }
+
+
+
+def fetch_live_target_context(
+    user_id: int,
+    country: str,
+    curr_end: date,
+    current_net_sales: float,
+) -> dict:
+    """
+    Target context for Live BI AI.
+
+    Formula:
+    X = (current_day / total_days_in_month) * target_sales
+    target_trend = (current_sales - X) / target_sales
+
+    If saved target is missing:
+    fallback target = previous month TOTAL row net_sales from skuwisemonthly table.
+    """
+
+    country_lower = str(country or "uk").strip().lower()
+
+    current_day = int(curr_end.day)
+    total_days_in_month = monthrange(curr_end.year, curr_end.month)[1]
+
+    month_str = month_name[curr_end.month]
+    year = curr_end.year
+
+    current_net_sales = float(current_net_sales or 0.0)
+
+    target_sales = 0.0
+    target_source = "target_data"
+
+    # -------------------------------------------------
+    # 1) Try saved target from target_data
+    # -------------------------------------------------
+    try:
+        q = text("""
+            SELECT
+                target_sales,
+                country,
+                month,
+                year,
+                updated_at
+            FROM public.target_data
+            WHERE user_id = :user_id
+            AND LOWER(TRIM(month)) = LOWER(TRIM(:month))
+            AND year = :year
+            AND LOWER(TRIM(country)) = LOWER(TRIM(:country))
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """)
+
+        with engine_hist.connect() as conn:
+            row = conn.execute(q, {
+                "user_id": user_id,
+                "month": month_str,
+                "year": year,
+                "country": country_lower,
+            }).fetchone()
+
+        if row and row[0] is not None:
+            target_sales = float(row[0] or 0.0)
+            target_source = "target_data"
+
+        print("[DEBUG] target_data lookup:", {
+            "params": {
+                "user_id": user_id,
+                "month": month_str,
+                "year": year,
+                "country": country_lower,
+            },
+            "row": dict(row._mapping) if row else None,
+            "target_sales": target_sales,
+            "target_source": target_source,
+        })
+
+    except Exception as e:
+        print("[WARN] Failed to fetch target_data:", e)
+
+    # -------------------------------------------------
+    # 2) Fallback: previous month TOTAL row net_sales
+    # -------------------------------------------------
+    if target_sales <= 0:
+        target_source = "previous_month_net_sales"
+
+        prev_year = curr_end.year
+        prev_month = curr_end.month - 1
+
+        if prev_month == 0:
+            prev_month = 12
+            prev_year -= 1
+
+        prev_month_str = month_name[prev_month].lower()
+
+        candidate_tables = [
+            f"skuwisemonthly_{user_id}_{country_lower}_{prev_month_str}{prev_year}",
+            f"skuwisemonthly_{user_id}_{country_lower}_{prev_month_str}_{prev_year}",
+            f"skuwisemonthly_{user_id}_{country_lower}_{prev_month_str}{prev_year}_table",
+            f"skuwisemonthly_{user_id}_{country_lower}_{prev_month_str}_{prev_year}_table",
+        ]
+
+        for table_name in candidate_tables:
+            try:
+                with engine_hist.connect() as conn:
+                    exists = conn.execute(
+                        text("SELECT to_regclass(:table_name)"),
+                        {"table_name": f"public.{table_name}"},
+                    ).scalar()
+
+                    if not exists:
+                        continue
+
+                    df = pd.read_sql(
+                        text(f'SELECT * FROM "{table_name}"'),
+                        conn,
+                    )
+
+                if df is None or df.empty:
+                    continue
+
+                df = df.copy()
+
+                total_row = pd.DataFrame()
+
+                if "product_name" in df.columns:
+                    product_series = df["product_name"].astype(str).str.strip().str.lower()
+                    total_row = df[product_series.isin(["total", "totals"])]
+
+                if total_row.empty and "sku" in df.columns:
+                    sku_series = df["sku"].astype(str).str.strip().str.lower()
+                    total_row = df[sku_series.isin(["total", "totals"])]
+
+                if not total_row.empty and "net_sales" in total_row.columns:
+                    target_sales = float(
+                        pd.to_numeric(total_row["net_sales"], errors="coerce").fillna(0).iloc[-1]
+                    )
+                    target_source = f"fallback:{table_name}"
+                    break
+
+            except Exception as e:
+                print(f"[WARN] Failed reading fallback target table {table_name}:", e)
+                continue
+
+    # -------------------------------------------------
+    # 3) Calculate target progress
+    # -------------------------------------------------
+    expected_sales_till_date = (
+        (current_day / total_days_in_month) * target_sales
+        if target_sales > 0
+        else 0.0
+    )
+
+    target_trend = (
+        (current_net_sales - expected_sales_till_date) / target_sales
+        if target_sales > 0
+        else 0.0
+    )
+
+    target_achievement_pct = (
+        (current_net_sales / target_sales) * 100.0
+        if target_sales > 0
+        else 0.0
+    )
+
+    target_remaining = target_sales - current_net_sales
+
+    return {
+        "target_sales": round(target_sales, 2),
+        "current_net_sales": round(current_net_sales, 2),
+        "expected_sales_till_date": round(expected_sales_till_date, 2),
+        "target_trend": round(target_trend, 4),
+        "target_trend_pct": round(target_trend * 100.0, 2),
+        "target_achievement_pct": round(target_achievement_pct, 2),
+        "target_remaining": round(target_remaining, 2),
+        "current_day": current_day,
+        "total_days_in_month": total_days_in_month,
+        "target_source": target_source,
+        "formula": "X = (current_day / total_days_in_month) * target_sales; target_trend = (current_net_sales - X) / target_sales",
+    }
 
 # ----------------------------------------------------------------------------
 # GROWTH METRIC CALCULATION (same formulas as Business Insights)
@@ -3210,6 +3559,7 @@ def fetch_current_inventory_snapshot(
                 text(f"""
                     SELECT
                         "SKU" AS sku,
+                        "Product Name" AS product_name,
                         "available" AS available,
                         "Coverage Ratio (In Months)" AS coverage_ratio_months
                     FROM {table}
@@ -3234,24 +3584,56 @@ def fetch_current_inventory_snapshot(
     df = df.copy()
 
     df["sku"] = df["sku"].astype(str).str.strip()
-    df = df[
-        df["sku"].notna()
-        & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
-    ].copy()
 
-    if df.empty:
-        return {}, {
-            "available_total": 0.0,
-            "avg_coverage_ratio_months": 0.0,
-            "source_table": table,
-        }
+    # ✅ Keep product_name because your Total row is in Product Name, not SKU
+    if "product_name" not in df.columns:
+        df["product_name"] = ""
+    else:
+        df["product_name"] = df["product_name"].astype(str).str.strip()
 
     df["available"] = safe_num(df.get("available", 0.0))
     df["coverage_ratio_months"] = safe_num(df.get("coverage_ratio_months", 0.0))
 
+    # -------------------------------------------------
+    # ✅ Pick portfolio coverage from TOTAL row
+    # Your table has:
+    # SKU = blank / NaN
+    # Product Name = Total
+    # -------------------------------------------------
+    total_row_df = df[
+        df["sku"].fillna("").str.lower().eq("total")
+        | df["product_name"].fillna("").str.lower().eq("total")
+    ].copy()
+
+    if not total_row_df.empty:
+        total_available = float(total_row_df["available"].iloc[0] or 0.0)
+        total_coverage_ratio_months = float(
+            total_row_df["coverage_ratio_months"].iloc[0] or 0.0
+        )
+    else:
+        total_available = 0.0
+        total_coverage_ratio_months = 0.0
+
+    # -------------------------------------------------
+    # SKU map should still exclude Total row
+    # -------------------------------------------------
+    sku_df = df[
+        df["sku"].notna()
+        & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
+        & ~df["product_name"].str.lower().isin(["total"])
+    ].copy()
+
+    if sku_df.empty:
+        return {}, {
+            "available_total": round(total_available, 2),
+            "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+            "total_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+            "source_table": table,
+        }
+
     sku_map = {}
 
-    for _, r in df.iterrows():
+    for _, r in sku_df.iterrows():
         sku = str(r.get("sku") or "").strip()
         if not sku:
             continue
@@ -3261,13 +3643,12 @@ def fetch_current_inventory_snapshot(
             "coverage_ratio_months": round(float(r.get("coverage_ratio_months") or 0.0), 2),
         }
 
-    avg_cov = float(df["coverage_ratio_months"].replace(0, np.nan).mean())
-    if np.isnan(avg_cov):
-        avg_cov = 0.0
-
+    # ✅ Do NOT average SKU rows anymore.
+    # Use TOTAL row's Coverage Ratio (In Months)
     totals = {
-        "available_total": round(float(df["available"].sum()), 2),
-        "avg_coverage_ratio_months": round(avg_cov, 2),
+        "available_total": round(total_available, 2),
+        "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),  # old key compatibility
+        "total_coverage_ratio_months": round(total_coverage_ratio_months, 2), # clearer key
         "source_table": table,
     }
 
@@ -3505,6 +3886,8 @@ def build_ai_summary(
     # ✅ NEW (required for strategy engine)
     analysis_output=None,
     focus_skus=None,
+    portfolio_coverage_context=None,
+    target_context=None,
 ):
   
 
@@ -3520,6 +3903,9 @@ def build_ai_summary(
 
     prof_prev = safe0(prev_totals.get("profit"))
     prof_curr = safe0(curr_totals.get("profit"))
+
+    # ✅ NEW: current miscellaneous spend from skuwisemonthly TOTAL row lost_total
+    miscellaneous_spend_curr = safe0(curr_totals.get("miscellaneous_spend"))
 
     asp_prev = safe_float_local(prev_totals.get("total_asp"))
     asp_curr = safe_float_local(curr_totals.get("total_asp"))
@@ -3545,6 +3931,28 @@ def build_ai_summary(
 
     total_cost_prev = (pf_prev or 0.0) + (ad_prev or 0.0)
     total_cost_curr = (pf_curr or 0.0) + (ad_curr or 0.0)
+
+    # ✅ CM2 Profit
+    # Previous CM2 = aligned previous MTD CM2 from route.
+    # Current CM2 = current skuwisemonthly TOTAL row total_cm2_profit.
+    cm2_profit_prev = safe_float_local(prev_totals.get("cm2_profit"))
+    cm2_profit_curr = safe_float_local(curr_totals.get("cm2_profit"))
+
+    if cm2_profit_prev is None:
+        cm2_profit_prev = prof_prev - total_cost_prev
+
+    if cm2_profit_curr is None or cm2_profit_curr == 0:
+        cm2_profit_curr = prof_curr - total_cost_curr
+
+    cm2_profit_pct = pct_change_2(cm2_profit_prev, cm2_profit_curr)
+
+    print("[DEBUG] CM2 summary values:", {
+        "prev_totals_cm2_profit": prev_totals.get("cm2_profit"),
+        "cm2_profit_prev": cm2_profit_prev,
+        "curr_totals_cm2_profit": curr_totals.get("cm2_profit"),
+        "cm2_profit_curr": cm2_profit_curr,
+        "cm2_profit_pct": cm2_profit_pct,
+    })
 
     cost_pct = pct_change_2(total_cost_prev, total_cost_curr)
     pf_pct   = pct_change_2(pf_prev, pf_curr)
@@ -4026,29 +4434,40 @@ def build_ai_summary(
     # =========================================================
     payload = {
         "periods": {
-            "previous": {
-                "label": prev_label,
-                "quantity_total": qty_prev,
-                "net_sales_total": sales_prev,
-                "profit_total": prof_prev,
-                "total_asp": asp_prev,
-                "unit_profit_sum_index": up_prev_idx,
-            },
-            "current": {
-                "label": curr_label,
-                "quantity_total": qty_curr,
-                "net_sales_total": sales_curr,
-                "profit_total": prof_curr,
-                "total_asp": asp_curr,
-                "unit_profit_sum_index": up_curr_idx,
-            },
+        "previous": {
+            "label": prev_label,
+            "quantity_total": qty_prev,
+            "net_sales_total": sales_prev,
+            "profit_total": prof_prev,
+
+            # ✅ NEW
+            "cm2_profit_total": round(cm2_profit_prev, 2),
+
+            "total_asp": asp_prev,
+            "unit_profit_sum_index": up_prev_idx,
         },
+        "current": {
+            "label": curr_label,
+            "quantity_total": qty_curr,
+            "net_sales_total": sales_curr,
+            "profit_total": prof_curr,
+
+            # ✅ NEW
+            "cm2_profit_total": round(cm2_profit_curr, 2),
+
+            "total_asp": asp_curr,
+            "unit_profit_sum_index": up_curr_idx,
+            "miscellaneous_spend": miscellaneous_spend_curr,
+        },
+    },
         "pct_changes": {
             "quantity_pct": qty_pct,
             "net_sales_pct": sales_pct,
             "profit_pct": prof_pct,
             "asp_pct": asp_pct,
             "unit_profit_index_pct": up_pct,
+            "cm2_profit_pct": cm2_profit_pct,
+
         },
         "sku_tables": {
             # Frontend table rows enriched with:
@@ -4135,6 +4554,9 @@ def build_ai_summary(
         "currency": currency or {},
         "user_objective": user_objective,
         "movement_context": movement_context or {},
+        "portfolio_coverage_context": portfolio_coverage_context or {},
+        # ✅ NEW
+        "target_context": target_context or {},
     }
    
     
@@ -4235,7 +4657,12 @@ def club_inventory_alerts_by_type(
 
     return {"summary": summary}
 
-def fetch_high_alert_threshold(user_id: int, country: str):
+def fetch_inventory_policy_context(user_id: int, country: str) -> dict:
+    """
+    Returns transit_time, stock_unit and required coverage months.
+    required_coverage_months = transit_time + stock_unit
+    """
+
     query = text("""
         SELECT
             transit_time,
@@ -4246,22 +4673,46 @@ def fetch_high_alert_threshold(user_id: int, country: str):
         LIMIT 1
     """)
 
-    with engine_hist.connect() as conn:
-        row = conn.execute(query, {
-            "user_id": user_id,
-            "country": str(country).strip().lower(),
-        }).fetchone()
+    try:
+        with engine_hist.connect() as conn:
+            row = conn.execute(query, {
+                "user_id": user_id,
+                "country": str(country or "").strip().lower(),
+            }).fetchone()
+    except Exception as e:
+        print("[WARN] Failed to fetch inventory policy context:", e)
+        row = None
 
     if not row:
-        return None
+        return {
+            "transit_time": 0.0,
+            "stock_unit": 0.0,
+            "required_coverage_months": 0.0,
+        }
 
     transit_time = pd.to_numeric(row.transit_time, errors="coerce")
     stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
 
-    if pd.isna(transit_time) or pd.isna(stock_unit):
+    transit_time = float(transit_time) if pd.notna(transit_time) else 0.0
+    stock_unit = float(stock_unit) if pd.notna(stock_unit) else 0.0
+
+    return {
+        "transit_time": round(transit_time, 2),
+        "stock_unit": round(stock_unit, 2),
+        "required_coverage_months": round(transit_time + stock_unit, 2),
+    }
+
+
+
+def fetch_high_alert_threshold(user_id: int, country: str):
+    policy = fetch_inventory_policy_context(user_id, country)
+
+    required_coverage_months = policy.get("required_coverage_months", 0.0)
+
+    if not required_coverage_months:
         return None
 
-    return float(transit_time) + float(stock_unit)
+    return float(required_coverage_months)
 
 
 def generate_inventory_alerts_for_all_skus(user_id: int, country: str, coverage_df: pd.DataFrame = None) -> dict:
