@@ -15,11 +15,11 @@ export type AgeingRiskHeatmapRow = {
     sku?: string;
     totalUnits?: number;
     unsellableUnits?: number;
+    unitsSold?: number;
     coverageRatio?: number;
     isOthersRow?: boolean;
     isTotalRow?: boolean;
 
-    // ✅ ADD THIS
     isPercentageRow?: boolean;
 
     [bucketKey: string]: string | number | boolean | undefined;
@@ -91,6 +91,11 @@ const buildAggregateRow = (
         0
     );
 
+    aggregate.unitsSold = rows.reduce(
+        (sum, row) => sum + Number(row.unitsSold || 0),
+        0
+    );
+
     const weightedCoverageTotal = rows.reduce((sum, row) => {
         const calculatedTotal = buckets.reduce(
             (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
@@ -127,17 +132,18 @@ const buildPercentageRow = (
         productName: "% of Total",
         sku: "-",
 
-        // ✅ Sellable Units percentage
         totalUnits:
             percentageBaseTotal > 0
                 ? (sellableUnits / percentageBaseTotal) * 100
                 : 0,
 
-        // ✅ Unfulfillable Units percentage
         unsellableUnits:
             percentageBaseTotal > 0
                 ? (unfulfillableUnits / percentageBaseTotal) * 100
                 : 0,
+
+        // ✅ Units sold is not a percentage row metric
+        unitsSold: 0,
 
         coverageRatio: 0,
         isPercentageRow: true,
@@ -343,6 +349,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 header: "Sellable Units",
                 width: "85px",
                 headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     if (row.isPercentageRow) {
                         const value = Number(row.totalUnits || 0);
@@ -374,6 +381,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 header: "Unfulfillable Units",
                 width: "95px",
                 headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     if (row.isPercentageRow) {
                         const value = Number(row.unsellableUnits || 0);
@@ -389,6 +397,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             </span>
                         );
                     }
+
                     const unsellableUnits = Number(row.unsellableUnits || 0);
 
                     return (
@@ -401,10 +410,29 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 },
             },
             {
+                key: "unitsSold",
+                header: "Units Sold",
+                width: "85px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isPercentageRow) return <span>-</span>;
+
+                    const unitsSold = Number(row.unitsSold || 0);
+
+                    return (
+                        <span>
+                            {unitsSold > 0 ? unitsSold.toLocaleString() : "-"}
+                        </span>
+                    );
+                },
+            },
+            {
                 key: "coverageRatio",
                 header: "Coverage Ratio (in Months)",
                 width: "110px",
                 headerClassName: heatmapHeaderClassName,
+                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     if (row.isPercentageRow) return <span>-</span>;
 

@@ -1819,6 +1819,14 @@ const isInventoryInsightsTotalRow = (row: InventoryCurrentRow) => {
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
     inventoryToNum(row?.[key]);
 
+const getCurrentMonthUnitsSold = (row: InventoryCurrentRow) => {
+    const directKey = Object.keys(row || {}).find((key) =>
+        key.toLowerCase().startsWith("current month units sold")
+    );
+
+    return inventoryToNum(directKey ? row?.[directKey] : 0);
+};
+
 const getShortMonthLabel = (monthName?: string) => {
     const clean = String(monthName || "").trim();
     return clean ? clean.slice(0, 3) : "-";
@@ -2069,6 +2077,10 @@ const buildInventoryInsightsFromResponses = (
                 threeSixtyFivePlus,
                 totalUnits,
                 unsellableUnits,
+
+                // ✅ NEW COLUMN VALUE
+                unitsSold: getCurrentMonthUnitsSold(row),
+
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
             };
         })
