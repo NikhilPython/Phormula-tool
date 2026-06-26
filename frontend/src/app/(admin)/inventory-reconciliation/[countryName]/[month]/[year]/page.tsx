@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import InputCostClient from "./InputCostClient";
+import InputCostClient from "./InventoryClient";
 
 type Params = {
   countryName: string;
