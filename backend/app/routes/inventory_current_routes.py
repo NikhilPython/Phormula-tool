@@ -739,6 +739,103 @@ def resolve_inventory_current_source(user_id, country_key, range_type, month_nam
         "tried_sources": tried_sources,
     }
 
+def fetch_high_alert_threshold(user_id: int, country_key: str):
+    query = text("""
+        SELECT
+            transit_time,
+            stock_unit
+        FROM public.country_profile
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+        LIMIT 1
+    """)
+
+    with primary_engine.connect() as conn:
+        row = conn.execute(query, {
+            "user_id": int(user_id),
+            "country": str(country_key).strip().lower(),
+        }).fetchone()
+
+    if not row:
+        return None
+
+    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
+    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+
+    if pd.isna(transit_time) or pd.isna(stock_unit):
+        return None
+
+    return float(transit_time) + float(stock_unit)
+
+def build_high_alert_coverage_summary(rows, user_id, country_key):
+    """
+    Calculates average coverage ratio only for High Alert SKUs.
+
+    High Alert logic:
+      coverage_ratio <= transit_time + stock_unit
+
+    Fallback:
+      if transit_time/stock_unit is missing, threshold = 2.0
+    """
+
+    high_alert_threshold = fetch_high_alert_threshold(user_id, country_key)
+
+    if high_alert_threshold is None:
+        high_alert_threshold = 2.0
+
+    high_alert_items = []
+    coverage_values = []
+
+    for row in rows:
+        if is_total_row(row):
+            continue
+
+        sku = str(row.get("SKU") or "").strip()
+        product_name = str(row.get("Product Name") or "").strip()
+
+        coverage_ratio = None
+
+        # Main column from currentinventory table
+        for col in [
+            "Coverage Ratio (In Months)",
+            "coverage_ratio_months",
+            "inventory_coverage_ratio",
+        ]:
+            if col in row:
+                cov = pd.to_numeric(row.get(col), errors="coerce")
+                if pd.notna(cov):
+                    coverage_ratio = float(cov)
+                    break
+
+        if coverage_ratio is None:
+            continue
+
+        if coverage_ratio > 0 and coverage_ratio <= high_alert_threshold:
+            coverage_values.append(coverage_ratio)
+
+            high_alert_items.append({
+                "sku": clean_value(sku),
+                "product_name": clean_value(product_name),
+                "coverage_ratio_months": round(float(coverage_ratio), 2),
+                "high_alert_threshold": round(float(high_alert_threshold), 2),
+                "alert": "High alert",
+            })
+
+    average_coverage_ratio = (
+        round(float(sum(coverage_values) / len(coverage_values)), 2)
+        if coverage_values
+        else 0
+    )
+
+    return {
+        "high_alert_sku_count": len(high_alert_items),
+        "average_coverage_ratio": average_coverage_ratio,
+        "high_alert_threshold": round(float(high_alert_threshold), 2),
+        "items": high_alert_items,
+    }
+
+
+
 
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
 def get_inventory_current_table():
@@ -856,6 +953,12 @@ def get_inventory_current_table():
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
+        high_alert_coverage_summary = build_high_alert_coverage_summary(
+            rows=rows,
+            user_id=user_id,
+            country_key=country_key,
+        )
+
         selected_month_number = MONTH_NAME_TO_NUMBER.get(source_result["selected_month"])
 
         previous_storage_cost = {
@@ -898,6 +1001,7 @@ def get_inventory_current_table():
 
             "categories": categories,
             "inventory_age_summary": inventory_age_summary,
+            "high_alert_coverage_summary": high_alert_coverage_summary,
             "category_counts": {
                 "liquidate": len(categories["liquidate"]["items"]),
                 "discount": len(categories["discount"]["items"]),
