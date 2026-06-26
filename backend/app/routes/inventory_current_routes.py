@@ -364,6 +364,8 @@ def build_inventory_age_summary(rows):
         for column in INVENTORY_AGE_COLUMNS
     }
 
+    unfulfillable_total = 0
+
     for row in rows:
         # Skip total row so we calculate from actual SKU/product rows
         if is_total_row(row):
@@ -372,17 +374,30 @@ def build_inventory_age_summary(rows):
         for column in INVENTORY_AGE_COLUMNS:
             totals[column] += to_number(row.get(column))
 
-    grand_total = sum(totals.values())
+        unfulfillable_total += to_number(row.get("unfulfillable-quantity"))
+
+    sellable_total = sum(totals.values())
+
+    # New denominator for % of Total:
+    # ageing/sellable units + unfulfillable units
+    percentage_base_total = sellable_total + unfulfillable_total
 
     percentages = {}
     for column, total in totals.items():
-        if grand_total > 0:
-            percentages[column] = round((total / grand_total) * 100, 2)
+        if percentage_base_total > 0:
+            percentages[column] = round((total / percentage_base_total) * 100, 2)
         else:
             percentages[column] = 0
 
     return {
-        "total": grand_total,
+        # Keep this as the denominator used by donut/table %
+        "total": percentage_base_total,
+
+        # Optional extra values for frontend/debug
+        "sellable_total": sellable_total,
+        "unfulfillable_total": unfulfillable_total,
+        "percentage_base_total": percentage_base_total,
+
         "columns": {
             column: {
                 "total": totals[column],
@@ -391,7 +406,6 @@ def build_inventory_age_summary(rows):
             for column in INVENTORY_AGE_COLUMNS
         }
     }
-
 
 QUARTER_MONTHS = {
     "q1": ["march", "february", "january"],
