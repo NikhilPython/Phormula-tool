@@ -142,7 +142,11 @@ const buildInsightsCacheKey = (
   return `productwise_insights:${country}:${identifier.toLowerCase()}:${range}:${safeYear}:${safeQuarter}:${safeMonth}:${safeCurrency}`;
 };
 
-type BestPerfItem = { month: string; value: number };
+type BestPerfItem = {
+  month: string;
+  value: number;
+  year?: number | string;
+};
 
 type BestPerformance = {
   units?: BestPerfItem;
@@ -796,13 +800,16 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
   selectedSku,
 ]);
 
- const mapApiBestPerformanceToDrawerShape = (apiBestPerformance: any): BestPerformance | undefined => {
+ const mapApiBestPerformanceToDrawerShape = (
+  apiBestPerformance: any
+): BestPerformance | undefined => {
   if (!apiBestPerformance) return undefined;
 
   return {
     units: apiBestPerformance?.units
       ? {
           month: String(apiBestPerformance.units.month || ""),
+          year: apiBestPerformance.units.year,
           value: Number(apiBestPerformance.units.units ?? 0),
         }
       : undefined,
@@ -810,6 +817,7 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     sales: apiBestPerformance?.net_sales
       ? {
           month: String(apiBestPerformance.net_sales.month || ""),
+          year: apiBestPerformance.net_sales.year,
           value: Number(apiBestPerformance.net_sales.net_sales ?? 0),
         }
       : undefined,
@@ -817,6 +825,7 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     asp: apiBestPerformance?.asp
       ? {
           month: String(apiBestPerformance.asp.month || ""),
+          year: apiBestPerformance.asp.year,
           value: Number(apiBestPerformance.asp.asp ?? 0),
         }
       : undefined,
@@ -824,6 +833,7 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     profit: apiBestPerformance?.cm1_profit
       ? {
           month: String(apiBestPerformance.cm1_profit.month || ""),
+          year: apiBestPerformance.cm1_profit.year,
           value: Number(apiBestPerformance.cm1_profit.cm1_profit ?? 0),
         }
       : undefined,
@@ -831,6 +841,7 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     unitWiseProfitability: apiBestPerformance?.unit_wise_profitability
       ? {
           month: String(apiBestPerformance.unit_wise_profitability.month || ""),
+          year: apiBestPerformance.unit_wise_profitability.year,
           value: Number(
             apiBestPerformance.unit_wise_profitability.unit_wise_profitability ?? 0
           ),
@@ -989,7 +1000,7 @@ const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
   ];
 };
 
-const formatPerfMonth = (month?: string) => {
+const formatPerfMonth = (month?: string, year?: number | string) => {
   if (!month) return "-";
 
   const fullNames = [
@@ -1030,10 +1041,15 @@ const formatPerfMonth = (month?: string) => {
   }
 
   const shortMonth = idx >= 0 ? abbrs[idx] : month;
-  const shortYear =
-    selectedYear !== undefined && selectedYear !== ""
-      ? String(selectedYear).slice(-2)
-      : "";
+const yearToShow =
+  year !== undefined && year !== null && year !== ""
+    ? year
+    : selectedYear;
+
+const shortYear =
+  yearToShow !== undefined && yearToShow !== ""
+    ? String(yearToShow).slice(-2)
+    : "";
 
   return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
 };
@@ -1287,66 +1303,18 @@ const graphYear =
         </div>
       </div>
 
-      <div className="space-y-2 p-3">
-       {sections.map((section, index) => {
-          const isOpen = openSummarySection === section.id;
-
-          return (
-            <div
-              key={`${section.id}-${index}`}
-              className="overflow-hidden rounded-xl border border-slate-200 bg-white"
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setOpenSummarySection((prev) =>
-                    prev === section.id ? null : section.id
-                  )
-                }
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-[#414042] sm:text-sm 2xl:text-base">
-                      {section.title}
-                    </div>
-
-                    {!isOpen && section.bullets[0] ? (
-                      <div className="mt-0.5 truncate text-[11px] text-charcoal-400 sm:text-xs">
-                        {section.bullets[0]}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <span
-                  className={`shrink-0 text-lg leading-none text-charcoal-400 transition-transform ${
-                    isOpen ? "rotate-180" : ""
-                  }`}
-                >
-                  ⌄
-                </span>
-              </button>
-
-              {isOpen && (
-                <div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
-                  <ul className="space-y-2 pl-4 text-xs leading-6 text-charcoal-600 sm:text-sm 2xl:text-base">
-                    {section.bullets.map((item, index) => (
-                      <li
-                        key={index}
-                        className="list-disc marker:text-emerald-500"
-                      >
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <div className="p-4">
+  <ul className="space-y-1 pl-4 text-xs leading-6 text-charcoal-500 sm:text-sm ">
+    {sections.flatMap((section) => section.bullets).map((item, index) => (
+      <li
+        key={index}
+        className="list-disc marker:font-semibold marker:text-charcoal-400"
+      >
+        {item}
+      </li>
+    ))}
+  </ul>
+</div>
     </div>
   );
 };
@@ -1461,7 +1429,7 @@ const graphYear =
                 </div>
 
                 <div className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                  {formatPerfMonth(card.data?.month)}
+                  {formatPerfMonth(card.data?.month, card.data?.year)}
                 </div>
 
                 <div className=" text-sm 2xl:text-lg font-bold text-[#414042]">

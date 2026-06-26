@@ -2867,7 +2867,6 @@ return {
     sales?: React.ReactNode;
     mixChange?: React.ReactNode;
     unitProfit?: React.ReactNode;
-    ai?: React.ReactNode;
     profit?: React.ReactNode;
   };
 
@@ -2942,46 +2941,29 @@ return {
     return renderGrowthOrNA({ value: Number(val), category: "" });
   };
 
-  const buildAiCell = (item: SkuItem) => {
-    if (!Object.keys(skuInsights).length) return null;
+  const openRecommendationDrawerForSku = (item: SkuItem) => {
+    const insightEntry = getInsightForItem(item);
+    const insight = insightEntry?.[1] || null;
 
-    const entry = getInsightForItem(item);
+    const selected = isGlobalData()
+      ? buildSelectedRecFromGlobalSkuInsight(item, insight)
+      : buildSelectedRecFromSkuInsight(item, insight);
 
-    if (entry) {
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            const insightEntry = getInsightForItem(item);
-            const insight = insightEntry?.[1] || null;
-
-            const selected = isGlobalData()
-              ? buildSelectedRecFromGlobalSkuInsight(item, insight)
-              : buildSelectedRecFromSkuInsight(item, insight);
-
-            setSelectedSkuItem(item);
-            setSelectedSku(item.sku || item.product_name);
-            setSelectedRec(selected);
-            setRecDrawerOpen(true);
-          }}
-          className="font-semibold underline"
-        >
-          View Insights
-        </button>
-      );
-    }
-
-    return (
-      <em style={{ color: "#888" }}>
-        Not analyzed
-        <br />
-        <small style={{ fontSize: 10 }}>
-          ({isGlobalData() ? "Global/Product Name" : "SKU"}:{" "}
-          {item.product_name || item.sku || "N/A"})
-        </small>
-      </em>
-    );
+    setSelectedSkuItem(item);
+    setSelectedSku(item.sku || item.product_name);
+    setSelectedRec(selected);
+    setRecDrawerOpen(true);
   };
+
+  const ProductNameCell = ({ item }: { item: SkuItem }) => (
+    <button
+      type="button"
+      onClick={() => openRecommendationDrawerForSku(item)}
+      className="text-left font-semibold text-green-500 underline-offset-2 hover:underline"
+    >
+      {capitalizeWords(item.product_name || item.sku || "N/A")}
+    </button>
+  );
 
   const hideAdsFromRecommendationCard = (
   metrics: { label: string; value: string; color?: string }[] = []
@@ -2993,8 +2975,6 @@ return {
 
   const columns: ColumnDef<BIGridRow>[] = useMemo(() => {
     const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
-    const showAI = Object.keys(skuInsights).length > 0;
-
     const SNO_WIDTH = '65px';
     const COMMON_WIDTH = '160px';
 
@@ -3058,27 +3038,15 @@ return {
         header: isNewRev ? 'Profit (%)' : 'CM1 Profit Impact (%)',
         width: '200px',
       },
-      ...(showAI
-        ? [
-          {
-            key: 'ai',
-            header: 'AI Insight',
-            width: '150px',
-          },
-        ]
-        : []),
-
     ];
 
     return cols;
-  }, [activeTab, month2Label, skuInsights]);
+  }, [activeTab, month2Label]);
 
 
 
   const tableData: BIGridRow[] = useMemo(() => {
     const isNewRev = activeTab === "new_skus" || activeTab === "reviving_skus";
-    const showAI = Object.keys(skuInsights).length > 0;
-
     const totalNetSalesMonth1 = allSkuRows.reduce(
       (s, r: any) => s + Number(r?.net_sales_month1 ?? r?.net_sales_prev ?? 0),
       0
@@ -3134,7 +3102,7 @@ return {
 
       return {
         sNo: <CenterCell value={idx + 1} />,
-        product: capitalizeWords(item.product_name || item.sku || 'N/A'),
+        product: <ProductNameCell item={item} />,
         salesMix: <CenterCell value={salesMix} />,
         profitMix: <CenterCell value={profitMix} />,
 
@@ -3164,11 +3132,8 @@ return {
           ? renderNewRevGrowthOrDash(itemAny["CM1 Profit Impact"])
           : renderGrowthOrNA(itemAny["CM1 Profit Impact"]),
 
-        ...(showAI ? { ai: buildAiCell(item) } : {}),
       };
     });
-
-    const hasAIInsights = Object.keys(skuInsights).length > 0;
 
     if (
       activeTab === 'all_skus' &&
@@ -3246,8 +3211,6 @@ return {
         ),
         profit: renderGrowthOrNA(makeGrowth(profit.prev, profit.curr)),
 
-        // ✅ AI column
-        ...(hasAIInsights ? { ai: "" } : {}),
       });
 
     }
@@ -3407,7 +3370,6 @@ return {
             profit: "-",
           })
       ,
-      ...(Object.keys(skuInsights).length > 0 ? { ai: '' } : {}),
     };
 
     return [...rows, totalRow];
@@ -4797,7 +4759,7 @@ return {
                   />
 
                   <div className="flex items-center gap-2">
-                    <AiButton
+                    {/* <AiButton
                       onClick={analyzeSkus}
                       disabled={
                         loadingInsight ||
@@ -4808,7 +4770,7 @@ return {
                       }
                     >
                       {loadingInsight ? "Generating..." : "AI Insights"}
-                    </AiButton>
+                    </AiButton> */}
 
                     {activeTab === "all_skus" && allSkuRows.length > 5 && (
                       <button
@@ -4861,7 +4823,7 @@ return {
                       textSizeClass="text-xs 2xl:text-sm"
                     />
 
-                    <AiButton
+                    {/* <AiButton
                       onClick={analyzeSkus}
                       disabled={
                         loadingInsight ||
@@ -4872,7 +4834,7 @@ return {
                       }
                     >
                       {loadingInsight ? "Generating..." : "AI Insights"}
-                    </AiButton>
+                    </AiButton> */}
 
                     {activeTab === "all_skus" && allSkuRows.length > 5 && (
                       <button

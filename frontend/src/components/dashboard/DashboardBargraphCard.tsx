@@ -39,9 +39,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   const normalizeBarValue = (label: string, value: unknown) => {
     const n = Math.round(Number(value ?? 0));
 
-    return shouldShowAsPositiveBar(label)
-      ? Math.abs(n)
-      : n;
+    return shouldShowAsPositiveBar(label) ? Math.abs(n) : n;
   };
 
   const normalizedValues = useMemo(() => {
@@ -59,12 +57,6 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   const normalizedColors = useMemo(() => {
     return normalizedLabels.map((_, i) => colors?.[i] ?? "#75BBDA");
   }, [normalizedLabels, colors]);
-
-  const prevColors = useMemo(() => {
-    return normalizedColors.map((c) =>
-      c.startsWith("#") && c.length === 7 ? `${c}4D` : c
-    );
-  }, [normalizedColors]);
 
   const chartValues = useMemo(() => {
     if (previewMode) return normalizedLabels.map(() => 0);
@@ -109,7 +101,6 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
               values={chartValues}
               prevValues={chartPrevValues}
               colors={normalizedColors}
-              prevColors={prevColors}
               currentLabel="MTD"
               prevLabel="Last month till date"
               yTitle={`Amount (${currencySymbol})`}

@@ -273,14 +273,18 @@ async function seedAdsReportsOnConnect(
 
     onStep?.(3, "Sponsored Brand", 65, "Building monthly SP/SD summary...");
 
-    const { month, year } = getCurrentMonthYearIST();
+   const { month, year } = getCurrentMonthYearIST();
 
-    await postJson(`/api/ads/monthly_sp_sd_to_db`, {
-        month: monthToNumber(month),
-        year,
-        country,
-        include: ["SP", "SD", "SB"],
-    });
+const adsDbPayload = {
+    month: monthToNumber(month),
+    year,
+    country,
+    include: ["SP", "SD", "SB"],
+};
+
+await postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload);
+
+await postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload);
 
     onStep?.(3, "Sponsored Brand", 100, "Sponsored Brand and monthly sync complete");
     onCompleteStep?.(3);

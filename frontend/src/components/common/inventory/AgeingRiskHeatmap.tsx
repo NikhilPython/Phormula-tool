@@ -213,7 +213,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "135px",
                 headerClassName: heatmapHeaderClassName,
                 cellClassName:
-                    "text-left text-sm text-charcoal-500 overflow-hidden",
+                    "text-left text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 overflow-hidden",
                 render: (row) => {
                     const canClick =
                         !!onProductClick &&
@@ -237,7 +237,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             type="button"
                             onClick={() => onProductClick(row)}
                             title={row.productName}
-                            className="block text-xs 2xl:text-sm  truncate text-left font-medium text-green-500 underline-offset-2"
+                            className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px]  truncate text-left font-medium text-green-500 underline-offset-2"
                         >
                             {row.productName}
                         </button>
@@ -249,7 +249,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 header: "SKU",
                 width: "105px",
                 headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-center text-xs 2xl:text-sm text-charcoal-500 whitespace-normal break-words",
+                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     if (row.isTotalRow) return "";
 

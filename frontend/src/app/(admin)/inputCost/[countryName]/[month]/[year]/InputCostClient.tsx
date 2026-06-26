@@ -15,6 +15,27 @@ import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCou
 import Loader from '@/components/loader/Loader';
 import { exportSkuInformationExcel, exportWarehouseDataExcel } from '@/lib/excel/exportCurrentInventoryExcel';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
+import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
+
+import type {
+  AgeingBucket,
+  AgeingRiskHeatmapRow,
+} from "@/components/common/inventory/AgeingRiskHeatmap";
+
+import type {
+  DonutChartItem,
+} from "@/components/common/inventory/SkuAgeingDonutChart";
+
+import type {
+  AgeingTrendItem,
+  AgeingTrendAllSeriesItem,
+} from "@/components/common/inventory/AgeingTrendChart";
+
+import type {
+  ActionCardItem,
+  ActionLogicItem,
+} from "@/components/common/inventory/ActionBasedDashboard";
+import PeriodFiltersTable from "@/components/filters/PeriodFiltersTable";
 
 // =========================
 // Warehouse upload format
@@ -125,6 +146,509 @@ type TableRow = {
   gross_margin_europe?: React.ReactNode;
   gross_margin_global?: React.ReactNode;
   [key: string]: React.ReactNode;
+};
+
+type RangeType = 'monthly' | 'quarterly' | 'yearly';
+type Quarter = 'Q1' | 'Q2' | 'Q3' | 'Q4';
+
+type InventoryCurrentRow = Record<string, any>;
+
+type InventoryCurrentApiResponse = {
+  success: boolean;
+  rows?: InventoryCurrentRow[];
+  categories?: Record<
+    string,
+    {
+      items?: any[];
+      product_count?: number;
+      sku_count?: number;
+    }
+  >;
+  month?: string;
+  year?: number;
+  country_key?: string;
+  inventory_age_summary?: {
+    total?: number;
+    columns?: Record<
+      string,
+      {
+        total?: number;
+        percentage_share?: number;
+      }
+    >;
+  };
+  message?: string;
+};
+
+type InventoryAgeSummaryApiResponse = {
+  success: boolean;
+  month?: string;
+  year?: number;
+  country_key?: string;
+  totals?: Record<string, number>;
+  age_summary?: {
+    month: string;
+    month_number?: number;
+    year: number;
+    age_bucket: string;
+    column: string;
+    units: number;
+  }[];
+  month_summary?: {
+    month: string;
+    month_number: number;
+    year: number;
+    source?: string;
+    totals: Record<string, number>;
+  }[];
+  message?: string;
+};
+
+type InventoryInsightsData = {
+  heatmapBuckets: AgeingBucket[];
+  heatmapData: AgeingRiskHeatmapRow[];
+  donutSku: string;
+  donutData: DonutChartItem[];
+  donutTotalUnits: number;
+  trendSelectedBucket: string;
+  trendData: AgeingTrendItem[];
+  trendLineColor: string;
+  trendAllSeriesData: AgeingTrendAllSeriesItem[];
+  trendBucketOptions: {
+    label: string;
+    value: string;
+    color: string;
+  }[];
+  actions: ActionCardItem[];
+  actionLogic: ActionLogicItem[];
+};
+
+const allMonths = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+];
+
+const quarterToMonths: Record<Quarter, string[]> = {
+  Q1: ['january', 'february', 'march'],
+  Q2: ['april', 'may', 'june'],
+  Q3: ['july', 'august', 'september'],
+  Q4: ['october', 'november', 'december'],
+};
+
+const INVENTORY_BUCKETS: AgeingBucket[] = [
+  { key: 'zeroToNinety', label: '0–90 Days', color: '#7B9A6D' },
+  { key: 'ninetyOneToOneEighty', label: '91–180 Days', color: '#FDD36F' },
+  { key: 'oneEightyOneToTwoSeventy', label: '181–270 Days', color: '#ED9F50' },
+  { key: 'twoSeventyOneToThreeSixtyFive', label: '271–365 Days', color: '#C49466' },
+  { key: 'threeSixtyFivePlus', label: '365+ Days', color: '#B75A5A' },
+];
+
+const AGEING_TREND_BUCKET_OPTIONS = [
+  {
+    label: '181–270 Days',
+    value: '181-270 days',
+    column: 'inv-age-181-to-270-days',
+    color: '#ED9F50',
+  },
+  {
+    label: '271–365 Days',
+    value: '271-365 days',
+    column: 'inv-age-271-to-365-days',
+    color: '#C49466',
+  },
+  {
+    label: '365+ Days',
+    value: '365+ days',
+    column: 'inv-age-365-plus-days',
+    color: '#B75A5A',
+  },
+];
+
+const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
+  {
+    key: 'healthy',
+    label: 'Healthy',
+    description: 'Stock covers 0–90 days',
+    color: '#7B9A6D',
+  },
+  {
+    key: 'high_alert',
+    label: 'High Alert',
+    description: 'Shipment Required',
+    color: '#B75A5A',
+  },
+  {
+    key: 'discount',
+    label: 'Discount',
+    description: 'Stock aged 91–180 days',
+    color: '#FDD36F',
+  },
+  {
+    key: 'liquidate',
+    label: 'Liquidate',
+    description: 'Stock older than 180 days',
+    color: '#ED9F50',
+  },
+  {
+    key: 'unfulfillable',
+    label: 'Unfulfillable',
+    description: 'Remove or dispose stock',
+    color: '#3A8EA4',
+  },
+  {
+    key: 'estimated_storage_cost',
+    label: 'Estimate Storage',
+    description: 'Monthly storage estimate',
+    color: '#C49466',
+  },
+];
+
+const toNum = (v: any) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const n = Number(String(v).replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+const getInventoryRowProductName = (row: InventoryCurrentRow) => {
+  const possibleKeys = [
+    'product_name',
+    'Product Name',
+    'product name',
+    'productName',
+    'product_name_x',
+    'product_name_y',
+    'parent_product_name',
+    'item_name',
+    'item-name',
+    'itemName',
+    'title',
+    'product',
+    'Product',
+    'asin_title',
+    'item-title',
+    'item_title',
+    'name',
+  ];
+
+  for (const key of possibleKeys) {
+    const value = row?.[key];
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== '' &&
+      String(value).trim().toLowerCase() !== 'nan' &&
+      String(value).trim().toLowerCase() !== 'none' &&
+      String(value).trim().toLowerCase() !== 'null'
+    ) {
+      return String(value).trim();
+    }
+  }
+
+  return getInventoryRowSku(row) || 'Unknown Product';
+};
+
+const getInventoryRowSku = (row: InventoryCurrentRow) =>
+  String(row?.sku || row?.SKU || row?.seller_sku || row?.fnsku || '').trim();
+
+const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
+  toNum(row?.[key]);
+
+const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+  const bucketTotal =
+    getInventoryAgeValue(row, 'inv-age-0-to-90-days') +
+    getInventoryAgeValue(row, 'inv-age-91-to-180-days') +
+    getInventoryAgeValue(row, 'inv-age-181-to-270-days') +
+    getInventoryAgeValue(row, 'inv-age-271-to-365-days') +
+    getInventoryAgeValue(row, 'inv-age-365-plus-days');
+
+  return bucketTotal || toNum(row?.available ?? row?.total_quantity);
+};
+
+const getShortMonthLabel = (monthName?: string) => {
+  const clean = String(monthName || '').trim();
+  return clean ? clean.slice(0, 3) : '-';
+};
+
+const buildInventoryInsightsFromResponses = (
+  inventoryResponses: InventoryCurrentApiResponse[],
+  ageSummaryResponses: InventoryAgeSummaryApiResponse[],
+  selectedTrendBucket: string
+): InventoryInsightsData => {
+  const rows = inventoryResponses.flatMap((res) => {
+    const directRows = Array.isArray(res?.rows) ? res.rows : [];
+
+    const categoryRows = res?.categories
+      ? Object.values(res.categories).flatMap((category) =>
+          Array.isArray(category?.items) ? category.items : []
+        )
+      : [];
+
+    return directRows.length ? directRows : categoryRows;
+  });
+
+  const productRows = rows.filter((row) => {
+  const productName = getInventoryRowProductName(row).trim().toLowerCase();
+  const sku = getInventoryRowSku(row).trim().toLowerCase();
+
+  return (
+    productName !== 'total' &&
+    sku !== 'total' &&
+    productName !== 'grand total' &&
+    sku !== 'grand total'
+  );
+});
+
+ const heatmapData: AgeingRiskHeatmapRow[] = productRows
+    .map((row) => {
+      const zeroToNinety = getInventoryAgeValue(row, 'inv-age-0-to-90-days');
+      const ninetyOneToOneEighty = getInventoryAgeValue(row, 'inv-age-91-to-180-days');
+      const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, 'inv-age-181-to-270-days');
+      const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, 'inv-age-271-to-365-days');
+      const threeSixtyFivePlus = getInventoryAgeValue(row, 'inv-age-365-plus-days');
+
+      const totalUnits =
+        zeroToNinety +
+        ninetyOneToOneEighty +
+        oneEightyOneToTwoSeventy +
+        twoSeventyOneToThreeSixtyFive +
+        threeSixtyFivePlus;
+
+      return {
+        productName: getInventoryRowProductName(row),
+        sku: getInventoryRowSku(row),
+        zeroToNinety,
+        ninetyOneToOneEighty,
+        oneEightyOneToTwoSeventy,
+        twoSeventyOneToThreeSixtyFive,
+        threeSixtyFivePlus,
+        totalUnits: totalUnits || getInventoryRowTotalUnits(row),
+      };
+    })
+    .filter((row) => row.totalUnits > 0);
+
+  const selectedDonutRow = heatmapData[0];
+
+  const donutData: DonutChartItem[] = selectedDonutRow
+  ? [
+      {
+        bucket: '0–90 Days',
+        units: toNum(selectedDonutRow.zeroToNinety),
+        color: '#7B9A6D',
+      },
+      {
+        bucket: '91–180 Days',
+        units: toNum(selectedDonutRow.ninetyOneToOneEighty),
+        color: '#FDD36F',
+      },
+      {
+        bucket: '181–270 Days',
+        units: toNum(selectedDonutRow.oneEightyOneToTwoSeventy),
+        color: '#ED9F50',
+      },
+      {
+        bucket: '271–365 Days',
+        units: toNum(selectedDonutRow.twoSeventyOneToThreeSixtyFive),
+        color: '#C49466',
+      },
+      {
+        bucket: '365+ Days',
+        units: toNum(selectedDonutRow.threeSixtyFivePlus),
+        color: '#B75A5A',
+      },
+    ].filter((item) => item.units > 0)
+  : [];
+
+  const selectedTrendOption =
+    AGEING_TREND_BUCKET_OPTIONS.find(
+      (option) => option.value === selectedTrendBucket
+    ) || AGEING_TREND_BUCKET_OPTIONS[2];
+
+  const monthSummaryMap = new Map<
+    string,
+    {
+      month: string;
+      month_number: number;
+      year: number;
+      value: number;
+    }
+  >();
+
+  ageSummaryResponses.forEach((res) => {
+    if (!res?.success) return;
+
+    if (Array.isArray(res.month_summary)) {
+      res.month_summary.forEach((item) => {
+        const key = `${item.year}-${item.month_number}`;
+        const previous = monthSummaryMap.get(key);
+
+        monthSummaryMap.set(key, {
+          month: item.month,
+          month_number: item.month_number,
+          year: item.year,
+          value:
+            (previous?.value || 0) +
+            toNum(item?.totals?.[selectedTrendOption.column]),
+        });
+      });
+    }
+
+    if (Array.isArray(res.age_summary)) {
+      res.age_summary.forEach((item) => {
+        if (item.column !== selectedTrendOption.column) return;
+
+        const monthNumber =
+          item.month_number ||
+          allMonths.indexOf(String(item.month || '').toLowerCase()) + 1;
+
+        const key = `${item.year}-${monthNumber}`;
+        const previous = monthSummaryMap.get(key);
+
+        monthSummaryMap.set(key, {
+          month: item.month,
+          month_number: monthNumber,
+          year: item.year,
+          value: (previous?.value || 0) + toNum(item.units),
+        });
+      });
+    }
+  });
+
+ const trendData: AgeingTrendItem[] = Array.from(monthSummaryMap.values())
+  .sort((a, b) => a.year - b.year || a.month_number - b.month_number)
+  .map((item) => ({
+    label: getShortMonthLabel(item.month),
+    value: toNum(item.value),
+  }));
+
+  const sortedMonthSummaryValues = Array.from(monthSummaryMap.values()).sort(
+  (a, b) => a.year - b.year || a.month_number - b.month_number
+);
+
+const trendAllSeriesData: AgeingTrendAllSeriesItem[] =
+  AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+    bucketValue: bucket.value,
+    bucketLabel: bucket.label,
+    color: bucket.color,
+    data: sortedMonthSummaryValues.map((item) => ({
+      label: getShortMonthLabel(item.month),
+      value: ageSummaryResponses.reduce((sum, res) => {
+        const monthSummary = res.month_summary?.find(
+          (m) =>
+            m.year === item.year &&
+            m.month_number === item.month_number
+        );
+
+        return sum + toNum(monthSummary?.totals?.[bucket.column]);
+      }, 0),
+    })),
+  }));
+
+  const totalHealthy = heatmapData.reduce(
+  (sum, row) => sum + toNum(row.zeroToNinety),
+  0
+);
+
+const totalHighAlert = heatmapData.reduce(
+  (sum, row) => sum + toNum(row.threeSixtyFivePlus),
+  0
+);
+
+const totalDiscount = heatmapData.reduce(
+  (sum, row) => sum + toNum(row.ninetyOneToOneEighty),
+  0
+);
+
+const totalLiquidate = heatmapData.reduce(
+  (sum, row) =>
+    sum +
+    toNum(row.oneEightyOneToTwoSeventy) +
+    toNum(row.twoSeventyOneToThreeSixtyFive) +
+    toNum(row.threeSixtyFivePlus),
+  0
+);
+
+ const actions: ActionCardItem[] = [
+  {
+    key: 'healthy',
+    label: 'Healthy',
+    count: totalHealthy,
+    displayValue: totalHealthy,
+    skuCount: heatmapData.filter((row) => toNum(row.zeroToNinety) > 0).length,
+    unitCount: totalHealthy,
+    description: 'Stock covers 0–90 days',
+    color: '#7B9A6D',
+    backgroundColor: '#ffffff',
+  },
+  {
+    key: 'high_alert',
+    label: 'High Alert',
+    count: totalHighAlert,
+    displayValue: totalHighAlert,
+    skuCount: heatmapData.filter((row) => toNum(row.threeSixtyFivePlus) > 0).length,
+    unitCount: totalHighAlert,
+    description: 'Shipment Required',
+    color: '#B75A5A',
+    backgroundColor: '#ffffff',
+  },
+  {
+    key: 'discount',
+    label: 'Discount',
+    count: totalDiscount,
+    displayValue: totalDiscount,
+    skuCount: heatmapData.filter((row) => toNum(row.ninetyOneToOneEighty) > 0).length,
+    unitCount: totalDiscount,
+    description: 'Stock aged 91–180 days',
+    color: '#FDD36F',
+    backgroundColor: '#ffffff',
+  },
+  {
+    key: 'liquidate',
+    label: 'Liquidate',
+    count: totalLiquidate,
+    displayValue: totalLiquidate,
+    skuCount: heatmapData.filter(
+      (row) =>
+        toNum(row.oneEightyOneToTwoSeventy) > 0 ||
+        toNum(row.twoSeventyOneToThreeSixtyFive) > 0 ||
+        toNum(row.threeSixtyFivePlus) > 0
+    ).length,
+    unitCount: totalLiquidate,
+    description: 'Stock older than 180 days',
+    color: '#ED9F50',
+    backgroundColor: '#ffffff',
+  },
+];
+
+  return {
+  heatmapBuckets: INVENTORY_BUCKETS,
+  heatmapData,
+  donutSku: selectedDonutRow?.sku || '',
+  donutData,
+  donutTotalUnits: selectedDonutRow?.totalUnits || 0,
+    trendSelectedBucket: selectedTrendOption.value,
+    trendData,
+    trendLineColor: selectedTrendOption.color,
+    trendAllSeriesData,
+    trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+      label: bucket.label,
+      value: bucket.value,
+      color: bucket.color,
+    })),
+    actions,
+    actionLogic: INVENTORY_ACTION_LOGIC,
+  };
 };
 
 const getCurrencySymbol = (country: string | undefined): string => {
@@ -319,6 +843,8 @@ const DUMMY_WAREHOUSE_DATA = [
   },
 ];
 
+
+
 export default function InputCostPage({ params }: Params) {
   const { countryName: countryNameRaw, month: monthRaw, year: yearRaw } = use(params);
   const countryName = decodeURIComponent(countryNameRaw ?? '').toLowerCase();
@@ -363,8 +889,77 @@ export default function InputCostPage({ params }: Params) {
     monthParam?.toLowerCase() === 'na' ||
     yearParam?.toLowerCase() === 'na';
 
-  type InputCostTab = 'sku-info' | 'extra';
-  const [activeTab, setActiveTab] = useState<InputCostTab>('sku-info');
+  type InputCostTab = 'inventory-insights'|'sku-info' | 'extra';
+  const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
+
+  const getDefaultMonth = () => {
+  const clean = String(monthParam || '').toLowerCase();
+  return allMonths.includes(clean) ? clean : allMonths[new Date().getMonth()];
+};
+
+const getDefaultYear = () => {
+  const parsed = Number(yearParam);
+  return Number.isFinite(parsed) && parsed > 2000
+    ? String(parsed)
+    : String(new Date().getFullYear());
+};
+
+const [range, setRange] = useState<RangeType>('monthly');
+const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth());
+const [selectedQuarter, setSelectedQuarter] = useState<Quarter | ''>('');
+const [selectedYear, setSelectedYear] = useState<string>(getDefaultYear());
+
+const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
+  useState<string>('365+ days');
+
+const [inventoryInsightsData, setInventoryInsightsData] =
+  useState<InventoryInsightsData | null>(null);
+
+const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(false);
+
+const [inventoryInsightsError, setInventoryInsightsError] =
+  useState<string | null>(null);
+
+const [inventoryRawResponses, setInventoryRawResponses] = useState<{
+  inventory: InventoryCurrentApiResponse[];
+  ageSummary: InventoryAgeSummaryApiResponse[];
+} | null>(null);
+
+const yearOptions = useMemo(() => {
+  const currentYear = new Date().getFullYear();
+  return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
+}, []);
+
+const handleRangeChange = (nextRange: RangeType) => {
+  setRange(nextRange);
+
+  if (nextRange === 'monthly') {
+    setSelectedQuarter('');
+    if (!selectedMonth) setSelectedMonth(getDefaultMonth());
+  }
+
+  if (nextRange === 'quarterly') {
+    setSelectedMonth('');
+    if (!selectedQuarter) setSelectedQuarter('Q1');
+  }
+
+  if (nextRange === 'yearly') {
+    setSelectedMonth('');
+    setSelectedQuarter('');
+  }
+};
+
+const handleMonthChange = (nextMonth: string) => {
+  setSelectedMonth(nextMonth);
+};
+
+const handleQuarterChange = (nextQuarter: string) => {
+  setSelectedQuarter(nextQuarter as Quarter);
+};
+
+const handleYearChange = (nextYear: string) => {
+  setSelectedYear(nextYear);
+};
 
   const isEmptyCellValue = (value: any) => {
     if (value === null || value === undefined) return true;
@@ -806,6 +1401,98 @@ export default function InputCostPage({ params }: Params) {
     return [...preferred, ...remaining];
   };
 
+  const fetchInventoryCurrentByPeriod = async (
+  signal?: AbortSignal
+): Promise<InventoryCurrentApiResponse> => {
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+
+  if (!token) throw new Error('Missing token');
+
+  const url = new URL(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
+  );
+
+  url.searchParams.set('country_key', String(countryName).toLowerCase());
+  url.searchParams.set('year', String(selectedYear));
+
+  if (range === 'monthly') {
+    url.searchParams.set('range_type', 'monthly');
+    url.searchParams.set('month_name', String(selectedMonth).toLowerCase());
+  }
+
+  if (range === 'quarterly') {
+    url.searchParams.set('range_type', 'quarter_months');
+    url.searchParams.set('quarter', String(selectedQuarter));
+  }
+
+  if (range === 'yearly') {
+    url.searchParams.set('range_type', 'yearly');
+  }
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      json?.message ||
+        json?.error ||
+        `Failed to fetch inventory data for ${range}`
+    );
+  }
+
+  return json;
+};
+
+const fetchSingleMonthInventoryAgeSummary = async (
+  monthName: string,
+  yearValue: string,
+  countryValue: string,
+  signal?: AbortSignal
+): Promise<InventoryAgeSummaryApiResponse> => {
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+
+  if (!token) throw new Error('Missing token');
+
+  const url = new URL(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current_age_summary`
+  );
+
+  url.searchParams.set('country_key', String(countryValue).toLowerCase());
+  url.searchParams.set('month_name', String(monthName).toLowerCase());
+  url.searchParams.set('year', String(yearValue));
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+    signal,
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      json?.message ||
+        json?.error ||
+        `Failed to fetch inventory age summary for ${monthName} ${yearValue}`
+    );
+  }
+
+  return json;
+};
+
   const fetchWarehouseData = async () => {
     if (isNA) {
       setWarehouseData(DUMMY_WAREHOUSE_DATA);
@@ -1041,6 +1728,115 @@ export default function InputCostPage({ params }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, countryName, skuData]);
 
+  useEffect(() => {
+  if (activeTab !== 'inventory-insights') return;
+
+  if (isNA) {
+    setInventoryInsightsData(null);
+    setInventoryRawResponses(null);
+    setInventoryInsightsError(null);
+    return;
+  }
+
+  const ready =
+    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+    (range === 'yearly' && !!selectedYear);
+
+  if (!ready || !countryName) {
+    setInventoryInsightsData(null);
+    setInventoryRawResponses(null);
+    setInventoryInsightsError(null);
+    return;
+  }
+
+  const ac = new AbortController();
+
+  const fetchInventoryInsights = async () => {
+    try {
+      setInventoryInsightsLoading(true);
+      setInventoryInsightsError(null);
+
+      const [inventoryResult, ageSummaryResults] = await Promise.all([
+        fetchInventoryCurrentByPeriod(ac.signal),
+        Promise.allSettled(
+          allMonths.map((monthName) =>
+            fetchSingleMonthInventoryAgeSummary(
+              monthName,
+              selectedYear,
+              countryName,
+              ac.signal
+            )
+          )
+        ),
+      ]);
+
+      const fulfilledInventory: InventoryCurrentApiResponse[] =
+        inventoryResult?.success ? [inventoryResult] : [];
+
+      const fulfilledAgeSummary = ageSummaryResults
+        .filter(
+          (
+            result
+          ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
+            result.status === 'fulfilled'
+        )
+        .map((result) => result.value);
+
+      if (!fulfilledInventory.length) {
+        throw new Error('No inventory data found');
+      }
+
+      setInventoryRawResponses({
+        inventory: fulfilledInventory,
+        ageSummary: fulfilledAgeSummary,
+      });
+
+      setInventoryInsightsData(
+        buildInventoryInsightsFromResponses(
+          fulfilledInventory,
+          fulfilledAgeSummary,
+          selectedAgeingTrendBucket
+        )
+      );
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+
+      setInventoryInsightsData(null);
+      setInventoryRawResponses(null);
+      setInventoryInsightsError(
+        e?.message || 'Failed to load inventory insights'
+      );
+    } finally {
+      setInventoryInsightsLoading(false);
+    }
+  };
+
+  fetchInventoryInsights();
+
+  return () => ac.abort();
+}, [
+  activeTab,
+  isNA,
+  range,
+  selectedMonth,
+  selectedQuarter,
+  selectedYear,
+  countryName,
+]);
+
+useEffect(() => {
+  if (!inventoryRawResponses) return;
+
+  setInventoryInsightsData(
+    buildInventoryInsightsFromResponses(
+      inventoryRawResponses.inventory,
+      inventoryRawResponses.ageSummary,
+      selectedAgeingTrendBucket
+    )
+  );
+}, [selectedAgeingTrendBucket, inventoryRawResponses]);
+
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
     const currentPrice =
@@ -1208,12 +2004,14 @@ export default function InputCostPage({ params }: Params) {
   }, [visibleColumns, skuData, isEditing, editedPrices]);
 
   const tabOptions = useMemo(
-    () => [
-      { value: 'sku-info' as const, label: 'SKU Information' },
-      { value: 'extra' as const, label: 'Upload Warehouse Data' },
-    ],
-    []
-  );
+  () => [
+    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+    { value: 'sku-info' as const, label: 'SKU Information' },
+    { value: 'extra' as const, label: 'Upload Warehouse Data' },
+    
+  ],
+  []
+);
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -1449,44 +2247,56 @@ export default function InputCostPage({ params }: Params) {
 
         <div className="flex flex-wrap items-center gap-3 md:justify-end">
           {activeTab === 'sku-info' ? (
-            <>
-              {isEditing && (
-                <button
-                  className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                  onClick={saveChanges}
-                >
-                  Save Changes
-                </button>
-              )}
+  <>
+    {isEditing && (
+      <button
+        className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+        onClick={saveChanges}
+      >
+        Save Changes
+      </button>
+    )}
 
-              <button
-                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={() => setShowMultiuseCountry(true)}
-                disabled={isNA}
-              >
-                Upload File
-              </button>
+    <button
+      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+      onClick={() => setShowMultiuseCountry(true)}
+      disabled={isNA}
+    >
+      Upload File
+    </button>
 
-              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
-            </>
-          ) : (
-            <>
-              <button
-                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={() => setShowWarehouseUpload(true)}
-                disabled={isNA}
-              >
-                Upload File
-              </button>
+    <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
+  </>
+) : activeTab === 'extra' ? (
+  <>
+    <button
+      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+      onClick={() => setShowWarehouseUpload(true)}
+      disabled={isNA}
+    >
+      Upload File
+    </button>
 
-              {/* ✅ ADD THIS */}
-              <DownloadIconButton
-                onClick={handleWarehouseDownload}
-                size="md"
-                disabled={isNA}
-              />
-            </>
-          )}
+    <DownloadIconButton
+      onClick={handleWarehouseDownload}
+      size="md"
+      disabled={isNA}
+    />
+  </>
+) : (
+  <PeriodFiltersTable
+    range={range}
+    selectedMonth={selectedMonth}
+    selectedQuarter={selectedQuarter}
+    selectedYear={selectedYear}
+    yearOptions={yearOptions}
+    onRangeChange={handleRangeChange}
+    onMonthChange={handleMonthChange}
+    onQuarterChange={handleQuarterChange}
+    onYearChange={handleYearChange}
+    allowedRanges={['monthly', 'quarterly', 'yearly']}
+  />
+)}
         </div>
       </div>
 
@@ -1498,6 +2308,47 @@ export default function InputCostPage({ params }: Params) {
         onAction={handleConnectAmazonPreview}
       >
         <>
+
+        {activeTab === 'inventory-insights' && (
+  <div className="mt-5">
+    {inventoryInsightsLoading ? (
+      <div className="rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
+        <Loader transparent />
+      </div>
+    ) : inventoryInsightsError ? (
+      <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⚠️</span>
+          <p className="font-semibold text-red-700">
+            Unable to Load Inventory Insights
+          </p>
+        </div>
+
+        <p className="text-sm text-red-600">{inventoryInsightsError}</p>
+      </div>
+    ) : inventoryInsightsData ? (
+      <InventoryInsightsSection
+        heatmapBuckets={inventoryInsightsData.heatmapBuckets}
+        heatmapData={inventoryInsightsData.heatmapData}
+        donutData={inventoryInsightsData.donutData}
+        donutTotalUnits={inventoryInsightsData.donutTotalUnits}
+        trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+        trendData={inventoryInsightsData.trendData}
+        trendLineColor={inventoryInsightsData.trendLineColor}
+        trendBucketOptions={inventoryInsightsData.trendBucketOptions}
+        trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
+        onTrendBucketChange={setSelectedAgeingTrendBucket}
+        actions={inventoryInsightsData.actions}
+        actionLogic={inventoryInsightsData.actionLogic}
+        onHeatmapProductClick={() => {}}
+      />
+    ) : (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        No inventory insights found for the selected period.
+      </div>
+    )}
+  </div>
+)}
           {activeTab === 'sku-info' && (
             <>
               {loading ? (

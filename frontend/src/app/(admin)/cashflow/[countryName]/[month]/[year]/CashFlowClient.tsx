@@ -1115,10 +1115,10 @@ md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
 
       {effectiveData && (
         <div className="flex flex-col">
-          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" />
+          <div className=" flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" />
 
           {effectiveData?.summary && (
-            <div className="mt-4 rounded-xl overflow-hidden">
+            <div className=" rounded-xl overflow-hidden">
               <CashFlowSankey
                 data={effectiveData.summary}
                 previous_summary={isPreviewMode ? undefined : data?.previous_summary}
