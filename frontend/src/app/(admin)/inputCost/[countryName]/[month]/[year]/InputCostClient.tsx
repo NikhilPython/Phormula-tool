@@ -238,6 +238,58 @@ const allMonths = [
   'december',
 ];
 
+const getPreviousCompletedPeriod = () => {
+  const now = new Date();
+  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  return {
+    month: allMonths[previousMonthDate.getMonth()],
+    year: String(previousMonthDate.getFullYear()),
+    monthIndex: previousMonthDate.getMonth(),
+  };
+};
+
+const isCurrentOrFutureMonth = (monthName: string, yearValue: string) => {
+  const monthIndex = allMonths.indexOf(String(monthName || '').toLowerCase());
+  const yearNumber = Number(yearValue);
+
+  if (monthIndex < 0 || !Number.isFinite(yearNumber)) return false;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonthIndex = now.getMonth();
+
+  return (
+    yearNumber > currentYear ||
+    (yearNumber === currentYear && monthIndex >= currentMonthIndex)
+  );
+};
+
+const getSafeInventoryMonth = (monthName: string, yearValue: string) => {
+  const previousCompleted = getPreviousCompletedPeriod();
+
+  if (!monthName || !allMonths.includes(String(monthName).toLowerCase())) {
+    return previousCompleted.month;
+  }
+
+  if (isCurrentOrFutureMonth(monthName, yearValue)) {
+    return previousCompleted.month;
+  }
+
+  return String(monthName).toLowerCase();
+};
+
+const getSafeInventoryYear = (yearValue: string) => {
+  const parsed = Number(yearValue);
+  const previousCompleted = getPreviousCompletedPeriod();
+
+  if (!Number.isFinite(parsed) || parsed > new Date().getFullYear()) {
+    return previousCompleted.year;
+  }
+
+  return String(yearValue);
+};
+
 const quarterToMonths: Record<Quarter, string[]> = {
   Q1: ['january', 'february', 'march'],
   Q2: ['april', 'may', 'june'],
@@ -320,6 +372,43 @@ const toNum = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const normalizeInventoryKey = (key: string) =>
+  String(key || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[%()]/g, '')
+    .replace(/[-\s]+/g, '_')
+    .replace(/__+/g, '_');
+
+const pickInventoryNumber = (
+  row: InventoryCurrentRow,
+  keys: string[]
+): number => {
+  if (!row) return 0;
+
+  for (const key of keys) {
+    const directValue = row?.[key];
+
+    if (directValue !== null && directValue !== undefined && directValue !== '') {
+      const value = toNum(directValue);
+      if (value !== 0) return value;
+    }
+  }
+
+  const normalizedTargetKeys = keys.map(normalizeInventoryKey);
+
+  for (const [rowKey, rowValue] of Object.entries(row)) {
+    const normalizedRowKey = normalizeInventoryKey(rowKey);
+
+    if (normalizedTargetKeys.includes(normalizedRowKey)) {
+      const value = toNum(rowValue);
+      if (value !== 0) return value;
+    }
+  }
+
+  return 0;
+};
+
 const getInventoryRowProductName = (row: InventoryCurrentRow) => {
   const possibleKeys = [
     'product_name',
@@ -376,6 +465,65 @@ const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
   return bucketTotal || toNum(row?.available ?? row?.total_quantity);
 };
 
+const getInventoryRowUnfulfillableUnits = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    'unfulfillableUnits',
+    'unfulfillable_units',
+    'unfulfillable-quantity',
+    'unfulfillable_quantity',
+    'Unfulfillable Units',
+    'unfulfillable units',
+    'unsellableUnits',
+    'unsellable_units',
+    'unsellable-quantity',
+    'unsellable_quantity',
+    'afn_unsellable_quantity',
+    'afn-unsellable-quantity',
+    'afn-unsellable-quantity',
+  ]);
+};
+
+const getInventoryRowCoverageRatio = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    'coverageRatio',
+    'coverage_ratio',
+    'coverage_ratio_in_months',
+    'coverage_ratio_months',
+    'Coverage Ratio (in Months)',
+    'Coverage Ratio (In Months)',
+    'coverage ratio in months',
+    'coverage ratio',
+    'months_of_cover',
+    'month_cover',
+    'stock_cover_months',
+    'cover_months',
+  ]);
+};
+
+const getInventoryRowEstimatedStorageCost = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    // actual backend key used by dropdown/dashboard
+    'estimated-storage-cost-next-month',
+    'estimated_storage_cost_next_month',
+    'estimatedStorageCostNextMonth',
+    'Estimated Storage Cost Next Month',
+    'estimated storage cost next month',
+
+    // existing fallback keys
+    'estimatedStorageCost',
+    'estimated_storage_cost',
+    'estimated-storage-cost',
+    'Estimated Storage Cost',
+    'estimated storage cost',
+    'estimate_storage',
+    'estimated_storage',
+    'monthly_storage_cost',
+    'monthly_storage_fee',
+    'storage_cost',
+    'storage_fee',
+  ]);
+};
+
 const getShortMonthLabel = (monthName?: string) => {
   const clean = String(monthName || '').trim();
   return clean ? clean.slice(0, 3) : '-';
@@ -384,33 +532,34 @@ const getShortMonthLabel = (monthName?: string) => {
 const buildInventoryInsightsFromResponses = (
   inventoryResponses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[],
-  selectedTrendBucket: string
+  selectedTrendBucket: string,
+  countryName: string
 ): InventoryInsightsData => {
   const rows = inventoryResponses.flatMap((res) => {
     const directRows = Array.isArray(res?.rows) ? res.rows : [];
 
     const categoryRows = res?.categories
       ? Object.values(res.categories).flatMap((category) =>
-          Array.isArray(category?.items) ? category.items : []
-        )
+        Array.isArray(category?.items) ? category.items : []
+      )
       : [];
 
     return directRows.length ? directRows : categoryRows;
   });
 
   const productRows = rows.filter((row) => {
-  const productName = getInventoryRowProductName(row).trim().toLowerCase();
-  const sku = getInventoryRowSku(row).trim().toLowerCase();
+    const productName = getInventoryRowProductName(row).trim().toLowerCase();
+    const sku = getInventoryRowSku(row).trim().toLowerCase();
 
-  return (
-    productName !== 'total' &&
-    sku !== 'total' &&
-    productName !== 'grand total' &&
-    sku !== 'grand total'
-  );
-});
+    return (
+      productName !== 'total' &&
+      sku !== 'total' &&
+      productName !== 'grand total' &&
+      sku !== 'grand total'
+    );
+  });
 
- const heatmapData: AgeingRiskHeatmapRow[] = productRows
+  const heatmapData: AgeingRiskHeatmapRow[] = productRows
     .map((row) => {
       const zeroToNinety = getInventoryAgeValue(row, 'inv-age-0-to-90-days');
       const ninetyOneToOneEighty = getInventoryAgeValue(row, 'inv-age-91-to-180-days');
@@ -434,41 +583,71 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
         totalUnits: totalUnits || getInventoryRowTotalUnits(row),
+
+        unsellableUnits: getInventoryRowUnfulfillableUnits(row),
+        coverageRatio: getInventoryRowCoverageRatio(row),
+        estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
       };
     })
-    .filter((row) => row.totalUnits > 0);
+    .filter(
+  (row) =>
+    toNum(row.totalUnits) > 0 ||
+    toNum((row as any).unsellableUnits) > 0 ||
+    toNum((row as any).coverageRatio) > 0 ||
+    toNum((row as any).estimatedStorageCost) > 0
+);
 
-  const selectedDonutRow = heatmapData[0];
+  const overallAgeing = heatmapData.reduce(
+    (acc, row) => {
+      acc.zeroToNinety += toNum(row.zeroToNinety);
+      acc.ninetyOneToOneEighty += toNum(row.ninetyOneToOneEighty);
+      acc.oneEightyOneToTwoSeventy += toNum(row.oneEightyOneToTwoSeventy);
+      acc.twoSeventyOneToThreeSixtyFive += toNum(row.twoSeventyOneToThreeSixtyFive);
+      acc.threeSixtyFivePlus += toNum(row.threeSixtyFivePlus);
 
-  const donutData: DonutChartItem[] = selectedDonutRow
-  ? [
-      {
-        bucket: '0–90 Days',
-        units: toNum(selectedDonutRow.zeroToNinety),
-        color: '#7B9A6D',
-      },
-      {
-        bucket: '91–180 Days',
-        units: toNum(selectedDonutRow.ninetyOneToOneEighty),
-        color: '#FDD36F',
-      },
-      {
-        bucket: '181–270 Days',
-        units: toNum(selectedDonutRow.oneEightyOneToTwoSeventy),
-        color: '#ED9F50',
-      },
-      {
-        bucket: '271–365 Days',
-        units: toNum(selectedDonutRow.twoSeventyOneToThreeSixtyFive),
-        color: '#C49466',
-      },
-      {
-        bucket: '365+ Days',
-        units: toNum(selectedDonutRow.threeSixtyFivePlus),
-        color: '#B75A5A',
-      },
-    ].filter((item) => item.units > 0)
-  : [];
+      return acc;
+    },
+    {
+      zeroToNinety: 0,
+      ninetyOneToOneEighty: 0,
+      oneEightyOneToTwoSeventy: 0,
+      twoSeventyOneToThreeSixtyFive: 0,
+      threeSixtyFivePlus: 0,
+    }
+  );
+
+  const donutData: DonutChartItem[] = [
+    {
+      bucket: '0–90 Days',
+      units: overallAgeing.zeroToNinety,
+      color: '#7B9A6D',
+    },
+    {
+      bucket: '91–180 Days',
+      units: overallAgeing.ninetyOneToOneEighty,
+      color: '#FDD36F',
+    },
+    {
+      bucket: '181–270 Days',
+      units: overallAgeing.oneEightyOneToTwoSeventy,
+      color: '#ED9F50',
+    },
+    {
+      bucket: '271–365 Days',
+      units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+      color: '#C49466',
+    },
+    {
+      bucket: '365+ Days',
+      units: overallAgeing.threeSixtyFivePlus,
+      color: '#B75A5A',
+    },
+  ].filter((item) => item.units > 0);
+
+  const donutTotalUnits = donutData.reduce(
+    (sum, item) => sum + toNum(item.units),
+    0
+  );
 
   const selectedTrendOption =
     AGEING_TREND_BUCKET_OPTIONS.find(
@@ -525,118 +704,183 @@ const buildInventoryInsightsFromResponses = (
     }
   });
 
- const trendData: AgeingTrendItem[] = Array.from(monthSummaryMap.values())
-  .sort((a, b) => a.year - b.year || a.month_number - b.month_number)
-  .map((item) => ({
-    label: getShortMonthLabel(item.month),
-    value: toNum(item.value),
-  }));
+  const trendData: AgeingTrendItem[] = Array.from(monthSummaryMap.values())
+    .sort((a, b) => a.year - b.year || a.month_number - b.month_number)
+    .map((item) => ({
+      label: getShortMonthLabel(item.month),
+      value: toNum(item.value),
+    }));
 
   const sortedMonthSummaryValues = Array.from(monthSummaryMap.values()).sort(
-  (a, b) => a.year - b.year || a.month_number - b.month_number
-);
+    (a, b) => a.year - b.year || a.month_number - b.month_number
+  );
 
-const trendAllSeriesData: AgeingTrendAllSeriesItem[] =
-  AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
-    bucketValue: bucket.value,
-    bucketLabel: bucket.label,
-    color: bucket.color,
-    data: sortedMonthSummaryValues.map((item) => ({
-      label: getShortMonthLabel(item.month),
-      value: ageSummaryResponses.reduce((sum, res) => {
-        const monthSummary = res.month_summary?.find(
-          (m) =>
-            m.year === item.year &&
-            m.month_number === item.month_number
-        );
+  const trendAllSeriesData: AgeingTrendAllSeriesItem[] =
+    AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+      bucketValue: bucket.value,
+      bucketLabel: bucket.label,
+      color: bucket.color,
+      data: sortedMonthSummaryValues.map((item) => ({
+        label: getShortMonthLabel(item.month),
+        value: ageSummaryResponses.reduce((sum, res) => {
+          const monthSummary = res.month_summary?.find(
+            (m) =>
+              m.year === item.year &&
+              m.month_number === item.month_number
+          );
 
-        return sum + toNum(monthSummary?.totals?.[bucket.column]);
-      }, 0),
-    })),
-  }));
+          return sum + toNum(monthSummary?.totals?.[bucket.column]);
+        }, 0),
+      })),
+    }));
 
   const totalHealthy = heatmapData.reduce(
-  (sum, row) => sum + toNum(row.zeroToNinety),
-  0
-);
+    (sum, row) => sum + toNum(row.zeroToNinety),
+    0
+  );
 
-const totalHighAlert = heatmapData.reduce(
-  (sum, row) => sum + toNum(row.threeSixtyFivePlus),
-  0
-);
+  const totalHighAlert = heatmapData.reduce(
+    (sum, row) => sum + toNum(row.threeSixtyFivePlus),
+    0
+  );
 
-const totalDiscount = heatmapData.reduce(
-  (sum, row) => sum + toNum(row.ninetyOneToOneEighty),
-  0
-);
+  const totalDiscount = heatmapData.reduce(
+    (sum, row) => sum + toNum(row.ninetyOneToOneEighty),
+    0
+  );
 
-const totalLiquidate = heatmapData.reduce(
-  (sum, row) =>
-    sum +
-    toNum(row.oneEightyOneToTwoSeventy) +
-    toNum(row.twoSeventyOneToThreeSixtyFive) +
-    toNum(row.threeSixtyFivePlus),
-  0
-);
+  const totalLiquidate = heatmapData.reduce(
+    (sum, row) =>
+      sum +
+      toNum(row.oneEightyOneToTwoSeventy) +
+      toNum(row.twoSeventyOneToThreeSixtyFive) +
+      toNum(row.threeSixtyFivePlus),
+    0
+  );
 
- const actions: ActionCardItem[] = [
-  {
-    key: 'healthy',
-    label: 'Healthy',
-    count: totalHealthy,
-    displayValue: totalHealthy,
-    skuCount: heatmapData.filter((row) => toNum(row.zeroToNinety) > 0).length,
-    unitCount: totalHealthy,
-    description: 'Stock covers 0–90 days',
-    color: '#7B9A6D',
-    backgroundColor: '#ffffff',
-  },
-  {
-    key: 'high_alert',
-    label: 'High Alert',
-    count: totalHighAlert,
-    displayValue: totalHighAlert,
-    skuCount: heatmapData.filter((row) => toNum(row.threeSixtyFivePlus) > 0).length,
-    unitCount: totalHighAlert,
-    description: 'Shipment Required',
-    color: '#B75A5A',
-    backgroundColor: '#ffffff',
-  },
-  {
-    key: 'discount',
-    label: 'Discount',
-    count: totalDiscount,
-    displayValue: totalDiscount,
-    skuCount: heatmapData.filter((row) => toNum(row.ninetyOneToOneEighty) > 0).length,
-    unitCount: totalDiscount,
-    description: 'Stock aged 91–180 days',
-    color: '#FDD36F',
-    backgroundColor: '#ffffff',
-  },
-  {
-    key: 'liquidate',
-    label: 'Liquidate',
-    count: totalLiquidate,
-    displayValue: totalLiquidate,
-    skuCount: heatmapData.filter(
-      (row) =>
-        toNum(row.oneEightyOneToTwoSeventy) > 0 ||
-        toNum(row.twoSeventyOneToThreeSixtyFive) > 0 ||
-        toNum(row.threeSixtyFivePlus) > 0
-    ).length,
-    unitCount: totalLiquidate,
-    description: 'Stock older than 180 days',
-    color: '#ED9F50',
-    backgroundColor: '#ffffff',
-  },
-];
+  const totalUnfulfillable = heatmapData.reduce(
+    (sum, row) => sum + toNum((row as any).unsellableUnits),
+    0
+  );
+
+  const getEstimatedStorageCostFromCategories = () => {
+  return inventoryResponses.reduce((sum, res) => {
+    const category = (res?.categories as any)?.estimated_storage_cost;
+
+    return (
+      sum +
+      toNum(
+        category?.value ??
+        category?.total ??
+        category?.total_value ??
+        category?.estimated_storage_cost ??
+        category?.storage_cost ??
+        category?.next_month_storage_cost
+      )
+    );
+  }, 0);
+};
+
+ const totalEstimatedStorageCostFromCategories =
+  getEstimatedStorageCostFromCategories();
+
+const totalEstimatedStorageCost =
+  totalEstimatedStorageCostFromCategories ||
+  heatmapData.reduce(
+    (sum, row) => sum + toNum((row as any).estimatedStorageCost),
+    0
+  );
+
+  const actions: ActionCardItem[] = [
+    {
+      key: 'healthy',
+      label: 'Healthy',
+      count: totalHealthy,
+      displayValue: totalHealthy,
+      skuCount: heatmapData.filter((row) => toNum(row.zeroToNinety) > 0).length,
+      unitCount: totalHealthy,
+      description: 'Stock covers 0–90 days',
+      color: '#7B9A6D',
+      backgroundColor: '#ffffff',
+    },
+    {
+      key: 'high_alert',
+      label: 'High Alert',
+      count: totalHighAlert,
+      displayValue: totalHighAlert,
+      skuCount: heatmapData.filter((row) => toNum(row.threeSixtyFivePlus) > 0).length,
+      unitCount: totalHighAlert,
+      description: 'Shipment Required',
+      color: '#B75A5A',
+      backgroundColor: '#ffffff',
+    },
+    {
+      key: 'discount',
+      label: 'Discount',
+      count: totalDiscount,
+      displayValue: totalDiscount,
+      skuCount: heatmapData.filter((row) => toNum(row.ninetyOneToOneEighty) > 0).length,
+      unitCount: totalDiscount,
+      description: 'Stock aged 91–180 days',
+      color: '#FDD36F',
+      backgroundColor: '#ffffff',
+    },
+    {
+      key: 'liquidate',
+      label: 'Liquidate',
+      count: totalLiquidate,
+      displayValue: totalLiquidate,
+      skuCount: heatmapData.filter(
+        (row) =>
+          toNum(row.oneEightyOneToTwoSeventy) > 0 ||
+          toNum(row.twoSeventyOneToThreeSixtyFive) > 0 ||
+          toNum(row.threeSixtyFivePlus) > 0
+      ).length,
+      unitCount: totalLiquidate,
+      description: 'Stock older than 180 days',
+      color: '#ED9F50',
+      backgroundColor: '#ffffff',
+    },
+    {
+      key: 'unfulfillable',
+      label: 'Unfulfillable',
+      count: totalUnfulfillable,
+      displayValue: totalUnfulfillable,
+      skuCount: heatmapData.filter(
+        (row) => toNum((row as any).unsellableUnits) > 0
+      ).length,
+      unitCount: totalUnfulfillable,
+      description: 'Remove or dispose stock',
+      color: '#3A8EA4',
+      backgroundColor: '#ffffff',
+    },
+   {
+  key: 'estimated_storage_cost',
+  label: 'Estimated Storage Cost',
+  count: totalEstimatedStorageCost,
+  displayValue: `${getCurrencySymbol(getCurrencyForCountry(countryName))}${totalEstimatedStorageCost.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`,
+  skuCount: heatmapData.filter(
+    (row) => toNum((row as any).estimatedStorageCost) > 0
+  ).length,
+  unitCount: heatmapData.reduce(
+    (sum, row) => sum + toNum(row.totalUnits),
+    0
+  ),
+  description: 'Monthly storage estimate',
+  color: '#C49466',
+  backgroundColor: '#ffffff',
+},
+  ];
 
   return {
-  heatmapBuckets: INVENTORY_BUCKETS,
-  heatmapData,
-  donutSku: selectedDonutRow?.sku || '',
-  donutData,
-  donutTotalUnits: selectedDonutRow?.totalUnits || 0,
+    heatmapBuckets: INVENTORY_BUCKETS,
+    heatmapData,
+    donutSku: '',
+    donutData,
+    donutTotalUnits,
     trendSelectedBucket: selectedTrendOption.value,
     trendData,
     trendLineColor: selectedTrendOption.color,
@@ -889,77 +1133,109 @@ export default function InputCostPage({ params }: Params) {
     monthParam?.toLowerCase() === 'na' ||
     yearParam?.toLowerCase() === 'na';
 
-  type InputCostTab = 'inventory-insights'|'sku-info' | 'extra';
+  type InputCostTab = 'inventory-insights' | 'sku-info' | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
 
   const getDefaultMonth = () => {
-  const clean = String(monthParam || '').toLowerCase();
-  return allMonths.includes(clean) ? clean : allMonths[new Date().getMonth()];
-};
+    const clean = String(monthParam || '').toLowerCase();
+    const safeYear = getDefaultYear();
 
-const getDefaultYear = () => {
-  const parsed = Number(yearParam);
-  return Number.isFinite(parsed) && parsed > 2000
-    ? String(parsed)
-    : String(new Date().getFullYear());
-};
+    return getSafeInventoryMonth(clean, safeYear);
+  };
 
-const [range, setRange] = useState<RangeType>('monthly');
-const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth());
-const [selectedQuarter, setSelectedQuarter] = useState<Quarter | ''>('');
-const [selectedYear, setSelectedYear] = useState<string>(getDefaultYear());
+  const getDefaultYear = () => {
+    const parsed = Number(yearParam);
+    const previousCompleted = getPreviousCompletedPeriod();
 
-const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
-  useState<string>('365+ days');
+    if (!Number.isFinite(parsed) || parsed <= 2000) {
+      return previousCompleted.year;
+    }
 
-const [inventoryInsightsData, setInventoryInsightsData] =
-  useState<InventoryInsightsData | null>(null);
+    if (parsed > new Date().getFullYear()) {
+      return previousCompleted.year;
+    }
 
-const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(false);
+    return String(parsed);
+  };
 
-const [inventoryInsightsError, setInventoryInsightsError] =
-  useState<string | null>(null);
+  const [range, setRange] = useState<RangeType>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth());
+  const [selectedQuarter, setSelectedQuarter] = useState<Quarter | ''>('');
+  const [selectedYear, setSelectedYear] = useState<string>(getDefaultYear());
 
-const [inventoryRawResponses, setInventoryRawResponses] = useState<{
-  inventory: InventoryCurrentApiResponse[];
-  ageSummary: InventoryAgeSummaryApiResponse[];
-} | null>(null);
+  const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
+    useState<string>('365+ days');
 
-const yearOptions = useMemo(() => {
-  const currentYear = new Date().getFullYear();
-  return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
-}, []);
+  const [inventoryInsightsData, setInventoryInsightsData] =
+    useState<InventoryInsightsData | null>(null);
 
-const handleRangeChange = (nextRange: RangeType) => {
-  setRange(nextRange);
+  const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(false);
 
-  if (nextRange === 'monthly') {
-    setSelectedQuarter('');
-    if (!selectedMonth) setSelectedMonth(getDefaultMonth());
-  }
+  const [inventoryInsightsError, setInventoryInsightsError] =
+    useState<string | null>(null);
 
-  if (nextRange === 'quarterly') {
-    setSelectedMonth('');
-    if (!selectedQuarter) setSelectedQuarter('Q1');
-  }
+  const [inventoryRawResponses, setInventoryRawResponses] = useState<{
+    inventory: InventoryCurrentApiResponse[];
+    ageSummary: InventoryAgeSummaryApiResponse[];
+  } | null>(null);
 
-  if (nextRange === 'yearly') {
-    setSelectedMonth('');
-    setSelectedQuarter('');
-  }
-};
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
+  }, []);
 
-const handleMonthChange = (nextMonth: string) => {
-  setSelectedMonth(nextMonth);
-};
+  const handleRangeChange = (nextRange: RangeType) => {
+    setRange(nextRange);
 
-const handleQuarterChange = (nextQuarter: string) => {
-  setSelectedQuarter(nextQuarter as Quarter);
-};
+    if (nextRange === 'monthly') {
+      setSelectedQuarter('');
+      if (!selectedMonth) setSelectedMonth(getDefaultMonth());
+    }
 
-const handleYearChange = (nextYear: string) => {
-  setSelectedYear(nextYear);
-};
+    if (nextRange === 'quarterly') {
+      setSelectedMonth('');
+      if (!selectedQuarter) setSelectedQuarter('Q1');
+    }
+
+    if (nextRange === 'yearly') {
+      setSelectedMonth('');
+      setSelectedQuarter('');
+    }
+  };
+
+  const handleMonthChange = (nextMonth: string) => {
+    setSelectedMonth(getSafeInventoryMonth(nextMonth, selectedYear));
+  };
+
+  const handleQuarterChange = (nextQuarter: string) => {
+    setSelectedQuarter(nextQuarter as Quarter);
+  };
+
+  const handleYearChange = (nextYear: string) => {
+    const safeYear = getSafeInventoryYear(nextYear);
+
+    setSelectedYear(safeYear);
+
+    if (range === 'monthly') {
+      setSelectedMonth((prev) => getSafeInventoryMonth(prev, safeYear));
+    }
+
+    if (range === 'quarterly') {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const selectedYearNumber = Number(safeYear);
+
+      if (selectedYearNumber >= currentYear) {
+        const previousCompleted = getPreviousCompletedPeriod();
+        const monthIndex = previousCompleted.monthIndex;
+
+        const safeQuarter: Quarter =
+          monthIndex <= 2 ? 'Q1' : monthIndex <= 5 ? 'Q2' : monthIndex <= 8 ? 'Q3' : 'Q4';
+
+        setSelectedQuarter(safeQuarter);
+      }
+    }
+  };
 
   const isEmptyCellValue = (value: any) => {
     if (value === null || value === undefined) return true;
@@ -1402,96 +1678,99 @@ const handleYearChange = (nextYear: string) => {
   };
 
   const fetchInventoryCurrentByPeriod = async (
-  signal?: AbortSignal
-): Promise<InventoryCurrentApiResponse> => {
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+    signal?: AbortSignal
+  ): Promise<InventoryCurrentApiResponse> => {
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-  if (!token) throw new Error('Missing token');
+    if (!token) throw new Error('Missing token');
 
-  const url = new URL(
-    `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
+    );
+
+    url.searchParams.set('country_key', String(countryName).toLowerCase());
+    url.searchParams.set('year', String(selectedYear));
+
+    if (range === 'monthly') {
+  url.searchParams.set('range_type', 'monthly');
+  url.searchParams.set(
+    'month_name',
+    getSafeInventoryMonth(selectedMonth, selectedYear)
   );
+}
 
-  url.searchParams.set('country_key', String(countryName).toLowerCase());
-  url.searchParams.set('year', String(selectedYear));
+    if (range === 'quarterly') {
+      url.searchParams.set('range_type', 'quarter_months');
+      url.searchParams.set('quarter', String(selectedQuarter));
+    }
 
-  if (range === 'monthly') {
-    url.searchParams.set('range_type', 'monthly');
-    url.searchParams.set('month_name', String(selectedMonth).toLowerCase());
-  }
+    if (range === 'yearly') {
+      url.searchParams.set('range_type', 'yearly');
+    }
 
-  if (range === 'quarterly') {
-    url.searchParams.set('range_type', 'quarter_months');
-    url.searchParams.set('quarter', String(selectedQuarter));
-  }
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: 'no-store',
+      signal,
+    });
 
-  if (range === 'yearly') {
-    url.searchParams.set('range_type', 'yearly');
-  }
+    const json = await res.json().catch(() => ({}));
 
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    cache: 'no-store',
-    signal,
-  });
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(
-      json?.message ||
+    if (!res.ok) {
+      throw new Error(
+        json?.message ||
         json?.error ||
         `Failed to fetch inventory data for ${range}`
+      );
+    }
+
+    return json;
+  };
+
+  const fetchSingleMonthInventoryAgeSummary = async (
+    monthName: string,
+    yearValue: string,
+    countryValue: string,
+    signal?: AbortSignal
+  ): Promise<InventoryAgeSummaryApiResponse> => {
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+
+    if (!token) throw new Error('Missing token');
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current_age_summary`
     );
-  }
 
-  return json;
-};
+    url.searchParams.set('country_key', String(countryValue).toLowerCase());
+    url.searchParams.set('month_name', String(monthName).toLowerCase());
+    url.searchParams.set('year', String(yearValue));
 
-const fetchSingleMonthInventoryAgeSummary = async (
-  monthName: string,
-  yearValue: string,
-  countryValue: string,
-  signal?: AbortSignal
-): Promise<InventoryAgeSummaryApiResponse> => {
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: 'no-store',
+      signal,
+    });
 
-  if (!token) throw new Error('Missing token');
+    const json = await res.json().catch(() => ({}));
 
-  const url = new URL(
-    `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current_age_summary`
-  );
-
-  url.searchParams.set('country_key', String(countryValue).toLowerCase());
-  url.searchParams.set('month_name', String(monthName).toLowerCase());
-  url.searchParams.set('year', String(yearValue));
-
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    cache: 'no-store',
-    signal,
-  });
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(
-      json?.message ||
+    if (!res.ok) {
+      throw new Error(
+        json?.message ||
         json?.error ||
         `Failed to fetch inventory age summary for ${monthName} ${yearValue}`
-    );
-  }
+      );
+    }
 
-  return json;
-};
+    return json;
+  };
 
   const fetchWarehouseData = async () => {
     if (isNA) {
@@ -1729,113 +2008,123 @@ const fetchSingleMonthInventoryAgeSummary = async (
   }, [activeTab, countryName, skuData]);
 
   useEffect(() => {
-  if (activeTab !== 'inventory-insights') return;
+    if (activeTab !== 'inventory-insights') return;
 
-  if (isNA) {
-    setInventoryInsightsData(null);
-    setInventoryRawResponses(null);
-    setInventoryInsightsError(null);
-    return;
-  }
-
-  const ready =
-    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
-    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
-    (range === 'yearly' && !!selectedYear);
-
-  if (!ready || !countryName) {
-    setInventoryInsightsData(null);
-    setInventoryRawResponses(null);
-    setInventoryInsightsError(null);
-    return;
-  }
-
-  const ac = new AbortController();
-
-  const fetchInventoryInsights = async () => {
-    try {
-      setInventoryInsightsLoading(true);
-      setInventoryInsightsError(null);
-
-      const [inventoryResult, ageSummaryResults] = await Promise.all([
-        fetchInventoryCurrentByPeriod(ac.signal),
-        Promise.allSettled(
-          allMonths.map((monthName) =>
-            fetchSingleMonthInventoryAgeSummary(
-              monthName,
-              selectedYear,
-              countryName,
-              ac.signal
-            )
-          )
-        ),
-      ]);
-
-      const fulfilledInventory: InventoryCurrentApiResponse[] =
-        inventoryResult?.success ? [inventoryResult] : [];
-
-      const fulfilledAgeSummary = ageSummaryResults
-        .filter(
-          (
-            result
-          ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
-            result.status === 'fulfilled'
-        )
-        .map((result) => result.value);
-
-      if (!fulfilledInventory.length) {
-        throw new Error('No inventory data found');
-      }
-
-      setInventoryRawResponses({
-        inventory: fulfilledInventory,
-        ageSummary: fulfilledAgeSummary,
-      });
-
-      setInventoryInsightsData(
-        buildInventoryInsightsFromResponses(
-          fulfilledInventory,
-          fulfilledAgeSummary,
-          selectedAgeingTrendBucket
-        )
-      );
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return;
-
+    if (isNA) {
       setInventoryInsightsData(null);
       setInventoryRawResponses(null);
-      setInventoryInsightsError(
-        e?.message || 'Failed to load inventory insights'
-      );
-    } finally {
-      setInventoryInsightsLoading(false);
+      setInventoryInsightsError(null);
+      return;
     }
-  };
 
-  fetchInventoryInsights();
+    const ready =
+      (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+      (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+      (range === 'yearly' && !!selectedYear);
 
-  return () => ac.abort();
+    if (!ready || !countryName) {
+      setInventoryInsightsData(null);
+      setInventoryRawResponses(null);
+      setInventoryInsightsError(null);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    const fetchInventoryInsights = async () => {
+      try {
+        setInventoryInsightsLoading(true);
+        setInventoryInsightsError(null);
+
+        const [inventoryResult, ageSummaryResults] = await Promise.all([
+          fetchInventoryCurrentByPeriod(ac.signal),
+          Promise.allSettled(
+            allMonths.map((monthName) =>
+              fetchSingleMonthInventoryAgeSummary(
+                monthName,
+                selectedYear,
+                countryName,
+                ac.signal
+              )
+            )
+          ),
+        ]);
+
+        const fulfilledInventory: InventoryCurrentApiResponse[] =
+          inventoryResult?.success ? [inventoryResult] : [];
+
+        const fulfilledAgeSummary = ageSummaryResults
+          .filter(
+            (
+              result
+            ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
+              result.status === 'fulfilled'
+          )
+          .map((result) => result.value);
+
+        if (!fulfilledInventory.length) {
+          throw new Error('No inventory data found');
+        }
+
+        setInventoryRawResponses({
+          inventory: fulfilledInventory,
+          ageSummary: fulfilledAgeSummary,
+        });
+
+        setInventoryInsightsData(
+  buildInventoryInsightsFromResponses(
+    fulfilledInventory,
+    fulfilledAgeSummary,
+    selectedAgeingTrendBucket,
+    countryName
+  )
+);
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+
+        setInventoryInsightsData(null);
+        setInventoryRawResponses(null);
+        setInventoryInsightsError(
+          e?.message || 'Failed to load inventory insights'
+        );
+      } finally {
+        setInventoryInsightsLoading(false);
+      }
+    };
+
+    fetchInventoryInsights();
+
+    return () => ac.abort();
+  }, [
+    activeTab,
+    isNA,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+  ]);
+
+ useEffect(() => {
+  if (!inventoryRawResponses) return;
+
+  setInventoryInsightsData(
+  buildInventoryInsightsFromResponses(
+    inventoryRawResponses.inventory,
+    inventoryRawResponses.ageSummary,
+    selectedAgeingTrendBucket,
+    countryName
+  )
+);
 }, [
-  activeTab,
-  isNA,
+  selectedAgeingTrendBucket,
+  inventoryRawResponses,
   range,
   selectedMonth,
   selectedQuarter,
   selectedYear,
   countryName,
 ]);
-
-useEffect(() => {
-  if (!inventoryRawResponses) return;
-
-  setInventoryInsightsData(
-    buildInventoryInsightsFromResponses(
-      inventoryRawResponses.inventory,
-      inventoryRawResponses.ageSummary,
-      selectedAgeingTrendBucket
-    )
-  );
-}, [selectedAgeingTrendBucket, inventoryRawResponses]);
 
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
@@ -2004,14 +2293,14 @@ useEffect(() => {
   }, [visibleColumns, skuData, isEditing, editedPrices]);
 
   const tabOptions = useMemo(
-  () => [
-    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
-    { value: 'sku-info' as const, label: 'SKU Information' },
-    { value: 'extra' as const, label: 'Upload Warehouse Data' },
-    
-  ],
-  []
-);
+    () => [
+      { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+      { value: 'sku-info' as const, label: 'SKU Information' },
+      { value: 'extra' as const, label: 'Upload Warehouse Data' },
+
+    ],
+    []
+  );
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -2247,56 +2536,56 @@ useEffect(() => {
 
         <div className="flex flex-wrap items-center gap-3 md:justify-end">
           {activeTab === 'sku-info' ? (
-  <>
-    {isEditing && (
-      <button
-        className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-        onClick={saveChanges}
-      >
-        Save Changes
-      </button>
-    )}
+            <>
+              {isEditing && (
+                <button
+                  className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                  onClick={saveChanges}
+                >
+                  Save Changes
+                </button>
+              )}
 
-    <button
-      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-      onClick={() => setShowMultiuseCountry(true)}
-      disabled={isNA}
-    >
-      Upload File
-    </button>
+              <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowMultiuseCountry(true)}
+                disabled={isNA}
+              >
+                Upload File
+              </button>
 
-    <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
-  </>
-) : activeTab === 'extra' ? (
-  <>
-    <button
-      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-      onClick={() => setShowWarehouseUpload(true)}
-      disabled={isNA}
-    >
-      Upload File
-    </button>
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
+            </>
+          ) : activeTab === 'extra' ? (
+            <>
+              <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowWarehouseUpload(true)}
+                disabled={isNA}
+              >
+                Upload File
+              </button>
 
-    <DownloadIconButton
-      onClick={handleWarehouseDownload}
-      size="md"
-      disabled={isNA}
-    />
-  </>
-) : (
-  <PeriodFiltersTable
-    range={range}
-    selectedMonth={selectedMonth}
-    selectedQuarter={selectedQuarter}
-    selectedYear={selectedYear}
-    yearOptions={yearOptions}
-    onRangeChange={handleRangeChange}
-    onMonthChange={handleMonthChange}
-    onQuarterChange={handleQuarterChange}
-    onYearChange={handleYearChange}
-    allowedRanges={['monthly', 'quarterly', 'yearly']}
-  />
-)}
+              <DownloadIconButton
+                onClick={handleWarehouseDownload}
+                size="md"
+                disabled={isNA}
+              />
+            </>
+          ) : (
+            <PeriodFiltersTable
+              range={range}
+              selectedMonth={selectedMonth}
+              selectedQuarter={selectedQuarter}
+              selectedYear={selectedYear}
+              yearOptions={yearOptions}
+              onRangeChange={handleRangeChange}
+              onMonthChange={handleMonthChange}
+              onQuarterChange={handleQuarterChange}
+              onYearChange={handleYearChange}
+              allowedRanges={['monthly', 'quarterly', 'yearly']}
+            />
+          )}
         </div>
       </div>
 
@@ -2309,46 +2598,46 @@ useEffect(() => {
       >
         <>
 
-        {activeTab === 'inventory-insights' && (
-  <div className="mt-5">
-    {inventoryInsightsLoading ? (
-      <div className="rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
-        <Loader transparent />
-      </div>
-    ) : inventoryInsightsError ? (
-      <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚠️</span>
-          <p className="font-semibold text-red-700">
-            Unable to Load Inventory Insights
-          </p>
-        </div>
+          {activeTab === 'inventory-insights' && (
+            <div className="mt-5">
+              {inventoryInsightsLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
+                  <Loader transparent />
+                </div>
+              ) : inventoryInsightsError ? (
+                <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <p className="font-semibold text-red-700">
+                      Unable to Load Inventory Insights
+                    </p>
+                  </div>
 
-        <p className="text-sm text-red-600">{inventoryInsightsError}</p>
-      </div>
-    ) : inventoryInsightsData ? (
-      <InventoryInsightsSection
-        heatmapBuckets={inventoryInsightsData.heatmapBuckets}
-        heatmapData={inventoryInsightsData.heatmapData}
-        donutData={inventoryInsightsData.donutData}
-        donutTotalUnits={inventoryInsightsData.donutTotalUnits}
-        trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
-        trendData={inventoryInsightsData.trendData}
-        trendLineColor={inventoryInsightsData.trendLineColor}
-        trendBucketOptions={inventoryInsightsData.trendBucketOptions}
-        trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
-        onTrendBucketChange={setSelectedAgeingTrendBucket}
-        actions={inventoryInsightsData.actions}
-        actionLogic={inventoryInsightsData.actionLogic}
-        onHeatmapProductClick={() => {}}
-      />
-    ) : (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-        No inventory insights found for the selected period.
-      </div>
-    )}
-  </div>
-)}
+                  <p className="text-sm text-red-600">{inventoryInsightsError}</p>
+                </div>
+              ) : inventoryInsightsData ? (
+                <InventoryInsightsSection
+                  heatmapBuckets={inventoryInsightsData.heatmapBuckets}
+                  heatmapData={inventoryInsightsData.heatmapData}
+                  donutData={inventoryInsightsData.donutData}
+                  donutTotalUnits={inventoryInsightsData.donutTotalUnits}
+                  trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+                  trendData={inventoryInsightsData.trendData}
+                  trendLineColor={inventoryInsightsData.trendLineColor}
+                  trendBucketOptions={inventoryInsightsData.trendBucketOptions}
+                  trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
+                  onTrendBucketChange={setSelectedAgeingTrendBucket}
+                  actions={inventoryInsightsData.actions}
+                  actionLogic={inventoryInsightsData.actionLogic}
+                  onHeatmapProductClick={() => { }}
+                />
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                  No inventory insights found for the selected period.
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'sku-info' && (
             <>
               {loading ? (
