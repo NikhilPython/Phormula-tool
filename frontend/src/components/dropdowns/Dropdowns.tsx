@@ -3440,6 +3440,7 @@ const buildAgeingTrendDataFromSummary = (
   }
 
   return Array.from(monthMap.values())
+    .filter((item) => item.month && item.year && item.month_number)
     .sort((a, b) => {
       if (a.year !== b.year) return a.year - b.year;
       return a.month_number - b.month_number;
@@ -6684,8 +6685,47 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-  const getInventoryAgeSummaryMonthsForYear = () => {
-    return allMonths.map((m) => m.toLowerCase());
+  const getInventoryAgeSummaryMonthsForSelectedPeriod = () => {
+    const lastCompleted = getLastCompletedMonth();
+
+    const selectedYearNum = Number(selectedYear);
+    const currentYearNum = Number(new Date().getFullYear());
+
+    let maxMonthIndex = 11; // default Dec for old years
+
+    if (range === "monthly") {
+      const selectedMonthIndex = monthIndexMap[String(selectedMonth).toLowerCase()];
+      maxMonthIndex = typeof selectedMonthIndex === "number" ? selectedMonthIndex : lastCompleted.monthIndex;
+    }
+
+    if (range === "quarterly" && selectedQuarter) {
+      const quarterEndIndexMap: Record<Quarter, number> = {
+        Q1: 2,  // Mar
+        Q2: 5,  // Jun
+        Q3: 8,  // Sep
+        Q4: 11, // Dec
+      };
+
+      maxMonthIndex = quarterEndIndexMap[selectedQuarter];
+    }
+
+    if (range === "yearly") {
+      maxMonthIndex = selectedYearNum === currentYearNum ? lastCompleted.monthIndex : 11;
+    }
+
+    // ✅ If selected year is current year, never go beyond current - 1
+    if (selectedYearNum === currentYearNum) {
+      maxMonthIndex = Math.min(maxMonthIndex, lastCompleted.monthIndex);
+    }
+
+    // ✅ If future year somehow selected, keep empty
+    if (selectedYearNum > currentYearNum) {
+      return [];
+    }
+
+    return allMonths
+      .slice(0, maxMonthIndex + 1)
+      .map((m) => m.toLowerCase());
   };
 
   useEffect(() => {
@@ -6733,15 +6773,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    // const monthsToFetch = getInventoryMonthsForSelectedRange();
-
-    // if (!monthsToFetch.length) {
-    //   setInventoryInsightsData(null);
-    //   setInventoryRawResponses(null);
-    //   return;
-    // }
-
-    const ageSummaryMonthsToFetch = getInventoryAgeSummaryMonthsForYear();
+    const ageSummaryMonthsToFetch = getInventoryAgeSummaryMonthsForSelectedPeriod();
 
     const ac = new AbortController();
 
@@ -6749,30 +6781,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       try {
         setInventoryInsightsLoading(true);
         setInventoryInsightsError(null);
-
-        // const [inventoryResults, ageSummaryResults] = await Promise.all([
-        //   Promise.allSettled(
-        //     monthsToFetch.map((monthName) =>
-        //       fetchSingleMonthInventoryCurrent(
-        //         monthName,
-        //         selectedYear,
-        //         countryName,
-        //         ac.signal
-        //       )
-        //     )
-        //   ),
-
-        //   Promise.allSettled(
-        //     monthsToFetch.map((monthName) =>
-        //       fetchSingleMonthInventoryAgeSummary(
-        //         monthName,
-        //         selectedYear,
-        //         countryName,
-        //         ac.signal
-        //       )
-        //     )
-        //   ),
-        // ]);
 
         const [inventoryResult, ageSummaryResults] = await Promise.all([
           fetchInventoryCurrentByPeriod(ac.signal),

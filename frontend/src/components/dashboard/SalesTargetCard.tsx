@@ -467,38 +467,45 @@ function SalesTargetCard({
 
       <div className="rounded-xl border p-3 2xl:p-5 shadow-sm min-h-[430px] lg:h-full flex flex-col bg-white">
         {/* Legend */}
-        <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
-          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+        <div className="mt-2 2xl:mt-2 grid grid-cols-4 gap-4 text-[10px] 2xl:text-xs">
+          <div className="flex items-start justify-start gap-2 min-w-0">
             <span
-              className="h-2.5 w-2.5 rounded-sm"
+              className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm"
               style={{ backgroundColor: "#ED9F50" }}
             />
-            <span className="text-charcoal-500">MTD Sale</span>
+            <span className="text-charcoal-500 leading-tight break-words">
+              MTD Sale
+            </span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+          <div className="flex items-start justify-start gap-2 min-w-0">
             <span
-              className="h-2.5 w-2.5 rounded-sm"
+              className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm"
               style={{ backgroundColor: "#5EA68E" }}
-
             />
-            <span className="text-charcoal-500">{thisMonthLabel} Target</span>
+            <span className="text-charcoal-500 leading-tight break-words">
+              {thisMonthLabel} Target
+            </span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+          <div className="flex items-start justify-start gap-2 min-w-0">
             <span
-              className="h-2.5 w-2.5 rounded-sm"
+              className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm"
               style={{ backgroundColor: "#9ca3af" }}
             />
-            <span className="text-charcoal-500">{prevLabel} Sale</span>
+            <span className="text-charcoal-500 leading-tight break-words">
+              {prevLabel} Sale
+            </span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
+          <div className="flex items-start justify-start gap-2 min-w-0">
             <span
-              className="h-2.5 w-2.5 rounded-sm"
+              className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm"
               style={{ backgroundColor: "#B75A5A" }}
             />
-            <span className="text-charcoal-500">{prevLabel} MTD</span>
+            <span className="text-charcoal-500 leading-tight break-words">
+              {prevLabel} MTD
+            </span>
           </div>
         </div>
 
