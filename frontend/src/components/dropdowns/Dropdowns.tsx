@@ -196,6 +196,7 @@ type InventoryCurrentApiResponse = {
   columns?: string[];
   rows?: InventoryCurrentRow[];
   total_rows?: number;
+
   categories?: Record<
     string,
     {
@@ -204,12 +205,27 @@ type InventoryCurrentApiResponse = {
       sku_count?: number;
     }
   >;
+
   category_counts?: Record<string, number>;
 
-  // ✅ Add this because /inventory_current returns this
+  // ✅ ADD THIS
+  high_alert_coverage_summary?: {
+    average_coverage_ratio?: number;
+    high_alert_sku_count?: number;
+    high_alert_threshold?: number;
+    items?: {
+      alert?: string;
+      coverage_ratio_months?: number;
+      high_alert_threshold?: number;
+      product_name?: string;
+      sku?: string;
+    }[];
+  };
+
   month?: string;
   year?: number;
   country_key?: string;
+
   inventory_age_summary?: {
     total?: number;
     columns?: Record<
@@ -3643,6 +3659,23 @@ const buildInventoryInsightsFromResponses = (
 
   const highAlertRows = latestRows.filter((row) => hasHighAlert(row));
 
+  // ✅ ADD POINT 3 HERE
+  const highAlertAvgCoverageRatio =
+    typeof latestResponse?.high_alert_coverage_summary?.average_coverage_ratio === "number"
+      ? latestResponse.high_alert_coverage_summary.average_coverage_ratio
+      : (() => {
+        const validCoverageRows = highAlertRows
+          .map((row) => toNum(row?.["Coverage Ratio (In Months)"]))
+          .filter((value) => value > 0);
+
+        if (!validCoverageRows.length) return 0;
+
+        return (
+          validCoverageRows.reduce((sum, value) => sum + value, 0) /
+          validCoverageRows.length
+        );
+      })();
+
   const discountRows = latestRows.filter((row) =>
     hasInventoryValue(row, "inv-age-91-to-180-days")
   );
@@ -3701,14 +3734,13 @@ const buildInventoryInsightsFromResponses = (
       description: INVENTORY_ACTION_META.high_alert.description,
       count: getUniqueSkuCount(highAlertRows),
       displayValue: getUniqueSkuCount(highAlertRows),
-      skuCount: getUniqueSkuCount(highAlertRows),
-      unitCount: sumInventoryUnitsByKeys(highAlertRows, [
-        "inv-age-0-to-90-days",
-        "inv-age-91-to-180-days",
-        "inv-age-181-to-270-days",
-        "inv-age-271-to-365-days",
-        "inv-age-365-plus-days",
-      ]),
+      skuCount:
+        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+        getUniqueSkuCount(highAlertRows),
+
+      // ✅ New value for High Alert card
+      avgCoverageRatio: highAlertAvgCoverageRatio,
+
       color: INVENTORY_ACTION_META.high_alert.color,
       backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
     },

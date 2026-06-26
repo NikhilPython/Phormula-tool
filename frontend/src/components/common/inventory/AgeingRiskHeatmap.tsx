@@ -227,10 +227,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                 value > 0 ? "text-charcoal-500" : "text-charcoal-400",
                             ].join(" ")}
                             style={{
-                                backgroundColor:
-                                    value > 0
-                                        ? getHeatColor(bucket.color, value, 100)
-                                        : "#EFEFEF",
+                                backgroundColor: "#F8F8F8",
                             }}
                         >
                             {displayValue}

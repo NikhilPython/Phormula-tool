@@ -15,6 +15,9 @@ export type ActionCardItem = {
     unitCount?: number;
     skuCount?: number;
 
+    // ✅ ADD THIS
+    avgCoverageRatio?: number;
+
     deltaValue?: string | number;
     deltaPercentage?: number | null;
 };
@@ -92,17 +95,18 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                         : `${action.count.toLocaleString()} SKUs`}
                                 </span>
 
-                                {/* {typeof action.unitCount === "number" && (
-                                    <span className="text-xs font-semibold leading-none">
-                                        {action.unitCount.toLocaleString()} Units
-                                    </span>
-                                )} */}
-
-                                {typeof action.unitCount === "number" && (
-                                    <span className="text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none">
-                                        {action.unitCount.toLocaleString()}{" "}
-                                        {action.key === "high_alert" ? "Units Remaining" : "Units"}
-                                    </span>
+                                {action.key === "high_alert" ? (
+                                    typeof action.avgCoverageRatio === "number" && (
+                                        <span className="text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none">
+                                            Avg Coverage Ratio: {action.avgCoverageRatio.toFixed(2)}
+                                        </span>
+                                    )
+                                ) : (
+                                    typeof action.unitCount === "number" && (
+                                        <span className="text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none">
+                                            {action.unitCount.toLocaleString()} Units
+                                        </span>
+                                    )
                                 )}
 
                                 {/* {action.key === "high_alert" ? (
