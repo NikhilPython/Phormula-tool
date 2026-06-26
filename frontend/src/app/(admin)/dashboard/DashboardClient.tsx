@@ -3997,6 +3997,34 @@ export default function DashboardPage() {
         []
     );
 
+    const getInventoryInsightMonthRange = (
+        currentMonth: string,
+        currentYear: string,
+        count = 6
+    ) => {
+        const monthIndex = inventoryMonthIndexMap[String(currentMonth).toLowerCase()];
+
+        if (monthIndex == null || monthIndex < 0) {
+            return [];
+        }
+
+        const startDate = new Date(Number(currentYear), monthIndex, 1);
+
+        return Array.from({ length: count }, (_, index) => {
+            const d = new Date(startDate);
+            d.setMonth(startDate.getMonth() - (count - 1 - index));
+
+            const monthName = d.toLocaleString("en-US", {
+                month: "long",
+            }).toLowerCase();
+
+            return {
+                month: monthName,
+                year: String(d.getFullYear()),
+            };
+        });
+    };
+
     const fetchInventoryInsights = useCallback(async () => {
         if (isMonthYearNA) {
             setInventoryInsightsData(null);
@@ -4012,36 +4040,58 @@ export default function DashboardPage() {
             setInventoryInsightsError(null);
 
             const country = inventoryCountry;
-            const month = invMonthYear.month;
-            const year = invMonthYear.year;
+            const currentMonth = invMonthYear.month;
+            const currentYear = invMonthYear.year;
 
-            const [inventoryRes, ageSummaryRes] = await Promise.allSettled([
-                fetchSingleMonthInventoryCurrentForInsights(
-                    month,
-                    year,
-                    country,
-                    ac.signal
-                ),
-                fetchSingleMonthInventoryAgeSummaryForInsights(
-                    month,
-                    year,
-                    country,
-                    ac.signal
-                ),
-            ]);
+            // ✅ Last 6 months including current month.
+            // Example: Jan, Feb, Mar, Apr, May, Jun
+            const monthsToFetch = getInventoryInsightMonthRange(
+                currentMonth,
+                currentYear,
+                6
+            );
 
-            if (inventoryRes.status !== "fulfilled") {
-                throw new Error(
-                    inventoryRes.reason?.message || "No inventory insights data found"
-                );
+            const inventoryResults = await Promise.allSettled(
+                monthsToFetch.map((item) =>
+                    fetchSingleMonthInventoryCurrentForInsights(
+                        item.month,
+                        item.year,
+                        country,
+                        ac.signal
+                    )
+                )
+            );
+
+            const ageSummaryResults = await Promise.allSettled(
+                monthsToFetch.map((item) =>
+                    fetchSingleMonthInventoryAgeSummaryForInsights(
+                        item.month,
+                        item.year,
+                        country,
+                        ac.signal
+                    )
+                )
+            );
+
+            const inventoryResponses = inventoryResults
+                .filter(
+                    (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
+                        result.status === "fulfilled" && result.value?.success
+                )
+                .map((result) => result.value);
+
+            const ageSummaryResponses = ageSummaryResults
+                .filter(
+                    (result): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
+                        result.status === "fulfilled" && result.value?.success
+                )
+                .map((result) => result.value);
+
+            if (inventoryResponses.length === 0) {
+                throw new Error("No inventory insights data found");
             }
 
-            const inventoryResponses = [inventoryRes.value];
-
-            const ageSummaryResponses =
-                ageSummaryRes.status === "fulfilled" ? [ageSummaryRes.value] : [];
-
-            // ✅ Save raw responses so dropdown can rebuild only trend chart later
+            // ✅ Save all months so dropdown/chart rebuild keeps June + previous months
             setInventoryInsightResponses(inventoryResponses);
             setInventoryAgeSummaryResponses(ageSummaryResponses);
 
@@ -13700,58 +13750,58 @@ ${pageLoading
                             )}
 
                         </div>
-                       <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-  <div className="grid grid-cols-1 gap-4 items-stretch lg:grid-cols-2">
-    <div className="rounded-xl border bg-white p-5 shadow-sm min-w-0">
-      <div className="2xl:mb-3 flex items-center justify-between">
-        <div className="text-sm text-charcoal-500">
-          <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-            <PageBreadcrumb
-              pageTitle="MTD P&L"
-              align="left"
-              textSize="2xl"
-              variant="page"
-            />
-          </div>
-        </div>
-      </div>
+                        <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
+                            <div className="grid grid-cols-1 gap-4 items-stretch lg:grid-cols-2">
+                                <div className="rounded-xl border bg-white p-5 shadow-sm min-w-0">
+                                    <div className="2xl:mb-3 flex items-center justify-between">
+                                        <div className="text-sm text-charcoal-500">
+                                            <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                                                <PageBreadcrumb
+                                                    pageTitle="MTD P&L"
+                                                    align="left"
+                                                    textSize="2xl"
+                                                    variant="page"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
 
-      <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
-        <div className="w-full max-w-full min-w-0 h-full">
-          <DashboardBargraphCard
-            countryName={countryNameForGraph}
-            formattedMonthYear={formattedMonthYear}
-            currencySymbol={currencySymbol}
-            labels={finalBarLabels}
-            values={finalBarValues}
-            prevValues={finalPrevBarValues}
-            expanded={true}
-            colors={colors}
-            loading={!shouldShowDummyUi && loading}
-            allValuesZero={finalAllValuesZero}
-            previewMode={shouldShowDummyUi}
-          />
-        </div>
-      </div>
-    </div>
+                                    <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
+                                        <div className="w-full max-w-full min-w-0 h-full">
+                                            <DashboardBargraphCard
+                                                countryName={countryNameForGraph}
+                                                formattedMonthYear={formattedMonthYear}
+                                                currencySymbol={currencySymbol}
+                                                labels={finalBarLabels}
+                                                values={finalBarValues}
+                                                prevValues={finalPrevBarValues}
+                                                expanded={true}
+                                                colors={colors}
+                                                loading={!shouldShowDummyUi && loading}
+                                                allValuesZero={finalAllValuesZero}
+                                                previewMode={shouldShowDummyUi}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
 
-    <div
-      className={
-        isUsingDummyData
-          ? "min-w-0 h-full flex flex-col pointer-events-none select-none transition-opacity duration-300"
-          : "min-w-0 h-full flex flex-col transition-opacity duration-300"
-      }
-    >
-      <Cm1ProfitBreakdownPie
-        data={finalCm1ProfitPieData}
-        cm2Data={cm2ProfitPieData}
-        currency={displayCurrency}
-        noDataFound={shouldShowDummyUi}
-        height={320}
-      />
-    </div>
-  </div>
-</div>
+                                <div
+                                    className={
+                                        isUsingDummyData
+                                            ? "min-w-0 h-full flex flex-col pointer-events-none select-none transition-opacity duration-300"
+                                            : "min-w-0 h-full flex flex-col transition-opacity duration-300"
+                                    }
+                                >
+                                    <Cm1ProfitBreakdownPie
+                                        data={finalCm1ProfitPieData}
+                                        cm2Data={cm2ProfitPieData}
+                                        currency={displayCurrency}
+                                        noDataFound={shouldShowDummyUi}
+                                        height={320}
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </>
                 )}
 

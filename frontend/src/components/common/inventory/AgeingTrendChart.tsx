@@ -78,41 +78,81 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
     }));
   };
 
-  const currentMonthShort = new Date().toLocaleString("default", {
-    month: "short",
-  });
+  // const currentMonthShort = new Date().toLocaleString("default", {
+  //   month: "short",
+  // });
 
-  const filterCurrentMonth = (items: AgeingTrendItem[]) => {
-    return items.filter((item) => {
-      const itemMonth = getShortMonth(item.label).toLowerCase();
-      return itemMonth !== currentMonthShort.toLowerCase();
-    });
-  };
+  // const filterCurrentMonth = (items: AgeingTrendItem[]) => {
+  //   return items.filter((item) => {
+  //     const itemMonth = getShortMonth(item.label).toLowerCase();
+  //     return itemMonth !== currentMonthShort.toLowerCase();
+  //   });
+  // };
+
+  // const allChartSeriesData = useMemo(() => {
+  //   return allSeriesData.map((bucket) => ({
+  //     ...bucket,
+  //     data: filterCurrentMonth(bucket.data),
+  //   }));
+  // }, [allSeriesData, currentMonthShort]);
 
   const allChartSeriesData = useMemo(() => {
     return allSeriesData.map((bucket) => ({
       ...bucket,
-      data: filterCurrentMonth(bucket.data),
+      data: bucket.data || [],
     }));
-  }, [allSeriesData, currentMonthShort]);
+  }, [allSeriesData]);
+
+  // const categories = useMemo(() => {
+  //   if (allChartSeriesData.length > 0) {
+  //     return allChartSeriesData[0].data.map((item) => getShortMonth(item.label));
+  //   }
+
+  //   return [];
+  // }, [allChartSeriesData]);
 
   const categories = useMemo(() => {
-    if (allChartSeriesData.length > 0) {
-      return allChartSeriesData[0].data.map((item) => getShortMonth(item.label));
-    }
+    const monthSet = new Set<string>();
 
-    return [];
+    allChartSeriesData.forEach((bucket) => {
+      bucket.data.forEach((item) => {
+        monthSet.add(getShortMonth(item.label));
+      });
+    });
+
+    return Array.from(monthSet);
   }, [allChartSeriesData]);
+
+  // const chartSeries = useMemo(() => {
+  //   return allChartSeriesData
+  //     .filter((bucket) => selectedBuckets[bucket.bucketValue] !== false)
+  //     .map((bucket) => ({
+  //       name: bucket.bucketLabel,
+  //       color: bucket.color,
+  //       data: bucket.data.map((item) => Number(item.value || 0)),
+  //     }));
+  // }, [allChartSeriesData, selectedBuckets]);
 
   const chartSeries = useMemo(() => {
     return allChartSeriesData
       .filter((bucket) => selectedBuckets[bucket.bucketValue] !== false)
-      .map((bucket) => ({
-        name: bucket.bucketLabel,
-        color: bucket.color,
-        data: bucket.data.map((item) => Number(item.value || 0)),
-      }));
-  }, [allChartSeriesData, selectedBuckets]);
+      .map((bucket) => {
+        const valueByMonth = new Map<string, number>();
+
+        bucket.data.forEach((item) => {
+          valueByMonth.set(
+            getShortMonth(item.label),
+            Number(item.value || 0)
+          );
+        });
+
+        return {
+          name: bucket.bucketLabel,
+          color: bucket.color,
+          data: categories.map((month) => valueByMonth.get(month) ?? 0),
+        };
+      });
+  }, [allChartSeriesData, selectedBuckets, categories]);
 
   useEffect(() => {
     const el = containerRef.current;
