@@ -330,34 +330,65 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
         current_month_col = f"Current Month Units Sold ({month_name})"
         amazon_engine = db.get_engine(bind="amazon")
 
-        sales_sql = text(f"""
-            SELECT sku, SUM(quantity) AS "{current_month_col}"
-            FROM liveorders
-            WHERE user_id = :uid
-              AND marketplace = :mkt_name
-              AND purchase_date >= :start
-              AND purchase_date <= :end
-            GROUP BY sku
-        """)
-
         try:
-            current_month_sales_df = pd.read_sql_query(
-                sales_sql,
-                amazon_engine,
-                params={
-                    "uid": user_id,
-                    "mkt_name": marketplace_name,
-                    "start": month_start,
-                    "end": month_end,
-                },
+            skuwise_monthly_table = (
+                f"skuwisemonthly_{user_id}_{country_key}_{month_name.lower()}_{year}"
             )
+
+            if table_exists(primary_engine, skuwise_monthly_table):
+                sales_sql = text(f"""
+                    SELECT
+                        sku,
+                        SUM(
+                            COALESCE(
+                                total_quantity,
+                                quantity - COALESCE(return_quantity, 0),
+                                quantity,
+                                0
+                            )
+                        ) AS "{current_month_col}"
+                    FROM public.{skuwise_monthly_table}
+                    WHERE LOWER(COALESCE(product_name, '')) != 'total'
+                    GROUP BY sku
+                """)
+
+                current_month_sales_df = pd.read_sql_query(
+                    sales_sql,
+                    primary_engine,
+                )
+
+            else:
+                sales_sql = text(f"""
+                    SELECT
+                        sku,
+                        SUM(quantity) AS "{current_month_col}"
+                    FROM liveorders
+                    WHERE user_id = :uid
+                    AND marketplace = :mkt_name
+                    AND purchase_date >= :start
+                    AND purchase_date <= :end
+                    GROUP BY sku
+                """)
+
+                current_month_sales_df = pd.read_sql_query(
+                    sales_sql,
+                    amazon_engine,
+                    params={
+                        "uid": user_id,
+                        "mkt_name": marketplace_name,
+                        "start": month_start,
+                        "end": month_end,
+                    },
+                )
+
             if not current_month_sales_df.empty:
                 current_month_sales_df["sku"] = current_month_sales_df["sku"].apply(norm_sku)
                 current_month_sales_df = current_month_sales_df.groupby(
                     "sku", as_index=False
                 )[current_month_col].sum()
+
         except Exception:
-            logger.exception("Failed loading liveorders sales")
+            logger.exception("Failed loading current month sales")
             current_month_sales_df = pd.DataFrame(columns=["sku", current_month_col])
             warnings.append("Sales data could not be loaded.")
 
