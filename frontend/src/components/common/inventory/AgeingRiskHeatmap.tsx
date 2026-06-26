@@ -144,10 +144,11 @@ const buildPercentageRow = (
                 ? (unfulfillableUnits / percentageBaseTotal) * 100
                 : 0,
 
-        // ✅ Units sold is not a percentage row metric
         unitsSold: Number(unitsSoldPercentage || 0),
 
-        coverageRatio: 0,
+        // keep blank for % row
+        coverageRatio: undefined,
+
         isPercentageRow: true,
     };
 
@@ -420,16 +421,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     const unitsSold = Number(row.unitsSold || 0);
 
                     if (row.isPercentageRow) {
-                        return (
-                            <span>
-                                {unitsSold > 0
-                                    ? `${unitsSold.toLocaleString(undefined, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                    })}%`
-                                    : "-"}
-                            </span>
-                        );
+                        return <span></span>;
                     }
 
                     return (
@@ -446,7 +438,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 headerClassName: heatmapHeaderClassName,
                 cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
-                    if (row.isPercentageRow) return <span>-</span>;
+                    if (row.isTotalRow || row.isPercentageRow) {
+                        return <span></span>;
+                    }
 
                     const coverageRatio = Number(row.coverageRatio ?? 0);
 

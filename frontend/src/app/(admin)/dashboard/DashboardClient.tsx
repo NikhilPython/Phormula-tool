@@ -6601,13 +6601,34 @@ export default function DashboardPage() {
             decTargetUSD: globalTarget,
         };
 
+        const prevTargetSummaryForRegion =
+            prevTargetSummaries[
+            targetSummaryCountry as keyof typeof prevTargetSummaries
+            ];
+
+        const prevTargetSummaryNetSales = toNumberSafe(
+            prevTargetSummaryForRegion?.net_sales_total ?? 0
+        );
+
+        const prevTargetSummaryNetSalesDisp =
+            prevTargetSummaryNetSales > 0
+                ? convertToDisplayCurrency(
+                    prevTargetSummaryNetSales,
+                    currencyForCountry(targetSummaryCountry)
+                )
+                : 0;
+
         const ukPrevFullMonthSales =
-            prevFullMonthNetSalesDisp > 0
-                ? prevFullMonthNetSalesDisp
-                : amazonPrevNetDisp;
+            prevTargetSummaryNetSalesDisp > 0
+                ? prevTargetSummaryNetSalesDisp
+                : prevFullMonthNetSalesDisp > 0
+                    ? prevFullMonthNetSalesDisp
+                    : amazonPrevNetDisp;
 
         const ukTarget =
-            userMonthlyTargetForRegion > 0 ? userMonthlyTargetForRegion : ukPrevFullMonthSales;
+            userMonthlyTargetForRegion > 0
+                ? userMonthlyTargetForRegion
+                : ukPrevFullMonthSales;
 
         const ukRegion: RegionMetrics = {
             mtdUSD: amazonCurrNetDisp,
@@ -6649,6 +6670,7 @@ export default function DashboardPage() {
         prevFullMonthNetSalesDisp,
         globalPrevFullMonthNetSalesDisp,
         targetSummaries,
+        prevTargetSummaries,
         gbpToUsd,
         platform,
         targetSummaryCountry,
@@ -6656,8 +6678,6 @@ export default function DashboardPage() {
         chooseLastMonthTotal,
         prorateToDate,
     ]);
-
-
 
 
     const PreviewLockedSection = ({
