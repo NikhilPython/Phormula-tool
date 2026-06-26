@@ -499,6 +499,24 @@ type InventoryCurrentApiResponse = {
     country_key?: string;
     inventory_age_summary?: {
         total?: number;
+        current_month_units_sold_total?: number;
+        percentage_base_total?: number;
+        sellable_total?: number;
+        unfulfillable_total?: number;
+        total_units_summary?: {
+            current_month_units_sold?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            sellable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            unfulfillable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+        };
         columns?: Record<
             string,
             {
@@ -542,6 +560,7 @@ type InventoryAgeSummaryApiResponse = {
 type InventoryInsightsData = {
     heatmapBuckets: AgeingBucket[];
     heatmapData: AgeingRiskHeatmapRow[];
+    unitsSoldPercentage?: number;
     donutSku: string;
     donutData: DonutChartItem[];
     donutTotalUnits: number;
@@ -2047,6 +2066,11 @@ const buildInventoryInsightsFromResponses = (
         (row) => !isInventoryInsightsTotalRow(row)
     );
 
+    const unitsSoldPercentage = inventoryToNum(
+        latestResponse?.inventory_age_summary?.total_units_summary
+            ?.current_month_units_sold?.percentage_share
+    );
+
     const heatmapData: AgeingRiskHeatmapRow[] = latestRows
         .map((row) => {
             const sku = getInventoryRowSku(row);
@@ -2336,7 +2360,7 @@ const buildInventoryInsightsFromResponses = (
         donutSku: "Overall",
         donutData,
         donutTotalUnits,
-
+        unitsSoldPercentage,
         trendSelectedBucket: isAllTrendSelected
             ? "all"
             : selectedTrendBucket.value,
@@ -13827,6 +13851,7 @@ ${pageLoading
                             <InventoryInsightsSection
                                 heatmapBuckets={inventoryInsightsData.heatmapBuckets}
                                 heatmapData={inventoryInsightsData.heatmapData}
+                                unitsSoldPercentage={inventoryInsightsData.unitsSoldPercentage}
                                 donutData={inventoryInsightsData.donutData}
                                 donutTotalUnits={inventoryInsightsData.donutTotalUnits}
                                 trendSelectedBucket={selectedAgeingTrendBucket}

@@ -31,6 +31,7 @@ type AgeingRiskHeatmapProps = {
     data: AgeingRiskHeatmapRow[];
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
+    unitsSoldPercentage?: number;
 
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
 
@@ -119,7 +120,8 @@ const buildAggregateRow = (
 
 const buildPercentageRow = (
     totalRow: AgeingRiskHeatmapRow,
-    buckets: AgeingBucket[]
+    buckets: AgeingBucket[],
+    unitsSoldPercentage?: number
 ): AgeingRiskHeatmapRow => {
     const sellableUnits = Number(totalRow.totalUnits || 0);
     const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
@@ -143,7 +145,7 @@ const buildPercentageRow = (
                 : 0,
 
         // ✅ Units sold is not a percentage row metric
-        unitsSold: 0,
+        unitsSold: Number(unitsSoldPercentage || 0),
 
         coverageRatio: 0,
         isPercentageRow: true,
@@ -167,6 +169,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     data,
     buckets,
     defaultVisibleRows = 9,
+    unitsSoldPercentage,
     onProductClick,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
@@ -177,22 +180,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
         const sortedData = [...data].sort((a, b) => {
-            const aTotal =
-                Number(a.totalUnits) ||
-                buckets.reduce((sum, bucket) => sum + Number(a[bucket.key] || 0), 0);
+            const aUnitsSold = Number(a.unitsSold || 0);
+            const bUnitsSold = Number(b.unitsSold || 0);
 
-            const bTotal =
-                Number(b.totalUnits) ||
-                buckets.reduce((sum, bucket) => sum + Number(b[bucket.key] || 0), 0);
-
-            return bTotal - aTotal; // descending
+            return bUnitsSold - aUnitsSold; // descending by Units Sold
         });
-
         const totalRow = buildAggregateRow("Total", sortedData, buckets, {
             isTotalRow: true,
         });
 
-        const percentageRow = buildPercentageRow(totalRow, buckets);
+        const percentageRow = buildPercentageRow(
+            totalRow,
+            buckets,
+            unitsSoldPercentage
+        );
 
         if (!canCollapse || isExpanded) {
             return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
@@ -210,7 +211,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
 
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, unitsSoldPercentage]);
 
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
         const heatmapHeaderClassName =
@@ -416,9 +417,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 headerClassName: heatmapHeaderClassName,
                 cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
-                    if (row.isPercentageRow) return <span>-</span>;
-
                     const unitsSold = Number(row.unitsSold || 0);
+
+                    if (row.isPercentageRow) {
+                        return (
+                            <span>
+                                {unitsSold > 0
+                                    ? `${unitsSold.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}%`
+                                    : "-"}
+                            </span>
+                        );
+                    }
 
                     return (
                         <span>

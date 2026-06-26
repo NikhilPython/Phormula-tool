@@ -25,6 +25,7 @@ import ActionBasedDashboard, {
 type InventoryInsightsSectionProps = {
     heatmapBuckets: AgeingBucket[];
     heatmapData: AgeingRiskHeatmapRow[];
+    unitsSoldPercentage?: number;
 
     donutData: DonutChartItem[];
     donutTotalUnits?: number;
@@ -53,6 +54,7 @@ type InventoryInsightsSectionProps = {
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     heatmapBuckets,
     heatmapData,
+    unitsSoldPercentage,
     donutData,
     donutTotalUnits,
     trendSelectedBucket,
@@ -100,6 +102,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         subtitle="Quickly identify products with old inventory"
                         data={heatmapData}
                         buckets={heatmapBuckets}
+                        unitsSoldPercentage={unitsSoldPercentage}
                         onProductClick={onHeatmapProductClick}
                         onDownloadInventoryExcel={onDownloadInventoryExcel}
                         canDownloadInventoryExcel={canDownloadInventoryExcel}
