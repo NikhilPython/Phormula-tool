@@ -1,6 +1,6 @@
 'use client';
 
-import React, { use, useEffect, useMemo, useState } from 'react';
+import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css';
 import Modalmsg from '@/components/ui/modal/Modalmsg';
@@ -16,6 +16,12 @@ import Loader from '@/components/loader/Loader';
 import { exportSkuInformationExcel, exportWarehouseDataExcel } from '@/lib/excel/exportCurrentInventoryExcel';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
+import GroupedCollapsibleTable, {
+  ColGroup,
+  LeafCol,
+} from '@/components/ui/table/GroupedCollapsibleTable';
+
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 import type {
   AgeingBucket,
@@ -1329,6 +1335,159 @@ const DUMMY_WAREHOUSE_DATA = [
   },
 ];
 
+type AnyRow = Record<string, any>;
+
+type LedgerDBReadParams =
+  | { range: 'monthly'; month: string; year: string; country?: string }
+  | { range: 'quarterly'; quarter: string; year: string; country?: string }
+  | { range: 'yearly'; year: string; country?: string };
+
+const monthNameToNumber = (m: string) => {
+  const idx = allMonths.indexOf((m || '').toLowerCase());
+  return idx === -1 ? null : idx + 1;
+};
+
+const quarterToNumber = (q: string) => {
+  const v = (q || '').toUpperCase().trim();
+  const n = Number(v.replace('Q', ''));
+  return [1, 2, 3, 4].includes(n) ? n : null;
+};
+
+const buildQuery = (obj: Record<string, string | number | undefined | null>) => {
+  const sp = new URLSearchParams();
+
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === '') return;
+    sp.set(k, String(v));
+  });
+
+  return sp.toString();
+};
+
+const isNumericLike = (v: any) => {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'number') return Number.isFinite(v);
+  if (typeof v === 'string' && v.trim() !== '') return !Number.isNaN(Number(v));
+  return false;
+};
+
+const toInventoryInt = (v: any) => {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+};
+
+const formatReconCell = (v: any) => {
+  if (v === null || v === undefined || v === "") return "-";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+
+  if (isNumericLike(v)) {
+    const n = Math.abs(Math.trunc(Number(v)));
+    if (n === 0) return "-";
+    return n.toLocaleString();
+  }
+
+  return String(v);
+};
+
+const isTotalRow = (row: AnyRow) => {
+  const msku = String(row?.msku || "").trim().toUpperCase();
+  const pn = String(row?.product_name || "").trim().toUpperCase();
+
+  return (
+    msku === "TOTAL" ||
+    pn === "TOTAL" ||
+    msku === "GRAND TOTAL" ||
+    pn === "GRAND TOTAL" ||
+    row?.is_total === true ||
+    row?.__isTotal === true
+  );
+};
+
+const sumRowForKeys = (rowsToSum: AnyRow[], keys: string[], base: AnyRow = {}) => {
+  const out: AnyRow = { ...base };
+
+  keys.forEach((k) => {
+    out[k] = rowsToSum.reduce((acc, r) => acc + toInventoryInt(r?.[k]), 0);
+  });
+
+  return out;
+};
+
+const DUMMY_RECON_ROWS: AnyRow[] = [
+  {
+    id: "dummy-1",
+    product_name: "Sample Product A",
+    msku: "SKU-001",
+    sellable_sum_first: 0,
+    expired_sum_first: 0,
+    beginning_total: 0,
+    sum_receipts: 0,
+    transit_total: 0,
+    sum_disposed: 0,
+    sum_damaged: 0,
+    sum_lost: 0,
+    sum_found: 0,
+    sold_total: 0,
+    ending_total: 0,
+    difference_total: 0,
+    sellable_sum_last: 0,
+    expired_sum_last: 0,
+    inventory_coverage_ratio: 0,
+  },
+  {
+    id: "__TOTAL__",
+    product_name: "GRAND TOTAL",
+    msku: "GRAND TOTAL",
+    __isTotal: true,
+    sellable_sum_first: 0,
+    expired_sum_first: 0,
+    beginning_total: 0,
+    sum_receipts: 0,
+    transit_total: 0,
+    sum_disposed: 0,
+    sum_damaged: 0,
+    sum_lost: 0,
+    sum_found: 0,
+    sold_total: 0,
+    ending_total: 0,
+    difference_total: 0,
+    sellable_sum_last: 0,
+    expired_sum_last: 0,
+    inventory_coverage_ratio: 0,
+  },
+];
+
+const DUMMY_LOST_COMP_ROWS: AnyRow[] = [
+  {
+    id: "dummy-lc-1",
+    product_name: "Sample Product A",
+    msku: "SKU-001",
+    lost_units: 0,
+    damaged_units: 0,
+    total_lost_units: 0,
+    compensation_units: 0,
+    compensation_value: 0,
+    settlement_loss_event_amount: 0,
+    net_value: 0,
+    net_units: 0,
+  },
+  {
+    id: "dummy-lc-total",
+    product_name: "Total",
+    msku: "-",
+    __isTotal: true,
+    lost_units: 0,
+    damaged_units: 0,
+    total_lost_units: 0,
+    compensation_units: 0,
+    compensation_value: 0,
+    settlement_loss_event_amount: 0,
+    net_value: 0,
+    net_units: 0,
+  },
+];
+
 
 
 export default function InputCostPage({ params }: Params) {
@@ -1375,7 +1534,12 @@ export default function InputCostPage({ params }: Params) {
     monthParam?.toLowerCase() === 'na' ||
     yearParam?.toLowerCase() === 'na';
 
-  type InputCostTab = 'inventory-insights' | 'sku-info' | 'extra';
+  type InputCostTab =
+  | 'inventory-insights'
+  | 'sku-info'
+  | 'recon-table'
+  | 'lost-compensation'
+  | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
 
   const getDefaultMonth = () => {
@@ -1420,6 +1584,35 @@ export default function InputCostPage({ params }: Params) {
     inventory: InventoryCurrentApiResponse[];
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
+  const [reconRows, setReconRows] = useState<AnyRow[]>([]);
+const [reconFetching, setReconFetching] = useState(false);
+const [reconLoadedOnce, setReconLoadedOnce] = useState(false);
+
+const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
+const [lostCompLoading, setLostCompLoading] = useState(false);
+
+const [showAllReconRows, setShowAllReconRows] = useState(false);
+const [showAllLostCompRows, setShowAllLostCompRows] = useState(false);
+
+const [anyExpanded, setAnyExpanded] = useState(false);
+const anyExpandedRef = useRef(false);
+
+const handleAnyGroupExpandedChange = useCallback((v: boolean) => {
+  anyExpandedRef.current = v;
+  setAnyExpanded(v);
+}, []);
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+const LEDGER_DB_STORE_MONTH = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-month`;
+const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
+const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
+
+const authHeaders = () => {
+  const token = localStorage.getItem('jwtToken');
+  if (!token) throw new Error('Missing jwtToken');
+  return { Authorization: `Bearer ${token}` };
+};
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -2014,6 +2207,202 @@ export default function InputCostPage({ params }: Params) {
     return json;
   };
 
+
+  async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
+  const { range, year, country } = params;
+
+  const q: Record<string, any> = {
+    year,
+    sort: "desc",
+  };
+
+  if (country) q.country = country;
+
+  let endpoint = LEDGER_DB_STORE_YEAR;
+
+  if (range === 'monthly') {
+    const mm = monthNameToNumber(params.month);
+    if (!mm) throw new Error('Invalid month selected');
+
+    q.month = mm;
+    endpoint = LEDGER_DB_STORE_MONTH;
+  }
+
+  if (range === 'quarterly') {
+    const qq = quarterToNumber(params.quarter);
+    if (!qq) throw new Error('Invalid quarter selected');
+
+    q.quarter = qq;
+    endpoint = LEDGER_DB_STORE_QUARTER;
+  }
+
+  const url = `${endpoint}?${buildQuery(q)}`;
+
+  const res = await fetch(url, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json?.success === false) {
+    throw new Error(json?.error || 'Failed to fetch ledger summary from DB');
+  }
+
+  return Array.isArray(json?.items) ? json.items : [];
+}
+
+const fetchReconTableData = async () => {
+  if (isNA) {
+    setReconRows(DUMMY_RECON_ROWS);
+    setReconFetching(false);
+    setReconLoadedOnce(true);
+    return;
+  }
+
+  setReconFetching(true);
+
+  try {
+    let payload: LedgerDBReadParams;
+
+    if (range === 'monthly') {
+      payload = {
+        range: 'monthly',
+        month: selectedMonth,
+        year: selectedYear,
+        country: countryName,
+      };
+    } else if (range === 'quarterly') {
+      payload = {
+        range: 'quarterly',
+        quarter: selectedQuarter,
+        year: selectedYear,
+        country: countryName,
+      };
+    } else {
+      payload = {
+        range: 'yearly',
+        year: selectedYear,
+        country: countryName,
+      };
+    }
+
+    const items = await fetchLedgerSummaryDB(payload);
+
+    setReconRows(items);
+    setReconLoadedOnce(true);
+  } catch (e) {
+    console.error(e);
+    setReconRows([]);
+    setReconLoadedOnce(true);
+  } finally {
+    setReconFetching(false);
+  }
+};
+
+
+async function fetchInventoryLostCompensation() {
+  if (isNA) {
+    setLostCompRows(DUMMY_LOST_COMP_ROWS);
+    setLostCompLoading(false);
+    return;
+  }
+
+  setLostCompLoading(true);
+
+  try {
+    const mode =
+      range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+
+    const q: Record<string, any> = {
+      country: countryName,
+      year: selectedYear,
+      mode,
+    };
+
+    if (mode === "month") {
+      q.month = selectedMonth;
+    }
+
+    if (mode === "quarter") {
+      q.quarter = String(selectedQuarter).toLowerCase();
+    }
+
+    const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
+
+    const res = await fetch(url, {
+      headers: authHeaders(),
+      cache: 'no-store',
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.error || "Failed to fetch inventory lost compensation");
+    }
+
+    let rows: AnyRow[] = Array.isArray(json?.data) ? json.data : [];
+
+    rows = rows.filter((r) => {
+      const name = String(r?.product_name || "").toUpperCase();
+      const sku = String(r?.msku || "").toUpperCase();
+
+      return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
+    });
+
+    if (!rows.length) {
+      setLostCompRows([]);
+      return;
+    }
+
+    const total = rows.reduce(
+      (acc: AnyRow, r: AnyRow) => {
+        acc.lost_units += Number(r?.lost_units || 0);
+        acc.damaged_units += Number(r?.damaged_units || 0);
+        acc.total_lost_units += Number(r?.total_lost_units || 0);
+        acc.compensation_units += Number(r?.compensation_units || 0);
+        acc.compensation_value += Number(r?.compensation_value || 0);
+        acc.compensation_reimbursement_amount += Number(
+          r?.compensation_reimbursement_amount || 0
+        );
+        acc.settlement_loss_event_units += Number(
+          r?.settlement_loss_event_units || 0
+        );
+        acc.settlement_loss_event_amount += Number(
+          r?.settlement_loss_event_amount || 0
+        );
+        acc.loss_value += Number(r?.loss_value || 0);
+        acc.net_units += Number(r?.net_units || 0);
+        acc.net_value += Number(r?.net_value || 0);
+        return acc;
+      },
+      {
+        product_name: "Total",
+        msku: "-",
+        __isTotal: true,
+        lost_units: 0,
+        damaged_units: 0,
+        total_lost_units: 0,
+        compensation_units: 0,
+        compensation_value: 0,
+        compensation_reimbursement_amount: 0,
+        settlement_loss_event_units: 0,
+        settlement_loss_event_amount: 0,
+        loss_value: 0,
+        net_units: 0,
+        net_value: 0,
+      }
+    );
+
+    setLostCompRows([...rows, total]);
+  } catch (e) {
+    console.error(e);
+    setLostCompRows([]);
+  } finally {
+    setLostCompLoading(false);
+  }
+}
+
   const fetchWarehouseData = async () => {
     if (isNA) {
       setWarehouseData(DUMMY_WAREHOUSE_DATA);
@@ -2348,6 +2737,41 @@ export default function InputCostPage({ params }: Params) {
   ]);
 
   useEffect(() => {
+  setShowAllReconRows(false);
+  setShowAllLostCompRows(false);
+}, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+
+useEffect(() => {
+  if (activeTab !== 'recon-table') return;
+
+  const ready =
+    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+    (range === 'yearly' && !!selectedYear);
+
+  if (!ready) return;
+
+  void fetchReconTableData();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
+
+useEffect(() => {
+  if (activeTab !== 'lost-compensation') return;
+
+  const ready =
+    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+    (range === 'yearly' && !!selectedYear);
+
+  if (!ready) return;
+
+  void fetchInventoryLostCompensation();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
+
+  useEffect(() => {
     if (!inventoryRawResponses) return;
 
     setInventoryInsightsData(
@@ -2534,15 +2958,531 @@ export default function InputCostPage({ params }: Params) {
     });
   }, [visibleColumns, skuData, isEditing, editedPrices]);
 
-  const tabOptions = useMemo(
-    () => [
-      { value: 'inventory-insights' as const, label: 'Inventory Insights' },
-      { value: 'sku-info' as const, label: 'SKU Information' },
-      { value: 'extra' as const, label: 'Upload Warehouse Data' },
+  const periodLabel = useMemo(() => {
+  if (range === "monthly") return "month";
+  if (range === "quarterly") return "quarter";
+  return "year";
+}, [range]);
 
-    ],
-    []
+const beginningInventoryLabel = useMemo(
+  () => `Inventory at the beginning of the ${periodLabel}`,
+  [periodLabel]
+);
+
+const endingInventoryLabel = useMemo(() => {
+  if (range === "monthly") return "Inventory at month end";
+  if (range === "quarterly") return "Inventory at quarter end";
+  return "Inventory at year end";
+}, [range]);
+
+const leftCols: LeafCol<AnyRow>[] = [
+  { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
+  { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
+  { key: 'msku', label: 'SKU', width: 110, align: 'center' },
+];
+
+const groups: ColGroup<AnyRow>[] = useMemo(
+  () => [
+    {
+      id: 'beginning',
+      label: beginningInventoryLabel,
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__beginning_total', label: 'Total', width: 140, align: 'center' },
+      ],
+      expandedCols: [
+        { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
+        { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
+        { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
+        { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
+        { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
+      ],
+    },
+    {
+      id: 'units_in_transit',
+      label: 'Units in transit',
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
+      ],
+      expandedCols: [
+        { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
+        { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
+        { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
+      ],
+    },
+    {
+      id: 'other_items',
+      label: 'Other Items',
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
+      ],
+      expandedCols: [
+        { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
+        { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
+        { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
+        { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
+        { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
+        { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
+        { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
+        { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
+      ],
+    },
+    {
+      id: 'units_sold',
+      label: 'Units Sold',
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__units_sold_net', label: 'Net Units', width: 90, align: 'center' },
+      ],
+      expandedCols: [
+        { key: '__units_sold_gross', label: 'Gross Sales', width: 110, align: 'center' },
+        { key: '__units_sold_returns', label: 'Return', width: 110, align: 'center' },
+        { key: '__units_sold_net', label: 'Net Units', width: 110, align: 'center' },
+      ],
+    },
+    {
+      id: 'open_orders',
+      label: 'Open orders',
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
+      ],
+      expandedCols: [
+        { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
+        { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
+        { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
+      ],
+    },
+    {
+      id: 'ending',
+      label: endingInventoryLabel,
+      headerClassName: 'min-w-[120px]',
+      collapsedCols: [
+        { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
+      ],
+      expandedCols: [
+        { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
+        { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
+        { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
+        { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
+        { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
+      ],
+    },
+  ],
+  [beginningInventoryLabel, endingInventoryLabel]
+);
+
+const singleCols: LeafCol<AnyRow>[] = useMemo(
+  () => [
+    {
+      key: "inventory_coverage_ratio",
+      label: "Inventory Coverage Ratio",
+      width: 140,
+      align: "center",
+    },
+    {
+      key: "difference_total",
+      label: "Difference",
+      width: 90,
+      align: "center",
+    },
+  ],
+  []
+);
+
+const reconDisplayRows = useMemo(() => {
+  if (!reconRows || reconRows.length === 0) return [];
+
+  const grandTotalRow = reconRows.find(isTotalRow) || null;
+  const dataRows = reconRows.filter((r) => !isTotalRow(r));
+
+  const sortedDataRows = [...dataRows].sort((a, b) => {
+    return Math.abs(toInventoryInt(b?.sold_total)) - Math.abs(toInventoryInt(a?.sold_total));
+  });
+
+  const top = showAllReconRows ? sortedDataRows : sortedDataRows.slice(0, 9);
+  const remaining = showAllReconRows ? [] : sortedDataRows.slice(9);
+
+  const keys = Array.from(
+    new Set(
+      dataRows.flatMap((r) =>
+        Object.keys(r || {}).filter(
+          (k) => isNumericLike(r?.[k]) && k !== "inventory_coverage_ratio"
+        )
+      )
+    )
   );
+
+  const out: AnyRow[] = [...top];
+
+  if (remaining.length > 0) {
+    const others = sumRowForKeys(remaining, keys, {
+      id: "__OTHERS__",
+      msku: "OTHERS",
+      product_name: "OTHERS",
+      __isOthers: true,
+    });
+
+    const endingTotal = toInventoryInt(others?.ending_total);
+    const soldTotalAbs = Math.abs(toInventoryInt(others?.sold_total));
+
+    others.inventory_coverage_ratio =
+      soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
+    out.push(others);
+  }
+
+  const total =
+    grandTotalRow
+      ? {
+          ...grandTotalRow,
+          id: "__TOTAL__",
+          __isTotal: true,
+        }
+      : (() => {
+          const totalRow = sumRowForKeys(dataRows, keys, {
+            id: "__TOTAL__",
+            msku: "GRAND TOTAL",
+            product_name: "GRAND TOTAL",
+            __isTotal: true,
+          });
+
+          const endingTotal = toInventoryInt(totalRow?.ending_total);
+          const soldTotalAbs = Math.abs(toInventoryInt(totalRow?.sold_total));
+
+          totalRow.inventory_coverage_ratio =
+            soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
+          return totalRow;
+        })();
+
+  out.push(total);
+
+  return out;
+}, [reconRows, showAllReconRows]);
+
+const effectiveReconRows = useMemo(() => {
+  if (isNA) return DUMMY_RECON_ROWS;
+  return reconDisplayRows;
+}, [isNA, reconDisplayRows]);
+
+const getReconRowClassName = (row: AnyRow) => {
+  const msku = String(row?.msku || '').trim().toUpperCase();
+  const isGrand = isTotalRow(row) || msku === 'TOTAL' || row?.__isTotal === true;
+  const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
+
+  if (isGrand) return 'bg-[#D9D9D9] font-semibold';
+  if (isOthers) return 'font-semibold';
+  return '';
+};
+
+const getReconValue = (row: AnyRow, colKey: string, exportIndex?: number) => {
+  const isSpecialRow =
+    row?.__isTotal === true ||
+    row?.__isOthers === true ||
+    isTotalRow(row);
+
+  if (colKey === 'msku' && isSpecialRow) return '-';
+
+  const pn = String(row?.product_name || '').trim().toUpperCase();
+
+  if (colKey === 'product_name') {
+    if (pn === 'OTHERS') return 'Others';
+    if (pn === 'TOTAL' || pn === 'GRAND TOTAL') return 'Total';
+  }
+
+  if (colKey === "__sno") {
+    if (isSpecialRow) return "";
+
+    if (typeof exportIndex === "number") {
+      return String(exportIndex + 1);
+    }
+
+    const visibleRows = reconDisplayRows.filter((r) => !(r?.__isTotal || isTotalRow(r)));
+    const idx = visibleRows.findIndex(
+      (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
+    );
+
+    return idx >= 0 ? String(idx + 1) : "";
+  }
+
+  if (
+    colKey === 'sum_in_transit_between_warehouses' ||
+    colKey === '__open_orders_beginning' ||
+    colKey === '__open_orders_end' ||
+    colKey === '__open_orders_total' ||
+    colKey === '__ending_transit_placeholder'
+  ) {
+    return '-';
+  }
+
+  if (colKey === '__beginning_damaged_total') {
+    return formatReconCell(
+      toInventoryInt(row?.warehouse_damaged_sum_first) +
+        toInventoryInt(row?.customer_damaged_sum_first) +
+        toInventoryInt(row?.distributor_damaged_sum_first) +
+        toInventoryInt(row?.defective_sum_first)
+    );
+  }
+
+  if (colKey === '__beginning_total') return formatReconCell(row?.beginning_total);
+
+  if (colKey === 'transit_total') return '-';
+
+  if (colKey === 'sum_receipts') return formatReconCell(row?.sum_receipts);
+
+  if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
+
+  if (colKey === '__other_items_total') {
+    return formatReconCell(row?.other_total);
+  }
+
+  if (colKey === '__units_sold_gross') {
+    return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_shipments)));
+  }
+
+  if (colKey === '__units_sold_returns') {
+    return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_returns)));
+  }
+
+  if (colKey === '__units_sold_net') {
+    return formatReconCell(Math.abs(toInventoryInt(row?.sold_total)));
+  }
+
+  if (colKey === '__ending_total') {
+    return formatReconCell(row?.ending_total);
+  }
+
+  if (colKey === '__ending_damaged_lost_total') {
+    const total =
+      toInventoryInt(row?.defective_sum_last) +
+      toInventoryInt(row?.warehouse_damaged_sum_last) +
+      toInventoryInt(row?.customer_damaged_sum_last) +
+      toInventoryInt(row?.distributor_damaged_sum_last);
+
+    return formatReconCell(total);
+  }
+
+  if (colKey === "inventory_coverage_ratio") {
+    const raw = Number(row?.inventory_coverage_ratio);
+    if (!Number.isFinite(raw) || raw === 0) return "-";
+    return raw.toFixed(2);
+  }
+
+  return formatReconCell(row?.[colKey]);
+};
+
+const SIGN_PLUS = useMemo(
+  () =>
+    new Set([
+      "sum_disposed",
+      "sum_damaged",
+      "sum_unknown_events",
+      "sum_other_events",
+      "sum_vendor_returns",
+      "sum_lost",
+    ]),
+  []
+);
+
+const SIGN_MINUS = useMemo(
+  () =>
+    new Set([
+      "sum_found",
+    ]),
+  []
+);
+
+const getSignForCol = useCallback(
+  (colKey: string) => {
+    if (SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
+    if (SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
+    return null;
+  },
+  [SIGN_PLUS, SIGN_MINUS]
+);
+
+
+const effectiveLostCompRows = useMemo(() => {
+  if (isNA) return DUMMY_LOST_COMP_ROWS;
+  return lostCompRows;
+}, [isNA, lostCompRows]);
+
+const lostCompDisplayRows = useMemo(() => {
+  const rows = effectiveLostCompRows || [];
+
+  const totalRow = rows.find((r) => r?.__isTotal);
+  const dataRows = rows.filter((r) => !r?.__isTotal);
+
+  const sorted = [...dataRows].sort(
+    (a, b) =>
+      Math.abs(toInventoryInt(b?.total_lost_units)) -
+      Math.abs(toInventoryInt(a?.total_lost_units))
+  );
+
+  const top9 = showAllLostCompRows ? sorted : sorted.slice(0, 9);
+  const others = showAllLostCompRows ? [] : sorted.slice(9);
+
+  const out: AnyRow[] = [...top9];
+
+  if (others.length > 0) {
+    out.push({
+      product_name: "Others",
+      msku: "-",
+      __isOthers: true,
+      lost_units: others.reduce((a, r) => a + toInventoryInt(r?.lost_units), 0),
+      damaged_units: others.reduce((a, r) => a + toInventoryInt(r?.damaged_units), 0),
+      total_lost_units: others.reduce((a, r) => a + toInventoryInt(r?.total_lost_units), 0),
+      compensation_units: others.reduce((a, r) => a + toInventoryInt(r?.compensation_units), 0),
+      compensation_value: others.reduce((a, r) => a + toInventoryInt(r?.compensation_value), 0),
+      settlement_loss_event_amount: others.reduce(
+        (a, r) => a + toInventoryInt(r?.settlement_loss_event_amount),
+        0
+      ),
+      net_units: others.reduce((a, r) => a + toInventoryInt(r?.net_units), 0),
+      net_value: others.reduce((a, r) => a + toInventoryInt(r?.net_value), 0),
+    });
+  }
+
+  if (totalRow) out.push(totalRow);
+
+  return out;
+}, [effectiveLostCompRows, showAllLostCompRows]);
+
+const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
+  return (lostCompDisplayRows || []).map((row, idx) => ({
+    __isTotal: row?.__isTotal,
+    __isOthers: row?.__isOthers,
+    __sno: row?.__isTotal ? "" : idx + 1,
+    product_name: formatReconCell(row?.product_name),
+    msku: formatReconCell(row?.msku),
+
+    lost_units: formatReconCell(row?.lost_units),
+    damaged_units: formatReconCell(row?.damaged_units),
+    compensation_units: formatReconCell(row?.compensation_units),
+    net_units: formatReconCell(row?.net_units),
+    total_lost_units: formatReconCell(row?.total_lost_units),
+    compensation_value: formatReconCell(row?.compensation_value),
+    settlement_loss_event_amount: formatReconCell(row?.settlement_loss_event_amount),
+    net_value: formatReconCell(row?.net_value),
+  }));
+}, [lostCompDisplayRows]);
+
+const countryCurrencySymbol = useMemo(() => {
+  const c = String(countryName || "").trim().toLowerCase();
+
+  const map: Record<string, string> = {
+    uk: "£",
+    gb: "£",
+    us: "$",
+    usa: "$",
+    india: "₹",
+    in: "₹",
+    canada: "C$",
+    ca: "C$",
+  };
+
+  return map[c] || "";
+}, [countryName]);
+
+const lostCompTableColumns = useMemo<
+  ColumnDef<Record<string, React.ReactNode>>[]
+>(() => {
+  const countryCurrencySuffix = countryCurrencySymbol
+    ? ` (${countryCurrencySymbol})`
+    : "";
+
+  return [
+    {
+      key: "__sno",
+      header: "S. No.",
+      width: "w-[70px]",
+      cellClassName: "text-center",
+    },
+    {
+      key: "product_name",
+      header: "Product Name",
+      width: "w-[220px]",
+      cellClassName: "text-left",
+      headerClassName: "text-left break-words",
+    },
+    {
+      key: "msku",
+      header: "SKU",
+      width: "w-[120px]",
+      cellClassName: "text-center",
+    },
+    {
+      key: "lost_units",
+      header: "Lost Units",
+      width: "w-[120px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "damaged_units",
+      header: "Damaged Units",
+      width: "w-[120px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "compensation_units",
+      header: "Compensation Units",
+      width: "w-[150px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "net_units",
+      header: "Remaining Compensation Units",
+      width: "w-[160px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "total_lost_units",
+      header: "Total Lost Units",
+      width: "w-[130px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "compensation_value",
+      header: `Compensation Value Amount${countryCurrencySuffix}`,
+      width: "w-[170px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "settlement_loss_event_amount",
+      header: `Remaining Compensation Amount${countryCurrencySuffix}`,
+      width: "w-[200px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+    {
+      key: "net_value",
+      header: `Total Compensation Value${countryCurrencySuffix}`,
+      width: "w-[170px]",
+      cellClassName: "text-center",
+      headerClassName: "break-words",
+    },
+  ];
+}, [countryCurrencySymbol]);
+
+ const tabOptions = useMemo(
+  () => [
+    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+    { value: 'sku-info' as const, label: 'SKU Information' },
+    { value: 'recon-table' as const, label: 'Recon Table' },
+    { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
+    { value: 'extra' as const, label: 'Upload Warehouse Data' },
+  ],
+  []
+);
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -2731,6 +3671,18 @@ export default function InputCostPage({ params }: Params) {
   const INPUT_COST_VISIBLE_ROWS = 15;
   const INPUT_COST_ROW_HEIGHT = 40;
 
+  const RECON_VISIBLE_ROWS = 15;
+const LOST_COMP_VISIBLE_ROWS = 15;
+const TABLE_ROW_HEIGHT = 40;
+
+const shouldScrollReconTable =
+  !showAllReconRows &&
+  effectiveReconRows.filter((row) => !isTotalRow(row)).length > RECON_VISIBLE_ROWS;
+
+const shouldScrollLostCompTable =
+  !showAllLostCompRows &&
+  lostCompTableData.filter((row: any) => !row.__isTotal).length > LOST_COMP_VISIBLE_ROWS;
+
   const shouldScrollSkuInfoTable = tableData.length > INPUT_COST_VISIBLE_ROWS;
 
   const shouldScrollWarehouseTable =
@@ -2755,7 +3707,7 @@ export default function InputCostPage({ params }: Params) {
               pageTitle={
                 <div className="flex flex-wrap items-baseline gap-2">
                   <span className="text-[#414042] font-bold">
-                    Input Cost – Amazon
+                    Current Inventory – Amazon
                   </span>
                   <span className="text-green-500 font-bold">
                     {countryName?.toUpperCase()}
@@ -2798,36 +3750,74 @@ export default function InputCostPage({ params }: Params) {
 
               <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
             </>
-          ) : activeTab === 'extra' ? (
-            <>
-              <button
-                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={() => setShowWarehouseUpload(true)}
-                disabled={isNA}
-              >
-                Upload File
-              </button>
+         ) : activeTab === 'extra' ? (
+  <>
+    <button
+      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+      onClick={() => setShowWarehouseUpload(true)}
+      disabled={isNA}
+    >
+      Upload File
+    </button>
 
-              <DownloadIconButton
-                onClick={handleWarehouseDownload}
-                size="md"
-                disabled={isNA}
-              />
-            </>
+    <DownloadIconButton
+      onClick={handleWarehouseDownload}
+      size="md"
+      disabled={isNA}
+    />
+  </>
+) : (
+  <>
+    <PeriodFiltersTable
+      range={range}
+      selectedMonth={selectedMonth}
+      selectedQuarter={selectedQuarter}
+      selectedYear={selectedYear}
+      yearOptions={yearOptions}
+      onRangeChange={handleRangeChange}
+      onMonthChange={handleMonthChange}
+      onQuarterChange={handleQuarterChange}
+      onYearChange={handleYearChange}
+      allowedRanges={['monthly', 'quarterly', 'yearly']}
+    />
+
+    {activeTab === 'recon-table' &&
+      effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
+        <button
+          type="button"
+          onClick={() => setShowAllReconRows((prev) => !prev)}
+          title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+          aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+          disabled={isNA || reconFetching}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {showAllReconRows ? (
+            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
           ) : (
-            <PeriodFiltersTable
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              yearOptions={yearOptions}
-              onRangeChange={handleRangeChange}
-              onMonthChange={handleMonthChange}
-              onQuarterChange={handleQuarterChange}
-              onYearChange={handleYearChange}
-              allowedRanges={['monthly', 'quarterly', 'yearly']}
-            />
+            <RiExpandDiagonalFill size={18} className="font-extrabold" />
           )}
+        </button>
+      )}
+
+    {activeTab === 'lost-compensation' &&
+      effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
+        <button
+          type="button"
+          onClick={() => setShowAllLostCompRows((prev) => !prev)}
+          title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+          aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+          disabled={isNA || lostCompLoading}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {showAllLostCompRows ? (
+            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+          ) : (
+            <RiExpandDiagonalFill size={18} className="font-extrabold" />
+          )}
+        </button>
+      )}
+  </>
+)}
         </div>
       </div>
 
@@ -2945,6 +3935,86 @@ export default function InputCostPage({ params }: Params) {
               )}
             </div>
           )}
+          {activeTab === 'recon-table' && (
+  <div
+    className={[
+      "mt-5 w-full rounded-xl border border-gray-200 bg-white",
+      "overflow-x-auto",
+      "[-webkit-overflow-scrolling:touch]",
+    ].join(" ")}
+  >
+    {reconFetching || !reconLoadedOnce ? (
+      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+        <Loader transparent />
+      </div>
+    ) : effectiveReconRows.length === 0 ? (
+      <div className="p-6 text-sm text-neutral-600">
+        No data available
+      </div>
+    ) : (
+      <GroupedCollapsibleTable
+        rows={effectiveReconRows}
+        getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+        leftCols={leftCols}
+        groups={groups}
+        singleCols={singleCols}
+        getValue={getReconValue}
+        getRowClassName={getReconRowClassName}
+        onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+        isTotalRow={isTotalRow}
+        bodyMaxHeight={
+          shouldScrollReconTable
+            ? TABLE_ROW_HEIGHT * RECON_VISIBLE_ROWS
+            : undefined
+        }
+        tableClassName={
+          anyExpanded
+            ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+            : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+        }
+        headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+        headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+        showSignRowInBody
+        getSignForCol={getSignForCol}
+      />
+    )}
+  </div>
+)}
+{activeTab === 'lost-compensation' && (
+  <div className="mt-5">
+    {lostCompLoading ? (
+      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+        <Loader transparent />
+      </div>
+    ) : (
+      <DataTable<Record<string, React.ReactNode>>
+        columns={lostCompTableColumns}
+        data={lostCompTableData}
+        loading={false}
+        paginate={false}
+        stickyHeader
+        scrollY={false}
+        maxHeight="none"
+        emptyMessage="No data available"
+        tableClassName="text-xs 2xl:text-sm"
+        className="rounded-lg"
+        isTotalRow={(row) => !!(row as any).__isTotal}
+        bodyMaxHeight={
+          shouldScrollLostCompTable
+            ? TABLE_ROW_HEIGHT * LOST_COMP_VISIBLE_ROWS
+            : undefined
+        }
+        rowClassName={(row) =>
+          (row as any).__isTotal
+            ? "bg-[#D9D9D9] font-semibold"
+            : (row as any).__isOthers
+              ? "font-semibold"
+              : ""
+        }
+      />
+    )}
+  </div>
+)}
         </>
       </PreviewLockedSection>
 
