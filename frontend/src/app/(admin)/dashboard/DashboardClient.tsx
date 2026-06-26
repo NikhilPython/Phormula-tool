@@ -2102,10 +2102,11 @@ const buildInventoryInsightsFromResponses = (
                 totalUnits,
                 unsellableUnits,
 
-                // ✅ NEW COLUMN VALUE
                 unitsSold: getCurrentMonthUnitsSold(row),
 
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
+
+                inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
             };
         })
 

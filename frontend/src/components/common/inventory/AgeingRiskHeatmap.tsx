@@ -17,9 +17,12 @@ export type AgeingRiskHeatmapRow = {
     unsellableUnits?: number;
     unitsSold?: number;
     coverageRatio?: number;
+
+    // ✅ NEW
+    inventoryAlert?: string;
+
     isOthersRow?: boolean;
     isTotalRow?: boolean;
-
     isPercentageRow?: boolean;
 
     [bucketKey: string]: string | number | boolean | undefined;
@@ -97,6 +100,9 @@ const buildAggregateRow = (
         0
     );
 
+    // ✅ Keep Inventory Alerts blank for Others and Total rows
+    aggregate.inventoryAlert = "";
+
     const weightedCoverageTotal = rows.reduce((sum, row) => {
         const calculatedTotal = buckets.reduce(
             (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
@@ -146,8 +152,10 @@ const buildPercentageRow = (
 
         unitsSold: Number(unitsSoldPercentage || 0),
 
-        // keep blank for % row
         coverageRatio: undefined,
+
+        // ✅ NEW
+        inventoryAlert: "",
 
         isPercentageRow: true,
     };
@@ -449,6 +457,48 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             {Number.isFinite(coverageRatio) && coverageRatio > 0
                                 ? coverageRatio.toFixed(2)
                                 : "-"}
+                        </span>
+                    );
+                },
+            },
+            {
+                key: "inventoryAlert",
+                header: "Inventory Alerts",
+                width: "145px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    // ✅ Do not show Inventory Alerts for Others, Total, or % of Total
+                    if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
+                        return <span></span>;
+                    }
+
+                    const alert = String(row.inventoryAlert || "").trim();
+
+                    if (!alert) {
+                        return <span>-</span>;
+                    }
+
+                    const normalized = alert.toLowerCase();
+
+                    const badgeClassName = normalized.includes("high alert")
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : normalized.includes("high inventory coverage")
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : normalized.includes("ageing")
+                                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200";
+
+                    return (
+                        <span
+                            title={alert}
+                            className={[
+                                "inline-flex max-w-full items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
+                                badgeClassName,
+                            ].join(" ")}
+                        >
+                            {alert}
                         </span>
                     );
                 },
