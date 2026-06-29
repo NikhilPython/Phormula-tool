@@ -813,7 +813,9 @@ def generate_live_ai_cache_hash(user_objective, prev_totals, curr_totals):
             "unit_wise_profitability": round(float(prev_totals.get("unit_wise_profitability") or 0), 2),
 
             # ✅ NEW: refresh AI summary when previous CM2 changes
+                        
             "cm2_profit": round(float(prev_totals.get("cm2_profit") or 0), 2),
+            "advertising": round(float(prev_totals.get("advertising") or 0), 2),
         },
         "curr": {
             "quantity": round(float(curr_totals.get("quantity") or 0), 2),
@@ -822,8 +824,9 @@ def generate_live_ai_cache_hash(user_objective, prev_totals, curr_totals):
             "total_asp": round(float(curr_totals.get("total_asp") or 0), 2),
             "unit_wise_profitability": round(float(curr_totals.get("unit_wise_profitability") or 0), 2),
 
-            # ✅ refresh AI summary when current CM2 / target changes
+            # ✅ refresh AI summary when current CM2 / ads / target changes
             "cm2_profit": round(float(curr_totals.get("cm2_profit") or 0), 2),
+            "advertising": round(float(curr_totals.get("advertising") or 0), 2),
             "target_sales": round(float(curr_totals.get("target_sales") or 0), 2),
             "target_achievement_pct": round(float(curr_totals.get("target_achievement_pct") or 0), 2),
             "target_remaining": round(float(curr_totals.get("target_remaining") or 0), 2),
@@ -2420,10 +2423,52 @@ def live_mtd_vs_previous():
         # ---------------------------
         # PLATFORM FEES + ADS (SUMMARY ONLY)
         # ---------------------------
+        # ---------------------------
+        # PLATFORM FEES + ADS (SUMMARY ONLY)
+        # ---------------------------
         prev_fee_totals = totals_from_daily_series(prev_daily_aligned)
 
         # ✅ For AI payload only
         curr_fee_totals = curr_ai_fee_totals
+
+        # -------------------------------------------------
+        # ✅ Previous ads for OVERALL SUMMARY
+        # Match /amazon_api/finances/mtd_transactions
+        # previous_period.totals.advertising_fees
+        # -------------------------------------------------
+        previous_card_totals_for_summary = {}
+
+        try:
+            from app.routes.amazon_api_routes import get_previous_month_mtd_payload
+
+            # Use curr_end so as_of/date-range testing also stays aligned.
+            now_for_previous_card = datetime.combine(
+                curr_end,
+                datetime.utcnow().time()
+            ).replace(tzinfo=timezone.utc)
+
+            previous_card_payload_for_summary = get_previous_month_mtd_payload(
+                user_id=int(user_id),
+                country=country,
+                now_utc=now_for_previous_card,
+            )
+
+            previous_card_totals_for_summary = (
+                previous_card_payload_for_summary.get("totals", {})
+                if isinstance(previous_card_payload_for_summary, dict)
+                else {}
+            ) or {}
+
+            previous_card_ads = previous_card_totals_for_summary.get("advertising_fees")
+
+            if previous_card_ads not in (None, "", "nan", "None", "null"):
+                prev_fee_totals["advertising"] = round(float(previous_card_ads), 2)
+                prev_fee_totals["advertising_source"] = (
+                    "amazon_api.finances_mtd_transactions.previous_period.totals.advertising_fees"
+                )
+
+        except Exception as e:
+            print("[WARN] Failed to sync previous ads with finance MTD card:", e)
 
         # ---------------------------
         # GROWTH
@@ -2719,16 +2764,46 @@ def live_mtd_vs_previous():
 
         # -------------------------------------------------
         # ✅ CM2 for Business Summary
-        # Previous CM2 must use previous aligned MTD period, not full previous month.
-        # Current CM2 comes from current skuwisemonthly TOTAL row.
+        # Previous CM2 must match the card.
+        # Card source:
+        # /amazon_api/finances/mtd_transactions
+        # -> previous_period.totals.cm2_profit
         # -------------------------------------------------
-        prev_ads_for_cm2 = float(prev_fee_totals.get("advertising", 0.0) or 0.0)
-        prev_platform_for_cm2 = float(prev_fee_totals.get("platform_fee", 0.0) or 0.0)
+        try:
+            previous_card_totals = previous_card_totals_for_summary or {}
 
-        prev_totals["cm2_profit"] = round(
-            float(prev_totals.get("profit", 0.0) or 0.0)
-            - prev_ads_for_cm2
-            - prev_platform_for_cm2,
+            previous_card_cm2_profit = previous_card_totals.get("cm2_profit")
+
+            if previous_card_cm2_profit not in (None, "", "nan", "None", "null"):
+                prev_totals["cm2_profit"] = round(float(previous_card_cm2_profit), 2)
+                prev_totals["cm2_profit_source"] = (
+                    "amazon_api.finances_mtd_transactions.previous_period.totals.cm2_profit"
+                )
+
+        except Exception as e:
+            print("[WARN] Failed to sync previous CM2 with finance MTD card:", e)
+
+            # Fallback: old logic only if finance API helper fails.
+            prev_ads_for_cm2 = float(prev_fee_totals.get("advertising", 0.0) or 0.0)
+            prev_platform_for_cm2 = float(prev_fee_totals.get("platform_fee", 0.0) or 0.0)
+
+            prev_totals["cm2_profit"] = round(
+                float(prev_totals.get("profit", 0.0) or 0.0)
+                - prev_ads_for_cm2
+                - prev_platform_for_cm2,
+                2,
+            )
+            prev_totals["cm2_profit_source"] = "fallback_live_bi_profit_minus_ads_platform"
+
+        # ✅ Keep previous/current advertising in totals too,
+        # so AI cache hash can refresh when ads changes.
+        prev_totals["advertising"] = round(
+            float(prev_fee_totals.get("advertising", 0.0) or 0.0),
+            2,
+        )
+
+        curr_totals["advertising"] = round(
+            float(curr_fee_totals.get("advertising", 0.0) or 0.0),
             2,
         )
 
@@ -2737,13 +2812,24 @@ def live_mtd_vs_previous():
             2,
         )
 
-        print("[DEBUG] CM2 route values:", {
-            "prev_cm1_profit": prev_totals.get("profit"),
-            "prev_ads": prev_ads_for_cm2,
-            "prev_platform_fee": prev_platform_for_cm2,
-            "prev_cm2_profit": prev_totals.get("cm2_profit"),
-            "curr_cm2_profit": curr_totals.get("cm2_profit"),
-        })
+        # ✅ Current CM2 comes from current skuwisemonthly TOTAL row.
+        # Fallback only if current monthly table did not return cm2_profit.
+        if not curr_totals.get("cm2_profit"):
+            curr_ads_for_cm2 = float(curr_fee_totals.get("advertising", 0.0) or 0.0)
+            curr_platform_for_cm2 = float(curr_fee_totals.get("platform_fee", 0.0) or 0.0)
+
+            curr_totals["cm2_profit"] = round(
+                float(curr_totals.get("profit", 0.0) or 0.0)
+                - curr_ads_for_cm2
+                - curr_platform_for_cm2,
+                2,
+            )
+            curr_totals["cm2_profit_source"] = "fallback_current_profit_minus_ads_platform"
+        else:
+            curr_totals["cm2_profit_source"] = "current_skuwisemonthly_total_row"
+
+
+
 
         curr_totals["total_asp"] = curr_totals.get("total_asp") or (
             curr_totals["net_sales"] / curr_totals["quantity"]
@@ -2768,7 +2854,7 @@ def live_mtd_vs_previous():
             current_net_sales=curr_totals.get("net_sales", 0.0),
         )
 
-        print("[DEBUG] target_context:", target_context)
+
 
         # ✅ Add target + CM2 values into curr_totals BEFORE objective_hash
         curr_totals["cm2_profit"] = curr_totals.get("cm2_profit", 0.0)
@@ -3040,6 +3126,8 @@ def live_mtd_vs_previous():
         # AI CACHE CHECK
         # ====================================================
 
+
+
         objective_hash = generate_live_ai_cache_hash(
             user_objective=user_objective,
             prev_totals=prev_totals,
@@ -3128,7 +3216,7 @@ def live_mtd_vs_previous():
                     },
                 }
 
-                print("[DEBUG] summary_numeric_context cm2:", summary_numeric_context.get("cm2_profit"))
+
 
                 summary_out = run_live_prompt_1_5_summary(
                     analysis_output=analysis,

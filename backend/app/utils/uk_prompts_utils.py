@@ -3233,13 +3233,13 @@ Mandatory output format:
 {
   "summary_text": "4-5 sentences. Sentence 1 must correlate Units, ASP, Net Sales, and CM1 Profit. Sentence 2 must correlate Ads, Platform Fees, and CM2 Profit. Sentence 3 must cover Target Progress, target achievement, remaining target, and target trend. Sentence 4 should cover Miscellaneous Spend and Inventory Coverage if available. Include actual values.",
   "metric_bullets": [
-    "Units -> ASP -> Net Sales -> CM1 Profit: include current, previous, and % change for each metric and explain the chain",
-    "Ads + Platform Fees -> CM2 Profit: include current, previous, and % change for ads/platform fees where available and CM2 Profit if available",
+    "Include current Units, previous Units, and % change. Then connect ASP movement, Net Sales movement, and CM1 Profit movement in the same bullet, but do not start the bullet with a label or heading.",
+    "Include current Advertising Costs, previous Advertising Costs, Platform Fees, and CM2 Profit movement in the same bullet, but do not start the bullet with a label or heading.",
     "Target Progress: This must be a separate bullet. Include target sales, current net sales, target achievement %, target remaining, expected sales till date, target trend %, and whether sales are ahead or behind expected run-rate.",
     "ACOS/TACoS: include current, previous, % change or improvement %, and state whether advertising efficiency improved or worsened",
-    "Miscellaneous Spend: include current miscellaneous/lost spend if available",
+    "Miscellaneous Spend: include current miscellaneous spend if available",
     "Inventory Coverage: include total coverage ratio, required coverage months, and whether stock is low, excess, or aligned if available"
-  ]
+]
 }
 """
 
