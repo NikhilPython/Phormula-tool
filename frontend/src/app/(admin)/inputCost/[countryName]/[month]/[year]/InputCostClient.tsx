@@ -1156,8 +1156,8 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     otherSkuProductNames={
                       block.isOtherSkus
                         ? (block.includedSkus || []).map(
-                            (item) => item.product_name
-                          )
+                          (item) => item.product_name
+                        )
                         : []
                     }
                   />
@@ -1222,6 +1222,30 @@ const getPreviousCompletedPeriod = () => {
     year: String(previousMonthDate.getFullYear()),
     monthIndex: previousMonthDate.getMonth(),
   };
+};
+
+const getInventoryAgeSummaryMonthsForTrend = (yearValue: string) => {
+  const previousCompleted = getPreviousCompletedPeriod();
+
+  const selectedYearNum = Number(yearValue);
+  const currentYearNum = Number(new Date().getFullYear());
+
+  if (!selectedYearNum || Number.isNaN(selectedYearNum)) {
+    return [];
+  }
+
+  if (selectedYearNum > currentYearNum) {
+    return [];
+  }
+
+  const maxMonthIndex =
+    selectedYearNum === currentYearNum
+      ? previousCompleted.monthIndex
+      : 11;
+
+  return allMonths
+    .slice(0, maxMonthIndex + 1)
+    .map((m) => m.toLowerCase());
 };
 
 const isSameOrBeforePreviousCompletedMonth = (
@@ -1561,6 +1585,7 @@ const getRowAgeingTotalUnits = (row: any) => {
 
 const hasHighAlertInventory = (row: any) => {
   return String(
+    row?.inventoryAlert ??
     row?.["Inventory Alerts"] ??
     row?.inventory_alerts ??
     row?.alert ??
@@ -1698,6 +1723,16 @@ const buildInventoryInsightsFromResponses = (
     );
   });
 
+  const latestInventoryResponse = inventoryResponses.find((res) => res?.success);
+
+  const currentMonthUnitsSoldKey =
+    (latestInventoryResponse as any)?.columns?.find((column: string) =>
+      String(column).toLowerCase().startsWith("current month units sold")
+    ) ||
+    Object.keys(productRows?.[0] ?? {}).find((key) =>
+      String(key).toLowerCase().startsWith("current month units sold")
+    );
+
   const heatmapData: AgeingRiskHeatmapRow[] = productRows
     .map((row) => {
       const zeroToNinety = getInventoryAgeValue(row, 'inv-age-0-to-90-days');
@@ -1713,21 +1748,30 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
+      const unitsSold = currentMonthUnitsSoldKey
+        ? toNum(row?.[currentMonthUnitsSoldKey])
+        : 0;
+
       return {
         productName: getInventoryRowProductName(row),
         sku: getInventoryRowSku(row),
 
-        // ✅ ADD THIS
-        "Inventory Alerts": row?.["Inventory Alerts"] ?? row?.inventory_alerts ?? row?.alert ?? "",
+        inventoryAlert: String(
+          row?.["Inventory Alerts"] ??
+          row?.inventory_alerts ??
+          row?.alert ??
+          ""
+        ).trim(),
 
         zeroToNinety,
         ninetyOneToOneEighty,
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
-        totalUnits: totalUnits || getInventoryRowTotalUnits(row),
 
+        totalUnits: totalUnits || getInventoryRowTotalUnits(row),
         unsellableUnits: getInventoryRowUnfulfillableUnits(row),
+        unitsSold,
         coverageRatio: getInventoryRowCoverageRatio(row),
         estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
       };
@@ -1737,7 +1781,8 @@ const buildInventoryInsightsFromResponses = (
         toNum(row.totalUnits) > 0 ||
         toNum((row as any).unsellableUnits) > 0 ||
         toNum((row as any).coverageRatio) > 0 ||
-        toNum((row as any).estimatedStorageCost) > 0
+        toNum((row as any).estimatedStorageCost) > 0 ||
+        toNum((row as any).unitsSold) > 0
     );
 
   const overallAgeing = heatmapData.reduce(
@@ -1892,13 +1937,14 @@ const buildInventoryInsightsFromResponses = (
       })),
     }));
 
-  const latestInventoryResponse = inventoryResponses[0];
+  const selectedInventoryResponse =
+    latestInventoryResponse || inventoryResponses[0];
 
   const estimatedStorageCategory =
-    latestInventoryResponse?.categories?.estimated_storage_cost as any;
+    selectedInventoryResponse?.categories?.estimated_storage_cost as any;
 
   const totalEstimatedStorageCost =
-    getEstimatedStorageCostTotal(latestInventoryResponse) ||
+    getEstimatedStorageCostTotal(selectedInventoryResponse) ||
     heatmapData.reduce(
       (sum, row) => sum + toNum((row as any).estimatedStorageCost),
       0
@@ -1927,8 +1973,8 @@ const buildInventoryInsightsFromResponses = (
   );
 
   const highAlertAvgCoverageRatio =
-    typeof latestInventoryResponse?.high_alert_coverage_summary?.average_coverage_ratio === "number"
-      ? latestInventoryResponse.high_alert_coverage_summary.average_coverage_ratio
+    typeof selectedInventoryResponse?.high_alert_coverage_summary?.average_coverage_ratio === "number"
+      ? selectedInventoryResponse.high_alert_coverage_summary.average_coverage_ratio
       : (() => {
         const validCoverageRows = highAlertRows
           .map((row) => toNum((row as any).coverageRatio))
@@ -1943,7 +1989,7 @@ const buildInventoryInsightsFromResponses = (
       })();
 
   const highAlertSkuCount =
-    latestInventoryResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+    selectedInventoryResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
     getUniqueInventorySkuCount(highAlertRows);
 
   const discountRows = heatmapData.filter(
@@ -2450,26 +2496,26 @@ export default function InputCostPage({ params }: Params) {
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
   const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
- const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
-const [aiPanelLoading, setAiPanelLoading] = useState(false);
-const [aiPanelError, setAiPanelError] = useState<string | null>(null);
+  const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
+  const [aiPanelLoading, setAiPanelLoading] = useState(false);
+  const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
-const aiRequestIdRef = useRef(0);
+  const aiRequestIdRef = useRef(0);
 
-const [selectedAiProductBlock, setSelectedAiProductBlock] =
-  useState<ProductInsightBlock | null>(null);
+  const [selectedAiProductBlock, setSelectedAiProductBlock] =
+    useState<ProductInsightBlock | null>(null);
 
-const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
-  useState<any>(null);
+  const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
+    useState<any>(null);
 
-const [aiBestPerformanceLoading, setAiBestPerformanceLoading] =
-  useState(false);
+  const [aiBestPerformanceLoading, setAiBestPerformanceLoading] =
+    useState(false);
 
-const [aiBestPerformanceError, setAiBestPerformanceError] =
-  useState<string | null>(null);
+  const [aiBestPerformanceError, setAiBestPerformanceError] =
+    useState<string | null>(null);
 
-const [aiBestPerformanceData, setAiBestPerformanceData] =
-  useState<ProductBestPerformanceData | null>(null);
+  const [aiBestPerformanceData, setAiBestPerformanceData] =
+    useState<ProductBestPerformanceData | null>(null);
 
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -2492,11 +2538,11 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
     yearParam?.toLowerCase() === 'na';
 
   type InputCostTab =
-  | 'inventory-insights'
-  | 'sku-info'
-  | 'recon-table'
-  | 'lost-compensation'
-  | 'extra';
+    | 'inventory-insights'
+    | 'sku-info'
+    | 'recon-table'
+    | 'lost-compensation'
+    | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
 
   const getDefaultMonth = () => {
@@ -2542,194 +2588,194 @@ const [aiBestPerformanceData, setAiBestPerformanceData] =
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
   const [reconRows, setReconRows] = useState<AnyRow[]>([]);
-const [reconFetching, setReconFetching] = useState(false);
-const [reconLoadedOnce, setReconLoadedOnce] = useState(false);
+  const [reconFetching, setReconFetching] = useState(false);
+  const [reconLoadedOnce, setReconLoadedOnce] = useState(false);
 
-const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
-const [lostCompLoading, setLostCompLoading] = useState(false);
+  const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
+  const [lostCompLoading, setLostCompLoading] = useState(false);
 
-const [showAllReconRows, setShowAllReconRows] = useState(false);
-const [showAllLostCompRows, setShowAllLostCompRows] = useState(false);
+  const [showAllReconRows, setShowAllReconRows] = useState(false);
+  const [showAllLostCompRows, setShowAllLostCompRows] = useState(false);
 
-const [anyExpanded, setAnyExpanded] = useState(false);
-const anyExpandedRef = useRef(false);
+  const [anyExpanded, setAnyExpanded] = useState(false);
+  const anyExpandedRef = useRef(false);
 
-const handleAnyGroupExpandedChange = useCallback((v: boolean) => {
-  anyExpandedRef.current = v;
-  setAnyExpanded(v);
-}, []);
+  const handleAnyGroupExpandedChange = useCallback((v: boolean) => {
+    anyExpandedRef.current = v;
+    setAnyExpanded(v);
+  }, []);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-const LEDGER_DB_STORE_MONTH = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-month`;
-const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
-const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
+  const LEDGER_DB_STORE_MONTH = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-month`;
+  const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
+  const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
 
 
-const inputCostNameToSkuMap = useMemo(() => {
-  const map: Record<string, string> = {};
+  const inputCostNameToSkuMap = useMemo(() => {
+    const map: Record<string, string> = {};
 
-  for (const row of skuData || []) {
-    const name = normalizeKey(String(row.product_name || ""));
+    for (const row of skuData || []) {
+      const name = normalizeKey(String(row.product_name || ""));
 
-    const sku =
-      countryName === "uk"
-        ? row.sku_uk
-        : countryName === "us"
-          ? row.sku_us
-          : countryName === "canada"
-            ? row.sku_canada
-            : row.sku_uk || row.sku_us || row.sku_canada;
+      const sku =
+        countryName === "uk"
+          ? row.sku_uk
+          : countryName === "us"
+            ? row.sku_us
+            : countryName === "canada"
+              ? row.sku_canada
+              : row.sku_uk || row.sku_us || row.sku_canada;
 
-    if (name && sku) {
-      map[name] = String(sku).trim();
-    }
-  }
-
-  return map;
-}, [skuData, countryName]);
-
-const aiProductBlocks = useMemo(() => {
-  return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
-}, [aiPanel?.skuInsightsBullets]);
-
-const aiSkuActions = useMemo(() => {
-  const recommendationsMap = aiPanel?.recommendationsMap;
-
-  return (
-    (recommendationsMap as any)?.sku_actions ??
-    (recommendationsMap as any)?.recommendations ??
-    recommendationsMap ??
-    {}
-  );
-}, [aiPanel?.recommendationsMap]);
-
-const drawerPeriodText = useMemo(() => {
-  return aiPanel?.summaryBullets?.[0]
-    ? formatSummaryPeriod(aiPanel.summaryBullets[0])
-    : "";
-}, [aiPanel?.summaryBullets]);
-
-const fetchAiSummary = useCallback(async () => {
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
-
-  if (!ready || !countryName || isNA) return;
-
-  const aiTimeline =
-    range === "monthly"
-      ? monthNameToNumber(selectedMonth)
-      : range === "quarterly"
-        ? selectedQuarter
-        : "ALL";
-
-  if (range === "monthly" && !aiTimeline) return;
-  if (range === "quarterly" && !selectedQuarter) return;
-
-  const requestId = ++aiRequestIdRef.current;
-
-  setAiPanelLoading(true);
-  setAiPanelError(null);
-
-  try {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
-
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
-
-    url.searchParams.set("country", countryName);
-    url.searchParams.set("period", range);
-    url.searchParams.set("timeline", String(aiTimeline));
-    url.searchParams.set("year", String(selectedYear));
-
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
-
-    const data: any = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data?.error || data?.message || "Failed to fetch AI summary");
+      if (name && sku) {
+        map[name] = String(sku).trim();
+      }
     }
 
-    if (requestId !== aiRequestIdRef.current) return;
+    return map;
+  }, [skuData, countryName]);
 
-    const sections = parseMdSections(data.summary);
+  const aiProductBlocks = useMemo(() => {
+    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
+  }, [aiPanel?.skuInsightsBullets]);
 
-    const summaryLines = sections["SUMMARY"] ?? [];
-    const inventoryLines = sections["INVENTORY"] ?? [];
-    const productLines = [
-      ...(sections["PRODUCT INSIGHTS"] ?? []),
-      ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
-    ];
+  const aiSkuActions = useMemo(() => {
+    const recommendationsMap = aiPanel?.recommendationsMap;
 
-    const { recommendationBullets, inventoryBullets, recommendationsMap } =
-      extractRecoAndInventoryBullets(data.recommendations as any);
+    return (
+      (recommendationsMap as any)?.sku_actions ??
+      (recommendationsMap as any)?.recommendations ??
+      recommendationsMap ??
+      {}
+    );
+  }, [aiPanel?.recommendationsMap]);
 
-    let remainingSkusRecommendation: string | undefined;
+  const drawerPeriodText = useMemo(() => {
+    return aiPanel?.summaryBullets?.[0]
+      ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+      : "";
+  }, [aiPanel?.summaryBullets]);
 
-    if (
-      data.recommendations &&
-      typeof data.recommendations === "object" &&
-      "remaining_skus_recommendation" in data.recommendations
-    ) {
-      remainingSkusRecommendation =
-        (data.recommendations as any).remaining_skus_recommendation;
+  const fetchAiSummary = useCallback(async () => {
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready || !countryName || isNA) return;
+
+    const aiTimeline =
+      range === "monthly"
+        ? monthNameToNumber(selectedMonth)
+        : range === "quarterly"
+          ? selectedQuarter
+          : "ALL";
+
+    if (range === "monthly" && !aiTimeline) return;
+    if (range === "quarterly" && !selectedQuarter) return;
+
+    const requestId = ++aiRequestIdRef.current;
+
+    setAiPanelLoading(true);
+    setAiPanelError(null);
+
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
+
+      url.searchParams.set("country", countryName);
+      url.searchParams.set("period", range);
+      url.searchParams.set("timeline", String(aiTimeline));
+      url.searchParams.set("year", String(selectedYear));
+
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+
+      const data: any = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || data?.message || "Failed to fetch AI summary");
+      }
+
+      if (requestId !== aiRequestIdRef.current) return;
+
+      const sections = parseMdSections(data.summary);
+
+      const summaryLines = sections["SUMMARY"] ?? [];
+      const inventoryLines = sections["INVENTORY"] ?? [];
+      const productLines = [
+        ...(sections["PRODUCT INSIGHTS"] ?? []),
+        ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
+      ];
+
+      const { recommendationBullets, inventoryBullets, recommendationsMap } =
+        extractRecoAndInventoryBullets(data.recommendations as any);
+
+      let remainingSkusRecommendation: string | undefined;
+
+      if (
+        data.recommendations &&
+        typeof data.recommendations === "object" &&
+        "remaining_skus_recommendation" in data.recommendations
+      ) {
+        remainingSkusRecommendation =
+          (data.recommendations as any).remaining_skus_recommendation;
+      }
+
+      setAiPanel({
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines.length ? inventoryLines : inventoryBullets,
+        recommendationsMap,
+        objective: data.objective,
+        rawSummary: data.summary ?? null,
+        rawRecommendations:
+          typeof data.recommendations === "string"
+            ? data.recommendations
+            : null,
+        remainingSkusRecommendation,
+        portfolioRecommendation: data.portfolio_recommendation ?? null,
+        otherSkuIncludedProducts: getOtherSkuIncludedProducts(data),
+      });
+    } catch (e: any) {
+      if (requestId !== aiRequestIdRef.current) return;
+
+      setAiPanel(null);
+      setAiPanelError(e?.message || "Failed to fetch AI summary");
+    } finally {
+      if (requestId === aiRequestIdRef.current) {
+        setAiPanelLoading(false);
+      }
     }
+  }, [
+    countryName,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    isNA,
+  ]);
 
-    setAiPanel({
-      summaryBullets: summaryLines,
-      skuInsightsBullets: productLines,
-      recommendationBullets,
-      inventoryBullets: inventoryLines.length ? inventoryLines : inventoryBullets,
-      recommendationsMap,
-      objective: data.objective,
-      rawSummary: data.summary ?? null,
-      rawRecommendations:
-        typeof data.recommendations === "string"
-          ? data.recommendations
-          : null,
-      remainingSkusRecommendation,
-      portfolioRecommendation: data.portfolio_recommendation ?? null,
-      otherSkuIncludedProducts: getOtherSkuIncludedProducts(data),
-    });
-  } catch (e: any) {
-    if (requestId !== aiRequestIdRef.current) return;
-
-    setAiPanel(null);
-    setAiPanelError(e?.message || "Failed to fetch AI summary");
-  } finally {
-    if (requestId === aiRequestIdRef.current) {
-      setAiPanelLoading(false);
-    }
-  }
-}, [
-  countryName,
-  range,
-  selectedMonth,
-  selectedQuarter,
-  selectedYear,
-  isNA,
-]);
-
-const authHeaders = () => {
-  const token = localStorage.getItem('jwtToken');
-  if (!token) throw new Error('Missing jwtToken');
-  return { Authorization: `Bearer ${token}` };
-};
+  const authHeaders = () => {
+    const token = localStorage.getItem('jwtToken');
+    if (!token) throw new Error('Missing jwtToken');
+    return { Authorization: `Bearer ${token}` };
+  };
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
   }, []);
 
-  
+
 
   const handleRangeChange = (nextRange: RangeType) => {
     setRange(nextRange);
@@ -3158,8 +3204,8 @@ const authHeaders = () => {
   }, [countryName, monthParam, yearParam, isNA]);
 
   useEffect(() => {
-  void fetchAiSummary();
-}, [fetchAiSummary]);
+    void fetchAiSummary();
+  }, [fetchAiSummary]);
 
   const handlePriceChange = (productName: string, value: string) => {
     setEditedPrices((prev) => ({
@@ -3325,126 +3371,34 @@ const authHeaders = () => {
 
 
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
-  const { range, year, country } = params;
-
-  const q: Record<string, any> = {
-    year,
-    sort: "desc",
-  };
-
-  if (country) q.country = country;
-
-  let endpoint = LEDGER_DB_STORE_YEAR;
-
-  if (range === 'monthly') {
-    const mm = monthNameToNumber(params.month);
-    if (!mm) throw new Error('Invalid month selected');
-
-    q.month = mm;
-    endpoint = LEDGER_DB_STORE_MONTH;
-  }
-
-  if (range === 'quarterly') {
-    const qq = quarterToNumber(params.quarter);
-    if (!qq) throw new Error('Invalid quarter selected');
-
-    q.quarter = qq;
-    endpoint = LEDGER_DB_STORE_QUARTER;
-  }
-
-  const url = `${endpoint}?${buildQuery(q)}`;
-
-  const res = await fetch(url, {
-    headers: authHeaders(),
-    cache: 'no-store',
-  });
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok || json?.success === false) {
-    throw new Error(json?.error || 'Failed to fetch ledger summary from DB');
-  }
-
-  return Array.isArray(json?.items) ? json.items : [];
-}
-
-const fetchReconTableData = async () => {
-  if (isNA) {
-    setReconRows(DUMMY_RECON_ROWS);
-    setReconFetching(false);
-    setReconLoadedOnce(true);
-    return;
-  }
-
-  setReconFetching(true);
-
-  try {
-    let payload: LedgerDBReadParams;
-
-    if (range === 'monthly') {
-      payload = {
-        range: 'monthly',
-        month: selectedMonth,
-        year: selectedYear,
-        country: countryName,
-      };
-    } else if (range === 'quarterly') {
-      payload = {
-        range: 'quarterly',
-        quarter: selectedQuarter,
-        year: selectedYear,
-        country: countryName,
-      };
-    } else {
-      payload = {
-        range: 'yearly',
-        year: selectedYear,
-        country: countryName,
-      };
-    }
-
-    const items = await fetchLedgerSummaryDB(payload);
-
-    setReconRows(items);
-    setReconLoadedOnce(true);
-  } catch (e) {
-    console.error(e);
-    setReconRows([]);
-    setReconLoadedOnce(true);
-  } finally {
-    setReconFetching(false);
-  }
-};
-
-
-async function fetchInventoryLostCompensation() {
-  if (isNA) {
-    setLostCompRows(DUMMY_LOST_COMP_ROWS);
-    setLostCompLoading(false);
-    return;
-  }
-
-  setLostCompLoading(true);
-
-  try {
-    const mode =
-      range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+    const { range, year, country } = params;
 
     const q: Record<string, any> = {
-      country: countryName,
-      year: selectedYear,
-      mode,
+      year,
+      sort: "desc",
     };
 
-    if (mode === "month") {
-      q.month = selectedMonth;
+    if (country) q.country = country;
+
+    let endpoint = LEDGER_DB_STORE_YEAR;
+
+    if (range === 'monthly') {
+      const mm = monthNameToNumber(params.month);
+      if (!mm) throw new Error('Invalid month selected');
+
+      q.month = mm;
+      endpoint = LEDGER_DB_STORE_MONTH;
     }
 
-    if (mode === "quarter") {
-      q.quarter = String(selectedQuarter).toLowerCase();
+    if (range === 'quarterly') {
+      const qq = quarterToNumber(params.quarter);
+      if (!qq) throw new Error('Invalid quarter selected');
+
+      q.quarter = qq;
+      endpoint = LEDGER_DB_STORE_QUARTER;
     }
 
-    const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
+    const url = `${endpoint}?${buildQuery(q)}`;
 
     const res = await fetch(url, {
       headers: authHeaders(),
@@ -3454,70 +3408,162 @@ async function fetchInventoryLostCompensation() {
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok || json?.success === false) {
-      throw new Error(json?.error || "Failed to fetch inventory lost compensation");
+      throw new Error(json?.error || 'Failed to fetch ledger summary from DB');
     }
 
-    let rows: AnyRow[] = Array.isArray(json?.data) ? json.data : [];
+    return Array.isArray(json?.items) ? json.items : [];
+  }
 
-    rows = rows.filter((r) => {
-      const name = String(r?.product_name || "").toUpperCase();
-      const sku = String(r?.msku || "").toUpperCase();
-
-      return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
-    });
-
-    if (!rows.length) {
-      setLostCompRows([]);
+  const fetchReconTableData = async () => {
+    if (isNA) {
+      setReconRows(DUMMY_RECON_ROWS);
+      setReconFetching(false);
+      setReconLoadedOnce(true);
       return;
     }
 
-    const total = rows.reduce(
-      (acc: AnyRow, r: AnyRow) => {
-        acc.lost_units += Number(r?.lost_units || 0);
-        acc.damaged_units += Number(r?.damaged_units || 0);
-        acc.total_lost_units += Number(r?.total_lost_units || 0);
-        acc.compensation_units += Number(r?.compensation_units || 0);
-        acc.compensation_value += Number(r?.compensation_value || 0);
-        acc.compensation_reimbursement_amount += Number(
-          r?.compensation_reimbursement_amount || 0
-        );
-        acc.settlement_loss_event_units += Number(
-          r?.settlement_loss_event_units || 0
-        );
-        acc.settlement_loss_event_amount += Number(
-          r?.settlement_loss_event_amount || 0
-        );
-        acc.loss_value += Number(r?.loss_value || 0);
-        acc.net_units += Number(r?.net_units || 0);
-        acc.net_value += Number(r?.net_value || 0);
-        return acc;
-      },
-      {
-        product_name: "Total",
-        msku: "-",
-        __isTotal: true,
-        lost_units: 0,
-        damaged_units: 0,
-        total_lost_units: 0,
-        compensation_units: 0,
-        compensation_value: 0,
-        compensation_reimbursement_amount: 0,
-        settlement_loss_event_units: 0,
-        settlement_loss_event_amount: 0,
-        loss_value: 0,
-        net_units: 0,
-        net_value: 0,
-      }
-    );
+    setReconFetching(true);
 
-    setLostCompRows([...rows, total]);
-  } catch (e) {
-    console.error(e);
-    setLostCompRows([]);
-  } finally {
-    setLostCompLoading(false);
+    try {
+      let payload: LedgerDBReadParams;
+
+      if (range === 'monthly') {
+        payload = {
+          range: 'monthly',
+          month: selectedMonth,
+          year: selectedYear,
+          country: countryName,
+        };
+      } else if (range === 'quarterly') {
+        payload = {
+          range: 'quarterly',
+          quarter: selectedQuarter,
+          year: selectedYear,
+          country: countryName,
+        };
+      } else {
+        payload = {
+          range: 'yearly',
+          year: selectedYear,
+          country: countryName,
+        };
+      }
+
+      const items = await fetchLedgerSummaryDB(payload);
+
+      setReconRows(items);
+      setReconLoadedOnce(true);
+    } catch (e) {
+      console.error(e);
+      setReconRows([]);
+      setReconLoadedOnce(true);
+    } finally {
+      setReconFetching(false);
+    }
+  };
+
+
+  async function fetchInventoryLostCompensation() {
+    if (isNA) {
+      setLostCompRows(DUMMY_LOST_COMP_ROWS);
+      setLostCompLoading(false);
+      return;
+    }
+
+    setLostCompLoading(true);
+
+    try {
+      const mode =
+        range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+
+      const q: Record<string, any> = {
+        country: countryName,
+        year: selectedYear,
+        mode,
+      };
+
+      if (mode === "month") {
+        q.month = selectedMonth;
+      }
+
+      if (mode === "quarter") {
+        q.quarter = String(selectedQuarter).toLowerCase();
+      }
+
+      const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
+
+      const res = await fetch(url, {
+        headers: authHeaders(),
+        cache: 'no-store',
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || "Failed to fetch inventory lost compensation");
+      }
+
+      let rows: AnyRow[] = Array.isArray(json?.data) ? json.data : [];
+
+      rows = rows.filter((r) => {
+        const name = String(r?.product_name || "").toUpperCase();
+        const sku = String(r?.msku || "").toUpperCase();
+
+        return name !== "GRAND TOTAL" && sku !== "GRAND TOTAL";
+      });
+
+      if (!rows.length) {
+        setLostCompRows([]);
+        return;
+      }
+
+      const total = rows.reduce(
+        (acc: AnyRow, r: AnyRow) => {
+          acc.lost_units += Number(r?.lost_units || 0);
+          acc.damaged_units += Number(r?.damaged_units || 0);
+          acc.total_lost_units += Number(r?.total_lost_units || 0);
+          acc.compensation_units += Number(r?.compensation_units || 0);
+          acc.compensation_value += Number(r?.compensation_value || 0);
+          acc.compensation_reimbursement_amount += Number(
+            r?.compensation_reimbursement_amount || 0
+          );
+          acc.settlement_loss_event_units += Number(
+            r?.settlement_loss_event_units || 0
+          );
+          acc.settlement_loss_event_amount += Number(
+            r?.settlement_loss_event_amount || 0
+          );
+          acc.loss_value += Number(r?.loss_value || 0);
+          acc.net_units += Number(r?.net_units || 0);
+          acc.net_value += Number(r?.net_value || 0);
+          return acc;
+        },
+        {
+          product_name: "Total",
+          msku: "-",
+          __isTotal: true,
+          lost_units: 0,
+          damaged_units: 0,
+          total_lost_units: 0,
+          compensation_units: 0,
+          compensation_value: 0,
+          compensation_reimbursement_amount: 0,
+          settlement_loss_event_units: 0,
+          settlement_loss_event_amount: 0,
+          loss_value: 0,
+          net_units: 0,
+          net_value: 0,
+        }
+      );
+
+      setLostCompRows([...rows, total]);
+    } catch (e) {
+      console.error(e);
+      setLostCompRows([]);
+    } finally {
+      setLostCompLoading(false);
+    }
   }
-}
 
   const fetchWarehouseData = async () => {
     if (isNA) {
@@ -3783,10 +3829,17 @@ async function fetchInventoryLostCompensation() {
         setInventoryInsightsLoading(true);
         setInventoryInsightsError(null);
 
-        const [inventoryResult, ageSummaryResults] = await Promise.all([
+        const trendMonthsToFetch: string[] =
+          getInventoryAgeSummaryMonthsForTrend(selectedYear);
+
+        const [inventoryResult, ageSummaryResults]: [
+          InventoryCurrentApiResponse,
+          PromiseSettledResult<InventoryAgeSummaryApiResponse>[]
+        ] = await Promise.all([
           fetchInventoryCurrentByPeriod(ac.signal),
+
           Promise.allSettled(
-            allMonths.map((monthName) =>
+            trendMonthsToFetch.map((monthName: string) =>
               fetchSingleMonthInventoryAgeSummary(
                 monthName,
                 selectedYear,
@@ -3853,39 +3906,39 @@ async function fetchInventoryLostCompensation() {
   ]);
 
   useEffect(() => {
-  setShowAllReconRows(false);
-  setShowAllLostCompRows(false);
-}, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+    setShowAllReconRows(false);
+    setShowAllLostCompRows(false);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
-useEffect(() => {
-  if (activeTab !== 'recon-table') return;
+  useEffect(() => {
+    if (activeTab !== 'recon-table') return;
 
-  const ready =
-    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
-    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
-    (range === 'yearly' && !!selectedYear);
+    const ready =
+      (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+      (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+      (range === 'yearly' && !!selectedYear);
 
-  if (!ready) return;
+    if (!ready) return;
 
-  void fetchReconTableData();
+    void fetchReconTableData();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
 
-useEffect(() => {
-  if (activeTab !== 'lost-compensation') return;
+  useEffect(() => {
+    if (activeTab !== 'lost-compensation') return;
 
-  const ready =
-    (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
-    (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
-    (range === 'yearly' && !!selectedYear);
+    const ready =
+      (range === 'monthly' && !!selectedMonth && !!selectedYear) ||
+      (range === 'quarterly' && !!selectedQuarter && !!selectedYear) ||
+      (range === 'yearly' && !!selectedYear);
 
-  if (!ready) return;
+    if (!ready) return;
 
-  void fetchInventoryLostCompensation();
+    void fetchInventoryLostCompensation();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
 
   useEffect(() => {
     if (!inventoryRawResponses) return;
@@ -3901,10 +3954,6 @@ useEffect(() => {
   }, [
     selectedAgeingTrendBucket,
     inventoryRawResponses,
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
     countryName,
   ]);
 
@@ -4011,96 +4060,109 @@ useEffect(() => {
   }, [skuData, visibleColumns]);
 
   const openAiProductDrawerByName = useCallback(
-  (productName: string, sku?: string) => {
-    const cleanName = String(productName || "").trim();
-    const cleanSku = String(sku || "").trim();
+    (productName: string, sku?: string) => {
+      const cleanName = String(productName || "").trim();
+      const cleanSku = String(sku || "").trim();
 
-    if (!cleanName && !cleanSku) return;
+      if (!cleanName && !cleanSku) return;
 
-    const normalizedClickedName = normalizeKey(cleanName);
+      const normalizedClickedName = normalizeKey(cleanName);
 
-    const block =
-      (cleanSku
-        ? aiProductBlocks.find(
+      const block =
+        (cleanSku
+          ? aiProductBlocks.find(
             (b) =>
               String(b.skuKey || "").trim().toLowerCase() ===
               cleanSku.toLowerCase()
           )
-        : undefined) ||
-      aiProductBlocks.find(
-        (b) => normalizeKey(b.name) === normalizedClickedName
-      );
+          : undefined) ||
+        aiProductBlocks.find(
+          (b) => normalizeKey(b.name) === normalizedClickedName
+        );
 
-    if (!block) {
-      console.warn("No AI insight block found for:", {
-        productName: cleanName,
-        sku: cleanSku,
-        aiProductBlocks,
-      });
-      return;
-    }
+      if (!block) {
+        console.warn("No AI insight block found for:", {
+          productName: cleanName,
+          sku: cleanSku,
+          aiProductBlocks,
+        });
+        return;
+      }
 
-    const skuKey =
-      block.skuKey ||
-      cleanSku ||
-      inputCostNameToSkuMap?.[normalizeKey(block.name)];
+      const skuKey =
+        block.skuKey ||
+        cleanSku ||
+        inputCostNameToSkuMap?.[normalizeKey(block.name)];
 
-    const recObj =
-      (skuKey && (aiSkuActions as any)[skuKey]) ||
-      (aiSkuActions as any)[block.name] ||
-      (aiSkuActions as any)[block.name.trim()] ||
-      null;
+      const recObj =
+        (skuKey && (aiSkuActions as any)[skuKey]) ||
+        (aiSkuActions as any)[block.name] ||
+        (aiSkuActions as any)[block.name.trim()] ||
+        null;
 
-    setSelectedAiProductRecObj(recObj);
-    setSelectedAiProductBlock(block);
-  },
-  [aiProductBlocks, aiSkuActions, inputCostNameToSkuMap]
-);
+      setSelectedAiProductRecObj(recObj);
+      setSelectedAiProductBlock(block);
+    },
+    [aiProductBlocks, aiSkuActions, inputCostNameToSkuMap]
+  );
 
-const handleHeatmapProductClick = useCallback(
-  (heatmapRow: AgeingRiskHeatmapRow) => {
-    if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) return;
+  const handleHeatmapProductClick = useCallback(
+    (heatmapRow: AgeingRiskHeatmapRow) => {
+      if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) return;
 
-    const productName = String(heatmapRow.productName || "").trim();
-    const sku = String(heatmapRow.sku || "").trim();
+      const productName = String(heatmapRow.productName || "").trim();
+      const sku = String(heatmapRow.sku || "").trim();
 
-    if (!productName && !sku) return;
+      if (!productName && !sku) return;
 
-    openAiProductDrawerByName(productName, sku);
-  },
-  [openAiProductDrawerByName]
-);
+      openAiProductDrawerByName(productName, sku);
+    },
+    [openAiProductDrawerByName]
+  );
 
-const getSkuFromAnyRow = useCallback(
-  (row: any) => {
-    if (!row) return "";
+  const getSkuFromAnyRow = useCallback(
+    (row: any) => {
+      if (!row) return "";
 
-    if (countryName === "uk") {
+      if (countryName === "uk") {
+        return (
+          row.sku_uk ||
+          row.sku ||
+          row.SKU ||
+          row.msku ||
+          row.seller_sku ||
+          row.fnsku ||
+          ""
+        );
+      }
+
+      if (countryName === "us") {
+        return (
+          row.sku_us ||
+          row.sku ||
+          row.SKU ||
+          row.msku ||
+          row.seller_sku ||
+          row.fnsku ||
+          ""
+        );
+      }
+
+      if (countryName === "canada") {
+        return (
+          row.sku_canada ||
+          row.sku ||
+          row.SKU ||
+          row.msku ||
+          row.seller_sku ||
+          row.fnsku ||
+          ""
+        );
+      }
+
       return (
         row.sku_uk ||
-        row.sku ||
-        row.SKU ||
-        row.msku ||
-        row.seller_sku ||
-        row.fnsku ||
-        ""
-      );
-    }
-
-    if (countryName === "us") {
-      return (
         row.sku_us ||
-        row.sku ||
-        row.SKU ||
-        row.msku ||
-        row.seller_sku ||
-        row.fnsku ||
-        ""
-      );
-    }
-
-    if (countryName === "canada") {
-      return (
         row.sku_canada ||
         row.sku ||
         row.SKU ||
@@ -4109,135 +4171,122 @@ const getSkuFromAnyRow = useCallback(
         row.fnsku ||
         ""
       );
-    }
+    },
+    [countryName]
+  );
 
-    return (
-      row.sku_uk ||
-      row.sku_us ||
-      row.sku_canada ||
-      row.sku ||
-      row.SKU ||
-      row.msku ||
-      row.seller_sku ||
-      row.fnsku ||
-      ""
-    );
-  },
-  [countryName]
-);
+  const renderClickableProductName = useCallback(
+    (
+      productNameValue: any,
+      skuValue?: any,
+      options?: {
+        disabled?: boolean;
+        displayName?: string;
+      }
+    ) => {
+      const productName = String(productNameValue || "").trim();
+      const sku = String(skuValue || "").trim();
 
-const renderClickableProductName = useCallback(
-  (
-    productNameValue: any,
-    skuValue?: any,
-    options?: {
-      disabled?: boolean;
-      displayName?: string;
-    }
-  ) => {
-    const productName = String(productNameValue || "").trim();
-    const sku = String(skuValue || "").trim();
+      const displayName = options?.displayName || productName || "—";
+      const normalizedName = productName.toLowerCase();
 
-    const displayName = options?.displayName || productName || "—";
-    const normalizedName = productName.toLowerCase();
+      const isSpecialRow =
+        options?.disabled ||
+        !productName ||
+        normalizedName === "total" ||
+        normalizedName === "grand total" ||
+        normalizedName === "others" ||
+        normalizedName === "other skus" ||
+        normalizedName === "-";
 
-    const isSpecialRow =
-      options?.disabled ||
-      !productName ||
-      normalizedName === "total" ||
-      normalizedName === "grand total" ||
-      normalizedName === "others" ||
-      normalizedName === "other skus" ||
-      normalizedName === "-";
+      if (isSpecialRow) {
+        return <span>{displayName}</span>;
+      }
 
-    if (isSpecialRow) {
-      return <span>{displayName}</span>;
-    }
+      return (
+        <button
+          type="button"
+          onClick={() => openAiProductDrawerByName(productName, sku)}
+          className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+          title="Open detailed product view"
+        >
+          {displayName}
+        </button>
+      );
+    },
+    [openAiProductDrawerByName]
+  );
 
-    return (
-      <button
-        type="button"
-        onClick={() => openAiProductDrawerByName(productName, sku)}
-        className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
-        title="Open detailed product view"
-      >
-        {displayName}
-      </button>
-    );
-  },
-  [openAiProductDrawerByName]
-);
+  useEffect(() => {
+    if (!selectedAiProductBlock) return;
 
-useEffect(() => {
-  if (!selectedAiProductBlock) return;
+    const ac = new AbortController();
 
-  const ac = new AbortController();
+    const fetchBestPerformance = async () => {
+      try {
+        setAiBestPerformanceLoading(true);
+        setAiBestPerformanceError(null);
+        setAiBestPerformanceData(null);
 
-  const fetchBestPerformance = async () => {
-    try {
-      setAiBestPerformanceLoading(true);
-      setAiBestPerformanceError(null);
-      setAiBestPerformanceData(null);
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null;
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
-          : null;
+        if (!token) throw new Error("Missing token");
 
-      if (!token) throw new Error("Missing token");
+        const isOtherSkusBlock =
+          selectedAiProductBlock.isOtherSkus ||
+          selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
 
-      const isOtherSkusBlock =
-        selectedAiProductBlock.isOtherSkus ||
-        selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
-
-      const productName =
-        isOtherSkusBlock
-          ? aiProductBlocks.find(
+        const productName =
+          isOtherSkusBlock
+            ? aiProductBlocks.find(
               (b) =>
                 !b.isOtherSkus &&
                 b.name.trim().toLowerCase() !== "other skus"
             )?.name
-          : selectedAiProductBlock.name;
+            : selectedAiProductBlock.name;
 
-      if (!productName) return;
+        if (!productName) return;
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            product_name: productName,
-            country: countryName,
-            home_currency: getCurrencyForCountry(countryName),
-          }),
-          cache: "no-store",
-          signal: ac.signal,
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              product_name: productName,
+              country: countryName,
+              home_currency: getCurrencyForCountry(countryName),
+            }),
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to fetch best performance");
         }
-      );
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to fetch best performance");
+        setAiBestPerformanceData(json?.best_performance ?? null);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setAiBestPerformanceError(e?.message || "Failed to load best performance");
+      } finally {
+        setAiBestPerformanceLoading(false);
       }
+    };
 
-      setAiBestPerformanceData(json?.best_performance ?? null);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setAiBestPerformanceError(e?.message || "Failed to load best performance");
-    } finally {
-      setAiBestPerformanceLoading(false);
-    }
-  };
+    fetchBestPerformance();
 
-  fetchBestPerformance();
-
-  return () => ac.abort();
-}, [selectedAiProductBlock, aiProductBlocks, countryName]);
+    return () => ac.abort();
+  }, [selectedAiProductBlock, aiProductBlocks, countryName]);
 
   const columns: ColumnDef<TableRow>[] = useMemo(() => {
     return visibleColumns.map((column) => {
@@ -4248,48 +4297,48 @@ useEffect(() => {
 
       if (column === 's_no') col.width = '60px';
 
-     if (column === "product_name") {
-  col.width = "160px";
-  col.cellClassName = "text-left";
+      if (column === "product_name") {
+        col.width = "160px";
+        col.cellClassName = "text-left";
 
-  col.render = (tableRow) => {
-    const productName = String(tableRow.product_name || "").trim();
+        col.render = (tableRow) => {
+          const productName = String(tableRow.product_name || "").trim();
 
-    const originalRow = skuData.find(
-      (r) => String(r.product_name || "").trim() === productName
-    );
+          const originalRow = skuData.find(
+            (r) => String(r.product_name || "").trim() === productName
+          );
 
-    if (!originalRow) {
-      return <span>{tableRow.product_name}</span>;
-    }
+          if (!originalRow) {
+            return <span>{tableRow.product_name}</span>;
+          }
 
-    const sku =
-      countryName === "uk"
-        ? originalRow.sku_uk
-        : countryName === "us"
-          ? originalRow.sku_us
-          : countryName === "canada"
-            ? originalRow.sku_canada
-            : originalRow.sku_uk ||
-              originalRow.sku_us ||
-              originalRow.sku_canada;
+          const sku =
+            countryName === "uk"
+              ? originalRow.sku_uk
+              : countryName === "us"
+                ? originalRow.sku_us
+                : countryName === "canada"
+                  ? originalRow.sku_canada
+                  : originalRow.sku_uk ||
+                  originalRow.sku_us ||
+                  originalRow.sku_canada;
 
-    return (
-      <button
-        type="button"
-        onClick={() =>
-          openAiProductDrawerByName(
-            originalRow.product_name,
-            String(sku || "")
-          )
-        }
-        className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
-      >
-        {tableRow.product_name}
-      </button>
-    );
-  };
-}
+          return (
+            <button
+              type="button"
+              onClick={() =>
+                openAiProductDrawerByName(
+                  originalRow.product_name,
+                  String(sku || "")
+                )
+              }
+              className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+            >
+              {tableRow.product_name}
+            </button>
+          );
+        };
+      }
 
       if (column === 'sku_uk' || column === 'sku_us' || column === 'sku_canada') {
         col.width = '130px';
@@ -4339,198 +4388,198 @@ useEffect(() => {
       return col;
     });
   }, [
-  visibleColumns,
-  skuData,
-  isEditing,
-  editedPrices,
-  countryName,
-  openAiProductDrawerByName,
-]);
+    visibleColumns,
+    skuData,
+    isEditing,
+    editedPrices,
+    countryName,
+    openAiProductDrawerByName,
+  ]);
 
   const periodLabel = useMemo(() => {
-  if (range === "monthly") return "month";
-  if (range === "quarterly") return "quarter";
-  return "year";
-}, [range]);
+    if (range === "monthly") return "month";
+    if (range === "quarterly") return "quarter";
+    return "year";
+  }, [range]);
 
-const beginningInventoryLabel = useMemo(
-  () => `Inventory at the beginning of the ${periodLabel}`,
-  [periodLabel]
-);
-
-const endingInventoryLabel = useMemo(() => {
-  if (range === "monthly") return "Inventory at month end";
-  if (range === "quarterly") return "Inventory at quarter end";
-  return "Inventory at year end";
-}, [range]);
-
-const leftCols: LeafCol<AnyRow>[] = [
-  { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
-  { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
-  { key: 'msku', label: 'SKU', width: 110, align: 'center' },
-];
-
-const groups: ColGroup<AnyRow>[] = useMemo(
-  () => [
-    {
-      id: 'beginning',
-      label: beginningInventoryLabel,
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__beginning_total', label: 'Total', width: 140, align: 'center' },
-      ],
-      expandedCols: [
-        { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
-        { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
-        { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
-        { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
-        { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
-      ],
-    },
-    {
-      id: 'units_in_transit',
-      label: 'Units in transit',
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
-      ],
-      expandedCols: [
-        { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
-        { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
-        { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
-      ],
-    },
-    {
-      id: 'other_items',
-      label: 'Other Items',
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
-      ],
-      expandedCols: [
-        { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
-        { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
-        { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
-        { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
-        { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
-        { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
-        { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
-        { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
-      ],
-    },
-    {
-      id: 'units_sold',
-      label: 'Units Sold',
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__units_sold_net', label: 'Net Units', width: 90, align: 'center' },
-      ],
-      expandedCols: [
-        { key: '__units_sold_gross', label: 'Gross Sales', width: 110, align: 'center' },
-        { key: '__units_sold_returns', label: 'Return', width: 110, align: 'center' },
-        { key: '__units_sold_net', label: 'Net Units', width: 110, align: 'center' },
-      ],
-    },
-    {
-      id: 'open_orders',
-      label: 'Open orders',
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-      ],
-      expandedCols: [
-        { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
-        { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
-        { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-      ],
-    },
-    {
-      id: 'ending',
-      label: endingInventoryLabel,
-      headerClassName: 'min-w-[120px]',
-      collapsedCols: [
-        { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
-      ],
-      expandedCols: [
-        { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
-        { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
-        { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
-        { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
-        { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
-      ],
-    },
-  ],
-  [beginningInventoryLabel, endingInventoryLabel]
-);
-
-const singleCols: LeafCol<AnyRow>[] = useMemo(
-  () => [
-    {
-      key: "inventory_coverage_ratio",
-      label: "Inventory Coverage Ratio",
-      width: 140,
-      align: "center",
-    },
-    {
-      key: "difference_total",
-      label: "Difference",
-      width: 90,
-      align: "center",
-    },
-  ],
-  []
-);
-
-const reconDisplayRows = useMemo(() => {
-  if (!reconRows || reconRows.length === 0) return [];
-
-  const grandTotalRow = reconRows.find(isTotalRow) || null;
-  const dataRows = reconRows.filter((r) => !isTotalRow(r));
-
-  const sortedDataRows = [...dataRows].sort((a, b) => {
-    return Math.abs(toInventoryInt(b?.sold_total)) - Math.abs(toInventoryInt(a?.sold_total));
-  });
-
-  const top = showAllReconRows ? sortedDataRows : sortedDataRows.slice(0, 9);
-  const remaining = showAllReconRows ? [] : sortedDataRows.slice(9);
-
-  const keys = Array.from(
-    new Set(
-      dataRows.flatMap((r) =>
-        Object.keys(r || {}).filter(
-          (k) => isNumericLike(r?.[k]) && k !== "inventory_coverage_ratio"
-        )
-      )
-    )
+  const beginningInventoryLabel = useMemo(
+    () => `Inventory at the beginning of the ${periodLabel}`,
+    [periodLabel]
   );
 
-  const out: AnyRow[] = [...top];
+  const endingInventoryLabel = useMemo(() => {
+    if (range === "monthly") return "Inventory at month end";
+    if (range === "quarterly") return "Inventory at quarter end";
+    return "Inventory at year end";
+  }, [range]);
 
-  if (remaining.length > 0) {
-    const others = sumRowForKeys(remaining, keys, {
-      id: "__OTHERS__",
-      msku: "OTHERS",
-      product_name: "OTHERS",
-      __isOthers: true,
+  const leftCols: LeafCol<AnyRow>[] = [
+    { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
+    { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
+    { key: 'msku', label: 'SKU', width: 110, align: 'center' },
+  ];
+
+  const groups: ColGroup<AnyRow>[] = useMemo(
+    () => [
+      {
+        id: 'beginning',
+        label: beginningInventoryLabel,
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__beginning_total', label: 'Total', width: 140, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
+          { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
+          { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
+          { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
+          { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'units_in_transit',
+        label: 'Units in transit',
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
+          { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
+          { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'other_items',
+        label: 'Other Items',
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
+          { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
+          { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
+          { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
+          { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
+          { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
+          { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
+          { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'units_sold',
+        label: 'Units Sold',
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__units_sold_net', label: 'Net Units', width: 90, align: 'center' },
+        ],
+        expandedCols: [
+          { key: '__units_sold_gross', label: 'Gross Sales', width: 110, align: 'center' },
+          { key: '__units_sold_returns', label: 'Return', width: 110, align: 'center' },
+          { key: '__units_sold_net', label: 'Net Units', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'open_orders',
+        label: 'Open orders',
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
+        ],
+        expandedCols: [
+          { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
+          { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
+          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'ending',
+        label: endingInventoryLabel,
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
+          { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
+          { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
+          { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
+          { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+    ],
+    [beginningInventoryLabel, endingInventoryLabel]
+  );
+
+  const singleCols: LeafCol<AnyRow>[] = useMemo(
+    () => [
+      {
+        key: "inventory_coverage_ratio",
+        label: "Inventory Coverage Ratio",
+        width: 140,
+        align: "center",
+      },
+      {
+        key: "difference_total",
+        label: "Difference",
+        width: 90,
+        align: "center",
+      },
+    ],
+    []
+  );
+
+  const reconDisplayRows = useMemo(() => {
+    if (!reconRows || reconRows.length === 0) return [];
+
+    const grandTotalRow = reconRows.find(isTotalRow) || null;
+    const dataRows = reconRows.filter((r) => !isTotalRow(r));
+
+    const sortedDataRows = [...dataRows].sort((a, b) => {
+      return Math.abs(toInventoryInt(b?.sold_total)) - Math.abs(toInventoryInt(a?.sold_total));
     });
 
-    const endingTotal = toInventoryInt(others?.ending_total);
-    const soldTotalAbs = Math.abs(toInventoryInt(others?.sold_total));
+    const top = showAllReconRows ? sortedDataRows : sortedDataRows.slice(0, 9);
+    const remaining = showAllReconRows ? [] : sortedDataRows.slice(9);
 
-    others.inventory_coverage_ratio =
-      soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+    const keys = Array.from(
+      new Set(
+        dataRows.flatMap((r) =>
+          Object.keys(r || {}).filter(
+            (k) => isNumericLike(r?.[k]) && k !== "inventory_coverage_ratio"
+          )
+        )
+      )
+    );
 
-    out.push(others);
-  }
+    const out: AnyRow[] = [...top];
 
-  const total =
-    grandTotalRow
-      ? {
+    if (remaining.length > 0) {
+      const others = sumRowForKeys(remaining, keys, {
+        id: "__OTHERS__",
+        msku: "OTHERS",
+        product_name: "OTHERS",
+        __isOthers: true,
+      });
+
+      const endingTotal = toInventoryInt(others?.ending_total);
+      const soldTotalAbs = Math.abs(toInventoryInt(others?.sold_total));
+
+      others.inventory_coverage_ratio =
+        soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
+      out.push(others);
+    }
+
+    const total =
+      grandTotalRow
+        ? {
           ...grandTotalRow,
           id: "__TOTAL__",
           __isTotal: true,
         }
-      : (() => {
+        : (() => {
           const totalRow = sumRowForKeys(dataRows, keys, {
             id: "__TOTAL__",
             msku: "GRAND TOTAL",
@@ -4547,343 +4596,343 @@ const reconDisplayRows = useMemo(() => {
           return totalRow;
         })();
 
-  out.push(total);
+    out.push(total);
 
-  return out;
-}, [reconRows, showAllReconRows]);
+    return out;
+  }, [reconRows, showAllReconRows]);
 
-const effectiveReconRows = useMemo(() => {
-  if (isNA) return DUMMY_RECON_ROWS;
-  return reconDisplayRows;
-}, [isNA, reconDisplayRows]);
+  const effectiveReconRows = useMemo(() => {
+    if (isNA) return DUMMY_RECON_ROWS;
+    return reconDisplayRows;
+  }, [isNA, reconDisplayRows]);
 
-const getReconRowClassName = (row: AnyRow) => {
-  const msku = String(row?.msku || '').trim().toUpperCase();
-  const isGrand = isTotalRow(row) || msku === 'TOTAL' || row?.__isTotal === true;
-  const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
+  const getReconRowClassName = (row: AnyRow) => {
+    const msku = String(row?.msku || '').trim().toUpperCase();
+    const isGrand = isTotalRow(row) || msku === 'TOTAL' || row?.__isTotal === true;
+    const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
 
-  if (isGrand) return 'bg-[#D9D9D9] font-semibold';
-  if (isOthers) return 'font-semibold';
-  return '';
-};
+    if (isGrand) return 'bg-[#D9D9D9] font-semibold';
+    if (isOthers) return 'font-semibold';
+    return '';
+  };
 
-const getReconValue = (row: AnyRow, colKey: string, exportIndex?: number) => {
-  const isSpecialRow =
-    row?.__isTotal === true ||
-    row?.__isOthers === true ||
-    isTotalRow(row);
-
-  if (colKey === 'msku' && isSpecialRow) return '-';
-
-  const pn = String(row?.product_name || '').trim().toUpperCase();
-
-  if (colKey === "product_name") {
-  if (pn === "OTHERS") return "Others";
-  if (pn === "TOTAL" || pn === "GRAND TOTAL") return "Total";
-
-  return renderClickableProductName(row?.product_name, row?.msku, {
-    disabled:
+  const getReconValue = (row: AnyRow, colKey: string, exportIndex?: number) => {
+    const isSpecialRow =
       row?.__isTotal === true ||
       row?.__isOthers === true ||
-      isTotalRow(row),
-  });
-}
+      isTotalRow(row);
 
-  if (colKey === "__sno") {
-    if (isSpecialRow) return "";
+    if (colKey === 'msku' && isSpecialRow) return '-';
 
-    if (typeof exportIndex === "number") {
-      return String(exportIndex + 1);
+    const pn = String(row?.product_name || '').trim().toUpperCase();
+
+    if (colKey === "product_name") {
+      if (pn === "OTHERS") return "Others";
+      if (pn === "TOTAL" || pn === "GRAND TOTAL") return "Total";
+
+      return renderClickableProductName(row?.product_name, row?.msku, {
+        disabled:
+          row?.__isTotal === true ||
+          row?.__isOthers === true ||
+          isTotalRow(row),
+      });
     }
 
-    const visibleRows = reconDisplayRows.filter((r) => !(r?.__isTotal || isTotalRow(r)));
-    const idx = visibleRows.findIndex(
-      (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
-    );
+    if (colKey === "__sno") {
+      if (isSpecialRow) return "";
 
-    return idx >= 0 ? String(idx + 1) : "";
-  }
+      if (typeof exportIndex === "number") {
+        return String(exportIndex + 1);
+      }
 
-  if (
-    colKey === 'sum_in_transit_between_warehouses' ||
-    colKey === '__open_orders_beginning' ||
-    colKey === '__open_orders_end' ||
-    colKey === '__open_orders_total' ||
-    colKey === '__ending_transit_placeholder'
-  ) {
-    return '-';
-  }
+      const visibleRows = reconDisplayRows.filter((r) => !(r?.__isTotal || isTotalRow(r)));
+      const idx = visibleRows.findIndex(
+        (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
+      );
 
-  if (colKey === '__beginning_damaged_total') {
-    return formatReconCell(
-      toInventoryInt(row?.warehouse_damaged_sum_first) +
+      return idx >= 0 ? String(idx + 1) : "";
+    }
+
+    if (
+      colKey === 'sum_in_transit_between_warehouses' ||
+      colKey === '__open_orders_beginning' ||
+      colKey === '__open_orders_end' ||
+      colKey === '__open_orders_total' ||
+      colKey === '__ending_transit_placeholder'
+    ) {
+      return '-';
+    }
+
+    if (colKey === '__beginning_damaged_total') {
+      return formatReconCell(
+        toInventoryInt(row?.warehouse_damaged_sum_first) +
         toInventoryInt(row?.customer_damaged_sum_first) +
         toInventoryInt(row?.distributor_damaged_sum_first) +
         toInventoryInt(row?.defective_sum_first)
-    );
-  }
+      );
+    }
 
-  if (colKey === '__beginning_total') return formatReconCell(row?.beginning_total);
+    if (colKey === '__beginning_total') return formatReconCell(row?.beginning_total);
 
-  if (colKey === 'transit_total') return '-';
+    if (colKey === 'transit_total') return '-';
 
-  if (colKey === 'sum_receipts') return formatReconCell(row?.sum_receipts);
+    if (colKey === 'sum_receipts') return formatReconCell(row?.sum_receipts);
 
-  if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
+    if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
 
-  if (colKey === '__other_items_total') {
-    return formatReconCell(row?.other_total);
-  }
+    if (colKey === '__other_items_total') {
+      return formatReconCell(row?.other_total);
+    }
 
-  if (colKey === '__units_sold_gross') {
-    return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_shipments)));
-  }
+    if (colKey === '__units_sold_gross') {
+      return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_shipments)));
+    }
 
-  if (colKey === '__units_sold_returns') {
-    return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_returns)));
-  }
+    if (colKey === '__units_sold_returns') {
+      return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_returns)));
+    }
 
-  if (colKey === '__units_sold_net') {
-    return formatReconCell(Math.abs(toInventoryInt(row?.sold_total)));
-  }
+    if (colKey === '__units_sold_net') {
+      return formatReconCell(Math.abs(toInventoryInt(row?.sold_total)));
+    }
 
-  if (colKey === '__ending_total') {
-    return formatReconCell(row?.ending_total);
-  }
+    if (colKey === '__ending_total') {
+      return formatReconCell(row?.ending_total);
+    }
 
-  if (colKey === '__ending_damaged_lost_total') {
-    const total =
-      toInventoryInt(row?.defective_sum_last) +
-      toInventoryInt(row?.warehouse_damaged_sum_last) +
-      toInventoryInt(row?.customer_damaged_sum_last) +
-      toInventoryInt(row?.distributor_damaged_sum_last);
+    if (colKey === '__ending_damaged_lost_total') {
+      const total =
+        toInventoryInt(row?.defective_sum_last) +
+        toInventoryInt(row?.warehouse_damaged_sum_last) +
+        toInventoryInt(row?.customer_damaged_sum_last) +
+        toInventoryInt(row?.distributor_damaged_sum_last);
 
-    return formatReconCell(total);
-  }
+      return formatReconCell(total);
+    }
 
-  if (colKey === "inventory_coverage_ratio") {
-    const raw = Number(row?.inventory_coverage_ratio);
-    if (!Number.isFinite(raw) || raw === 0) return "-";
-    return raw.toFixed(2);
-  }
+    if (colKey === "inventory_coverage_ratio") {
+      const raw = Number(row?.inventory_coverage_ratio);
+      if (!Number.isFinite(raw) || raw === 0) return "-";
+      return raw.toFixed(2);
+    }
 
-  return formatReconCell(row?.[colKey]);
-};
-
-const SIGN_PLUS = useMemo(
-  () =>
-    new Set([
-      "sum_disposed",
-      "sum_damaged",
-      "sum_unknown_events",
-      "sum_other_events",
-      "sum_vendor_returns",
-      "sum_lost",
-    ]),
-  []
-);
-
-const SIGN_MINUS = useMemo(
-  () =>
-    new Set([
-      "sum_found",
-    ]),
-  []
-);
-
-const getSignForCol = useCallback(
-  (colKey: string) => {
-    if (SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
-    if (SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
-    return null;
-  },
-  [SIGN_PLUS, SIGN_MINUS]
-);
-
-
-const effectiveLostCompRows = useMemo(() => {
-  if (isNA) return DUMMY_LOST_COMP_ROWS;
-  return lostCompRows;
-}, [isNA, lostCompRows]);
-
-const lostCompDisplayRows = useMemo(() => {
-  const rows = effectiveLostCompRows || [];
-
-  const totalRow = rows.find((r) => r?.__isTotal);
-  const dataRows = rows.filter((r) => !r?.__isTotal);
-
-  const sorted = [...dataRows].sort(
-    (a, b) =>
-      Math.abs(toInventoryInt(b?.total_lost_units)) -
-      Math.abs(toInventoryInt(a?.total_lost_units))
-  );
-
-  const top9 = showAllLostCompRows ? sorted : sorted.slice(0, 9);
-  const others = showAllLostCompRows ? [] : sorted.slice(9);
-
-  const out: AnyRow[] = [...top9];
-
-  if (others.length > 0) {
-    out.push({
-      product_name: "Others",
-      msku: "-",
-      __isOthers: true,
-      lost_units: others.reduce((a, r) => a + toInventoryInt(r?.lost_units), 0),
-      damaged_units: others.reduce((a, r) => a + toInventoryInt(r?.damaged_units), 0),
-      total_lost_units: others.reduce((a, r) => a + toInventoryInt(r?.total_lost_units), 0),
-      compensation_units: others.reduce((a, r) => a + toInventoryInt(r?.compensation_units), 0),
-      compensation_value: others.reduce((a, r) => a + toInventoryInt(r?.compensation_value), 0),
-      settlement_loss_event_amount: others.reduce(
-        (a, r) => a + toInventoryInt(r?.settlement_loss_event_amount),
-        0
-      ),
-      net_units: others.reduce((a, r) => a + toInventoryInt(r?.net_units), 0),
-      net_value: others.reduce((a, r) => a + toInventoryInt(r?.net_value), 0),
-    });
-  }
-
-  if (totalRow) out.push(totalRow);
-
-  return out;
-}, [effectiveLostCompRows, showAllLostCompRows]);
-
-const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
-  return (lostCompDisplayRows || []).map((row, idx) => ({
-    __isTotal: row?.__isTotal,
-    __isOthers: row?.__isOthers,
-    __sno: row?.__isTotal ? "" : idx + 1,
-
-    product_name:
-      row?.__isTotal || row?.__isOthers
-        ? formatReconCell(row?.product_name)
-        : renderClickableProductName(row?.product_name, row?.msku),
-
-    msku: formatReconCell(row?.msku),
-
-    lost_units: formatReconCell(row?.lost_units),
-    damaged_units: formatReconCell(row?.damaged_units),
-    compensation_units: formatReconCell(row?.compensation_units),
-    net_units: formatReconCell(row?.net_units),
-    total_lost_units: formatReconCell(row?.total_lost_units),
-    compensation_value: formatReconCell(row?.compensation_value),
-    settlement_loss_event_amount: formatReconCell(row?.settlement_loss_event_amount),
-    net_value: formatReconCell(row?.net_value),
-  }));
-}, [lostCompDisplayRows, renderClickableProductName]);
-
-const countryCurrencySymbol = useMemo(() => {
-  const c = String(countryName || "").trim().toLowerCase();
-
-  const map: Record<string, string> = {
-    uk: "£",
-    gb: "£",
-    us: "$",
-    usa: "$",
-    india: "₹",
-    in: "₹",
-    canada: "C$",
-    ca: "C$",
+    return formatReconCell(row?.[colKey]);
   };
 
-  return map[c] || "";
-}, [countryName]);
+  const SIGN_PLUS = useMemo(
+    () =>
+      new Set([
+        "sum_disposed",
+        "sum_damaged",
+        "sum_unknown_events",
+        "sum_other_events",
+        "sum_vendor_returns",
+        "sum_lost",
+      ]),
+    []
+  );
 
-const lostCompTableColumns = useMemo<
-  ColumnDef<Record<string, React.ReactNode>>[]
->(() => {
-  const countryCurrencySuffix = countryCurrencySymbol
-    ? ` (${countryCurrencySymbol})`
-    : "";
+  const SIGN_MINUS = useMemo(
+    () =>
+      new Set([
+        "sum_found",
+      ]),
+    []
+  );
 
-  return [
-    {
-      key: "__sno",
-      header: "S. No.",
-      width: "w-[70px]",
-      cellClassName: "text-center",
+  const getSignForCol = useCallback(
+    (colKey: string) => {
+      if (SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
+      if (SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
+      return null;
     },
-    {
-      key: "product_name",
-      header: "Product Name",
-      width: "w-[220px]",
-      cellClassName: "text-left",
-      headerClassName: "text-left break-words",
-    },
-    {
-      key: "msku",
-      header: "SKU",
-      width: "w-[120px]",
-      cellClassName: "text-center",
-    },
-    {
-      key: "lost_units",
-      header: "Lost Units",
-      width: "w-[120px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "damaged_units",
-      header: "Damaged Units",
-      width: "w-[120px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "compensation_units",
-      header: "Compensation Units",
-      width: "w-[150px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "net_units",
-      header: "Remaining Compensation Units",
-      width: "w-[160px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "total_lost_units",
-      header: "Total Lost Units",
-      width: "w-[130px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "compensation_value",
-      header: `Compensation Value Amount${countryCurrencySuffix}`,
-      width: "w-[170px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "settlement_loss_event_amount",
-      header: `Remaining Compensation Amount${countryCurrencySuffix}`,
-      width: "w-[200px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-    {
-      key: "net_value",
-      header: `Total Compensation Value${countryCurrencySuffix}`,
-      width: "w-[170px]",
-      cellClassName: "text-center",
-      headerClassName: "break-words",
-    },
-  ];
-}, [countryCurrencySymbol]);
+    [SIGN_PLUS, SIGN_MINUS]
+  );
 
- const tabOptions = useMemo(
-  () => [
-    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
-    { value: 'sku-info' as const, label: 'SKU Information' },
-    { value: 'recon-table' as const, label: 'Recon Table' },
-    { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
-    { value: 'extra' as const, label: 'Upload Warehouse Data' },
-  ],
-  []
-);
+
+  const effectiveLostCompRows = useMemo(() => {
+    if (isNA) return DUMMY_LOST_COMP_ROWS;
+    return lostCompRows;
+  }, [isNA, lostCompRows]);
+
+  const lostCompDisplayRows = useMemo(() => {
+    const rows = effectiveLostCompRows || [];
+
+    const totalRow = rows.find((r) => r?.__isTotal);
+    const dataRows = rows.filter((r) => !r?.__isTotal);
+
+    const sorted = [...dataRows].sort(
+      (a, b) =>
+        Math.abs(toInventoryInt(b?.total_lost_units)) -
+        Math.abs(toInventoryInt(a?.total_lost_units))
+    );
+
+    const top9 = showAllLostCompRows ? sorted : sorted.slice(0, 9);
+    const others = showAllLostCompRows ? [] : sorted.slice(9);
+
+    const out: AnyRow[] = [...top9];
+
+    if (others.length > 0) {
+      out.push({
+        product_name: "Others",
+        msku: "-",
+        __isOthers: true,
+        lost_units: others.reduce((a, r) => a + toInventoryInt(r?.lost_units), 0),
+        damaged_units: others.reduce((a, r) => a + toInventoryInt(r?.damaged_units), 0),
+        total_lost_units: others.reduce((a, r) => a + toInventoryInt(r?.total_lost_units), 0),
+        compensation_units: others.reduce((a, r) => a + toInventoryInt(r?.compensation_units), 0),
+        compensation_value: others.reduce((a, r) => a + toInventoryInt(r?.compensation_value), 0),
+        settlement_loss_event_amount: others.reduce(
+          (a, r) => a + toInventoryInt(r?.settlement_loss_event_amount),
+          0
+        ),
+        net_units: others.reduce((a, r) => a + toInventoryInt(r?.net_units), 0),
+        net_value: others.reduce((a, r) => a + toInventoryInt(r?.net_value), 0),
+      });
+    }
+
+    if (totalRow) out.push(totalRow);
+
+    return out;
+  }, [effectiveLostCompRows, showAllLostCompRows]);
+
+  const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
+    return (lostCompDisplayRows || []).map((row, idx) => ({
+      __isTotal: row?.__isTotal,
+      __isOthers: row?.__isOthers,
+      __sno: row?.__isTotal ? "" : idx + 1,
+
+      product_name:
+        row?.__isTotal || row?.__isOthers
+          ? formatReconCell(row?.product_name)
+          : renderClickableProductName(row?.product_name, row?.msku),
+
+      msku: formatReconCell(row?.msku),
+
+      lost_units: formatReconCell(row?.lost_units),
+      damaged_units: formatReconCell(row?.damaged_units),
+      compensation_units: formatReconCell(row?.compensation_units),
+      net_units: formatReconCell(row?.net_units),
+      total_lost_units: formatReconCell(row?.total_lost_units),
+      compensation_value: formatReconCell(row?.compensation_value),
+      settlement_loss_event_amount: formatReconCell(row?.settlement_loss_event_amount),
+      net_value: formatReconCell(row?.net_value),
+    }));
+  }, [lostCompDisplayRows, renderClickableProductName]);
+
+  const countryCurrencySymbol = useMemo(() => {
+    const c = String(countryName || "").trim().toLowerCase();
+
+    const map: Record<string, string> = {
+      uk: "£",
+      gb: "£",
+      us: "$",
+      usa: "$",
+      india: "₹",
+      in: "₹",
+      canada: "C$",
+      ca: "C$",
+    };
+
+    return map[c] || "";
+  }, [countryName]);
+
+  const lostCompTableColumns = useMemo<
+    ColumnDef<Record<string, React.ReactNode>>[]
+  >(() => {
+    const countryCurrencySuffix = countryCurrencySymbol
+      ? ` (${countryCurrencySymbol})`
+      : "";
+
+    return [
+      {
+        key: "__sno",
+        header: "S. No.",
+        width: "w-[70px]",
+        cellClassName: "text-center",
+      },
+      {
+        key: "product_name",
+        header: "Product Name",
+        width: "w-[220px]",
+        cellClassName: "text-left",
+        headerClassName: "text-left break-words",
+      },
+      {
+        key: "msku",
+        header: "SKU",
+        width: "w-[120px]",
+        cellClassName: "text-center",
+      },
+      {
+        key: "lost_units",
+        header: "Lost Units",
+        width: "w-[120px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "damaged_units",
+        header: "Damaged Units",
+        width: "w-[120px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "compensation_units",
+        header: "Compensation Units",
+        width: "w-[150px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "net_units",
+        header: "Remaining Compensation Units",
+        width: "w-[160px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "total_lost_units",
+        header: "Total Lost Units",
+        width: "w-[130px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "compensation_value",
+        header: `Compensation Value Amount${countryCurrencySuffix}`,
+        width: "w-[170px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "settlement_loss_event_amount",
+        header: `Remaining Compensation Amount${countryCurrencySuffix}`,
+        width: "w-[200px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+      {
+        key: "net_value",
+        header: `Total Compensation Value${countryCurrencySuffix}`,
+        width: "w-[170px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+    ];
+  }, [countryCurrencySymbol]);
+
+  const tabOptions = useMemo(
+    () => [
+      { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+      { value: 'sku-info' as const, label: 'SKU Information' },
+      { value: 'recon-table' as const, label: 'Recon Table' },
+      { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
+      { value: 'extra' as const, label: 'Upload Warehouse Data' },
+    ],
+    []
+  );
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -4936,30 +4985,30 @@ const lostCompTableColumns = useMemo<
                   ? '110px'
                   : '140px',
       cellClassName: col === 'product_name' ? 'text-left' : 'text-center',
-     render: (row) => {
-  const value = row[col];
+      render: (row) => {
+        const value = row[col];
 
-  if (col === "product_name") {
-    const sku = getSkuFromAnyRow(row);
+        if (col === "product_name") {
+          const sku = getSkuFromAnyRow(row);
 
-    return renderClickableProductName(value, sku);
-  }
+          return renderClickableProductName(value, sku);
+        }
 
-  if (col === "month" && typeof value === "string") {
-    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-  }
+        if (col === "month" && typeof value === "string") {
+          return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+        }
 
-  return value === null || value === undefined || value === ""
-    ? "—"
-    : String(value);
-},
+        return value === null || value === undefined || value === ""
+          ? "—"
+          : String(value);
+      },
     }));
   }, [
-  warehouseColumns,
-  countryName,
-  getSkuFromAnyRow,
-  renderClickableProductName,
-]);
+    warehouseColumns,
+    countryName,
+    getSkuFromAnyRow,
+    renderClickableProductName,
+  ]);
 
   if (error) return <div>Error: {error}</div>;
 
@@ -5086,16 +5135,16 @@ const lostCompTableColumns = useMemo<
   const INPUT_COST_ROW_HEIGHT = 40;
 
   const RECON_VISIBLE_ROWS = 15;
-const LOST_COMP_VISIBLE_ROWS = 15;
-const TABLE_ROW_HEIGHT = 40;
+  const LOST_COMP_VISIBLE_ROWS = 15;
+  const TABLE_ROW_HEIGHT = 40;
 
-const shouldScrollReconTable =
-  !showAllReconRows &&
-  effectiveReconRows.filter((row) => !isTotalRow(row)).length > RECON_VISIBLE_ROWS;
+  const shouldScrollReconTable =
+    !showAllReconRows &&
+    effectiveReconRows.filter((row) => !isTotalRow(row)).length > RECON_VISIBLE_ROWS;
 
-const shouldScrollLostCompTable =
-  !showAllLostCompRows &&
-  lostCompTableData.filter((row: any) => !row.__isTotal).length > LOST_COMP_VISIBLE_ROWS;
+  const shouldScrollLostCompTable =
+    !showAllLostCompRows &&
+    lostCompTableData.filter((row: any) => !row.__isTotal).length > LOST_COMP_VISIBLE_ROWS;
 
   const shouldScrollSkuInfoTable = tableData.length > INPUT_COST_VISIBLE_ROWS;
 
@@ -5164,74 +5213,74 @@ const shouldScrollLostCompTable =
 
               <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
             </>
-         ) : activeTab === 'extra' ? (
-  <>
-    <button
-      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-      onClick={() => setShowWarehouseUpload(true)}
-      disabled={isNA}
-    >
-      Upload File
-    </button>
+          ) : activeTab === 'extra' ? (
+            <>
+              <button
+                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                onClick={() => setShowWarehouseUpload(true)}
+                disabled={isNA}
+              >
+                Upload File
+              </button>
 
-    <DownloadIconButton
-      onClick={handleWarehouseDownload}
-      size="md"
-      disabled={isNA}
-    />
-  </>
-) : (
-  <>
-    <PeriodFiltersTable
-      range={range}
-      selectedMonth={selectedMonth}
-      selectedQuarter={selectedQuarter}
-      selectedYear={selectedYear}
-      yearOptions={yearOptions}
-      onRangeChange={handleRangeChange}
-      onMonthChange={handleMonthChange}
-      onQuarterChange={handleQuarterChange}
-      onYearChange={handleYearChange}
-      allowedRanges={['monthly', 'quarterly', 'yearly']}
-    />
-
-    {activeTab === 'recon-table' &&
-      effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
-        <button
-          type="button"
-          onClick={() => setShowAllReconRows((prev) => !prev)}
-          title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-          aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-          disabled={isNA || reconFetching}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {showAllReconRows ? (
-            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              <DownloadIconButton
+                onClick={handleWarehouseDownload}
+                size="md"
+                disabled={isNA}
+              />
+            </>
           ) : (
-            <RiExpandDiagonalFill size={18} className="font-extrabold" />
-          )}
-        </button>
-      )}
+            <>
+              <PeriodFiltersTable
+                range={range}
+                selectedMonth={selectedMonth}
+                selectedQuarter={selectedQuarter}
+                selectedYear={selectedYear}
+                yearOptions={yearOptions}
+                onRangeChange={handleRangeChange}
+                onMonthChange={handleMonthChange}
+                onQuarterChange={handleQuarterChange}
+                onYearChange={handleYearChange}
+                allowedRanges={['monthly', 'quarterly', 'yearly']}
+              />
 
-    {activeTab === 'lost-compensation' &&
-      effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
-        <button
-          type="button"
-          onClick={() => setShowAllLostCompRows((prev) => !prev)}
-          title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-          aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-          disabled={isNA || lostCompLoading}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {showAllLostCompRows ? (
-            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-          ) : (
-            <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              {activeTab === 'recon-table' &&
+                effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllReconRows((prev) => !prev)}
+                    title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || reconFetching}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllReconRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+
+              {activeTab === 'lost-compensation' &&
+                effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLostCompRows((prev) => !prev)}
+                    title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || lostCompLoading}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllLostCompRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+            </>
           )}
-        </button>
-      )}
-  </>
-)}
         </div>
       </div>
 
@@ -5276,6 +5325,7 @@ const shouldScrollLostCompTable =
                   actions={inventoryInsightsData.actions}
                   actionLogic={inventoryInsightsData.actionLogic}
                   onHeatmapProductClick={handleHeatmapProductClick}
+                  showInventoryAlerts={false}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
@@ -5350,85 +5400,85 @@ const shouldScrollLostCompTable =
             </div>
           )}
           {activeTab === 'recon-table' && (
-  <div
-    className={[
-      "mt-5 w-full rounded-xl border border-gray-200 bg-white",
-      "overflow-x-auto",
-      "[-webkit-overflow-scrolling:touch]",
-    ].join(" ")}
-  >
-    {reconFetching || !reconLoadedOnce ? (
-      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-        <Loader transparent />
-      </div>
-    ) : effectiveReconRows.length === 0 ? (
-      <div className="p-6 text-sm text-neutral-600">
-        No data available
-      </div>
-    ) : (
-      <GroupedCollapsibleTable
-        rows={effectiveReconRows}
-        getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-        leftCols={leftCols}
-        groups={groups}
-        singleCols={singleCols}
-        getValue={getReconValue}
-        getRowClassName={getReconRowClassName}
-        onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-        isTotalRow={isTotalRow}
-        bodyMaxHeight={
-          shouldScrollReconTable
-            ? TABLE_ROW_HEIGHT * RECON_VISIBLE_ROWS
-            : undefined
-        }
-        tableClassName={
-          anyExpanded
-            ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-            : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-        }
-        headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-        headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-        showSignRowInBody
-        getSignForCol={getSignForCol}
-      />
-    )}
-  </div>
-)}
-{activeTab === 'lost-compensation' && (
-  <div className="mt-5">
-    {lostCompLoading ? (
-      <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
-        <Loader transparent />
-      </div>
-    ) : (
-      <DataTable<Record<string, React.ReactNode>>
-        columns={lostCompTableColumns}
-        data={lostCompTableData}
-        loading={false}
-        paginate={false}
-        stickyHeader
-        scrollY={false}
-        maxHeight="none"
-        emptyMessage="No data available"
-        tableClassName="text-xs 2xl:text-sm"
-        className="rounded-lg"
-        isTotalRow={(row) => !!(row as any).__isTotal}
-        bodyMaxHeight={
-          shouldScrollLostCompTable
-            ? TABLE_ROW_HEIGHT * LOST_COMP_VISIBLE_ROWS
-            : undefined
-        }
-        rowClassName={(row) =>
-          (row as any).__isTotal
-            ? "bg-[#D9D9D9] font-semibold"
-            : (row as any).__isOthers
-              ? "font-semibold"
-              : ""
-        }
-      />
-    )}
-  </div>
-)}
+            <div
+              className={[
+                "mt-5 w-full rounded-xl border border-gray-200 bg-white",
+                "overflow-x-auto",
+                "[-webkit-overflow-scrolling:touch]",
+              ].join(" ")}
+            >
+              {reconFetching || !reconLoadedOnce ? (
+                <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                  <Loader transparent />
+                </div>
+              ) : effectiveReconRows.length === 0 ? (
+                <div className="p-6 text-sm text-neutral-600">
+                  No data available
+                </div>
+              ) : (
+                <GroupedCollapsibleTable
+                  rows={effectiveReconRows}
+                  getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+                  leftCols={leftCols}
+                  groups={groups}
+                  singleCols={singleCols}
+                  getValue={getReconValue}
+                  getRowClassName={getReconRowClassName}
+                  onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+                  isTotalRow={isTotalRow}
+                  bodyMaxHeight={
+                    shouldScrollReconTable
+                      ? TABLE_ROW_HEIGHT * RECON_VISIBLE_ROWS
+                      : undefined
+                  }
+                  tableClassName={
+                    anyExpanded
+                      ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                      : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                  }
+                  headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  showSignRowInBody
+                  getSignForCol={getSignForCol}
+                />
+              )}
+            </div>
+          )}
+          {activeTab === 'lost-compensation' && (
+            <div className="mt-5">
+              {lostCompLoading ? (
+                <div className="flex min-h-[220px] w-full items-center justify-center rounded-lg bg-white">
+                  <Loader transparent />
+                </div>
+              ) : (
+                <DataTable<Record<string, React.ReactNode>>
+                  columns={lostCompTableColumns}
+                  data={lostCompTableData}
+                  loading={false}
+                  paginate={false}
+                  stickyHeader
+                  scrollY={false}
+                  maxHeight="none"
+                  emptyMessage="No data available"
+                  tableClassName="text-xs 2xl:text-sm"
+                  className="rounded-lg"
+                  isTotalRow={(row) => !!(row as any).__isTotal}
+                  bodyMaxHeight={
+                    shouldScrollLostCompTable
+                      ? TABLE_ROW_HEIGHT * LOST_COMP_VISIBLE_ROWS
+                      : undefined
+                  }
+                  rowClassName={(row) =>
+                    (row as any).__isTotal
+                      ? "bg-[#D9D9D9] font-semibold"
+                      : (row as any).__isOthers
+                        ? "font-semibold"
+                        : ""
+                  }
+                />
+              )}
+            </div>
+          )}
         </>
       </PreviewLockedSection>
 
@@ -5496,34 +5546,34 @@ const shouldScrollLostCompTable =
       )}
 
       <RightProductDrawer
-  open={!!selectedAiProductBlock}
-  onClose={() => {
-    setSelectedAiProductBlock(null);
-    setSelectedAiProductRecObj(null);
-    setAiBestPerformanceData(null);
-    setAiBestPerformanceError(null);
-  }}
-  block={selectedAiProductBlock}
-  objective={aiPanel?.objective}
-  recObj={selectedAiProductRecObj}
-  countryName={countryName}
-  range={range}
-  year={selectedYear}
-  month={range === "monthly" ? selectedMonth : ""}
-  quarter={range === "quarterly" ? selectedQuarter : ""}
-  drawerPeriodText={drawerPeriodText}
-  currencySymbol={getCurrencySymbol(getCurrencyForCountry(countryName))}
-  bestPerformanceLoading={aiBestPerformanceLoading}
-  bestPerformanceError={aiBestPerformanceError}
-  bestPerformanceData={aiBestPerformanceData}
-  sharedInsightData={{
-    blocks: aiProductBlocks,
-    objective: aiPanel?.objective ?? null,
-    recommendationsMap: aiPanel?.recommendationsMap,
-    drawerPeriodText,
-    nameToSkuMap: inputCostNameToSkuMap,
-  }}
-/>
+        open={!!selectedAiProductBlock}
+        onClose={() => {
+          setSelectedAiProductBlock(null);
+          setSelectedAiProductRecObj(null);
+          setAiBestPerformanceData(null);
+          setAiBestPerformanceError(null);
+        }}
+        block={selectedAiProductBlock}
+        objective={aiPanel?.objective}
+        recObj={selectedAiProductRecObj}
+        countryName={countryName}
+        range={range}
+        year={selectedYear}
+        month={range === "monthly" ? selectedMonth : ""}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={drawerPeriodText}
+        currencySymbol={getCurrencySymbol(getCurrencyForCountry(countryName))}
+        bestPerformanceLoading={aiBestPerformanceLoading}
+        bestPerformanceError={aiBestPerformanceError}
+        bestPerformanceData={aiBestPerformanceData}
+        sharedInsightData={{
+          blocks: aiProductBlocks,
+          objective: aiPanel?.objective ?? null,
+          recommendationsMap: aiPanel?.recommendationsMap,
+          drawerPeriodText,
+          nameToSkuMap: inputCostNameToSkuMap,
+        }}
+      />
 
       <Modalmsg
         show={showModal}
