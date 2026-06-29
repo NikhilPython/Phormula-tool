@@ -1834,7 +1834,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
         & ~total_mask
     ].copy()
 
-    print("[DEBUG] skuwisemonthly total row found:", not total_row_df.empty)
+
     if not total_row_df.empty:
         print("[DEBUG] total row total_cm2_profit:", total_row_df.iloc[-1].get("total_cm2_profit"))
 
@@ -2013,7 +2013,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
 
     # ✅ Miscellaneous spend from TOTAL row
     "miscellaneous_spend": abs(get_total(
-        ["lost_total"],
+        ["misc_transaction"],
         0.0,
     )),
 
@@ -2040,8 +2040,8 @@ def fetch_current_ai_values_from_skuwisemonthly(
             float(sku_df["platform_fee"].sum()) if "platform_fee" in sku_df.columns else 0.0,
         )),
         "advertising": abs(get_total(
-            ["ads_spend", "advertising", "advertising_total"],
-            float(sku_df["ads_spend"].sum()) if "ads_spend" in sku_df.columns else 0.0,
+            ["total_ads"],
+            float(sku_df["total_ads"].sum()) if "total_ads" in sku_df.columns else 0.0,
         )),
         "rembursement_fee": get_total(
             ["rembursement_fee", "reimbursement_fee", "net_reimbursement"],
@@ -2258,17 +2258,7 @@ def fetch_live_target_context(
             target_sales = float(row[0] or 0.0)
             target_source = "target_data"
 
-        print("[DEBUG] target_data lookup:", {
-            "params": {
-                "user_id": user_id,
-                "month": month_str,
-                "year": year,
-                "country": country_lower,
-            },
-            "row": dict(row._mapping) if row else None,
-            "target_sales": target_sales,
-            "target_source": target_source,
-        })
+       
 
     except Exception as e:
         print("[WARN] Failed to fetch target_data:", e)
@@ -3946,13 +3936,7 @@ def build_ai_summary(
 
     cm2_profit_pct = pct_change_2(cm2_profit_prev, cm2_profit_curr)
 
-    print("[DEBUG] CM2 summary values:", {
-        "prev_totals_cm2_profit": prev_totals.get("cm2_profit"),
-        "cm2_profit_prev": cm2_profit_prev,
-        "curr_totals_cm2_profit": curr_totals.get("cm2_profit"),
-        "cm2_profit_curr": cm2_profit_curr,
-        "cm2_profit_pct": cm2_profit_pct,
-    })
+
 
     cost_pct = pct_change_2(total_cost_prev, total_cost_curr)
     pf_pct   = pct_change_2(pf_prev, pf_curr)
@@ -3965,7 +3949,15 @@ def build_ai_summary(
 
     roas_prev = calc_roas(ad_prev, sales_prev)
     roas_curr = calc_roas(ad_curr, sales_curr)
-    roas_change = round(roas_curr - roas_prev, 2)
+
+    # ✅ Absolute point change, example: 13.80 - 18.94 = -5.14
+    roas_absolute_change = round(roas_curr - roas_prev, 2)
+
+    # ✅ Percentage change, example: ((13.80 - 18.94) / 18.94) * 100 = -27.14%
+    roas_change = pct_change_2(roas_prev, roas_curr)
+
+    if roas_change is None:
+        roas_change = 0.0
 
     if sku_context is None:
         sku_context = {
@@ -5288,11 +5280,7 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
                 inventory_recommendation = None
                 product_journey = []
 
-            print("[LIVE INSIGHT MONTH]", {
-            "country_key": country_key,
-            "latest_year": latest_year,
-            "latest_month": latest_month,
-            })        
+      
 
         # -------------------------------------------------
         # NORMAL country strategy engine
@@ -5392,14 +5380,6 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
         print("[LIVE STRATEGY ENGINE ERROR]", e)
         traceback.print_exc()
 
-    print("[LIVE INSIGHT RESULT]", {
-    "country_key": country_key if "country_key" in locals() else None,
-    "key": key,
-    "recommendation": recommendation,
-    "inventory_recommendation": inventory_recommendation,
-    "product_journey_count": len(product_journey) if isinstance(product_journey, list) else None,
-    "is_new_or_reviving": is_new_or_reviving,
-})
 
     return key, {
         "sku": sku,
