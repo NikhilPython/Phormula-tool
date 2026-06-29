@@ -5197,7 +5197,7 @@ useEffect(() => {
     warehouseData.length > INPUT_COST_VISIBLE_ROWS;
 
   return (
-    <div>
+ <div className="space-y-3 relative">
       <style>{`
         div { font-family: 'Lato', sans-serif; }
         .gross-margin-positive { color: #28a745; font-weight: bold; }
@@ -5205,143 +5205,155 @@ useEffect(() => {
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-           <div className="flex flex-col leading-tight w-full md:w-auto ">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb pageTitle="Current Inventory -" variant="page" align="left" textSize="2xl" />
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon{" "}
-              {countryName?.toLowerCase() === "global"
-                ? "Global"
-                : countryName?.toUpperCase()}
-            </span>
-          </div>
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Track your inventory 
-          </p>
-        </div>
+     <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4">
+  <div className="flex flex-col leading-tight w-full md:w-auto">
+    <div className="flex items-baseline gap-2">
+      <PageBreadcrumb
+        pageTitle="Current Inventory -"
+        variant="page"
+        align="left"
+        textSize="2xl"
+      />
 
-         
-        </div>
+      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+        Amazon{" "}
+        {countryName?.toLowerCase() === "global"
+          ? "Global"
+          : countryName?.toUpperCase()}
+      </span>
+    </div>
 
-        <div className="flex flex-wrap items-center gap-3 md:justify-end">
-          {activeTab === 'sku-info' ? (
-            <>
-              {isEditing && (
-                <button
-                  className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                  onClick={saveChanges}
-                >
-                  Save Changes
-                </button>
-              )}
+    <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+      Track your inventory
+    </p>
+  </div>
 
+  <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
+    {activeTab === "sku-info" || activeTab === "extra" ? (
+      <div className="flex flex-wrap items-center gap-3">
+        {activeTab === "sku-info" ? (
+          <>
+            {isEditing && (
               <button
                 className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={() => setShowMultiuseCountry(true)}
-                disabled={isNA}
+                onClick={saveChanges}
               >
-                Upload File
+                Save Changes
               </button>
+            )}
 
-              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
-            </>
-          ) : activeTab === 'extra' ? (
-            <>
-              <button
-                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={() => setShowWarehouseUpload(true)}
-                disabled={isNA}
-              >
-                Upload File
-              </button>
+            <button
+              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+              onClick={() => setShowMultiuseCountry(true)}
+              disabled={isNA}
+            >
+              Upload File
+            </button>
 
-              <DownloadIconButton
-                onClick={handleWarehouseDownload}
-                size="md"
-                disabled={isNA}
-              />
-            </>
-          ) : (
-            <>
-              <PeriodFiltersTable
-                range={range}
-                selectedMonth={selectedMonth}
-                selectedQuarter={selectedQuarter}
-                selectedYear={selectedYear}
-                yearOptions={yearOptions}
-                onRangeChange={handleRangeChange}
-                onMonthChange={handleMonthChange}
-                onQuarterChange={handleQuarterChange}
-                onYearChange={handleYearChange}
-                allowedRanges={['monthly', 'quarterly', 'yearly']}
-              />
-
-              {activeTab === 'recon-table' &&
-                effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllReconRows((prev) => !prev)}
-                    title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-                    aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-                    disabled={isNA || reconFetching}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {showAllReconRows ? (
-                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                    ) : (
-                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                    )}
-                  </button>
-                )}
-
-              {activeTab === 'lost-compensation' &&
-                effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllLostCompRows((prev) => !prev)}
-                    title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-                    aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-                    disabled={isNA || lostCompLoading}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {showAllLostCompRows ? (
-                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                    ) : (
-                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                    )}
-                  </button>
-                )}
-            </>
-          )}
-        </div>
-      </div>
-      <div className="sticky mt-3 max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
-    max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
-            <SegmentedToggle
-  value={activeTab}
-  onChange={(nextTab) => {
-    setActiveTab(nextTab);
-
-    if (typeof window !== "undefined") {
-      const nextHash = `#${nextTab}`;
-      const nextUrl = `${window.location.pathname}${nextHash}`;
-
-      window.history.pushState(null, "", nextUrl);
-
-      window.dispatchEvent(
-        new CustomEvent("page-hash-navigate", {
-          detail: { hash: nextTab },
-        })
-      );
-    }
-  }}
-  options={tabOptions}
-              compact
-              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            <DownloadIconButton
+              onClick={handleDownloadXLSX}
+              size="md"
+              disabled={isNA}
             />
-          </div>
+          </>
+        ) : (
+          <>
+            <button
+              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+              onClick={() => setShowWarehouseUpload(true)}
+              disabled={isNA}
+            >
+              Upload File
+            </button>
+
+            <DownloadIconButton
+              onClick={handleWarehouseDownload}
+              size="md"
+              disabled={isNA || warehouseData.length === 0}
+            />
+          </>
+        )}
+      </div>
+    ) : (
+      <div className="flex flex-wrap items-center gap-3">
+        <PeriodFiltersTable
+          range={range}
+          selectedMonth={selectedMonth}
+          selectedQuarter={selectedQuarter}
+          selectedYear={selectedYear}
+          yearOptions={yearOptions}
+          onRangeChange={handleRangeChange}
+          onMonthChange={handleMonthChange}
+          onQuarterChange={handleQuarterChange}
+          onYearChange={handleYearChange}
+          allowedRanges={["monthly", "quarterly", "yearly"]}
+        />
+
+        {activeTab === "recon-table" &&
+          effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
+            <button
+              type="button"
+              onClick={() => setShowAllReconRows((prev) => !prev)}
+              title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+              disabled={isNA || reconFetching}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showAllReconRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+          )}
+
+        {activeTab === "lost-compensation" &&
+          effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
+            <button
+              type="button"
+              onClick={() => setShowAllLostCompRows((prev) => !prev)}
+              title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+              aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+              disabled={isNA || lostCompLoading}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showAllLostCompRows ? (
+                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+              ) : (
+                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+              )}
+            </button>
+          )}
+      </div>
+    )}
+  </div>
+</div>
+
+      <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+  <SegmentedToggle<InputCostTab>
+    value={activeTab}
+    onChange={(nextTab) => {
+      setActiveTab(nextTab);
+
+      if (typeof window !== "undefined") {
+        const nextHash = `#${nextTab}`;
+        const nextUrl = `${window.location.pathname}${nextHash}`;
+
+        window.history.pushState(null, "", nextUrl);
+
+        window.dispatchEvent(
+          new CustomEvent("page-hash-navigate", {
+            detail: { hash: nextTab },
+          })
+        );
+      }
+    }}
+    options={tabOptions}
+    compact
+    className="w-full"
+    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+  />
+</div>
 
       <PreviewLockedSection
         enabled={isNA}
