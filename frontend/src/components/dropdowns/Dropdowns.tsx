@@ -3544,6 +3544,14 @@ const buildInventoryInsightsFromResponses = (
     (row) => !isInventoryTotalRow(row)
   );
 
+  const currentMonthUnitsSoldKey =
+    latestResponse?.columns?.find((column) =>
+      String(column).toLowerCase().startsWith("current month units sold")
+    ) ||
+    Object.keys(latestRows?.[0] ?? {}).find((key) =>
+      String(key).toLowerCase().startsWith("current month units sold")
+    );
+
   const heatmapData: AgeingRiskHeatmapRow[] = latestRows
     .map((row) => {
       const sku = getInventoryRowSku(row);
@@ -3574,7 +3582,16 @@ const buildInventoryInsightsFromResponses = (
         threeSixtyFivePlus,
         totalUnits,
         unsellableUnits,
+
+        // ✅ Units Sold for Historic Panel
+        unitsSold: currentMonthUnitsSoldKey
+          ? toNum(row?.[currentMonthUnitsSoldKey])
+          : 0,
+
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+
+        // optional, keep if you already added alerts
+        inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
       };
     })
 
@@ -3822,25 +3839,15 @@ const buildInventoryInsightsFromResponses = (
     donutSku: "Overall",
     donutData,
     donutTotalUnits,
-
-    // ✅ always all now
     trendSelectedBucket: "all",
-
-    // ✅ not used anymore by the chart, but keep it for type compatibility
     trendData,
-
-    // ✅ not used anymore by the chart, but keep it for type compatibility
     trendLineColor: "#B75A5A",
-
-    // ✅ this is what the chart will use
     trendAllSeriesData,
-
     trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
       label: bucket.label,
       value: bucket.value,
       color: bucket.color,
     })),
-
     actions,
     actionLogic: INVENTORY_ACTION_LOGIC,
   };
@@ -6716,44 +6723,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return [];
   };
 
-
-  const getInventoryAgeSummaryMonthsForSelectedPeriod = () => {
+  const getInventoryAgeSummaryMonthsForTrend = () => {
     const lastCompleted = getLastCompletedMonth();
 
     const selectedYearNum = Number(selectedYear);
     const currentYearNum = Number(new Date().getFullYear());
 
-    let maxMonthIndex = 11; // default Dec for old years
-
-    if (range === "monthly") {
-      const selectedMonthIndex = monthIndexMap[String(selectedMonth).toLowerCase()];
-      maxMonthIndex = typeof selectedMonthIndex === "number" ? selectedMonthIndex : lastCompleted.monthIndex;
+    if (!selectedYearNum || Number.isNaN(selectedYearNum)) {
+      return [];
     }
 
-    if (range === "quarterly" && selectedQuarter) {
-      const quarterEndIndexMap: Record<Quarter, number> = {
-        Q1: 2,  // Mar
-        Q2: 5,  // Jun
-        Q3: 8,  // Sep
-        Q4: 11, // Dec
-      };
-
-      maxMonthIndex = quarterEndIndexMap[selectedQuarter];
-    }
-
-    if (range === "yearly") {
-      maxMonthIndex = selectedYearNum === currentYearNum ? lastCompleted.monthIndex : 11;
-    }
-
-    // ✅ If selected year is current year, never go beyond current - 1
-    if (selectedYearNum === currentYearNum) {
-      maxMonthIndex = Math.min(maxMonthIndex, lastCompleted.monthIndex);
-    }
-
-    // ✅ If future year somehow selected, keep empty
+    // Future year should not show trend data
     if (selectedYearNum > currentYearNum) {
       return [];
     }
+
+    // For current year, show only up to current - 1 month
+    // Example: if current month is June, show Jan to May
+    const maxMonthIndex =
+      selectedYearNum === currentYearNum
+        ? lastCompleted.monthIndex
+        : 11;
 
     return allMonths
       .slice(0, maxMonthIndex + 1)
@@ -6805,7 +6795,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    const ageSummaryMonthsToFetch = getInventoryAgeSummaryMonthsForSelectedPeriod();
+    const ageSummaryMonthsToFetch: string[] =
+      getInventoryAgeSummaryMonthsForTrend();
 
     const ac = new AbortController();
 
@@ -6814,11 +6805,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         setInventoryInsightsLoading(true);
         setInventoryInsightsError(null);
 
-        const [inventoryResult, ageSummaryResults] = await Promise.all([
+        const [inventoryResult, ageSummaryResults]: [
+          InventoryCurrentApiResponse,
+          PromiseSettledResult<InventoryAgeSummaryApiResponse>[]
+        ] = await Promise.all([
           fetchInventoryCurrentByPeriod(ac.signal),
 
           Promise.allSettled(
-            ageSummaryMonthsToFetch.map((monthName) =>
+            ageSummaryMonthsToFetch.map((monthName: string) =>
               fetchSingleMonthInventoryAgeSummary(
                 monthName,
                 selectedYear,
@@ -6829,29 +6823,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ),
         ]);
 
-        // const fulfilledInventory = inventoryResults
-        //   .filter(
-        //     (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
-        //       result.status === "fulfilled"
-        //   )
-        //   .map((result) => result.value);
-
         const fulfilledInventory: InventoryCurrentApiResponse[] =
           inventoryResult?.success ? [inventoryResult] : [];
 
-        const fulfilledAgeSummary = ageSummaryResults
-          .filter(
-            (
-              result
-            ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
-              result.status === "fulfilled"
-          )
-          .map((result) => result.value);
+        const fulfilledAgeSummary: InventoryAgeSummaryApiResponse[] =
+          ageSummaryResults
+            .filter(
+              (
+                result: PromiseSettledResult<InventoryAgeSummaryApiResponse>
+              ): result is PromiseFulfilledResult<InventoryAgeSummaryApiResponse> =>
+                result.status === "fulfilled"
+            )
+            .map(
+              (result: PromiseFulfilledResult<InventoryAgeSummaryApiResponse>) =>
+                result.value
+            );
 
         if (!fulfilledInventory.length) {
           throw new Error("No inventory data found");
         }
-
 
         setInventoryRawResponses({
           inventory: fulfilledInventory,
@@ -6867,6 +6857,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             "all"
           )
         );
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        setInventoryInsightsError(
+          error?.message || "Failed to fetch inventory insights"
+        );
+        setInventoryInsightsData(null);
+        setInventoryRawResponses(null);
       } finally {
         setInventoryInsightsLoading(false);
       }
@@ -8729,6 +8726,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   actions={inventoryInsightsData.actions}
                   actionLogic={inventoryInsightsData.actionLogic}
                   onHeatmapProductClick={handleHeatmapProductClick}
+                  showInventoryAlerts={false}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">

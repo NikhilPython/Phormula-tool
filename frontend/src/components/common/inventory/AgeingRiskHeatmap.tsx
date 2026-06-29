@@ -34,12 +34,12 @@ type AgeingRiskHeatmapProps = {
     data: AgeingRiskHeatmapRow[];
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
-    unitsSoldPercentage?: number;
 
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
 
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
+    showInventoryAlerts?: boolean;
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
@@ -127,7 +127,6 @@ const buildAggregateRow = (
 const buildPercentageRow = (
     totalRow: AgeingRiskHeatmapRow,
     buckets: AgeingBucket[],
-    unitsSoldPercentage?: number
 ): AgeingRiskHeatmapRow => {
     const sellableUnits = Number(totalRow.totalUnits || 0);
     const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
@@ -150,7 +149,7 @@ const buildPercentageRow = (
                 ? (unfulfillableUnits / percentageBaseTotal) * 100
                 : 0,
 
-        unitsSold: Number(unitsSoldPercentage || 0),
+        unitsSold: undefined,
 
         coverageRatio: undefined,
 
@@ -178,10 +177,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     data,
     buckets,
     defaultVisibleRows = 9,
-    unitsSoldPercentage,
     onProductClick,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
+    showInventoryAlerts = true,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -201,7 +200,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const percentageRow = buildPercentageRow(
             totalRow,
             buckets,
-            unitsSoldPercentage
         );
 
         if (!canCollapse || isExpanded) {
@@ -220,7 +218,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
 
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, unitsSoldPercentage]);
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
 
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
         const heatmapHeaderClassName =
@@ -292,7 +290,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             },
         }));
 
-        return [
+        const baseColumns: ColumnDef<HeatmapTableRow>[] = [
             {
                 key: "sno",
                 header: "S.No.",
@@ -424,10 +422,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 header: "Units Sold",
                 width: "85px",
                 headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     const unitsSold = Number(row.unitsSold || 0);
 
+                    // ✅ % of Total row should be blank for Units Sold
                     if (row.isPercentageRow) {
                         return <span></span>;
                     }
@@ -461,7 +461,51 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 },
             },
-            {
+            // {
+            //     key: "inventoryAlert",
+            //     header: "Inventory Alerts",
+            //     width: "145px",
+            //     headerClassName: heatmapHeaderClassName,
+            //     cellClassName:
+            //         "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+            //     render: (row) => {
+            //         // ✅ Do not show Inventory Alerts for Others, Total, or % of Total
+            //         if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
+            //             return <span></span>;
+            //         }
+
+            //         const alert = String(row.inventoryAlert || "").trim();
+
+            //         if (!alert) {
+            //             return <span>-</span>;
+            //         }
+
+            //         const normalized = alert.toLowerCase();
+
+            //         const badgeClassName = normalized.includes("high alert")
+            //             ? "bg-red-50 text-red-700 border-red-200"
+            //             : normalized.includes("high inventory coverage")
+            //                 ? "bg-orange-50 text-orange-700 border-orange-200"
+            //                 : normalized.includes("ageing")
+            //                     ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+            //                     : "bg-slate-50 text-slate-700 border-slate-200";
+
+            //         return (
+            //             <span
+            //                 title={alert}
+            //                 className={[
+            //                     "inline-flex max-w-full items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
+            //                     badgeClassName,
+            //                 ].join(" ")}
+            //             >
+            //                 {alert}
+            //             </span>
+            //         );
+            //     },
+            // },
+        ];
+        if (showInventoryAlerts) {
+            baseColumns.push({
                 key: "inventoryAlert",
                 header: "Inventory Alerts",
                 width: "145px",
@@ -469,7 +513,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 cellClassName:
                     "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
-                    // ✅ Do not show Inventory Alerts for Others, Total, or % of Total
                     if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
                         return <span></span>;
                     }
@@ -502,9 +545,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         </span>
                     );
                 },
-            },
-        ];
-    }, [buckets, onProductClick]);
+            });
+        }
+
+        return baseColumns;
+   }, [buckets, onProductClick, showInventoryAlerts]);
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
