@@ -466,6 +466,247 @@ def build_inventory_age_summary(rows):
         }
     }
 
+def construct_skuwise_monthly_table_candidates(user_id, country_key, month_name, year):
+    """
+    Supports both naming styles:
+      skuwisemonthly_2_uk_april2026
+      skuwisemonthly_2_uk_april2026_table
+    """
+    base_name = f"skuwisemonthly_{user_id}_{country_key}_{month_name}{year}"
+
+    return [
+        base_name,
+        f"{base_name}_table",
+    ]
+
+
+def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
+    """
+    Reads monthly SKU sales table and returns units sold by SKU.
+
+    Preferred sold value:
+      total_quantity
+
+    Fallback:
+      quantity - return_quantity
+
+    Final fallback:
+      quantity
+
+    Also returns product_name by SKU so we can append missing SKUs
+    when inventory_aged_history only has aged inventory rows.
+    """
+
+    inspector = inspect(primary_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    table_name = None
+
+    for candidate in construct_skuwise_monthly_table_candidates(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    ):
+        if candidate in existing_tables:
+            table_name = candidate
+            break
+
+    if not table_name:
+        return {
+            "table_name": None,
+            "units_by_sku": {},
+            "product_by_sku": {},
+            "total_units": 0,
+            "error": "SKU wise monthly table not found",
+        }
+
+    if not is_safe_identifier(table_name):
+        return {
+            "table_name": table_name,
+            "units_by_sku": {},
+            "product_by_sku": {},
+            "total_units": 0,
+            "error": "Invalid SKU wise monthly table name",
+        }
+
+    query = text(f'SELECT * FROM "{table_name}" ORDER BY id ASC')
+
+    with primary_engine.connect() as connection:
+        df = pd.read_sql(query, connection)
+
+    if df is None or df.empty:
+        return {
+            "table_name": table_name,
+            "units_by_sku": {},
+            "product_by_sku": {},
+            "total_units": 0,
+            "error": None,
+        }
+
+    if "sku" not in df.columns:
+        return {
+            "table_name": table_name,
+            "units_by_sku": {},
+            "product_by_sku": {},
+            "total_units": 0,
+            "error": "sku column not found",
+        }
+
+    units_by_sku = {}
+    product_by_sku = {}
+    total_units = 0
+
+    for _, row in df.iterrows():
+        sku = str(row.get("sku") or "").strip()
+        product_name = str(row.get("product_name") or "").strip()
+
+        is_total = sku == "" or product_name.strip().lower() == "total"
+
+        quantity = to_number(row.get("quantity"))
+        return_quantity = to_number(row.get("return_quantity"))
+        total_quantity = to_number(row.get("total_quantity"))
+
+        if total_quantity:
+            units_sold = total_quantity
+        elif quantity or return_quantity:
+            units_sold = quantity - return_quantity
+        else:
+            units_sold = quantity
+
+        if is_total:
+            total_units = units_sold
+            continue
+
+        if sku:
+            units_by_sku[sku] = units_by_sku.get(sku, 0) + units_sold
+
+            if sku not in product_by_sku:
+                product_by_sku[sku] = product_name
+
+    if total_units == 0:
+        total_units = sum(units_by_sku.values())
+
+    return {
+        "table_name": table_name,
+        "units_by_sku": units_by_sku,
+        "product_by_sku": product_by_sku,
+        "total_units": total_units,
+        "error": None,
+    }
+
+
+def attach_current_month_units_sold(rows, columns, user_id, country_key, month_name, year):
+    """
+    Adds Current Month Units Sold (<Month>) to inventory rows.
+
+    If source is inventory_aged_history, it only contains SKUs with aged inventory.
+    So this function also appends missing SKUs from skuwisemonthly table.
+    """
+
+    month_display = month_label(MONTH_NAME_TO_NUMBER[month_name])
+    units_column = f"Current Month Units Sold ({month_display})"
+
+    existing_units_column = None
+
+    for column in columns:
+        if str(column).startswith("Current Month Units Sold"):
+            existing_units_column = column
+            break
+
+    # If currentinventory table already has units sold, do not overwrite it.
+    if existing_units_column:
+        return {
+            "rows": rows,
+            "columns": columns,
+            "units_column": existing_units_column,
+            "units_source_table": None,
+            "units_source_error": None,
+        }
+
+    sold_result = fetch_current_month_units_sold_map(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
+
+    units_by_sku = sold_result["units_by_sku"]
+    product_by_sku = sold_result["product_by_sku"]
+    total_units = sold_result["total_units"]
+
+    updated_rows = []
+    existing_skus = set()
+    total_row = None
+
+    # First update existing inventory rows
+    for row in rows:
+        new_row = dict(row)
+
+        if is_total_row(new_row):
+            total_row = new_row
+            continue
+
+        sku = str(new_row.get("SKU") or "").strip()
+
+        if sku:
+            existing_skus.add(sku)
+
+        new_row[units_column] = units_by_sku.get(sku, 0)
+        updated_rows.append(new_row)
+
+    # Append SKUs that exist in skuwisemonthly but not in inventory_aged_history
+    for sku, units_sold in units_by_sku.items():
+        if sku in existing_skus:
+            continue
+
+        updated_rows.append({
+            "SKU": sku,
+            "Product Name": product_by_sku.get(sku, ""),
+            "inv-age-0-to-90-days": 0,
+            "inv-age-91-to-180-days": 0,
+            "inv-age-181-to-270-days": 0,
+            "inv-age-271-to-365-days": 0,
+            "inv-age-365-plus-days": 0,
+            "unfulfillable-quantity": 0,
+            "estimated-storage-cost-next-month": 0,
+            "snapshot_date": None,
+            units_column: units_sold,
+        })
+
+    # Add total row at the end
+    if total_row is None:
+        total_row = {
+            "SKU": "",
+            "Product Name": "Total",
+            "inv-age-0-to-90-days": sum(to_number(r.get("inv-age-0-to-90-days")) for r in updated_rows),
+            "inv-age-91-to-180-days": sum(to_number(r.get("inv-age-91-to-180-days")) for r in updated_rows),
+            "inv-age-181-to-270-days": sum(to_number(r.get("inv-age-181-to-270-days")) for r in updated_rows),
+            "inv-age-271-to-365-days": sum(to_number(r.get("inv-age-271-to-365-days")) for r in updated_rows),
+            "inv-age-365-plus-days": sum(to_number(r.get("inv-age-365-plus-days")) for r in updated_rows),
+            "unfulfillable-quantity": sum(to_number(r.get("unfulfillable-quantity")) for r in updated_rows),
+            "estimated-storage-cost-next-month": sum(to_number(r.get("estimated-storage-cost-next-month")) for r in updated_rows),
+            "snapshot_date": None,
+        }
+    else:
+        total_row = dict(total_row)
+
+    total_row[units_column] = total_units
+    updated_rows.append(total_row)
+
+    updated_columns = list(columns)
+
+    if units_column not in updated_columns:
+        updated_columns.append(units_column)
+
+    return {
+        "rows": updated_rows,
+        "columns": updated_columns,
+        "units_column": units_column,
+        "units_source_table": sold_result["table_name"],
+        "units_source_error": sold_result["error"],
+    }
+
 
 QUARTER_MONTHS = {
     "q1": ["march", "february", "january"],
@@ -1024,6 +1265,27 @@ def get_inventory_current_table():
         rows = source_result["rows"]
         columns = source_result["columns"]
 
+        selected_month_for_units = source_result["selected_month"]
+
+        units_sold_result = {
+            "units_column": None,
+            "units_source_table": None,
+            "units_source_error": None,
+        }
+
+        if selected_month_for_units:
+            units_sold_result = attach_current_month_units_sold(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = units_sold_result["rows"]
+            columns = units_sold_result["columns"]
+
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
@@ -1067,6 +1329,9 @@ def get_inventory_current_table():
             "source_type": source_result["source_type"],
             "source_name": source_result["source_name"],
             "table_name": source_result["source_name"] if source_result["source_type"] == "currentinventory_table" else None,
+            "units_sold_column": units_sold_result["units_column"],
+            "units_sold_source_table": units_sold_result["units_source_table"],
+            "units_sold_source_error": units_sold_result["units_source_error"],
             "tried_sources": source_result["tried_sources"],
 
             "columns": columns,
