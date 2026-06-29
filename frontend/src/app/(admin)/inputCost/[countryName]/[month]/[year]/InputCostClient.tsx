@@ -5207,48 +5207,22 @@ useEffect(() => {
 
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2 justify-start">
-            <PageBreadcrumb
-              variant="page"
-              align="left"
-              textSize="2xl"
-              pageTitle={
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[#414042] font-bold">
-                    Current Inventory – Amazon
-                  </span>
-                  <span className="text-green-500 font-bold">
-                    {countryName?.toUpperCase()}
-                  </span>
-                </div>
-              }
-            />
+           <div className="flex flex-col leading-tight w-full md:w-auto ">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb pageTitle="Current Inventory -" variant="page" align="left" textSize="2xl" />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon{" "}
+              {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
           </div>
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Track your inventory 
+          </p>
+        </div>
 
-          <div className="mt-3">
-            <SegmentedToggle
-  value={activeTab}
-  onChange={(nextTab) => {
-    setActiveTab(nextTab);
-
-    if (typeof window !== "undefined") {
-      const nextHash = `#${nextTab}`;
-      const nextUrl = `${window.location.pathname}${nextHash}`;
-
-      window.history.pushState(null, "", nextUrl);
-
-      window.dispatchEvent(
-        new CustomEvent("page-hash-navigate", {
-          detail: { hash: nextTab },
-        })
-      );
-    }
-  }}
-  options={tabOptions}
-              compact
-              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-            />
-          </div>
+         
         </div>
 
         <div className="flex flex-wrap items-center gap-3 md:justify-end">
@@ -5343,6 +5317,31 @@ useEffect(() => {
           )}
         </div>
       </div>
+      <div className="sticky mt-3 max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+    max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+            <SegmentedToggle
+  value={activeTab}
+  onChange={(nextTab) => {
+    setActiveTab(nextTab);
+
+    if (typeof window !== "undefined") {
+      const nextHash = `#${nextTab}`;
+      const nextUrl = `${window.location.pathname}${nextHash}`;
+
+      window.history.pushState(null, "", nextUrl);
+
+      window.dispatchEvent(
+        new CustomEvent("page-hash-navigate", {
+          detail: { hash: nextTab },
+        })
+      );
+    }
+  }}
+  options={tabOptions}
+              compact
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            />
+          </div>
 
       <PreviewLockedSection
         enabled={isNA}
