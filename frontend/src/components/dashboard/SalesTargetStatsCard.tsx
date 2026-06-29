@@ -141,16 +141,25 @@ export default function SalesTargetStatsCard({
       : 0;
 
   const prevMtd =
-    prevMtdFromBi > 0
-      ? prevMtdFromBi
-      : Number(lastMonthToDateHome || active?.lastMonthToDateUSD || 0);
+    biEnabled && biAlignedTotals
+      ? biAlignedTotals.total_previous_net_sales
+      : active?.lastMonthToDateUSD || 0;
 
   const prevFullMonth =
     biEnabled && biAlignedTotals
       ? biAlignedTotals.total_previous_net_sales_full_month
       : lastMonthTotalHome || active?.lastMonthTotalUSD || 0;
 
-  const targetToUse = targetHome || active?.targetUSD || 0;
+  const targetToUse =
+    Number(targetHome) > 0
+      ? Number(targetHome)
+      : Number(active?.targetUSD) > 0
+        ? Number(active?.targetUSD)
+        : Number(lastMonthTotalHome) > 0
+          ? Number(lastMonthTotalHome)
+          : Number(prevFullMonth) > 0
+            ? Number(prevFullMonth)
+            : 0;
 
   // Get today's date and total days in current month (IST aligned to your existing helpers)
   const today = new Date();
