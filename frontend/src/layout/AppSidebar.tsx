@@ -1090,31 +1090,31 @@ const AppSidebar: React.FC = () => {
       ],
     },
     {
-      key: "business-intelligence",
-      name: "BUSINESS INTELLIGENCE",
-      icon: (
-        <Image
-          src="/images/brand/business.png"
-          alt="Logo"
-          width={18}
-          height={18}
-          className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px] lg:w-[20px] lg:h-[20px]"
-        />
-      ),
-      subItems: [
-        {
-          name: "AI Insights",
-          path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
-        {
-          name: "Inventory Forecast",
-          path: ({ countryName, month, year }) =>
-            `/inventory-forecast/${encodeURIComponent(
-              countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(
-              year
-            )}#inventory-forecast`,
-        },
+  key: "business-intelligence",
+  name: "INVENTORY PLANNING",
+  icon: (
+    <Image
+      src="/images/brand/business.png"
+      alt="Logo"
+      width={18}
+      height={18}
+      className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px] lg:w-[20px] lg:h-[20px]"
+    />
+  ),
+  subItems: [
+    // {
+    //   name: "AI Insights",
+    //   path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+    // },
+    {
+      name: "Inventory Forecast",
+      path: ({ countryName, month, year }) =>
+        `/inventory-forecast/${encodeURIComponent(
+          countryName
+        )}/${encodeURIComponent(month)}/${encodeURIComponent(
+          year
+        )}#inventory-forecast`,
+    },
         {
           name: "Dispatch Planning",
           path: ({ countryName, month, year }) =>
@@ -1145,8 +1145,8 @@ const AppSidebar: React.FC = () => {
       ],
     },
     {
-      key: "inventory-planning",
-      name: "INVENTORY PLANNING",
+  key: "inventory-planning",
+  name: "CURRENT INVENTORY",
       icon: (
         <Image
           src="/images/brand/inventory.png"
@@ -1157,24 +1157,43 @@ const AppSidebar: React.FC = () => {
         />
       ),
       subItems: [
-        {
-          name: "Input Cost",
-          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
-        {
-          name: "Inventory Reconcilliation",
-          path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
-        {
-          name: "Expense Reconcilliation",
-          path: ({ ranged, countryName, month, year }) =>
-            `/expense-reconciliation/${encodeURIComponent(
-              ranged
-            )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-              month
-            )}/${encodeURIComponent(year)}`,
-        },
-      ],
+  {
+    name: "Inventory Insights",
+    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-insights`,
+  },
+  {
+    name: "SKU Information",
+    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#sku-info`,
+  },
+   {
+    name: "Upload Warehouse Data",
+    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#extra`,
+  },
+  {
+    name: "Recon Table",
+    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#recon-table`,
+  },
+  {
+    name: "Lost vs Compensation",
+    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#lost-compensation`,
+  },
+ 
+
+  // abhi ke liye comment
+  // {
+  //   name: "Inventory Reconciliation",
+  //   path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+  // },
+  // {
+  //   name: "Expense Reconciliation",
+  //   path: ({ ranged, countryName, month, year }) =>
+  //     `/expense-reconciliation/${encodeURIComponent(
+  //       ranged
+  //     )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
+  //       month
+  //     )}/${encodeURIComponent(year)}`,
+  // },
+],
     },
   ];
 
@@ -1205,20 +1224,21 @@ const AppSidebar: React.FC = () => {
   });
 
   const isActive = useCallback(
-    (path: string | ((params: typeof currentParams) => string)) => {
-      const resolvedPath =
-        typeof path === "function" ? path(currentParams) : path;
+  (path: string | ((params: typeof currentParams) => string)) => {
+    const resolvedPath =
+      typeof path === "function" ? path(currentParams) : path;
 
-      const [targetPath, targetHash = ""] = resolvedPath.split("#");
+    const [targetPath, targetHash = ""] = resolvedPath.split("#");
 
-      if (targetHash) {
-        return pathname === targetPath && currentHash === `#${targetHash}`;
-      }
+    if (targetHash) {
+      return pathname === targetPath && currentHash === `#${targetHash}`;
+    }
 
-      return pathname === resolvedPath;
-    },
-    [pathname, currentHash, currentParams]
-  );
+    const [resolvedPathOnly] = resolvedPath.split("#");
+    return pathname === resolvedPathOnly && !currentHash;
+  },
+  [pathname, currentHash, currentParams]
+);
 
   const showText = isExpanded || isMobileOpen;
 

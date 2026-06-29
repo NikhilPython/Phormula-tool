@@ -2545,6 +2545,51 @@ export default function InputCostPage({ params }: Params) {
     | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
 
+  const INPUT_COST_TAB_HASHES: InputCostTab[] = [
+  'inventory-insights',
+  'sku-info',
+  'extra',
+  'recon-table',
+  'lost-compensation',
+];
+
+const syncTabFromHash = useCallback(() => {
+  if (typeof window === "undefined") return;
+
+  const hash = window.location.hash.replace("#", "") as InputCostTab;
+
+  if (INPUT_COST_TAB_HASHES.includes(hash)) {
+    setActiveTab(hash);
+  }
+}, []);
+
+useEffect(() => {
+  syncTabFromHash();
+
+  const handleHashChange = () => {
+    syncTabFromHash();
+  };
+
+  const handleSidebarHashNavigate = (event: Event) => {
+    const customEvent = event as CustomEvent<{ hash?: string }>;
+    const hash = customEvent.detail?.hash as InputCostTab | undefined;
+
+    if (hash && INPUT_COST_TAB_HASHES.includes(hash)) {
+      setActiveTab(hash);
+    } else {
+      syncTabFromHash();
+    }
+  };
+
+  window.addEventListener("hashchange", handleHashChange);
+  window.addEventListener("page-hash-navigate", handleSidebarHashNavigate);
+
+  return () => {
+    window.removeEventListener("hashchange", handleHashChange);
+    window.removeEventListener("page-hash-navigate", handleSidebarHashNavigate);
+  };
+}, [syncTabFromHash]);
+
   const getDefaultMonth = () => {
     const clean = String(monthParam || '').toLowerCase();
     const safeYear = getDefaultYear();
@@ -4924,15 +4969,15 @@ export default function InputCostPage({ params }: Params) {
   }, [countryCurrencySymbol]);
 
   const tabOptions = useMemo(
-    () => [
-      { value: 'inventory-insights' as const, label: 'Inventory Insights' },
-      { value: 'sku-info' as const, label: 'SKU Information' },
-      { value: 'recon-table' as const, label: 'Recon Table' },
-      { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
-      { value: 'extra' as const, label: 'Upload Warehouse Data' },
-    ],
-    []
-  );
+  () => [
+    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+    { value: 'sku-info' as const, label: 'SKU Information' },
+    { value: 'extra' as const, label: 'Upload Warehouse' },
+    { value: 'recon-table' as const, label: 'Recon Table' },
+    { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
+  ],
+  []
+);
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -5182,9 +5227,24 @@ export default function InputCostPage({ params }: Params) {
 
           <div className="mt-3">
             <SegmentedToggle
-              value={activeTab}
-              options={tabOptions}
-              onChange={(val) => setActiveTab(val as InputCostTab)}
+  value={activeTab}
+  onChange={(nextTab) => {
+    setActiveTab(nextTab);
+
+    if (typeof window !== "undefined") {
+      const nextHash = `#${nextTab}`;
+      const nextUrl = `${window.location.pathname}${nextHash}`;
+
+      window.history.pushState(null, "", nextUrl);
+
+      window.dispatchEvent(
+        new CustomEvent("page-hash-navigate", {
+          detail: { hash: nextTab },
+        })
+      );
+    }
+  }}
+  options={tabOptions}
               compact
               textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
             />
