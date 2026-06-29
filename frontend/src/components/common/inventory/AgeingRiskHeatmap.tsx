@@ -504,49 +504,53 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             //     },
             // },
         ];
-        if (showInventoryAlerts) {
-            baseColumns.push({
-                key: "inventoryAlert",
-                header: "Inventory Alerts",
-                width: "145px",
-                headerClassName: heatmapHeaderClassName,
-                cellClassName:
-                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-                render: (row) => {
-                    if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
-                        return <span></span>;
-                    }
+       if (showInventoryAlerts) {
+    baseColumns.push({
+        key: "inventoryAlert",
+        header: "Inventory Alerts",
+        width: "175px",
+        headerClassName: heatmapHeaderClassName,
+        cellClassName:
+            "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !px-2",
+        render: (row) => {
+            if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
+                return <span></span>;
+            }
 
-                    const alert = String(row.inventoryAlert || "").trim();
+            const alert = String(row.inventoryAlert || "").trim();
 
-                    if (!alert) {
-                        return <span>-</span>;
-                    }
+            if (!alert) {
+                return <span>-</span>;
+            }
 
-                    const normalized = alert.toLowerCase();
+            const normalized = alert.toLowerCase();
 
-                    const badgeClassName = normalized.includes("high alert")
-                        ? "bg-red-50 text-red-700 border-red-200"
-                        : normalized.includes("high inventory coverage")
-                            ? "bg-orange-50 text-orange-700 border-orange-200"
-                            : normalized.includes("ageing")
-                                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                : "bg-slate-50 text-slate-700 border-slate-200";
+            const badgeClassName = normalized.includes("high alert")
+                ? "bg-red-50 text-red-700 border-red-200"
+                : normalized.includes("high inventory coverage")
+                    ? "bg-orange-50 text-orange-700 border-orange-200"
+                    : normalized.includes("ageing")
+                        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                        : "bg-slate-50 text-slate-700 border-slate-200";
 
-                    return (
-                        <span
-                            title={alert}
-                            className={[
-                                "inline-flex max-w-full items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
-                                badgeClassName,
-                            ].join(" ")}
-                        >
-                            {alert}
-                        </span>
-                    );
-                },
-            });
-        }
+            return (
+                <span
+                    title={alert}
+                    className={[
+                        "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
+                        badgeClassName,
+                    ].join(" ")}
+                    style={{
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                    }}
+                >
+                    {alert}
+                </span>
+            );
+        },
+    });
+}
 
         return baseColumns;
    }, [buckets, onProductClick, showInventoryAlerts]);

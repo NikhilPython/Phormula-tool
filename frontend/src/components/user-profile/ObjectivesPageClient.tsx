@@ -679,13 +679,12 @@ export default function ObjectivesPageClient({
 
   const [targetSummaries, setTargetSummaries] = useState<Record<string, any>>({});
   const [objectivesByCountry, setObjectivesByCountry] = useState<
-  Record<string, CountryObjectiveForm>
->({});
+    Record<string, CountryObjectiveForm>
+  >({});
 
-const [editingObjectiveCountry, setEditingObjectiveCountry] = useState<string | null>(null);
-const [isAddingObjectiveCard, setIsAddingObjectiveCard] = useState(false);
-const [objectiveCountryDraft, setObjectiveCountryDraft] =
-  useState<CountryObjectiveForm | null>(null);
+  const [editingObjectiveCountry, setEditingObjectiveCountry] = useState<string | null>(null);
+  const [objectiveCountryDraft, setObjectiveCountryDraft] =
+    useState<CountryObjectiveForm | null>(null);
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "balanced",
@@ -1152,16 +1151,16 @@ const [objectiveCountryDraft, setObjectiveCountryDraft] =
   };
 
   const buildDefaultObjectiveForCountry = (countryValue: string): CountryObjectiveForm => ({
-  growth_intent: "balanced",
-  profit_priority: "protect_growth",
-  inventory_clearance_priority: false,
-  business_context: "",
-  country: countryValue,
-  time_horizon: "1_month",
-  website: "",
-  uploaded_files: [],
-  hasData: false,
-});
+    growth_intent: "balanced",
+    profit_priority: "protect_growth",
+    inventory_clearance_priority: false,
+    business_context: "",
+    country: countryValue,
+    time_horizon: "1_month",
+    website: "",
+    uploaded_files: [],
+    hasData: false,
+  });
 
   const fetchTargetSummaries = async () => {
     if (!token || isPreviewMode) return;
@@ -1387,157 +1386,136 @@ const [objectiveCountryDraft, setObjectiveCountryDraft] =
 
 
   const visibleObjectiveCountries = useMemo(() => {
-  const savedCountries = integratedCountries.filter(
-    (c) => objectivesByCountry[c]?.hasData
-  );
+    const savedCountries = integratedCountries.filter(
+      (c) => objectivesByCountry[c]?.hasData
+    );
 
-  if (savedCountries.length) return savedCountries;
+    if (savedCountries.length) return savedCountries;
 
-  const fallbackCountry = resolvedTargetCountry || integratedCountries[0] || "uk";
-  return [fallbackCountry.toLowerCase()];
-}, [integratedCountries, objectivesByCountry, resolvedTargetCountry]);
+    const fallbackCountry = resolvedTargetCountry || integratedCountries[0] || "uk";
+    return [fallbackCountry.toLowerCase()];
+  }, [integratedCountries, objectivesByCountry, resolvedTargetCountry]);
 
-const objectiveCountriesForAdd = useMemo(() => {
-  return integratedCountries.filter(
-    (c) => !visibleObjectiveCountries.includes(c)
-  );
-}, [integratedCountries, visibleObjectiveCountries]);
 
-const startObjectiveCardEdit = (countryValue: string) => {
-  if (isMember) return;
+  const startObjectiveCardEdit = (countryValue: string) => {
+    if (isMember) return;
 
-  const c = countryValue.toLowerCase();
+    const c = countryValue.toLowerCase();
 
-  const existing =
-    objectivesByCountry[c] || buildDefaultObjectiveForCountry(c);
+    const existing =
+      objectivesByCountry[c] || buildDefaultObjectiveForCountry(c);
 
-  setObjectiveCountryDraft(existing);
-  setObjectiveTargetDraft(String(Number(targetSummaries[c]?.target_sales ?? 0)));
-  setEditingObjectiveCountry(c);
-  setIsAddingObjectiveCard(false);
-};
+    setObjectiveCountryDraft(existing);
+    setObjectiveTargetDraft(String(Number(targetSummaries[c]?.target_sales ?? 0)));
+    setEditingObjectiveCountry(c);
+  };
 
-const startAddObjectiveCard = () => {
-  if (isMember) return;
+  const cancelObjectiveCardEdit = () => {
+    setObjectiveCountryDraft(null);
+    setObjectiveTargetDraft("");
+    setEditingObjectiveCountry(null);
+  };
 
-  const firstAvailableCountry =
-    objectiveCountriesForAdd[0] || integratedCountries[0] || resolvedTargetCountry || "uk";
+  const handleStrategicObjectivesSave = async () => {
+    try {
+      if (!objectiveCountryDraft) return;
 
-  const c = firstAvailableCountry.toLowerCase();
+      const nextTarget = Number(objectiveTargetDraft);
 
-  setObjectiveCountryDraft(buildDefaultObjectiveForCountry(c));
-  setObjectiveTargetDraft(String(Number(targetSummaries[c]?.target_sales ?? 0)));
-  setEditingObjectiveCountry("__new__");
-  setIsAddingObjectiveCard(true);
-};
+      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+        alert("Please enter a valid target.");
+        return;
+      }
 
-const cancelObjectiveCardEdit = () => {
-  setObjectiveCountryDraft(null);
-  setObjectiveTargetDraft("");
-  setEditingObjectiveCountry(null);
-  setIsAddingObjectiveCard(false);
-};
+      const countryToSave = (objectiveCountryDraft.country || resolvedTargetCountry)
+        .toLowerCase();
 
- const handleStrategicObjectivesSave = async () => {
-  try {
-    if (!objectiveCountryDraft) return;
+      const objectivePayload = {
+        country: countryToSave,
+        month: getObjectiveMonth(),
+        growth_intent: objectiveCountryDraft.growth_intent,
+        profit_priority: objectiveCountryDraft.profit_priority,
+        inventory_clearance_priority: objectiveCountryDraft.inventory_clearance_priority,
+      };
 
-    const nextTarget = Number(objectiveTargetDraft);
-
-    if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-      alert("Please enter a valid target.");
-      return;
-    }
-
-    const countryToSave = (objectiveCountryDraft.country || resolvedTargetCountry)
-      .toLowerCase();
-
-    const objectivePayload = {
-      country: countryToSave,
-      month: getObjectiveMonth(),
-      growth_intent: objectiveCountryDraft.growth_intent,
-      profit_priority: objectiveCountryDraft.profit_priority,
-      inventory_clearance_priority: objectiveCountryDraft.inventory_clearance_priority,
-    };
-
-    const targetPayload = {
-      month: new Date().toLocaleString("en-US", { month: "long" }),
-      year: new Date().getFullYear(),
-      country: countryToSave,
-      target_sales: nextTarget,
-    };
-
-    const [objectiveRes, targetSummaryRes] = await Promise.all([
-      fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(objectivePayload),
-      }),
-      fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(targetPayload),
-      }),
-    ]);
-
-    const objectiveJson = await objectiveRes.json().catch(() => null);
-    const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
-
-    if (!objectiveRes.ok) {
-      throw new Error(objectiveJson?.error || "Failed to save objective");
-    }
-
-    if (!targetSummaryRes.ok) {
-      throw new Error(
-        targetSummaryJson?.error || "Failed to save monthly target summary."
-      );
-    }
-
-    const savedObjective: CountryObjectiveForm = {
-      ...objectiveCountryDraft,
-      country: countryToSave,
-      hasData: true,
-    };
-
-    setObjectivesByCountry((prev) => ({
-      ...prev,
-      [countryToSave]: savedObjective,
-    }));
-
-    setTargetSummaries((prev) => ({
-      ...prev,
-      [countryToSave]: targetSummaryJson?.data ?? {
-        ...(prev[countryToSave] || {}),
+      const targetPayload = {
+        month: new Date().toLocaleString("en-US", { month: "long" }),
+        year: new Date().getFullYear(),
+        country: countryToSave,
         target_sales: nextTarget,
-      },
-    }));
+      };
 
-    if (countryToSave === resolvedTargetCountry) {
-      setObjective((prev) => ({
+      const [objectiveRes, targetSummaryRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(objectivePayload),
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(targetPayload),
+        }),
+      ]);
+
+      const objectiveJson = await objectiveRes.json().catch(() => null);
+      const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
+
+      if (!objectiveRes.ok) {
+        throw new Error(objectiveJson?.error || "Failed to save objective");
+      }
+
+      if (!targetSummaryRes.ok) {
+        throw new Error(
+          targetSummaryJson?.error || "Failed to save monthly target summary."
+        );
+      }
+
+      const savedObjective: CountryObjectiveForm = {
+        ...objectiveCountryDraft,
+        country: countryToSave,
+        hasData: true,
+      };
+
+      setObjectivesByCountry((prev) => ({
         ...prev,
-        ...savedObjective,
+        [countryToSave]: savedObjective,
       }));
 
-      setObjectiveDraft((prev) => ({
+      setTargetSummaries((prev) => ({
         ...prev,
-        ...savedObjective,
+        [countryToSave]: targetSummaryJson?.data ?? {
+          ...(prev[countryToSave] || {}),
+          target_sales: nextTarget,
+        },
       }));
 
-      setHasObjectiveForCurrentCountry(true);
+      if (countryToSave === resolvedTargetCountry) {
+        setObjective((prev) => ({
+          ...prev,
+          ...savedObjective,
+        }));
+
+        setObjectiveDraft((prev) => ({
+          ...prev,
+          ...savedObjective,
+        }));
+
+        setHasObjectiveForCurrentCountry(true);
+      }
+
+      cancelObjectiveCardEdit();
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to save section");
     }
-
-    cancelObjectiveCardEdit();
-  } catch (err: any) {
-    console.error(err);
-    alert(err?.message || "Failed to save section");
-  }
-};
+  };
 
   useEffect(() => {
     if (isPreviewMode) return;
@@ -1831,105 +1809,105 @@ const cancelObjectiveCardEdit = () => {
     fetchBusinessSummary();
   }, [token, isPreviewMode, resolvedTargetCountry]);
 
- useEffect(() => {
-  const fetchAllCountryObjectives = async () => {
-    if (!token || isPreviewMode) return;
+  useEffect(() => {
+    const fetchAllCountryObjectives = async () => {
+      if (!token || isPreviewMode) return;
 
-    const countriesToFetch = integratedCountries.length
-      ? integratedCountries
-      : [(country || "uk").toLowerCase()];
+      const countriesToFetch = integratedCountries.length
+        ? integratedCountries
+        : [(country || "uk").toLowerCase()];
 
-    try {
-      setIsFetchingObjective(true);
+      try {
+        setIsFetchingObjective(true);
 
-      const month = getObjectiveMonth();
+        const month = getObjectiveMonth();
 
-      const results = await Promise.all(
-        countriesToFetch.map(async (countryToFetch) => {
-          const c = countryToFetch.toLowerCase();
+        const results = await Promise.all(
+          countriesToFetch.map(async (countryToFetch) => {
+            const c = countryToFetch.toLowerCase();
 
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective?country=${encodeURIComponent(
-              c
-            )}&month=${encodeURIComponent(month)}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
+            const res = await fetch(
+              `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective?country=${encodeURIComponent(
+                c
+              )}&month=${encodeURIComponent(month)}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok) {
+              if (res.status !== 404) {
+                throw new Error(json?.error || `Failed to fetch objective for ${c}`);
+              }
+
+              return [c, null] as const;
             }
-          );
 
-          const json = await res.json().catch(() => null);
+            const serverObjective = json?.objective;
 
-          if (!res.ok) {
-            if (res.status !== 404) {
-              throw new Error(json?.error || `Failed to fetch objective for ${c}`);
+            if (!serverObjective) {
+              return [c, null] as const;
             }
 
-            return [c, null] as const;
+            const nextObjective: CountryObjectiveForm = {
+              ...buildDefaultObjectiveForCountry(c),
+              growth_intent: serverObjective.growth_intent ?? "balanced",
+              profit_priority: serverObjective.profit_priority ?? "protect_growth",
+              inventory_clearance_priority:
+                serverObjective.inventory_clearance_priority ?? false,
+              business_context: serverObjective.business_context ?? "",
+              country: c,
+              hasData: true,
+            };
+
+            return [c, nextObjective] as const;
+          })
+        );
+
+        const nextMap: Record<string, CountryObjectiveForm> = {};
+
+        results.forEach(([c, obj]) => {
+          if (obj) {
+            nextMap[c] = obj;
           }
+        });
 
-          const serverObjective = json?.objective;
+        setObjectivesByCountry(nextMap);
 
-          if (!serverObjective) {
-            return [c, null] as const;
-          }
+        const currentCountry = resolvedTargetCountry.toLowerCase();
+        const currentObjective = nextMap[currentCountry];
 
-          const nextObjective: CountryObjectiveForm = {
-            ...buildDefaultObjectiveForCountry(c),
-            growth_intent: serverObjective.growth_intent ?? "balanced",
-            profit_priority: serverObjective.profit_priority ?? "protect_growth",
-            inventory_clearance_priority:
-              serverObjective.inventory_clearance_priority ?? false,
-            business_context: serverObjective.business_context ?? "",
-            country: c,
-            hasData: true,
-          };
+        if (currentObjective) {
+          setHasObjectiveForCurrentCountry(true);
 
-          return [c, nextObjective] as const;
-        })
-      );
+          setObjective((prev) => ({
+            ...prev,
+            ...currentObjective,
+          }));
 
-      const nextMap: Record<string, CountryObjectiveForm> = {};
-
-      results.forEach(([c, obj]) => {
-        if (obj) {
-          nextMap[c] = obj;
+          setObjectiveDraft((prev) => ({
+            ...prev,
+            ...currentObjective,
+          }));
+        } else {
+          setHasObjectiveForCurrentCountry(false);
+          setBusinessJourney(null);
+          setBusinessJourneyError(null);
         }
-      });
-
-      setObjectivesByCountry(nextMap);
-
-      const currentCountry = resolvedTargetCountry.toLowerCase();
-      const currentObjective = nextMap[currentCountry];
-
-      if (currentObjective) {
-        setHasObjectiveForCurrentCountry(true);
-
-        setObjective((prev) => ({
-          ...prev,
-          ...currentObjective,
-        }));
-
-        setObjectiveDraft((prev) => ({
-          ...prev,
-          ...currentObjective,
-        }));
-      } else {
-        setHasObjectiveForCurrentCountry(false);
-        setBusinessJourney(null);
-        setBusinessJourneyError(null);
+      } catch (error) {
+        console.error("Failed to fetch objectives:", error);
+      } finally {
+        setIsFetchingObjective(false);
       }
-    } catch (error) {
-      console.error("Failed to fetch objectives:", error);
-    } finally {
-      setIsFetchingObjective(false);
-    }
-  };
+    };
 
-  fetchAllCountryObjectives();
-}, [token, isPreviewMode, country, integratedCountries, resolvedTargetCountry]);
+    fetchAllCountryObjectives();
+  }, [token, isPreviewMode, country, integratedCountries, resolvedTargetCountry]);
 
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${resolvedTargetCountry}/NA/NA`);
@@ -2264,260 +2242,231 @@ const cancelObjectiveCardEdit = () => {
         )}
 
 
-       {activeTab === "targets_and_objectives" && (
-  <div className="grid grid-cols-1 gap-4">
-    <div className="flex items-center justify-between">
-      <PageBreadcrumb
-        pageTitle="Strategic Objectives and Monthly Targets"
-        variant="table"
-        align="left"
-      />
-
-      {canEditBusinessOverview && (
-        <button
-          type="button"
-          onClick={startAddObjectiveCard}
-          disabled={
-            isPreviewMode ||
-            isStrategicEditMode ||
-            isAddingObjectiveCard ||
-            objectiveCountriesForAdd.length === 0
-          }
-          className="inline-flex items-center gap-2 rounded-md bg-[#5EA68E] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          title="Add another country objective"
-        >
-          <FiPlus />
-          Add Objective
-        </button>
-      )}
-    </div>
-
-    {[...visibleObjectiveCountries, ...(isAddingObjectiveCard ? ["__new__"] : [])].map(
-      (cardCountryKey) => {
-        const isNewCard = cardCountryKey === "__new__";
-
-        const displayCountry = isNewCard
-          ? objectiveCountryDraft?.country || objectiveCountriesForAdd[0] || "uk"
-          : cardCountryKey;
-
-        const cardCountry = displayCountry.toLowerCase();
-
-        const cardObjective =
-          isNewCard
-            ? objectiveCountryDraft || buildDefaultObjectiveForCountry(cardCountry)
-            : objectivesByCountry[cardCountry] ||
-              buildDefaultObjectiveForCountry(cardCountry);
-
-        const isEditingThisCard =
-          editingObjectiveCountry === cardCountryKey ||
-          (isNewCard && editingObjectiveCountry === "__new__");
-
-        const cardPlatform = countryToPlatform(cardCountry);
-        const cardCurrency = platformToCurrencyCode(cardPlatform) || homeCurrencyCode;
-
-        const rawTarget = Number(targetSummaries[cardCountry]?.target_sales ?? 0);
-
-        return (
-          <InfoCard
-            key={cardCountryKey}
-            title={
-              <div className="flex items-center gap-2">
-                <PageBreadcrumb
-                  pageTitle={`${cardCountry.toUpperCase()} Objectives`}
-                  variant="table"
-                  align="left"
-                />
-              </div>
-            }
-            action={
-              canEditBusinessOverview ? (
-                isEditingThisCard ? (
-                  <div className="flex items-center gap-2">
-                    <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                      <FiCheck />
-                    </Button>
-
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={cancelObjectiveCardEdit}
-                    >
-                      <FiX />
-                    </Button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => startObjectiveCardEdit(cardCountry)}
-                    className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    type="button"
-                    disabled={isPreviewMode || isStrategicEditMode || isAddingObjectiveCard}
-                    aria-label={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                    title={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                  >
-                    <FiEdit className="text-lg" />
-                  </button>
-                )
-              ) : null
-            }
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <InfoItem
-                label="Growth"
-                value={
-                  isEditingThisCard && objectiveCountryDraft ? (
-                    <select
-                      value={objectiveCountryDraft.growth_intent}
-                      onChange={(e) =>
-                        setObjectiveCountryDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                growth_intent:
-                                  e.target.value as UserObjectiveForm["growth_intent"],
-                              }
-                            : prev
-                        )
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {GROWTH_OPTIONS.map((v) => (
-                        <option key={v} value={v}>
-                          {v.charAt(0).toUpperCase() + v.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(cardObjective.growth_intent)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Profit"
-                value={
-                  isEditingThisCard && objectiveCountryDraft ? (
-                    <select
-                      value={objectiveCountryDraft.profit_priority}
-                      onChange={(e) =>
-                        setObjectiveCountryDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                profit_priority:
-                                  e.target.value as UserObjectiveForm["profit_priority"],
-                              }
-                            : prev
-                        )
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {PROFIT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(cardObjective.profit_priority)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Inventory Dilution"
-                value={
-                  isEditingThisCard && objectiveCountryDraft ? (
-                    <select
-                      value={
-                        objectiveCountryDraft.inventory_clearance_priority
-                          ? "yes"
-                          : "no"
-                      }
-                      onChange={(e) =>
-                        setObjectiveCountryDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                inventory_clearance_priority:
-                                  e.target.value === "yes",
-                              }
-                            : prev
-                        )
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  ) : cardObjective.inventory_clearance_priority ? (
-                    "Yes"
-                  ) : (
-                    "No"
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Country"
-                value={
-                  isEditingThisCard && objectiveCountryDraft && isNewCard ? (
-                    <select
-                      value={objectiveCountryDraft.country}
-                      onChange={(e) => {
-                        const nextCountry = e.target.value.toLowerCase();
-
-                        setObjectiveCountryDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                country: nextCountry,
-                              }
-                            : prev
-                        );
-
-                        setObjectiveTargetDraft(
-                          String(Number(targetSummaries[nextCountry]?.target_sales ?? 0))
-                        );
-                      }}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {objectiveCountriesForAdd.map((c) => (
-                        <option key={c} value={c}>
-                          {c.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    cardCountry.toUpperCase()
-                  )
-                }
-              />
-
-              <InfoItem
-                label={`Target (${cardCurrency})`}
-                value={
-                  isEditingThisCard ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={objectiveTargetDraft}
-                      onChange={(e) => setObjectiveTargetDraft(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      placeholder="Enter target"
-                    />
-                  ) : (
-                    money(rawTarget, cardCurrency)
-                  )
-                }
+        {activeTab === "targets_and_objectives" && (
+          <div className="grid grid-cols-1 gap-4">
+            <div className="flex items-center justify-between">
+              <PageBreadcrumb
+                pageTitle="Strategic Objectives and Monthly Targets"
+                variant="table"
+                align="left"
               />
             </div>
-          </InfoCard>
-        );
-      }
-    )}
-  </div>
-)}
+
+            {visibleObjectiveCountries.map((cardCountryKey) => {
+              const displayCountry = cardCountryKey;
+
+              const cardCountry = displayCountry.toLowerCase();
+
+              const cardObjective =
+                objectivesByCountry[cardCountry] ||
+                buildDefaultObjectiveForCountry(cardCountry);
+
+              const isEditingThisCard = editingObjectiveCountry === cardCountry;
+
+
+              const cardPlatform = countryToPlatform(cardCountry);
+              const cardCurrency = platformToCurrencyCode(cardPlatform) || homeCurrencyCode;
+
+              const rawTarget = Number(targetSummaries[cardCountry]?.target_sales ?? 0);
+
+              return (
+                <InfoCard
+                  key={cardCountryKey}
+                  title={
+                    <div className="flex items-center gap-2">
+                      <PageBreadcrumb
+                        pageTitle={`${cardCountry.toUpperCase()} Objectives`}
+                        variant="table"
+                        align="left"
+                      />
+                    </div>
+                  }
+                  action={
+                    canEditBusinessOverview ? (
+                      isEditingThisCard ? (
+                        <div className="flex items-center gap-2">
+                          <Button size="icon" onClick={handleStrategicObjectivesSave}>
+                            <FiCheck />
+                          </Button>
+
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={cancelObjectiveCardEdit}
+                          >
+                            <FiX />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startObjectiveCardEdit(cardCountry)}
+                          className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          type="button"
+                          disabled={isPreviewMode || editingObjectiveCountry !== null}
+                          aria-label={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
+                          title={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
+                        >
+                          <FiEdit className="text-lg" />
+                        </button>
+                      )
+                    ) : null
+                  }
+                >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <InfoItem
+                      label="Growth"
+                      value={
+                        isEditingThisCard && objectiveCountryDraft ? (
+                          <select
+                            value={objectiveCountryDraft.growth_intent}
+                            onChange={(e) =>
+                              setObjectiveCountryDraft((prev) =>
+                                prev
+                                  ? {
+                                    ...prev,
+                                    growth_intent:
+                                      e.target.value as UserObjectiveForm["growth_intent"],
+                                  }
+                                  : prev
+                              )
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {GROWTH_OPTIONS.map((v) => (
+                              <option key={v} value={v}>
+                                {v.charAt(0).toUpperCase() + v.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          prettifyObjectiveValue(cardObjective.growth_intent)
+                        )
+                      }
+                    />
+
+                    <InfoItem
+                      label="Profit"
+                      value={
+                        isEditingThisCard && objectiveCountryDraft ? (
+                          <select
+                            value={objectiveCountryDraft.profit_priority}
+                            onChange={(e) =>
+                              setObjectiveCountryDraft((prev) =>
+                                prev
+                                  ? {
+                                    ...prev,
+                                    profit_priority:
+                                      e.target.value as UserObjectiveForm["profit_priority"],
+                                  }
+                                  : prev
+                              )
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {PROFIT_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          prettifyObjectiveValue(cardObjective.profit_priority)
+                        )
+                      }
+                    />
+
+                    <InfoItem
+                      label="Inventory Dilution"
+                      value={
+                        isEditingThisCard && objectiveCountryDraft ? (
+                          <select
+                            value={
+                              objectiveCountryDraft.inventory_clearance_priority
+                                ? "yes"
+                                : "no"
+                            }
+                            onChange={(e) =>
+                              setObjectiveCountryDraft((prev) =>
+                                prev
+                                  ? {
+                                    ...prev,
+                                    inventory_clearance_priority:
+                                      e.target.value === "yes",
+                                  }
+                                  : prev
+                              )
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        ) : cardObjective.inventory_clearance_priority ? (
+                          "Yes"
+                        ) : (
+                          "No"
+                        )
+                      }
+                    />
+
+                    <InfoItem
+                      label="Country"
+                      value={
+                        isEditingThisCard && objectiveCountryDraft ? (
+                          <select
+                            value={objectiveCountryDraft.country}
+                            onChange={(e) => {
+                              const nextCountry = e.target.value.toLowerCase();
+
+                              const existing =
+                                objectivesByCountry[nextCountry] ||
+                                buildDefaultObjectiveForCountry(nextCountry);
+
+                              setObjectiveCountryDraft(existing);
+
+                              setObjectiveTargetDraft(
+                                String(Number(targetSummaries[nextCountry]?.target_sales ?? 0))
+                              );
+                            }}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {integratedCountries.map((c) => (
+                              <option key={c} value={c}>
+                                {c.toUpperCase()}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          cardCountry.toUpperCase()
+                        )
+                      }
+                    />
+
+                    <InfoItem
+                      label={`Target (${cardCurrency})`}
+                      value={
+                        isEditingThisCard ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={objectiveTargetDraft}
+                            onChange={(e) => setObjectiveTargetDraft(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            placeholder="Enter target"
+                          />
+                        ) : (
+                          money(rawTarget, cardCurrency)
+                        )
+                      }
+                    />
+                  </div>
+                </InfoCard>
+              );
+            }
+            )}
+          </div>
+        )}
       </PreviewLockedSection>
     </div>
   );
