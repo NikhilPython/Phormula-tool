@@ -229,7 +229,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             width: "72px",
             header: bucket.label,
             headerClassName: heatmapHeaderClassName,
-            cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !p-0",
+            cellClassName:
+                "relative !p-0 overflow-hidden text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
             render: (row) => {
                 const calculatedTotal = buckets.reduce(
                     (sum, b) => sum + Number(row[b.key] || 0),
@@ -239,7 +240,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 const totalUnits = Number(row.totalUnits ?? calculatedTotal);
                 const value = Number(row[bucket.key] || 0);
 
-                // ✅ ADD THIS: separate render for "% of Total" row
                 if (row.isPercentageRow) {
                     const displayValue =
                         value > 0
@@ -257,7 +257,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                     : `${bucket.label}: 0% of total`
                             }
                             className={[
-                                "flex h-10 w-full items-center justify-center px-1 text-center text-xs font-semibold",
+                                "absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs font-semibold",
                                 value > 0 ? "text-charcoal-500" : "text-charcoal-400",
                             ].join(" ")}
                             style={{
@@ -276,7 +276,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(
                             1
                         )}%)`}
-                        className="flex h-10 w-full items-center justify-center px-1 text-center text-xs text-charcoal-500"
+                        className="absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs text-charcoal-500"
                         style={{
                             backgroundColor:
                                 row.isTotalRow && value === 0
@@ -504,56 +504,56 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             //     },
             // },
         ];
-       if (showInventoryAlerts) {
-    baseColumns.push({
-        key: "inventoryAlert",
-        header: "Inventory Alerts",
-        width: "175px",
-        headerClassName: heatmapHeaderClassName,
-        cellClassName:
-            "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !px-2",
-        render: (row) => {
-            if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
-                return <span></span>;
-            }
+        if (showInventoryAlerts) {
+            baseColumns.push({
+                key: "inventoryAlert",
+                header: "Inventory Alerts",
+                width: "175px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !px-2",
+                render: (row) => {
+                    if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
+                        return <span></span>;
+                    }
 
-            const alert = String(row.inventoryAlert || "").trim();
+                    const alert = String(row.inventoryAlert || "").trim();
 
-            if (!alert) {
-                return <span>-</span>;
-            }
+                    if (!alert) {
+                        return <span>-</span>;
+                    }
 
-            const normalized = alert.toLowerCase();
+                    const normalized = alert.toLowerCase();
 
-            const badgeClassName = normalized.includes("high alert")
-                ? "bg-red-50 text-red-700 border-red-200"
-                : normalized.includes("high inventory coverage")
-                    ? "bg-orange-50 text-orange-700 border-orange-200"
-                    : normalized.includes("ageing")
-                        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                        : "bg-slate-50 text-slate-700 border-slate-200";
+                    const badgeClassName = normalized.includes("high alert")
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : normalized.includes("high inventory coverage")
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : normalized.includes("ageing")
+                                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200";
 
-            return (
-                <span
-                    title={alert}
-                    className={[
-                        "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
-                        badgeClassName,
-                    ].join(" ")}
-                    style={{
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                    }}
-                >
-                    {alert}
-                </span>
-            );
-        },
-    });
-}
+                    return (
+                        <span
+                            title={alert}
+                            className={[
+                                "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
+                                badgeClassName,
+                            ].join(" ")}
+                            style={{
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                            }}
+                        >
+                            {alert}
+                        </span>
+                    );
+                },
+            });
+        }
 
         return baseColumns;
-   }, [buckets, onProductClick, showInventoryAlerts]);
+    }, [buckets, onProductClick, showInventoryAlerts]);
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
