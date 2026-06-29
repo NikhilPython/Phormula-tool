@@ -42,6 +42,8 @@ import type {
   ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
 import PeriodFiltersTable from "@/components/filters/PeriodFiltersTable";
+import { AnimatePresence, motion } from "framer-motion";
+import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 
 
 type InventoryActionCardItem = ActionCardItem & {
@@ -167,6 +169,518 @@ type Quarter = 'Q1' | 'Q2' | 'Q3' | 'Q4';
 
 type InventoryCurrentRow = Record<string, any>;
 
+type ObjectivePayload = {
+  business_context?: string;
+  country?: string;
+  growth_intent?: string;
+  inventory_clearance_priority?: boolean;
+  profit_priority?: string;
+  time_horizon?: string;
+};
+
+type RecommendationsMap = Record<
+  string,
+  {
+    journey_summary?: string[];
+    recommendation?: string;
+    inventory_recommendation?: string;
+    ads_recommendation?: string;
+  }
+> & {
+  remaining_skus_recommendation?: string;
+};
+
+type OtherSkuItem = {
+  product_name: string;
+  sku: string;
+};
+
+type ProductInsightBlock = {
+  name: string;
+  skuKey?: string;
+  metrics: { label: string; value: string; color?: string }[];
+  journeyBullets: string[];
+  recommendationBullets: string[];
+  inventoryBullets: string[];
+  isOtherSkus?: boolean;
+  includedSkus?: OtherSkuItem[];
+};
+
+type AiPanelData = {
+  summaryBullets: string[];
+  skuInsightsBullets: string[];
+  recommendationBullets: string[];
+  inventoryBullets: string[];
+  recommendationsMap?: RecommendationsMap;
+  objective?: ObjectivePayload;
+  rawSummary?: string | null;
+  rawRecommendations?: string | null;
+  remainingSkusRecommendation?: string;
+  portfolioRecommendation?: string | null;
+  otherSkuIncludedProducts?: OtherSkuItem[];
+};
+
+type BestPerformanceMetric = {
+  month?: string;
+  year?: string | number;
+  units?: number;
+  net_sales?: number;
+  asp?: number;
+  cm1_profit?: number;
+  unit_wise_profitability?: number;
+};
+
+type ProductBestPerformanceData = {
+  units?: BestPerformanceMetric;
+  net_sales?: BestPerformanceMetric;
+  asp?: BestPerformanceMetric;
+  cm1_profit?: BestPerformanceMetric;
+  unit_wise_profitability?: BestPerformanceMetric;
+};
+
+const normalizeKey = (s: string) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s-]/g, "");
+
+const parseMdSections = (md?: string | null): Record<string, string[]> => {
+  if (!md) return {};
+
+  const lines = md.split(/\r?\n/);
+  const sections: Record<string, string[]> = {};
+  let current = "ROOT";
+  sections[current] = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+
+    if (line.toLowerCase().startsWith("## ")) {
+      current = line.replace(/^##\s+/i, "").trim().toUpperCase();
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+
+    if (line) {
+      sections[current].push(line);
+    }
+  }
+
+  const out: Record<string, string[]> = {};
+
+  for (const [key, arr] of Object.entries(sections)) {
+    out[key] = arr
+      .filter((line) => !line.startsWith("##"))
+      .map((line) => line.replace(/^[-•]\s+/, "").trim())
+      .filter(Boolean);
+  }
+
+  return out;
+};
+
+const extractRecoAndInventoryBullets = (
+  mdOrObj?: string | RecommendationsMap | null
+) => {
+  if (mdOrObj && typeof mdOrObj === "object") {
+    return {
+      recommendationBullets: [],
+      inventoryBullets: [],
+      recommendationsMap: mdOrObj as RecommendationsMap,
+    };
+  }
+
+  if (!mdOrObj || typeof mdOrObj !== "string") {
+    return {
+      recommendationBullets: [],
+      inventoryBullets: [],
+      recommendationsMap: undefined,
+    };
+  }
+
+  const sections = parseMdSections(mdOrObj);
+
+  return {
+    recommendationBullets: sections["ROOT"] ?? [],
+    inventoryBullets: sections["INVENTORY"] ?? [],
+    recommendationsMap: undefined,
+  };
+};
+
+const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
+  const metricLabels = [
+    "ASP",
+    "Units",
+    "Net sales",
+    "CM1 profit",
+    "CM1 profit per unit",
+  ];
+
+  const isMetric = (s: string) =>
+    metricLabels.some((m) =>
+      s.toLowerCase().startsWith(m.toLowerCase() + ":")
+    );
+
+  const blocks: ProductInsightBlock[] = [];
+  let current: ProductInsightBlock | null = null;
+  let inJourney = false;
+  let inIncludedSkus = false;
+
+  const pushCurrent = () => {
+    if (current && current.name.trim()) blocks.push(current);
+    current = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+
+    const line = String(raw || "")
+      .replace(/^[-•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+
+    if (!line) continue;
+
+    const nextLine = String(lines[i + 1] || "")
+      .replace(/^[-•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+
+    const isProductHeader =
+      !isMetric(line) &&
+      !line.toLowerCase().startsWith("sku:") &&
+      !line.toLowerCase().startsWith("bucket:") &&
+      !line.toLowerCase().startsWith("recommendation:") &&
+      !line.toLowerCase().startsWith("ads action:") &&
+      !line.toLowerCase().startsWith("product journey") &&
+      !line.toLowerCase().startsWith("inventory action:") &&
+      !!nextLine &&
+      (isMetric(nextLine) || nextLine.toLowerCase().startsWith("sku:"));
+
+    if (isProductHeader) {
+      pushCurrent();
+
+      const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
+      const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
+
+      const cleanName = line
+        .replace(/\([A-Z0-9-]+\)/i, "")
+        .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "")
+        .trim();
+
+      const isOther = (cleanName || line).trim().toLowerCase() === "other skus";
+
+      current = {
+        name: isOther ? "Other SKUs" : cleanName || line,
+        skuKey: skuFromParen || skuFromPrefix,
+        metrics: [],
+        journeyBullets: [],
+        recommendationBullets: [],
+        inventoryBullets: [],
+        isOtherSkus: isOther,
+        includedSkus: [],
+      };
+
+      inJourney = false;
+      inIncludedSkus = false;
+      continue;
+    }
+
+    if (!current) continue;
+
+    const lowerLine = line.toLowerCase();
+
+    if (lowerLine.startsWith("sku:")) {
+      current.skuKey = line.replace(/^sku:\s*/i, "").trim();
+      continue;
+    }
+
+    if (lowerLine.startsWith("bucket:")) {
+      continue;
+    }
+
+    if (
+      lowerLine.startsWith("included skus") ||
+      lowerLine.startsWith("products included")
+    ) {
+      inJourney = false;
+      inIncludedSkus = true;
+      continue;
+    }
+
+    if (inIncludedSkus) {
+      const isNextSection =
+        lowerLine.startsWith("product journey") ||
+        lowerLine.startsWith("recommendation:") ||
+        lowerLine.startsWith("inventory action:") ||
+        lowerLine.startsWith("ads action:");
+
+      if (!isNextSection) {
+        const match = line.match(/^(.+?)\s*\(([^)]+)\)$/);
+
+        if (match) {
+          current.includedSkus?.push({
+            product_name: match[1].trim(),
+            sku: match[2].trim(),
+          });
+        }
+
+        continue;
+      }
+
+      inIncludedSkus = false;
+    }
+
+    if (lowerLine.startsWith("product journey")) {
+      inJourney = true;
+      inIncludedSkus = false;
+      continue;
+    }
+
+    if (lowerLine.startsWith("recommendation:")) {
+      inJourney = false;
+      const reco = line.replace(/^recommendation:\s*/i, "").trim();
+      if (reco) current.recommendationBullets.push(reco);
+      continue;
+    }
+
+    if (lowerLine.startsWith("ads action:")) {
+      inJourney = false;
+      const ads = line.replace(/^ads action:\s*/i, "").trim();
+      if (ads) current.recommendationBullets.push(ads);
+      continue;
+    }
+
+    if (lowerLine.startsWith("inventory action:")) {
+      inJourney = false;
+      const inv = line.replace(/^inventory action:\s*/i, "").trim();
+      if (inv) current.inventoryBullets.push(inv);
+      continue;
+    }
+
+    if (isMetric(line)) {
+      const [label, ...rest] = line.split(":");
+      const value = rest.join(":").trim();
+
+      const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+      const color =
+        !Number.isNaN(n)
+          ? n < 0
+            ? "#DC2626"
+            : n > 0
+              ? "#059669"
+              : "#414042"
+          : "#414042";
+
+      current.metrics.push({
+        label: label.trim(),
+        value,
+        color,
+      });
+
+      continue;
+    }
+
+    if (inJourney) {
+      const cleaned = line.replace(/^-+\s*/, "").trim();
+      if (cleaned) current.journeyBullets.push(cleaned);
+    }
+  }
+
+  pushCurrent();
+  return blocks;
+};
+
+const getOtherSkuIncludedProducts = (data: any): OtherSkuItem[] => {
+  const includedProducts =
+    data?.remaining_agg?.included_products ||
+    data?.metrics?.remaining_agg?.included_products ||
+    [];
+
+  if (!Array.isArray(includedProducts)) return [];
+
+  return includedProducts
+    .map((p: any) => ({
+      product_name: String(p?.product_name || "").trim(),
+      sku: String(p?.sku || "").trim(),
+    }))
+    .filter((p) => p.product_name && p.sku);
+};
+
+const toBullets = (text?: string) => {
+  if (!text) return [];
+
+  const clean = String(text).trim();
+
+  if (!clean) return [];
+
+  if (clean.includes("\n")) {
+    return clean
+      .split("\n")
+      .map((x) => x.replace(/^[-•]\s+/, "").trim())
+      .filter(Boolean);
+  }
+
+  return clean
+    .split(/(?:\.\s+|;\s+|\s\|\s)/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+};
+
+const splitMetricValue = (value: string) => {
+  const v = String(value || "").trim();
+  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+
+  if (!m) {
+    return { main: v, delta: "", deltaColor: "" };
+  }
+
+  const main = m[1].trim();
+  const delta = m[2].trim();
+  const sign = m[3];
+
+  const deltaColor = sign === "+" ? "text-emerald-600" : "text-red-600";
+
+  return { main, delta, deltaColor };
+};
+
+const formatRecommendationCardMainValue = (label: string, main: string) => {
+  const normalizedLabel = label.trim().toLowerCase();
+
+  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+    return main;
+  }
+
+  const currencyMatch = main.match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+
+  const numberPart = main.replace(/[^0-9.-]/g, "");
+  const numberValue = Number(numberPart);
+
+  if (!Number.isFinite(numberValue)) return main;
+
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
+
+const formatMoney = (value: any, symbol = "$") => {
+  const n = Number(value ?? 0);
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const formatMoneyNoDecimal = (value: any, symbol = "$") => {
+  const n = Math.round(Number(value ?? 0));
+
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const formatBestPerformancePeriod = (
+  month?: string,
+  year?: string | number
+) => {
+  if (!month) return "-";
+
+  const monthMap: Record<string, string> = {
+    january: "Jan",
+    february: "Feb",
+    march: "Mar",
+    april: "Apr",
+    may: "May",
+    june: "Jun",
+    july: "Jul",
+    august: "Aug",
+    september: "Sep",
+    october: "Oct",
+    november: "Nov",
+    december: "Dec",
+  };
+
+  const shortMonth =
+    monthMap[String(month).toLowerCase()] || String(month).slice(0, 3);
+
+  const shortYear = year ? String(year).slice(-2) : "";
+
+  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
+const getPeriodBadge = (
+  range: RangeType,
+  year: string,
+  month?: string,
+  quarter?: string
+) => {
+  const yy = String(year || "").slice(-2);
+
+  if (range === "monthly" && month) {
+    return `${month.slice(0, 3)}'${yy}`;
+  }
+
+  if (range === "quarterly" && quarter) {
+    return `${quarter}'${yy}`;
+  }
+
+  if (range === "yearly" && year) {
+    return String(year);
+  }
+
+  return "";
+};
+
+const formatSummaryPeriod = (text?: string) => {
+  if (!text) return "";
+
+  const m = text.match(/\(([^)]+)\)/);
+  if (!m) return "";
+
+  const inside = m[1].trim();
+  const [leftRaw, rightRaw] = inside.split(/\s*vs\s*/i);
+
+  if (!leftRaw || !rightRaw) return `(${inside})`;
+
+  const formatPart = (part: string) => {
+    const p = part.trim();
+
+    if (/^\d{4}$/.test(p)) return p;
+
+    const qMatch = p.match(/^(Q[1-4])\s+(\d{4})$/i);
+    if (qMatch) {
+      return `${qMatch[1].toUpperCase()}’${qMatch[2].slice(-2)}`;
+    }
+
+    const monthYearMatch = p.match(/^([A-Za-z]+)\s+(\d{4})$/);
+    if (monthYearMatch) {
+      return `${monthYearMatch[1].slice(0, 3)}’${monthYearMatch[2].slice(-2)}`;
+    }
+
+    return p;
+  };
+
+  return `(${formatPart(leftRaw)} vs ${formatPart(rightRaw)})`;
+};
+
+const metricColors = [
+  "border border-[#FDD36F] border-t-[#FDD36F]",
+  "border border-[#75BBDA] border-t-[#75BBDA]",
+  "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#C49466] border-t-[#C49466]",
+];
+
+const metricOrder = [
+  "units",
+  "net sales",
+  "asp",
+  "cm1 profit",
+  "cm1 profit per unit",
+];
+
 type InventoryCurrentApiResponse = {
   success: boolean;
   rows?: InventoryCurrentRow[];
@@ -258,6 +772,430 @@ type InventoryInsightsData = {
   }[];
   actions: InventoryActionCardItem[];
   actionLogic: ActionLogicItem[];
+};
+
+type RightProductDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  block: ProductInsightBlock | null;
+  objective?: ObjectivePayload;
+  recObj?: any;
+  countryName: string;
+  month: string;
+  year: string;
+  range: RangeType;
+  quarter?: string;
+  drawerPeriodText?: string;
+  currencySymbol?: string;
+  bestPerformanceLoading?: boolean;
+  bestPerformanceError?: string | null;
+  bestPerformanceData?: ProductBestPerformanceData | null;
+  sharedInsightData?: {
+    blocks: ProductInsightBlock[];
+    objective?: ObjectivePayload | null;
+    recommendationsMap?: RecommendationsMap;
+    drawerPeriodText?: string;
+    nameToSkuMap?: Record<string, string>;
+  };
+};
+
+const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
+  open,
+  onClose,
+  block,
+  objective,
+  recObj,
+  countryName,
+  month,
+  year,
+  range,
+  quarter,
+  drawerPeriodText,
+  currencySymbol,
+  bestPerformanceLoading = false,
+  bestPerformanceError = null,
+  bestPerformanceData = null,
+  sharedInsightData,
+}) => {
+  if (!open || !block) return null;
+
+  const inventoryText =
+    recObj?.inventory_recommendation || block?.inventoryBullets?.join(" ");
+
+  const inventoryRecoBullets = toBullets(inventoryText);
+  const adsRecoBullets = toBullets(recObj?.ads_recommendation);
+
+  const periodBadge = getPeriodBadge(range, year, month, quarter);
+
+  const drawerCurrencySymbol =
+    currencySymbol || getCurrencySymbol(getCurrencyForCountry(countryName));
+
+  const isOtherSkusBlock = !!block?.isOtherSkus;
+
+  const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
+    const aIndex = metricOrder.indexOf(a.label.toLowerCase());
+    const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+
+    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+    return safeAIndex - safeBIndex;
+  });
+
+  const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+    const normalizedLabel = label.trim().toLowerCase();
+    const metricIndex = metricOrder.indexOf(normalizedLabel);
+
+    return metricColors[
+      metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+    ];
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="fixed inset-0 z-[999999] h-full bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+          />
+
+          <motion.aside
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] sm:w-[75vw] md:w-[60vw] lg:w-[50vw] min-[1700px]:w-[50vw] bg-white shadow-2xl"
+            initial={{ x: 520 }}
+            animate={{ x: 0 }}
+            exit={{ x: 520 }}
+            transition={{ type: "tween", duration: 0.25 }}
+          >
+            <div className="flex h-full flex-col gap-4">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <PageBreadcrumb
+                        pageTitle="Detailed View - "
+                        variant="page"
+                        textSize="2xl"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1 sm:ml-1">
+                      <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {block.name || "Details"}
+                      </span>
+
+                      {drawerPeriodText ? (
+                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                          {drawerPeriodText}
+                        </span>
+                      ) : periodBadge ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                          {periodBadge}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={onClose}
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+                <div>
+                  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                    Metrics
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                    {sortedMetrics.map((m, i) => (
+                      <div
+                        key={`${m.label}-${i}`}
+                        className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(
+                          m.label,
+                          i
+                        )} px-3 py-2`}
+                      >
+                        <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+                          {m.label
+                            .replace(/\b\w/g, (char) => char.toUpperCase())
+                            .replace("Cm1", "CM1")}
+                        </div>
+
+                        <div className="flex flex-col leading-tight">
+                          {(() => {
+                            const { main, delta, deltaColor } =
+                              splitMetricValue(m.value);
+
+                            const displayMain =
+                              formatRecommendationCardMainValue(m.label, main);
+
+                            return (
+                              <>
+                                <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
+                                  {displayMain}
+                                </span>
+
+                                {delta ? (
+                                  <span
+                                    className="text-[10px] 2xl:text-xs font-semibold"
+                                    style={{
+                                      color:
+                                        deltaColor === "text-emerald-600"
+                                          ? "#5EA68E"
+                                          : "#FF5C5C",
+                                    }}
+                                  >
+                                    {delta}
+                                  </span>
+                                ) : null}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {!isOtherSkusBlock && (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                      Overall Best Performance
+                    </div>
+
+                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                      Best performance is calculated from overall historical data, not just the selected period.
+                    </div>
+
+                    {bestPerformanceLoading ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        Loading best performance...
+                      </div>
+                    ) : bestPerformanceError ? (
+                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+                        {bestPerformanceError}
+                      </div>
+                    ) : bestPerformanceData ? (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                        {[
+                          {
+                            label: "Units",
+                            value: Math.round(
+                              Number(bestPerformanceData?.units?.units ?? 0)
+                            ).toLocaleString(),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.units?.month,
+                              bestPerformanceData?.units?.year
+                            ),
+                          },
+                          {
+                            label: "Net Sales",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.net_sales?.net_sales,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.net_sales?.month,
+                              bestPerformanceData?.net_sales?.year
+                            ),
+                          },
+                          {
+                            label: "ASP",
+                            value: formatMoney(
+                              bestPerformanceData?.asp?.asp,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.asp?.month,
+                              bestPerformanceData?.asp?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit",
+                            value: formatMoneyNoDecimal(
+                              bestPerformanceData?.cm1_profit?.cm1_profit,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.cm1_profit?.month,
+                              bestPerformanceData?.cm1_profit?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit Per Unit",
+                            value: formatMoney(
+                              bestPerformanceData?.unit_wise_profitability
+                                ?.unit_wise_profitability,
+                              drawerCurrencySymbol
+                            ),
+                            period: formatBestPerformancePeriod(
+                              bestPerformanceData?.unit_wise_profitability?.month,
+                              bestPerformanceData?.unit_wise_profitability?.year
+                            ),
+                          },
+                        ].map((m, i) => (
+                          <div
+                            key={m.label}
+                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(
+                              m.label,
+                              i
+                            )} px-3 py-2`}
+                          >
+                            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
+                              {m.label}
+                            </div>
+
+                            <div className="flex flex-col leading-tight">
+                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
+                                {m.period}
+                              </span>
+
+                              <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
+                                {m.value}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        —
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                    Recommendations
+                  </div>
+
+                  {block.recommendationBullets?.length ? (
+                    <div>
+                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                        Action
+                      </div>
+
+                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                        {block.recommendationBullets.map((pt, i) => (
+                          <li key={i}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {inventoryRecoBullets.length ? (
+                    <div className="mt-2">
+                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                        Inventory
+                      </div>
+
+                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                        {inventoryRecoBullets.map((pt, i) => (
+                          <li key={i}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {!block.recommendationBullets?.length &&
+                    !inventoryRecoBullets.length &&
+                    !adsRecoBullets.length && (
+                      <div className="text-xs text-charcoal-500 2xl:text-sm">
+                        —
+                      </div>
+                    )}
+                </div>
+
+                {/* {!isOtherSkusBlock && (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                      Performance Journey
+                    </div>
+
+                    <ProductwisePerformance
+                      key={[
+                        countryName,
+                        range,
+                        quarter,
+                        year,
+                        block.name,
+                        "drawer",
+                      ].join("-")}
+                      embedded
+                      countryNameProp={countryName}
+                      rangeProp={range === "monthly" ? "yearly" : range}
+                      selectedMonthProp=""
+                      selectedQuarterProp={
+                        range === "quarterly" ? quarter || "" : ""
+                      }
+                      selectedYearProp={year ? Number(year) : ""}
+                      initialProductName={block.name}
+                      sharedInsightData={sharedInsightData}
+                    />
+                  </div>
+                )} */}
+
+                <div className="w-full">
+                  <Productinfoinpopup
+                    productname={
+                      block.isOtherSkus
+                        ? block.includedSkus?.[0]?.product_name || block.name
+                        : block.name
+                    }
+                    countryName={countryName}
+                    isOtherSkus={!!block.isOtherSkus}
+                    otherSkuProductNames={
+                      block.isOtherSkus
+                        ? (block.includedSkus || []).map(
+                            (item) => item.product_name
+                          )
+                        : []
+                    }
+                  />
+                </div>
+
+                <div className="pb-4">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <PageBreadcrumb
+                      pageTitle="Product Journey"
+                      variant="page"
+                      textSize="lg"
+                    />
+                  </div>
+
+                  {block.journeyBullets?.length ? (
+                    <ol className="list-decimal pl-3 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
+                      {block.journeyBullets.map((p, i) => (
+                        <li key={i}>
+                          {p
+                            .replace(/^\d+\.\s*-\s*/, "")
+                            .replace(/^\d+\.\s*/, "")
+                            .replace(/^-+\s*/, "")}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="text-xs text-charcoal-500 2xl:text-sm">
+                      —
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
 };
 
 const allMonths = [
@@ -1512,7 +2450,26 @@ export default function InputCostPage({ params }: Params) {
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
   const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
-  const [warehouseUploadError, setWarehouseUploadError] = useState('');
+ const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
+const [aiPanelLoading, setAiPanelLoading] = useState(false);
+const [aiPanelError, setAiPanelError] = useState<string | null>(null);
+
+const aiRequestIdRef = useRef(0);
+
+const [selectedAiProductBlock, setSelectedAiProductBlock] =
+  useState<ProductInsightBlock | null>(null);
+
+const [selectedAiProductRecObj, setSelectedAiProductRecObj] =
+  useState<any>(null);
+
+const [aiBestPerformanceLoading, setAiBestPerformanceLoading] =
+  useState(false);
+
+const [aiBestPerformanceError, setAiBestPerformanceError] =
+  useState<string | null>(null);
+
+const [aiBestPerformanceData, setAiBestPerformanceData] =
+  useState<ProductBestPerformanceData | null>(null);
 
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -1608,6 +2565,159 @@ const LEDGER_DB_STORE_MONTH = `${API_BASE}/amazon_api/inventory/ledger-summary/d
 const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
 const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
 
+
+const inputCostNameToSkuMap = useMemo(() => {
+  const map: Record<string, string> = {};
+
+  for (const row of skuData || []) {
+    const name = normalizeKey(String(row.product_name || ""));
+
+    const sku =
+      countryName === "uk"
+        ? row.sku_uk
+        : countryName === "us"
+          ? row.sku_us
+          : countryName === "canada"
+            ? row.sku_canada
+            : row.sku_uk || row.sku_us || row.sku_canada;
+
+    if (name && sku) {
+      map[name] = String(sku).trim();
+    }
+  }
+
+  return map;
+}, [skuData, countryName]);
+
+const aiProductBlocks = useMemo(() => {
+  return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
+}, [aiPanel?.skuInsightsBullets]);
+
+const aiSkuActions = useMemo(() => {
+  const recommendationsMap = aiPanel?.recommendationsMap;
+
+  return (
+    (recommendationsMap as any)?.sku_actions ??
+    (recommendationsMap as any)?.recommendations ??
+    recommendationsMap ??
+    {}
+  );
+}, [aiPanel?.recommendationsMap]);
+
+const drawerPeriodText = useMemo(() => {
+  return aiPanel?.summaryBullets?.[0]
+    ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+    : "";
+}, [aiPanel?.summaryBullets]);
+
+const fetchAiSummary = useCallback(async () => {
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
+
+  if (!ready || !countryName || isNA) return;
+
+  const aiTimeline =
+    range === "monthly"
+      ? monthNameToNumber(selectedMonth)
+      : range === "quarterly"
+        ? selectedQuarter
+        : "ALL";
+
+  if (range === "monthly" && !aiTimeline) return;
+  if (range === "quarterly" && !selectedQuarter) return;
+
+  const requestId = ++aiRequestIdRef.current;
+
+  setAiPanelLoading(true);
+  setAiPanelError(null);
+
+  try {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
+
+    url.searchParams.set("country", countryName);
+    url.searchParams.set("period", range);
+    url.searchParams.set("timeline", String(aiTimeline));
+    url.searchParams.set("year", String(selectedYear));
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    const data: any = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data?.error || data?.message || "Failed to fetch AI summary");
+    }
+
+    if (requestId !== aiRequestIdRef.current) return;
+
+    const sections = parseMdSections(data.summary);
+
+    const summaryLines = sections["SUMMARY"] ?? [];
+    const inventoryLines = sections["INVENTORY"] ?? [];
+    const productLines = [
+      ...(sections["PRODUCT INSIGHTS"] ?? []),
+      ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
+    ];
+
+    const { recommendationBullets, inventoryBullets, recommendationsMap } =
+      extractRecoAndInventoryBullets(data.recommendations as any);
+
+    let remainingSkusRecommendation: string | undefined;
+
+    if (
+      data.recommendations &&
+      typeof data.recommendations === "object" &&
+      "remaining_skus_recommendation" in data.recommendations
+    ) {
+      remainingSkusRecommendation =
+        (data.recommendations as any).remaining_skus_recommendation;
+    }
+
+    setAiPanel({
+      summaryBullets: summaryLines,
+      skuInsightsBullets: productLines,
+      recommendationBullets,
+      inventoryBullets: inventoryLines.length ? inventoryLines : inventoryBullets,
+      recommendationsMap,
+      objective: data.objective,
+      rawSummary: data.summary ?? null,
+      rawRecommendations:
+        typeof data.recommendations === "string"
+          ? data.recommendations
+          : null,
+      remainingSkusRecommendation,
+      portfolioRecommendation: data.portfolio_recommendation ?? null,
+      otherSkuIncludedProducts: getOtherSkuIncludedProducts(data),
+    });
+  } catch (e: any) {
+    if (requestId !== aiRequestIdRef.current) return;
+
+    setAiPanel(null);
+    setAiPanelError(e?.message || "Failed to fetch AI summary");
+  } finally {
+    if (requestId === aiRequestIdRef.current) {
+      setAiPanelLoading(false);
+    }
+  }
+}, [
+  countryName,
+  range,
+  selectedMonth,
+  selectedQuarter,
+  selectedYear,
+  isNA,
+]);
+
 const authHeaders = () => {
   const token = localStorage.getItem('jwtToken');
   if (!token) throw new Error('Missing jwtToken');
@@ -1618,6 +2728,8 @@ const authHeaders = () => {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 6 }, (_, index) => String(currentYear - index));
   }, []);
+
+  
 
   const handleRangeChange = (nextRange: RangeType) => {
     setRange(nextRange);
@@ -2044,6 +3156,10 @@ const authHeaders = () => {
     fetchAspData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryName, monthParam, yearParam, isNA]);
+
+  useEffect(() => {
+  void fetchAiSummary();
+}, [fetchAiSummary]);
 
   const handlePriceChange = (productName: string, value: string) => {
     setEditedPrices((prev) => ({
@@ -2894,6 +4010,235 @@ useEffect(() => {
     });
   }, [skuData, visibleColumns]);
 
+  const openAiProductDrawerByName = useCallback(
+  (productName: string, sku?: string) => {
+    const cleanName = String(productName || "").trim();
+    const cleanSku = String(sku || "").trim();
+
+    if (!cleanName && !cleanSku) return;
+
+    const normalizedClickedName = normalizeKey(cleanName);
+
+    const block =
+      (cleanSku
+        ? aiProductBlocks.find(
+            (b) =>
+              String(b.skuKey || "").trim().toLowerCase() ===
+              cleanSku.toLowerCase()
+          )
+        : undefined) ||
+      aiProductBlocks.find(
+        (b) => normalizeKey(b.name) === normalizedClickedName
+      );
+
+    if (!block) {
+      console.warn("No AI insight block found for:", {
+        productName: cleanName,
+        sku: cleanSku,
+        aiProductBlocks,
+      });
+      return;
+    }
+
+    const skuKey =
+      block.skuKey ||
+      cleanSku ||
+      inputCostNameToSkuMap?.[normalizeKey(block.name)];
+
+    const recObj =
+      (skuKey && (aiSkuActions as any)[skuKey]) ||
+      (aiSkuActions as any)[block.name] ||
+      (aiSkuActions as any)[block.name.trim()] ||
+      null;
+
+    setSelectedAiProductRecObj(recObj);
+    setSelectedAiProductBlock(block);
+  },
+  [aiProductBlocks, aiSkuActions, inputCostNameToSkuMap]
+);
+
+const handleHeatmapProductClick = useCallback(
+  (heatmapRow: AgeingRiskHeatmapRow) => {
+    if (!heatmapRow || heatmapRow.isTotalRow || heatmapRow.isOthersRow) return;
+
+    const productName = String(heatmapRow.productName || "").trim();
+    const sku = String(heatmapRow.sku || "").trim();
+
+    if (!productName && !sku) return;
+
+    openAiProductDrawerByName(productName, sku);
+  },
+  [openAiProductDrawerByName]
+);
+
+const getSkuFromAnyRow = useCallback(
+  (row: any) => {
+    if (!row) return "";
+
+    if (countryName === "uk") {
+      return (
+        row.sku_uk ||
+        row.sku ||
+        row.SKU ||
+        row.msku ||
+        row.seller_sku ||
+        row.fnsku ||
+        ""
+      );
+    }
+
+    if (countryName === "us") {
+      return (
+        row.sku_us ||
+        row.sku ||
+        row.SKU ||
+        row.msku ||
+        row.seller_sku ||
+        row.fnsku ||
+        ""
+      );
+    }
+
+    if (countryName === "canada") {
+      return (
+        row.sku_canada ||
+        row.sku ||
+        row.SKU ||
+        row.msku ||
+        row.seller_sku ||
+        row.fnsku ||
+        ""
+      );
+    }
+
+    return (
+      row.sku_uk ||
+      row.sku_us ||
+      row.sku_canada ||
+      row.sku ||
+      row.SKU ||
+      row.msku ||
+      row.seller_sku ||
+      row.fnsku ||
+      ""
+    );
+  },
+  [countryName]
+);
+
+const renderClickableProductName = useCallback(
+  (
+    productNameValue: any,
+    skuValue?: any,
+    options?: {
+      disabled?: boolean;
+      displayName?: string;
+    }
+  ) => {
+    const productName = String(productNameValue || "").trim();
+    const sku = String(skuValue || "").trim();
+
+    const displayName = options?.displayName || productName || "—";
+    const normalizedName = productName.toLowerCase();
+
+    const isSpecialRow =
+      options?.disabled ||
+      !productName ||
+      normalizedName === "total" ||
+      normalizedName === "grand total" ||
+      normalizedName === "others" ||
+      normalizedName === "other skus" ||
+      normalizedName === "-";
+
+    if (isSpecialRow) {
+      return <span>{displayName}</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => openAiProductDrawerByName(productName, sku)}
+        className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+        title="Open detailed product view"
+      >
+        {displayName}
+      </button>
+    );
+  },
+  [openAiProductDrawerByName]
+);
+
+useEffect(() => {
+  if (!selectedAiProductBlock) return;
+
+  const ac = new AbortController();
+
+  const fetchBestPerformance = async () => {
+    try {
+      setAiBestPerformanceLoading(true);
+      setAiBestPerformanceError(null);
+      setAiBestPerformanceData(null);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
+
+      if (!token) throw new Error("Missing token");
+
+      const isOtherSkusBlock =
+        selectedAiProductBlock.isOtherSkus ||
+        selectedAiProductBlock.name.trim().toLowerCase() === "other skus";
+
+      const productName =
+        isOtherSkusBlock
+          ? aiProductBlocks.find(
+              (b) =>
+                !b.isOtherSkus &&
+                b.name.trim().toLowerCase() !== "other skus"
+            )?.name
+          : selectedAiProductBlock.name;
+
+      if (!productName) return;
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductBestPerformance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: countryName,
+            home_currency: getCurrencyForCountry(countryName),
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to fetch best performance");
+      }
+
+      setAiBestPerformanceData(json?.best_performance ?? null);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setAiBestPerformanceError(e?.message || "Failed to load best performance");
+    } finally {
+      setAiBestPerformanceLoading(false);
+    }
+  };
+
+  fetchBestPerformance();
+
+  return () => ac.abort();
+}, [selectedAiProductBlock, aiProductBlocks, countryName]);
+
   const columns: ColumnDef<TableRow>[] = useMemo(() => {
     return visibleColumns.map((column) => {
       const col: ColumnDef<TableRow> = {
@@ -2903,11 +4248,48 @@ useEffect(() => {
 
       if (column === 's_no') col.width = '60px';
 
-      if (column === 'product_name') {
-        col.width = '160px';
-        col.cellClassName = 'text-left';
-        col.render = (tableRow) => <span>{tableRow.product_name}</span>;
-      }
+     if (column === "product_name") {
+  col.width = "160px";
+  col.cellClassName = "text-left";
+
+  col.render = (tableRow) => {
+    const productName = String(tableRow.product_name || "").trim();
+
+    const originalRow = skuData.find(
+      (r) => String(r.product_name || "").trim() === productName
+    );
+
+    if (!originalRow) {
+      return <span>{tableRow.product_name}</span>;
+    }
+
+    const sku =
+      countryName === "uk"
+        ? originalRow.sku_uk
+        : countryName === "us"
+          ? originalRow.sku_us
+          : countryName === "canada"
+            ? originalRow.sku_canada
+            : originalRow.sku_uk ||
+              originalRow.sku_us ||
+              originalRow.sku_canada;
+
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          openAiProductDrawerByName(
+            originalRow.product_name,
+            String(sku || "")
+          )
+        }
+        className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+      >
+        {tableRow.product_name}
+      </button>
+    );
+  };
+}
 
       if (column === 'sku_uk' || column === 'sku_us' || column === 'sku_canada') {
         col.width = '130px';
@@ -2956,7 +4338,14 @@ useEffect(() => {
 
       return col;
     });
-  }, [visibleColumns, skuData, isEditing, editedPrices]);
+  }, [
+  visibleColumns,
+  skuData,
+  isEditing,
+  editedPrices,
+  countryName,
+  openAiProductDrawerByName,
+]);
 
   const periodLabel = useMemo(() => {
   if (range === "monthly") return "month";
@@ -3188,10 +4577,17 @@ const getReconValue = (row: AnyRow, colKey: string, exportIndex?: number) => {
 
   const pn = String(row?.product_name || '').trim().toUpperCase();
 
-  if (colKey === 'product_name') {
-    if (pn === 'OTHERS') return 'Others';
-    if (pn === 'TOTAL' || pn === 'GRAND TOTAL') return 'Total';
-  }
+  if (colKey === "product_name") {
+  if (pn === "OTHERS") return "Others";
+  if (pn === "TOTAL" || pn === "GRAND TOTAL") return "Total";
+
+  return renderClickableProductName(row?.product_name, row?.msku, {
+    disabled:
+      row?.__isTotal === true ||
+      row?.__isOthers === true ||
+      isTotalRow(row),
+  });
+}
 
   if (colKey === "__sno") {
     if (isSpecialRow) return "";
@@ -3356,7 +4752,12 @@ const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
     __isTotal: row?.__isTotal,
     __isOthers: row?.__isOthers,
     __sno: row?.__isTotal ? "" : idx + 1,
-    product_name: formatReconCell(row?.product_name),
+
+    product_name:
+      row?.__isTotal || row?.__isOthers
+        ? formatReconCell(row?.product_name)
+        : renderClickableProductName(row?.product_name, row?.msku),
+
     msku: formatReconCell(row?.msku),
 
     lost_units: formatReconCell(row?.lost_units),
@@ -3368,7 +4769,7 @@ const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
     settlement_loss_event_amount: formatReconCell(row?.settlement_loss_event_amount),
     net_value: formatReconCell(row?.net_value),
   }));
-}, [lostCompDisplayRows]);
+}, [lostCompDisplayRows, renderClickableProductName]);
 
 const countryCurrencySymbol = useMemo(() => {
   const c = String(countryName || "").trim().toLowerCase();
@@ -3535,17 +4936,30 @@ const lostCompTableColumns = useMemo<
                   ? '110px'
                   : '140px',
       cellClassName: col === 'product_name' ? 'text-left' : 'text-center',
-      render: (row) => {
-        const value = row[col];
+     render: (row) => {
+  const value = row[col];
 
-        if (col === 'month' && typeof value === 'string') {
-          return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-        }
+  if (col === "product_name") {
+    const sku = getSkuFromAnyRow(row);
 
-        return value === null || value === undefined || value === '' ? '—' : String(value);
-      },
+    return renderClickableProductName(value, sku);
+  }
+
+  if (col === "month" && typeof value === "string") {
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  }
+
+  return value === null || value === undefined || value === ""
+    ? "—"
+    : String(value);
+},
     }));
-  }, [warehouseColumns, countryName]);
+  }, [
+  warehouseColumns,
+  countryName,
+  getSkuFromAnyRow,
+  renderClickableProductName,
+]);
 
   if (error) return <div>Error: {error}</div>;
 
@@ -3861,7 +5275,7 @@ const shouldScrollLostCompTable =
                   onTrendBucketChange={setSelectedAgeingTrendBucket}
                   actions={inventoryInsightsData.actions}
                   actionLogic={inventoryInsightsData.actionLogic}
-                  onHeatmapProductClick={() => { }}
+                  onHeatmapProductClick={handleHeatmapProductClick}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
@@ -4080,6 +5494,36 @@ const shouldScrollLostCompTable =
           </div>
         </div>
       )}
+
+      <RightProductDrawer
+  open={!!selectedAiProductBlock}
+  onClose={() => {
+    setSelectedAiProductBlock(null);
+    setSelectedAiProductRecObj(null);
+    setAiBestPerformanceData(null);
+    setAiBestPerformanceError(null);
+  }}
+  block={selectedAiProductBlock}
+  objective={aiPanel?.objective}
+  recObj={selectedAiProductRecObj}
+  countryName={countryName}
+  range={range}
+  year={selectedYear}
+  month={range === "monthly" ? selectedMonth : ""}
+  quarter={range === "quarterly" ? selectedQuarter : ""}
+  drawerPeriodText={drawerPeriodText}
+  currencySymbol={getCurrencySymbol(getCurrencyForCountry(countryName))}
+  bestPerformanceLoading={aiBestPerformanceLoading}
+  bestPerformanceError={aiBestPerformanceError}
+  bestPerformanceData={aiBestPerformanceData}
+  sharedInsightData={{
+    blocks: aiProductBlocks,
+    objective: aiPanel?.objective ?? null,
+    recommendationsMap: aiPanel?.recommendationsMap,
+    drawerPeriodText,
+    nameToSkuMap: inputCostNameToSkuMap,
+  }}
+/>
 
       <Modalmsg
         show={showModal}
