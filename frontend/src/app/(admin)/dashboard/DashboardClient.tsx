@@ -9023,33 +9023,36 @@ export default function DashboardPage() {
         regions[forcedRegion] ||
         regions.Global;
 
+    const resolvedMtdHome =
+        selectedTargetRegion?.mtdUSD ||
+        amazonCurrNetDisp ||
+        0;
+
+    const resolvedLastMonthToDateHome =
+        selectedTargetRegion?.lastMonthToDateUSD ||
+        amazonPrevNetDisp ||
+        0;
+
+    const resolvedLastMonthTotalHome =
+        selectedTargetRegion?.lastMonthTotalUSD ||
+        prevFullMonthNetSalesDisp ||
+        amazonPrevNetDisp ||
+        0;
+
+    // ✅ Main fix: if current target is missing, use previous full-month net sales
+    const resolvedTargetHome =
+        selectedTargetRegion?.targetUSD && selectedTargetRegion.targetUSD > 0
+            ? selectedTargetRegion.targetUSD
+            : userMonthlyTargetHome && userMonthlyTargetHome > 0
+                ? userMonthlyTargetHome
+                : resolvedLastMonthTotalHome;
+
     const targetData: RegionMetrics = {
-        mtdUSD:
-            selectedTargetRegion?.mtdUSD ||
-            amazonCurrNetDisp ||
-            0,
-
-        lastMonthToDateUSD:
-            selectedTargetRegion?.lastMonthToDateUSD ||
-            amazonPrevNetDisp ||
-            0,
-
-        lastMonthTotalUSD:
-            selectedTargetRegion?.lastMonthTotalUSD ||
-            prevFullMonthNetSalesDisp ||
-            amazonPrevNetDisp ||
-            0,
-
-        targetUSD:
-            selectedTargetRegion?.targetUSD ||
-            userMonthlyTargetHome ||
-            0,
-
-        decTargetUSD:
-            selectedTargetRegion?.decTargetUSD ||
-            selectedTargetRegion?.targetUSD ||
-            userMonthlyTargetHome ||
-            0,
+        mtdUSD: resolvedMtdHome,
+        lastMonthToDateUSD: resolvedLastMonthToDateHome,
+        lastMonthTotalUSD: resolvedLastMonthTotalHome,
+        targetUSD: resolvedTargetHome,
+        decTargetUSD: resolvedTargetHome,
     };
 
     const stats_mtdHome = targetData.mtdUSD;
@@ -10354,7 +10357,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const stickyTargetHome =
         stats_targetHome && stats_targetHome > 0
             ? stats_targetHome
-            : 0;
+            : targets_lastMonthTotalHome && targets_lastMonthTotalHome > 0
+                ? targets_lastMonthTotalHome
+                : stats_lastMonthTotalHome && stats_lastMonthTotalHome > 0
+                    ? stats_lastMonthTotalHome
+                    : 0;
 
     const stickyTargetProratedToDate =
         daysInMonthByRegion > 0
@@ -11328,7 +11335,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const finalStatsTargetHome = shouldShowDummyUi
         ? dummySalesTargetStats.targetHome
-        : stats_targetHome;
+        : stickyTargetHome;
 
     const finalTargetsLastMonthTotalHome = shouldShowDummyUi
         ? dummySalesTargetStats.lastMonthTotalHome
@@ -12544,13 +12551,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
             : 8;
 
     const shouldScrollMtdProductwiseTable =
-    mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
+        mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
 
     const mtdProductwiseTableScrollHeight =
-    MTD_PRODUCTWISE_SIGN_ROW_HEIGHT +
-    MTD_PRODUCTWISE_ROW_HEIGHT * MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS +
-    MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT +
-    MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
+        MTD_PRODUCTWISE_SIGN_ROW_HEIGHT +
+        MTD_PRODUCTWISE_ROW_HEIGHT * MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS +
+        MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT +
+        MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
 
     return (
         <div className="relative w-full">
