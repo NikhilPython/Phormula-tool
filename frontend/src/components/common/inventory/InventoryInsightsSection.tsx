@@ -21,40 +21,31 @@ import ActionBasedDashboard, {
     ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
 
-
 type InventoryInsightsSectionProps = {
     heatmapBuckets: AgeingBucket[];
     heatmapData: AgeingRiskHeatmapRow[];
-    unitsSoldPercentage?: number;
-
     donutData: DonutChartItem[];
     donutTotalUnits?: number;
-
     trendSelectedBucket: string;
     trendData: AgeingTrendItem[];
     trendLineColor: string;
-
     trendBucketOptions?: AgeingTrendBucketOption[];
     trendAllSeriesData?: AgeingTrendAllSeriesItem[];
-
     onTrendBucketChange?: (bucketValue: string) => void;
-
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
-
     onActionViewDetails?: (action: ActionCardItem) => void;
-
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
+    onHeatmapProductClick?: (row: AgeingRiskHeatmapRow) => void;
 
     // ✅ ADD THIS
-    onHeatmapProductClick?: (row: AgeingRiskHeatmapRow) => void;
+    showInventoryAlerts?: boolean;
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     heatmapBuckets,
     heatmapData,
-    unitsSoldPercentage,
     donutData,
     donutTotalUnits,
     trendSelectedBucket,
@@ -69,6 +60,9 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     onHeatmapProductClick,
+
+    // ✅ ADD THIS
+    showInventoryAlerts = true,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -91,8 +85,6 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         actions={actions}
                         actionLogic={actionLogic}
                         onViewDetails={onActionViewDetails}
-                    // onDownloadInventoryExcel={onDownloadInventoryExcel}
-                    // canDownloadInventoryExcel={canDownloadInventoryExcel}
                     />
                 )}
 
@@ -102,10 +94,10 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         subtitle="Quickly identify products with old inventory"
                         data={heatmapData}
                         buckets={heatmapBuckets}
-                        unitsSoldPercentage={unitsSoldPercentage}
                         onProductClick={onHeatmapProductClick}
                         onDownloadInventoryExcel={onDownloadInventoryExcel}
                         canDownloadInventoryExcel={canDownloadInventoryExcel}
+                        showInventoryAlerts={showInventoryAlerts}
                     />
                 )}
 
