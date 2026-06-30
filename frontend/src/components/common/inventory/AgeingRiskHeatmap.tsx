@@ -222,15 +222,15 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
         const heatmapHeaderClassName =
-            "!px-0.5 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible text-[11px] xl:text-xs 2xl:text-sm";
+            "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
 
         const bucketColumns: ColumnDef<HeatmapTableRow>[] = buckets.map((bucket) => ({
             key: bucket.key,
-            width: "58px",
+            width: "72px",
             header: bucket.label,
             headerClassName: heatmapHeaderClassName,
             cellClassName:
-                "relative !p-0 overflow-hidden text-center text-[11px] xl:text-xs 2xl:text-sm text-charcoal-500 whitespace-normal break-words",
+                "relative !p-0 overflow-hidden text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
             render: (row) => {
                 const calculatedTotal = buckets.reduce(
                     (sum, b) => sum + Number(row[b.key] || 0),
@@ -294,7 +294,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "sno",
                 header: "S.No.",
-                width: "42px",
+                width: "48px",
                 headerClassName: heatmapHeaderClassName,
                 render: (row, _value, rowIndex) => {
                     if (row.isTotalRow || row.isPercentageRow) return "";
@@ -304,10 +304,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "productName",
                 header: "Product Name",
-                width: "118px",
+                width: "135px",
                 headerClassName: heatmapHeaderClassName,
                 cellClassName:
-                    "text-left text-[11px] xl:text-xs 2xl:text-sm text-charcoal-500 overflow-hidden !px-1",
+                    "text-left text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 overflow-hidden",
                 render: (row) => {
                     const canClick =
                         !!onProductClick &&
@@ -335,7 +335,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             type="button"
                             onClick={() => onProductClick(row)}
                             title={row.productName}
-                           className="block max-w-full text-[11px] xl:text-xs 2xl:text-sm truncate text-left font-medium text-green-500 underline-offset-2"
+                            className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px]  truncate text-left font-medium text-green-500 underline-offset-2"
                         >
                             {row.productName}
                         </button>
