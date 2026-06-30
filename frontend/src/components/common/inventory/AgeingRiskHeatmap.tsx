@@ -319,7 +319,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     if (!canClick) {
                         return (
                             <span
-                                className="block max-w-full truncate"
+                                className={[
+                                    "block max-w-full truncate",
+                                    row.isOthersRow ? "font-medium text-green-500" : "",
+                                ].join(" ")}
                                 title={row.productName}
                             >
                                 {row.productName}

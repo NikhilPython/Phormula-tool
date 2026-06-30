@@ -2546,49 +2546,49 @@ export default function InputCostPage({ params }: Params) {
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
 
   const INPUT_COST_TAB_HASHES: InputCostTab[] = [
-  'inventory-insights',
-  'sku-info',
-  'extra',
-  'recon-table',
-  'lost-compensation',
-];
+    'inventory-insights',
+    'sku-info',
+    'extra',
+    'recon-table',
+    'lost-compensation',
+  ];
 
-const syncTabFromHash = useCallback(() => {
-  if (typeof window === "undefined") return;
+  const syncTabFromHash = useCallback(() => {
+    if (typeof window === "undefined") return;
 
-  const hash = window.location.hash.replace("#", "") as InputCostTab;
+    const hash = window.location.hash.replace("#", "") as InputCostTab;
 
-  if (INPUT_COST_TAB_HASHES.includes(hash)) {
-    setActiveTab(hash);
-  }
-}, []);
-
-useEffect(() => {
-  syncTabFromHash();
-
-  const handleHashChange = () => {
-    syncTabFromHash();
-  };
-
-  const handleSidebarHashNavigate = (event: Event) => {
-    const customEvent = event as CustomEvent<{ hash?: string }>;
-    const hash = customEvent.detail?.hash as InputCostTab | undefined;
-
-    if (hash && INPUT_COST_TAB_HASHES.includes(hash)) {
+    if (INPUT_COST_TAB_HASHES.includes(hash)) {
       setActiveTab(hash);
-    } else {
-      syncTabFromHash();
     }
-  };
+  }, []);
 
-  window.addEventListener("hashchange", handleHashChange);
-  window.addEventListener("page-hash-navigate", handleSidebarHashNavigate);
+  useEffect(() => {
+    syncTabFromHash();
 
-  return () => {
-    window.removeEventListener("hashchange", handleHashChange);
-    window.removeEventListener("page-hash-navigate", handleSidebarHashNavigate);
-  };
-}, [syncTabFromHash]);
+    const handleHashChange = () => {
+      syncTabFromHash();
+    };
+
+    const handleSidebarHashNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hash?: string }>;
+      const hash = customEvent.detail?.hash as InputCostTab | undefined;
+
+      if (hash && INPUT_COST_TAB_HASHES.includes(hash)) {
+        setActiveTab(hash);
+      } else {
+        syncTabFromHash();
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("page-hash-navigate", handleSidebarHashNavigate);
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("page-hash-navigate", handleSidebarHashNavigate);
+    };
+  }, [syncTabFromHash]);
 
   const getDefaultMonth = () => {
     const clean = String(monthParam || '').toLowerCase();
@@ -2623,7 +2623,7 @@ useEffect(() => {
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(null);
 
-  const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(false);
+  const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(true);
 
   const [inventoryInsightsError, setInventoryInsightsError] =
     useState<string | null>(null);
@@ -3849,6 +3849,7 @@ useEffect(() => {
     if (activeTab !== 'inventory-insights') return;
 
     if (isNA) {
+      setInventoryInsightsLoading(false);
       setInventoryInsightsData(null);
       setInventoryRawResponses(null);
       setInventoryInsightsError(null);
@@ -3861,6 +3862,7 @@ useEffect(() => {
       (range === 'yearly' && !!selectedYear);
 
     if (!ready || !countryName) {
+      setInventoryInsightsLoading(false);
       setInventoryInsightsData(null);
       setInventoryRawResponses(null);
       setInventoryInsightsError(null);
@@ -3870,10 +3872,13 @@ useEffect(() => {
     const ac = new AbortController();
 
     const fetchInventoryInsights = async () => {
-      try {
-        setInventoryInsightsLoading(true);
-        setInventoryInsightsError(null);
+      // ✅ IMPORTANT: turn loader ON immediately before clearing old data / calling APIs
+      setInventoryInsightsLoading(true);
+      setInventoryInsightsError(null);
+      setInventoryInsightsData(null);
+      setInventoryRawResponses(null);
 
+      try {
         const trendMonthsToFetch: string[] =
           getInventoryAgeSummaryMonthsForTrend(selectedYear);
 
@@ -3911,21 +3916,24 @@ useEffect(() => {
           throw new Error('No inventory data found');
         }
 
-        setInventoryRawResponses({
+        const nextRawResponses = {
           inventory: fulfilledInventory,
           ageSummary: fulfilledAgeSummary,
-        });
+        };
 
-        setInventoryInsightsData(
-          buildInventoryInsightsFromResponses(
-            fulfilledInventory,
-            fulfilledAgeSummary,
-            selectedAgeingTrendBucket,
-            countryName
-          )
+        const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
+          fulfilledInventory,
+          fulfilledAgeSummary,
+          selectedAgeingTrendBucket,
+          countryName
         );
+
+        if (ac.signal.aborted) return;
+
+        setInventoryRawResponses(nextRawResponses);
+        setInventoryInsightsData(nextInventoryInsightsData);
       } catch (e: any) {
-        if (e?.name === 'AbortError') return;
+        if (e?.name === 'AbortError' || ac.signal.aborted) return;
 
         setInventoryInsightsData(null);
         setInventoryRawResponses(null);
@@ -3933,11 +3941,13 @@ useEffect(() => {
           e?.message || 'Failed to load inventory insights'
         );
       } finally {
-        setInventoryInsightsLoading(false);
+        if (!ac.signal.aborted) {
+          setInventoryInsightsLoading(false);
+        }
       }
     };
 
-    fetchInventoryInsights();
+    void fetchInventoryInsights();
 
     return () => ac.abort();
   }, [
@@ -3948,6 +3958,7 @@ useEffect(() => {
     selectedQuarter,
     selectedYear,
     countryName,
+    selectedAgeingTrendBucket,
   ]);
 
   useEffect(() => {
@@ -3985,22 +3996,22 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
 
-  useEffect(() => {
-    if (!inventoryRawResponses) return;
+  // useEffect(() => {
+  //   if (!inventoryRawResponses) return;
 
-    setInventoryInsightsData(
-      buildInventoryInsightsFromResponses(
-        inventoryRawResponses.inventory,
-        inventoryRawResponses.ageSummary,
-        selectedAgeingTrendBucket,
-        countryName
-      )
-    );
-  }, [
-    selectedAgeingTrendBucket,
-    inventoryRawResponses,
-    countryName,
-  ]);
+  //   setInventoryInsightsData(
+  //     buildInventoryInsightsFromResponses(
+  //       inventoryRawResponses.inventory,
+  //       inventoryRawResponses.ageSummary,
+  //       selectedAgeingTrendBucket,
+  //       countryName
+  //     )
+  //   );
+  // }, [
+  //   selectedAgeingTrendBucket,
+  //   inventoryRawResponses,
+  //   countryName,
+  // ]);
 
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
@@ -4969,15 +4980,15 @@ useEffect(() => {
   }, [countryCurrencySymbol]);
 
   const tabOptions = useMemo(
-  () => [
-    { value: 'inventory-insights' as const, label: 'Inventory Insights' },
-    { value: 'sku-info' as const, label: 'SKU Information' },
-    { value: 'extra' as const, label: 'Upload Warehouse' },
-    { value: 'recon-table' as const, label: 'Recon Table' },
-    { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
-  ],
-  []
-);
+    () => [
+      { value: 'inventory-insights' as const, label: 'Inventory Insights' },
+      { value: 'sku-info' as const, label: 'SKU Information' },
+      { value: 'extra' as const, label: 'Upload Warehouse' },
+      { value: 'recon-table' as const, label: 'Recon Table' },
+      { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
+    ],
+    []
+  );
 
   // 4) Make warehouse header label nicer
   const getWarehouseHeaderLabel = (col: string) => {
@@ -5197,7 +5208,7 @@ useEffect(() => {
     warehouseData.length > INPUT_COST_VISIBLE_ROWS;
 
   return (
- <div className="space-y-3 relative">
+    <div className="space-y-3 relative">
       <style>{`
         div { font-family: 'Lato', sans-serif; }
         .gross-margin-positive { color: #28a745; font-weight: bold; }
@@ -5205,155 +5216,155 @@ useEffect(() => {
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
-     <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4">
-  <div className="flex flex-col leading-tight w-full md:w-auto">
-    <div className="flex items-baseline gap-2">
-      <PageBreadcrumb
-        pageTitle="Current Inventory -"
-        variant="page"
-        align="left"
-        textSize="2xl"
-      />
-
-      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-        Amazon{" "}
-        {countryName?.toLowerCase() === "global"
-          ? "Global"
-          : countryName?.toUpperCase()}
-      </span>
-    </div>
-
-    <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-      Track your inventory
-    </p>
-  </div>
-
-  <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
-    {activeTab === "sku-info" || activeTab === "extra" ? (
-      <div className="flex flex-wrap items-center gap-3">
-        {activeTab === "sku-info" ? (
-          <>
-            {isEditing && (
-              <button
-                className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                onClick={saveChanges}
-              >
-                Save Changes
-              </button>
-            )}
-
-            <button
-              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-              onClick={() => setShowMultiuseCountry(true)}
-              disabled={isNA}
-            >
-              Upload File
-            </button>
-
-            <DownloadIconButton
-              onClick={handleDownloadXLSX}
-              size="md"
-              disabled={isNA}
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col leading-tight w-full md:w-auto">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="Current Inventory - Amazon"
+              variant="page"
+              align="left"
+              textSize="2xl"
             />
-          </>
-        ) : (
-          <>
-            <button
-              className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-              onClick={() => setShowWarehouseUpload(true)}
-              disabled={isNA}
-            >
-              Upload File
-            </button>
 
-            <DownloadIconButton
-              onClick={handleWarehouseDownload}
-              size="md"
-              disabled={isNA || warehouseData.length === 0}
-            />
-          </>
-        )}
-      </div>
-    ) : (
-      <div className="flex flex-wrap items-center gap-3">
-        <PeriodFiltersTable
-          range={range}
-          selectedMonth={selectedMonth}
-          selectedQuarter={selectedQuarter}
-          selectedYear={selectedYear}
-          yearOptions={yearOptions}
-          onRangeChange={handleRangeChange}
-          onMonthChange={handleMonthChange}
-          onQuarterChange={handleQuarterChange}
-          onYearChange={handleYearChange}
-          allowedRanges={["monthly", "quarterly", "yearly"]}
-        />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              {/* Amazon{" "} */}
+              {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
+          </div>
 
-        {activeTab === "recon-table" &&
-          effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
-            <button
-              type="button"
-              onClick={() => setShowAllReconRows((prev) => !prev)}
-              title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-              aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-              disabled={isNA || reconFetching}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {showAllReconRows ? (
-                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Track your inventory
+          </p>
+        </div>
+
+        <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
+          {activeTab === "sku-info" || activeTab === "extra" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {activeTab === "sku-info" ? (
+                <>
+                  {isEditing && (
+                    <button
+                      className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                      onClick={saveChanges}
+                    >
+                      Save Changes
+                    </button>
+                  )}
+
+                  <button
+                    className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                    onClick={() => setShowMultiuseCountry(true)}
+                    disabled={isNA}
+                  >
+                    Upload File
+                  </button>
+
+                  <DownloadIconButton
+                    onClick={handleDownloadXLSX}
+                    size="md"
+                    disabled={isNA}
+                  />
+                </>
               ) : (
-                <RiExpandDiagonalFill size={18} className="font-extrabold" />
-              )}
-            </button>
-          )}
+                <>
+                  <button
+                    className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+                    onClick={() => setShowWarehouseUpload(true)}
+                    disabled={isNA}
+                  >
+                    Upload File
+                  </button>
 
-        {activeTab === "lost-compensation" &&
-          effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
-            <button
-              type="button"
-              onClick={() => setShowAllLostCompRows((prev) => !prev)}
-              title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-              aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
-              disabled={isNA || lostCompLoading}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {showAllLostCompRows ? (
-                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-              ) : (
-                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  <DownloadIconButton
+                    onClick={handleWarehouseDownload}
+                    size="md"
+                    disabled={isNA || warehouseData.length === 0}
+                  />
+                </>
               )}
-            </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <PeriodFiltersTable
+                range={range}
+                selectedMonth={selectedMonth}
+                selectedQuarter={selectedQuarter}
+                selectedYear={selectedYear}
+                yearOptions={yearOptions}
+                onRangeChange={handleRangeChange}
+                onMonthChange={handleMonthChange}
+                onQuarterChange={handleQuarterChange}
+                onYearChange={handleYearChange}
+                allowedRanges={["monthly", "quarterly", "yearly"]}
+              />
+
+              {activeTab === "recon-table" &&
+                effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllReconRows((prev) => !prev)}
+                    title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || reconFetching}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllReconRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+
+              {activeTab === "lost-compensation" &&
+                effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLostCompRows((prev) => !prev)}
+                    title={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    aria-label={showAllLostCompRows ? "Collapse rows" : "Expand all rows"}
+                    disabled={isNA || lostCompLoading}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {showAllLostCompRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )}
+                  </button>
+                )}
+            </div>
           )}
+        </div>
       </div>
-    )}
-  </div>
-</div>
 
       <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
-  <SegmentedToggle<InputCostTab>
-    value={activeTab}
-    onChange={(nextTab) => {
-      setActiveTab(nextTab);
+        <SegmentedToggle<InputCostTab>
+          value={activeTab}
+          onChange={(nextTab) => {
+            setActiveTab(nextTab);
 
-      if (typeof window !== "undefined") {
-        const nextHash = `#${nextTab}`;
-        const nextUrl = `${window.location.pathname}${nextHash}`;
+            if (typeof window !== "undefined") {
+              const nextHash = `#${nextTab}`;
+              const nextUrl = `${window.location.pathname}${nextHash}`;
 
-        window.history.pushState(null, "", nextUrl);
+              window.history.pushState(null, "", nextUrl);
 
-        window.dispatchEvent(
-          new CustomEvent("page-hash-navigate", {
-            detail: { hash: nextTab },
-          })
-        );
-      }
-    }}
-    options={tabOptions}
-    compact
-    className="w-full"
-    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-  />
-</div>
+              window.dispatchEvent(
+                new CustomEvent("page-hash-navigate", {
+                  detail: { hash: nextTab },
+                })
+              );
+            }
+          }}
+          options={tabOptions}
+          compact
+          className="w-full"
+          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+        />
+      </div>
 
       <PreviewLockedSection
         enabled={isNA}

@@ -1384,18 +1384,41 @@ export default function ObjectivesPageClient({
     }
   };
 
+  // const visibleObjectiveCountries = useMemo(() => {
+  //   const currentCountry = (resolvedTargetCountry || country || "uk").toLowerCase();
 
-  const visibleObjectiveCountries = useMemo(() => {
-    const savedCountries = integratedCountries.filter(
-      (c) => objectivesByCountry[c]?.hasData
-    );
+  //   // Countrywise page should show only that country
+  //   if (currentCountry !== "global") {
+  //     return [currentCountry];
+  //   }
 
-    if (savedCountries.length) return savedCountries;
+  //   // Global page can show all connected country objectives
+  //   const savedCountries = integratedCountries.filter(
+  //     (c) => c !== "global" && objectivesByCountry[c]?.hasData
+  //   );
 
-    const fallbackCountry = resolvedTargetCountry || integratedCountries[0] || "uk";
-    return [fallbackCountry.toLowerCase()];
-  }, [integratedCountries, objectivesByCountry, resolvedTargetCountry]);
+  //   if (savedCountries.length) return savedCountries;
 
+  //   return nonGlobalIntegratedCountries.length
+  //     ? nonGlobalIntegratedCountries
+  //     : ["uk"];
+  // }, [
+  //   resolvedTargetCountry,
+  //   country,
+  //   integratedCountries,
+  //   nonGlobalIntegratedCountries,
+  //   objectivesByCountry,
+  // ]);
+
+const visibleObjectiveCountries = useMemo(() => {
+  const countries = integratedCountries.filter((c) => c !== "global");
+
+  if (countries.length) {
+    return countries;
+  }
+
+  return [(resolvedTargetCountry || country || "uk").toLowerCase()];
+}, [integratedCountries, resolvedTargetCountry, country]);
 
   const startObjectiveCardEdit = (countryValue: string) => {
     if (isMember) return;
@@ -1812,10 +1835,12 @@ export default function ObjectivesPageClient({
   useEffect(() => {
     const fetchAllCountryObjectives = async () => {
       if (!token || isPreviewMode) return;
+      const currentCountry = (resolvedTargetCountry || country || "uk").toLowerCase();
 
-      const countriesToFetch = integratedCountries.length
-        ? integratedCountries
-        : [(country || "uk").toLowerCase()];
+      const countriesToFetch =
+        currentCountry === "global"
+          ? integratedCountries.filter((c) => c !== "global")
+          : [currentCountry];
 
       try {
         setIsFetchingObjective(true);
