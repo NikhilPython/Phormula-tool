@@ -3679,6 +3679,26 @@ _RECOMMENDATION_LOOKUP = {
     ('down', 'down', 'down', 'up', 'conservative', 'high'): 'Reduce ASP and monitor the decline of units and net sales',
     ('down', 'down', 'down', 'up', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the decline of units and net sales',
     ('down', 'down', 'down', 'up', 'conservative', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units and net sales',
+
+     # ASP down, Units up, Net Sales down, CM1 Profit down
+    # Example: Classic yearly case where units improved only because ASP reduced heavily,
+    # but revenue and profit still declined.
+    ('down', 'up', 'down', 'down', 'aggressive', 'high'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'aggressive', 'protect_growth'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'aggressive', 'sacrifice_short_term'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+
+    ('down', 'up', 'down', 'down', 'balanced', 'high'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'balanced', 'protect_growth'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'balanced', 'sacrifice_short_term'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+
+    ('down', 'up', 'down', 'down', 'conservative', 'high'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'conservative', 'protect_growth'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+    ('down', 'up', 'down', 'down', 'conservative', 'sacrifice_short_term'): 'Avoid further ASP reduction; units improved but Net Sales and CM1 Profit declined, so review pricing and margin impact',
+
+
+
+
+
     ('down', 'up', 'up', 'down', 'aggressive', 'high'): 'Increase ASP and monitor the product',
     ('down', 'up', 'up', 'down', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
     ('down', 'up', 'up', 'down', 'aggressive', 'sacrifice_short_term'): 'Increase ASP and monitor the product',
