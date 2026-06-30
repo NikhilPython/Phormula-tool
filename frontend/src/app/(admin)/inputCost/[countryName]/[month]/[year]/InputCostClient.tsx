@@ -1755,68 +1755,68 @@ const buildInventoryInsightsFromResponses = (
       const threeSixtyFivePlus = getInventoryAgeValue(row, 'inv-age-365-plus-days');
 
       const bucketTotal =
-  zeroToNinety +
-  ninetyOneToOneEighty +
-  oneEightyOneToTwoSeventy +
-  twoSeventyOneToThreeSixtyFive +
-  threeSixtyFivePlus;
+        zeroToNinety +
+        ninetyOneToOneEighty +
+        oneEightyOneToTwoSeventy +
+        twoSeventyOneToThreeSixtyFive +
+        threeSixtyFivePlus;
 
-// ✅ Sellable Units should come from backend available column
-const available = toNum(row?.available);
+      // ✅ Sellable Units should come from backend available column
+      const available = toNum(row?.available);
 
-// ✅ Keep totalUnits same as available for fallback compatibility
-const totalUnits = available || getInventoryRowTotalUnits(row);
+      // ✅ Keep totalUnits same as available for fallback compatibility
+      const totalUnits = available || getInventoryRowTotalUnits(row);
 
-const unitsSold = currentMonthUnitsSoldKey
-  ? toNum(row?.[currentMonthUnitsSoldKey])
-  : 0;
+      const unitsSold = currentMonthUnitsSoldKey
+        ? toNum(row?.[currentMonthUnitsSoldKey])
+        : 0;
 
-// ✅ Needed for Others coverage ratio
-const salesLast30Days = getInventoryRowSalesLast30Days(row);
+      // ✅ Needed for Others coverage ratio
+      const salesLast30Days = getInventoryRowSalesLast30Days(row);
 
       return {
-  productName: getInventoryRowProductName(row),
-  sku: getInventoryRowSku(row),
+        productName: getInventoryRowProductName(row),
+        sku: getInventoryRowSku(row),
 
-  inventoryAlert: String(
-    row?.["Inventory Alerts"] ??
-    row?.inventory_alerts ??
-    row?.alert ??
-    ""
-  ).trim(),
+        inventoryAlert: String(
+          row?.["Inventory Alerts"] ??
+          row?.inventory_alerts ??
+          row?.alert ??
+          ""
+        ).trim(),
 
-  zeroToNinety,
-  ninetyOneToOneEighty,
-  oneEightyOneToTwoSeventy,
-  twoSeventyOneToThreeSixtyFive,
-  threeSixtyFivePlus,
+        zeroToNinety,
+        ninetyOneToOneEighty,
+        oneEightyOneToTwoSeventy,
+        twoSeventyOneToThreeSixtyFive,
+        threeSixtyFivePlus,
 
-  // ✅ Backend available column
-  available,
+        // ✅ Backend available column
+        available,
 
-  // ✅ Sellable Units fallback
-  totalUnits,
+        // ✅ Sellable Units fallback
+        totalUnits,
 
-  unsellableUnits: getInventoryRowUnfulfillableUnits(row),
-  unitsSold,
+        unsellableUnits: getInventoryRowUnfulfillableUnits(row),
+        unitsSold,
 
-  // ✅ Needed for Others coverage ratio
-  salesLast30Days,
+        // ✅ Needed for Others coverage ratio
+        salesLast30Days,
 
-  coverageRatio: getInventoryRowCoverageRatio(row),
-  estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
-};
+        coverageRatio: getInventoryRowCoverageRatio(row),
+        estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
+      };
     })
-.filter(
-  (row) =>
-    toNum(row.available) > 0 ||
-    toNum(row.totalUnits) > 0 ||
-    toNum((row as any).unsellableUnits) > 0 ||
-    toNum((row as any).coverageRatio) > 0 ||
-    toNum((row as any).estimatedStorageCost) > 0 ||
-    toNum((row as any).unitsSold) > 0 ||
-    toNum((row as any).salesLast30Days) > 0
-);
+    .filter(
+      (row) =>
+        toNum(row.available) > 0 ||
+        toNum(row.totalUnits) > 0 ||
+        toNum((row as any).unsellableUnits) > 0 ||
+        toNum((row as any).coverageRatio) > 0 ||
+        toNum((row as any).estimatedStorageCost) > 0 ||
+        toNum((row as any).unitsSold) > 0 ||
+        toNum((row as any).salesLast30Days) > 0
+    );
 
   const overallAgeing = heatmapData.reduce(
     (acc, row) => {
@@ -2370,6 +2370,8 @@ const quarterToNumber = (q: string) => {
   return [1, 2, 3, 4].includes(n) ? n : null;
 };
 
+
+
 const buildQuery = (obj: Record<string, string | number | undefined | null>) => {
   const sp = new URLSearchParams();
 
@@ -2393,6 +2395,8 @@ const toInventoryInt = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 };
+
+
 
 const formatReconCell = (v: any) => {
   if (v === null || v === undefined || v === "") return "-";
@@ -2665,6 +2669,47 @@ export default function InputCostPage({ params }: Params) {
     inventory: InventoryCurrentApiResponse[];
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
+
+  const formatMonthName = (month?: string) => {
+    const value = String(month || "").trim();
+
+    if (!value) return "";
+
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  };
+
+  const formatCountryLabel = (country?: string) => {
+    const value = String(country || "").trim().toLowerCase();
+
+    if (!value) return "";
+
+    if (value === "uk") return "UK";
+    if (value === "us") return "US";
+    if (value === "global") return "Global";
+    if (value === "ca" || value === "canada") return "Canada";
+    if (value === "eu" || value === "europe") return "Europe";
+
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
+  const getInventoryInsightsPeriodLabel = () => {
+    if (range === "monthly") {
+      return `${formatMonthName(selectedMonth)} ${selectedYear}`;
+    }
+
+    if (range === "quarterly") {
+      return `${selectedQuarter} ${selectedYear}`;
+    }
+
+    return `${selectedYear}`;
+  };
+
+  const getInventoryInsightsFileName = () => {
+    return `Inventory Insights Report - ${formatCountryLabel(
+      countryName
+    )} - ${getInventoryInsightsPeriodLabel()}.xlsx`;
+  };
+
   const [reconRows, setReconRows] = useState<AnyRow[]>([]);
   const [reconFetching, setReconFetching] = useState(false);
   const [reconLoadedOnce, setReconLoadedOnce] = useState(false);
@@ -5441,6 +5486,14 @@ export default function InputCostPage({ params }: Params) {
                   actionLogic={inventoryInsightsData.actionLogic}
                   onHeatmapProductClick={handleHeatmapProductClick}
                   showInventoryAlerts={false}
+                  showHeatmapExcelDownload={true}
+                  heatmapExcelFilename={getInventoryInsightsFileName()}
+                  heatmapExcelTitleLine="Inventory Insights Report"
+                  heatmapExcelCountryLabel={formatCountryLabel(countryName)}
+                  heatmapExcelPlatformLabel="Phormula"
+                  heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
+                  heatmapExcelCompanyName={userData?.company_name || ""}
+                  heatmapExcelBrandName={userData?.brand_name || ""}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
