@@ -3690,6 +3690,74 @@ def live_mtd_vs_previous():
         remaining_skus_ads_reco = strategy_parsed.get("remaining_skus_ads_recommendation")
         remaining_skus_inventory_reco = strategy_parsed.get("remaining_skus_inventory_recommendation")
 
+
+        # -------------------------------------------------
+        # ✅ FIX: Other SKUs / Remaining SKUs inventory recommendation
+        # Do not trust AI/cache inventory text for aggregated Other SKUs.
+        # Use deterministic coverage_ratio_months from frontend_remaining_skus_aggregate.
+        # -------------------------------------------------
+        def _build_remaining_skus_inventory_reco(row):
+            if not isinstance(row, dict):
+                return ""
+
+            try:
+                coverage_ratio = float(row.get("coverage_ratio_months") or 0.0)
+            except Exception:
+                coverage_ratio = 0.0
+
+            try:
+                current_inventory = float(row.get("current_inventory") or 0.0)
+            except Exception:
+                current_inventory = 0.0
+
+            if coverage_ratio <= 0:
+                return ""
+
+            # Low coverage / stock-out risk
+            if coverage_ratio <= 2:
+                return (
+                    f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                    f"across Other SKUs. Please immediately send stock to avoid stock-out risk."
+                )
+
+            # Medium coverage
+            if coverage_ratio <= 5:
+                return (
+                    f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                    f"across Other SKUs. Monitor replenishment and avoid delayed dispatch."
+                )
+
+            # High / excess coverage
+            return (
+                f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                f"with {current_inventory:,.0f} units across Other SKUs. This is high inventory coverage. "
+                f"Improve sell-through or reduce replenishment to avoid excess inventory and storage cost."
+            )
+
+
+        remaining_inventory_reco_fixed = _build_remaining_skus_inventory_reco(
+            frontend_remaining_skus_aggregate or remaining_growth_row
+        )
+
+        if remaining_inventory_reco_fixed:
+            remaining_skus_inventory_reco = remaining_inventory_reco_fixed
+
+            if isinstance(frontend_remaining_skus_aggregate, dict):
+                frontend_remaining_skus_aggregate["inventory_recommendation"] = remaining_inventory_reco_fixed
+                frontend_remaining_skus_aggregate["inventory_alert"] = "High inventory coverage"
+                frontend_remaining_skus_aggregate["inventory_alert_type"] = "excess"
+
+            if isinstance(remaining_growth_row, dict):
+                remaining_growth_row["inventory_recommendation"] = remaining_inventory_reco_fixed
+                remaining_growth_row["inventory_alert"] = "High inventory coverage"
+                remaining_growth_row["inventory_alert_type"] = "excess"
+
+            if isinstance(other_total_row, dict):
+                other_total_row["inventory_recommendation"] = remaining_inventory_reco_fixed
+                other_total_row["inventory_alert"] = "High inventory coverage"
+                other_total_row["inventory_alert_type"] = "excess"
+
+
         # ===========================
         # BUILD RECOMMENDED ACTIONS
         # ===========================
