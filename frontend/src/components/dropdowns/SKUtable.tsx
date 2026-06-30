@@ -297,14 +297,19 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
 
 function normalizeRows(data: any[]): TableRow[] {
   return data.map((row) => {
+    const rawProductName = row.product_name;
+    const rawSku = row.sku;
+
     const productName =
-      !isMissingName(row.product_name)
-        ? String(row.product_name)
-        : !isMissingName(row.sku)
-          ? String(row.sku)
+      !isMissingName(rawProductName)
+        ? String(rawProductName).trim()
+        : !isMissingName(rawSku)
+          ? String(rawSku).trim()
           : "-";
 
-    const isTotalRow = productName.trim().toLowerCase() === "total";
+    const isTotalRow =
+      String(rawProductName ?? "").trim().toLowerCase() === "total" ||
+      String(rawSku ?? "").trim().toLowerCase() === "total";
 
     return {
       ...row,
@@ -700,22 +705,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ? getCurrencySymbol(effectiveHomeCurrency || "usd")
     : getCurrencySymbol(countryName || "");
 
-  // const userid = useMemo(() => {
-  //   if (!token) return "";
-  //   try {
-  //     const decoded = jwtDecode<JwtPayload>(token);
-  //     return decoded?.user_id ?? "";
-  //   } catch {
-  //     return "";
-  //   }
-  // }, [token]);
-
   const getDisplayProductNameFromRow = useCallback((row: TableRow): string => {
-    if (!isMissingName(row.product_name)) return String(row.product_name);
-    if (!isMissingName(row.sku)) return String(row.sku);
+    const productName = (row as any)?.product_name;
+    const sku = (row as any)?.sku;
+
+    if (!isMissingName(productName)) return String(productName).trim();
+    if (!isMissingName(sku)) return String(sku).trim();
+
     return "-";
   }, []);
-
 
   const aspKey = useMemo(() => {
     const first = tableData[0] || {};
@@ -1727,9 +1725,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const handleProductClick = useCallback(
     (row: TableRow) => {
       const cleanProduct = getDisplayProductNameFromRow(row).trim();
-      const cleanSku = String(row?.sku || "").trim();
+      const cleanSku = !isMissingName(row?.sku) ? String(row.sku).trim() : "";
 
-      if (!cleanProduct) return;
+      if (!cleanProduct || cleanProduct === "-") return;
 
       onProductDetailClick?.(cleanProduct, cleanSku);
     },
@@ -1882,14 +1880,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ? 9
       : 8;
 
- const shouldScrollTable =
-  productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
+  const shouldScrollTable =
+    productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
 
- const tableScrollHeight =
-  SIGN_ROW_HEIGHT +
-  PRODUCT_ROW_HEIGHT * COLLAPSED_VISIBLE_PRODUCT_ROWS +
-  TOTAL_ROW_HEIGHT +
-  SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
+  const tableScrollHeight =
+    SIGN_ROW_HEIGHT +
+    PRODUCT_ROW_HEIGHT * COLLAPSED_VISIBLE_PRODUCT_ROWS +
+    TOTAL_ROW_HEIGHT +
+    SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
   return (
     <>
