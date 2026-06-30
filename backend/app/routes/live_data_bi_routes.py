@@ -3556,8 +3556,10 @@ def live_mtd_vs_previous():
 
         if not cached_ai:
 
-            try:
+            strategy_raw = None
+            strategy_parsed = {}
 
+            try:
                 strategy_debug_payload = {
                     "analysis_insights": analysis,
                     "objective_v2": user_objective,
@@ -3575,8 +3577,6 @@ def live_mtd_vs_previous():
 
                     # ✅ One aggregated Remaining SKUs card
                     "remaining_skus_context": {
-                        # Use AI-safe remaining row from product_action_context.
-                        # Do NOT pass frontend inventory fields to AI.
                         "aggregated_metrics": product_action_context.get("remaining_skus") or {},
                         "time_series": remaining_series,
                         "included_products": (
@@ -3591,9 +3591,6 @@ def live_mtd_vs_previous():
                         ),
                     } if product_action_context.get("remaining_skus") else {},
                 }
-                # print("\n========== PROMPT 2 STRATEGY PAYLOAD ==========")
-                # print(json.dumps(strategy_debug_payload, indent=2, default=str))
-                # print("========== END PROMPT 2 STRATEGY PAYLOAD ==========\n")
 
                 strategy_raw = run_prompt_2_strategy(**strategy_debug_payload)
 
@@ -3601,6 +3598,11 @@ def live_mtd_vs_previous():
                     strategy_parsed = json.loads(strategy_raw)
                 else:
                     strategy_parsed = {}
+
+            except Exception as e:
+                print("[AI ERROR] Strategy generation failed:", e)
+                strategy_raw = None
+                strategy_parsed = {}
 
             except Exception as e:
 
@@ -3623,24 +3625,35 @@ def live_mtd_vs_previous():
         # SAVE AI CACHE
         # ====================================================
         if not cached_ai:
-            ai_cache_record = save_live_ai_cache(
-                user_id=user_id,
-                country=country,
-                start_date=curr_start,
-                end_date=ai_refresh_slot,
-                objective_hash=objective_hash,
-                analysis=analysis,
-                summary=summary_out,
-                strategy=strategy_parsed
-            )
+            try:
+                ai_cache_record = save_live_ai_cache(
+                    user_id=user_id,
+                    country=country,
+                    start_date=curr_start,
+                    end_date=ai_refresh_slot,
+                    objective_hash=objective_hash,
+                    analysis=analysis or {},
+                    summary=summary_out or {"summary_text": "", "metric_bullets": []},
+                    strategy=strategy_parsed or {},
+                )
 
-            ai_last_refreshed_at = format_ai_last_refreshed_at(
-                ai_cache_record.created_at,
-                country,
-            )
+                ai_last_refreshed_at = format_ai_last_refreshed_at(
+                    ai_cache_record.created_at,
+                    country,
+                )
+
+            except Exception as e:
+                print("[WARN] Failed to save live AI cache:", e)
+                ai_last_refreshed_at = format_ai_last_refreshed_at(
+                    datetime.utcnow(),
+                    country,
+                )
 
         # Safe extraction (always executes)
         portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
+
+        if not portfolio_recommendation:
+            portfolio_recommendation = "AI portfolio recommendation could not be generated for this refresh."
 
         raw_sku_strategy_actions = strategy_parsed.get("sku_actions", {}) or {}
 
