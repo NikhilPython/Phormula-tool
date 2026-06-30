@@ -631,6 +631,38 @@ const normalizeProductDisplayName = (value: any) => {
         .join("");
 };
 
+const isMissingDisplayName = (value: any) => {
+    if (value === undefined || value === null) return true;
+
+    const clean = String(value).trim().toLowerCase();
+
+    return (
+        clean === "" ||
+        clean === "-" ||
+        clean === "0" ||
+        clean === "nan" ||
+        clean === "none" ||
+        clean === "null" ||
+        clean === "undefined" ||
+        clean === "unknown"
+    );
+};
+
+const getSkuwiseDisplayProductName = (row: any) => {
+    const productName = row?.product_name;
+    const sku = row?.sku;
+
+    if (!isMissingDisplayName(productName)) {
+        return normalizeProductDisplayName(productName);
+    }
+
+    if (!isMissingDisplayName(sku)) {
+        return String(sku).trim();
+    }
+
+    return "-";
+};
+
 const formatPlainAmount = (value: unknown) => {
     const n = toNumberSafe(value ?? 0);
 
@@ -7099,7 +7131,7 @@ export default function DashboardPage() {
             return {
                 sno: isTotal ? undefined : (idx ?? 0) + 1,
                 sku: String(r.sku ?? ""),
-                product_name: String(r.product_name ?? ""),
+                product_name: getSkuwiseDisplayProductName(r),
                 ad_type: String(r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""),
 
                 quantity: Number(r.quantity ?? 0),
@@ -7527,11 +7559,13 @@ export default function DashboardPage() {
         return (monthlySkuwiseRows || []).map((row: any) => ({
             ...row,
             product_name:
-                platform === "global"
-                    ? normalizeProductDisplayName(row?.product_name)
-                    : row?.product_name,
+                row?.isTotal ||
+                    String(row?.sku || "").toUpperCase() === "GRAND_TOTAL" ||
+                    String(row?.product_name || "").trim().toLowerCase() === "grand total"
+                    ? "Total"
+                    : getSkuwiseDisplayProductName(row),
         }));
-    }, [monthlySkuwiseRows, platform]);
+    }, [monthlySkuwiseRows]);
 
     const grandTotalRowDisplay = useMemo(() => {
         return (
@@ -8018,7 +8052,7 @@ export default function DashboardPage() {
                     return toNumber((row as any)[key]);
 
                 case "product_name":
-                    return String(row.product_name || "").toLowerCase();
+                    return getSkuwiseDisplayProductName(row).toLowerCase();
 
                 case "sku":
                     return String(row.sku || "").toLowerCase();
@@ -11546,7 +11580,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const findLiveBiRowForPnlRow = useCallback(
         (row: MonthlySkuwiseTableRow) => {
             const sku = normalizeDrawerKey(row?.sku);
-            const name = normalizeDrawerKey(row?.product_name);
+            const name = normalizeDrawerKey(getSkuwiseDisplayProductName(row));
 
             const rows = getLiveBiProductRows();
 
@@ -11738,7 +11772,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
             const insights = payload.ai_insights || payload.insights || {};
 
             const sku = normalizeDrawerKey(row?.sku || liveRow?.sku);
-            const name = normalizeDrawerKey(row?.product_name || liveRow?.product_name);
+            const name = normalizeDrawerKey(
+                getSkuwiseDisplayProductName(row) || liveRow?.product_name
+            );
 
             const directBySku = Object.entries(insights).find(([key]) => {
                 return normalizeDrawerKey(key) === sku;
@@ -11851,7 +11887,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             const productName =
                 liveRow?.product_name ||
                 insight?.product_name ||
-                row.product_name ||
+                getSkuwiseDisplayProductName(row) ||
                 row.sku ||
                 "Details";
 
@@ -13570,18 +13606,28 @@ ${pageLoading
                                                         );
                                                     }
 
+                                                    const displayName = getSkuwiseDisplayProductName(row);
+
                                                     return (
                                                         <button
                                                             type="button"
-                                                            onClick={() => openPnlSkuDrawer(row)}
-                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e] "
-                                                            title={String(row.product_name || "")}
+                                                            onClick={() =>
+                                                                openPnlSkuDrawer({
+                                                                    ...row,
+                                                                    product_name: displayName,
+                                                                })
+                                                            }
+                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e]"
+                                                            title={String(displayName || "")}
                                                         >
                                                             <span className="min-w-0 truncate">
-                                                                {row.product_name || "-"}
+                                                                {displayName}
                                                             </span>
 
-                                                            {renderLiveNetSalesDelta(row)}
+                                                            {renderLiveNetSalesDelta({
+                                                                ...row,
+                                                                product_name: displayName,
+                                                            })}
                                                         </button>
                                                     );
                                                 }
