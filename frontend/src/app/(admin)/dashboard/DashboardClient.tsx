@@ -234,6 +234,7 @@ type FetchLiveBiPayloadArgs = {
     endDay?: number | null;
     generateInsights?: boolean;
     skipLoader?: boolean;
+    dataOnlyRefresh?: boolean;
 };
 
 type ProductwiseMoneyKey =
@@ -2096,27 +2097,27 @@ const buildInventoryInsightsFromResponses = (
             );
 
             return {
-    productName: productName || sku || "-",
-    sku,
-    zeroToNinety,
-    ninetyOneToOneEighty,
-    oneEightyOneToTwoSeventy,
-    twoSeventyOneToThreeSixtyFive,
-    threeSixtyFivePlus,
-    available,
-    totalUnits,
+                productName: productName || sku || "-",
+                sku,
+                zeroToNinety,
+                ninetyOneToOneEighty,
+                oneEightyOneToTwoSeventy,
+                twoSeventyOneToThreeSixtyFive,
+                threeSixtyFivePlus,
+                available,
+                totalUnits,
 
-    unsellableUnits,
+                unsellableUnits,
 
-    unitsSold: getCurrentMonthUnitsSold(row),
+                unitsSold: getCurrentMonthUnitsSold(row),
 
-    // ✅ Needed for Others coverage ratio
-    salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
+                // ✅ Needed for Others coverage ratio
+                salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
 
-    coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
+                coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
 
-    inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
-};
+                inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
+            };
         })
 
     const overallAgeing = latestRows.reduce(
@@ -5043,6 +5044,7 @@ export default function DashboardPage() {
             endDay = selectedEndDay,
             generateInsights = false,
             skipLoader = false,
+            dataOnlyRefresh = false,
         }: FetchLiveBiPayloadArgs = {}) => {
             if (isMonthYearNA) return;
 
@@ -5065,6 +5067,8 @@ export default function DashboardPage() {
                     month: currMonthName.toLowerCase(),
                     year: String(currYear),
                     generate_ai_insights: generateInsights ? "true" : "false",
+                    manual_ai_refresh: "false",
+                    data_only_refresh: dataOnlyRefresh ? "true" : "false",
                 });
 
                 const finalStartDay = startDay ?? 1;
@@ -5083,7 +5087,30 @@ export default function DashboardPage() {
 
                 const json: BiApiResponse = await res.json();
 
-                setLiveBiPayload(json);
+                setLiveBiPayload((prev: any) => {
+                    if (!dataOnlyRefresh || !prev) {
+                        return json;
+                    }
+
+                    return {
+                        ...json,
+
+                        // keep existing Business Summary + AI recommendation data
+                        overall_summary: prev.overall_summary,
+                        overall_actions: prev.overall_actions,
+                        recommended_actions_mtd: prev.recommended_actions_mtd,
+                        portfolio_recommendation: prev.portfolio_recommendation,
+                        remaining_skus_recommendation: prev.remaining_skus_recommendation,
+                        remaining_skus_ads_recommendation: prev.remaining_skus_ads_recommendation,
+                        remaining_skus_inventory_recommendation: prev.remaining_skus_inventory_recommendation,
+                        remaining_skus_journey_summary: prev.remaining_skus_journey_summary,
+                        remaining_skus_block: prev.remaining_skus_block,
+                        sku_strategy_actions: prev.sku_strategy_actions,
+                        ai_insights: prev.ai_insights,
+                        product_journey: prev.product_journey,
+                        ai_last_refreshed_at: prev.ai_last_refreshed_at,
+                    };
+                });
                 setBiPeriods(json?.periods || null);
                 setBiDailySeries(json?.daily_series || null);
                 setBiAlignedTotals(json?.aligned_totals || null);
@@ -5181,6 +5208,7 @@ export default function DashboardPage() {
                     endDay: selectedEndDay,
                     generateInsights: false,
                     skipLoader: true,
+                    dataOnlyRefresh: true,
                 });
             } else {
                 setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping.");

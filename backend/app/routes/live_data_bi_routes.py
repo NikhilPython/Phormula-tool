@@ -1010,6 +1010,11 @@ def live_mtd_vs_previous():
             in ("true", "1", "yes")
         )
 
+        data_only_refresh = (
+            request.args.get("data_only_refresh", "false").lower()
+            in ("true", "1", "yes")
+        )
+
         ranges = get_mtd_and_prev_ranges(
             as_of=as_of,
             start_day=start_day,
@@ -1779,7 +1784,7 @@ def live_mtd_vs_previous():
             if not portfolio_recommendation:
                 portfolio_recommendation = "AI portfolio recommendation could not be generated for this refresh."
 
-            if not cached_ai:
+            if not cached_ai and not data_only_refresh:
                 try:
                     ai_cache_record = save_live_ai_cache(
                         user_id=user_id,
@@ -3166,6 +3171,17 @@ def live_mtd_vs_previous():
                     "metric_bullets": [],
                 }
                 strategy_parsed = cached_ai.get("strategy", {}) or {}
+
+            elif data_only_refresh:
+                # Top-right dashboard refresh:
+                # refresh data only, do not regenerate AI summary/recommendations.
+                analysis = {}
+                summary_out = {
+                    "summary_text": "",
+                    "metric_bullets": [],
+                }
+                strategy_parsed = {}
+
             else:
                 # ---------------------------
                 # PROMPT-1 (ANALYSIS)
@@ -3489,48 +3505,6 @@ def live_mtd_vs_previous():
             except Exception as e:
                 print("[WARN] Failed to build time series for", sku, e)
 
-        # # -------------------------------------------------
-        # # 🔥 BUILD REMAINING SKU TIME SERIES (Other SKUs)
-        # # -------------------------------------------------
-        # remaining_series = []
-
-        # try:
-        #     remaining_series = build_remaining_skus_time_series(
-        #         user_id=user_id,
-        #         country=country,
-        #         focus_skus=[r.get("sku") for r in top_80_skus],
-        #         anchor_year=anchor_year,
-        #         anchor_month=anchor_month,
-        #         months=24,
-        #     )
-        # except Exception as e:
-        #     print("[WARN] Remaining SKU series failed:", e)        
-
-
-        # # ---------------------------------------
-        # # STRATEGY ENGINE (SAFE WRAPPED)
-        # # ---------------------------------------
-
-        # if not cached_ai:
-
-        #     try:
-
-        #         strategy_raw = run_prompt_2_strategy(
-        #             analysis_insights=analysis,
-        #             objective_v2=user_objective,
-        #             focus_skus=[r.get("sku") for r in top_80_skus],
-        #             sku_time_series=sku_time_series,
-        #             inventory_alerts=payload_ai.get("inventory_signals", {}),
-        #             sku_inventory_flags=sku_inventory_flags,
-        #             country=country,
-        #             sku_ads_context=sku_ads_context,
-        #             sku_live_context=sku_live_context,
-        #             ads_monthly=ads_monthly,
-        #             remaining_skus_context={
-        #                 "aggregated_metrics": remaining_growth_row,
-        #                 "time_series": remaining_series
-        #             } if remaining_growth_row else {},
-        #         )
 
         # -------------------------------------------------
         # 🔥 BUILD REMAINING SKU TIME SERIES (Other SKUs)
@@ -3554,7 +3528,7 @@ def live_mtd_vs_previous():
         # STRATEGY ENGINE (SAFE WRAPPED)
         # ---------------------------------------
 
-        if not cached_ai:
+        if not cached_ai and not data_only_refresh:
 
             strategy_raw = None
             strategy_parsed = {}
@@ -3624,7 +3598,7 @@ def live_mtd_vs_previous():
         # ====================================================
         # SAVE AI CACHE
         # ====================================================
-        if not cached_ai:
+        if not cached_ai and not data_only_refresh:
             try:
                 ai_cache_record = save_live_ai_cache(
                     user_id=user_id,
