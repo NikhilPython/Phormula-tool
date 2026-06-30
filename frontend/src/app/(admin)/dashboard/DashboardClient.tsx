@@ -2076,32 +2076,47 @@ const buildInventoryInsightsFromResponses = (
             const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
             const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
 
-            const totalUnits =
+            const bucketTotal =
                 zeroToNinety +
                 ninetyOneToOneEighty +
                 oneEightyOneToTwoSeventy +
                 twoSeventyOneToThreeSixtyFive +
                 threeSixtyFivePlus;
 
-            const unsellableUnits = inventoryToNum(row?.["unfulfillable-quantity"]);
+            // ✅ Sellable Units should come from backend "available" column
+            const available = inventoryToNum(row?.available);
+
+            // ✅ Keep totalUnits as available only for fallback compatibility
+            const totalUnits = available;
+
+            const unsellableUnits = inventoryToNum(
+                row?.["unfulfillable-quantity"] ??
+                row?.unfulfillable_quantity ??
+                row?.fulfillable_quantity
+            );
 
             return {
-                productName: productName || sku || "-",
-                sku,
-                zeroToNinety,
-                ninetyOneToOneEighty,
-                oneEightyOneToTwoSeventy,
-                twoSeventyOneToThreeSixtyFive,
-                threeSixtyFivePlus,
-                totalUnits,
-                unsellableUnits,
+    productName: productName || sku || "-",
+    sku,
+    zeroToNinety,
+    ninetyOneToOneEighty,
+    oneEightyOneToTwoSeventy,
+    twoSeventyOneToThreeSixtyFive,
+    threeSixtyFivePlus,
+    available,
+    totalUnits,
 
-                unitsSold: getCurrentMonthUnitsSold(row),
+    unsellableUnits,
 
-                coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
+    unitsSold: getCurrentMonthUnitsSold(row),
 
-                inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
-            };
+    // ✅ Needed for Others coverage ratio
+    salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
+
+    coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
+
+    inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
+};
         })
 
     const overallAgeing = latestRows.reduce(
@@ -2405,6 +2420,10 @@ const sumInventoryUnitsByKeys = (
 };
 
 const getRowAgeingTotalUnits = (row: InventoryCurrentRow) => {
+    const available = inventoryToNum(row?.available);
+
+    if (available > 0) return available;
+
     return sumInventoryUnitsByKeys([row], [
         "inv-age-0-to-90-days",
         "inv-age-91-to-180-days",

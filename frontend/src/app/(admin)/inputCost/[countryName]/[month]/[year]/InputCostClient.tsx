@@ -1474,14 +1474,12 @@ const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
 const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
-  const bucketTotal =
-    getInventoryAgeValue(row, 'inv-age-0-to-90-days') +
-    getInventoryAgeValue(row, 'inv-age-91-to-180-days') +
-    getInventoryAgeValue(row, 'inv-age-181-to-270-days') +
-    getInventoryAgeValue(row, 'inv-age-271-to-365-days') +
-    getInventoryAgeValue(row, 'inv-age-365-plus-days');
+  // ✅ Sellable Units should come from backend available column
+  const available = toNum(row?.available);
 
-  return bucketTotal || toNum(row?.available ?? row?.total_quantity);
+  if (available > 0) return available;
+
+  return toNum(row?.total_quantity);
 };
 
 const getInventoryRowUnfulfillableUnits = (row: InventoryCurrentRow) => {
@@ -1524,6 +1522,17 @@ const getInventoryRowCoverageRatio = (row: InventoryCurrentRow) => {
     'stock-cover-months',
     'cover_months',
     'cover-months',
+  ]);
+};
+const getInventoryRowSalesLast30Days = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    'Sales Last 30 Days',
+    'sales_last_30_days',
+    'sales-last-30-days',
+    'salesLast30Days',
+    'last_30_days_sales',
+    'last-30-days-sales',
+    'Last 30 Days Sales',
   ]);
 };
 
@@ -1574,6 +1583,10 @@ const getUniqueInventorySkuCount = (rows: any[]) => {
 };
 
 const getRowAgeingTotalUnits = (row: any) => {
+  const available = toNum(row?.available);
+
+  if (available > 0) return available;
+
   return (
     toNum(row?.zeroToNinety ?? row?.['inv-age-0-to-90-days']) +
     toNum(row?.ninetyOneToOneEighty ?? row?.['inv-age-91-to-180-days']) +
@@ -1741,49 +1754,69 @@ const buildInventoryInsightsFromResponses = (
       const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, 'inv-age-271-to-365-days');
       const threeSixtyFivePlus = getInventoryAgeValue(row, 'inv-age-365-plus-days');
 
-      const totalUnits =
-        zeroToNinety +
-        ninetyOneToOneEighty +
-        oneEightyOneToTwoSeventy +
-        twoSeventyOneToThreeSixtyFive +
-        threeSixtyFivePlus;
+      const bucketTotal =
+  zeroToNinety +
+  ninetyOneToOneEighty +
+  oneEightyOneToTwoSeventy +
+  twoSeventyOneToThreeSixtyFive +
+  threeSixtyFivePlus;
 
-      const unitsSold = currentMonthUnitsSoldKey
-        ? toNum(row?.[currentMonthUnitsSoldKey])
-        : 0;
+// ✅ Sellable Units should come from backend available column
+const available = toNum(row?.available);
+
+// ✅ Keep totalUnits same as available for fallback compatibility
+const totalUnits = available || getInventoryRowTotalUnits(row);
+
+const unitsSold = currentMonthUnitsSoldKey
+  ? toNum(row?.[currentMonthUnitsSoldKey])
+  : 0;
+
+// ✅ Needed for Others coverage ratio
+const salesLast30Days = getInventoryRowSalesLast30Days(row);
 
       return {
-        productName: getInventoryRowProductName(row),
-        sku: getInventoryRowSku(row),
+  productName: getInventoryRowProductName(row),
+  sku: getInventoryRowSku(row),
 
-        inventoryAlert: String(
-          row?.["Inventory Alerts"] ??
-          row?.inventory_alerts ??
-          row?.alert ??
-          ""
-        ).trim(),
+  inventoryAlert: String(
+    row?.["Inventory Alerts"] ??
+    row?.inventory_alerts ??
+    row?.alert ??
+    ""
+  ).trim(),
 
-        zeroToNinety,
-        ninetyOneToOneEighty,
-        oneEightyOneToTwoSeventy,
-        twoSeventyOneToThreeSixtyFive,
-        threeSixtyFivePlus,
+  zeroToNinety,
+  ninetyOneToOneEighty,
+  oneEightyOneToTwoSeventy,
+  twoSeventyOneToThreeSixtyFive,
+  threeSixtyFivePlus,
 
-        totalUnits: totalUnits || getInventoryRowTotalUnits(row),
-        unsellableUnits: getInventoryRowUnfulfillableUnits(row),
-        unitsSold,
-        coverageRatio: getInventoryRowCoverageRatio(row),
-        estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
-      };
+  // ✅ Backend available column
+  available,
+
+  // ✅ Sellable Units fallback
+  totalUnits,
+
+  unsellableUnits: getInventoryRowUnfulfillableUnits(row),
+  unitsSold,
+
+  // ✅ Needed for Others coverage ratio
+  salesLast30Days,
+
+  coverageRatio: getInventoryRowCoverageRatio(row),
+  estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
+};
     })
-    .filter(
-      (row) =>
-        toNum(row.totalUnits) > 0 ||
-        toNum((row as any).unsellableUnits) > 0 ||
-        toNum((row as any).coverageRatio) > 0 ||
-        toNum((row as any).estimatedStorageCost) > 0 ||
-        toNum((row as any).unitsSold) > 0
-    );
+.filter(
+  (row) =>
+    toNum(row.available) > 0 ||
+    toNum(row.totalUnits) > 0 ||
+    toNum((row as any).unsellableUnits) > 0 ||
+    toNum((row as any).coverageRatio) > 0 ||
+    toNum((row as any).estimatedStorageCost) > 0 ||
+    toNum((row as any).unitsSold) > 0 ||
+    toNum((row as any).salesLast30Days) > 0
+);
 
   const overallAgeing = heatmapData.reduce(
     (acc, row) => {

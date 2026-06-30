@@ -13,12 +13,21 @@ export type AgeingBucket = {
 export type AgeingRiskHeatmapRow = {
     productName: string;
     sku?: string;
+
+    // Sellable Units should come from backend "available" column
+    available?: number;
+
+    // keep this only if used elsewhere
     totalUnits?: number;
+
     unsellableUnits?: number;
     unitsSold?: number;
+
+    // ✅ For Others coverage ratio
+    salesLast30Days?: number;
+
     coverageRatio?: number;
 
-    // ✅ NEW
     inventoryAlert?: string;
 
     isOthersRow?: boolean;
@@ -85,10 +94,12 @@ const buildAggregateRow = (
         );
     });
 
-    aggregate.totalUnits = buckets.reduce(
-        (sum, bucket) => sum + Number(aggregate[bucket.key] || 0),
+    aggregate.available = rows.reduce(
+        (sum, row) => sum + Number(row.available ?? row.totalUnits ?? 0),
         0
     );
+
+    aggregate.totalUnits = aggregate.available;
 
     aggregate.unsellableUnits = rows.reduce(
         (sum, row) => sum + Number(row.unsellableUnits || 0),
@@ -96,39 +107,60 @@ const buildAggregateRow = (
     );
 
     aggregate.unitsSold = rows.reduce(
-        (sum, row) => sum + Number(row.unitsSold || 0),
+    (sum, row) => sum + Number(row.unitsSold || 0),
+    0
+);
+
+// ✅ Aggregate Sales Last 30 Days for Others coverage ratio
+aggregate.salesLast30Days = rows.reduce(
+    (sum, row) => sum + Number(row.salesLast30Days || 0),
+    0
+);
+
+// ✅ Keep Inventory Alerts blank for Others and Total rows
+aggregate.inventoryAlert = "";
+
+// ✅ For Others only:
+// Coverage Ratio = aggregated available / aggregated Sales Last 30 Days
+if (flags?.isOthersRow) {
+    const totalAvailable = Number(aggregate.available || 0);
+    const totalSalesLast30Days = Number(aggregate.salesLast30Days || 0);
+
+    aggregate.coverageRatio =
+        totalSalesLast30Days > 0
+            ? totalAvailable / totalSalesLast30Days
+            : 0;
+
+    return aggregate;
+}
+
+// Existing logic for Total or any other aggregate row
+const weightedCoverageTotal = rows.reduce((sum, row) => {
+    const calculatedTotal = buckets.reduce(
+        (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
         0
     );
 
-    // ✅ Keep Inventory Alerts blank for Others and Total rows
-    aggregate.inventoryAlert = "";
+    const rowTotal = Number(row.available ?? row.totalUnits ?? calculatedTotal);
+    const coverageRatio = Number(row.coverageRatio ?? 0);
 
-    const weightedCoverageTotal = rows.reduce((sum, row) => {
-        const calculatedTotal = buckets.reduce(
-            (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
-            0
-        );
+    if (!rowTotal || !Number.isFinite(coverageRatio)) return sum;
 
-        const rowTotal = Number(row.totalUnits ?? calculatedTotal);
-        const coverageRatio = Number(row.coverageRatio ?? 0);
+    return sum + coverageRatio * rowTotal;
+}, 0);
 
-        if (!rowTotal || !Number.isFinite(coverageRatio)) return sum;
+aggregate.coverageRatio = aggregate.totalUnits
+    ? weightedCoverageTotal / aggregate.totalUnits
+    : 0;
 
-        return sum + coverageRatio * rowTotal;
-    }, 0);
-
-    aggregate.coverageRatio = aggregate.totalUnits
-        ? weightedCoverageTotal / aggregate.totalUnits
-        : 0;
-
-    return aggregate;
+return aggregate;
 };
 
 const buildPercentageRow = (
     totalRow: AgeingRiskHeatmapRow,
     buckets: AgeingBucket[],
 ): AgeingRiskHeatmapRow => {
-    const sellableUnits = Number(totalRow.totalUnits || 0);
+    const sellableUnits = Number(totalRow.available ?? totalRow.totalUnits ?? 0);
     const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
 
     // ✅ Backend percentage_base_total = sellable + unfulfillable
@@ -138,6 +170,11 @@ const buildPercentageRow = (
     const percentageRow: AgeingRiskHeatmapRow = {
         productName: "% of Total",
         sku: "-",
+
+        available:
+            percentageBaseTotal > 0
+                ? (sellableUnits / percentageBaseTotal) * 100
+                : 0,
 
         totalUnits:
             percentageBaseTotal > 0
@@ -237,7 +274,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     0
                 );
 
-                const totalUnits = Number(row.totalUnits ?? calculatedTotal);
+                const totalUnits = Number(row.available ?? row.totalUnits ?? calculatedTotal);
                 const value = Number(row[bucket.key] || 0);
 
                 if (row.isPercentageRow) {
@@ -356,14 +393,15 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             },
             ...bucketColumns,
             {
-                key: "totalUnits",
+                key: "available",
                 header: "Sellable Units",
                 width: "85px",
                 headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
                     if (row.isPercentageRow) {
-                        const value = Number(row.totalUnits || 0);
+                        const value = Number(row.available ?? row.totalUnits ?? 0);
 
                         return (
                             <span>
@@ -377,14 +415,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         );
                     }
 
-                    const calculatedTotal = buckets.reduce(
-                        (sum, bucket) => sum + Number(row[bucket.key] || 0),
-                        0
+                    const availableUnits = Number(row.available ?? row.totalUnits ?? 0);
+
+                    return (
+                        <span>
+                            {availableUnits > 0 ? availableUnits.toLocaleString() : "0"}
+                        </span>
                     );
-
-                    const totalUnits = Number(row.totalUnits ?? calculatedTotal);
-
-                    return <span>{totalUnits.toLocaleString()}</span>;
                 },
             },
             {

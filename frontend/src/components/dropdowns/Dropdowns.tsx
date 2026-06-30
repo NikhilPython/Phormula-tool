@@ -3316,14 +3316,12 @@ const formatInventoryStorageCost = (
 };
 
 const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
-  const bucketTotal =
-    getInventoryAgeValue(row, "inv-age-0-to-90-days") +
-    getInventoryAgeValue(row, "inv-age-91-to-180-days") +
-    getInventoryAgeValue(row, "inv-age-181-to-270-days") +
-    getInventoryAgeValue(row, "inv-age-271-to-365-days") +
-    getInventoryAgeValue(row, "inv-age-365-plus-days");
+  // ✅ Prefer backend available column for Sellable Units
+  const available = toNum(row?.available);
 
-  return bucketTotal || toNum(row?.available ?? row?.total_quantity);
+  if (available > 0) return available;
+
+  return toNum(row?.total_quantity);
 };
 
 const monthLabelFromMonthName = (monthName: string) => {
@@ -3563,36 +3561,48 @@ const buildInventoryInsightsFromResponses = (
       const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
       const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
 
-      const totalUnits =
+      const bucketTotal =
         zeroToNinety +
         ninetyOneToOneEighty +
         oneEightyOneToTwoSeventy +
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
-      const unsellableUnits = toNum(row?.["unfulfillable-quantity"]);
+      // ✅ Sellable Units should come from backend available column
+      const available = toNum(row?.available);
+
+      // ✅ Keep totalUnits same as available only as fallback for old logic
+      const totalUnits = available;
+
+      const unsellableUnits = toNum(
+        row?.["unfulfillable-quantity"] ??
+        row?.unfulfillable_quantity ??
+        row?.fulfillable_quantity
+      );
 
       return {
-        productName: productName || sku || "-",
-        sku,
-        zeroToNinety,
-        ninetyOneToOneEighty,
-        oneEightyOneToTwoSeventy,
-        twoSeventyOneToThreeSixtyFive,
-        threeSixtyFivePlus,
-        totalUnits,
-        unsellableUnits,
+  productName: productName || sku || "-",
+  sku,
+  zeroToNinety,
+  ninetyOneToOneEighty,
+  oneEightyOneToTwoSeventy,
+  twoSeventyOneToThreeSixtyFive,
+  threeSixtyFivePlus,
+  available,
+  totalUnits,
+  unsellableUnits,
 
-        // ✅ Units Sold for Historic Panel
-        unitsSold: currentMonthUnitsSoldKey
-          ? toNum(row?.[currentMonthUnitsSoldKey])
-          : 0,
+  unitsSold: currentMonthUnitsSoldKey
+    ? toNum(row?.[currentMonthUnitsSoldKey])
+    : 0,
 
-        coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+  // ✅ Needed for Others coverage ratio
+  salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
 
-        // optional, keep if you already added alerts
-        inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
-      };
+  coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+
+  inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
+};
     })
 
   const overallAgeing = latestRows.reduce(
