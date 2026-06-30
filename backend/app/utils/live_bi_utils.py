@@ -4981,7 +4981,7 @@ def generate_sku_inventory_flags(
             else None
         )
 
-        inventory_recommendation = "Inventory position is stable."
+        inventory_recommendation = "Critical Alert Please Cross Check Inventory."
 
         if alert == "High alert" and cov_str is not None:
             inventory_recommendation = (
