@@ -2458,10 +2458,10 @@ def render_month_end_summary(
         if isinstance(recommendation, str) and recommendation.strip():
             lines.append(f"• Recommendation: {recommendation}")
 
-        # Inventory Recommendation (SKU-level)
-        inv_rec = sku_data.get("inventory_recommendation")
-        if isinstance(inv_rec, str) and inv_rec.strip():
-            lines.append(f"• Inventory action: {inv_rec}")    
+        # # Inventory Recommendation (SKU-level)
+        # inv_rec = sku_data.get("inventory_recommendation")
+        # if isinstance(inv_rec, str) and inv_rec.strip():
+        #     lines.append(f"• Inventory action: {inv_rec}")    
 
     # =========================================================
     # REMAINING SKUS — METRICS + JOURNEY + RECOMMENDATION
@@ -2598,13 +2598,13 @@ def render_month_end_summary(
             if isinstance(recommendation, str) and recommendation.strip():
                 lines.append(f"• Recommendation: {recommendation}")
 
-            ads_rec = sku_data.get("ads_recommendation")
-            if isinstance(ads_rec, str) and ads_rec.strip():
-                lines.append(f"• Ads action: {ads_rec}")
+            # ads_rec = sku_data.get("ads_recommendation")
+            # if isinstance(ads_rec, str) and ads_rec.strip():
+            #     lines.append(f"• Ads action: {ads_rec}")
 
-            inv_rec = sku_data.get("inventory_recommendation")
-            if isinstance(inv_rec, str) and inv_rec.strip():
-                lines.append(f"• Inventory action: {inv_rec}")
+            # inv_rec = sku_data.get("inventory_recommendation")
+            # if isinstance(inv_rec, str) and inv_rec.strip():
+            #     lines.append(f"• Inventory action: {inv_rec}")
 
 
 
@@ -2720,7 +2720,7 @@ def get_or_create_summary(
 
     elif period == "yearly":
         allow_inventory = is_latest
-        allow_recommendations = False
+        allow_recommendations = is_latest
 
         
 
@@ -3296,9 +3296,9 @@ def get_or_create_summary(
                     # ✅ Excel-based deterministic recommendation
                     "recommendation": excel_sku_recommendations.get(sku, ""),
 
-                    # ✅ Keep AI-generated recommendations
-                    "ads_recommendation": ai_data.get("ads_recommendation", ""),
-                    "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
+                    # # ✅ Keep AI-generated recommendations
+                    # "ads_recommendation": ai_data.get("ads_recommendation", ""),
+                    # "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
                 }
             # ✅ Capture consolidated recommendation for remaining SKUs
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
@@ -4486,7 +4486,7 @@ def get_or_create_global_summary(
         allow_global_recommendations = any(country_latest_flags.values())
 
     elif period == "yearly":
-        allow_global_recommendations = False
+        allow_global_recommendations = any(country_latest_flags.values())
 
     # ============================================================
     # 1. CHECK GLOBAL CACHE FIRST
