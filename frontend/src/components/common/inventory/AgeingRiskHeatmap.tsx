@@ -3,6 +3,7 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
 import DataTable, { ColumnDef, Row } from "@/components/ui/table/DataTable";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
+import { exportAgeingRiskHeatmapExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 export type AgeingBucket = {
     key: string;
@@ -49,6 +50,15 @@ type AgeingRiskHeatmapProps = {
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
     showInventoryAlerts?: boolean;
+
+    showExcelDownload?: boolean;
+    excelFilename?: string;
+    excelTitleLine?: string;
+    excelCountryLabel?: string;
+    excelPlatformLabel?: string;
+    excelPeriodLabel?: string;
+    excelCompanyName?: string;
+    excelBrandName?: string;
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
@@ -107,53 +117,53 @@ const buildAggregateRow = (
     );
 
     aggregate.unitsSold = rows.reduce(
-    (sum, row) => sum + Number(row.unitsSold || 0),
-    0
-);
-
-// ✅ Aggregate Sales Last 30 Days for Others coverage ratio
-aggregate.salesLast30Days = rows.reduce(
-    (sum, row) => sum + Number(row.salesLast30Days || 0),
-    0
-);
-
-// ✅ Keep Inventory Alerts blank for Others and Total rows
-aggregate.inventoryAlert = "";
-
-// ✅ For Others only:
-// Coverage Ratio = aggregated available / aggregated Sales Last 30 Days
-if (flags?.isOthersRow) {
-    const totalAvailable = Number(aggregate.available || 0);
-    const totalSalesLast30Days = Number(aggregate.salesLast30Days || 0);
-
-    aggregate.coverageRatio =
-        totalSalesLast30Days > 0
-            ? totalAvailable / totalSalesLast30Days
-            : 0;
-
-    return aggregate;
-}
-
-// Existing logic for Total or any other aggregate row
-const weightedCoverageTotal = rows.reduce((sum, row) => {
-    const calculatedTotal = buckets.reduce(
-        (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
+        (sum, row) => sum + Number(row.unitsSold || 0),
         0
     );
 
-    const rowTotal = Number(row.available ?? row.totalUnits ?? calculatedTotal);
-    const coverageRatio = Number(row.coverageRatio ?? 0);
+    // ✅ Aggregate Sales Last 30 Days for Others coverage ratio
+    aggregate.salesLast30Days = rows.reduce(
+        (sum, row) => sum + Number(row.salesLast30Days || 0),
+        0
+    );
 
-    if (!rowTotal || !Number.isFinite(coverageRatio)) return sum;
+    // ✅ Keep Inventory Alerts blank for Others and Total rows
+    aggregate.inventoryAlert = "";
 
-    return sum + coverageRatio * rowTotal;
-}, 0);
+    // ✅ For Others only:
+    // Coverage Ratio = aggregated available / aggregated Sales Last 30 Days
+    if (flags?.isOthersRow) {
+        const totalAvailable = Number(aggregate.available || 0);
+        const totalSalesLast30Days = Number(aggregate.salesLast30Days || 0);
 
-aggregate.coverageRatio = aggregate.totalUnits
-    ? weightedCoverageTotal / aggregate.totalUnits
-    : 0;
+        aggregate.coverageRatio =
+            totalSalesLast30Days > 0
+                ? totalAvailable / totalSalesLast30Days
+                : 0;
 
-return aggregate;
+        return aggregate;
+    }
+
+    // Existing logic for Total or any other aggregate row
+    const weightedCoverageTotal = rows.reduce((sum, row) => {
+        const calculatedTotal = buckets.reduce(
+            (bucketSum, bucket) => bucketSum + Number(row[bucket.key] || 0),
+            0
+        );
+
+        const rowTotal = Number(row.available ?? row.totalUnits ?? calculatedTotal);
+        const coverageRatio = Number(row.coverageRatio ?? 0);
+
+        if (!rowTotal || !Number.isFinite(coverageRatio)) return sum;
+
+        return sum + coverageRatio * rowTotal;
+    }, 0);
+
+    aggregate.coverageRatio = aggregate.totalUnits
+        ? weightedCoverageTotal / aggregate.totalUnits
+        : 0;
+
+    return aggregate;
 };
 
 const buildPercentageRow = (
@@ -218,6 +228,16 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     showInventoryAlerts = true,
+
+    // ✅ ADD THESE
+    showExcelDownload = true,
+    excelFilename = "ageing-risk-heatmap.xlsx",
+    excelTitleLine,
+    excelPlatformLabel = "Phormula",
+    excelCountryLabel = "",
+    excelPeriodLabel = "",
+    excelCompanyName = "",
+    excelBrandName = "",
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -595,6 +615,26 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         return baseColumns;
     }, [buckets, onProductClick, showInventoryAlerts]);
 
+    const handleDownloadExcel = () => {
+        if (onDownloadInventoryExcel) {
+            onDownloadInventoryExcel();
+            return;
+        }
+
+        exportAgeingRiskHeatmapExcel({
+            filename: excelFilename,
+            titleLine: excelTitleLine || title,
+            countryLabel: excelCountryLabel,
+            platformLabel: excelPlatformLabel,
+            periodLabel: excelPeriodLabel,
+            companyName: excelCompanyName,
+            brandName: excelBrandName,
+            buckets,
+            dataRows: data,
+            showInventoryAlerts,
+        });
+    };
+
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -624,10 +664,21 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         </button>
                     )}
 
-                    {onDownloadInventoryExcel && (
+                    {/* {onDownloadInventoryExcel && (
                         <DownloadIconButton
                             onClick={onDownloadInventoryExcel}
                             disabled={!canDownloadInventoryExcel}
+                        />
+                    )} */}
+
+                    {showExcelDownload && (
+                        <DownloadIconButton
+                            onClick={handleDownloadExcel}
+                            disabled={
+                                onDownloadInventoryExcel
+                                    ? !canDownloadInventoryExcel
+                                    : !data.length || !buckets.length
+                            }
                         />
                     )}
                 </div>

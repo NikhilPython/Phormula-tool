@@ -1572,8 +1572,6 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   );
 };
 
-
-
 const PreviewLockedSection = ({
   enabled,
   children,
@@ -2403,7 +2401,6 @@ type AiSingleInsightCardProps = {
   otherSkuIncludedProducts?: OtherSkuItem[];
 };
 
-
 const formatSummaryPeriod = (text?: string) => {
   if (!text) return "";
 
@@ -2452,6 +2449,11 @@ const splitSummaryIntoBulletPoints = (lines: string[]) => {
     )
     .map((line) => line.trim())
     .filter(Boolean);
+};
+
+const formatMonthName = (month?: string) => {
+  if (!month) return "";
+  return month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
 };
 
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
@@ -3581,28 +3583,28 @@ const buildInventoryInsightsFromResponses = (
       );
 
       return {
-  productName: productName || sku || "-",
-  sku,
-  zeroToNinety,
-  ninetyOneToOneEighty,
-  oneEightyOneToTwoSeventy,
-  twoSeventyOneToThreeSixtyFive,
-  threeSixtyFivePlus,
-  available,
-  totalUnits,
-  unsellableUnits,
+        productName: productName || sku || "-",
+        sku,
+        zeroToNinety,
+        ninetyOneToOneEighty,
+        oneEightyOneToTwoSeventy,
+        twoSeventyOneToThreeSixtyFive,
+        threeSixtyFivePlus,
+        available,
+        totalUnits,
+        unsellableUnits,
 
-  unitsSold: currentMonthUnitsSoldKey
-    ? toNum(row?.[currentMonthUnitsSoldKey])
-    : 0,
+        unitsSold: currentMonthUnitsSoldKey
+          ? toNum(row?.[currentMonthUnitsSoldKey])
+          : 0,
 
-  // ✅ Needed for Others coverage ratio
-  salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
+        // ✅ Needed for Others coverage ratio
+        salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
 
-  coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+        coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
 
-  inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
-};
+        inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
+      };
     })
 
   const overallAgeing = latestRows.reduce(
@@ -8737,6 +8739,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   actionLogic={inventoryInsightsData.actionLogic}
                   onHeatmapProductClick={handleHeatmapProductClick}
                   showInventoryAlerts={false}
+                  showHeatmapExcelDownload={true}
+                  heatmapExcelFilename={`Inventory Insights Report - ${countryName?.toUpperCase()} - ${formatMonthName(selectedMonth)} ${selectedYear}.xlsx`}
+                  heatmapExcelCountryLabel={countryName?.toUpperCase()}
+                  heatmapExcelPeriodLabel={`${selectedMonth} ${selectedYear}`}
+                  heatmapExcelCompanyName={userData?.company_name}
+                  heatmapExcelBrandName={userData?.brand_name}
                 />
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">

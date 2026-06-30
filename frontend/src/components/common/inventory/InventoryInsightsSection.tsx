@@ -38,9 +38,15 @@ type InventoryInsightsSectionProps = {
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
     onHeatmapProductClick?: (row: AgeingRiskHeatmapRow) => void;
-
-    // ✅ ADD THIS
     showInventoryAlerts?: boolean;
+    heatmapExcelPlatformLabel?: string;
+    showHeatmapExcelDownload?: boolean;
+    heatmapExcelFilename?: string;
+    heatmapExcelTitleLine?: string;
+    heatmapExcelCountryLabel?: string;
+    heatmapExcelPeriodLabel?: string;
+    heatmapExcelCompanyName?: string;
+    heatmapExcelBrandName?: string;
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
@@ -60,9 +66,15 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     onHeatmapProductClick,
-
-    // ✅ ADD THIS
     showInventoryAlerts = true,
+    showHeatmapExcelDownload = true,
+    heatmapExcelFilename = "ageing-risk-heatmap.xlsx",
+    heatmapExcelTitleLine,
+    heatmapExcelPlatformLabel = "Phormula",
+    heatmapExcelCountryLabel = "",
+    heatmapExcelPeriodLabel = "",
+    heatmapExcelCompanyName = "",
+    heatmapExcelBrandName = "",
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -98,6 +110,14 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         onDownloadInventoryExcel={onDownloadInventoryExcel}
                         canDownloadInventoryExcel={canDownloadInventoryExcel}
                         showInventoryAlerts={showInventoryAlerts}
+                        showExcelDownload={showHeatmapExcelDownload}
+                        excelFilename={heatmapExcelFilename}
+                        excelTitleLine={heatmapExcelTitleLine || "Ageing Risk Heatmap"}
+                        excelCountryLabel={heatmapExcelCountryLabel}
+                        excelPlatformLabel={heatmapExcelPlatformLabel}
+                        excelPeriodLabel={heatmapExcelPeriodLabel}
+                        excelCompanyName={heatmapExcelCompanyName}
+                        excelBrandName={heatmapExcelBrandName}
                     />
                 )}
 

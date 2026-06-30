@@ -3801,3 +3801,269 @@ border: tableBorder,
 
   XLSX.writeFile(wb, filename);
 }
+
+
+
+export function exportAgeingRiskHeatmapExcel(params: {
+  filename: string;
+  titleLine?: string;
+  countryLabel?: string;
+  platformLabel?: string;
+  periodLabel?: string;
+  companyName?: string;
+  brandName?: string;
+  buckets: {
+    key: string;
+    label: string;
+    color?: string;
+  }[];
+  dataRows: Record<string, any>[];
+  showInventoryAlerts?: boolean;
+}) {
+const {
+  filename,
+  titleLine = "Ageing Risk Heatmap",
+  countryLabel = "",
+  platformLabel = "Phormula",
+  periodLabel = "",
+  companyName = "",
+  brandName = "",
+  buckets,
+  dataRows,
+  showInventoryAlerts = true,
+} = params;
+
+  if (!dataRows?.length) return;
+
+  const toNum = (value: any) => {
+    if (value === null || value === undefined || value === "") return 0;
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+    const n = Number(String(value).replace(/,/g, "").replace("%", "").trim());
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const realRows = [...dataRows]
+    .filter(
+      (row) =>
+        !row.isOthersRow &&
+        !row.isTotalRow &&
+        !row.isPercentageRow
+    )
+    .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
+
+  const totalRow: Record<string, any> = {
+    productName: "Total",
+    sku: "",
+    isTotalRow: true,
+  };
+
+  buckets.forEach((bucket) => {
+    totalRow[bucket.key] = realRows.reduce(
+      (sum, row) => sum + toNum(row[bucket.key]),
+      0
+    );
+  });
+
+  totalRow.available = realRows.reduce(
+    (sum, row) => sum + toNum(row.available ?? row.totalUnits),
+    0
+  );
+
+  totalRow.totalUnits = totalRow.available;
+
+  totalRow.unsellableUnits = realRows.reduce(
+    (sum, row) => sum + toNum(row.unsellableUnits),
+    0
+  );
+
+  totalRow.unitsSold = realRows.reduce(
+    (sum, row) => sum + toNum(row.unitsSold),
+    0
+  );
+
+  totalRow.coverageRatio = "";
+  totalRow.inventoryAlert = "";
+
+  /**
+   * IMPORTANT:
+   * Export rows = all source rows + Total only.
+   * No 9 rows + Others.
+   * No % of Total row.
+   */
+  const exportRows = [...realRows, totalRow];
+
+  const headers = [
+    "S.No.",
+    "Product Name",
+    "SKU",
+    ...buckets.map((bucket) => bucket.label),
+    "Sellable Units",
+    "Unfulfillable Units",
+    "Units Sold",
+    "Coverage Ratio (in Months)",
+    ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
+  ];
+
+  const headerCount = headers.length;
+
+const topRows: any[][] = [
+  [titleLine, ...new Array(headerCount - 1).fill("")],
+  [
+    `Company Name : ${companyName || ""}`,
+    ...new Array(headerCount - 2).fill(""),
+    brandName || "",
+  ],
+  [`Country : ${countryLabel || ""}`, ...new Array(headerCount - 1).fill("")],
+  [`Platform : ${platformLabel || ""}`, ...new Array(headerCount - 1).fill("")],
+  [`Period : ${periodLabel || ""}`, ...new Array(headerCount - 1).fill("")],
+  new Array(headerCount).fill(""),
+];
+
+  const bodyRows = exportRows.map((row, index) => {
+    const isTotalRow = row.isTotalRow;
+
+    return [
+      isTotalRow ? "" : index + 1,
+      row.productName || "",
+      isTotalRow ? "" : row.sku || "-",
+
+      ...buckets.map((bucket) => toNum(row[bucket.key])),
+
+      toNum(row.available ?? row.totalUnits),
+      toNum(row.unsellableUnits),
+      toNum(row.unitsSold),
+
+      isTotalRow
+        ? ""
+        : toNum(row.coverageRatio) > 0
+          ? Number(row.coverageRatio).toFixed(2)
+          : "",
+
+      ...(showInventoryAlerts
+        ? [isTotalRow ? "" : row.inventoryAlert || ""]
+        : []),
+    ];
+  });
+
+  const sheetAoA = [...topRows, headers, ...bodyRows];
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+  const headerRowIndex = topRows.length;
+  const firstBodyRowIndex = headerRowIndex + 1;
+
+  ws["!freeze"] = {
+    xSplit: 0,
+    ySplit: headerRowIndex + 1,
+  };
+
+  ws["!cols"] = headers.map((header) => {
+    if (header === "S.No.") return { wch: 8 };
+    if (header === "Product Name") return { wch: 28 };
+    if (header === "SKU") return { wch: 18 };
+    if (header === "Coverage Ratio (in Months)") return { wch: 24 };
+    if (header === "Inventory Alerts") return { wch: 32 };
+    if (header.includes("Days")) return { wch: 18 };
+    return { wch: 16 };
+  });
+
+  const tableBorder = {
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
+  };
+
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+    if (!ws[addr]) continue;
+
+    ws[addr].s = {
+      font: { bold: true, sz: 11 },
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+      border: tableBorder,
+    };
+  }
+
+  for (let r = firstBodyRowIndex; r <= range.e.r; r++) {
+    const productNameAddr = XLSX.utils.encode_cell({ r, c: 1 });
+    const productName = String(ws[productNameAddr]?.v || "").trim().toLowerCase();
+    const isTotalRow = productName === "total";
+
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+
+      if (!ws[addr]) {
+        ws[addr] = { t: "s", v: "" };
+      }
+
+      const cell = ws[addr];
+
+      const header = headers[c];
+      const shouldStayText =
+        header === "Product Name" ||
+        header === "SKU" ||
+        header === "Inventory Alerts" ||
+        header === "Coverage Ratio (in Months)";
+
+      if (!shouldStayText && cell.v !== "") {
+        const n = toNum(cell.v);
+        cell.v = n;
+        cell.t = "n";
+        cell.z = "#,##0";
+      }
+
+      if (header === "Coverage Ratio (in Months)" && cell.v !== "") {
+        const n = toNum(cell.v);
+        cell.v = n;
+        cell.t = "n";
+        cell.z = "#,##0.00";
+      }
+
+      cell.s = {
+        ...(cell.s || {}),
+        font: {
+          bold: isTotalRow,
+          sz: 11,
+          color: { rgb: "000000" },
+        },
+        alignment: {
+          horizontal: c === 1 ? "left" : "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: tableBorder,
+      };
+    }
+  }
+
+  // top rows styling
+  for (let r = 0; r < topRows.length - 1; r++) {
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) continue;
+
+      ws[addr].s = {
+        font: {
+          bold: r === 1 && c === headerCount - 1,
+          sz: 11,
+        },
+        alignment: {
+          horizontal: c === headerCount - 1 ? "right" : "left",
+          vertical: "center",
+        },
+      };
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName("Ageing Risk Heatmap"));
+  XLSX.writeFile(wb, filename);
+}
