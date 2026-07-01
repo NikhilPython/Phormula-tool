@@ -7379,9 +7379,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
         <div className="flex flex-col leading-tight w-full md:w-auto ">
           <div className="flex items-baseline gap-2">
-            <PageBreadcrumb pageTitle="Financial Metrics -" variant="page" align="left" textSize="2xl" />
+            <PageBreadcrumb pageTitle="Financial Metrics - Amazon" variant="page" align="left" textSize="2xl" />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon{" "}
+              {/* Amazon{" "} */}
               {effectiveCountryName?.toLowerCase() === "global"
                 ? "Global"
                 : effectiveCountryName?.toUpperCase()}
@@ -8742,7 +8742,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   showHeatmapExcelDownload={true}
                   heatmapExcelFilename={`Inventory Insights Report - ${countryName?.toUpperCase()} - ${formatMonthName(selectedMonth)} ${selectedYear}.xlsx`}
                   heatmapExcelCountryLabel={countryName?.toUpperCase()}
-                  heatmapExcelPeriodLabel={`${selectedMonth} ${selectedYear}`}
+                  heatmapExcelPeriodLabel={`${formatMonthName(selectedMonth)} ${selectedYear}`}
                   heatmapExcelCompanyName={userData?.company_name}
                   heatmapExcelBrandName={userData?.brand_name}
                 />

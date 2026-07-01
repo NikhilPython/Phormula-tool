@@ -419,6 +419,37 @@ async function fetchMonthlyTransactionsExcel(params: {
   return { ok: true, url };
 }
 
+async function fetchMtdTransactions(params: {
+  marketplace_id: string;
+  country: string;
+  store_in_db?: boolean;
+}) {
+  const token = getAuthToken();
+
+  const qs = new URLSearchParams({
+    marketplace_id: params.marketplace_id,
+    country: params.country,
+    store_in_db: String(params.store_in_db ?? true),
+    format: "json",
+  });
+
+  const url = `${API_BASE}/amazon_api/finances/mtd_transactions?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw new Error(`MTD Transactions failed: ${msg}`);
+  }
+
+  return await res.json();
+}
+
 async function fetchLiveMtdBi(params: {
   country: string;
   month: string;
@@ -1348,8 +1379,16 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       });
       markStepComplete(6);
 
-      // Step 7: Live Data (LIVE MTD BI)
-      setStep(7, "Live Data", 0, "Fetching live MTD BI data...");
+      // Step 7: Live Data
+      setStep(7, "Live Data", 0, "Fetching MTD transactions...");
+
+      await fetchMtdTransactions({
+        marketplace_id: marketplaceIdUsed,
+        country: countryUsed,
+        store_in_db: true,
+      });
+
+      setStep(7, "Live Data", 50, "Fetching live MTD BI data...");
 
       const monthName = fullMonthNames[mNum - 1]; // convert 3 → March
 
@@ -1361,7 +1400,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       setStep(7, "Live Data", 100, "Live BI data ready");
       markStepComplete(7);
-
 
       // Step 8: Inventory Forecast + Purchase Order
       const latestMonthSlug = fullMonthNames[mNum - 1].toLowerCase();
