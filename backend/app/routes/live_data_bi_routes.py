@@ -1060,6 +1060,17 @@ def live_mtd_vs_previous():
             in ("true", "1", "yes")
         )
 
+#         print("\n[LIVE BI DEBUG] REQUEST FLAGS", {
+#     "country": country,
+#     "as_of": as_of,
+#     "start_day": start_day,
+#     "end_day": end_day,
+#     "generate_ai_insights": generate_ai_insights,
+#     "manual_ai_refresh": manual_ai_refresh,
+#     "data_only_refresh": data_only_refresh,
+#     "raw_args": dict(request.args),
+# })
+
         ranges = get_mtd_and_prev_ranges(
             as_of=as_of,
             start_day=start_day,
@@ -1078,6 +1089,15 @@ def live_mtd_vs_previous():
         # --------------------------------------------
         today = ranges["meta"]["today"]
         ai_refresh_slot = get_ai_refresh_slot(today)
+
+        print("[LIVE BI DEBUG] RANGE + CACHE SLOT", {
+    "today": str(today),
+    "curr_start": str(curr_start),
+    "curr_end": str(curr_end),
+    "prev_start": str(prev_start),
+    "prev_end": str(prev_end),
+    "ai_refresh_slot": str(ai_refresh_slot),
+})
 
         # --------------------------------------------
         # HISTORIC MOVEMENT CONTEXT (24 MONTHS)
@@ -3225,7 +3245,27 @@ def live_mtd_vs_previous():
         ai_cache_record = None
         ai_last_refreshed_at = None
 
+        # try:
+
+        #     if not manual_ai_refresh:
+        #         cached_ai = get_cached_live_ai(
+        #             user_id=user_id,
+        #             country=country,
+        #             start_date=curr_start,
+        #             end_date=ai_refresh_slot,
+        #             objective_hash=objective_hash,
+        #         )
+
         try:
+            # print("[LIVE BI DEBUG] BEFORE CACHE LOOKUP", {
+            #     "manual_ai_refresh": manual_ai_refresh,
+            #     "data_only_refresh": data_only_refresh,
+            #     "user_id": user_id,
+            #     "country": country,
+            #     "start_date": str(curr_start),
+            #     "end_date": str(ai_refresh_slot),
+            #     "objective_hash": objective_hash,
+            # })
 
             if not manual_ai_refresh:
                 cached_ai = get_cached_live_ai(
@@ -3235,6 +3275,24 @@ def live_mtd_vs_previous():
                     end_date=ai_refresh_slot,
                     objective_hash=objective_hash,
                 )
+
+                # print("[LIVE BI DEBUG] CACHE LOOKUP RESULT", {
+                #     "cached_ai_found": bool(cached_ai),
+                #     "cached_created_at": str(cached_ai.get("created_at")) if cached_ai else None,
+                #     "cached_summary_preview": (
+                #         (cached_ai.get("summary", {}).get("summary_text") or "")[:160]
+                #         if cached_ai else None
+                #     ),
+                # })
+
+                if cached_ai:
+                    ai_last_refreshed_at = format_ai_last_refreshed_at(
+                        cached_ai.get("created_at"),
+                        country,
+                    )
+            else:
+                print("[LIVE BI DEBUG] MANUAL REFRESH: skipping old cache lookup")
+
 
                 if cached_ai:
                     ai_last_refreshed_at = format_ai_last_refreshed_at(
@@ -3261,6 +3319,12 @@ def live_mtd_vs_previous():
                 strategy_parsed = {}
 
             else:
+                
+                # print("[LIVE BI DEBUG] GENERATING FRESH AI SUMMARY", {
+                #     "manual_ai_refresh": manual_ai_refresh,
+                #     "data_only_refresh": data_only_refresh,
+                #     "cached_ai_found": bool(cached_ai),
+                # })
                 # ---------------------------
                 # PROMPT-1 (ANALYSIS)
                 # ---------------------------
@@ -3317,6 +3381,12 @@ def live_mtd_vs_previous():
                     numeric_context=summary_numeric_context,
                     user_objective=user_objective,
                 )
+
+#                 print("[LIVE BI DEBUG] FRESH SUMMARY GENERATED", {
+#     "summary_text_preview": (summary_out.get("summary_text") or "")[:200],
+#     "bullet_count": len(summary_out.get("metric_bullets") or []),
+#     "bullets_preview": (summary_out.get("metric_bullets") or [])[:2],
+# })
 
         except Exception as e:
 
@@ -3673,10 +3743,46 @@ def live_mtd_vs_previous():
 
                 strategy_parsed = {}
 
+        # # ====================================================
+        # # SAVE AI CACHE
+        # # ====================================================
+        # if (manual_ai_refresh or not cached_ai) and not data_only_refresh:
+        #     try:
+        #         ai_cache_record = save_live_ai_cache(
+        #             user_id=user_id,
+        #             country=country,
+        #             start_date=curr_start,
+        #             end_date=ai_refresh_slot,
+        #             objective_hash=objective_hash,
+        #             analysis=analysis or {},
+        #             summary=summary_out or {"summary_text": "", "metric_bullets": []},
+        #             strategy=strategy_parsed or {},
+        #         )
+
+        #         ai_last_refreshed_at = format_ai_last_refreshed_at(
+        #             ai_cache_record.created_at,
+        #             country,
+        #         )
+
+        #     except Exception as e:
+        #         print("[WARN] Failed to save live AI cache:", e)
+        #         ai_last_refreshed_at = format_ai_last_refreshed_at(
+        #             datetime.utcnow(),
+        #             country,
+        #         )
         # ====================================================
         # SAVE AI CACHE
         # ====================================================
-        if not cached_ai and not data_only_refresh:
+        # print("[LIVE BI DEBUG] SAVE CACHE CHECK", {
+        #     "will_save": bool((manual_ai_refresh or not cached_ai) and not data_only_refresh),
+        #     "manual_ai_refresh": manual_ai_refresh,
+        #     "cached_ai_found": bool(cached_ai),
+        #     "data_only_refresh": data_only_refresh,
+        #     "summary_text_preview_before_save": (summary_out.get("summary_text") or "")[:200],
+        #     "bullet_count_before_save": len(summary_out.get("metric_bullets") or []),
+        # })
+
+        if (manual_ai_refresh or not cached_ai) and not data_only_refresh:
             try:
                 ai_cache_record = save_live_ai_cache(
                     user_id=user_id,
@@ -3694,13 +3800,42 @@ def live_mtd_vs_previous():
                     country,
                 )
 
+                # print("[LIVE BI DEBUG] AI CACHE SAVED SUCCESS", {
+                #     "record_id": getattr(ai_cache_record, "id", None),
+                #     "user_id": user_id,
+                #     "country": country,
+                #     "start_date": str(curr_start),
+                #     "end_date": str(ai_refresh_slot),
+                #     "created_at_utc": str(ai_cache_record.created_at),
+                #     "display_time": ai_last_refreshed_at,
+                #     "objective_hash": objective_hash,
+                #     "summary_saved_preview": (summary_out.get("summary_text") or "")[:200],
+                #     "bullet_count_saved": len(summary_out.get("metric_bullets") or []),
+                # })
+
+                # Optional DB re-read confirmation
+                verify_record = LiveAISummary.query.filter_by(
+                    user_id=user_id,
+                    country=country,
+                    start_date=curr_start,
+                    end_date=ai_refresh_slot,
+                ).first()
+
+                verify_summary = safe_json_load(verify_record.summary) if verify_record else {}
+
+                # print("[LIVE BI DEBUG] AI CACHE VERIFY READ", {
+                #     "verify_found": bool(verify_record),
+                #     "verify_created_at": str(verify_record.created_at) if verify_record else None,
+                #     "verify_summary_preview": (verify_summary.get("summary_text") or "")[:200],
+                #     "verify_bullet_count": len(verify_summary.get("metric_bullets") or []),
+                # })
+
             except Exception as e:
                 print("[WARN] Failed to save live AI cache:", e)
                 ai_last_refreshed_at = format_ai_last_refreshed_at(
                     datetime.utcnow(),
                     country,
                 )
-
         # Safe extraction (always executes)
         portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
 

@@ -50,11 +50,14 @@ type MonthsforBIProps = {
   disableAutoFetch?: boolean;
   onGenerateInsights?: () => Promise<void>;
 
+  // ✅ ADD THIS
+  onManualAiRefresh?: () => Promise<ApiResponse | null | any>;
+
   asOf?: string;
   startDay?: number;
   endDay?: number;
 
-  formattedMonthYear?: string; // ✅ add this
+  formattedMonthYear?: string;
 };
 
 // =========================
@@ -354,10 +357,14 @@ export default function LiveBusinessClient({
   initialData,
   disableAutoFetch = false,
   onGenerateInsights,
+
+  // ✅ ADD THIS
+  onManualAiRefresh,
+
   asOf,
   startDay,
   endDay,
-  formattedMonthYear, // ✅ add this
+  formattedMonthYear,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -1707,25 +1714,36 @@ export default function LiveBusinessClient({
     }
   };
 
-  const handleManualAiRefresh = async () => {
-    setManualAiRefreshing(true);
-    setError(null);
+const handleManualAiRefresh = async () => {
+  setManualAiRefreshing(true);
+  setError(null);
 
-    try {
-      // Refresh only cached AI summary + recommendations.
-      // generate_ai_insights stays false, manual_ai_refresh becomes true.
-      await fetchLiveBi(false, true);
-    } catch (err: any) {
-      console.error("manual ai refresh error:", err?.response?.data || err.message);
-      setError(
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Failed to refresh AI summary and recommendations."
-      );
-    } finally {
-      setManualAiRefreshing(false);
+  try {
+    // ✅ Parent dashboard controls initialData when disableAutoFetch is true.
+    // So update parent payload first, then hydrate child from the fresh payload.
+    if (onManualAiRefresh) {
+      const freshPayload = await onManualAiRefresh();
+
+      if (freshPayload) {
+        hydrateFromPayload(freshPayload);
+      }
+
+      return;
     }
-  };
+
+    // Fallback for standalone usage
+    await fetchLiveBi(false, true);
+  } catch (err: any) {
+    console.error("manual ai refresh error:", err?.response?.data || err.message);
+    setError(
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      "Failed to refresh AI summary and recommendations."
+    );
+  } finally {
+    setManualAiRefreshing(false);
+  }
+};
 
   // =========================
   // Insight helpers

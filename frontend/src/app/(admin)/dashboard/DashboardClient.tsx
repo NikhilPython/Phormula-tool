@@ -235,6 +235,9 @@ type FetchLiveBiPayloadArgs = {
     generateInsights?: boolean;
     skipLoader?: boolean;
     dataOnlyRefresh?: boolean;
+
+    // ✅ ADD THIS
+    manualAiRefresh?: boolean;
 };
 
 type ProductwiseMoneyKey =
@@ -5077,6 +5080,9 @@ export default function DashboardPage() {
             generateInsights = false,
             skipLoader = false,
             dataOnlyRefresh = false,
+
+            // ✅ ADD THIS
+            manualAiRefresh = false,
         }: FetchLiveBiPayloadArgs = {}) => {
             if (isMonthYearNA) return;
 
@@ -5099,8 +5105,12 @@ export default function DashboardPage() {
                     month: currMonthName.toLowerCase(),
                     year: String(currYear),
                     generate_ai_insights: generateInsights ? "true" : "false",
-                    manual_ai_refresh: "false",
-                    data_only_refresh: dataOnlyRefresh ? "true" : "false",
+
+                    // ✅ Manual refresh should hit backend as true
+                    manual_ai_refresh: manualAiRefresh ? "true" : "false",
+
+                    // ✅ Manual AI refresh must never behave like data-only refresh
+                    data_only_refresh: manualAiRefresh ? "false" : dataOnlyRefresh ? "true" : "false",
                 });
 
                 const finalStartDay = startDay ?? 1;
@@ -5120,7 +5130,9 @@ export default function DashboardPage() {
                 const json: BiApiResponse = await res.json();
 
                 setLiveBiPayload((prev: any) => {
-                    if (!dataOnlyRefresh || !prev) {
+                    // ✅ Manual AI refresh must replace parent payload completely.
+                    // Otherwise page reload will hydrate old Business Summary again.
+                    if (manualAiRefresh || !dataOnlyRefresh || !prev) {
                         return json;
                     }
 
@@ -5128,6 +5140,7 @@ export default function DashboardPage() {
                         ...json,
 
                         // keep existing Business Summary + AI recommendation data
+                        // ONLY for top-right data-only refresh
                         overall_summary: prev.overall_summary,
                         overall_actions: prev.overall_actions,
                         recommended_actions_mtd: prev.recommended_actions_mtd,
@@ -5240,7 +5253,10 @@ export default function DashboardPage() {
                     endDay: selectedEndDay,
                     generateInsights: false,
                     skipLoader: true,
-                    dataOnlyRefresh: true,
+
+                    // ✅ Browser/page reload must fetch backend cached AI summary.
+                    // Do not preserve stale parent AI summary here.
+                    dataOnlyRefresh: false,
                 });
             } else {
                 setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping.");
@@ -13391,7 +13407,7 @@ ${pageLoading
                                     year={String(currYear)}
                                     initialData={finalLiveBiPayload}
                                     disableAutoFetch
-                                    formattedMonthYear={formattedMonthYear} // ✅ add this
+                                    formattedMonthYear={formattedMonthYear}
                                     onGenerateInsights={async () => {
                                         if (shouldShowDummyUi) return;
 
@@ -13399,6 +13415,26 @@ ${pageLoading
                                             generateInsights: true,
                                             skipLoader: true,
                                         });
+                                    }}
+
+                                    // ✅ ADD THIS
+                                    onManualAiRefresh={async () => {
+                                        if (shouldShowDummyUi) return null;
+
+                                        const freshPayload = await fetchLiveBiPayload({
+                                            startDay: selectedStartDay,
+                                            endDay: selectedEndDay,
+                                            generateInsights: false,
+                                            skipLoader: true,
+
+                                            // ✅ IMPORTANT
+                                            manualAiRefresh: true,
+
+                                            // ✅ IMPORTANT
+                                            dataOnlyRefresh: false,
+                                        });
+
+                                        return freshPayload;
                                     }}
                                 />
                             )
