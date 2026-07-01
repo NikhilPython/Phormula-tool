@@ -3058,20 +3058,29 @@ Important context:
 Global country context:
 - If numeric_context contains country_split, treat the report as GLOBAL.
 - For GLOBAL, generate ONE combined executive summary, not separate UK and US summaries.
-- Use both UK and US data to explain the combined movement.
-- Explicitly compare UK vs US where their movements differ.
-- Clearly state which country is the larger driver for the overall result.
+- Follow the same 5-point structure.
+- Do not create a separate UK vs US bullet.
+- Use both UK and US data inside the relevant existing bullets only.
+- In the Units / ASP / Net Sales / CM1 Profit bullet, compare UK vs US performance and clearly state which country performed better and which country dragged the sales/contribution result.
+- In the Advertising Costs / Platform Fees / CM2 Profit bullet, compare UK vs US profitability impact and clearly state which country had the stronger or weaker CM2 impact.
+- Clearly state which country was the larger driver of the overall Net Sales movement and CM2 Profit movement.
+- Use country-level numbers only from numeric_context.country_split.
+- If country_split is missing, do not make country-level statements.
 
 Mandatory metric coverage:
-You must explicitly cover ALL eight core metrics:
-1) Units
-2) ASP
-3) Net Sales
-4) CM1 Profit
-5) Ads / ACOS/TACoS advertising efficiency
-6) Platform Fees
-7) CM2 Profit
-8) Target Progress
+You must explicitly cover these core metrics in the required structure:
+1) Target Progress
+2) Units
+3) ASP
+4) Net Sales
+5) CM1 Profit
+6) Advertising Costs
+7) Platform Fees
+8) CM2 Profit
+9) Miscellaneous Spend, only if available
+10) Inventory Coverage, only if available
+
+Do not include ACOS/TACoS as a separate bullet.
 
 Mandatory target context:
 - numeric_context.target_context is mandatory.
@@ -3089,6 +3098,7 @@ Mandatory target context:
   - target_source
 - If target_source starts with "fallback:", explain that target is based on previous month net sales because no saved target was available.
 - If target_source = "target_data", explain that target is based on saved monthly target.
+- If target_source = "global_combined_country_targets", explain that target is based on combined UK and US country targets.
 - Do not skip target progress.
 - If target_sales is 0 or missing, say target data is unavailable. Do not invent target values.
 
@@ -3107,39 +3117,91 @@ Additional optional context:
   - inventory_coverage_status
 
 Required summary flow:
-The summary_text must follow this logic in 4-5 sentences:
+The summary_text must follow this exact structure in 4-5 short sentences:
 
 Sentence 1:
-- Start with Units movement.
-- Then connect ASP movement.
-- Then explain how Units and ASP together impacted Net Sales.
-- Then connect Net Sales movement to CM1 Profit.
-- This sentence must clearly show the business chain:
-  Units -> ASP -> Net Sales -> CM1 Profit.
+- This sentence must ONLY discuss Target Progress.
+- Start exactly with "Target Progress:"
+- Use this wording structure:
+  "Target Progress: We have achieved X% of the target; we still need CURRENCY_AMOUNT to meet the target. Sales are currently X% ahead/behind/aligned with the expected run-rate, based on TARGET_SOURCE_TEXT."
+- Use target_achievement_pct for achieved percentage.
+- Use target_remaining for remaining target.
+- Use target_trend_pct for ahead/behind expected run-rate.
+- If target_trend_pct is negative, say "behind the expected run-rate".
+- If target_trend_pct is positive, say "ahead of the expected run-rate".
+- If target_trend_pct is 0 or close to 0, say "aligned with the expected run-rate".
+- If target_source starts with "fallback:", say "based on last month's net sales."
+- If target_source = "target_data", say "based on the saved monthly target."
+- If target_source = "global_combined_country_targets", say "based on combined UK and US country targets."
+- Do not combine Target Progress with any other metric.
+- Do not hardcode example values.
 
 Sentence 2:
-- Explain Ads / ACOS/TACoS and Platform Fees together.
-- Then explain how these cost movements affected CM2 Profit.
-- This sentence must clearly show the profitability chain:
-  Ads + Platform Fees -> CM2 Profit.
-- If numeric_context.cm2_profit is present, use it as the source for CM2 Profit.
-- If numeric_context.cm2_profit is missing, do not invent CM2 Profit.
+- This sentence must ONLY discuss Units, ASP, Net Sales, and CM1 Profit.
+- Use this wording structure:
+  "Units increased/decreased from PREVIOUS_UNITS to CURRENT_UNITS, a rise/decline of X%. ASP increased/decreased from PREVIOUS_ASP to CURRENT_ASP, a X% rise/decline. Net Sales rose/fell from PREVIOUS_NET_SALES to CURRENT_NET_SALES, a X% increase/decrease. CM1 Profit increased/decreased from PREVIOUS_CM1_PROFIT to CURRENT_CM1_PROFIT, a X% increase/decline."
+- Use dynamic values from numeric_context only.
+- For GLOBAL only, if numeric_context.country_split is available, append country contribution inside this same bullet.
+- The GLOBAL country contribution must compare UK vs US using Units, Net Sales, and CM1 Profit where available.
+- Use this wording structure for the country contribution:
+  "At country level, COUNTRY_A performed better because REASON_WITH_NUMBERS, while COUNTRY_B dragged the overall result because REASON_WITH_NUMBERS."
+- Clearly state which country was the larger driver of the overall Net Sales movement.
+- Do not create a separate country comparison bullet.
+- Do not invent country numbers.
 
 Sentence 3:
-- This sentence must ONLY discuss Target Progress.
-- Do not combine Target Progress with Miscellaneous Spend, Inventory Coverage, Ads, Platform Fees, CM2, or CM1.
-- Include target_sales, current_net_sales, target_achievement_pct, target_remaining, expected_sales_till_date, and target_trend_pct.
-- Clearly state whether current sales are ahead of or behind the expected MTD run-rate.
-- Mention whether target came from saved target_data or previous month net sales fallback.
+- This sentence must ONLY discuss Advertising Costs, Platform Fees, and CM2 Profit.
+- Use this wording structure:
+  "Advertising costs increased/decreased from PREVIOUS_ADS to CURRENT_ADS, a X% increase/reduction. Platform Fees increased/decreased from PREVIOUS_PLATFORM_FEES to CURRENT_PLATFORM_FEES, a X% rise/reduction. CM2 Profit improved/decreased from PREVIOUS_CM2_PROFIT to CURRENT_CM2_PROFIT, a X% increase/decline."
+- If Advertising costs decreased, use "reduction".
+- If Platform Fees increased, use "rise".
+- If CM2 Profit increased, use "improved" and "increase".
+- If CM2 Profit decreased, use "decreased" and "decline".
+- If numeric_context.cm2_profit is missing, do not invent CM2 Profit.
+- Do not include ACOS/TACoS as a separate point.
+- For GLOBAL only, if numeric_context.country_split is available, append country contribution inside this same bullet.
+- The GLOBAL country contribution must compare UK vs US using Advertising Costs, Platform Fees, and CM2 Profit where available.
+- Use this wording structure for the country contribution:
+  "At country level, COUNTRY_A had the stronger profitability impact because REASON_WITH_NUMBERS, while COUNTRY_B was weaker because REASON_WITH_NUMBERS."
+- Clearly state which country was the larger driver of the overall CM2 Profit movement.
+- Do not create a separate country comparison bullet.
+- Do not invent country numbers.
+
 
 Sentence 4:
-- Mention Miscellaneous Spend if present and greater than 0.
-- Mention Inventory Coverage if portfolio_coverage_context is present.
-- Keep it factual and do not recommend actions.
+- Mention Miscellaneous Spend only if numeric_context.miscellaneous_spend is present and greater than 0.
+- Start exactly with "Miscellaneous Spend:"
+- Use this wording structure:
+  "Miscellaneous Spend: Current miscellaneous spend is CURRENCY_AMOUNT."
+- If miscellaneous_spend is missing or 0, omit this sentence.
+
+Sentence 5:
+- Mention Inventory Coverage only if numeric_context.portfolio_coverage_context is present.
+- Start exactly with "Inventory Coverage:"
+- Use this wording structure:
+  "Inventory Coverage: Total coverage ratio is X months, required coverage is Y months, indicating low stock/excess stock/aligned stock."
+- For GLOBAL only, if portfolio_coverage_context.country_split is available, use the combined/global coverage values first, not individual country values.
+- Do not show 0 months if portfolio_coverage_context contains non-zero total_coverage_ratio_months or avg_coverage_ratio_months.
+- Prefer total_coverage_ratio_months if present; otherwise use avg_coverage_ratio_months.
+- Use required_coverage_months for required coverage.
+- If inventory_coverage_status = "low_stock", say "indicating low stock."
+- If inventory_coverage_status = "overstock", say "indicating excess stock."
+- If inventory_coverage_status = "correct_stock", say "indicating aligned stock."
+- If inventory_coverage_status = "insufficient_data", say "inventory coverage status is unavailable."
+- Do not recommend actions.
 
 For GLOBAL summaries:
-- Follow the same flow above, but include UK vs US comparison where country_split is available.
-- Clearly state whether UK or US was the larger driver of the overall movement.
+- Follow the same 5-point structure.
+- Do not create a separate country comparison bullet.
+- If numeric_context.country_split is available, add UK vs US contribution inside the relevant existing bullets only.
+- Add sales/contribution country comparison inside bullet 2 only.
+- Add profitability country comparison inside bullet 3 only.
+- In bullet 2, explain which country performed better and which country dragged the overall Units, Net Sales, and CM1 Profit movement.
+- In bullet 3, explain which country had the stronger or weaker Advertising Costs, Platform Fees, and CM2 Profit impact.
+- Clearly mention the larger driver of the overall Net Sales movement and CM2 Profit movement.
+- Use country-level numbers from numeric_context.country_split only.
+- Do not invent country numbers.
+- If country_split is missing, do not make country-level statements.
 
 Target interpretation:
 - Target Achievement = current_net_sales / target_sales.
@@ -3182,9 +3244,11 @@ Strict numeric rules:
   - overall ASP current, previous, % change
   - overall Net Sales current, previous, % change
   - overall CM1 Profit current, previous, % change
+  - overall Advertising Costs current, previous, % change
+  - overall Platform Fees current, previous, % change
   - overall CM2 Profit current, previous, % change if available
-  - overall ACOS/TACoS current, previous, % change or improvement %
-  - Target Sales, Current Net Sales, Target Achievement %, Target Remaining, and Target Trend %
+  - Target Achievement %, Target Remaining, and Target Trend %
+  - UK vs US contribution inside bullet 2 and bullet 3 when country_split is available
 - If country_split is available, explain which country drove the movement using numbers.
 - Do not say a metric is stable if the % change is materially large.
 - If ACOS/TACoS decreased materially, describe it as improved advertising efficiency.
@@ -3224,6 +3288,21 @@ Strict prohibitions:
 - Do not call CM1 Profit as CM2 Profit.
 - Do not skip Target Progress.
 
+Strict metric_bullets ordering:
+- metric_bullets must follow this exact order only:
+  1) Target Progress
+  2) Units, ASP, Net Sales, and CM1 Profit
+  3) Advertising Costs, Platform Fees, and CM2 Profit
+  4) Miscellaneous Spend, only if available and greater than 0
+  5) Inventory Coverage, only if available
+- Do not include ACOS/TACoS as a separate bullet.
+- Do not create any extra bullet apart from the structure above.
+- Do not combine Miscellaneous Spend and Inventory Coverage into one bullet.
+- Do not hardcode any example values.
+- Use dynamic values from numeric_context only.
+- For GLOBAL summaries, UK vs US contribution must be included inside bullet 2 and bullet 3 only, when numeric_context.country_split is available.
+- For GLOBAL summaries, do not add a 6th bullet for country comparison.
+
 Output rules:
 - Output MUST be valid JSON only.
 - Do not use markdown.
@@ -3231,17 +3310,18 @@ Output rules:
 
 Mandatory output format:
 {
-  "summary_text": "4-5 sentences. Sentence 1 must correlate Units, ASP, Net Sales, and CM1 Profit. Sentence 2 must correlate Ads, Platform Fees, and CM2 Profit. Sentence 3 must cover Target Progress, target achievement, remaining target, and target trend. Sentence 4 should cover Miscellaneous Spend and Inventory Coverage if available. Include actual values.",
+  "summary_text": "4-5 short sentences in this exact order: Target Progress, Units/ASP/Net Sales/CM1 Profit, Advertising Costs/Platform Fees/CM2 Profit, Miscellaneous Spend if available, Inventory Coverage if available. Use dynamic numeric values only.",
   "metric_bullets": [
-    "Include current Units, previous Units, and % change. Then connect ASP movement, Net Sales movement, and CM1 Profit movement in the same bullet, but do not start the bullet with a label or heading.",
-    "Include current Advertising Costs, previous Advertising Costs, Platform Fees, and CM2 Profit movement in the same bullet, but do not start the bullet with a label or heading.",
-    "Target Progress: This must be a separate bullet. Include target sales, current net sales, target achievement %, target remaining, expected sales till date, target trend %, and whether sales are ahead or behind expected run-rate.",
-    "ACOS/TACoS: include current, previous, % change or improvement %, and state whether advertising efficiency improved or worsened",
-    "Miscellaneous Spend: include current miscellaneous spend if available",
-    "Inventory Coverage: include total coverage ratio, required coverage months, and whether stock is low, excess, or aligned if available"
-]
+    "Target Progress: We have achieved X% of the target; we still need CURRENCY_AMOUNT to meet the target. Sales are currently X% ahead/behind/aligned with the expected run-rate, based on last month’s net sales, the saved monthly target, or combined UK and US country targets.",
+    "Units increased/decreased from PREVIOUS_UNITS to CURRENT_UNITS, a rise/decline of X%. ASP increased/decreased from PREVIOUS_ASP to CURRENT_ASP, a X% rise/decline. Net Sales rose/fell from PREVIOUS_NET_SALES to CURRENT_NET_SALES, a X% increase/decrease. CM1 Profit increased/decreased from PREVIOUS_CM1_PROFIT to CURRENT_CM1_PROFIT, a X% increase/decline. For GLOBAL only, append UK vs US contribution here and state which country performed better or dragged the sales result.",
+    "Advertising costs increased/decreased from PREVIOUS_ADS to CURRENT_ADS, a X% increase/reduction. Platform Fees increased/decreased from PREVIOUS_PLATFORM_FEES to CURRENT_PLATFORM_FEES, a X% rise/reduction. CM2 Profit improved/decreased from PREVIOUS_CM2_PROFIT to CURRENT_CM2_PROFIT, a X% increase/decline. For GLOBAL only, append UK vs US profitability contribution here and state which country had the stronger or weaker CM2 impact.",
+    "Miscellaneous Spend: Current miscellaneous spend is CURRENCY_AMOUNT.",
+    "Inventory Coverage: Total coverage ratio is X months, required coverage is Y months, indicating low stock/excess stock/aligned stock."
+  ]
 }
 """
+
+
 
 LIVE_BI_INVENTORY_SUMMARY_PROMPT = """
 You are an Amazon Inventory Risk Analyst.

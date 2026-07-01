@@ -1270,6 +1270,301 @@ def live_mtd_vs_previous():
                 "code": "USD",
             }
 
+            # ✅ GLOBAL: available countries must be created BEFORE coverage context
+            available_countries = (
+                current_global_payload.get("available_countries")
+                or previous_global_payload.get("available_countries")
+                or []
+            )
+
+            # Optional fallback: if payload does not send available_countries
+            if not available_countries:
+                available_countries = []
+                if curr_uk_items or prev_uk_items:
+                    available_countries.append("uk")
+                if curr_us_items or prev_us_items:
+                    available_countries.append("us")
+
+            # -------------------------------------------------
+            # GLOBAL: Target + Inventory Coverage Context
+            # -------------------------------------------------
+            def _safe_float_global(value, default=0.0):
+                try:
+                    if value is None:
+                        return default
+                    return float(value)
+                except Exception:
+                    return default
+
+
+            def _build_global_target_context():
+                """
+                Global target = UK target converted to USD + US target.
+                Current net sales should use Global dashboard net sales first.
+                """
+
+                def _get_first_number(source: dict, keys: list[str], default=0.0):
+                    source = source or {}
+
+                    for key in keys:
+                        value = source.get(key)
+
+                        if value in (None, "", "nan", "None", "null"):
+                            continue
+
+                        try:
+                            return float(value)
+                        except Exception:
+                            continue
+
+                    return default
+
+                uk_to_usd_rate = fetch_conversion_rate(
+                    country="us",
+                    year=curr_end.year,
+                    month_name=month_name[curr_end.month].lower(),
+                    user_currency="gbp",
+                    selected_currency="usd",
+                ) or 1.0
+
+                curr_global_totals_for_target = current_global_payload.get("derived_totals_global", {}) or {}
+                curr_uk_totals_for_target = current_global_payload.get("derived_totals_uk", {}) or {}
+                curr_us_totals_for_target = current_global_payload.get("derived_totals_us", {}) or {}
+
+                # ✅ Main source: Global dashboard net sales
+                global_current_net_sales = _get_first_number(
+                    curr_global_totals_for_target,
+                    [
+                        "net_sales",
+                        "total_current_net_sales",
+                        "current_net_sales",
+                        "sales",
+                        "sales_metric",
+                    ],
+                )
+
+                # Backup country-level current sales
+                uk_current_net_sales_usd = _get_first_number(
+                    curr_uk_totals_for_target,
+                    [
+                        "net_sales",
+                        "total_current_net_sales",
+                        "current_net_sales",
+                        "sales",
+                        "sales_metric",
+                    ],
+                )
+
+                us_current_net_sales = _get_first_number(
+                    curr_us_totals_for_target,
+                    [
+                        "net_sales",
+                        "total_current_net_sales",
+                        "current_net_sales",
+                        "sales",
+                        "sales_metric",
+                    ],
+                )
+
+                uk_target_raw = fetch_live_target_context(
+                    user_id=user_id,
+                    country="uk",
+                    curr_end=curr_end,
+                    current_net_sales=uk_current_net_sales_usd,
+                )
+
+                us_target_raw = fetch_live_target_context(
+                    user_id=user_id,
+                    country="us",
+                    curr_end=curr_end,
+                    current_net_sales=us_current_net_sales,
+                )
+
+                uk_target_sales_usd = _safe_float_global(uk_target_raw.get("target_sales")) * uk_to_usd_rate
+                uk_current_sales_usd = _safe_float_global(uk_target_raw.get("current_net_sales")) * uk_to_usd_rate
+                uk_expected_sales_usd = _safe_float_global(uk_target_raw.get("expected_sales_till_date")) * uk_to_usd_rate
+                uk_remaining_usd = _safe_float_global(uk_target_raw.get("target_remaining")) * uk_to_usd_rate
+
+                us_target_sales = _safe_float_global(us_target_raw.get("target_sales"))
+                us_current_sales = _safe_float_global(us_target_raw.get("current_net_sales"))
+                us_expected_sales = _safe_float_global(us_target_raw.get("expected_sales_till_date"))
+                us_remaining = _safe_float_global(us_target_raw.get("target_remaining"))
+
+                target_sales = uk_target_sales_usd + us_target_sales
+
+                # ✅ Important fix:
+                # Use Global dashboard net sales first, otherwise use country-level backup.
+                current_net_sales = global_current_net_sales or (uk_current_sales_usd + us_current_sales)
+
+                expected_sales_till_date = uk_expected_sales_usd + us_expected_sales
+
+                target_remaining = max(target_sales - current_net_sales, 0.0)
+
+                target_achievement_pct = (
+                    round((current_net_sales / target_sales) * 100, 2)
+                    if target_sales else 0.0
+                )
+
+                target_trend_pct = (
+                    round(((current_net_sales - expected_sales_till_date) / target_sales) * 100, 2)
+                    if target_sales else 0.0
+                )
+
+                print("[GLOBAL TARGET DEBUG]", {
+                    "global_current_net_sales": global_current_net_sales,
+                    "uk_current_net_sales_input": uk_current_net_sales_usd,
+                    "us_current_net_sales_input": us_current_net_sales,
+                    "uk_target_sales_usd": uk_target_sales_usd,
+                    "us_target_sales": us_target_sales,
+                    "target_sales": target_sales,
+                    "current_net_sales": current_net_sales,
+                    "target_achievement_pct": target_achievement_pct,
+                    "target_remaining": target_remaining,
+                    "target_trend_pct": target_trend_pct,
+                })
+
+                return {
+                    "target_sales": round(target_sales, 2),
+                    "current_net_sales": round(current_net_sales, 2),
+                    "expected_sales_till_date": round(expected_sales_till_date, 2),
+                    "target_achievement_pct": target_achievement_pct,
+                    "target_remaining": round(target_remaining, 2),
+                    "target_trend_pct": target_trend_pct,
+                    "target_trend": round(current_net_sales - expected_sales_till_date, 2),
+                    "current_day": curr_end.day,
+                    "total_days_in_month": monthrange(curr_end.year, curr_end.month)[1],
+                    "target_source": "global_combined_country_targets",
+                    "country_split": {
+                        "uk": {
+                            **uk_target_raw,
+                            "currency": "GBP",
+                            "converted_currency": "USD",
+                            "conversion_rate": uk_to_usd_rate,
+                            "target_sales_usd": round(uk_target_sales_usd, 2),
+                            "current_net_sales_usd": round(uk_current_sales_usd, 2),
+                            "expected_sales_till_date_usd": round(uk_expected_sales_usd, 2),
+                            "target_remaining_usd": round(uk_remaining_usd, 2),
+                        },
+                        "us": {
+                            **us_target_raw,
+                            "currency": "USD",
+                        },
+                    },
+                }
+
+
+            def _build_global_portfolio_coverage_context():
+                """
+                Global coverage = total available units / required coverage basis across UK + US.
+                Because coverage is country-specific, we keep UK/US split also.
+                """
+                def _country_coverage(country_key):
+                    inventory_map, inventory_totals = fetch_current_inventory_snapshot(
+                        user_id=user_id,
+                        country=country_key,
+                        year=ranges["meta"]["current_year"],
+                        month=ranges["meta"]["current_month"],
+                    )
+
+                    policy = fetch_inventory_policy_context(user_id, country_key)
+
+                    avg_coverage_ratio_months = _safe_float_global(
+                        inventory_totals.get("avg_coverage_ratio_months")
+                    )
+
+                    available_total = _safe_float_global(
+                        inventory_totals.get("available_total")
+                    )
+
+                    required_coverage_months = _safe_float_global(
+                        policy.get("required_coverage_months")
+                    )
+
+                    if not required_coverage_months:
+                        required_coverage_months = (
+                            _safe_float_global(policy.get("transit_time"))
+                            + _safe_float_global(policy.get("stock_unit"))
+                        )
+
+                    coverage_gap_months = round(avg_coverage_ratio_months - required_coverage_months, 2)
+
+                    coverage_tolerance_months = 0.25
+
+                    if avg_coverage_ratio_months <= 0 or required_coverage_months <= 0:
+                        inventory_coverage_status = "insufficient_data"
+                    elif avg_coverage_ratio_months < required_coverage_months - coverage_tolerance_months:
+                        inventory_coverage_status = "low_stock"
+                    elif avg_coverage_ratio_months > required_coverage_months + coverage_tolerance_months:
+                        inventory_coverage_status = "overstock"
+                    else:
+                        inventory_coverage_status = "correct_stock"
+
+                    return {
+                        "available_total": round(available_total, 2),
+                        "avg_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
+                        "total_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
+                        "transit_time": _safe_float_global(policy.get("transit_time")),
+                        "stock_unit": _safe_float_global(policy.get("stock_unit")),
+                        "required_coverage_months": round(required_coverage_months, 2),
+                        "coverage_gap_months": coverage_gap_months,
+                        "inventory_coverage_status": inventory_coverage_status,
+                        "source_table": inventory_totals.get("source_table"),
+                    }
+
+                uk_cov = _country_coverage("uk") if "uk" in available_countries else {}
+                us_cov = _country_coverage("us") if "us" in available_countries else {}
+
+                countries = [x for x in [uk_cov, us_cov] if x]
+
+                total_available = sum(_safe_float_global(x.get("available_total")) for x in countries)
+
+                # Weighted average by available inventory.
+                if total_available:
+                    total_coverage_ratio_months = sum(
+                        _safe_float_global(x.get("total_coverage_ratio_months"))
+                        * _safe_float_global(x.get("available_total"))
+                        for x in countries
+                    ) / total_available
+
+                    required_coverage_months = sum(
+                        _safe_float_global(x.get("required_coverage_months"))
+                        * _safe_float_global(x.get("available_total"))
+                        for x in countries
+                    ) / total_available
+                else:
+                    total_coverage_ratio_months = 0.0
+                    required_coverage_months = 0.0
+
+                coverage_gap_months = round(total_coverage_ratio_months - required_coverage_months, 2)
+
+                coverage_tolerance_months = 0.25
+
+                if total_coverage_ratio_months <= 0 or required_coverage_months <= 0:
+                    inventory_coverage_status = "insufficient_data"
+                elif total_coverage_ratio_months < required_coverage_months - coverage_tolerance_months:
+                    inventory_coverage_status = "low_stock"
+                elif total_coverage_ratio_months > required_coverage_months + coverage_tolerance_months:
+                    inventory_coverage_status = "overstock"
+                else:
+                    inventory_coverage_status = "correct_stock"
+
+                return {
+                    "available_total": round(total_available, 2),
+                    "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+                    "total_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+                    "required_coverage_months": round(required_coverage_months, 2),
+                    "coverage_gap_months": coverage_gap_months,
+                    "inventory_coverage_status": inventory_coverage_status,
+                    "country_split": {
+                        "uk": uk_cov,
+                        "us": us_cov,
+                    },
+                }
+
+
+            global_target_context = _build_global_target_context()
+            global_portfolio_coverage_context = _build_global_portfolio_coverage_context()
+
             
 
             # -------------------------------------------------
@@ -1278,11 +1573,6 @@ def live_mtd_vs_previous():
             # portfolio_inventory_block = {"uk": "...", "us": "..."}
             # portfolio_inventory_alerts = {"uk": {...}, "us": {...}}
             # -------------------------------------------------
-            available_countries = (
-                current_global_payload.get("available_countries")
-                or previous_global_payload.get("available_countries")
-                or []
-            )
 
             try:
                 portfolio_inventory_alerts_uk = {}
@@ -1338,29 +1628,40 @@ def live_mtd_vs_previous():
             )
 
             payload_ai = build_ai_summary(
-                prev_totals,
-                curr_totals,
-                global_summary_products,
-                prev_label,
-                curr_label,
-                sku_context=sku_context,
-                inventory_signals={},
-                portfolio_inventory_alerts={
-                    "uk": portfolio_inventory_alerts_uk,
-                    "us": portfolio_inventory_alerts_us,
-                },
-                prev_fee_totals=previous_global_payload.get("derived_totals_global", {}),
-                curr_fee_totals=current_global_payload.get("derived_totals_global", {}),
-                estimated_storage_cost_next_month=fetch_estimated_storage_cost_next_month(user_id, country),
-                currency=currency,
-                user_objective=user_objective,
-                movement_context=movement_context,
-                sku_to_product={},
-                user_id=user_id,
-                country="global",
-                current_year=ranges["meta"]["current_year"],
-                current_month=ranges["meta"]["current_month"],
-            )
+            prev_totals,
+            curr_totals,
+            global_summary_products,
+            prev_label,
+            curr_label,
+            sku_context=sku_context,
+            inventory_signals={},
+            portfolio_inventory_alerts={
+                "uk": portfolio_inventory_alerts_uk,
+                "us": portfolio_inventory_alerts_us,
+            },
+            prev_fee_totals=previous_global_payload.get("derived_totals_global", {}),
+            curr_fee_totals=current_global_payload.get("derived_totals_global", {}),
+
+            # For global, do not call fetch_estimated_storage_cost_next_month(user_id, "global")
+            # because inventory tables are country-specific.
+            estimated_storage_cost_next_month=(
+                fetch_estimated_storage_cost_next_month(user_id, "uk")
+                + fetch_estimated_storage_cost_next_month(user_id, "us")
+            ),
+
+            currency=currency,
+            user_objective=user_objective,
+            movement_context=movement_context,
+            sku_to_product={},
+            user_id=user_id,
+            country="global",
+            current_year=ranges["meta"]["current_year"],
+            current_month=ranges["meta"]["current_month"],
+
+            # ✅ Global AI context
+            portfolio_coverage_context=global_portfolio_coverage_context,
+            target_context=global_target_context,
+        )
 
            
             # -------------------------------------------------
@@ -1642,6 +1943,16 @@ def live_mtd_vs_previous():
                 "acos": acos_context,
             }
 
+            # ✅ Add global target + coverage into cache hash inputs
+            curr_totals["target_sales"] = global_target_context.get("target_sales", 0.0)
+            curr_totals["target_achievement_pct"] = global_target_context.get("target_achievement_pct", 0.0)
+            curr_totals["target_remaining"] = global_target_context.get("target_remaining", 0.0)
+            curr_totals["target_trend_pct"] = global_target_context.get("target_trend_pct", 0.0)
+
+            curr_totals["avg_coverage_ratio_months"] = global_portfolio_coverage_context.get("avg_coverage_ratio_months", 0.0)
+            curr_totals["required_coverage_months"] = global_portfolio_coverage_context.get("required_coverage_months", 0.0)
+            curr_totals["coverage_gap_months"] = global_portfolio_coverage_context.get("coverage_gap_months", 0.0)
+
             objective_hash = generate_live_ai_cache_hash(
                 user_objective=user_objective,
                 prev_totals=prev_totals,
@@ -1693,6 +2004,10 @@ def live_mtd_vs_previous():
                     "movement_context": payload_ai["movement_context"],
                     "currency": payload_ai["currency"],
 
+                    # ✅ Global target + inventory coverage
+                    "target_context": global_target_context,
+                    "portfolio_coverage_context": global_portfolio_coverage_context,
+
                     # Important: force country-level global comparison
                     "country_split": payload_ai.get("country_split", {}),
                     "global_top_products": top_80_skus[:5],
@@ -1716,6 +2031,8 @@ def live_mtd_vs_previous():
                     "metric_rules": {
                         "primary_source": "Use numeric_context.clean_global_metrics as the primary source for Units, Net Sales, CM1 Profit, CM1 Profit per Unit, ASP, and ACOS/TACoS.",
                         "profit_metric_source": "Use CM1 Profit only from clean_global_metrics.cm1_profit. Do not use CM2 Profit.",
+                        "target_source": "Use numeric_context.target_context for Global Target Progress. Do not use 0 values if target_context exists.",
+                        "coverage_source": "Use numeric_context.portfolio_coverage_context for Global Inventory Coverage. Do not use 0 months if portfolio_coverage_context exists.",
                         "acos_source": "Use numeric_context.acos as the source of truth for ACOS/TACoS.",
                         "acos_interpretation": "Lower ACOS/TACoS is better. If current is lower than previous, advertising efficiency improved.",
                     },
@@ -3245,27 +3562,10 @@ def live_mtd_vs_previous():
         ai_cache_record = None
         ai_last_refreshed_at = None
 
-        # try:
-
-        #     if not manual_ai_refresh:
-        #         cached_ai = get_cached_live_ai(
-        #             user_id=user_id,
-        #             country=country,
-        #             start_date=curr_start,
-        #             end_date=ai_refresh_slot,
-        #             objective_hash=objective_hash,
-        #         )
+        
 
         try:
-            # print("[LIVE BI DEBUG] BEFORE CACHE LOOKUP", {
-            #     "manual_ai_refresh": manual_ai_refresh,
-            #     "data_only_refresh": data_only_refresh,
-            #     "user_id": user_id,
-            #     "country": country,
-            #     "start_date": str(curr_start),
-            #     "end_date": str(ai_refresh_slot),
-            #     "objective_hash": objective_hash,
-            # })
+           
 
             if not manual_ai_refresh:
                 cached_ai = get_cached_live_ai(
@@ -3276,14 +3576,7 @@ def live_mtd_vs_previous():
                     objective_hash=objective_hash,
                 )
 
-                # print("[LIVE BI DEBUG] CACHE LOOKUP RESULT", {
-                #     "cached_ai_found": bool(cached_ai),
-                #     "cached_created_at": str(cached_ai.get("created_at")) if cached_ai else None,
-                #     "cached_summary_preview": (
-                #         (cached_ai.get("summary", {}).get("summary_text") or "")[:160]
-                #         if cached_ai else None
-                #     ),
-                # })
+              
 
                 if cached_ai:
                     ai_last_refreshed_at = format_ai_last_refreshed_at(
@@ -3320,11 +3613,7 @@ def live_mtd_vs_previous():
 
             else:
                 
-                # print("[LIVE BI DEBUG] GENERATING FRESH AI SUMMARY", {
-                #     "manual_ai_refresh": manual_ai_refresh,
-                #     "data_only_refresh": data_only_refresh,
-                #     "cached_ai_found": bool(cached_ai),
-                # })
+               
                 # ---------------------------
                 # PROMPT-1 (ANALYSIS)
                 # ---------------------------
@@ -3382,11 +3671,7 @@ def live_mtd_vs_previous():
                     user_objective=user_objective,
                 )
 
-#                 print("[LIVE BI DEBUG] FRESH SUMMARY GENERATED", {
-#     "summary_text_preview": (summary_out.get("summary_text") or "")[:200],
-#     "bullet_count": len(summary_out.get("metric_bullets") or []),
-#     "bullets_preview": (summary_out.get("metric_bullets") or [])[:2],
-# })
+
 
         except Exception as e:
 
@@ -3473,9 +3758,7 @@ def live_mtd_vs_previous():
                 },
             })
             
-        # print("\n========== SKU LIVE CONTEXT GOING TO STRATEGY AI ==========")
-        # print(json.dumps(sku_live_context, indent=2, default=str))
-        # print("========== END SKU LIVE CONTEXT ==========\n")    
+
 
         # -------------------------------------------------
         # EXCEL-BASED LIVE SKU RECOMMENDATIONS
@@ -3533,8 +3816,7 @@ def live_mtd_vs_previous():
                 coverage_override_by_sku=coverage_override_by_sku,
             )
 
-            # print("[DEBUG] coverage_override_by_sku:", coverage_override_by_sku)
-            # print("[DEBUG] sku_inventory_flags:", json.dumps(sku_inventory_flags, indent=2, default=str))    
+
         except Exception as e:
             print("[WARN] Failed to build SKU inventory flags:", e)
             sku_inventory_flags = {}
@@ -3743,44 +4025,7 @@ def live_mtd_vs_previous():
 
                 strategy_parsed = {}
 
-        # # ====================================================
-        # # SAVE AI CACHE
-        # # ====================================================
-        # if (manual_ai_refresh or not cached_ai) and not data_only_refresh:
-        #     try:
-        #         ai_cache_record = save_live_ai_cache(
-        #             user_id=user_id,
-        #             country=country,
-        #             start_date=curr_start,
-        #             end_date=ai_refresh_slot,
-        #             objective_hash=objective_hash,
-        #             analysis=analysis or {},
-        #             summary=summary_out or {"summary_text": "", "metric_bullets": []},
-        #             strategy=strategy_parsed or {},
-        #         )
 
-        #         ai_last_refreshed_at = format_ai_last_refreshed_at(
-        #             ai_cache_record.created_at,
-        #             country,
-        #         )
-
-        #     except Exception as e:
-        #         print("[WARN] Failed to save live AI cache:", e)
-        #         ai_last_refreshed_at = format_ai_last_refreshed_at(
-        #             datetime.utcnow(),
-        #             country,
-        #         )
-        # ====================================================
-        # SAVE AI CACHE
-        # ====================================================
-        # print("[LIVE BI DEBUG] SAVE CACHE CHECK", {
-        #     "will_save": bool((manual_ai_refresh or not cached_ai) and not data_only_refresh),
-        #     "manual_ai_refresh": manual_ai_refresh,
-        #     "cached_ai_found": bool(cached_ai),
-        #     "data_only_refresh": data_only_refresh,
-        #     "summary_text_preview_before_save": (summary_out.get("summary_text") or "")[:200],
-        #     "bullet_count_before_save": len(summary_out.get("metric_bullets") or []),
-        # })
 
         if (manual_ai_refresh or not cached_ai) and not data_only_refresh:
             try:
@@ -3800,18 +4045,7 @@ def live_mtd_vs_previous():
                     country,
                 )
 
-                # print("[LIVE BI DEBUG] AI CACHE SAVED SUCCESS", {
-                #     "record_id": getattr(ai_cache_record, "id", None),
-                #     "user_id": user_id,
-                #     "country": country,
-                #     "start_date": str(curr_start),
-                #     "end_date": str(ai_refresh_slot),
-                #     "created_at_utc": str(ai_cache_record.created_at),
-                #     "display_time": ai_last_refreshed_at,
-                #     "objective_hash": objective_hash,
-                #     "summary_saved_preview": (summary_out.get("summary_text") or "")[:200],
-                #     "bullet_count_saved": len(summary_out.get("metric_bullets") or []),
-                # })
+             
 
                 # Optional DB re-read confirmation
                 verify_record = LiveAISummary.query.filter_by(
@@ -3823,13 +4057,7 @@ def live_mtd_vs_previous():
 
                 verify_summary = safe_json_load(verify_record.summary) if verify_record else {}
 
-                # print("[LIVE BI DEBUG] AI CACHE VERIFY READ", {
-                #     "verify_found": bool(verify_record),
-                #     "verify_created_at": str(verify_record.created_at) if verify_record else None,
-                #     "verify_summary_preview": (verify_summary.get("summary_text") or "")[:200],
-                #     "verify_bullet_count": len(verify_summary.get("metric_bullets") or []),
-                # })
-
+      
             except Exception as e:
                 print("[WARN] Failed to save live AI cache:", e)
                 ai_last_refreshed_at = format_ai_last_refreshed_at(
