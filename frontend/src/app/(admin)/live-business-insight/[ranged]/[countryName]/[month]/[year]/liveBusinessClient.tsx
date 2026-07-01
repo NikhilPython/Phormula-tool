@@ -1714,36 +1714,36 @@ export default function LiveBusinessClient({
     }
   };
 
-const handleManualAiRefresh = async () => {
-  setManualAiRefreshing(true);
-  setError(null);
+  const handleManualAiRefresh = async () => {
+    setManualAiRefreshing(true);
+    setError(null);
 
-  try {
-    // ✅ Parent dashboard controls initialData when disableAutoFetch is true.
-    // So update parent payload first, then hydrate child from the fresh payload.
-    if (onManualAiRefresh) {
-      const freshPayload = await onManualAiRefresh();
+    try {
+      // ✅ Parent dashboard controls initialData when disableAutoFetch is true.
+      // So update parent payload first, then hydrate child from the fresh payload.
+      if (onManualAiRefresh) {
+        const freshPayload = await onManualAiRefresh();
 
-      if (freshPayload) {
-        hydrateFromPayload(freshPayload);
+        if (freshPayload) {
+          hydrateFromPayload(freshPayload);
+        }
+
+        return;
       }
 
-      return;
+      // Fallback for standalone usage
+      await fetchLiveBi(false, true);
+    } catch (err: any) {
+      console.error("manual ai refresh error:", err?.response?.data || err.message);
+      setError(
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Failed to refresh AI summary and recommendations."
+      );
+    } finally {
+      setManualAiRefreshing(false);
     }
-
-    // Fallback for standalone usage
-    await fetchLiveBi(false, true);
-  } catch (err: any) {
-    console.error("manual ai refresh error:", err?.response?.data || err.message);
-    setError(
-      err?.response?.data?.error ||
-      err?.response?.data?.message ||
-      "Failed to refresh AI summary and recommendations."
-    );
-  } finally {
-    setManualAiRefreshing(false);
-  }
-};
+  };
 
   // =========================
   // Insight helpers
@@ -3564,6 +3564,68 @@ const handleManualAiRefresh = async () => {
     return `(${sign}${value.toFixed(2)}%)`;
   };
 
+  const splitMetricValue = (value: string) => {
+    const v = String(value || "").trim();
+
+    const match = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+
+    if (!match) {
+      return {
+        main: v,
+        delta: "",
+        deltaColor: "",
+      };
+    }
+
+    const main = match[1].trim();
+    const delta = match[2].trim();
+    const sign = match[3];
+
+    return {
+      main,
+      delta,
+      deltaColor: sign === "+" ? "text-emerald-600" : "text-red-600",
+    };
+  };
+
+  const formatRecommendationCardMainValue = (
+    label: string,
+    main: string
+  ) => {
+    const normalizedLabel = String(label || "").trim().toLowerCase();
+
+    if (
+      normalizedLabel !== "net sales" &&
+      normalizedLabel !== "cm1 profit" &&
+      normalizedLabel !== "cm2 profit"
+    ) {
+      return main;
+    }
+
+    const currencyMatch = main.match(/^([^0-9-]*)/);
+    const currency = currencyMatch?.[1] ?? "";
+
+    const numberPart = main.replace(/[^0-9.-]/g, "");
+    const numberValue = Number(numberPart);
+
+    if (!Number.isFinite(numberValue)) return main;
+
+    return `${currency}${Math.round(numberValue).toLocaleString()}`;
+  };
+
+  const formatMetricDelta = (delta: string) => {
+    const cleanDelta = String(delta || "")
+      .replace(/[()]/g, "")
+      .trim();
+
+    if (!cleanDelta) return "";
+
+    const isNegative = cleanDelta.startsWith("-");
+    const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
+
+    return `${isNegative ? "▼" : "▲"} ${valueWithoutSign}`;
+  };
+
   const formatGlobalMetricValue = (
     value: number,
     growth: number,
@@ -4506,35 +4568,35 @@ const handleManualAiRefresh = async () => {
                                     {hideAdsFromRecommendationCard(card.metrics).map((m, i) => (
                                       <div
                                         key={i}
-                                        className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                        className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
                                       >
-                                        <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                        <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
                                           {m.label}
                                         </div>
 
-                                        <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
-                                          {(() => {
-                                            const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                                            const mainValue = match?.[1]?.trim() || m.value;
-                                            const percentPart = match?.[2] || "";
-                                            const isNegative = percentPart.includes("-");
-                                            const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+                                        {(() => {
+                                          const { main, delta, deltaColor } = splitMetricValue(m.value);
+                                          const displayMain = formatRecommendationCardMainValue(
+                                            m.label,
+                                            main
+                                          );
 
-                                            return (
-                                              <>
-                                                <span className="text-slate-900 whitespace-pre-line">
-                                                  {mainValue}
+                                          return (
+                                            <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
+                                              <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate whitespace-pre-line">
+                                                {displayMain}
+                                              </span>
+
+                                              {delta ? (
+                                                <span
+                                                  className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
+                                                >
+                                                  {formatMetricDelta(delta)}
                                                 </span>
-
-                                                {percentPart && (
-                                                  <span className="shrink-0" style={{ color: percentColor }}>
-                                                    {percentPart}
-                                                  </span>
-                                                )}
-                                              </>
-                                            );
-                                          })()}
-                                        </div>
+                                              ) : null}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
                                     ))}
                                   </div>
@@ -4637,47 +4699,47 @@ const handleManualAiRefresh = async () => {
                                   </button>
                                 </div>
 
-                                {parsed.metrics?.length > 0 && (
+                                {hideAdsFromRecommendationCard(parsed.metrics)?.length > 0 && (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {parsed.metrics.map((m, i) => (
+                                    {hideAdsFromRecommendationCard(parsed.metrics).map((m, i) => (
                                       <div
                                         key={i}
-                                        className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                        className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
                                       >
-                                        <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                        <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
                                           {m.label}
                                         </div>
 
-                                        <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
-                                          {(() => {
-                                            const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                                            const mainValue = match?.[1]?.trim() || m.value;
-                                            const percentPart = match?.[2] || "";
-                                            const isNegative = percentPart.includes("-");
-                                            const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+                                        {(() => {
+                                          const { main, delta, deltaColor } = splitMetricValue(m.value);
+                                          const displayMain = formatRecommendationCardMainValue(
+                                            m.label,
+                                            main
+                                          );
 
-                                            return (
-                                              <>
-                                                <span className="text-slate-900 whitespace-pre-line">
-                                                  {mainValue}
+                                          return (
+                                            <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
+                                              <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate">
+                                                {displayMain}
+                                              </span>
+
+                                              {delta ? (
+                                                <span
+                                                  className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
+                                                >
+                                                  {formatMetricDelta(delta)}
                                                 </span>
-
-                                                {percentPart && (
-                                                  <span className="shrink-0" style={{ color: percentColor }}>
-                                                    {percentPart}
-                                                  </span>
-                                                )}
-                                              </>
-                                            );
-                                          })()}
-                                        </div>
+                                              ) : null}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
                                     ))}
                                   </div>
                                 )}
 
                                 {(actionPoints.length > 0 || inventoryPoints.length > 0) && (
-                                  <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                  <div className="space-y-1  text-xs 2xl:text-sm text-charcoal-500 leading-relaxed">
                                     {actionPoints[0] && (
                                       <div className="flex gap-2">
                                         <span className="shrink-0 font-semibold">1.</span>
@@ -4762,37 +4824,35 @@ const handleManualAiRefresh = async () => {
                                   {hideAdsFromRecommendationCard(parsedOther.metrics).map((m, i) => (
                                     <div
                                       key={i}
-                                      className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                      className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
                                     >
-                                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
                                         {m.label}
                                       </div>
 
-                                      <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
-                                        {(() => {
-                                          const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                                          const mainValue = match?.[1]?.trim() || m.value;
-                                          const percentPart = match?.[2] || "";
-                                          const isNegative = percentPart.includes("-");
-                                          const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+                                      {(() => {
+                                        const { main, delta, deltaColor } = splitMetricValue(m.value);
+                                        const displayMain = formatRecommendationCardMainValue(
+                                          m.label,
+                                          main
+                                        );
 
-                                          return (
-                                            <>
-                                              <span className="text-slate-900 whitespace-pre-line">
-                                                {mainValue}
+                                        return (
+                                          <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
+                                            <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate">
+                                              {displayMain}
+                                            </span>
+
+                                            {delta ? (
+                                              <span
+                                                className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
+                                              >
+                                                {formatMetricDelta(delta)}
                                               </span>
-                                              {percentPart && (
-                                                <span
-                                                  className="shrink-0"
-                                                  style={{ color: percentColor }}
-                                                >
-                                                  {percentPart}
-                                                </span>
-                                              )}
-                                            </>
-                                          );
-                                        })()}
-                                      </div>
+                                            ) : null}
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   ))}
                                 </div>

@@ -996,7 +996,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
-                    <div className="flex items-center gap-1 flex-wrap">
+                    {/* <div className="flex items-center gap-1 flex-wrap">
                       <PageBreadcrumb
                         pageTitle="Performance Journey"
                         variant="page"
@@ -1006,7 +1006,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
                     <p className="mt-1 text-[11px] sm:text-xs lg:text-xs text-charcoal-500">
                       Drag horizontally to navigate months.
-                    </p>
+                    </p> */}
+
+                    <PageBreadcrumb
+                      pageTitle="Performance Journey"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                    />
                   </div>
                 </div>
 
@@ -1029,30 +1036,29 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               </div>
             </div>
 
-           <div
-  className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md bg-white ${
-    isDraggingChart ? "cursor-grabbing" : "cursor-grab"
-  }`}
-  onMouseDown={() => setIsDraggingChart(true)}
-  onMouseUp={() => setIsDraggingChart(false)}
-  onMouseLeave={() => setIsDraggingChart(false)}
-  onTouchStart={() => setIsDraggingChart(true)}
-  onTouchEnd={() => setIsDraggingChart(false)}
->
-  {chartJSData?.labels?.length ? (
-    <>
-      {!isDraggingChart && allLabels.length > 12 && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-          ← Drag to view more months →
-        </div>
-      )}
+            <div
+              className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md bg-white ${isDraggingChart ? "cursor-grabbing" : "cursor-grab"
+                }`}
+              onMouseDown={() => setIsDraggingChart(true)}
+              onMouseUp={() => setIsDraggingChart(false)}
+              onMouseLeave={() => setIsDraggingChart(false)}
+              onTouchStart={() => setIsDraggingChart(true)}
+              onTouchEnd={() => setIsDraggingChart(false)}
+            >
+              {chartJSData?.labels?.length ? (
+                <>
+                  {!isDraggingChart && allLabels.length > 12 && (
+                    <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+                      ← Drag to view more months →
+                    </div>
+                  )}
 
-      <Line data={chartJSData} options={chartOptions} />
-    </>
-  ) : (
-    <p>No chart data available</p>
-  )}
-</div>
+                  <Line data={chartJSData} options={chartOptions} />
+                </>
+              ) : (
+                <p>No chart data available</p>
+              )}
+            </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-[13px] font-semibold text-gray-700">
               {activeTab === "sales_cm1" && (

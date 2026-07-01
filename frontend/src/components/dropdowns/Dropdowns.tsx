@@ -480,6 +480,19 @@ const splitMetricValue = (value: string) => {
   return { main, delta, deltaColor };
 };
 
+const formatMetricDelta = (delta: string) => {
+  const cleanDelta = String(delta || "")
+    .replace(/[()]/g, "")
+    .trim();
+
+  if (!cleanDelta) return "";
+
+  const isNegative = cleanDelta.startsWith("-");
+  const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
+
+  return `${isNegative ? "▼" : "▲"} ${valueWithoutSign}`;
+};
+
 const formatRecommendationCardMainValue = (label: string, main: string) => {
   const normalizedLabel = label.trim().toLowerCase();
 
@@ -2131,7 +2144,7 @@ const ProductInsightsSection = ({
               ].join(" ")}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-800">
+                <div className="text-sm font-semibold text-charcoal-500">
                   {idx + 1}. {b.name}
                 </div>
 
@@ -2148,9 +2161,9 @@ const ProductInsightsSection = ({
                   {sortedCardMetrics.map((m, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                      className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
                     >
-                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
                         {m.label}
                       </div>
 
@@ -2159,14 +2172,16 @@ const ProductInsightsSection = ({
                         const displayMain = formatRecommendationCardMainValue(m.label, main);
 
                         return (
-                          <div className="mt-1 flex flex-col min-[1700px]:flex-row  2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0">
-                            <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
+                          <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
+                            <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate">
                               {displayMain}
                             </span>
 
                             {delta ? (
-                              <span className={`text-[10px] 2xl:text-xs font-semibold shrink-0 ${deltaColor}`}>
-                                {delta}
+                              <span
+                                className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
+                              >
+                                {formatMetricDelta(delta)}
                               </span>
                             ) : null}
                           </div>
@@ -2294,37 +2309,37 @@ const MonthlyObjectiveStrip = ({
       label: "Growth",
       value: growth,
       accent: "bg-sky-500",
-      valueClass: "text-slate-800",
+      valueClass: "text-charcoal-500",
     },
     {
       label: "Profit",
       value: profit,
       accent: "bg-amber-500",
-      valueClass: "text-slate-800",
+      valueClass: "text-charcoal-500",
     },
     {
       label: "Inventory Dilution",
       value: inventory,
       accent: "bg-violet-500",
-      valueClass: "text-slate-800",
+      valueClass: "text-charcoal-500",
     },
     {
       label: "Target Set",
       value: targetSet,
       accent: "bg-emerald-500",
-      valueClass: "text-slate-800",
+      valueClass: "text-charcoal-500",
     },
     {
       label: "Shortfall",
       value: shortfall,
       accent: "bg-rose-500",
-      valueClass: shortfallValue > 0 ? "text-rose-600" : "text-slate-800",
+      valueClass: shortfallValue > 0 ? "text-rose-600" : "text-charcoal-500",
     },
     {
       label: "Cash Flow",
       value: cashFlow,
       accent: "bg-cyan-500",
-      valueClass: "text-slate-800",
+      valueClass: "text-charcoal-500",
     },
   ];
 
@@ -2352,12 +2367,12 @@ const MonthlyObjectiveStrip = ({
             <div className={`absolute left-0 top-0 h-full w-1`} />
 
             <div className="pl-2">
-              <div className="text-[11px] 2xl:text-xs font-medium text-slate-500 leading-tight">
+              <div className="2xl:text-xs text-[10px] text-charcoal-500 leading-tight">
                 {item.label}
               </div>
 
               <div
-                className={`mt-2 text-sm font-semibold leading-snug capitalize break-words ${item.valueClass}`}
+                className={`mt-2 text-sm 2xl:text-base font-semibold leading-snug capitalize break-words ${item.valueClass}`}
               >
                 {item.value}
               </div>
@@ -2552,12 +2567,12 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                 <div className="space-y-3 h-full">
                   <h2 className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-charcoal-500 font-bold leading-snug">
                     {summaryTitleLine?.split("(")[0]?.trim()}
-                    <span className="text-[#5EA68E] font-bold ml-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                    <span className="text-green-500 font-bold ml-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                       {formatSummaryPeriod(summaryTitleLine)}
                     </span>
                   </h2>
 
-                  <ul className="list-disc pl-5 text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                  <ul className="list-disc pl-5 text-xs 2xl:text-sm text-charcoal-500 leading-relaxed space-y-2">
                     {summaryBulletPoints.map((line, i) => (
                       <li key={i}>{line}</li>
                     ))}
@@ -2565,7 +2580,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
                   {portfolioRecommendation ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-xs font-semibold text-slate-700 mb-1">
+                      <div className="2xl:text-sm text-xs font-semibold text-charcoal-500 mb-1">
                         Portfolio Recommendation
                       </div>
                       <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">

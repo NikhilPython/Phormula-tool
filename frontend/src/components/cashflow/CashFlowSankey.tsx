@@ -555,7 +555,7 @@ const CashFlowSankey: React.FC<Props> = ({
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 2xl:gap-3 mb-6">
         {cards.map((c) => {
           const p = getChangePercent(c.value, c.prev);
 
