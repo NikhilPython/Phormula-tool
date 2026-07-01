@@ -144,6 +144,51 @@ def remove_total_rows(items):
     return clean
 
 
+def build_zero_current_rows_from_previous(prev_data):
+    """
+    If current month has no sales yet, keep previous SKUs visible
+    and set all current-month values to 0.
+    """
+    rows = []
+
+    for r in prev_data or []:
+        sku = r.get("sku")
+        if not sku:
+            continue
+
+        sku_text = str(sku).strip()
+
+        if sku_text.lower() in ("", "none", "nan", "null", "total", "grand_total", "grand total"):
+            continue
+
+        rows.append({
+            "sku": sku_text,
+            "product_name": r.get("product_name") or sku_text,
+
+            "quantity": 0.0,
+            "total_quantity": 0.0,
+            "net_sales": 0.0,
+            "product_sales": 0.0,
+            "gross_sales": 0.0,
+            "profit": 0.0,
+            "asp": 0.0,
+            "unit_wise_profitability": 0.0,
+            "sales_mix": 0.0,
+
+            "cogs": 0.0,
+            "selling_fees": 0.0,
+            "fba_fees": 0.0,
+            "tax_and_credits": 0.0,
+            "platform_fee": 0.0,
+            "advertising": 0.0,
+            "ads_spend": 0.0,
+            "cm2_profit": 0.0,
+            "rembursement_fee": 0.0,
+            "reimbursement_fee": 0.0,
+        })
+
+    return rows
+
 def align_prev_curr_by_product_name(prev_data, curr_data):
     prev_df = pd.DataFrame(prev_data or [])
     curr_df = pd.DataFrame(curr_data or [])
@@ -2223,6 +2268,13 @@ def live_mtd_vs_previous():
             curr_end=curr_end,
         )
 
+        # -------------------------------------------------
+        # CASE: Current month has no sales yet
+        # Example: July table exists, but sales/orders are 0.
+        # We still want to show previous SKUs and pass current values as 0.
+        # -------------------------------------------------
+        current_has_no_sales = not curr_ai_data and not curr_data
+
         # ✅ Fallback: if monthly table missing, AI uses liveorders values
         if not curr_ai_data:
             curr_ai_data = curr_data
@@ -2232,6 +2284,29 @@ def live_mtd_vs_previous():
             curr_ai_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_ai_data)
 
             curr_ai_fee_totals = totals_from_daily_series(curr_daily)
+
+        # ✅ If current month has no sales, build current rows from previous SKUs with 0 values
+        if current_has_no_sales and prev_data_aligned:
+            curr_ai_data = build_zero_current_rows_from_previous(prev_data_aligned)
+
+            curr_ai_totals = {
+                "quantity": 0.0,
+                "net_sales": 0.0,
+                "profit": 0.0,
+                "total_asp": 0.0,
+                "unit_wise_profitability": 0.0,
+                "miscellaneous_spend": 0.0,
+                "cm2_profit": 0.0,
+            }
+
+            curr_ai_fee_totals = {
+                "platform_fee": 0.0,
+                "advertising": 0.0,
+                "rembursement_fee": 0.0,
+                "reimbursement_fee": 0.0,
+            }
+
+            curr_daily = []
 
         # # -------------------------------------------------
         # # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
@@ -2274,10 +2349,13 @@ def live_mtd_vs_previous():
             prev_data_aligned,
             curr_ai_data,
         )
+
         # ---------------------------
         # DATA STILL WARMING UP
+        # Only return loading when BOTH previous and current are missing.
+        # If previous exists and current has no sales, current rows are already 0.
         # ---------------------------
-        if not curr_ai_data:
+        if not prev_data_aligned and not curr_ai_data:
             return jsonify({
                 "status": "loading",
                 "message": "Data is still syncing. Please wait a few seconds."
@@ -3867,11 +3945,24 @@ def live_mtd_vs_previous():
         # ---------------------------
         prev_aligned_totals = totals_from_daily_series(prev_daily_aligned)
         curr_aligned_totals = totals_from_daily_series(curr_daily)
+
+        # ✅ If current month has no sales, force current aligned totals to 0
+        if current_has_no_sales:
+            curr_aligned_totals = {
+                "quantity": 0.0,
+                "net_sales": 0.0,
+                "product_sales": 0.0,
+                "gross_sales": 0.0,
+                "profit": 0.0,
+                "platform_fee": 0.0,
+                "advertising": 0.0,
+                "rembursement_fee": 0.0,
+            }
+
         # ✅ NEW: reimbursement (net) from settlement df
         # curr_daily and prev_daily_aligned are the dataframes you already have
         total_current_rembursement_fee = float(sum((r.get("rembursement_fee", 0) or 0) for r in (curr_daily or [])))
         total_previous_rembursement_fee = float(sum((r.get("rembursement_fee", 0) or 0) for r in (prev_daily_aligned or [])))
-
         # safely cast everything to float to avoid None / Decimal issues
         total_current_profit = float(curr_aligned_totals.get("profit", 0) or 0)
         total_previous_profit = float(prev_aligned_totals.get("profit", 0) or 0)
