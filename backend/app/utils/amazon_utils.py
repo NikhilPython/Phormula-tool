@@ -2675,7 +2675,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "cm2_profit": 0.0,
                 "previous_net_reimbursement": 0.0,
                 "cogs": 0.0,
-                "amazon_fee": 0.0,
+                "amazon_fees": 0.0,
                 "tax_and_credits": 0.0,
             }, []
 
@@ -2725,7 +2725,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # -------------------------
     selling_fees_total = float(safe_num(df.get("selling_fees", 0.0)).sum())
     fba_fees_total = float(safe_num(df.get("fba_fees", 0.0)).sum())
-    amazon_fee_total = float(selling_fees_total - fba_fees_total)  # keeps negatives
+    amazon_fee_total = abs(selling_fees_total) + abs(fba_fees_total)  # keeps negatives
 
     # -------------------------
     # ✅ NEW: Tax and credits (your exact definition)
