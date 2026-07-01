@@ -465,19 +465,36 @@ const getPrevYearLabel = (selectedYear: number) => {
 };
 
 const splitMetricValue = (value: string) => {
-  const v = (value || "").trim();
-  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+  const v = String(value || "").trim();
 
-  if (!m) {
-    return { main: v, delta: "", deltaColor: "" };
+  // Supports:
+  // $862 (+0.00%)
+  // $439 (-97.07%)
+  // $0.00 (0.00%)
+  const match = v.match(/^(.+?)\s*(\(([+-]?)[^)]+\))\s*$/);
+
+  if (!match) {
+    return {
+      main: v,
+      delta: "",
+      deltaColor: "",
+    };
   }
 
-  const main = m[1].trim();
-  const delta = m[2].trim();
-  const sign = m[3];
+  const main = match[1].trim();
+  const delta = match[2].trim();
+  const sign = match[3];
 
-  const deltaColor = sign === "+" ? "text-emerald-600" : "text-red-600";
-  return { main, delta, deltaColor };
+  return {
+    main,
+    delta,
+    deltaColor:
+      sign === "+"
+        ? "text-emerald-600"
+        : sign === "-"
+          ? "text-red-600"
+          : "text-charcoal-500",
+  };
 };
 
 const formatMetricDelta = (delta: string) => {
@@ -487,17 +504,24 @@ const formatMetricDelta = (delta: string) => {
 
   if (!cleanDelta) return "";
 
+  const isPositive = cleanDelta.startsWith("+");
   const isNegative = cleanDelta.startsWith("-");
   const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
 
-  return `${isNegative ? "▼" : "▲"} ${valueWithoutSign}`;
+  if (isPositive) return `▲ ${valueWithoutSign}`;
+  if (isNegative) return `▼ ${valueWithoutSign}`;
+
+  return valueWithoutSign;
 };
 
 const formatRecommendationCardMainValue = (label: string, main: string) => {
-  const normalizedLabel = label.trim().toLowerCase();
+  const normalizedLabel = String(label || "").trim().toLowerCase();
 
-  // Only round these 2 metrics
-  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+  if (
+    normalizedLabel !== "net sales" &&
+    normalizedLabel !== "cm1 profit" &&
+    normalizedLabel !== "cm2 profit"
+  ) {
     return main;
   }
 
@@ -510,6 +534,13 @@ const formatRecommendationCardMainValue = (label: string, main: string) => {
   if (!Number.isFinite(numberValue)) return main;
 
   return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
+
+const formatMetricTitle = (label: string) => {
+  return String(label || "")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cm1", "CM1")
+    .replace("Cm2", "CM2");
 };
 
 const monthNameToNumber = (m: string): string => {
@@ -1120,17 +1151,23 @@ type RightProductDrawerProps = {
 };
 
 const metricColors = [
-  "border border-[#FDD36F] border-t-[#FDD36F]",
-  "border border-[#75BBDA] border-t-[#75BBDA]",
-  "border border-[#B75A5A] border-t-[#B75A5A]",
-  "border border-[#7B9A6D] border-t-[#7B9A6D]",
-  "border border-[#C49466] border-t-[#C49466]",
+  "border border-[#FDD36F] border-t-4", // Units
+  "border border-[#75BBDA] border-t-4", // Net Sales
+  "border border-[#B75A5A] border-t-4", // ASP
+  "border border-[#C49466] border-t-4", // Ads
+  "border border-[#7B9A6D] border-t-4", // CM2 Profit
+  "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
+  "border border-[#7B9A6D] border-t-4", // CM1 Profit
+  "border border-[#C49466] border-t-4", // CM1 Profit Per Unit
 ];
 
 const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "ads",
+  "cm2 profit",
+  "cm2 profit per unit",
   "cm1 profit",
   "cm1 profit per unit",
 ];
@@ -1148,7 +1185,6 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   quarter,
   drawerPeriodText,
   currencySymbol,
-  // ✅ NEW
   perfLoading = false,
   perfError = null,
   perfData = null,
@@ -1269,13 +1305,13 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     </div>
 
                     {/* Green section */}
-                    <div className="flex flex-wrap items-center gap-1 sm:ml-1">
-                      <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                    <div className="flex flex-wrap items-center gap-1 ">
+                      <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
                         {block.name || "Details"}
                       </span>
 
                       {drawerPeriodText ? (
-                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
                           {drawerPeriodText}
                         </span>
                       ) : periodBadge ? (
@@ -1297,69 +1333,76 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
               </div>
 
-              <div className="flex-1 space-y-6 overflow-y-auto px-3">
+              <div className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
                 <div>
-                  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">
-                    Metrics
-                  </div>
+                  <PageBreadcrumb
+                    pageTitle="Metrics"
+                    variant="page"
+                    align="left"
+                    textSize="xl"
+                    className="mb-2"
+                  />
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-                    {sortedMetrics.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
-                      >
-                        <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-                          {m.label
-                            .replace(/\b\w/g, (char) => char.toUpperCase())
-                            .replace("Cm1", "CM1")}
+                    {sortedMetrics.map((m, i) => {
+                      const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+                      const displayMain = formatRecommendationCardMainValue(
+                        m.label,
+                        main
+                      );
+
+                      const isAdsMetric = m.label.trim().toLowerCase() === "ads";
+
+                      return (
+                        <div
+                          key={`${m.label}-${i}`}
+                          className={[
+                            "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                            "flex flex-col justify-between min-h-[72px]",
+                            getMetricBorderColorByLabel(m.label, i),
+                          ].join(" ")}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                              {formatMetricTitle(m.label)}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
+                            <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500 truncate">
+                              {displayMain}
+                            </span>
+
+                            {delta ? (
+                              <span
+                                className={[
+                                  "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
+                                  isAdsMetric ? "text-charcoal-500" : deltaColor,
+                                ].join(" ")}
+                              >
+                                {formatMetricDelta(delta)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-
-                        <div className="flex flex-col leading-tight">
-                          {(() => {
-                            const { main, delta, deltaColor } = splitMetricValue(m.value);
-                            const displayMain = formatRecommendationCardMainValue(m.label, main);
-
-                            return (
-                              <>
-                                {/* 2nd line: value */}
-                                <span
-                                  className="text-sm font-bold 2xl:text-lg"
-                                  style={{ color: "#414042" }}
-                                >
-                                  {displayMain}
-                                </span>
-
-                                {delta && (
-                                  <span
-                                    className="text-[10px] 2xl:text-xs font-semibold"
-                                    style={{
-                                      color:
-                                        deltaColor === "text-emerald-600"
-                                          ? "#5EA68E"
-                                          : "#FF5C5C",
-                                    }}
-                                  >
-                                    {delta}
-                                  </span>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {!isOtherSkusBlock && (
                   <div>
-                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-                      Overall Best Performance
-                    </div>
-                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                    <PageBreadcrumb
+                      pageTitle="Overall Best Performance"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                    />
+
+                    <p className="mb-2 text-xs 2xl:text-sm text-charcoal-500 mt-1">
                       Best performance is calculated from overall historical data, not just the selected period.
-                    </div>
+                    </p>
 
                     {bestPerformanceLoading ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
@@ -1424,23 +1467,31 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                               bestPerformanceData?.unit_wise_profitability?.year
                             ),
                           },
-                        ].map((m, i) => (
+                        ].map((card, index) => (
                           <div
-                            key={m.label}
-                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
+                            key={card.label}
+                            className={[
+                              "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                              "flex flex-col justify-between min-h-[78px]",
+                              getMetricBorderColorByLabel(card.label, index),
+                            ].join(" ")}
                           >
-                            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-                              {m.label}
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                                {formatMetricTitle(card.label)}
+                              </span>
                             </div>
 
-                            <div className="flex flex-col leading-tight">
-                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                                {m.period}
-                              </span>
+                            <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
+                              <div className="min-w-0">
+                                <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 whitespace-nowrap">
+                                  {card.period}
+                                </div>
 
-                              <span className=" text-sm font-bold 2xl:text-lg text-[#414042]">
-                                {m.value}
-                              </span>
+                                <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 whitespace-nowrap">
+                                  {card.value}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1552,7 +1603,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   />
                 </div>
 
-                <div className="pb-4">
+                <div className="">
                   <div className="flex items-center gap-1 flex-wrap">
                     <PageBreadcrumb
                       pageTitle="Product Journey"
