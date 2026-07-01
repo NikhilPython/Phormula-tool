@@ -145,6 +145,10 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         "available",
         "fc-transfer",
         "unfulfillable-quantity",
+        "inbound-quantity",
+        "inbound-working",
+        "inbound-shipped",
+        "inbound-received",
         "inv-age-0-to-90-days",
         "inv-age-91-to-180-days",
         "inv-age-181-to-270-days",
@@ -175,6 +179,10 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
 
     if "marketplace_id" in cols:
         where_clauses.append("marketplace_id = :mkt_id")
+        params["mkt_id"] = marketplace_id
+
+    if "marketplace" in cols:
+        where_clauses.append("marketplace = :mkt_id")
         params["mkt_id"] = marketplace_id
 
     if "country" in cols:
@@ -602,7 +610,28 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             final_df["seller_sku"] = pd.NA
 
         final_df[current_month_col] = safe_numeric(final_df[current_month_col], 0)
-        final_df["inbound_quantity"] = safe_numeric(final_df.get("inbound_quantity"), 0)
+
+        # ✅ inbound should come from inventory_aged first
+        aged_inbound_quantity = safe_numeric(final_df.get("inbound-quantity"), 0)
+        aged_inbound_working = safe_numeric(final_df.get("inbound-working"), 0)
+        aged_inbound_shipped = safe_numeric(final_df.get("inbound-shipped"), 0)
+        aged_inbound_received = safe_numeric(final_df.get("inbound-received"), 0)
+
+        # inventory summary fallback
+        summary_inbound_quantity = safe_numeric(final_df.get("inbound_quantity"), 0)
+
+        # Amazon aged report sometimes gives inbound-quantity directly.
+        # If inbound-quantity is 0, calculate it from working + shipped + received.
+        calculated_aged_inbound = aged_inbound_quantity.where(
+            aged_inbound_quantity > 0,
+            aged_inbound_working + aged_inbound_shipped + aged_inbound_received
+        )
+
+        # Final inbound: aged first, then inventory summary fallback
+        final_df["inbound_quantity"] = calculated_aged_inbound.where(
+            calculated_aged_inbound > 0,
+            summary_inbound_quantity
+        )
 
         aged_available = safe_numeric(final_df.get("available"), 0)
         fc_transfer = safe_numeric(final_df.get("fc-transfer"), 0)
@@ -720,6 +749,9 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             "SKU",
             "Product Name",
             "inbound_quantity",
+            "inbound-working",
+            "inbound-shipped",
+            "inbound-received",
             "available",
             "unfulfillable-quantity",
             "inv-age-0-to-90-days",

@@ -5245,23 +5245,6 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
             await fetchAmazon();
 
-            if (showLiveBI) {
-                setStep(1, "MTD Fetching", 78, "Fetching Live BI data.");
-
-                await fetchLiveBiPayload({
-                    startDay: selectedStartDay,
-                    endDay: selectedEndDay,
-                    generateInsights: false,
-                    skipLoader: true,
-
-                    // ✅ Browser/page reload must fetch backend cached AI summary.
-                    // Do not preserve stale parent AI summary here.
-                    dataOnlyRefresh: false,
-                });
-            } else {
-                setStep(1, "MTD Fetching", 78, "Live BI not enabled, skipping.");
-            }
-
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
                 setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
                 await fetchShopify();
@@ -5283,6 +5266,24 @@ export default function DashboardPage() {
 
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
+
+            // ✅ Now /live_mtd_bi runs AFTER all inventory APIs
+            if (showLiveBI) {
+                setStep(3, "Plotting Graph", 20, "Fetching Live BI data.");
+
+                await fetchLiveBiPayload({
+                    startDay: selectedStartDay,
+                    endDay: selectedEndDay,
+                    generateInsights: false,
+                    skipLoader: true,
+
+                    // ✅ Browser/page reload must fetch backend cached AI summary.
+                    // Do not preserve stale parent AI summary here.
+                    dataOnlyRefresh: false,
+                });
+            } else {
+                setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
+            }
 
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();

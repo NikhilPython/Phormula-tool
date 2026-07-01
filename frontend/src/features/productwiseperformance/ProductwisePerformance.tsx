@@ -32,6 +32,7 @@ import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { PlatformId, platformToCountryName } from "@/lib/utils/platforms";
 import ProductJourneyInlineGraph from "@/components/businessInsight/ProductJourneyInlineGraph";
 import ProductSearchDropdown from "@/components/products/ProductSearchDropdown";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 ChartJS.register(
   CategoryScale,
@@ -269,18 +270,18 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     Record<string, SkuInsightExtended>
   >({});
   const [performanceSummary, setPerformanceSummary] = useState<string>("");
-const [summaryLoading, setSummaryLoading] = useState(false);
-const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [activePlatform, setActivePlatform] =
     useState<PlatformId>("global");
-    
+
   const [data, setData] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [selectedCountries, setSelectedCountries] = useState<
     Record<CountryKey, boolean>
   >({} as Record<CountryKey, boolean>);
- const [openSummarySection, setOpenSummarySection] = useState<string | null>("overview");
+  const [openSummarySection, setOpenSummarySection] = useState<string | null>("overview");
   const rawSlug = params?.productname as string | undefined;
   const urlProductName = normalizeProductSlug(rawSlug);
 
@@ -422,71 +423,71 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     }
   }, [embedded, internalSelectedMonth]);
 
- useEffect(() => {
-  if (!isDrawerOpen || !selectedSku) return;
+  useEffect(() => {
+    if (!isDrawerOpen || !selectedSku) return;
 
-  const currentInsight = skuInsights[selectedSku];
+    const currentInsight = skuInsights[selectedSku];
 
-  // ✅ already loaded, don't call again
-  if (currentInsight?.best_performance) return;
+    // ✅ already loaded, don't call again
+    if (currentInsight?.best_performance) return;
 
-  const productName =
-    currentInsight?.product_name ||
-    productname ||
-    selectedSku;
+    const productName =
+      currentInsight?.product_name ||
+      productname ||
+      selectedSku;
 
-  if (!productName) return;
+    if (!productName) return;
 
-  const ac = new AbortController();
+    const ac = new AbortController();
 
-  const loadBestPerformance = async () => {
-    try {
-      const countryForApi = (
-        platformCountryName ||
-        countryName ||
-        "global"
-      ).toLowerCase();
+    const loadBestPerformance = async () => {
+      try {
+        const countryForApi = (
+          platformCountryName ||
+          countryName ||
+          "global"
+        ).toLowerCase();
 
-      const bestPerformance = await fetchProductBestPerformance({
-        productName,
-        country: countryForApi,
-        homeCurrency: viewCurrency,
-        signal: ac.signal,
-      });
+        const bestPerformance = await fetchProductBestPerformance({
+          productName,
+          country: countryForApi,
+          homeCurrency: viewCurrency,
+          signal: ac.signal,
+        });
 
-      setSkuInsights((prev) => {
-        const current = prev[selectedSku];
+        setSkuInsights((prev) => {
+          const current = prev[selectedSku];
 
-        if (!current) return prev;
+          if (!current) return prev;
 
-        // ✅ protect again inside setter
-        if (current.best_performance) return prev;
+          // ✅ protect again inside setter
+          if (current.best_performance) return prev;
 
-        return {
-          ...prev,
-          [selectedSku]: {
-            ...current,
-            best_performance: bestPerformance,
-          },
-        };
-      });
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      console.error("ProductBestPerformance Error:", e);
-    }
-  };
+          return {
+            ...prev,
+            [selectedSku]: {
+              ...current,
+              best_performance: bestPerformance,
+            },
+          };
+        });
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        console.error("ProductBestPerformance Error:", e);
+      }
+    };
 
-  loadBestPerformance();
+    loadBestPerformance();
 
-  return () => ac.abort();
-}, [
-  isDrawerOpen,
-  selectedSku,
-  productname,
-  platformCountryName,
-  countryName,
-  viewCurrency,
-]);
+    return () => ac.abort();
+  }, [
+    isDrawerOpen,
+    selectedSku,
+    productname,
+    platformCountryName,
+    countryName,
+    viewCurrency,
+  ]);
 
   useEffect(() => {
     setSelectedCountries((prev) => {
@@ -627,7 +628,7 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
     );
   };
 
-  
+
 
   const getSharedRecObj = (
     block: ProductInsightBlockForDrawer,
@@ -652,203 +653,203 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
   };
 
   const handleInlineProductSelect = async (nextProductName: string) => {
-  const cleanProductName = String(nextProductName || "").trim();
-  if (!cleanProductName) return;
+    const cleanProductName = String(nextProductName || "").trim();
+    if (!cleanProductName) return;
 
-  setSelectedProductName(cleanProductName);
-  setInsightsError(null);
-  setIsDrawerOpen(true);
+    setSelectedProductName(cleanProductName);
+    setInsightsError(null);
+    setIsDrawerOpen(true);
 
-  const sharedBlock = findSharedInsightBlock(cleanProductName, sharedInsightData);
+    const sharedBlock = findSharedInsightBlock(cleanProductName, sharedInsightData);
 
-  if (sharedBlock) {
-    const key =
-      sharedBlock.skuKey ||
-      sharedBlock.name ||
-      cleanProductName;
+    if (sharedBlock) {
+      const key =
+        sharedBlock.skuKey ||
+        sharedBlock.name ||
+        cleanProductName;
 
-    const recObj = getSharedRecObj(sharedBlock, sharedInsightData);
+      const recObj = getSharedRecObj(sharedBlock, sharedInsightData);
 
-    setSelectedSku(key);
+      setSelectedSku(key);
 
-    setSkuInsights((prev) => ({
-      ...prev,
-      [key]: blockToSkuInsight(
-        sharedBlock,
-        recObj,
-        sharedInsightData?.objective,
-        prev[key]?.best_performance
-      ),
-    }));
+      setSkuInsights((prev) => ({
+        ...prev,
+        [key]: blockToSkuInsight(
+          sharedBlock,
+          recObj,
+          sharedInsightData?.objective,
+          prev[key]?.best_performance
+        ),
+      }));
 
-    setInsightsLoading(false);
-    return;
-  }
-
-  setInsightsLoading(true);
-
-  try {
-    const countryForApi = (
-      platformCountryName ||
-      countryName ||
-      countryNameProp ||
-      "global"
-    ).toLowerCase();
-
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken ?? ""}`,
-        },
-        body: JSON.stringify({
-          country: countryForApi,
-          product_name: cleanProductName,
-        }),
-      }
-    );
-
-    const json = await res.json().catch(() => null);
-
-    if (!res.ok || !json?.success) {
-      throw new Error(json?.error || `HTTP ${res.status}`);
+      setInsightsLoading(false);
+      return;
     }
 
-    const key = cleanProductName;
-    const returnedName = json.product_name || cleanProductName;
+    setInsightsLoading(true);
+
+    try {
+      const countryForApi = (
+        platformCountryName ||
+        countryName ||
+        countryNameProp ||
+        "global"
+      ).toLowerCase();
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken ?? ""}`,
+          },
+          body: JSON.stringify({
+            country: countryForApi,
+            product_name: cleanProductName,
+          }),
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+
+      const key = cleanProductName;
+      const returnedName = json.product_name || cleanProductName;
+
+      setSelectedSku(key);
+
+      setSkuInsights((prev) => ({
+        ...prev,
+        [key]: {
+          product_name: returnedName,
+          sku: "",
+          insight: json.ai_insights || "",
+          inventory_recommendation: json.inventory_recommendation || "",
+          objective: json.objective ?? null,
+          recommendation: json.recommendation || "",
+          best_performance: prev[key]?.best_performance,
+          product_journey: Array.isArray(json.product_journey)
+            ? json.product_journey
+            : [],
+          metrics: [],
+        },
+      }));
+    } catch (e: any) {
+      console.error("Inline product search insight error:", e);
+      setInsightsError(e?.message || "Failed to load selected product insight");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!embedded) return;
+    if (!sharedInsightData?.blocks?.length) return;
+
+    const selectedBlock =
+      sharedInsightData.blocks.find(
+        (b) =>
+          normalizeTextKey(b.name) === normalizeTextKey(initialProductName || "")
+      ) ||
+      sharedInsightData.blocks.find((b) => !b.isOtherSkus) ||
+      sharedInsightData.blocks[0];
+
+    if (!selectedBlock) return;
+
+    const key =
+      selectedBlock.skuKey ||
+      selectedBlock.name ||
+      initialProductName ||
+      "selected-product";
+
+    // ✅ same product hai to state dobara set nahi hogi
+    if (selectedSku && skuInsights[selectedSku]) return;
+
+    const recObj = getSharedRecObj(selectedBlock, sharedInsightData);
 
     setSelectedSku(key);
 
-    setSkuInsights((prev) => ({
-      ...prev,
-      [key]: {
-        product_name: returnedName,
-        sku: "",
-        insight: json.ai_insights || "",
-        inventory_recommendation: json.inventory_recommendation || "",
-        objective: json.objective ?? null,
-        recommendation: json.recommendation || "",
-        best_performance: prev[key]?.best_performance,
-        product_journey: Array.isArray(json.product_journey)
-          ? json.product_journey
-          : [],
-        metrics: [],
-      },
-    }));
-  } catch (e: any) {
-    console.error("Inline product search insight error:", e);
-    setInsightsError(e?.message || "Failed to load selected product insight");
-  } finally {
+    setSelectedProductName((prev) =>
+      prev === selectedBlock.name ? prev : selectedBlock.name
+    );
+
+    setSkuInsights((prev) => {
+      if (prev[key]) return prev;
+
+      return {
+        ...prev,
+        [key]: blockToSkuInsight(
+          selectedBlock,
+          recObj,
+          sharedInsightData.objective,
+          undefined
+        ),
+      };
+    });
+
+    setInsightsError(null);
     setInsightsLoading(false);
-  }
-};
+    setIsDrawerOpen(true);
+  }, [
+    embedded,
+    sharedInsightData?.blocks?.length,
+    initialProductName,
+    selectedSku,
+  ]);
 
- useEffect(() => {
-  if (!embedded) return;
-  if (!sharedInsightData?.blocks?.length) return;
-
-  const selectedBlock =
-    sharedInsightData.blocks.find(
-      (b) =>
-        normalizeTextKey(b.name) === normalizeTextKey(initialProductName || "")
-    ) ||
-    sharedInsightData.blocks.find((b) => !b.isOtherSkus) ||
-    sharedInsightData.blocks[0];
-
-  if (!selectedBlock) return;
-
-  const key =
-    selectedBlock.skuKey ||
-    selectedBlock.name ||
-    initialProductName ||
-    "selected-product";
-
-  // ✅ same product hai to state dobara set nahi hogi
-  if (selectedSku && skuInsights[selectedSku]) return;
-
-  const recObj = getSharedRecObj(selectedBlock, sharedInsightData);
-
-  setSelectedSku(key);
-
-  setSelectedProductName((prev) =>
-    prev === selectedBlock.name ? prev : selectedBlock.name
-  );
-
-  setSkuInsights((prev) => {
-    if (prev[key]) return prev;
+  const mapApiBestPerformanceToDrawerShape = (
+    apiBestPerformance: any
+  ): BestPerformance | undefined => {
+    if (!apiBestPerformance) return undefined;
 
     return {
-      ...prev,
-      [key]: blockToSkuInsight(
-        selectedBlock,
-        recObj,
-        sharedInsightData.objective,
-        undefined
-      ),
-    };
-  });
-
-  setInsightsError(null);
-  setInsightsLoading(false);
-  setIsDrawerOpen(true);
-}, [
-  embedded,
-  sharedInsightData?.blocks?.length,
-  initialProductName,
-  selectedSku,
-]);
-
- const mapApiBestPerformanceToDrawerShape = (
-  apiBestPerformance: any
-): BestPerformance | undefined => {
-  if (!apiBestPerformance) return undefined;
-
-  return {
-    units: apiBestPerformance?.units
-      ? {
+      units: apiBestPerformance?.units
+        ? {
           month: String(apiBestPerformance.units.month || ""),
           year: apiBestPerformance.units.year,
           value: Number(apiBestPerformance.units.units ?? 0),
         }
-      : undefined,
+        : undefined,
 
-    sales: apiBestPerformance?.net_sales
-      ? {
+      sales: apiBestPerformance?.net_sales
+        ? {
           month: String(apiBestPerformance.net_sales.month || ""),
           year: apiBestPerformance.net_sales.year,
           value: Number(apiBestPerformance.net_sales.net_sales ?? 0),
         }
-      : undefined,
+        : undefined,
 
-    asp: apiBestPerformance?.asp
-      ? {
+      asp: apiBestPerformance?.asp
+        ? {
           month: String(apiBestPerformance.asp.month || ""),
           year: apiBestPerformance.asp.year,
           value: Number(apiBestPerformance.asp.asp ?? 0),
         }
-      : undefined,
+        : undefined,
 
-    profit: apiBestPerformance?.cm1_profit
-      ? {
+      profit: apiBestPerformance?.cm1_profit
+        ? {
           month: String(apiBestPerformance.cm1_profit.month || ""),
           year: apiBestPerformance.cm1_profit.year,
           value: Number(apiBestPerformance.cm1_profit.cm1_profit ?? 0),
         }
-      : undefined,
+        : undefined,
 
-    unitWiseProfitability: apiBestPerformance?.unit_wise_profitability
-      ? {
+      unitWiseProfitability: apiBestPerformance?.unit_wise_profitability
+        ? {
           month: String(apiBestPerformance.unit_wise_profitability.month || ""),
           year: apiBestPerformance.unit_wise_profitability.year,
           value: Number(
             apiBestPerformance.unit_wise_profitability.unit_wise_profitability ?? 0
           ),
         }
-      : undefined,
+        : undefined,
+    };
   };
-};
 
   const fetchProductBestPerformance = async ({
     productName,
@@ -896,585 +897,660 @@ const [summaryError, setSummaryError] = useState<string | null>(null);
   };
 
   const fetchProductPerformanceSummary = async ({
-  productName,
-  country,
-  homeCurrency,
-  signal,
-}: {
-  productName: string;
-  country: string;
-  homeCurrency?: string;
-  signal?: AbortSignal;
-}) => {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("jwtToken")
-      : null;
+    productName,
+    country,
+    homeCurrency,
+    signal,
+  }: {
+    productName: string;
+    country: string;
+    homeCurrency?: string;
+    signal?: AbortSignal;
+  }) => {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
 
-  if (!token) throw new Error("Missing token");
+    if (!token) throw new Error("Missing token");
 
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductSummaryAI`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        product_name: productName,
-        country,
-        home_currency: homeCurrency,
-      }),
-      cache: "no-store",
-      signal,
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductSummaryAI`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          product_name: productName,
+          country,
+          home_currency: homeCurrency,
+        }),
+        cache: "no-store",
+        signal,
+      }
+    );
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.error || "Failed to fetch performance summary");
     }
-  );
 
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok || !json?.success) {
-    throw new Error(json?.error || "Failed to fetch performance summary");
-  }
-
-  return String(json?.summary || "");
-};
+    return String(json?.summary || "");
+  };
 
   const splitMetricValue = (value: string) => {
-  const v = (value || "").trim();
-  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+    const v = (value || "").trim();
+    const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
 
-  if (!m) return { main: v, delta: "", deltaColor: "" };
+    if (!m) return { main: v, delta: "", deltaColor: "" };
 
-  const main = m[1].trim();
-  const delta = m[2].trim();
-  const sign = m[3];
+    const main = m[1].trim();
+    const delta = m[2].trim();
+    const sign = m[3];
 
-  return {
-    main,
-    delta,
-    deltaColor: sign === "+" ? "#5EA68E" : "#FF5C5C",
+    return {
+      main,
+      delta,
+      deltaColor: sign === "+" ? "#5EA68E" : "#FF5C5C",
+    };
   };
-};
 
-const formatRecommendationCardMainValue = (label: string, main: string) => {
-  const normalizedLabel = label.trim().toLowerCase();
+  const formatRecommendationCardMainValue = (label: string, main: string) => {
+    const normalizedLabel = label.trim().toLowerCase();
 
-  if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
-    return main;
-  }
+    if (normalizedLabel !== "net sales" && normalizedLabel !== "cm1 profit") {
+      return main;
+    }
 
-  const currencyMatch = main.match(/^([^0-9-]*)/);
-  const currency = currencyMatch?.[1] ?? "";
+    const currencyMatch = main.match(/^([^0-9-]*)/);
+    const currency = currencyMatch?.[1] ?? "";
 
-  const numberPart = main.replace(/[^0-9.-]/g, "");
-  const numberValue = Number(numberPart);
+    const numberPart = main.replace(/[^0-9.-]/g, "");
+    const numberValue = Number(numberPart);
 
-  if (!Number.isFinite(numberValue)) return main;
+    if (!Number.isFinite(numberValue)) return main;
 
-  return `${currency}${Math.round(numberValue).toLocaleString()}`;
-};
+    return `${currency}${Math.round(numberValue).toLocaleString()}`;
+  };
 
-const metricColors = [
-  "border border-[#FDD36F] border-t-[#FDD36F]",
-  "border border-[#75BBDA] border-t-[#75BBDA]",
-  "border border-[#B75A5A] border-t-[#B75A5A]",
-  "border border-[#7B9A6D] border-t-[#7B9A6D]",
-  "border border-[#C49466] border-t-[#C49466]",
-];
-
-const metricOrder = [
-  "units",
-  "net sales",
-  "asp",
-  "cm1 profit",
-  "cm1 profit per unit",
-];
-
-const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
-  const normalizedLabel = label.trim().toLowerCase();
-  const metricIndex = metricOrder.indexOf(normalizedLabel);
-
-  return metricColors[
-    metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
-  ];
-};
-
-const formatPerfMonth = (month?: string, year?: number | string) => {
-  if (!month) return "-";
-
-  const fullNames = [
-    "january",
-    "february",
-    "march",
-    "april",
-    "may",
-    "june",
-    "july",
-    "august",
-    "september",
-    "october",
-    "november",
-    "december",
+  const metricColors = [
+    "border border-[#FDD36F] border-t-[#FDD36F]",
+    "border border-[#75BBDA] border-t-[#75BBDA]",
+    "border border-[#B75A5A] border-t-[#B75A5A]",
+    "border border-[#7B9A6D] border-t-[#7B9A6D]",
+    "border border-[#C49466] border-t-[#C49466]",
   ];
 
-  const abbrs = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
+  const metricOrder = [
+    "units",
+    "net sales",
+    "asp",
+    "cm1 profit",
+    "cm1 profit per unit",
   ];
 
-  const lower = month.toLowerCase();
-  let idx = fullNames.indexOf(lower);
+  const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
+    const normalizedLabel = label.trim().toLowerCase();
+    const metricIndex = metricOrder.indexOf(normalizedLabel);
 
-  if (idx === -1) {
-    idx = fullNames.findIndex((m) => lower.startsWith(m.slice(0, 3)));
-  }
-
-  const shortMonth = idx >= 0 ? abbrs[idx] : month;
-const yearToShow =
-  year !== undefined && year !== null && year !== ""
-    ? year
-    : selectedYear;
-
-const shortYear =
-  yearToShow !== undefined && yearToShow !== ""
-    ? String(yearToShow).slice(-2)
-    : "";
-
-  return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
-};
-
-const formatPerfValue = (label: string, value?: number) => {
-  if (typeof value !== "number") return "-";
-
-  const lower = label.toLowerCase();
-
-  if (lower === "units") {
-    return Math.round(value).toLocaleString();
-  }
-
-  if (lower.includes("asp") || lower.includes("per unit")) {
-    return `${currencySymbolFromCode(homeCurrency)}${Number(value).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  }
-
-  return `${currencySymbolFromCode(homeCurrency)}${Math.round(value).toLocaleString()}`;
-};
-
-const renderInlineAiInsightSection = () => {
-
-  if (!selectedSku) return null;
-
-  const insightData = skuInsights[selectedSku];
-  if (!insightData) return null;
-
-  const sortedMetrics = [...(insightData.metrics || [])].sort((a, b) => {
-    const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
-    const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
-
-    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
-
-    return safeAIndex - safeBIndex;
-  });
-
-const parsePerformanceSummarySections = (summary: string) => {
-  const text = String(summary || "").trim();
-
-  if (!text) return [];
-
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const sections: {
-    id: string;
-    title: string;
-    bullets: string[];
-  }[] = [];
-
-  let currentSection: {
-    id: string;
-    title: string;
-    bullets: string[];
-  } | null = null;
-
-  const isHeading = (line: string) => {
-    const clean = line.replace(/^-+\s*/, "").trim().toLowerCase();
-
-    return (
-      clean.endsWith("performance:") ||
-      clean.includes("sales performance") ||
-      clean.includes("profit performance") ||
-      clean.includes("price / asp") ||
-      clean.includes("asp performance") ||
-      clean.includes("sales mix") ||
-      clean.includes("profit mix")
-    );
+    return metricColors[
+      metricIndex !== -1 ? metricIndex : fallbackIndex % metricColors.length
+    ];
   };
 
-  const normalizeTitle = (line: string) => {
-    const clean = line.replace(/^-+\s*/, "").replace(/:$/, "").trim();
+  const formatPerfMonth = (month?: string, year?: number | string) => {
+    if (!month) return "-";
 
-    if (clean.toLowerCase().includes("sales performance")) {
-      return "Sales Performance";
+    const fullNames = [
+      "january",
+      "february",
+      "march",
+      "april",
+      "may",
+      "june",
+      "july",
+      "august",
+      "september",
+      "october",
+      "november",
+      "december",
+    ];
+
+    const abbrs = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    const lower = month.toLowerCase();
+    let idx = fullNames.indexOf(lower);
+
+    if (idx === -1) {
+      idx = fullNames.findIndex((m) => lower.startsWith(m.slice(0, 3)));
     }
 
-    if (clean.toLowerCase().includes("profit performance")) {
-      return "Profit Performance";
-    }
+    const shortMonth = idx >= 0 ? abbrs[idx] : month;
+    const yearToShow =
+      year !== undefined && year !== null && year !== ""
+        ? year
+        : selectedYear;
 
-    if (
-      clean.toLowerCase().includes("price / asp") ||
-      clean.toLowerCase().includes("asp performance")
-    ) {
-      return "Price / ASP Performance";
-    }
+    const shortYear =
+      yearToShow !== undefined && yearToShow !== ""
+        ? String(yearToShow).slice(-2)
+        : "";
 
-    if (
-      clean.toLowerCase().includes("sales mix") ||
-      clean.toLowerCase().includes("profit mix")
-    ) {
-      return "Sales Mix & Profit Mix";
-    }
-
-    return clean;
+    return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
   };
 
-  lines.forEach((line, index) => {
-    if (index === 0 && !isHeading(line)) {
-      sections.push({
-        id: "overview",
-        title: "Overview",
-        bullets: [line.replace(/^-+\s*/, "")],
-      });
-      return;
+  const formatPerfValue = (label: string, value?: number) => {
+    if (typeof value !== "number") return "-";
+
+    const lower = label.toLowerCase();
+
+    if (lower === "units") {
+      return Math.round(value).toLocaleString();
     }
 
-    if (isHeading(line)) {
-  const title = normalizeTitle(line);
+    if (lower.includes("asp") || lower.includes("per unit")) {
+      return `${currencySymbolFromCode(homeCurrency)}${Number(value).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
 
-  const baseId =
-    title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
-    `section-${index}`;
-
-  const duplicateCount = sections.filter((section) =>
-    section.id === baseId || section.id.startsWith(`${baseId}-`)
-  ).length;
-
-  currentSection = {
-    id: duplicateCount > 0 ? `${baseId}-${duplicateCount + 1}` : baseId,
-    title,
-    bullets: [],
+    return `${currencySymbolFromCode(homeCurrency)}${Math.round(value).toLocaleString()}`;
   };
 
-  sections.push(currentSection);
-  return;
-}
+  const renderInlineAiInsightSection = () => {
 
-    if (!currentSection) {
-      currentSection = {
-        id: "overview",
-        title: "Overview",
-        bullets: [],
+    if (!selectedSku) return null;
+
+    const insightData = skuInsights[selectedSku];
+    if (!insightData) return null;
+
+    const sortedMetrics = [...(insightData.metrics || [])].sort((a, b) => {
+      const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+      const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+
+      const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+      return safeAIndex - safeBIndex;
+    });
+
+    const parsePerformanceSummarySections = (summary: string) => {
+      const text = String(summary || "").trim();
+
+      if (!text) return [];
+
+      const lines = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const sections: {
+        id: string;
+        title: string;
+        bullets: string[];
+      }[] = [];
+
+      let currentSection: {
+        id: string;
+        title: string;
+        bullets: string[];
+      } | null = null;
+
+      const isHeading = (line: string) => {
+        const clean = line.replace(/^-+\s*/, "").trim().toLowerCase();
+
+        return (
+          clean.endsWith("performance:") ||
+          clean.includes("sales performance") ||
+          clean.includes("profit performance") ||
+          clean.includes("price / asp") ||
+          clean.includes("asp performance") ||
+          clean.includes("sales mix") ||
+          clean.includes("profit mix")
+        );
       };
 
-      sections.push(currentSection);
-    }
+      const normalizeTitle = (line: string) => {
+        const clean = line.replace(/^-+\s*/, "").replace(/:$/, "").trim();
 
-    currentSection.bullets.push(line.replace(/^-+\s*/, ""));
-  });
+        if (clean.toLowerCase().includes("sales performance")) {
+          return "Sales Performance";
+        }
 
-  return sections.filter((section) => section.bullets.length > 0);
-};
+        if (clean.toLowerCase().includes("profit performance")) {
+          return "Profit Performance";
+        }
 
-  const bestPerformanceCards = [
-  {
-    label: "Units",
-    data: insightData.best_performance?.units,
-  },
-  {
-    label: "Net Sales",
-    data: insightData.best_performance?.sales,
-  },
-  {
-    label: "ASP",
-    data: insightData.best_performance?.asp,
-  },
-  {
-    label: "CM1 Profit",
-    data: insightData.best_performance?.profit,
-  },
-  {
-    label: "CM1 Profit Per Unit",
-    data: insightData.best_performance?.unitWiseProfitability,
-  },
-];
+        if (
+          clean.toLowerCase().includes("price / asp") ||
+          clean.toLowerCase().includes("asp performance")
+        ) {
+          return "Price / ASP Performance";
+        }
 
-  const journeyBullets = Array.isArray(insightData.product_journey)
-    ? insightData.product_journey
-    : [];
+        if (
+          clean.toLowerCase().includes("sales mix") ||
+          clean.toLowerCase().includes("profit mix")
+        ) {
+          return "Sales Mix & Profit Mix";
+        }
 
- const filteredJourneyBullets = journeyBullets;
+        return clean;
+      };
 
-  const displaySku = insightData.sku || selectedSku || "-";
+      lines.forEach((line, index) => {
+        if (index === 0 && !isHeading(line)) {
+          sections.push({
+            id: "overview",
+            title: "Overview",
+            bullets: [line.replace(/^-+\s*/, "")],
+          });
+          return;
+        }
 
-  const graphProductName = insightData.isOtherSkus
-  ? insightData.includedSkus?.[0]?.product_name ||
-    insightData.product_name ||
-    selectedSku
-  : insightData.product_name || selectedSku;
+        if (isHeading(line)) {
+          const title = normalizeTitle(line);
 
-const graphCountryName = String(
-  countryName ||
-    platformCountryName ||
-    countryNameProp ||
-    "global"
-)
-  .trim()
-  .toLowerCase();
+          const baseId =
+            title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+            `section-${index}`;
 
-const graphYear =
-  selectedYear !== "" && selectedYear !== undefined
-    ? Number(selectedYear)
-    : new Date().getFullYear();
+          const duplicateCount = sections.filter((section) =>
+            section.id === baseId || section.id.startsWith(`${baseId}-`)
+          ).length;
 
-  const renderPerformanceSummaryCard = () => {
-  if (summaryLoading) {
-    return (
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-3">
-          <div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
-          <div className="space-y-2">
-            <div className="h-4 w-44 animate-pulse rounded bg-slate-200" />
-            <div className="h-3 w-56 animate-pulse rounded bg-slate-100" />
+          currentSection = {
+            id: duplicateCount > 0 ? `${baseId}-${duplicateCount + 1}` : baseId,
+            title,
+            bullets: [],
+          };
+
+          sections.push(currentSection);
+          return;
+        }
+
+        if (!currentSection) {
+          currentSection = {
+            id: "overview",
+            title: "Overview",
+            bullets: [],
+          };
+
+          sections.push(currentSection);
+        }
+
+        currentSection.bullets.push(line.replace(/^-+\s*/, ""));
+      });
+
+      return sections.filter((section) => section.bullets.length > 0);
+    };
+
+    const bestPerformanceCards = [
+      {
+        label: "Units",
+        data: insightData.best_performance?.units,
+      },
+      {
+        label: "Net Sales",
+        data: insightData.best_performance?.sales,
+      },
+      {
+        label: "ASP",
+        data: insightData.best_performance?.asp,
+      },
+      {
+        label: "CM1 Profit",
+        data: insightData.best_performance?.profit,
+      },
+      {
+        label: "CM1 Profit Per Unit",
+        data: insightData.best_performance?.unitWiseProfitability,
+      },
+    ];
+
+    const journeyBullets = Array.isArray(insightData.product_journey)
+      ? insightData.product_journey
+      : [];
+
+    const filteredJourneyBullets = journeyBullets;
+
+    const displaySku = insightData.sku || selectedSku || "-";
+
+    const graphProductName = insightData.isOtherSkus
+      ? insightData.includedSkus?.[0]?.product_name ||
+      insightData.product_name ||
+      selectedSku
+      : insightData.product_name || selectedSku;
+
+    const graphCountryName = String(
+      countryName ||
+      platformCountryName ||
+      countryNameProp ||
+      "global"
+    )
+      .trim()
+      .toLowerCase();
+
+    const graphYear =
+      selectedYear !== "" && selectedYear !== undefined
+        ? Number(selectedYear)
+        : new Date().getFullYear();
+
+    const renderPerformanceSummaryCard = () => {
+      if (summaryLoading) {
+        return (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
+              <div className="space-y-2">
+                <div className="h-4 w-44 animate-pulse rounded bg-slate-200" />
+                <div className="h-3 w-56 animate-pulse rounded bg-slate-100" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+            </div>
+          </div>
+        );
+      }
+
+      if (summaryError) {
+        return (
+          <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs text-red-700 sm:text-sm">
+            {summaryError}
+          </div>
+        );
+      }
+
+      if (!performanceSummary) return null;
+
+      const sections = parsePerformanceSummarySections(performanceSummary);
+
+      if (!sections.length) return null;
+
+      return (
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-3">
+
+              <div>
+                <PageBreadcrumb
+                  pageTitle="Performance Summary"
+                  variant="page"
+                  align="left"
+                  textSize="xl"
+                />
+
+                <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+                  AI generated overview based on product performance
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4">
+            <ul className="space-y-1 pl-4 text-xs leading-6 text-charcoal-500 sm:text-sm ">
+              {sections.flatMap((section) => section.bullets).map((item, index) => (
+                <li
+                  key={index}
+                  className="list-disc marker:font-semibold marker:text-charcoal-400"
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
+      );
+    };
 
-        <div className="space-y-2">
-          <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
-          <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
-          <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
-        </div>
-      </div>
-    );
-  }
+    const getMetricCardAccentClass = (label: string, index: number) => {
+      const key = label.trim().toLowerCase();
 
-  if (summaryError) {
+      if (key === "units") {
+        return "border border-[#FDD36F] border-t-4";
+      }
+
+      if (key === "net sales") {
+        return "border border-[#75BBDA] border-t-4";
+      }
+
+      if (key === "asp") {
+        return "border border-[#B75A5A] border-t-4";
+      }
+
+      if (key === "cm1 profit") {
+        return "border border-[#7B9A6D] border-t-4";
+      }
+
+      if (key === "cm1 profit per unit") {
+        return "border border-[#C49466] border-t-4";
+      }
+
+      const fallbackColors = [
+        "border border-[#FDD36F] border-t-4",
+        "border border-[#75BBDA] border-t-4",
+        "border border-[#B75A5A] border-t-4",
+        "border border-[#7B9A6D] border-t-4",
+        "border border-[#C49466] border-t-4",
+      ];
+
+      return fallbackColors[index % fallbackColors.length];
+    };
+
+    const formatMetricDelta = (delta: string) => {
+      const cleanDelta = String(delta || "")
+        .replace(/[()]/g, "")
+        .trim();
+
+      if (!cleanDelta) return "";
+
+      const isNegative = cleanDelta.startsWith("-");
+      const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
+
+      return `${isNegative ? "▼" : "▲"} ${valueWithoutSign}`;
+    };
+
     return (
-      <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs text-red-700 sm:text-sm">
-        {summaryError}
-      </div>
-    );
-  }
-
-  if (!performanceSummary) return null;
-
-  const sections = parsePerformanceSummarySections(performanceSummary);
-
-  if (!sections.length) return null;
-
-  return (
-    <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-4 py-3">
-        <div className="flex items-center gap-3">
-
-          <div>
-            <div className="text-sm font-bold text-[#414042] 2xl:text-lg">
-              Performance Summary
-            </div>
-            <div className="text-[11px] text-charcoal-400 2xl:text-xs">
-              AI generated overview based on product performance
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-4">
-  <ul className="space-y-1 pl-4 text-xs leading-6 text-charcoal-500 sm:text-sm ">
-    {sections.flatMap((section) => section.bullets).map((item, index) => (
-      <li
-        key={index}
-        className="list-disc marker:font-semibold marker:text-charcoal-400"
-      >
-        {item}
-      </li>
-    ))}
-  </ul>
-</div>
-    </div>
-  );
-};
-
-  return (
-    <div className="">
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0">
-          {/* <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+      <div className="">
+        <div className="mb-2 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            {/* <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
             Product Name
           </div> */}
 
-         <div className="flex flex-wrap items-center gap-3">
-  <span className="text-base font-bold text-[#414042] sm:text-xl lg:text-lg 2xl:text-2xl">
-    {insightData.product_name || selectedSku}
-  </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-base font-bold text-[#414042] sm:text-xl lg:text-lg 2xl:text-2xl">
+                {insightData.product_name || selectedSku}
+              </span>
 
-  {sharedInsightData?.drawerPeriodText || getHeadingPeriod() ? (
-    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-      {sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
-    </span>
-  ) : null}
+              {sharedInsightData?.drawerPeriodText || getHeadingPeriod() ? (
+                <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
+                </span>
+              ) : null}
 
-  
-</div>
-        </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="w-full sm:w-72">
-    <ProductSearchDropdown
-      authToken={authToken}
-      onProductSelect={handleInlineProductSelect}
-    />
-  </div>
-        </div>
-      </div>
-
-      {sortedMetrics.length > 0 && (
-        <div>
-          <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
-            Metrics
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 ">
-            {sortedMetrics.map((m, i) => (
-              <div
-                key={`${m.label}-${i}`}
-                className={`rounded-lg border bg-white shadow-sm border-t-4 ${getMetricBorderColorByLabel(
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="w-full sm:w-72">
+              <ProductSearchDropdown
+                authToken={authToken}
+                onProductSelect={handleInlineProductSelect}
+              />
+            </div>
+          </div>
+        </div>
+
+        {sortedMetrics.length > 0 && (
+          <div>
+            <PageBreadcrumb
+              pageTitle="Metrics"
+              variant="page"
+              align="left"
+              textSize="xl"
+              className="mb-2"
+            />
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              {sortedMetrics.map((m, i) => {
+                const { main, delta } = splitMetricValue(m.value);
+
+                const displayMain = formatRecommendationCardMainValue(
                   m.label,
-                  i
-                )} px-3 py-2`}
-              >
-                <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-                  {m.label
-                    .replace(/\b\w/g, (char) => char.toUpperCase())
-                    .replace("Cm1", "CM1")}
-                </div>
+                  main
+                );
 
-                <div className="flex flex-col leading-tight">
-                  {(() => {
-                    const { main, delta, deltaColor } = splitMetricValue(m.value);
-                    const displayMain = formatRecommendationCardMainValue(
-                      m.label,
-                      main
-                    );
+                const formattedTitle = m.label
+                  .replace(/\b\w/g, (char) => char.toUpperCase())
+                  .replace("Cm1", "CM1");
 
-                    return (
-                      <>
-                        <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
-                          {displayMain}
+                const isNegativeDelta = delta?.includes("-");
+
+                return (
+                  <div
+                    key={`${m.label}-${i}`}
+                    className={[
+                      "w-full rounded-xl bg-white shadow-sm p-3 2xl:p-3",
+                      "flex flex-col justify-between min-h-[78px]",
+                      getMetricCardAccentClass(m.label, i),
+                    ].join(" ")}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                        {formattedTitle}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
+                      <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
+                        {displayMain}
+                      </span>
+
+                      {delta && (
+                        <span
+                          className={[
+                            "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
+                            isNegativeDelta ? "text-red-600" : "text-emerald-600",
+                          ].join(" ")}
+                        >
+                          {formatMetricDelta(delta)}
                         </span>
-
-                        {delta && (
-                          <span
-                            className="text-[10px] 2xl:text-xs font-semibold"
-                            style={{ color: deltaColor }}
-                          >
-                            {delta}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            ))}
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
-
-      {insightData.best_performance && (
-        <div className="mt-5">
-          <div className="mb-1 text-xs sm:text-sm 2xl:text-lg font-semibold text-charcoal-500">
-            Overall Best Performance
-          </div>
-
-          <div className="mb-2 text-[11px] text-charcoal-500 2xl:text-xs">
-            Best performance is calculated from overall historical data.
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {bestPerformanceCards.map((card, index) => (
-              <div
-                key={card.label}
-                className={`rounded-lg border bg-white shadow-sm border-t-4 ${getMetricBorderColorByLabel(
-                  card.label,
-                  index
-                )} px-3 py-2`}
-              >
-                <div className="text-[10px] 2xl:text-xs text-charcoal-400">
-                  {card.label}
-                </div>
-
-                <div className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                  {formatPerfMonth(card.data?.month, card.data?.year)}
-                </div>
-
-                <div className=" text-sm 2xl:text-lg font-bold text-[#414042]">
-                  {formatPerfValue(card.label, card.data?.value)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-     {renderPerformanceSummaryCard()}
-
-<div className="mt-5">
-  <ProductJourneyInlineGraph
-    productname={graphProductName || ""}
-    countryName={graphCountryName}
-    displayCurrency={homeCurrency as any}
-    isOtherSkus={!!insightData.isOtherSkus}
-    otherSkuProductNames={
-      insightData.isOtherSkus
-        ? (insightData.includedSkus || []).map((item) => item.product_name)
-        : []
-    }
-  />
-</div>
-
-      <div className="mt-5 pb-2 w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-          Product Journey
-        </div>
-
-        {filteredJourneyBullets.length > 0 ? (
-          <ol className="list-decimal pl-4 space-y-1 text-xs text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
-            {filteredJourneyBullets.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ol>
-        ) : (
-          <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
         )}
+
+        {insightData.best_performance && (
+          <div className="mt-5">
+            <PageBreadcrumb
+              pageTitle="Overall Best Performance"
+              variant="page"
+              align="left"
+              textSize="xl"
+            />
+
+            <p className="mb-2 text-xs 2xl:text-sm text-charcoal-500 mt-1">
+              Best performance is calculated from overall historical data.
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {bestPerformanceCards.map((card, index) => (
+                <div
+                  key={card.label}
+                  className={[
+                    "w-full rounded-xl bg-white shadow-sm p-3 2xl:p-3",
+                    "flex flex-col justify-between min-h-[78px]",
+                    getMetricCardAccentClass(card.label, index),
+                  ].join(" ")}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                      {card.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
+                    <div className="min-w-0">
+                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 whitespace-nowrap">
+                        {formatPerfMonth(card.data?.month, card.data?.year)}
+                      </div>
+
+                      <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 whitespace-nowrap">
+                        {formatPerfValue(card.label, card.data?.value)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {renderPerformanceSummaryCard()}
+
+        <div className="mt-5">
+          <ProductJourneyInlineGraph
+            productname={graphProductName || ""}
+            countryName={graphCountryName}
+            displayCurrency={homeCurrency as any}
+            isOtherSkus={!!insightData.isOtherSkus}
+            otherSkuProductNames={
+              insightData.isOtherSkus
+                ? (insightData.includedSkus || []).map((item) => item.product_name)
+                : []
+            }
+          />
+        </div>
+
+        <div className="mt-5 pb-2 w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <PageBreadcrumb
+            pageTitle="Product Summary"
+            variant="page"
+            align="left"
+            textSize="xl"
+            className="mb-2"
+          />
+
+          {filteredJourneyBullets.length > 0 ? (
+            <ol className="list-decimal space-y-1 pl-4 text-xs leading-6 text-charcoal-500 sm:text-sm marker:font-semibold marker:text-charcoal-400">
+              {filteredJourneyBullets.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ol>
+          ) : (
+            <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   const handleViewBusinessInsights = async () => {
     const { key: identifier, isSku } = resolveProductKey(
@@ -1594,18 +1670,18 @@ const graphYear =
       const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
       setSkuInsights({
-  [identifier]: {
-    product_name: returnedName,
-    sku: isSku ? identifier : "",
-    insight: insightText,
-    inventory_recommendation: inventoryRec,
-    objective,
-    recommendation,
-    best_performance: undefined,
-    product_journey: productJourney,
-    metrics: [],
-  },
-});
+        [identifier]: {
+          product_name: returnedName,
+          sku: isSku ? identifier : "",
+          insight: insightText,
+          inventory_recommendation: inventoryRec,
+          objective,
+          recommendation,
+          best_performance: undefined,
+          product_journey: productJourney,
+          metrics: [],
+        },
+      });
 
       setSelectedSku(identifier);
 
@@ -1697,21 +1773,21 @@ const graphYear =
   };
 
   useEffect(() => {
-  if (embedded) return;
-  if (!canShowResults) return;
+    if (embedded) return;
+    if (!canShowResults) return;
 
-  fetchProductData();
-}, [
-  embedded,
-  productname,
-  selectedYear,
-  range,
-  selectedQuarter,
-  selectedMonth,
-  canShowResults,
-  globalKey,
-  profileHomeCurrency,
-]);
+    fetchProductData();
+  }, [
+    embedded,
+    productname,
+    selectedYear,
+    range,
+    selectedQuarter,
+    selectedMonth,
+    canShowResults,
+    globalKey,
+    profileHomeCurrency,
+  ]);
 
   const nonEmptyCountriesFromApi = useMemo(() => {
     if (!data?.data) return [] as CountryKey[];
@@ -2135,63 +2211,63 @@ const graphYear =
   ]);
 
   useEffect(() => {
-  if (!selectedSku) return;
+    if (!selectedSku) return;
 
-  const insightData = skuInsights[selectedSku];
+    const insightData = skuInsights[selectedSku];
 
-  const productName =
-    insightData?.product_name ||
-    productname ||
-    selectedSku;
+    const productName =
+      insightData?.product_name ||
+      productname ||
+      selectedSku;
 
-  if (!productName) return;
+    if (!productName) return;
 
-  const ac = new AbortController();
+    const ac = new AbortController();
 
-  const loadSummary = async () => {
-    try {
-      setSummaryLoading(true);
-      setSummaryError(null);
-      setPerformanceSummary("");
+    const loadSummary = async () => {
+      try {
+        setSummaryLoading(true);
+        setSummaryError(null);
+        setPerformanceSummary("");
 
-      const countryForApi = (
-        platformCountryName ||
-        countryName ||
-        countryNameProp ||
-        "global"
-      )
-        .trim()
-        .toLowerCase();
+        const countryForApi = (
+          platformCountryName ||
+          countryName ||
+          countryNameProp ||
+          "global"
+        )
+          .trim()
+          .toLowerCase();
 
-      const summary = await fetchProductPerformanceSummary({
-        productName,
-        country: countryForApi,
-        homeCurrency: viewCurrency,
-        signal: ac.signal,
-      });
+        const summary = await fetchProductPerformanceSummary({
+          productName,
+          country: countryForApi,
+          homeCurrency: viewCurrency,
+          signal: ac.signal,
+        });
 
-      setPerformanceSummary(summary);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      console.error("ProductPerformanceSummary Error:", e);
-      setSummaryError(e?.message || "Failed to load performance summary");
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
+        setPerformanceSummary(summary);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        console.error("ProductPerformanceSummary Error:", e);
+        setSummaryError(e?.message || "Failed to load performance summary");
+      } finally {
+        setSummaryLoading(false);
+      }
+    };
 
-  loadSummary();
+    loadSummary();
 
-  return () => ac.abort();
-}, [
-  selectedSku,
-  skuInsights[selectedSku || ""],
-  productname,
-  platformCountryName,
-  countryName,
-  countryNameProp,
-  viewCurrency,
-]);
+    return () => ac.abort();
+  }, [
+    selectedSku,
+    skuInsights[selectedSku || ""],
+    productname,
+    platformCountryName,
+    countryName,
+    countryNameProp,
+    viewCurrency,
+  ]);
 
   const orderedCards = useMemo(() => {
     if (!cards.length) return [];
@@ -2245,29 +2321,29 @@ const graphYear =
 
   const isMultiCountry = visibleCountryCards.length > 1;
 
- return (
-  <div className="w-full space-y-4">
-    {insightsError && (
-      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
-        {insightsError}
-      </div>
-    )}
+  return (
+    <div className="w-full space-y-4">
+      {insightsError && (
+        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {insightsError}
+        </div>
+      )}
 
-    {insightsLoading && (
-      <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <Loader fullscreen={false} transparent />
-      </div>
-    )}
+      {insightsLoading && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+          <Loader fullscreen={false} transparent />
+        </div>
+      )}
 
-    {!insightsLoading && renderInlineAiInsightSection()}
+      {!insightsLoading && renderInlineAiInsightSection()}
 
-    {!selectedSku && !sharedInsightData?.blocks?.length && (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
-        No SKU-wise insight data available for this period.
-      </div>
-    )}
-  </div>
-);
+      {!selectedSku && !sharedInsightData?.blocks?.length && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
+          No SKU-wise insight data available for this period.
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default ProductwisePerformance;

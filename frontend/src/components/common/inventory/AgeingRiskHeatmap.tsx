@@ -121,13 +121,11 @@ const buildAggregateRow = (
         0
     );
 
-    // ✅ Aggregate Sales Last 30 Days for Others coverage ratio
     aggregate.salesLast30Days = rows.reduce(
         (sum, row) => sum + Number(row.salesLast30Days || 0),
         0
     );
 
-    // ✅ Keep Inventory Alerts blank for Others and Total rows
     aggregate.inventoryAlert = "";
 
     // ✅ For Others only:
@@ -333,7 +331,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(
                             1
                         )}%)`}
-                        className="absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs text-charcoal-500"
+                        className="absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-charcoal-500"
                         style={{
                             backgroundColor:
                                 row.isTotalRow && value === 0
@@ -378,7 +376,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             <span
                                 className={[
                                     "block max-w-full truncate",
-                                    row.isOthersRow ? "font-medium text-green-500" : "",
+                                    row.isOthersRow ? "text-green-500" : "",
                                 ].join(" ")}
                                 title={row.productName}
                             >
@@ -392,7 +390,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             type="button"
                             onClick={() => onProductClick(row)}
                             title={row.productName}
-                            className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px]  truncate text-left font-medium text-green-500 underline-offset-2"
+                            className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px]  truncate text-left text-green-500 underline-offset-2"
                         >
                             {row.productName}
                         </button>
@@ -597,7 +595,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         <span
                             title={alert}
                             className={[
-                                "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
+                                "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-xs leading-tight",
                                 badgeClassName,
                             ].join(" ")}
                             style={{

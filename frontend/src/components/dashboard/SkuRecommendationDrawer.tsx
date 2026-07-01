@@ -93,14 +93,14 @@ type Props = {
 };
 
 const metricColors = [
-  "border border-[#FDD36F] border-t-[#FDD36F]", // Units
-  "border border-[#75BBDA] border-t-[#75BBDA]", // Net Sales
-  "border border-[#B75A5A] border-t-[#B75A5A]", // ASP
-  "border border-[#C49466] border-t-[#C49466]", // Ads
-  "border border-[#7B9A6D] border-t-[#7B9A6D]", // CM2 Profit
-  "border border-[#C49466] border-t-[#C49466]", // CM2 Profit Per Unit
-  "border border-[#7B9A6D] border-t-[#7B9A6D]", // CM1 Profit
-  "border border-[#C49466] border-t-[#C49466]", // CM1 Profit Per Unit
+  "border border-[#FDD36F] border-t-4", // Units
+  "border border-[#75BBDA] border-t-4", // Net Sales
+  "border border-[#B75A5A] border-t-4", // ASP
+  "border border-[#C49466] border-t-4", // Ads
+  "border border-[#7B9A6D] border-t-4", // CM2 Profit
+  "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
+  "border border-[#7B9A6D] border-t-4", // CM1 Profit
+  "border border-[#C49466] border-t-4", // CM1 Profit Per Unit
 ];
 
 const metricOrder = [
@@ -188,6 +188,89 @@ const formatBestPerformancePeriod = (
   const shortYear = year ? String(year).slice(-2) : "";
 
   return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+};
+
+const splitMetricValue = (value: string) => {
+  const v = String(value || "").trim();
+
+  // Supports:
+  // $862 (+0.00%)
+  // $439 (-97.07%)
+  // $0.00 (0.00%)
+  const match = v.match(/^(.+?)\s*(\(([+-]?)[^)]+\))\s*$/);
+
+  if (!match) {
+    return {
+      main: v,
+      delta: "",
+      deltaColor: "",
+    };
+  }
+
+  const main = match[1].trim();
+  const delta = match[2].trim();
+  const sign = match[3];
+
+  return {
+    main,
+    delta,
+    deltaColor:
+      sign === "+"
+        ? "text-emerald-600"
+        : sign === "-"
+          ? "text-red-600"
+          : "text-charcoal-500",
+  };
+};
+
+const formatMetricDelta = (delta: string) => {
+  const cleanDelta = String(delta || "")
+    .replace(/[()]/g, "")
+    .trim();
+
+  if (!cleanDelta) return "";
+
+  const isPositive = cleanDelta.startsWith("+");
+  const isNegative = cleanDelta.startsWith("-");
+  const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
+
+  if (isPositive) return `▲ ${valueWithoutSign}`;
+  if (isNegative) return `▼ ${valueWithoutSign}`;
+
+  // For neutral value like (0.00%), show only value, no arrow
+  return valueWithoutSign;
+};
+
+const formatRecommendationCardMainValue = (
+  label: string,
+  main: string
+) => {
+  const normalizedLabel = String(label || "").trim().toLowerCase();
+
+  if (
+    normalizedLabel !== "net sales" &&
+    normalizedLabel !== "cm1 profit" &&
+    normalizedLabel !== "cm2 profit"
+  ) {
+    return main;
+  }
+
+  const currencyMatch = main.match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+
+  const numberPart = main.replace(/[^0-9.-]/g, "");
+  const numberValue = Number(numberPart);
+
+  if (!Number.isFinite(numberValue)) return main;
+
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
+
+const formatMetricTitle = (label: string) => {
+  return String(label || "")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cm1", "CM1")
+    .replace("Cm2", "CM2");
 };
 
 const normalizeSkuGroupName = (name: string) =>
@@ -417,70 +500,74 @@ export default function SkuRecommendationDrawer({
 
               <div className="flex-1 overflow-y-auto space-y-6 px-3">
                 <div>
-                  <div className="text-xs sm:text-sm 2xl:text-lg font-semibold text-charcoal-700 mb-2">
-                    Metrics
-                  </div>
+                  <PageBreadcrumb
+                    pageTitle="Metrics"
+                    variant="page"
+                    align="left"
+                    textSize="xl"
+                    className="mb-2"
+                  />
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-                    {sortedMetrics.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(m.label, i)} px-3 py-2`}
-                      >
-                        <div className="text-[10px] 2xl:text-xs text-charcoal-400">
-                          {m.label
-                            .replace(/\b\w/g, (char) => char.toUpperCase())
-                            .replace("Cm1", "CM1")}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                    {sortedMetrics.map((m, i) => {
+                      const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+                      const displayMain = formatRecommendationCardMainValue(
+                        m.label,
+                        main
+                      );
+
+                      const isAdsMetric = m.label.trim().toLowerCase() === "ads";
+
+                      return (
+                        <div
+                          key={`${m.label}-${i}`}
+                          className={[
+                            "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                            "flex flex-col justify-between min-h-[72px]",
+                            getMetricBorderColorByLabel(m.label, i),
+                          ].join(" ")}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                              {formatMetricTitle(m.label)}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
+                            <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500 truncate">
+                              {displayMain}
+                            </span>
+
+                            {delta ? (
+                              <span
+                                className={[
+                                  "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
+                                  isAdsMetric ? "text-charcoal-500" : deltaColor,
+                                ].join(" ")}
+                              >
+                                {formatMetricDelta(delta)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-
-                        <div className="flex flex-col leading-tight">
-                          {(() => {
-                            const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                            const mainValue = match?.[1]?.trim() || m.value;
-                            const percentPart = match?.[2] || "";
-
-                            const isAdsMetric = m.label.trim().toLowerCase() === "ads";
-                            const isNegative = percentPart.includes("-");
-                            const percentColor = isAdsMetric
-                              ? "#414042"
-                              : isNegative
-                                ? "#FF5C5C"
-                                : "#5EA68E";
-
-                            return (
-                              <>
-                                <span
-                                  className="text-sm 2xl:text-lg font-bold"
-                                  style={{ color: "#414042" }}
-                                >
-                                  {mainValue}
-                                </span>
-
-                                {percentPart && (
-                                  <span
-                                    className="text-[10px] 2xl:text-xs font-semibold"
-                                    style={{ color: percentColor }}
-                                  >
-                                    {percentPart}
-                                  </span>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {!isSkuGroupDrawer && (
                   <div>
-                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-                      Overall Best Performance
-                    </div>
-                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                    <PageBreadcrumb
+                      pageTitle="Overall Best Performance"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                    />
+
+                    <p className="mb-2 text-xs 2xl:text-sm text-charcoal-500 mt-1">
                       Best performance is calculated from overall historical data, not just the selected period.
-                    </div>
+                    </p>
 
                     {bestPerformanceLoading ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
@@ -548,20 +635,28 @@ export default function SkuRecommendationDrawer({
                         ].map((card, index) => (
                           <div
                             key={card.label}
-                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(card.label, index)} px-3 py-2`}
+                            className={[
+                              "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                              "flex flex-col justify-between min-h-[78px]",
+                              getMetricBorderColorByLabel(card.label, index),
+                            ].join(" ")}
                           >
-                            <div className="text-[10px] 2xl:text-xs text-charcoal-400">
-                              {card.label}
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                                {formatMetricTitle(card.label)}
+                              </span>
                             </div>
 
-                            <div className="flex flex-col leading-tight">
-                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                                {card.period}
-                              </span>
+                            <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
+                              <div className="min-w-0">
+                                <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 whitespace-nowrap">
+                                  {card.period}
+                                </div>
 
-                              <span className=" text-sm 2xl:text-lg font-bold text-[#414042]">
-                                {card.value}
-                              </span>
+                                <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 whitespace-nowrap">
+                                  {card.value}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}

@@ -795,6 +795,11 @@ def generate_pie_chart():
         # ---------------- Optional monthly cm2_profit lookup ----------------
         current_cm2_profit = None
         cm2_profit_table_used = None
+        cm2_profit_table_checked = None
+
+        previous_cm2_profit = None
+        previous_cm2_profit_table_used = None
+        previous_cm2_profit_table_checked = None
 
         if is_monthly_request and month_str and year_str:
             cm2_month_str = str(month_str).strip().lower()
@@ -808,6 +813,7 @@ def generate_pie_chart():
                 month=cm2_month_str,
                 year=year_str
             )
+            cm2_profit_table_checked = cm2_table_name
 
             profit_table_name = build_skuwise_table_name(
                 user_id=user_id,
@@ -908,6 +914,30 @@ def generate_pie_chart():
                         year=py,
                         mode="monthly",
                     )
+                    # Previous monthly cm2_profit lookup
+                    prev_cm2_table_name = build_monthly_cm2_table_name(
+                        user_id=user_id,
+                        country=country,
+                        month=pm_str,
+                        year=py
+                    )
+
+                    prev_profit_table_name = build_skuwise_table_name(
+                        user_id=user_id,
+                        country=country,
+                        month=pm_str,
+                        year=py
+                    )
+
+                    previous_cm2_profit_table_checked = prev_cm2_table_name
+
+                    previous_cm2_profit = fetch_cm2_profit_from_monthly_table(
+                        ads_table_name=prev_cm2_table_name,
+                        profit_table_name=prev_profit_table_name
+                    )
+
+                    if previous_cm2_profit:
+                        previous_cm2_profit_table_used = prev_cm2_table_name
                 else:
                     prev_df = None
 
@@ -978,6 +1008,11 @@ def generate_pie_chart():
                     "labels": prev_labels,
                     "values": prev_values,
                     "total_profit": sum(prev_values) if prev_values else 0,
+
+                    # Previous CM2 profit
+                    "cm2_profit": previous_cm2_profit or [],
+                    "cm2_profit_table_used": previous_cm2_profit_table_used,
+                    "cm2_profit_table_checked": previous_cm2_profit_table_checked,
                 },
 
                 # ✅ NEW comparison block
@@ -985,8 +1020,9 @@ def generate_pie_chart():
             }
         }
         if current_cm2_profit:
-            response_data['data']['cm2_profit'] = current_cm2_profit
-            response_data['data']['cm2_profit_table_used'] = cm2_profit_table_used        
+            response_data['data']['cm2_profit'] = current_cm2_profit or []
+            response_data['data']['cm2_profit_table_used'] = cm2_profit_table_used
+            response_data['data']['cm2_profit_table_checked'] = cm2_profit_table_checked       
 
         if response_format == 'image':
             response_data['data']['chart_image'] = f"data:image/png;base64,{chart_base64}"
