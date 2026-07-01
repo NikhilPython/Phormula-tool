@@ -260,12 +260,12 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                     }}
                 >
                     {/* Title */}
-                    <h4 className="truncate text-[10px] sm:text-[10px] 2xl:text-xs leading-tight font-medium text-charcoal-500 ">
+                    <h4 className="text-[10px] sm:text-[10px] 2xl:text-xs leading-tight font-medium text-charcoal-500 truncate">
                         {action.label}
                     </h4>
 
                     {/* Sub Title */}
-                    <p className="mt-1 line-clamp-2 min-h-[30px] text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight font-medium text-charcoal-500">
+                    <p className="mt-2 flex items-end justify-between gap-2 text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight text-charcoal-500 min-w-0">
                         {action.description}
                     </p>
 

@@ -27,12 +27,12 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
   return (
     <div
       className={[
-        "w-full rounded-2xl shadow-sm p-3 2xl:p-3 flex flex-col justify-between",
+        "w-full rounded-xl shadow-sm p-3 2xl:p-3 flex flex-col justify-between",
         className,
       ].join(" ")}
     >
       <div className="flex justify-between items-center ">
-        <span className="text-[10px] 2xl:text-xs text-charcoal-500">{title}</span>
+        <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">{title}</span>
       </div>
 
       <div
@@ -53,10 +53,10 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
             >
               <div className="min-w-0">
                 <div className="whitespace-nowrap">{row.label}:</div>
-                <div className="whitespace-nowrap">{row.valueText}</div>
+                <div className="whitespace-nowrap font-medium">{row.valueText}</div>
               </div>
 
-              <div className={`font-bold whitespace-nowrap ${row.deltaClassName ?? "text-gray-400"}`}>
+              <div className={`font-semibold whitespace-nowrap ${row.deltaClassName ?? "text-gray-400"}`}>
                 {row.deltaText}
               </div>
             </div>
