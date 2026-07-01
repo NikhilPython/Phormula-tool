@@ -3624,6 +3624,138 @@ def finances_mtd_transactions():
             sku_summary_saved = False
 
     # ---------------- Excel response ----------------
+    # ------------------------------------------------------------
+    # CREATE EMPTY SKU-WISE TABLE EVEN WHEN NO MTD DATA FOUND
+    # ------------------------------------------------------------
+    if df_all.empty:
+        empty_columns = [
+            "sku",
+            "product_name",
+            "quantity",
+            "return_quantity",
+            "total_quantity",
+            "asp",
+            "net_sales",
+            "product_sales",
+            "product_sales_tax",
+            "postage_credits",
+            "gift_wrap_credits",
+            "shipping_credits_tax",
+            "giftwrap_credits_tax",
+            "promotional_rebates",
+            "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "cogs",
+            "selling_fees",
+            "fba_fees",
+            "marketplace_fees",
+            "credits",
+            "tax",
+            "tax_and_credits",
+            "other",
+            "gross_sales",
+            "profit",
+            "ads_spend",
+            "acos",
+            "cm2_profit",
+            "amazon_fees",
+            "platform_fee",
+            "advertising_fees",
+            "shipment_fees",
+            "profit_percentage",
+            "current_net_reimbursement",
+            "debt_payment",
+            "disbursement",
+            "total_ads",
+            "total_cm2_profit",
+            "total_cm2_margins",
+            "tacos_total_advertising_cost_of_sale",
+            "reimbursement_vs_cm2_margins",
+            "reimbursement_vs_sales",
+            "user_id",
+            "country",
+            "month",
+            "year",
+            "generated_at_utc",
+        ]
+
+        empty_df = pd.DataFrame(columns=empty_columns)
+
+        # Optional TOTAL row so frontend has one row to read
+        total_row = {
+            "sku": "TOTAL",
+            "product_name": "TOTAL",
+            "quantity": 0.0,
+            "return_quantity": 0.0,
+            "total_quantity": 0.0,
+            "asp": 0.0,
+            "net_sales": 0.0,
+            "product_sales": 0.0,
+            "product_sales_tax": 0.0,
+            "postage_credits": 0.0,
+            "gift_wrap_credits": 0.0,
+            "shipping_credits_tax": 0.0,
+            "giftwrap_credits_tax": 0.0,
+            "promotional_rebates": 0.0,
+            "promotional_rebates_tax": 0.0,
+            "marketplace_facilitator_tax": 0.0,
+            "cogs": 0.0,
+            "selling_fees": 0.0,
+            "fba_fees": 0.0,
+            "marketplace_fees": 0.0,
+            "credits": 0.0,
+            "tax": 0.0,
+            "tax_and_credits": 0.0,
+            "other": 0.0,
+            "gross_sales": 0.0,
+            "profit": 0.0,
+            "ads_spend": 0.0,
+            "acos": 0.0,
+            "cm2_profit": 0.0,
+            "amazon_fees": 0.0,
+            "platform_fee": 0.0,
+            "advertising_fees": 0.0,
+            "shipment_fees": 0.0,
+            "profit_percentage": 0.0,
+            "current_net_reimbursement": 0.0,
+            "debt_payment": 0.0,
+            "disbursement": 0.0,
+            "total_ads": 0.0,
+            "total_cm2_profit": 0.0,
+            "total_cm2_margins": 0.0,
+            "tacos_total_advertising_cost_of_sale": 0.0,
+            "reimbursement_vs_cm2_margins": 0.0,
+            "reimbursement_vs_sales": 0.0,
+            "user_id": int(user_id),
+            "country": ui_country,
+            "month": _safe_ident(month_name),
+            "year": int(now_utc.year),
+            "generated_at_utc": now_utc.isoformat(),
+        }
+
+        empty_df = pd.DataFrame([total_row], columns=empty_columns)
+
+        try:
+            empty_df.to_sql(
+                skuwise_table_name,
+                PHORMULA_ENGINE,
+                schema="public",
+                if_exists="replace",
+                index=False,
+                method="multi",
+                chunksize=1000,
+            )
+
+            sku_summary_saved = True
+            sku_summary_rows = int(len(empty_df))
+            skuwise_items = empty_df.to_dict(orient="records")
+
+        except Exception as e:
+            sku_summary_saved = False
+            sku_summary_rows = 0
+            skuwise_items = []
+            print("EMPTY SKUWISE TABLE CREATE ERROR:", str(e))
+
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
         df = df.reindex(
