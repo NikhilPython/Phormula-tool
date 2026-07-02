@@ -204,28 +204,15 @@ type InventoryCurrentApiResponse = {
       product_count?: number;
       sku_count?: number;
     }
-  >;
+  > | null;
 
-  category_counts?: Record<string, number>;
+  category_counts?: Record<string, number> | null;
 
-  // ✅ ADD THIS
-  high_alert_coverage_summary?: {
-    average_coverage_ratio?: number;
-    high_alert_sku_count?: number;
-    high_alert_threshold?: number;
-    items?: {
-      alert?: string;
-      coverage_ratio_months?: number;
-      high_alert_threshold?: number;
-      product_name?: string;
-      sku?: string;
-    }[];
-  };
+  // ✅ Global response support
+  combined_countries?: string[];
+  country_results?: Record<string, InventoryCurrentApiResponse>;
 
-  month?: string;
-  year?: number;
   country_key?: string;
-
   inventory_age_summary?: {
     total?: number;
     columns?: Record<
@@ -289,6 +276,10 @@ type InventoryAgeSummaryApiResponse = {
   age_summary?: InventoryAgeSummaryItem[];
   month_summary?: InventoryAgeMonthSummaryItem[];
   message?: string;
+
+  // ✅ ADD for global inventory trend response
+  combined_countries?: string[];
+  country_results?: Record<string, InventoryAgeSummaryApiResponse>;
 };
 
 const normalizeKey = (s: string) =>
@@ -3160,7 +3151,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 60,
     twoSeventyOneToThreeSixtyFive: 25,
     threeSixtyFivePlus: 10,
+    available: 625,
+    inboundUnits: 40,
     totalUnits: 625,
+    unsellableUnits: 0,
   },
   {
     productName: "Demo Product B",
@@ -3170,7 +3164,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 180,
     twoSeventyOneToThreeSixtyFive: 90,
     threeSixtyFivePlus: 130,
+    available: 760,
+    inboundUnits: 65,
     totalUnits: 760,
+    unsellableUnits: 0,
   },
   {
     productName: "Demo Product C",
@@ -3180,7 +3177,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 20,
     twoSeventyOneToThreeSixtyFive: 5,
     threeSixtyFivePlus: 0,
+    available: 660,
+    inboundUnits: 25,
     totalUnits: 660,
+    unsellableUnits: 0,
   },
   {
     productName: "Demo Product D",
@@ -3190,7 +3190,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 160,
     twoSeventyOneToThreeSixtyFive: 220,
     threeSixtyFivePlus: 310,
+    available: 900,
+    inboundUnits: 90,
     totalUnits: 900,
+    unsellableUnits: 0,
   },
   {
     productName: "Demo Product E",
@@ -3200,7 +3203,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 95,
     twoSeventyOneToThreeSixtyFive: 40,
     threeSixtyFivePlus: 35,
+    available: 680,
+    inboundUnits: 35,
     totalUnits: 680,
+    unsellableUnits: 0,
   },
   {
     productName: "Demo Product F",
@@ -3210,7 +3216,10 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     oneEightyOneToTwoSeventy: 120,
     twoSeventyOneToThreeSixtyFive: 80,
     threeSixtyFivePlus: 60,
+    available: 600,
+    inboundUnits: 55,
     totalUnits: 600,
+    unsellableUnits: 0,
   },
 ];
 
@@ -3462,6 +3471,52 @@ const getShortMonthLabel = (monthName?: string) => {
   return clean ? clean.slice(0, 3) : "-";
 };
 
+// const flattenGlobalAgeSummaryResponses = (
+//   responses: InventoryAgeSummaryApiResponse[]
+// ): InventoryAgeSummaryApiResponse[] => {
+//   return (responses || []).flatMap((res: any) => {
+//     if (
+//       String(res?.country_key || "").toLowerCase() === "global" &&
+//       res?.country_results &&
+//       typeof res.country_results === "object"
+//     ) {
+//       return Object.entries(res.country_results).map(([countryKey, countryRes]: any) => ({
+//         ...countryRes,
+//         country_key: countryKey,
+//       }));
+//     }
+
+//     return [res];
+//   });
+// };
+
+const getSelectedCountryAgeSummaryResponses = (
+  responses: InventoryAgeSummaryApiResponse[],
+  selectedCountry: string
+): InventoryAgeSummaryApiResponse[] => {
+  const selectedKey = String(selectedCountry || "uk").toLowerCase();
+
+  return (responses || []).map((res: any) => {
+    if (
+      String(res?.country_key || "").toLowerCase() === "global" &&
+      res?.country_results &&
+      typeof res.country_results === "object"
+    ) {
+      const countryRes =
+        res.country_results?.[selectedKey] ||
+        res.country_results?.uk ||
+        Object.values(res.country_results || {})[0];
+
+      return {
+        ...(countryRes || {}),
+        country_key: selectedKey,
+      };
+    }
+
+    return res;
+  });
+};
+
 const buildAgeingTrendDataFromSummary = (
   ageSummaryResponses: InventoryAgeSummaryApiResponse[],
   bucketColumn: string
@@ -3484,11 +3539,14 @@ const buildAgeingTrendDataFromSummary = (
       for (const item of res.month_summary) {
         const key = `${item.year}-${item.month_number}`;
 
+        const previous = monthMap.get(key);
+
         monthMap.set(key, {
           month: item.month,
           month_number: item.month_number,
           year: item.year,
-          value: toNum(item.totals?.[bucketColumn]),
+          // ✅ For global: UK + US same month should be summed
+          value: toNum(previous?.value) + toNum(item.totals?.[bucketColumn]),
         });
       }
 
@@ -3605,27 +3663,79 @@ const buildAgeingTrendDataFromInventoryCurrent = (
     }));
 };
 
+const isGlobalInventoryResponse = (res?: InventoryCurrentApiResponse) => {
+  return (
+    String(res?.country_key || "").toLowerCase() === "global" &&
+    !!res?.country_results &&
+    typeof res.country_results === "object"
+  );
+};
+
+const getSelectedCountryInventoryResponse = (
+  res: InventoryCurrentApiResponse | undefined,
+  selectedCountry: string
+): InventoryCurrentApiResponse | undefined => {
+  if (!res) return undefined;
+
+  if (!isGlobalInventoryResponse(res)) return res;
+
+  const selectedKey = String(selectedCountry || "uk").toLowerCase();
+
+  const countryRes =
+    res.country_results?.[selectedKey] ||
+    res.country_results?.uk ||
+    Object.values(res.country_results || {})[0];
+
+  if (!countryRes) return undefined;
+
+  return {
+    ...countryRes,
+    country_key: countryRes.country_key || selectedKey,
+  };
+};
+
+const getCurrentMonthUnitsSoldKeyForResponse = (
+  res?: InventoryCurrentApiResponse,
+  sampleRow?: InventoryCurrentRow
+) => {
+  return (
+    res?.columns?.find((column) =>
+      String(column).toLowerCase().startsWith("current month units sold")
+    ) ||
+    Object.keys(sampleRow ?? {}).find((key) =>
+      String(key).toLowerCase().startsWith("current month units sold")
+    )
+  );
+};
+
 const buildInventoryInsightsFromResponses = (
   responses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
   countryName: string,
   homeCurrency?: string,
-  selectedTrendBucketValue: string = "365+ days"
+  selectedTrendBucketValue: string = "365+ days",
+  selectedGlobalInventoryCountry: string = "uk"
 ): InventoryInsightsData => {
   const validResponses = responses.filter((res) => res?.success);
-  const latestResponse = validResponses[validResponses.length - 1];
+  const latestRawResponse = validResponses[validResponses.length - 1];
+
+  const isGlobalInventory = isGlobalInventoryResponse(latestRawResponse);
+
+  // ✅ Countrywise: latestResponse stays same.
+  // ✅ Global: latestResponse becomes only UK or only US based on toggle.
+  const latestResponse = getSelectedCountryInventoryResponse(
+    latestRawResponse,
+    selectedGlobalInventoryCountry
+  );
 
   const latestRows = (latestResponse?.rows ?? []).filter(
     (row) => !isInventoryTotalRow(row)
   );
 
-  const currentMonthUnitsSoldKey =
-    latestResponse?.columns?.find((column) =>
-      String(column).toLowerCase().startsWith("current month units sold")
-    ) ||
-    Object.keys(latestRows?.[0] ?? {}).find((key) =>
-      String(key).toLowerCase().startsWith("current month units sold")
-    );
+  const currentMonthUnitsSoldKey = getCurrentMonthUnitsSoldKeyForResponse(
+    latestResponse,
+    latestRows?.[0]
+  );
 
   const heatmapData: AgeingRiskHeatmapRow[] = latestRows
     .map((row) => {
@@ -3648,24 +3758,39 @@ const buildInventoryInsightsFromResponses = (
       // ✅ Sellable Units should come from backend available column
       const available = toNum(row?.available);
 
+      // ✅ Map backend inbound_quantity as Inbound Units
+      const inboundUnits = toNum(
+        row?.inbound_quantity ??
+        row?.["inbound_quantity"] ??
+        row?.inboundQuantity ??
+        row?.["Inbound Quantity"] ??
+        row?.["Inbound Units"]
+      );
+
       // ✅ Keep totalUnits same as available only as fallback for old logic
       const totalUnits = available;
 
       const unsellableUnits = toNum(
         row?.["unfulfillable-quantity"] ??
-        row?.unfulfillable_quantity ??
-        row?.fulfillable_quantity
+        row?.unfulfillable_quantity
       );
 
       return {
         productName: productName || sku || "-",
         sku,
+
+        countryKey: String(latestResponse?.country_key || countryName || "").toLowerCase(),
+        rawProductName: productName || sku || "-",
+        rawSku: sku,
+
         zeroToNinety,
         ninetyOneToOneEighty,
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
+
         available,
+        inboundUnits,
         totalUnits,
         unsellableUnits,
 
@@ -3673,11 +3798,8 @@ const buildInventoryInsightsFromResponses = (
           ? toNum(row?.[currentMonthUnitsSoldKey])
           : 0,
 
-        // ✅ Needed for Others coverage ratio
         salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
-
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
-
         inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
       };
     })
@@ -3736,9 +3858,16 @@ const buildInventoryInsightsFromResponses = (
 
   const trendData: AgeingTrendItem[] = [];
 
+  const trendAgeSummaryResponses = isGlobalInventory
+    ? getSelectedCountryAgeSummaryResponses(
+      ageSummaryResponses,
+      selectedGlobalInventoryCountry
+    )
+    : ageSummaryResponses;
+
   const trendAllSeriesData = AGEING_TREND_BUCKET_OPTIONS.map((bucket) => {
     const dataFromSummary = buildAgeingTrendDataFromSummary(
-      ageSummaryResponses,
+      trendAgeSummaryResponses,
       bucket.column
     );
 
@@ -3792,8 +3921,10 @@ const buildInventoryInsightsFromResponses = (
     toNum(row?.["unfulfillable-quantity"]) > 0
   );
 
+  const latestCategories = latestResponse?.categories || {};
+
   const estimatedStorageCategory =
-    latestResponse?.categories?.estimated_storage_cost as any;
+    latestCategories?.estimated_storage_cost as any;
 
   const storageCostTotal =
     getEstimatedStorageCostTotal(latestResponse) ||
@@ -4272,6 +4403,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [range, setRange] = useState<RangeType>(() => getInitialRange());
   const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
     useState<string>("365+ days");
+
+  const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
+    useState<string>("uk");
+
   const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   const [selectedYear, setSelectedYear] = useState<string>(() => {
@@ -4285,6 +4420,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   );
 
   const [cmPieTab, setCmPieTab] = useState<"cm1" | "cm2">("cm1");
+
+
 
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(
@@ -6484,7 +6621,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         inventoryRawResponses.ageSummary,
         effectiveCountryName,
         effectiveHomeCurrency,
-        selectedAgeingTrendBucket
+        selectedAgeingTrendBucket,
+        selectedGlobalInventoryCountry
       )
     );
   }, [
@@ -6493,6 +6631,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     effectiveCountryName,
     effectiveHomeCurrency,
     isDemoMode,
+    selectedGlobalInventoryCountry,
   ]);
 
   useEffect(() => {
@@ -6941,7 +7080,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             fulfilledAgeSummary,
             effectiveCountryName,
             effectiveHomeCurrency,
-            "all"
+            "all",
+            selectedGlobalInventoryCountry
           )
         );
       } catch (error: any) {
@@ -8799,28 +8939,42 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   <p className="text-sm text-red-600">{inventoryInsightsError}</p>
                 </div>
               ) : inventoryInsightsData ? (
-                <InventoryInsightsSection
-                  heatmapBuckets={inventoryInsightsData.heatmapBuckets}
-                  heatmapData={inventoryInsightsData.heatmapData}
-                  donutData={inventoryInsightsData.donutData}
-                  donutTotalUnits={inventoryInsightsData.donutTotalUnits}
-                  trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
-                  trendData={inventoryInsightsData.trendData}
-                  trendLineColor={inventoryInsightsData.trendLineColor}
-                  trendBucketOptions={inventoryInsightsData.trendBucketOptions}
-                  trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
-                  onTrendBucketChange={setSelectedAgeingTrendBucket}
-                  actions={inventoryInsightsData.actions}
-                  actionLogic={inventoryInsightsData.actionLogic}
-                  onHeatmapProductClick={handleHeatmapProductClick}
-                  showInventoryAlerts={false}
-                  showHeatmapExcelDownload={true}
-                  heatmapExcelFilename={`Inventory Insights Report - ${countryName?.toUpperCase()} - ${formatMonthName(selectedMonth)} ${selectedYear}.xlsx`}
-                  heatmapExcelCountryLabel={countryName?.toUpperCase()}
-                  heatmapExcelPeriodLabel={`${formatMonthName(selectedMonth)} ${selectedYear}`}
-                  heatmapExcelCompanyName={userData?.company_name}
-                  heatmapExcelBrandName={userData?.brand_name}
-                />
+                <>
+                  {isGlobalPage && (
+                    <div className="mb-4 flex items-center justify-end">
+                      <SegmentedToggle
+                        value={selectedGlobalInventoryCountry}
+                        onChange={(val) => setSelectedGlobalInventoryCountry(String(val))}
+                        options={[
+                          { value: "uk", label: "UK" },
+                          { value: "us", label: "US" },
+                        ]}
+                        compact
+                        textSizeClass="text-xs"
+                      />
+                    </div>
+                  )}
+
+                  <InventoryInsightsSection
+                    heatmapBuckets={inventoryInsightsData.heatmapBuckets}
+                    heatmapData={inventoryInsightsData.heatmapData}
+                    donutData={inventoryInsightsData.donutData}
+                    donutTotalUnits={inventoryInsightsData.donutTotalUnits}
+                    trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
+                    trendData={inventoryInsightsData.trendData}
+                    trendLineColor={inventoryInsightsData.trendLineColor}
+                    trendBucketOptions={inventoryInsightsData.trendBucketOptions}
+                    trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
+                    actions={inventoryInsightsData.actions}
+                    actionLogic={inventoryInsightsData.actionLogic}
+                    showInventoryAlerts={true}
+                    heatmapExcelCountryLabel={
+                      isGlobalPage
+                        ? selectedGlobalInventoryCountry.toUpperCase()
+                        : countryName?.toUpperCase()
+                    }
+                  />
+                </>
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
                   No inventory insights found for the selected period.

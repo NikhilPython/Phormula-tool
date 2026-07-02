@@ -21,6 +21,7 @@ export type AgeingRiskHeatmapRow = {
     // keep this only if used elsewhere
     totalUnits?: number;
 
+    inboundUnits?: number;
     unsellableUnits?: number;
     unitsSold?: number;
 
@@ -111,6 +112,11 @@ const buildAggregateRow = (
 
     aggregate.totalUnits = aggregate.available;
 
+    aggregate.inboundUnits = rows.reduce(
+        (sum, row) => sum + Number(row.inboundUnits || 0),
+        0
+    );
+
     aggregate.unsellableUnits = rows.reduce(
         (sum, row) => sum + Number(row.unsellableUnits || 0),
         0
@@ -169,11 +175,12 @@ const buildPercentageRow = (
     buckets: AgeingBucket[],
 ): AgeingRiskHeatmapRow => {
     const sellableUnits = Number(totalRow.available ?? totalRow.totalUnits ?? 0);
+    const inboundUnits = Number(totalRow.inboundUnits || 0);
     const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
 
-    // ✅ Backend percentage_base_total = sellable + unfulfillable
-    // Example: 2788 + 147 = 2935
-    const percentageBaseTotal = sellableUnits + unfulfillableUnits;
+    // ✅ Backend percentage_base_total = sellable + inbound + unfulfillable
+    // Example: 2788 + 147 + 50 = 2985
+    const percentageBaseTotal = sellableUnits + inboundUnits + unfulfillableUnits;
 
     const percentageRow: AgeingRiskHeatmapRow = {
         productName: "% of Total",
@@ -187,6 +194,11 @@ const buildPercentageRow = (
         totalUnits:
             percentageBaseTotal > 0
                 ? (sellableUnits / percentageBaseTotal) * 100
+                : 0,
+
+        inboundUnits:
+            percentageBaseTotal > 0
+                ? (inboundUnits / percentageBaseTotal) * 100
                 : 0,
 
         unsellableUnits:
@@ -438,6 +450,38 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return (
                         <span>
                             {availableUnits > 0 ? availableUnits.toLocaleString() : "0"}
+                        </span>
+                    );
+                },
+            },
+            {
+                key: "inboundUnits",
+                header: "Inbound Units",
+                width: "85px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isPercentageRow) {
+                        const value = Number(row.inboundUnits || 0);
+
+                        return (
+                            <span>
+                                {value > 0
+                                    ? `${value.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })}%`
+                                    : "-"}
+                            </span>
+                        );
+                    }
+
+                    const inboundUnits = Number(row.inboundUnits || 0);
+
+                    return (
+                        <span>
+                            {inboundUnits > 0 ? inboundUnits.toLocaleString() : "-"}
                         </span>
                     );
                 },
