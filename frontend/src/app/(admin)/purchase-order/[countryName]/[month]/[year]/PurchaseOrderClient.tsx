@@ -771,7 +771,7 @@ export default function PurchaseOrderPage({
 
   const getTableRowClassName = useCallback((row: Row) => {
     if (row.__isSignRow) return 'bg-white'
-    if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold'
+    if (row.__isTotalRow) return 'bg-[#EFEFEF] font-semibold'
     return 'bg-white'
   }, [])
 

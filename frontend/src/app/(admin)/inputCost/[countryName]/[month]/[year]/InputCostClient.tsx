@@ -545,6 +545,37 @@ const splitMetricValue = (value: string) => {
   return { main, delta, deltaColor };
 };
 
+const formatMetricDelta = (delta: string) => {
+  const cleanDelta = String(delta || "")
+    .replace(/[()]/g, "")
+    .trim();
+
+  if (!cleanDelta) return "";
+
+  const isPositive = cleanDelta.startsWith("+");
+  const isNegative = cleanDelta.startsWith("-");
+  const valueWithoutSign = cleanDelta.replace(/^[-+]/, "");
+
+  if (isPositive) return `▲ ${valueWithoutSign}`;
+  if (isNegative) return `▼ ${valueWithoutSign}`;
+
+  return valueWithoutSign;
+};
+
+const formatMetricTitle = (label: string) => {
+  return String(label || "")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cm1", "CM1")
+    .replace("Cm2", "CM2");
+};
+
+const formatUnitsNoDecimal = (value: any) => {
+  return Math.round(Number(value ?? 0)).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+};
+
 const formatRecommendationCardMainValue = (label: string, main: string) => {
   const normalizedLabel = label.trim().toLowerCase();
 
@@ -666,11 +697,11 @@ const formatSummaryPeriod = (text?: string) => {
 };
 
 const metricColors = [
-  "border border-[#FDD36F] border-t-[#FDD36F]",
-  "border border-[#75BBDA] border-t-[#75BBDA]",
-  "border border-[#B75A5A] border-t-[#B75A5A]",
-  "border border-[#7B9A6D] border-t-[#7B9A6D]",
-  "border border-[#C49466] border-t-[#C49466]",
+  "border border-[#FDD36F] border-t-4",
+  "border border-[#75BBDA] border-t-4",
+  "border border-[#B75A5A] border-t-4",
+  "border border-[#7B9A6D] border-t-4",
+  "border border-[#C49466] border-t-4",
 ];
 
 const metricOrder = [
@@ -870,110 +901,111 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             exit={{ x: 520 }}
             transition={{ type: "tween", duration: 0.25 }}
           >
-            <div className="flex h-full flex-col gap-4">
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <PageBreadcrumb
-                        pageTitle="Detailed View - "
-                        variant="page"
-                        textSize="2xl"
-                      />
-                    </div>
+            <div className="flex flex-col gap-4 h-full">
+              {/* Header */}
+              <div className="shrink-0 border-b border-slate-200 p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <PageBreadcrumb
+                      pageTitle="Detailed View - "
+                      variant="page"
+                      textSize="2xl"
+                    />
 
-                    <div className="flex flex-wrap items-center gap-1 sm:ml-1">
-                      <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                        {block.name || "Details"}
+                    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                      {block.name || "Details"}
+                    </span>
+
+                    {drawerPeriodText ? (
+                      <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                        {drawerPeriodText}
                       </span>
-
-                      {drawerPeriodText ? (
-                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                          {drawerPeriodText}
-                        </span>
-                      ) : periodBadge ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
-                          {periodBadge}
-                        </span>
-                      ) : null}
-                    </div>
+                    ) : periodBadge ? (
+                      <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                        ( {periodBadge} )
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
                 <button
                   onClick={onClose}
-                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+              <div className="flex-1 overflow-y-auto space-y-6 px-3">
+                {/* Metrics */}
                 <div>
-                  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-                    Metrics
-                  </div>
+                  <PageBreadcrumb
+                    pageTitle="Metrics"
+                    variant="page"
+                    align="left"
+                    textSize="xl"
+                    className="mb-2"
+                  />
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-                    {sortedMetrics.map((m, i) => (
-                      <div
-                        key={`${m.label}-${i}`}
-                        className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(
-                          m.label,
-                          i
-                        )} px-3 py-2`}
-                      >
-                        <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-                          {m.label
-                            .replace(/\b\w/g, (char) => char.toUpperCase())
-                            .replace("Cm1", "CM1")}
+                    {sortedMetrics.map((m, i) => {
+                      const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+                      const displayMain = formatRecommendationCardMainValue(
+                        m.label,
+                        main
+                      );
+
+                      return (
+                        <div
+                          key={`${m.label}-${i}`}
+                          className={[
+                            "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                            "flex flex-col justify-between min-h-[72px]",
+                            getMetricBorderColorByLabel(m.label, i),
+                          ].join(" ")}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                              {formatMetricTitle(m.label)}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
+                            <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500 truncate">
+                              {displayMain}
+                            </span>
+
+                            {delta ? (
+                              <span
+                                className={[
+                                  "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
+                                  deltaColor,
+                                ].join(" ")}
+                              >
+                                {formatMetricDelta(delta)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-
-                        <div className="flex flex-col leading-tight">
-                          {(() => {
-                            const { main, delta, deltaColor } =
-                              splitMetricValue(m.value);
-
-                            const displayMain =
-                              formatRecommendationCardMainValue(m.label, main);
-
-                            return (
-                              <>
-                                <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
-                                  {displayMain}
-                                </span>
-
-                                {delta ? (
-                                  <span
-                                    className="text-[10px] 2xl:text-xs font-semibold"
-                                    style={{
-                                      color:
-                                        deltaColor === "text-emerald-600"
-                                          ? "#5EA68E"
-                                          : "#FF5C5C",
-                                    }}
-                                  >
-                                    {delta}
-                                  </span>
-                                ) : null}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
+                {/* Overall Best Performance */}
                 {!isOtherSkusBlock && (
                   <div>
-                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-                      Overall Best Performance
-                    </div>
+                    <PageBreadcrumb
+                      pageTitle="Overall Best Performance"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                    />
 
-                    <div className="mb-2 text-[11px] text-charcoal-400 2xl:text-xs">
+                    <p className="mb-2 text-xs 2xl:text-sm text-charcoal-500 mt-1">
                       Best performance is calculated from overall historical data, not just the selected period.
-                    </div>
+                    </p>
 
                     {bestPerformanceLoading ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
@@ -984,13 +1016,13 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         {bestPerformanceError}
                       </div>
                     ) : bestPerformanceData ? (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                         {[
                           {
                             label: "Units",
-                            value: Math.round(
-                              Number(bestPerformanceData?.units?.units ?? 0)
-                            ).toLocaleString(),
+                            value: formatUnitsNoDecimal(
+                              bestPerformanceData?.units?.units
+                            ),
                             period: formatBestPerformancePeriod(
                               bestPerformanceData?.units?.month,
                               bestPerformanceData?.units?.year
@@ -1041,26 +1073,31 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                               bestPerformanceData?.unit_wise_profitability?.year
                             ),
                           },
-                        ].map((m, i) => (
+                        ].map((card, index) => (
                           <div
-                            key={m.label}
-                            className={`rounded-lg border border-t-4 ${getMetricBorderColorByLabel(
-                              m.label,
-                              i
-                            )} px-3 py-2`}
+                            key={card.label}
+                            className={[
+                              "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
+                              "flex flex-col justify-between min-h-[78px]",
+                              getMetricBorderColorByLabel(card.label, index),
+                            ].join(" ")}
                           >
-                            <div className="text-[10px] text-charcoal-400 2xl:text-xs">
-                              {m.label}
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                                {formatMetricTitle(card.label)}
+                              </span>
                             </div>
 
-                            <div className="flex flex-col leading-tight">
-                              <span className="mt-1 text-[10px] 2xl:text-xs text-[#414042]">
-                                {m.period}
-                              </span>
+                            <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
+                              <div className="min-w-0">
+                                <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 whitespace-nowrap">
+                                  {card.period}
+                                </div>
 
-                              <span className="text-sm font-bold 2xl:text-lg text-[#414042]">
-                                {m.value}
-                              </span>
+                                <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 whitespace-nowrap">
+                                  {card.value}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1073,6 +1110,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
                 )}
 
+                {/* Recommendations */}
                 <div>
                   <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
                     Recommendations
@@ -1080,12 +1118,28 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
                   {block.recommendationBullets?.length ? (
                     <div>
-                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                      <div className="text-xs 2xl:text-sm font-semibold text-charcoal-500">
                         Action
                       </div>
 
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
                         {block.recommendationBullets.map((pt, i) => (
+                          <li key={i}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+                  )}
+
+                  {adsRecoBullets.length ? (
+                    <div className="mt-2">
+                      <div className="text-xs 2xl:text-sm font-semibold text-charcoal-500">
+                        Advertising
+                      </div>
+
+                      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
+                        {adsRecoBullets.map((pt, i) => (
                           <li key={i}>{pt}</li>
                         ))}
                       </ul>
@@ -1094,56 +1148,20 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
                   {inventoryRecoBullets.length ? (
                     <div className="mt-2">
-                      <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                      <div className="text-xs 2xl:text-sm font-semibold text-charcoal-500">
                         Inventory
                       </div>
 
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
                         {inventoryRecoBullets.map((pt, i) => (
-                          <li key={i}>{pt}</li>
+                          <li key={i}>{pt.replace(/^•\s*/, "")}</li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-
-                  {!block.recommendationBullets?.length &&
-                    !inventoryRecoBullets.length &&
-                    !adsRecoBullets.length && (
-                      <div className="text-xs text-charcoal-500 2xl:text-sm">
-                        —
-                      </div>
-                    )}
                 </div>
 
-                {/* {!isOtherSkusBlock && (
-                  <div>
-                    <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
-                      Performance Journey
-                    </div>
-
-                    <ProductwisePerformance
-                      key={[
-                        countryName,
-                        range,
-                        quarter,
-                        year,
-                        block.name,
-                        "drawer",
-                      ].join("-")}
-                      embedded
-                      countryNameProp={countryName}
-                      rangeProp={range === "monthly" ? "yearly" : range}
-                      selectedMonthProp=""
-                      selectedQuarterProp={
-                        range === "quarterly" ? quarter || "" : ""
-                      }
-                      selectedYearProp={year ? Number(year) : ""}
-                      initialProductName={block.name}
-                      sharedInsightData={sharedInsightData}
-                    />
-                  </div>
-                )} */}
-
+                {/* Chart / Product Info */}
                 <div className="w-full">
                   <Productinfoinpopup
                     productname={
@@ -1163,6 +1181,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   />
                 </div>
 
+                {/* Product Journey */}
                 <div className="pb-4">
                   <div className="flex items-center gap-1 flex-wrap">
                     <PageBreadcrumb
@@ -1184,7 +1203,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                       ))}
                     </ol>
                   ) : (
-                    <div className="text-xs text-charcoal-500 2xl:text-sm">
+                    <div className="text-xs 2xl:text-sm text-charcoal-500">
                       —
                     </div>
                   )}
@@ -4341,7 +4360,7 @@ export default function InputCostPage({ params }: Params) {
         <button
           type="button"
           onClick={() => openAiProductDrawerByName(productName, sku)}
-          className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+          className="text-left text-green-500"
           title="Open detailed product view"
         >
           {displayName}
@@ -4466,7 +4485,7 @@ export default function InputCostPage({ params }: Params) {
                   String(sku || "")
                 )
               }
-              className="text-left font-medium text-green-500 underline-offset-2 hover:underline"
+              className="text-left text-green-500 "
             >
               {tableRow.product_name}
             </button>
@@ -4745,8 +4764,8 @@ export default function InputCostPage({ params }: Params) {
     const isGrand = isTotalRow(row) || msku === 'TOTAL' || row?.__isTotal === true;
     const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
 
-    if (isGrand) return 'bg-[#D9D9D9] font-semibold';
-    if (isOthers) return 'font-semibold';
+    if (isGrand) return 'bg-[#EFEFEF] font-semibold';
+    if (isOthers) return '';
     return '';
   };
 
@@ -4761,7 +4780,10 @@ export default function InputCostPage({ params }: Params) {
     const pn = String(row?.product_name || '').trim().toUpperCase();
 
     if (colKey === "product_name") {
-      if (pn === "OTHERS") return "Others";
+      if (pn === "OTHERS") {
+        return <span className="text-green-500">Others</span>;
+      }
+
       if (pn === "TOTAL" || pn === "GRAND TOTAL") return "Total";
 
       return renderClickableProductName(row?.product_name, row?.msku, {
@@ -4773,13 +4795,22 @@ export default function InputCostPage({ params }: Params) {
     }
 
     if (colKey === "__sno") {
-      if (isSpecialRow) return "";
+      if (row?.__isOthers === true || String(row?.msku || "").trim().toUpperCase() === "OTHERS") {
+        return "10";
+      }
+
+      if (row?.__isTotal === true || isTotalRow(row)) {
+        return "";
+      }
 
       if (typeof exportIndex === "number") {
         return String(exportIndex + 1);
       }
 
-      const visibleRows = reconDisplayRows.filter((r) => !(r?.__isTotal || isTotalRow(r)));
+      const visibleRows = reconDisplayRows.filter(
+        (r) => !(r?.__isTotal || isTotalRow(r) || r?.__isOthers)
+      );
+
       const idx = visibleRows.findIndex(
         (r) => (r?.id ?? r?.msku) === (row?.id ?? row?.msku)
       );
@@ -5604,8 +5635,8 @@ export default function InputCostPage({ params }: Params) {
                       ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
                       : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
                   }
-                  headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                  headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  // headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  // headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
                   showSignRowInBody
                   getSignForCol={getSignForCol}
                 />
@@ -5638,9 +5669,9 @@ export default function InputCostPage({ params }: Params) {
                   }
                   rowClassName={(row) =>
                     (row as any).__isTotal
-                      ? "bg-[#D9D9D9] font-semibold"
+                      ? "bg-[#EFEFEF] font-semibold"
                       : (row as any).__isOthers
-                        ? "font-semibold"
+                        ? ""
                         : ""
                   }
                 />

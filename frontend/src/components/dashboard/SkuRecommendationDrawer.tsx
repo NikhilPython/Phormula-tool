@@ -670,9 +670,13 @@ export default function SkuRecommendationDrawer({
                 )}
 
                 <div>
-                  <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
-                    Recommendations
-                  </div>
+                  <PageBreadcrumb
+                    pageTitle="Recommendations"
+                    variant="page"
+                    align="left"
+                    textSize="xl"
+                    className="mb-2"
+                  />
 
                   {cleanedRecommendationPoints.length ? (
                     <div>
@@ -734,7 +738,8 @@ export default function SkuRecommendationDrawer({
                     <PageBreadcrumb
                       pageTitle="Product Journey"
                       variant="page"
-                      textSize="lg"
+                      textSize="xl"
+                      className="mb-2"
                     />
                   </div>
 

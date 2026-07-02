@@ -1122,7 +1122,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         headerMaxWidth={140}
                         emptyMessage={getSkuEmptyMessage()}
                         rowClassName={(row) =>
-                            row.__isTotal ? "bg-[#D9D9D933] font-bold" : ""
+                            row.__isTotal ? "bg-[#EFEFEF] font-semibold" : ""
                         }
                         isTotalRow={(row) => !!row.__isTotal}
                         bodyMaxHeight={

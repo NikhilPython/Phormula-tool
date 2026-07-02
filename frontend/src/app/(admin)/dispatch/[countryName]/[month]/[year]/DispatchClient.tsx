@@ -889,9 +889,9 @@ export default function DispatchPage({
                 }
                 rowClassName={(row: any) =>
                   row.__isTotal
-                    ? "bg-[#D9D9D9] font-bold"
+                     ? "bg-[#EFEFEF] font-semibold"
                     : row.__isOthers
-                      ? "font-semibold"
+                      ? ""
                       : ""
                 }
                 isTotalRow={(row: any) => !!row.__isTotal}

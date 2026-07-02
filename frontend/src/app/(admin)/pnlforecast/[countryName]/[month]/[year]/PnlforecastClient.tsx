@@ -1325,7 +1325,7 @@ const Pnlforecast: React.FC = () => {
                 align="left"
                 textSize="2xl"
                 pageTitle={
-                  <div className="flex flex-wrap items-baseline gap-2">
+                  <div className="flex flex-wrap items-baseline gap-1">
                     <span className="text-[#414042] font-bold">
                       P&L Forecast - Amazon
                     </span>

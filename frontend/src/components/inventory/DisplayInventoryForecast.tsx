@@ -764,7 +764,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
   return (
     <div>
-      <div className="flex flex-col gap-6 mt-5">
+      <div className="flex flex-col gap-6 ">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <div className="flex flex-col gap-4">
             <div className="flex items-baseline gap-2">
@@ -854,16 +854,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               })}
             </div>
           )}
-
-          {/* <div className="w-full">
-            {hasRenderableData ? (
-              <div className="w-full h-[550px]">
-                <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
-              </div>
-            ) : (
-              <EmptyChartState />
-            )}
-          </div> */}
 
           <div className="w-full h-[550px]">
             <Line

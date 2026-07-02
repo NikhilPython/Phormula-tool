@@ -2066,8 +2066,8 @@ export default function LiveBusinessClient({
     const { coverageRatio } = getInventoryMetricValues(row);
 
     return {
-      label: "Stock Cover (Months)",
-      value: `${coverageRatio.toFixed(1)}`,
+      label: "Current inventory",
+      value: `${coverageRatio.toFixed(2)} months`,
     };
   };
 
@@ -2098,7 +2098,6 @@ export default function LiveBusinessClient({
       ...baseMetrics,
       ...(sourceRow ? [buildAdsMetric(sourceRow)] : []),
       buildStockCoverMetric(sourceRow),
-      buildCurrentInventoryUnitsMetric(sourceRow),
     ]);
   };
 
@@ -3040,15 +3039,21 @@ export default function LiveBusinessClient({
     setSelectedRec(selected);
     setRecDrawerOpen(true);
   };
-  const ProductNameCell = ({ item }: { item: SkuItem }) => (
-    <button
-      type="button"
-      onClick={() => openRecommendationDrawerForSku(item)}
-      className="text-left font-medium  text-green-500 underline-offset-2 "
-    >
-      {capitalizeWords(item.product_name || item.sku || "N/A")}
-    </button>
-  );
+
+  const ProductNameCell = ({ item }: { item: SkuItem }) => {
+    const productName = item.product_name || item.sku || "N/A";
+    const isOthers = isOthersCardName(productName);
+
+    return (
+      <button
+        type="button"
+        onClick={() => openRecommendationDrawerForSku(item)}
+        className="text-left text-green-500 underline-offset-2"
+      >
+        {isOthers ? "Others" : capitalizeWords(productName)}
+      </button>
+    );
+  };
 
   const hideAdsFromRecommendationCard = (
     metrics: { label: string; value: string; color?: string }[] = []
@@ -3274,7 +3279,7 @@ export default function LiveBusinessClient({
 
       rows.push({
         sNo: <CenterCell value={6} />,
-        product: 'Others',
+        product: <span className="text-green-500">Others</span>,
         salesMix: <CenterCell value={
           totalNetSalesMonth2 > 0
             ? `${((othersNetSales / totalNetSalesMonth2) * 100).toFixed(2)}%`
@@ -3474,7 +3479,7 @@ export default function LiveBusinessClient({
 
   const rowClassNameForDataTable = (row: BIGridRow) => {
     if (row.__isTotal) {
-      return 'bg-[#D9D9D9] font-bold';
+      return 'bg-[#EFEFEF] font-semibold';
     }
     return 'bg-white';
   };
@@ -3871,7 +3876,7 @@ export default function LiveBusinessClient({
           ]),
         {
           label: "Current inventory",
-          value: `${Number.isFinite(coverageRatio) ? coverageRatio.toFixed(2) : "0.00"} months\n${Number.isFinite(currentInventory) ? Math.round(currentInventory).toLocaleString() : "0"} units`,
+          value: `${Number.isFinite(coverageRatio) ? coverageRatio.toFixed(2) : "0.00"} months`,
         },
       ];
 
@@ -4504,12 +4509,8 @@ export default function LiveBusinessClient({
 
                 {/* 3) Recommended Actions (cards) */}
                 {(
-                  isGlobalData()
-                    ? globalRecommendationCards.length > 0
-                    : (
-                      Object.keys(recommendedActions || {}).length > 0 ||
-                      !!effectiveRemainingSkusBlock
-                    )
+                  Object.keys(recommendedActions || {}).length > 0 ||
+                  !!effectiveRemainingSkusBlock
                 ) && (
                     <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
                       <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
@@ -4614,20 +4615,26 @@ export default function LiveBusinessClient({
                                   );
 
                                   return (
-                                    <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                    <div className="space-y-1 font-lato text-xs 2xl:text-sm leading-[20px] font-normal text-slate-900">
                                       {cardActionPoints[0] && (
-                                        <div className="flex gap-2">
-                                          <span className="shrink-0 font-semibold">1.</span>
-                                          <span className="line-clamp-2">
+                                        <div className="flex items-start gap-1.5">
+                                          <span className="shrink-0 text-xs 2xl:text-sm leading-[20px] font-normal text-slate-900">
+                                            1.
+                                          </span>
+
+                                          <span className="line-clamp-2 text-xs 2xl:text-sm leading-[20px] font-normal text-slate-900">
                                             {cardActionPoints[0]}
                                           </span>
                                         </div>
                                       )}
 
                                       {cardInventoryPoints[0] && (
-                                        <div className="flex gap-2">
-                                          <span className="shrink-0 font-semibold">2.</span>
-                                          <span className="line-clamp-2">
+                                        <div className="flex items-start gap-1.5">
+                                          <span className="shrink-0 text-xs 2xl:text-sm leading-[20px] font-normal text-slate-900">
+                                            2.
+                                          </span>
+
+                                          <span className="line-clamp-2 text-xs 2xl:text-sm leading-[20px] font-normal text-slate-900">
                                             {cleanInventoryCardPoint(cardInventoryPoints[0])}
                                           </span>
                                         </div>
@@ -4779,6 +4786,7 @@ export default function LiveBusinessClient({
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
                               className={[
+                                "global-recommendation-card",
                                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                                 "border-t-4",
                                 "p-3 space-y-3",
@@ -4921,19 +4929,6 @@ export default function LiveBusinessClient({
                   />
 
                   <div className="flex items-center gap-2">
-                    {/* <AiButton
-                      onClick={analyzeSkus}
-                      disabled={
-                        loadingInsight ||
-                        !["top_80_skus", "new_skus", "reviving_skus", "other_skus"].some(
-                          (k) =>
-                            (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                        )
-                      }
-                    >
-                      {loadingInsight ? "Generating..." : "AI Insights"}
-                    </AiButton> */}
-
                     {activeTab === "all_skus" && allSkuRows.length > 5 && (
                       <button
                         type="button"
@@ -4984,19 +4979,6 @@ export default function LiveBusinessClient({
                       className="bg-white"
                       textSizeClass="text-xs 2xl:text-sm"
                     />
-
-                    {/* <AiButton
-                      onClick={analyzeSkus}
-                      disabled={
-                        loadingInsight ||
-                        !["top_80_skus", "new_skus", "reviving_skus", "other_skus"].some(
-                          (k) =>
-                            (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                        )
-                      }
-                    >
-                      {loadingInsight ? "Generating..." : "AI Insights"}
-                    </AiButton> */}
 
                     {activeTab === "all_skus" && allSkuRows.length > 5 && (
                       <button
@@ -5108,7 +5090,7 @@ export default function LiveBusinessClient({
         countryName={countryName}
         sourceCountryName={sourceCountryName || countryName}
         displayCurrency={displayCurrency}
-        formattedMonthYear={drawerMonthYear} // ✅ add this
+        formattedMonthYear={drawerMonthYear}
       />
     </>
   );

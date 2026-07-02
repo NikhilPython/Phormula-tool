@@ -1548,9 +1548,17 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
                 {showCurrentPeriodRecommendations && (
                   <div>
-                    <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
+                    {/* <div className="mb-2 text-xs font-semibold text-charcoal-500 sm:text-sm 2xl:text-lg">
                       Recommendations
-                    </div>
+                    </div> */}
+
+                    <PageBreadcrumb
+                      pageTitle="Recommendations"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                      className="mb-2"
+                    />
 
                     {block.recommendationBullets?.length ? (
                       <div>
@@ -1608,7 +1616,8 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     <PageBreadcrumb
                       pageTitle="Product Journey"
                       variant="page"
-                      textSize="lg"
+                      textSize="xl"
+                      className="mb-2"
                     />
                   </div>
 
