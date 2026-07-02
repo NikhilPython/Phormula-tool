@@ -203,18 +203,57 @@ type InventoryCurrentApiResponse = {
       items?: any[];
       product_count?: number;
       sku_count?: number;
+      name?: string;
+      label?: string;
+      description?: string;
     }
   > | null;
 
   category_counts?: Record<string, number> | null;
 
-  // ✅ Global response support
+  // ✅ ADD THIS
+  high_alert_coverage_summary?: {
+    average_coverage_ratio?: number;
+    high_alert_sku_count?: number;
+    high_alert_threshold?: number;
+    items?: {
+      alert?: string;
+      coverage_ratio_months?: number;
+      high_alert_threshold?: number;
+      product_name?: string;
+      sku?: string;
+    }[];
+  };
+
+  // ✅ ADD THESE
+  month?: string;
+  year?: number;
+
+  country_key?: string;
+
   combined_countries?: string[];
   country_results?: Record<string, InventoryCurrentApiResponse>;
 
-  country_key?: string;
   inventory_age_summary?: {
     total?: number;
+    current_month_units_sold_total?: number;
+    percentage_base_total?: number;
+    sellable_total?: number;
+    unfulfillable_total?: number;
+    total_units_summary?: {
+      current_month_units_sold?: {
+        total?: number;
+        percentage_share?: number;
+      };
+      sellable?: {
+        total?: number;
+        percentage_share?: number;
+      };
+      unfulfillable?: {
+        total?: number;
+        percentage_share?: number;
+      };
+    };
     columns?: Record<
       string,
       {
@@ -8940,8 +8979,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 </div>
               ) : inventoryInsightsData ? (
                 <>
-                  {isGlobalPage && (
-                    <div className="mb-4 flex items-center justify-end">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <PageBreadcrumb
+                      pageTitle="Inventory Insights"
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
+
+                    {isGlobalPage && (
                       <SegmentedToggle
                         value={selectedGlobalInventoryCountry}
                         onChange={(val) => setSelectedGlobalInventoryCountry(String(val))}
@@ -8952,8 +8998,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         compact
                         textSizeClass="text-xs"
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <InventoryInsightsSection
                     heatmapBuckets={inventoryInsightsData.heatmapBuckets}

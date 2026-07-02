@@ -14341,8 +14341,10 @@ ${pageLoading
                             </div>
                         ) : inventoryInsightsData ? (
                             <>
-                                {platform === "global" && (
-                                    <div className="mb-4 flex items-center justify-end">
+                                <div className="mb-4 flex items-center justify-between gap-4">
+                                     <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
+
+                                    {platform === "global" && (
                                         <SegmentedToggle
                                             value={selectedGlobalInventoryCountry}
                                             onChange={(val) =>
@@ -14355,8 +14357,8 @@ ${pageLoading
                                             compact
                                             textSizeClass="text-xs"
                                         />
-                                    </div>
-                                )}
+                                    )}
+                                </div>
 
                                 <InventoryInsightsSection
                                     heatmapBuckets={inventoryInsightsData.heatmapBuckets}
