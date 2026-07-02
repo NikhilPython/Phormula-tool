@@ -1794,7 +1794,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
     month_str = month_name[curr_end.month].lower()
     year = curr_end.year
 
-    table_name = f"skuwisemonthly_{user_id}_{country_lower}_{month_str}_{year}"
+    table_name = f"skuwisemonthly_{user_id}_{country_lower}_{month_str}{year}"
 
     try:
         with engine_hist.connect() as conn:
@@ -3396,19 +3396,12 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
     year = int(year)
 
     mn = month_name[month].lower()
-    table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}_{int(year)}"
+    table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}{int(year)}"
 
     try:
         with engine_hist.connect() as conn:
             df = pd.read_sql(
-                text(f"""
-                    SELECT
-                        sku,
-                        product_name,
-                        cm2_profit,
-                        ads_spend
-                    FROM {table}
-                """),
+                text(f'SELECT * FROM "{table}"'),
                 conn,
             )
     except Exception as e:
@@ -3447,7 +3440,20 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
     else:
         df["ads_spend"] = safe_num(df["ads_spend"])
 
-    total_row = df[df["sku"].fillna("").str.lower().eq("total")]
+    sku_lower = df["sku"].fillna("").astype(str).str.strip().str.lower()
+
+    product_lower = (
+        df["product_name"].fillna("").astype(str).str.strip().str.lower()
+        if "product_name" in df.columns
+        else pd.Series([""] * len(df), index=df.index)
+    )
+
+    total_mask = (
+        sku_lower.isin(["total", "totals", "grand_total", "grand total"])
+        | product_lower.isin(["total", "totals", "grand_total", "grand total"])
+    )
+
+    total_row = df[total_mask]
 
     if not total_row.empty:
         totals = {

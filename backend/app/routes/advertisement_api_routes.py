@@ -1327,7 +1327,7 @@ def monthly_sp_sd_to_db():
             if params:
                 db.session.execute(text(insert_sql), params)
                 month_name = calendar.month_name[month].lower()
-                skuwise_table_name = _safe_ident(f"skuwisemonthly_{user_id}_{country.lower()}_{month_name}_{year}")
+                skuwise_table_name = _safe_ident(f"skuwisemonthly_{user_id}_{country.lower()}_{month_name}{year}")
 
                 # Check which columns exist in skuwise table
                 skuwise_columns = db.session.execute(text("""
