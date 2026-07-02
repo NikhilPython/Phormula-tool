@@ -2560,7 +2560,7 @@ def finances_mtd_transactions():
     amazon_fees = abs(selling_fees) + abs(fba_fees)
 
     gross_sales_total = float(totals.get("gross_sales", 0.0))
-    net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
+    net_sales = 0.0
 
     qty_total = float(totals.get("quantity", 0.0)) or 0.0
     return_qty_total = 0.0
@@ -2591,7 +2591,7 @@ def finances_mtd_transactions():
 
     net_qty_total = max(qty_total - return_qty_total, 0.0)
 
-    asp = (net_sales / net_qty_total) if net_qty_total else 0.0
+    asp = 0.0
 
     profit_total = float(totals.get("profit", 0.0))
 
@@ -2649,9 +2649,20 @@ def finances_mtd_transactions():
 
         refund_sales_total = float(refund_sales_df["refund_sales"].sum()) if not refund_sales_df.empty else 0.0
 
-    platform_fee_total = 0.0
-    advertising_fee_total = 0.0
-    shipment_fees = 0.0
+        # ---------------- NET SALES FIX ----------------
+        net_sales = (
+            float(gross_sales_total or 0.0)
+            - float(refund_sales_total or 0.0)
+            + float(tax_and_credits_total or 0.0)
+        )
+        net_sales = round(net_sales, 2)
+
+        # Recalculate ASP using final net_sales
+        asp = (net_sales / net_qty_total) if net_qty_total else 0.0
+
+        platform_fee_total = 0.0
+        advertising_fee_total = 0.0
+        shipment_fees = 0.0
 
     # totals stored in SKU-wise table
     platformfeenew_total = 0.0
@@ -3068,24 +3079,15 @@ def finances_mtd_transactions():
         if "promotional_rebates" not in df_sku.columns:
             df_sku["promotional_rebates"] = 0.0
 
-        df_sku["net_sales"] = (
-            pd.to_numeric(df_sku["product_sales"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(df_sku["promotional_rebates"], errors="coerce").fillna(0.0)
-        )
-
-        if "quantity" not in df_sku.columns:
-            df_sku["quantity"] = 0.0
-        df_sku["quantity"] = pd.to_numeric(df_sku["quantity"], errors="coerce").fillna(0.0)
-
-        df_sku["asp"] = df_sku.apply(
-            lambda r: (float(r["net_sales"]) / float(r["total_quantity"])) if float(r["total_quantity"]) else 0.0,
-            axis=1,
-        )
-
         def _col(df: pd.DataFrame, name: str) -> pd.Series:
             return pd.to_numeric(df[name], errors="coerce").fillna(0.0) if name in df.columns else pd.Series([0.0] * len(df), index=df.index)
 
-        df_sku["credits"] = (_col(df_sku, "postage_credits") + _col(df_sku, "gift_wrap_credits")).fillna(0.0)
+        # ---------------- TAX AND CREDITS FIRST ----------------
+        df_sku["credits"] = (
+            _col(df_sku, "postage_credits")
+            + _col(df_sku, "gift_wrap_credits")
+        ).fillna(0.0)
+
         df_sku["tax"] = (
             _col(df_sku, "product_sales_tax")
             + _col(df_sku, "shipping_credits_tax")
@@ -3093,7 +3095,36 @@ def finances_mtd_transactions():
             + _col(df_sku, "promotional_rebates_tax")
             + _col(df_sku, "marketplace_facilitator_tax")
         ).fillna(0.0)
-        df_sku["tax_and_credits"] = (df_sku["credits"] - df_sku["tax"].abs()).round(2)
+
+        df_sku["tax_and_credits"] = (
+            df_sku["credits"] - df_sku["tax"].abs()
+        ).round(2)
+
+        # ---------------- SKU-WISE NET SALES FIX ----------------
+        for col in ["gross_sales", "refund_sales", "tax_and_credits"]:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+            df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
+
+        df_sku["net_sales"] = (
+            df_sku["gross_sales"]
+            - df_sku["refund_sales"]
+            + df_sku["tax_and_credits"]
+        ).round(2)
+
+        if "quantity" not in df_sku.columns:
+            df_sku["quantity"] = 0.0
+
+        df_sku["quantity"] = pd.to_numeric(
+            df_sku["quantity"],
+            errors="coerce"
+        ).fillna(0.0)
+
+        df_sku["asp"] = df_sku.apply(
+            lambda r: (float(r["net_sales"]) / float(r["total_quantity"]))
+            if float(r["total_quantity"]) else 0.0,
+            axis=1,
+        )
         # ---------------- CM1 PROFIT FIX ----------------
         # Marketplace Fees = Selling Fees + FBA Fees
         df_sku["marketplace_fees"] = (
@@ -3366,11 +3397,28 @@ def finances_mtd_transactions():
         )
         total_row["misc_transaction"] = round(float(misc_transaction_total or 0.0), 2)
 
-        total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
+        total_row["gross_sales"] = round(
+            float(pd.to_numeric(df_sku["gross_sales"], errors="coerce").fillna(0.0).sum())
+            if "gross_sales" in df_sku.columns else 0.0,
+            2
+        )
 
         total_row["refund_sales"] = round(
             float(pd.to_numeric(df_sku["refund_sales"], errors="coerce").fillna(0.0).sum())
             if "refund_sales" in df_sku.columns else 0.0,
+            2
+        )
+
+        total_row["tax_and_credits"] = round(
+            float(pd.to_numeric(df_sku["tax_and_credits"], errors="coerce").fillna(0.0).sum())
+            if "tax_and_credits" in df_sku.columns else 0.0,
+            2
+        )
+
+        total_row["net_sales"] = round(
+            float(total_row.get("gross_sales", 0.0) or 0.0)
+            - float(total_row.get("refund_sales", 0.0) or 0.0)
+            + float(total_row.get("tax_and_credits", 0.0) or 0.0),
             2
         )
 
@@ -3413,6 +3461,14 @@ def finances_mtd_transactions():
         total_row["tax_and_credits"] = round(
             float(total_row["credits"]) - abs(float(total_row["tax"])),
             2,
+        )
+
+        # Recalculate total net_sales after final tax_and_credits
+        total_row["net_sales"] = round(
+            float(total_row.get("gross_sales", 0.0) or 0.0)
+            - float(total_row.get("refund_sales", 0.0) or 0.0)
+            + float(total_row.get("tax_and_credits", 0.0) or 0.0),
+            2
         )
 
         # If frontend displays "Other Transactions" from `other`,
