@@ -3979,6 +3979,150 @@ def build_country_usd_numeric_metrics(
     return result
 
 
+def build_country_contribution_context(
+    *,
+    global_numeric_metrics: dict,
+    country_usd_metrics: dict,
+    available_countries: list[str],
+) -> list[dict]:
+    """
+    Builds deterministic country movement + contribution context
+    for the Global summary.
+
+    Source:
+    - global_numeric_metrics = actual global table
+    - country_usd_metrics = USD-normalized country tables
+    """
+
+    global_portfolio = global_numeric_metrics.get("portfolio", {}) or {}
+
+    global_current = global_portfolio.get("current_values", {}) or {}
+    global_absolute = global_portfolio.get("absolute_changes", {}) or {}
+
+    global_current_net_sales = float(global_current.get("net_sales") or 0)
+    global_current_units = float(global_current.get("units") or 0)
+
+    global_net_sales_delta = float(global_absolute.get("net_sales") or 0)
+    global_units_delta = float(global_absolute.get("units") or 0)
+    global_cm2_delta = float(global_absolute.get("cm2_profit") or 0)
+
+    output = []
+
+    for country in available_countries or []:
+        country_key = str(country).lower()
+        country_data = country_usd_metrics.get(country_key) or {}
+
+        if not country_data.get("available"):
+            continue
+
+        portfolio = country_data.get("portfolio", {}) or {}
+
+        current_values = portfolio.get("current_values", {}) or {}
+        previous_values = portfolio.get("previous_values", {}) or {}
+        absolute_changes = portfolio.get("absolute_changes", {}) or {}
+        pct_changes = portfolio.get("pct_changes", {}) or {}
+
+        country_current_net_sales = float(current_values.get("net_sales") or 0)
+        country_current_units = float(current_values.get("units") or 0)
+
+        country_net_sales_delta = float(absolute_changes.get("net_sales") or 0)
+        country_units_delta = float(absolute_changes.get("units") or 0)
+        country_cm2_delta = float(absolute_changes.get("cm2_profit") or 0)
+
+        output.append({
+            "country": country_key,
+            "currency": "USD",
+
+            "current_values": current_values,
+            "previous_values": previous_values,
+            "absolute_changes": absolute_changes,
+            "pct_changes": pct_changes,
+
+            "contribution": {
+                "net_sales_share_pct": (
+                    round((country_current_net_sales / global_current_net_sales) * 100, 2)
+                    if global_current_net_sales else None
+                ),
+                "units_share_pct": (
+                    round((country_current_units / global_current_units) * 100, 2)
+                    if global_current_units else None
+                ),
+                "net_sales_delta_contribution_pct": (
+                    round((country_net_sales_delta / global_net_sales_delta) * 100, 2)
+                    if global_net_sales_delta else None
+                ),
+                "units_delta_contribution_pct": (
+                    round((country_units_delta / global_units_delta) * 100, 2)
+                    if global_units_delta else None
+                ),
+                "cm2_delta_contribution_pct": (
+                    round((country_cm2_delta / global_cm2_delta) * 100, 2)
+                    if global_cm2_delta else None
+                ),
+            }
+        })
+
+    return output
+
+def build_country_contribution_summary_lines(
+    country_contribution_context: list[dict] | None,
+) -> list[str]:
+    """
+    Converts deterministic country movement/contribution data into bullets
+    that can be inserted directly inside global_ai['global_summary'].
+    """
+
+    if not country_contribution_context:
+        return []
+
+    def _fmt_pct(x):
+        return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
+
+    def _fmt_number(x, decimals=2):
+        if not isinstance(x, (int, float)):
+            return "N/A"
+        if decimals == 0:
+            return f"{int(round(x)):,}"
+        return f"{x:,.{decimals}f}"
+
+    def _fmt_currency(x):
+        return f"${x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+
+    lines = []
+
+    for item in country_contribution_context:
+        if not isinstance(item, dict):
+            continue
+
+        country_label = str(item.get("country") or "").upper()
+        current = item.get("current_values", {}) or {}
+        previous = item.get("previous_values", {}) or {}
+        pct = item.get("pct_changes", {}) or {}
+        contribution = item.get("contribution", {}) or {}
+
+        lines.append(
+            f"{country_label} movement: Units moved from "
+            f"{_fmt_number(previous.get('units'), 0)} to "
+            f"{_fmt_number(current.get('units'), 0)} "
+            f"({_fmt_pct(pct.get('units'))}); net sales moved from "
+            f"{_fmt_currency(previous.get('net_sales'))} to "
+            f"{_fmt_currency(current.get('net_sales'))} "
+            f"({_fmt_pct(pct.get('net_sales'))}); CM2 profit moved from "
+            f"{_fmt_currency(previous.get('cm2_profit'))} to "
+            f"{_fmt_currency(current.get('cm2_profit'))} "
+            f"({_fmt_pct(pct.get('cm2_profit'))})."
+        )
+
+        lines.append(
+            f"{country_label} contribution: {country_label} contributed "
+            f"{_fmt_pct(contribution.get('net_sales_share_pct'))} of current global net sales, "
+            f"{_fmt_pct(contribution.get('units_share_pct'))} of current global units, and "
+            f"{_fmt_pct(contribution.get('net_sales_delta_contribution_pct'))} of the global net sales movement."
+        )
+
+    return lines
+
+
 def key_metrics_by_product_name(metrics_by_sku: dict) -> dict:
     """
     Converts SKU-keyed metrics into product_name-keyed metrics.
@@ -4090,6 +4234,9 @@ def render_global_comparison_summary(
     remaining_agg: dict | None = None,
     available_countries: list[str] | None = None,
 
+    # ✅ NEW: deterministic country movement/contribution
+    country_contribution_context: list[dict] | None = None,
+
     # ✅ NEW: all global SKU individual insights
     all_sku_mom: dict | None = None,
     focus_skus: list | None = None,
@@ -4140,13 +4287,12 @@ def render_global_comparison_summary(
     lines.append("Global Business Summary")
     lines.append(f"Period: {period_label(period, timeline, year)}")
 
-    # ============================================================
-    # AI GLOBAL OVERALL SUMMARY
-    # ============================================================
     if global_ai.get("global_summary"):
         lines.append("")
         lines.append("## OVERALL SUMMARY")
         lines.append(global_ai["global_summary"])
+
+  
 
     # ============================================================
     # AI UK VS US COMPARISON
@@ -4546,6 +4692,14 @@ def get_or_create_global_summary(
                     allow_global_recommendations,
                 ),
                 "metrics": cached_recommendations.get("metrics", {}),
+
+                # ✅ NEW
+                "country_contribution_context": (
+                    cached_recommendations.get("country_contribution_context")
+                    or (cached_recommendations.get("metrics", {}) or {}).get("country_contribution_context", [])
+                    or (cached_recommendations.get("metrics_debug", {}) or {}).get("country_contribution_context", [])
+                ),
+
                 "inventory_alerts": cached_recommendations.get("inventory_alerts", {}),
                 "objectives": cached_recommendations.get("objectives", {}),
                 "comparison": {
@@ -4615,6 +4769,13 @@ def get_or_create_global_summary(
         available_countries=available_countries,
     )
 
+    # ✅ NEW: deterministic country movement + contribution for Global summary
+    country_contribution_context = build_country_contribution_context(
+        global_numeric_metrics=global_numeric_metrics,
+        country_usd_metrics=country_usd_metrics,
+        available_countries=available_countries,
+    )
+
     metrics_debug = {
         "available_countries": available_countries,
         "is_single_country_global": len(available_countries) == 1,
@@ -4623,6 +4784,9 @@ def get_or_create_global_summary(
             country: bool((country_usd_metrics.get(country) or {}).get("available"))
             for country in available_countries
         },
+
+        # ✅ NEW
+        "country_contribution_context": country_contribution_context,
     }
 
     # ✅ frontend metrics from global table
@@ -4646,6 +4810,9 @@ def get_or_create_global_summary(
         "all_sku_mom": key_metrics_by_product_name(
             global_numeric_metrics.get("sku_mom", {})
         ),
+
+        # ✅ NEW: country movement/contribution for frontend/debug
+        "country_contribution_context": country_contribution_context,
     }
 
     inventory_alerts_by_country = {
@@ -4676,6 +4843,9 @@ def get_or_create_global_summary(
 
         "country_usd_metrics": country_usd_metrics,
 
+        # ✅ NEW: ready-made country movement/contribution numbers for AI
+        "country_contribution_context": country_contribution_context,
+
         "countries": {
             country: {
                 "summary": _extract_summary_intro(result),
@@ -4703,6 +4873,32 @@ def get_or_create_global_summary(
     # Keep frontend-compatible lowercase country action keys:
     # country_actions["UK"] becomes country_actions["uk"]
     global_ai = normalize_global_ai_country_action_keys(global_ai)
+
+    # ============================================================
+    # 5.1 FORCE COUNTRY MOVEMENT INTO OVERALL SUMMARY
+    # Backend-only fix: frontend can keep rendering the same overall summary.
+    # ============================================================
+    country_lines = build_country_contribution_summary_lines(
+        country_contribution_context
+    )
+
+    if country_lines:
+        existing_summary = global_ai.get("global_summary") or ""
+
+        country_text = "\n".join(
+            f"• {line}" for line in country_lines
+        )
+
+        if existing_summary.strip():
+            global_ai["global_summary"] = (
+                f"{existing_summary.strip()}\n{country_text}"
+            )
+        else:
+            global_ai["global_summary"] = country_text
+
+    # Optional: prevent duplicate country section from AI renderer
+    global_ai["country_comparison"] = []
+    global_ai["uk_vs_us_comparison"] = []
 
     # ============================================================
     # 5A. SUPPRESS RECOMMENDATIONS FOR OLD PERIODS / YEARLY
@@ -4758,6 +4954,9 @@ def get_or_create_global_summary(
         remaining_agg=global_numeric_metrics.get("remaining_agg", {}),
         available_countries=available_countries,
 
+        # ✅ NEW: deterministic country movement/contribution
+        country_contribution_context=country_contribution_context,
+
         # ✅ NEW: all SKU individual global insights
         all_sku_mom=global_numeric_metrics.get("sku_mom", {}),
         focus_skus=global_numeric_metrics.get("focus_skus", []),
@@ -4789,6 +4988,9 @@ def get_or_create_global_summary(
 
         "metrics": metrics,
 
+        # ✅ NEW
+        "country_contribution_context": country_contribution_context,
+
         "inventory_alerts": inventory_alerts_by_country,
         "objectives": objectives_by_country,
     }),
@@ -4811,6 +5013,9 @@ def get_or_create_global_summary(
         "allow_recommendations": allow_global_recommendations,
 
         "metrics": metrics,
+
+        # ✅ NEW
+        "country_contribution_context": country_contribution_context,
 
         "inventory_alerts": inventory_alerts_by_country,
 

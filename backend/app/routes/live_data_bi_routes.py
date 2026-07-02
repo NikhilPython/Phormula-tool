@@ -959,6 +959,48 @@ def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
 
 
 
+# def save_live_ai_cache(
+#     user_id,
+#     country,
+#     start_date,
+#     end_date,
+#     objective_hash,
+#     analysis,
+#     summary,
+#     strategy
+# ):
+
+#     record = LiveAISummary.query.filter_by(
+#         user_id=user_id,
+#         country=country,
+#         start_date=start_date,
+#         end_date=end_date
+#     ).first()
+
+#     if record:
+#         record.analysis = json.dumps(analysis)
+#         record.summary = json.dumps(summary)
+#         record.strategy = json.dumps(strategy)
+#         record.objective_hash = objective_hash
+#         record.created_at = datetime.utcnow()
+
+#     else:
+#         record = LiveAISummary(
+#             user_id=user_id,
+#             country=country,
+#             start_date=start_date,
+#             end_date=end_date,
+#             objective_hash=objective_hash,
+#             analysis=json.dumps(analysis),
+#             summary=json.dumps(summary),
+#             strategy=json.dumps(strategy)
+#         )
+
+#         db.session.add(record)
+
+#     db.session.commit()
+#     return record
+
 def save_live_ai_cache(
     user_id,
     country,
@@ -972,12 +1014,12 @@ def save_live_ai_cache(
 
     record = LiveAISummary.query.filter_by(
         user_id=user_id,
-        country=country,
-        start_date=start_date,
-        end_date=end_date
+        country=country
     ).first()
 
     if record:
+        record.start_date = start_date
+        record.end_date = end_date
         record.analysis = json.dumps(analysis)
         record.summary = json.dumps(summary)
         record.strategy = json.dumps(strategy)
@@ -1000,8 +1042,6 @@ def save_live_ai_cache(
 
     db.session.commit()
     return record
-
-
 
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
 def live_mtd_vs_previous():
@@ -1548,18 +1588,54 @@ def live_mtd_vs_previous():
                 else:
                     inventory_coverage_status = "correct_stock"
 
+
+                # -------------------------------------------------
+                # GLOBAL AI DISPLAY: keep UK and US coverage separate
+                # -------------------------------------------------
+                uk_ratio = _safe_float_global(uk_cov.get("avg_coverage_ratio_months"))
+                uk_required = _safe_float_global(uk_cov.get("required_coverage_months"))
+                uk_gap = _safe_float_global(uk_cov.get("coverage_gap_months"))
+                uk_status = uk_cov.get("inventory_coverage_status")
+
+                us_ratio = _safe_float_global(us_cov.get("avg_coverage_ratio_months"))
+                us_required = _safe_float_global(us_cov.get("required_coverage_months"))
+                us_gap = _safe_float_global(us_cov.get("coverage_gap_months"))
+                us_status = us_cov.get("inventory_coverage_status")
+
+                coverage_split_text_parts = []
+
+                if uk_cov:
+                    coverage_split_text_parts.append(
+                        f"UK coverage ratio is {uk_ratio:.2f} months against required coverage of {uk_required:.2f} months, "
+                        f"with a gap of {uk_gap:.2f} months and status {uk_status}."
+                    )
+
+                if us_cov:
+                    coverage_split_text_parts.append(
+                        f"US coverage ratio is {us_ratio:.2f} months against required coverage of {us_required:.2f} months, "
+                        f"with a gap of {us_gap:.2f} months and status {us_status}."
+                    )
+
                 return {
                     "available_total": round(total_available, 2),
+
+                    # Global weighted average - keep only for fallback/cards
                     "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),
                     "total_coverage_ratio_months": round(total_coverage_ratio_months, 2),
                     "required_coverage_months": round(required_coverage_months, 2),
                     "coverage_gap_months": coverage_gap_months,
                     "inventory_coverage_status": inventory_coverage_status,
+
+                    # AI should use these fields for Global summary
+                    "coverage_view": "country_split",
+                    "coverage_split_text": " ".join(coverage_split_text_parts),
+
                     "country_split": {
                         "uk": uk_cov,
                         "us": us_cov,
                     },
                 }
+                
 
 
             global_target_context = _build_global_target_context()
@@ -2032,7 +2108,12 @@ def live_mtd_vs_previous():
                         "primary_source": "Use numeric_context.clean_global_metrics as the primary source for Units, Net Sales, CM1 Profit, CM1 Profit per Unit, ASP, and ACOS/TACoS.",
                         "profit_metric_source": "Use CM1 Profit only from clean_global_metrics.cm1_profit. Do not use CM2 Profit.",
                         "target_source": "Use numeric_context.target_context for Global Target Progress. Do not use 0 values if target_context exists.",
-                        "coverage_source": "Use numeric_context.portfolio_coverage_context for Global Inventory Coverage. Do not use 0 months if portfolio_coverage_context exists.",
+                        "coverage_source": (
+                            "For Global Inventory Coverage, do not use the combined/global average coverage ratio. "
+                            "Use numeric_context.portfolio_coverage_context.coverage_split_text and show UK and US separately. "
+                            "Mention each country's coverage ratio, required coverage, gap, and status. "
+                            "Only use avg_coverage_ratio_months as fallback if country_split or coverage_split_text is missing."
+                        ),
                         "acos_source": "Use numeric_context.acos as the source of truth for ACOS/TACoS.",
                         "acos_interpretation": "Lower ACOS/TACoS is better. If current is lower than previous, advertising efficiency improved.",
                     },
@@ -4157,20 +4238,18 @@ def live_mtd_vs_previous():
             # Low coverage / stock-out risk
             if coverage_ratio <= 2:
                 return (
-                    f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                    f"Current stock cover is {coverage_ratio:.1f} months "
                     f"across Other SKUs. Please immediately send stock to avoid stock-out risk."
                 )
 
-            # Medium coverage
             if coverage_ratio <= 5:
                 return (
-                    f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                    f"Current stock cover is {coverage_ratio:.1f} months "
                     f"across Other SKUs. Monitor replenishment and avoid delayed dispatch."
                 )
 
-            # High / excess coverage
             return (
-                f"Inventory action: Current stock cover is {coverage_ratio:.1f} months "
+                f"Current stock cover is {coverage_ratio:.1f} months "
                 f"with {current_inventory:,.0f} units across Other SKUs. This is high inventory coverage. "
                 f"Improve sell-through or reduce replenishment to avoid excess inventory and storage cost."
             )
