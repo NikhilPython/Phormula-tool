@@ -2653,7 +2653,7 @@ def finances_mtd_transactions():
         net_sales = (
             float(gross_sales_total or 0.0)
             - float(refund_sales_total or 0.0)
-            + float(tax_and_credits_total or 0.0)
+            - float(tax_and_credits_total or 0.0)
         )
         net_sales = round(net_sales, 2)
 
@@ -3109,8 +3109,26 @@ def finances_mtd_transactions():
         df_sku["net_sales"] = (
             df_sku["gross_sales"]
             - df_sku["refund_sales"]
-            + df_sku["tax_and_credits"]
+            - df_sku["tax_and_credits"]
         ).round(2)
+
+        # ---------------- PROMOTIONAL REBATES % FIX ----------------
+        if "promotional_rebates" not in df_sku.columns:
+            df_sku["promotional_rebates"] = 0.0
+
+        df_sku["promotional_rebates"] = pd.to_numeric(
+            df_sku["promotional_rebates"],
+            errors="coerce"
+        ).fillna(0.0)
+
+        df_sku["promotional_rebates_percentage"] = df_sku.apply(
+            lambda r: (
+                float(r.get("promotional_rebates", 0.0) or 0.0)
+                / float(r.get("net_sales", 0.0) or 0.0)
+                * 100.0
+            ) if float(r.get("net_sales", 0.0) or 0.0) else 0.0,
+            axis=1,
+        )
 
         if "quantity" not in df_sku.columns:
             df_sku["quantity"] = 0.0
@@ -3418,8 +3436,16 @@ def finances_mtd_transactions():
         total_row["net_sales"] = round(
             float(total_row.get("gross_sales", 0.0) or 0.0)
             - float(total_row.get("refund_sales", 0.0) or 0.0)
-            + float(total_row.get("tax_and_credits", 0.0) or 0.0),
+            - float(total_row.get("tax_and_credits", 0.0) or 0.0),
             2
+        )
+        total_row["promotional_rebates_percentage"] = round(
+            (
+                float(total_row.get("promotional_rebates", 0.0) or 0.0)
+                / float(total_row.get("net_sales", 0.0) or 0.0)
+                * 100.0
+            ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0,
+            6
         )
 
         total_quantity = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
@@ -3709,6 +3735,7 @@ def finances_mtd_transactions():
             "shipping_credits_tax",
             "giftwrap_credits_tax",
             "promotional_rebates",
+            "promotional_rebates_percentage",
             "promotional_rebates_tax",
             "marketplace_facilitator_tax",
             "cogs",
@@ -3770,6 +3797,7 @@ def finances_mtd_transactions():
             "shipping_credits_tax",
             "giftwrap_credits_tax",
             "promotional_rebates",
+            "promotional_rebates_percentage",
             "promotional_rebates_tax",
             "marketplace_facilitator_tax",
             "cogs",
@@ -3825,6 +3853,7 @@ def finances_mtd_transactions():
             "shipping_credits_tax": 0.0,
             "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0,
+            "promotional_rebates_percentage": 0.0,
             "promotional_rebates_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
             "cogs": 0.0,
