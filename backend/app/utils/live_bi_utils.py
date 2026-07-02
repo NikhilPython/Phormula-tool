@@ -3512,13 +3512,15 @@ def fetch_current_inventory_snapshot(
     month: int,
 ) -> tuple[dict, dict]:
     """
-    Reads frontend-only inventory data from:
-      currentinventory_{user_id}_{country_key}_{month_name}{year}_table
+    Reads frontend-only inventory data from currentinventory tables.
 
-    Columns:
-      SKU
-      available
-      Coverage Ratio (In Months)
+    For UK/US:
+      currentinventory_{user_id}_{country}_{month}{year}_table
+
+    For Global:
+      reads UK + US separately:
+      currentinventory_{user_id}_uk_{month}{year}_table
+      currentinventory_{user_id}_us_{month}{year}_table
 
     This is NOT for AI.
     This is only for frontend payload enrichment.
@@ -3541,108 +3543,118 @@ def fetch_current_inventory_snapshot(
     year = int(year)
     month_str = month_name[month].lower()
 
-    table = f"currentinventory_{int(user_id)}_{country_key}_{month_str}{year}_table"
+    countries_to_read = ["uk", "us"] if country_key == "global" else [country_key]
 
-    try:
-        with engine_hist.connect() as conn:
-            df = pd.read_sql(
-                text(f"""
-                    SELECT
-                        "SKU" AS sku,
-                        "Product Name" AS product_name,
-                        "available" AS available,
-                        "Coverage Ratio (In Months)" AS coverage_ratio_months
-                    FROM {table}
-                """),
-                conn,
-            )
-    except Exception as e:
-        print(f"[WARN] Could not read frontend inventory table {table}: {e}")
-        return {}, {
-            "available_total": 0.0,
-            "avg_coverage_ratio_months": 0.0,
-            "source_table": table,
-        }
+    all_sku_maps = {}
+    source_tables = []
 
-    if df is None or df.empty or "sku" not in df.columns:
-        return {}, {
-            "available_total": 0.0,
-            "avg_coverage_ratio_months": 0.0,
-            "source_table": table,
-        }
+    total_available_sum = 0.0
+    weighted_coverage_sum = 0.0
 
-    df = df.copy()
+    for child_country in countries_to_read:
+        table = f"currentinventory_{int(user_id)}_{child_country}_{month_str}{year}_table"
 
-    df["sku"] = df["sku"].astype(str).str.strip()
-
-    # ✅ Keep product_name because your Total row is in Product Name, not SKU
-    if "product_name" not in df.columns:
-        df["product_name"] = ""
-    else:
-        df["product_name"] = df["product_name"].astype(str).str.strip()
-
-    df["available"] = safe_num(df.get("available", 0.0))
-    df["coverage_ratio_months"] = safe_num(df.get("coverage_ratio_months", 0.0))
-
-    # -------------------------------------------------
-    # ✅ Pick portfolio coverage from TOTAL row
-    # Your table has:
-    # SKU = blank / NaN
-    # Product Name = Total
-    # -------------------------------------------------
-    total_row_df = df[
-        df["sku"].fillna("").str.lower().eq("total")
-        | df["product_name"].fillna("").str.lower().eq("total")
-    ].copy()
-
-    if not total_row_df.empty:
-        total_available = float(total_row_df["available"].iloc[0] or 0.0)
-        total_coverage_ratio_months = float(
-            total_row_df["coverage_ratio_months"].iloc[0] or 0.0
-        )
-    else:
-        total_available = 0.0
-        total_coverage_ratio_months = 0.0
-
-    # -------------------------------------------------
-    # SKU map should still exclude Total row
-    # -------------------------------------------------
-    sku_df = df[
-        df["sku"].notna()
-        & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
-        & ~df["product_name"].str.lower().isin(["total"])
-    ].copy()
-
-    if sku_df.empty:
-        return {}, {
-            "available_total": round(total_available, 2),
-            "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),
-            "total_coverage_ratio_months": round(total_coverage_ratio_months, 2),
-            "source_table": table,
-        }
-
-    sku_map = {}
-
-    for _, r in sku_df.iterrows():
-        sku = str(r.get("sku") or "").strip()
-        if not sku:
+        try:
+            with engine_hist.connect() as conn:
+                df = pd.read_sql(
+                    text(f'''
+                        SELECT
+                            "SKU" AS sku,
+                            "Product Name" AS product_name,
+                            "available" AS available,
+                            "Coverage Ratio (In Months)" AS coverage_ratio_months
+                        FROM "{table}"
+                    '''),
+                    conn,
+                )
+        except Exception as e:
+            print(f"[WARN] Could not read frontend inventory table {table}: {e}")
             continue
 
-        sku_map[sku] = {
-            "current_inventory": round(float(r.get("available") or 0.0), 2),
-            "coverage_ratio_months": round(float(r.get("coverage_ratio_months") or 0.0), 2),
+        if df is None or df.empty or "sku" not in df.columns:
+            continue
+
+        source_tables.append(table)
+
+        df = df.copy()
+
+        df["sku"] = df["sku"].astype(str).str.strip()
+
+        if "product_name" not in df.columns:
+            df["product_name"] = ""
+        else:
+            df["product_name"] = df["product_name"].astype(str).str.strip()
+
+        df["available"] = safe_num(df.get("available", 0.0))
+        df["coverage_ratio_months"] = safe_num(df.get("coverage_ratio_months", 0.0))
+
+        # -------------------------------------------------
+        # TOTAL row for country-level portfolio coverage
+        # -------------------------------------------------
+        total_row_df = df[
+            df["sku"].fillna("").str.lower().eq("total")
+            | df["product_name"].fillna("").str.lower().eq("total")
+        ].copy()
+
+        if not total_row_df.empty:
+            country_available = float(total_row_df["available"].iloc[0] or 0.0)
+            country_coverage = float(total_row_df["coverage_ratio_months"].iloc[0] or 0.0)
+        else:
+            country_available = 0.0
+            country_coverage = 0.0
+
+        total_available_sum += country_available
+
+        if country_available > 0 and country_coverage > 0:
+            weighted_coverage_sum += country_coverage * country_available
+
+        # -------------------------------------------------
+        # SKU map should exclude Total row
+        # -------------------------------------------------
+        sku_df = df[
+            df["sku"].notna()
+            & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
+            & ~df["product_name"].str.lower().isin(["total"])
+        ].copy()
+
+        for _, r in sku_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            map_key = sku if country_key != "global" else f"{child_country}:{sku}"
+
+            all_sku_maps[map_key] = {
+                "sku": sku,
+                "country_key": child_country,
+                "current_inventory": round(float(r.get("available") or 0.0), 2),
+                "coverage_ratio_months": round(float(r.get("coverage_ratio_months") or 0.0), 2),
+            }
+
+    if not source_tables:
+        return {}, {
+            "available_total": 0.0,
+            "avg_coverage_ratio_months": 0.0,
+            "total_coverage_ratio_months": 0.0,
+            "source_table": None,
+            "source_tables": [],
         }
 
-    # ✅ Do NOT average SKU rows anymore.
-    # Use TOTAL row's Coverage Ratio (In Months)
+    total_coverage_ratio_months = (
+        weighted_coverage_sum / total_available_sum
+        if total_available_sum > 0
+        else 0.0
+    )
+
     totals = {
-        "available_total": round(total_available, 2),
-        "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),  # old key compatibility
-        "total_coverage_ratio_months": round(total_coverage_ratio_months, 2), # clearer key
-        "source_table": table,
+        "available_total": round(total_available_sum, 2),
+        "avg_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+        "total_coverage_ratio_months": round(total_coverage_ratio_months, 2),
+        "source_table": ",".join(source_tables),
+        "source_tables": source_tables,
     }
 
-    return sku_map, totals
+    return all_sku_maps, totals
 
 
 
