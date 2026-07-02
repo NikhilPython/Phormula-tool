@@ -9,15 +9,16 @@ export const buildSkuWorksheetFromModel = (
   ws: ExcelJS.Worksheet,
   model: SkuSheetModel
 ) => {
-  const {
-    columns: originalColumns,
-    extraRows,
-    headerRow,
-    signRow,
-    rows,
-    summaryRows,
-    formats,
-  } = model;
+const {
+  columns: originalColumns,
+  extraRows,
+  headerRow,
+  signRow,
+  rows,
+  summaryRows,
+  formats,
+  summaryValueKey,
+} = model;
 
 const EXCEL_EXCLUDED_COLUMNS = new Set<string>([]);
 
@@ -31,12 +32,16 @@ const EXCEL_EXCLUDED_COLUMNS = new Set<string>([]);
 
   // ✅ define these EARLY (used in table + summary)
   const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
-  const valueKey =
-    columns.includes("profit")
-      ? "profit"
-      : columns.includes("net_taxes")
-      ? "net_taxes"
-      : columns[columns.length - 1];
+const valueKey =
+  summaryValueKey && columns.includes(summaryValueKey)
+    ? summaryValueKey
+    : columns.includes("cm2_profit")
+      ? "cm2_profit"
+      : columns.includes("profit")
+        ? "profit"
+        : columns.includes("net_taxes")
+          ? "net_taxes"
+          : columns[columns.length - 1];
 
 const fmtFor = (key: string) => {
   const t = formats?.[key];
@@ -231,6 +236,23 @@ profit_percentage: {
   subHeader: "%",
 },
 
+product_spend: {
+  group: "Ads Spend",
+  subHeader: "Sponsored Product",
+},
+display_spend: {
+  group: "Ads Spend",
+  subHeader: "Sponsored Display",
+},
+ads_spend: {
+  group: "Ads Spend",
+  subHeader: "Total",
+},
+
+acos: {
+  subHeader: "ACoS %",
+},
+
 unit_wise_cm2_profitability: {
   group: "CM2 Profit",
   subHeader: "Per Unit",
@@ -370,9 +392,14 @@ columns.forEach((key, index) => {
     misc_transaction: 20,
     other_transactions: 14,
 
-    profit: 14,
+   profit: 14,
 unit_wise_profitability: 14,
 profit_percentage: 10,
+
+product_spend: 18,
+display_spend: 18,
+ads_spend: 14,
+acos: 12,
 
 unit_wise_cm2_profitability: 14,
 cm2_margins: 12,

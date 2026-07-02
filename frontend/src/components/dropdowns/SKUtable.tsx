@@ -1274,9 +1274,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
       { key: "other_transactions", label: "Other Transactions", align: "center" as const },
 
-      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
       { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
       ...(hasCm2Data
         ? [
           { key: "product_spend", label: "Sponsored Product", align: "center" as const },
@@ -1481,10 +1481,56 @@ const SKUtable: React.FC<SKUtableProps> = ({
           }
 
           if (key === "product_name") value = getDisplayProductNameFromRow(row);
+          if (key === "product_sales") {
+            value = row.product_sales ?? (row as any).gross_sales ?? 0;
+          }
 
-          if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-          if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
-          if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+          if (key === "other_transactions") {
+            value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+          }
+
+          if (key === "quantity") {
+            value = row.quantity ?? row.units_sold ?? 0;
+          }
+
+          // ✅ Ads Spend expanded values for Excel
+          if (key === "product_spend") {
+            value =
+              (row as any).product_spend ??
+              (row as any).sponsored_product ??
+              0;
+          }
+
+          if (key === "display_spend") {
+            value =
+              (row as any).display_spend ??
+              (row as any).sponsored_display ??
+              0;
+          }
+
+          if (key === "ads_spend") {
+            value =
+              (row as any).ads_spend ??
+              (row as any).advertising_total ??
+              (
+                toNumber((row as any).product_spend ?? (row as any).sponsored_product ?? 0) +
+                toNumber((row as any).display_spend ?? (row as any).sponsored_display ?? 0)
+              );
+          }
+
+          // ✅ ACoS should use the same calculation as UI
+          if (key === "acos") {
+            value = getAcosPercentage(row);
+          }
+
+          // ✅ CM2 values should match UI
+          if (key === "unit_wise_cm2_profitability") {
+            value = getCm2PerUnit(row);
+          }
+
+          if (key === "cm2_margins") {
+            value = getCm2Percentage(row);
+          }
 
           // ✅ ASP always computed properly
           if (key === "asp") {
@@ -1502,8 +1548,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
               value = Number(value.toFixed(2));
             }
           }
-
-          if (key === "profit_percentage" && typeof value === "number") {
+          if (
+            [
+              "profit_percentage",
+              "promotional_rebates_percentage",
+              "acos",
+              "cm2_margins",
+            ].includes(key) &&
+            typeof value === "number"
+          ) {
             value = Number(value) / 100;
           }
 
@@ -1516,39 +1569,81 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       type SummaryRow = Record<string, string | number> & { __bold?: number };
 
+      const summaryValueColumnKey = hasCm2Data ? "cm2_profit" : "profit";
+
       const summaryRows: SummaryRow[] = [
         {
           product_name: "Cost of Advertisement",
-          profit: Math.abs(Number(totals.advertising_total || 0)),
+          [summaryValueColumnKey]: Math.abs(Number(totals.advertising_total || 0)),
           __bold: 1,
         },
-        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(visibilityAdsValue || 0)) },
-        { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
+        {
+          product_name: "Visibility - Ads (-)",
+          [summaryValueColumnKey]: Math.abs(Number(visibilityAdsValue || 0)),
+        },
+        {
+          product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+        },
 
         ...((countryName || "").toLowerCase() === "us" ||
           (countryName || "").toLowerCase() === "global"
-          ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
+          ? [
+            {
+              product_name: "Shipment Charges (-)",
+              [summaryValueColumnKey]: Math.abs(Number(totals.shipment_charges || 0)),
+            },
+          ]
           : []),
 
         {
           product_name: "Other Transactions",
-          profit: Number(totals.other_transactions || 0),
+          [summaryValueColumnKey]: Number(totals.other_transactions || 0),
           __bold: 1,
         },
-        { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
-        { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
-        { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
+        {
+          product_name: "Platform Fees (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.platform_fee || 0)),
+        },
+        {
+          product_name: "Inventory Storage Fees (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.inventory_storage_fees || 0)),
+        },
+        {
+          product_name: "Reimbursement for lost Inventory",
+          [summaryValueColumnKey]: Math.abs(Number(totals.lost_total || 0)),
+        },
 
-        { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit_total || 0), __bold: 1 },
-        { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
+        {
+          product_name: "CM2 Profit/Loss",
+          [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+          __bold: 1,
+        },
+        {
+          product_name: "CM2 Margins",
+          [summaryValueColumnKey]: Number(totals.cm2_margins || 0),
+          __bold: 1,
+        },
         {
           product_name: "TACoS (Total Advertising Cost of Sale)",
-          profit: frontendTacos,
+          [summaryValueColumnKey]: frontendTacos,
           __bold: 1,
         },
-        { product_name: "Net Reimbursement", profit: toNumber(totals.net_reimbursement), __bold: 1 },
-        { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
-        { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
+        {
+          product_name: "Net Reimbursement",
+          [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
+          __bold: 1,
+        },
+        {
+          product_name: "Reimbursement vs CM2 Margins",
+          [summaryValueColumnKey]: Number(totals.rembursment_vs_cm2_margins || 0),
+          __bold: 1,
+        },
+        {
+          product_name: "Reimbursement vs Sales",
+          [summaryValueColumnKey]: Number(totals.reimbursement_vs_sales || 0),
+          __bold: 1,
+        },
       ];
 
       const normalizedSummaryRows =
@@ -1557,11 +1652,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
         >;
 
       const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
+
       colKeys.forEach((k) => {
-        if (k === "product_name" || k === "sku") formats[k] = "text";
-        else if (k === "profit_percentage") formats[k] = "percent";
-        else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
-        else formats[k] = "money";
+        if (k === "product_name" || k === "sku") {
+          formats[k] = "text";
+        } else if (
+          [
+            "profit_percentage",
+            "promotional_rebates_percentage",
+            "acos",
+            "cm2_margins",
+          ].includes(k)
+        ) {
+          formats[k] = "percent";
+        } else if (
+          ["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(k)
+        ) {
+          formats[k] = "int";
+        } else {
+          formats[k] = "money";
+        }
       });
 
       return {
@@ -1572,7 +1682,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         rows: rowsForExcel,
         summaryRows: normalizedSummaryRows,
         formats,
-        summaryValueKey: "profit",
+        summaryValueKey: hasCm2Data ? "cm2_profit" : "profit",
       };
     },
     [

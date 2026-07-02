@@ -706,8 +706,38 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 },
 
 "ASP": { subHeader: "ASP" },
-  "Net Sales": { subHeader: "Net Sales", sign: "(+)" },
-  "COGS": { subHeader: "COGS", sign: "(-)" },
+
+"Gross Sales": {
+  group: "Net Sales",
+  subHeader: "Gross Sales",
+  sign: "(+)",
+},
+"Sales - Refund": {
+  group: "Net Sales",
+  subHeader: "Sales - Refund",
+  sign: "(-)",
+},
+"Taxes and Credits": {
+  group: "Net Sales",
+  subHeader: "Taxes and Credits",
+  sign: "(-)",
+},
+"Net Sales": {
+  group: "Net Sales",
+  subHeader: "Total",
+  sign: "(+)",
+},
+"Promotions": {
+  group: "Promotions",
+  subHeader: "Promotions",
+  sign: "(-)",
+},
+"Promotions %": {
+  group: "Promotions",
+  subHeader: "Promotions %",
+},
+
+"COGS": { subHeader: "COGS", sign: "(-)" },
 
   "Selling Fees": {
     group: "Marketplace Fees",
@@ -754,13 +784,25 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     subHeader: "Total",
   },
 
-  "Ads Spend": {
-    subHeader: "Ads Spend",
-    sign: "(-)",
-  },
-  "ACOS %": {
-    subHeader: "ACoS %",
-  },
+"Sponsored Product": {
+  group: "Ads Spend",
+  subHeader: "Sponsored Product",
+  sign: "(-)",
+},
+"Sponsored Display": {
+  group: "Ads Spend",
+  subHeader: "Sponsored Display",
+  sign: "(-)",
+},
+"Ads Spend": {
+  group: "Ads Spend",
+  subHeader: "Total",
+  sign: "(-)",
+},
+
+"ACOS %": {
+  subHeader: "ACoS %",
+},
 
   "CM2 Profit Per Unit": {
     group: "CM2 Profit",
@@ -817,11 +859,19 @@ const firstDataRowIndex = topAoA.length + 3;
 
   // Summary: label under "Product Name", value under "CM1 Profit"
   const productNameCol = headers.indexOf("Product Name");
-  const cm1ProfitCol = headers.indexOf("CM1 Profit");
+ const cm1ProfitCol = headers.indexOf("CM1 Profit");
+const cm2ProfitCol = headers.indexOf("CM2 Profit");
 
-  const labelCol = productNameCol >= 0 ? productNameCol : 0;
-  const valueCol =
-    cm1ProfitCol >= 0 ? cm1ProfitCol : Math.min(1, Math.max(0, headerCount - 1));
+const labelCol = productNameCol >= 0 ? productNameCol : 0;
+
+// ✅ Summary value should appear under CM2 Profit Total.
+// ✅ If CM2 Profit column does not exist, fallback to CM1 Profit Total.
+const valueCol =
+  cm2ProfitCol >= 0
+    ? cm2ProfitCol
+    : cm1ProfitCol >= 0
+      ? cm1ProfitCol
+      : Math.min(1, Math.max(0, headerCount - 1));
 
   // ✅ mimic SKU behavior
   const PERCENT_SUMMARY_LABELS = new Set([
@@ -1004,11 +1054,12 @@ for (let r = range.s.r; r <= range.e.r; r++) {
     if (!cell) continue;
     if (!isNumber(cell.v)) continue;
 
-    if (unitCols.has(c) || c === serialNoCol) {
-      cell.z = "#,##0";
-    } else {
-      cell.z = "#,##0.00";
-    }
+if (unitCols.has(c) || c === serialNoCol) {
+  cell.v = Math.round(Number(cell.v || 0));
+  cell.z = "#,##0";
+} else {
+  cell.z = "#,##0.00";
+}
   }
 }
 
