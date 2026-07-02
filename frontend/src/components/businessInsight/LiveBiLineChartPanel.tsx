@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import dynamic from "next/dynamic";
 import type { EChartsOption, EChartsType } from "echarts";
 
@@ -51,6 +52,7 @@ type Props = {
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
   currencySymbol?: string;
+  fullMonthMode?: boolean;
 };
 
 const monthTickLabel = (p?: PeriodInfo) => {
@@ -87,6 +89,8 @@ const LiveLineChart: React.FC<{
   selectedEndDay?: number | null;
   showPrevious?: boolean;
   showCurrent?: boolean;
+  fullMonthMode?: boolean;
+  height?: number;
 }> = ({
   dataPrev,
   dataCurr,
@@ -98,6 +102,8 @@ const LiveLineChart: React.FC<{
   selectedEndDay,
   showPrevious = true,
   showCurrent = true,
+  fullMonthMode = false,
+  height,
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const echartsInstanceRef = useRef<EChartsType | null>(null);
@@ -136,16 +142,86 @@ const LiveLineChart: React.FC<{
 
     // ✅ x-axis should stop where current fetched MTD data stops.
     // Do not extend to previous month's full 31 days.
+
+
+    // const allDays = useMemo(() => {
+    //   const hasRealMetricValue = (point: DailyPoint | undefined) => {
+    //     if (!point) return false;
+
+    //     const value =
+    //       metric === "quantity"
+    //         ? point.quantity
+    //         : point.net_sales;
+
+    //     return value !== undefined && value !== null && Number.isFinite(Number(value));
+    //   };
+
+    //   const currDays = dataCurr
+    //     .filter(hasRealMetricValue)
+    //     .map((d) => getDay(d.date))
+    //     .filter(Number.isFinite)
+    //     .sort((a, b) => a - b);
+
+    //   const prevDays = dataPrev
+    //     .filter(hasRealMetricValue)
+    //     .map((d) => getDay(d.date))
+    //     .filter(Number.isFinite)
+    //     .sort((a, b) => a - b);
+
+    //   // If user selected a date range, still never show beyond fetched current data.
+    //   if (rangeActive && s != null && e != null) {
+    //     const maxFetchedCurrentDay = currDays.length
+    //       ? currDays[currDays.length - 1]
+    //       : e;
+
+    //     const finalEndDay = Math.min(e, maxFetchedCurrentDay);
+
+    //     if (finalEndDay < s) return [];
+
+    //     return Array.from(
+    //       { length: finalEndDay - s + 1 },
+    //       (_, i) => s + i
+    //     );
+    //   }
+
+    //   // Normal MTD view: use current fetched days only.
+    //   // This prevents previous month from stretching x-axis to 31.
+    //   if (currDays.length) {
+    //     const minDay = currDays[0];
+    //     const maxDay = currDays[currDays.length - 1];
+
+    //     return Array.from(
+    //       { length: maxDay - minDay + 1 },
+    //       (_, i) => minDay + i
+    //     );
+    //   }
+
+    //   // Fallback only if current data is unavailable.
+    //   if (prevDays.length) {
+    //     const minDay = prevDays[0];
+    //     const maxDay = prevDays[prevDays.length - 1];
+
+    //     return Array.from(
+    //       { length: maxDay - minDay + 1 },
+    //       (_, i) => minDay + i
+    //     );
+    //   }
+
+    //   return [];
+    // }, [rangeActive, s, e, dataPrev, dataCurr, metric]);
+
+
     const allDays = useMemo(() => {
       const hasRealMetricValue = (point: DailyPoint | undefined) => {
         if (!point) return false;
 
-        const value =
-          metric === "quantity"
-            ? point.quantity
-            : point.net_sales;
+        const value = metric === "quantity" ? point.quantity : point.net_sales;
 
-        return value !== undefined && value !== null && Number.isFinite(Number(value));
+        return (
+          value !== undefined &&
+          value !== null &&
+          Number.isFinite(Number(value))
+        );
       };
 
       const currDays = dataCurr
@@ -160,47 +236,46 @@ const LiveLineChart: React.FC<{
         .filter(Number.isFinite)
         .sort((a, b) => a - b);
 
-      // If user selected a date range, still never show beyond fetched current data.
       if (rangeActive && s != null && e != null) {
         const maxFetchedCurrentDay = currDays.length
           ? currDays[currDays.length - 1]
           : e;
 
-        const finalEndDay = Math.min(e, maxFetchedCurrentDay);
+        const finalEndDay = fullMonthMode ? e : Math.min(e, maxFetchedCurrentDay);
 
         if (finalEndDay < s) return [];
 
-        return Array.from(
-          { length: finalEndDay - s + 1 },
-          (_, i) => s + i
-        );
+        return Array.from({ length: finalEndDay - s + 1 }, (_, i) => s + i);
       }
 
-      // Normal MTD view: use current fetched days only.
-      // This prevents previous month from stretching x-axis to 31.
+      // ✅ Expanded mode:
+      // show previous month full available days,
+      // but current month will naturally remain blank/null after current MTD.
+      if (fullMonthMode && prevDays.length) {
+        const minDay = Math.min(prevDays[0], currDays[0] ?? prevDays[0]);
+        const maxDay = prevDays[prevDays.length - 1];
+
+        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
+      }
+
+      // ✅ Normal mode:
+      // show only current MTD days, e.g. July 1-2 and June 1-2.
       if (currDays.length) {
         const minDay = currDays[0];
         const maxDay = currDays[currDays.length - 1];
 
-        return Array.from(
-          { length: maxDay - minDay + 1 },
-          (_, i) => minDay + i
-        );
+        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
       }
 
-      // Fallback only if current data is unavailable.
       if (prevDays.length) {
         const minDay = prevDays[0];
         const maxDay = prevDays[prevDays.length - 1];
 
-        return Array.from(
-          { length: maxDay - minDay + 1 },
-          (_, i) => minDay + i
-        );
+        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
       }
 
       return [];
-    }, [rangeActive, s, e, dataPrev, dataCurr, metric]);
+    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode]);
 
     const xAxis = useMemo(() => allDays.map(String), [allDays]);
 
@@ -527,8 +602,8 @@ export default function LiveBiLineChartPanel({
   selectedStartDay,
   selectedEndDay,
   currencySymbol,
+  fullMonthMode = false,
 }: Props) {
-  // const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
 
   const CHART_METRIC_KEY = "performance-trend-chart-metric";
 
@@ -546,6 +621,20 @@ export default function LiveBiLineChartPanel({
     previous: true,
     current_mtd: true,
   });
+
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsExpanded(false);
+    };
+
+    if (isExpanded) {
+      window.addEventListener("keydown", onKeyDown);
+    }
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isExpanded]);
 
   const togglePeriod = (key: "previous" | "current_mtd") => {
     const selectedCount = Object.values(selectedPeriods).filter(Boolean).length;
@@ -597,7 +686,7 @@ export default function LiveBiLineChartPanel({
           <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
         </div>
 
-        <div className="w-full md:w-auto flex justify-end">
+        <div className="w-full md:w-auto flex justify-end items-center gap-2">
           <div className="w-fit">
             <SegmentedToggle<ChartMetric>
               value={chartMetric}
@@ -610,6 +699,20 @@ export default function LiveBiLineChartPanel({
               className="border-[#D9D9D9E5] bg-white w-fit"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            className="h-8 w-8 flex items-center justify-center rounded-md border border-[#D9D9D9E5] bg-white text-charcoal-500 hover:bg-gray-50"
+            title={isExpanded ? "Collapse" : "Expand full month view"}
+            aria-label={isExpanded ? "Collapse" : "Expand full month view"}
+          >
+            {isExpanded ? (
+              <RiCollapseDiagonalFill className="text-base" />
+            ) : (
+              <RiExpandDiagonalFill className="text-base" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -690,13 +793,23 @@ export default function LiveBiLineChartPanel({
               dataPrev={dailySeries.previous || []}
               dataCurr={dailySeries.current_mtd || []}
               metric={chartMetric}
-              prevLabel={prevLegend}
-              currLabel={currLegend}
+              prevLabel={
+                isExpanded
+                  ? stripDayRange(periods?.previous?.label || monthTickLabel(periods?.previous))
+                  : prevLegend
+              }
+              currLabel={
+                isExpanded
+                  ? stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))
+                  : currLegend
+              }
               currencySymbol={currencySymbol}
-              selectedStartDay={selectedStartDay}
-              selectedEndDay={selectedEndDay}
+              selectedStartDay={isExpanded ? null : selectedStartDay}
+              selectedEndDay={isExpanded ? null : selectedEndDay}
               showPrevious={selectedPeriods.previous !== false}
               showCurrent={selectedPeriods.current_mtd !== false}
+              fullMonthMode={isExpanded || fullMonthMode}
+            // height={isExpanded ? 520 : undefined}
             />
 
             {isRefreshing && (
