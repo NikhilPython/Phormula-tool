@@ -151,12 +151,15 @@ type MonthlySkuwiseRow = {
     sku: string;
     product_name: string;
     ad_type?: string;
-
     quantity: number;
     return_quantity?: number;
     total_quantity?: number;
     asp: number;
     net_sales: number;
+    gross_sales?: number;
+    refund_sales?: number;
+    promotional_rebates?: number;
+    promotional_rebates_percentage?: number;
     debt_payment?: number;
     disbursement?: number;
     net_taxes?: number;
@@ -176,7 +179,7 @@ type MonthlySkuwiseRow = {
     cm2_profit_per: number;
     cm2_profit_per_unit: number;
     profit: number;
-
+    net_sales_tax_and_credits?: number;
     platform_fee?: number;
     platform_fee_inventory_storage?: number;
     lost_total?: number;
@@ -242,9 +245,12 @@ type FetchLiveBiPayloadArgs = {
 
 type ProductwiseMoneyKey =
     | "asp"
+    | "gross_sales"
+    | "refund_sales"
     | "net_sales"
     | "net_taxes"
-
+    | "promotional_rebates"
+    | "promotional_rebates_percentage"
     | "other_transactions"
     | "cogs"
     | "fba_fees"
@@ -2809,8 +2815,10 @@ export default function DashboardPage() {
     const productwiseInitialCollapsed = useMemo(
         () => ({
             quantity: true,
+            net_sales: true,
+            promotions: true,
             marketplace_fees: true,
-            tax_and_credits: true,
+            other_transactions: true,
             profit: true,
             cm2_profit: true,
             ads_spend: true,
@@ -7168,9 +7176,14 @@ export default function DashboardPage() {
                         Number(r.return_quantity ?? r.returns_quantity ?? r.return_qty ?? 0)
                     )
                 ),
-
                 asp: Number(r.asp ?? 0),
+                gross_sales: Number(r.gross_sales ?? 0),
+                refund_sales: Number(r.refund_sales ?? 0),
+                net_sales_tax_and_credits: Number(r.tax_and_credits ?? 0),
                 net_sales: Number(r.net_sales ?? 0),
+
+                promotional_rebates: Number(r.promotional_rebates ?? 0),
+                promotional_rebates_percentage: Number(r.promotional_rebates_percentage ?? 0),
 
                 cogs: Number(r.cogs ?? 0),
                 fba_fees: Number(r.fba_fees ?? 0),
@@ -7233,7 +7246,11 @@ export default function DashboardPage() {
 
     const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
         "asp",
+        "gross_sales",
+        "refund_sales",
         "net_sales",
+        "promotional_rebates",
+        "promotional_rebates_percentage",
         "net_taxes",
         "other_transactions",
         "cogs",
@@ -7316,7 +7333,13 @@ export default function DashboardPage() {
             ),
 
             asp: toNumberSafe(raw?.asp),
+            gross_sales: toNumberSafe(raw?.gross_sales),
+            refund_sales: toNumberSafe(raw?.refund_sales),
+            net_sales_tax_and_credits: taxAndCredits,
             net_sales: toNumberSafe(raw?.net_sales),
+
+            promotional_rebates: toNumberSafe(raw?.promotional_rebates),
+            promotional_rebates_percentage: toNumberSafe(raw?.promotional_rebates_percentage),
 
             tax,
             credits,
@@ -7328,7 +7351,6 @@ export default function DashboardPage() {
             fba_fees: toNumberSafe(raw?.fba_fees),
             selling_fees: toNumberSafe(raw?.selling_fees),
 
-            // ✅ Use normalized values here
             product_spend: productSpend,
             display_spend: displaySpend,
             brand_spend: brandSpend,
@@ -8053,7 +8075,12 @@ export default function DashboardPage() {
                 case "return_quantity":
                 case "total_quantity":
                 case "asp":
+                case "gross_sales":
+                case "refund_sales":
+                case "net_sales_tax_and_credits":
                 case "net_sales":
+                case "promotional_rebates":
+                case "promotional_rebates_percentage":
                 case "cogs":
                 case "tax":
                 case "credits":
@@ -8168,6 +8195,8 @@ export default function DashboardPage() {
             ),
 
             asp: othersAsp,
+            gross_sales: sum("gross_sales"),
+            refund_sales: sum("refund_sales"),
             net_sales: othersNetSales,
 
             cogs: sum("cogs"),
@@ -8570,7 +8599,131 @@ export default function DashboardPage() {
                 },
             ],
         },
+        {
+            id: "net_sales",
+            label: "Net Sales",
+            info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
 
+            collapsedCols: [
+                {
+                    key: "net_sales",
+                    label: "Total",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                },
+            ],
+
+            expandedCols: [
+                {
+                    key: "gross_sales",
+                    label: "Gross Sales",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text="Gross Sales" />,
+                },
+                {
+                    key: "refund_sales",
+                    label: "Sales - Refund",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text="Sales refunded during this period." />,
+                },
+                {
+                    key: "net_sales_tax_and_credits",
+                    label: "Taxes and Credits",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+                },
+                {
+                    key: "net_sales",
+                    label: "Total",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                },
+            ],
+        },
+        {
+            id: "promotions",
+            label: "Promotions",
+            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+
+            collapsedCols: [
+                {
+                    key: "promotional_rebates",
+                    label: "Promotions",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+                },
+            ],
+
+            expandedCols: [
+                {
+                    key: "promotional_rebates",
+                    label: "Promotions",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+                },
+                {
+                    key: "promotional_rebates_percentage",
+                    label: "Promotions %",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+                },
+            ],
+        },
+        {
+            id: "other_transactions",
+            label: "Other Transactions",
+            info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+
+            collapsedCols: [
+                {
+                    key: "tax_and_credits",
+                    label: "Total",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                },
+            ],
+
+            expandedCols: [
+                {
+                    key: "tax",
+                    label: "Net Taxes",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
+                },
+                {
+                    key: "credits",
+                    label: "Net Credits",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                    info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
+                },
+                {
+                    key: "tax_and_credits",
+                    label: "Total",
+                    sortable: true,
+                    align: "center" as const,
+                    width: "7%",
+                },
+            ],
+        },
         {
             id: "profit",
             label: "CM1 Profit",
@@ -8708,14 +8861,14 @@ export default function DashboardPage() {
             align: "center" as const,
             width: "7%",
         },
-        {
-            key: "net_sales",
-            label: "Net Sales",
-            sortable: true,
-            info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
-            align: "center" as const,
-            width: "7%",
-        },
+        // {
+        //     key: "net_sales",
+        //     label: "Net Sales",
+        //     sortable: true,
+        //     info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
+        //     align: "center" as const,
+        //     width: "7%",
+        // },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const, },
@@ -8728,12 +8881,13 @@ export default function DashboardPage() {
 
     ];
 
-
     const PRODUCTWISE_GROUP_IDS = useMemo(
         () => [
             "quantity",
+            "net_sales",
+            "promotions",
             "marketplace_fees",
-            "tax_and_credits",
+            "other_transactions",
             "profit",
             "ads_spend",
             "cm2_profit",
@@ -9447,7 +9601,7 @@ export default function DashboardPage() {
             : 0;
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
-    const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
+    const ADS_SIGN_PLUS = new Set(["gross_sales", "net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
 
     const ADS_SIGN_MINUS = new Set([
         "return_quantity",
@@ -9455,6 +9609,8 @@ export default function DashboardPage() {
         "product_spend",
         "display_spend",
         "brand_spend",
+        "refund_sales",
+        "net_sales_tax_and_credits",
         "cogs",
         "fba_fees",
         "selling_fees",
@@ -11078,26 +11234,37 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     (toNumber(r.quantity) - toNumber(r.return_quantity))
                 ),
                 "ASP": n(r.asp),
+
+                "Gross Sales": n(r.gross_sales),
+                "Sales - Refund": n(r.refund_sales),
+                "Taxes and Credits": n(r.net_sales_tax_and_credits ?? r.tax_and_credits),
                 "Net Sales": n(r.net_sales),
+
+                "Promotions": Math.abs(n(r.promotional_rebates)),
+                "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
+
                 "COGS": n(r.cogs),
 
                 "Selling Fees": n(r.selling_fees),
                 "FBA Fees": n(r.fba_fees),
 
-                "Ads Spend": n(r.ads_spend),
-                "ACOS %": n(r.acos),
-
                 "Tax": n(r.tax),
                 "Credits": n(r.credits),
                 "Tax & Credits": n(r.tax_and_credits),
 
-                "CM1 Profit": n(r.profit),
-                "CM1 Profit %": n(r.cm1_profit_per),
                 "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+                "CM1 Profit %": n(r.cm1_profit_per),
+                "CM1 Profit": n(r.profit),
 
-                "CM2 Profit": n(r.cm2_profit),
-                "CM2 Profit %": n(r.cm2_profit_per),
+                "Sponsored Product": n(r.product_spend),
+                "Sponsored Display": n(r.display_spend),
+                "Ads Spend": n(r.ads_spend),
+
+                "ACOS %": n(r.acos),
+
                 "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+                "CM2 Profit %": n(r.cm2_profit_per),
+                "CM2 Profit": n(r.cm2_profit),
             }));
 
             const visibilityAds =
@@ -13584,15 +13751,15 @@ ${pageLoading
                                             layout={[
                                                 { type: "group", id: "quantity" },
                                                 { type: "single", key: "asp" },
-                                                { type: "single", key: "net_sales" },
+                                                { type: "group", id: "net_sales" },
+                                                { type: "group", id: "promotions" },
                                                 { type: "single", key: "cogs" },
                                                 { type: "group", id: "marketplace_fees" },
-                                                { type: "group", id: "tax_and_credits" },
+                                                { type: "group", id: "other_transactions" },
                                                 { type: "group", id: "profit" },
                                                 { type: "group", id: "ads_spend" },
                                                 { type: "single", key: "acos" },
                                                 { type: "group", id: "cm2_profit" },
-
                                             ]}
 
                                             // initialCollapsed={{ marketplace_fees: false }}
@@ -13642,6 +13809,7 @@ ${pageLoading
                                                             </span>
                                                         );
                                                     }
+
 
                                                     const displayName = getSkuwiseDisplayProductName(row);
 
@@ -13748,6 +13916,37 @@ ${pageLoading
                                                     return Math.round(Number(row.cm2_profit || 0)).toLocaleString();
                                                 if (colKey === "profit")
                                                     return Math.round(Number(row.profit || 0)).toLocaleString();
+                                                if (colKey === "promotional_rebates") {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
+                                                if (colKey === "promotional_rebates_percentage") {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+
+                                                    return Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2,
+                                                    });
+                                                }
+                                                if (
+                                                    colKey === "gross_sales" ||
+                                                    colKey === "refund_sales" ||
+                                                    colKey === "net_sales_tax_and_credits" ||
+                                                    colKey === "net_sales"
+                                                ) {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+
+                                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    });
+                                                }
+
                                                 return (row as any)[colKey] ?? "";
                                             }}
                                             summary={{

@@ -4477,10 +4477,11 @@ export default function LiveBusinessClient({
                         )}
 
                         {portfolioRecommendation && (
-                          <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-1">
+                          <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex flex-col items-start gap-2">
                             <span className="2xl:text-sm text-xs font-semibold text-charcoal-500">
                               Portfolio Recommendation:
                             </span>
+
                             <span className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
                               {portfolioRecommendation}
                             </span>

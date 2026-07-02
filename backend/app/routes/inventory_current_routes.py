@@ -5,7 +5,7 @@ import jwt
 import pandas as pd
 import numpy as np
 from datetime import date, datetime, timedelta
-from calendar import monthrange
+from calendar import monthrange, month_name as calendar_month_name
 from flask import Blueprint, request, jsonify
 from sqlalchemy import create_engine, text, inspect
 from dotenv import load_dotenv
@@ -24,6 +24,11 @@ amazon_engine = create_engine(DATABASE_AMAZON_URL, pool_pre_ping=True)
 
 inventory_current_bp = Blueprint("inventory_current", __name__)
 
+GLOBAL_COUNTRIES = ["uk", "us"]
+
+
+def is_global_country(country_key):
+    return str(country_key or "").strip().lower() == "global"
 
 def is_safe_identifier(value):
     return bool(re.fullmatch(r"[A-Za-z0-9_]+", str(value)))
@@ -1149,7 +1154,266 @@ def build_high_alert_coverage_summary(rows, user_id, country_key):
         "items": high_alert_items,
     }
 
+def merge_inventory_columns(existing_columns, new_columns):
+    merged = list(existing_columns or [])
 
+    for col in new_columns or []:
+        if col not in merged:
+            merged.append(col)
+
+    return merged
+
+
+def rebuild_total_row(rows):
+    data_rows = [
+        r for r in rows
+        if not is_total_row(r)
+    ]
+
+    total_row = {
+        "SKU": "",
+        "Product Name": "Total",
+    }
+
+    numeric_columns = [
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+        "unfulfillable-quantity",
+        "estimated-storage-cost-next-month",
+    ]
+
+    for col in numeric_columns:
+        total_row[col] = sum(to_number(r.get(col)) for r in data_rows)
+
+    for row in data_rows:
+        for col in row.keys():
+            if str(col).startswith("Current Month Units Sold"):
+                total_row[col] = sum(to_number(r.get(col)) for r in data_rows)
+
+    total_row["snapshot_date"] = None
+
+    return total_row
+
+
+def resolve_inventory_current_source_global(user_id, range_type, month_name, year, quarter):
+    combined_rows = []
+    combined_columns = []
+    combined_sources = []
+    tried_sources = []
+    selected_month = None
+
+    for child_country in GLOBAL_COUNTRIES:
+        source_result = resolve_inventory_current_source(
+            user_id=user_id,
+            country_key=child_country,
+            range_type=range_type,
+            month_name=month_name,
+            year=year,
+            quarter=quarter,
+        )
+
+        tried_sources.extend(source_result.get("tried_sources", []))
+
+        if not source_result["found"]:
+            continue
+
+        rows = source_result["rows"]
+        columns = source_result["columns"]
+
+        selected_month_for_units = source_result["selected_month"]
+
+        if selected_month_for_units:
+            units_result = attach_current_month_units_sold(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = units_result["rows"]
+            columns = units_result["columns"]
+
+        for row in rows:
+            if is_total_row(row):
+                continue
+
+            new_row = dict(row)
+            new_row["country_key"] = child_country
+            combined_rows.append(new_row)
+
+        combined_columns = merge_inventory_columns(combined_columns, columns)
+
+        if "country_key" not in combined_columns:
+            combined_columns.insert(0, "country_key")
+
+        combined_sources.append({
+            "country_key": child_country,
+            "source_type": source_result["source_type"],
+            "source_name": source_result["source_name"],
+            "selected_month": source_result["selected_month"],
+        })
+
+        if selected_month is None:
+            selected_month = source_result["selected_month"]
+
+    if not combined_rows:
+        return {
+            "found": False,
+            "source_type": None,
+            "source_name": None,
+            "selected_month": None,
+            "columns": [],
+            "rows": [],
+            "tried_sources": tried_sources,
+            "combined_sources": combined_sources,
+        }
+
+    combined_rows.append(rebuild_total_row(combined_rows))
+
+    return {
+        "found": True,
+        "source_type": "global_combined",
+        "source_name": "uk+us combined",
+        "selected_month": selected_month,
+        "columns": combined_columns,
+        "rows": combined_rows,
+        "tried_sources": tried_sources,
+        "combined_sources": combined_sources,
+    }
+
+
+def resolve_inventory_current_source_global_separated(user_id, range_type, month_name, year, quarter):
+    country_results = {}
+    tried_sources = []
+
+    for child_country in GLOBAL_COUNTRIES:
+        source_result = resolve_inventory_current_source(
+            user_id=user_id,
+            country_key=child_country,
+            range_type=range_type,
+            month_name=month_name,
+            year=year,
+            quarter=quarter,
+        )
+
+        tried_sources.extend(source_result.get("tried_sources", []))
+
+        if not source_result["found"]:
+            country_results[child_country] = {
+                "success": False,
+                "country_key": child_country,
+                "message": "No current inventory table or inventory_aged_history data found",
+                "source_type": None,
+                "source_name": None,
+                "selected_month": None,
+                "columns": [],
+                "rows": [],
+                "tried_sources": source_result.get("tried_sources", []),
+            }
+            continue
+
+        rows = source_result["rows"]
+        columns = source_result["columns"]
+        selected_month_for_units = source_result["selected_month"]
+
+        units_sold_result = {
+            "units_column": None,
+            "units_source_table": None,
+            "units_source_error": None,
+        }
+
+        if selected_month_for_units:
+            units_sold_result = attach_current_month_units_sold(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = units_sold_result["rows"]
+            columns = units_sold_result["columns"]
+
+        categories = build_inventory_categories(rows)
+        inventory_age_summary = build_inventory_age_summary(rows)
+
+        high_alert_coverage_summary = build_high_alert_coverage_summary(
+            rows=rows,
+            user_id=user_id,
+            country_key=child_country,
+        )
+
+        selected_month_number = MONTH_NAME_TO_NUMBER.get(source_result["selected_month"])
+
+        previous_storage_cost = {
+            "value": 0,
+            "source_table": None,
+            "period": None,
+            "error": None,
+        }
+
+        if selected_month_number:
+            previous_storage_cost = fetch_previous_platform_fee_as_storage_cost(
+                user_id=user_id,
+                country_key=child_country,
+                month_number=selected_month_number,
+                year_int=int(year),
+            )
+
+        categories["estimated_storage_cost"]["previous_storage_cost"] = previous_storage_cost["value"]
+        categories["estimated_storage_cost"]["previous_storage_cost_source"] = previous_storage_cost["source_table"]
+        categories["estimated_storage_cost"]["previous_storage_cost_period"] = previous_storage_cost["period"]
+        categories["estimated_storage_cost"]["previous_storage_cost_error"] = previous_storage_cost["error"]
+
+        country_results[child_country] = {
+            "success": True,
+            "country_key": child_country,
+            "range_type": range_type,
+            "requested_month": month_name or None,
+            "requested_quarter": quarter or None,
+            "selected_month": source_result["selected_month"],
+            "year": int(year),
+
+            "source_type": source_result["source_type"],
+            "source_name": source_result["source_name"],
+            "table_name": source_result["source_name"] if source_result["source_type"] == "currentinventory_table" else None,
+            "units_sold_column": units_sold_result["units_column"],
+            "units_sold_source_table": units_sold_result["units_source_table"],
+            "units_sold_source_error": units_sold_result["units_source_error"],
+            "tried_sources": source_result["tried_sources"],
+
+            "columns": columns,
+            "rows": rows,
+            "total_rows": len(rows),
+
+            "categories": categories,
+            "inventory_age_summary": inventory_age_summary,
+            "high_alert_coverage_summary": high_alert_coverage_summary,
+            "category_counts": {
+                "liquidate": len(categories["liquidate"]["items"]),
+                "discount": len(categories["discount"]["items"]),
+                "monitor": len(categories["monitor"]["items"]),
+                "unfulfillable": len(categories["unfulfillable"]["items"]),
+                "estimated_storage_cost": len(categories["estimated_storage_cost"]["items"]),
+            },
+        }
+
+    found_any = any(
+        result.get("success") is True
+        for result in country_results.values()
+    )
+
+    return {
+        "found": found_any,
+        "country_results": country_results,
+        "tried_sources": tried_sources,
+    }
 
 
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
@@ -1241,6 +1505,46 @@ def get_inventory_current_table():
                     "message": "Invalid quarter. Use Q1, Q2, Q3, or Q4"
                 }), 400
 
+        if is_global_country(country_key):
+            global_result = resolve_inventory_current_source_global_separated(
+                user_id=user_id,
+                range_type=range_type,
+                month_name=month_name,
+                year=year,
+                quarter=quarter,
+            )
+
+            if not global_result["found"]:
+                return jsonify({
+                    "success": False,
+                    "country_key": "global",
+                    "message": "No current inventory table or inventory_aged_history data found for UK or US",
+                    "combined_countries": GLOBAL_COUNTRIES,
+                    "country_results": global_result["country_results"],
+                    "tried_sources": global_result["tried_sources"],
+                }), 404
+
+            return jsonify({
+                "success": True,
+                "country_key": "global",
+                "range_type": range_type,
+                "requested_month": month_name or None,
+                "requested_quarter": quarter or None,
+                "year": int(year),
+                "combined_countries": GLOBAL_COUNTRIES,
+
+                "country_results": global_result["country_results"],
+
+                "columns": [],
+                "rows": [],
+                "total_rows": 0,
+                "categories": None,
+                "inventory_age_summary": None,
+                "high_alert_coverage_summary": None,
+                "category_counts": None,
+                "tried_sources": global_result["tried_sources"],
+            }), 200
+
         source_result = resolve_inventory_current_source(
             user_id=user_id,
             country_key=country_key,
@@ -1273,7 +1577,7 @@ def get_inventory_current_table():
             "units_source_error": None,
         }
 
-        if selected_month_for_units:
+        if selected_month_for_units and not is_global_country(country_key):
             units_sold_result = attach_current_month_units_sold(
                 rows=rows,
                 columns=columns,
@@ -1289,10 +1593,19 @@ def get_inventory_current_table():
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
-        high_alert_coverage_summary = build_high_alert_coverage_summary(
-            rows=rows,
-            user_id=user_id,
-            country_key=country_key,
+        high_alert_coverage_summary = (
+            {
+                "high_alert_sku_count": 0,
+                "average_coverage_ratio": 0,
+                "high_alert_threshold": 0,
+                "items": [],
+            }
+            if is_global_country(country_key)
+            else build_high_alert_coverage_summary(
+                rows=rows,
+                user_id=user_id,
+                country_key=country_key,
+            )
         )
 
         selected_month_number = MONTH_NAME_TO_NUMBER.get(source_result["selected_month"])
@@ -1304,13 +1617,35 @@ def get_inventory_current_table():
             "error": None,
         }
 
-        if selected_month_number:
+        if selected_month_number and not is_global_country(country_key):
             previous_storage_cost = fetch_previous_platform_fee_as_storage_cost(
                 user_id=user_id,
                 country_key=country_key,
                 month_number=selected_month_number,
                 year_int=int(year),
             )
+        elif selected_month_number and is_global_country(country_key):
+            previous_total = 0
+            previous_sources = []
+
+            for child_country in GLOBAL_COUNTRIES:
+                child_previous = fetch_previous_platform_fee_as_storage_cost(
+                    user_id=user_id,
+                    country_key=child_country,
+                    month_number=selected_month_number,
+                    year_int=int(year),
+                )
+
+                previous_total += to_number(child_previous.get("value"))
+                previous_sources.append(child_previous)
+
+            previous_storage_cost = {
+                "value": previous_total,
+                "source_table": "uk+us combined",
+                "period": None,
+                "error": None,
+                "sources": previous_sources,
+            }
 
         categories["estimated_storage_cost"]["previous_storage_cost"] = previous_storage_cost["value"]
         categories["estimated_storage_cost"]["previous_storage_cost_source"] = previous_storage_cost["source_table"]
@@ -1328,6 +1663,7 @@ def get_inventory_current_table():
 
             "source_type": source_result["source_type"],
             "source_name": source_result["source_name"],
+            "combined_sources": source_result.get("combined_sources", []),
             "table_name": source_result["source_name"] if source_result["source_type"] == "currentinventory_table" else None,
             "units_sold_column": units_sold_result["units_column"],
             "units_sold_source_table": units_sold_result["units_source_table"],
@@ -1357,9 +1693,6 @@ def get_inventory_current_table():
             "error": str(e)
         }), 500
     
-       
-
-from calendar import month_name as calendar_month_name
 
 
 MONTH_NAME_TO_NUMBER = {
@@ -1385,6 +1718,231 @@ def get_marketplace_id(country_key):
 def month_label(month_number):
     return calendar_month_name[month_number]
 
+def get_age_summary_for_single_country(user_id, country_key, month_name, year):
+    marketplace_id = get_marketplace_id(country_key)
+
+    if not marketplace_id:
+        return {
+            "success": False,
+            "message": f"Unsupported country_key: {country_key}",
+            "month_summary": [],
+            "age_summary": [],
+            "totals": {
+                "inv-age-181-to-270-days": 0,
+                "inv-age-271-to-365-days": 0,
+                "inv-age-365-plus-days": 0,
+            },
+            "tried_sources": [],
+        }
+
+    current_month_number = MONTH_NAME_TO_NUMBER[month_name]
+    year_int = int(year)
+
+    inspector = inspect(primary_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    month_summary = []
+    tried_sources = []
+
+    for month_number in range(1, current_month_number + 1):
+        month_text = calendar_month_name[month_number].lower()
+        month_display = month_label(month_number)
+
+        candidate_table_name = (
+            f"currentinventory_{user_id}_{country_key}_{month_text}{year}_table"
+        )
+
+        tried_sources.append(candidate_table_name)
+
+        if candidate_table_name in existing_tables:
+            current_query = text(f'''
+                SELECT
+                    COALESCE(SUM(CAST(NULLIF("inv-age-181-to-270-days"::text, '') AS NUMERIC)), 0) AS inv_age_181_to_270_days,
+                    COALESCE(SUM(CAST(NULLIF("inv-age-271-to-365-days"::text, '') AS NUMERIC)), 0) AS inv_age_271_to_365_days,
+                    COALESCE(SUM(CAST(NULLIF("inv-age-365-plus-days"::text, '') AS NUMERIC)), 0) AS inv_age_365_plus_days
+                FROM "{candidate_table_name}"
+                WHERE LOWER(COALESCE("Product Name"::text, '')) != 'total'
+            ''')
+
+            with primary_engine.connect() as primary_connection:
+                current_result = primary_connection.execute(current_query).mappings().first()
+
+            month_summary.append({
+                "country_key": country_key,
+                "month": month_display,
+                "month_number": month_number,
+                "year": year_int,
+                "source": candidate_table_name,
+                "source_type": "currentinventory_table",
+                "totals": {
+                    "inv-age-181-to-270-days": float(current_result["inv_age_181_to_270_days"] or 0),
+                    "inv-age-271-to-365-days": float(current_result["inv_age_271_to_365_days"] or 0),
+                    "inv-age-365-plus-days": float(current_result["inv_age_365_plus_days"] or 0),
+                },
+            })
+
+            continue
+
+        history_source = f"inventory_aged_history:{country_key}:{month_text}{year}"
+        tried_sources.append(history_source)
+
+        history_query = text("""
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN surcharge_age_tier IN (
+                            '181-210',
+                            '181-210 days',
+                            '181 to 210 days',
+                            '181-210-days',
+                            '211-240',
+                            '211-240 days',
+                            '211 to 240 days',
+                            '211-240-days',
+                            '241-270',
+                            '241-270 days',
+                            '241 to 270 days',
+                            '241-270-days'
+                        )
+                        THEN qty_charged
+                        ELSE 0
+                    END
+                ), 0) AS inv_age_181_to_270_days,
+
+                COALESCE(SUM(
+                    CASE
+                        WHEN surcharge_age_tier IN (
+                            '271-300',
+                            '271-300 days',
+                            '271 to 300 days',
+                            '271-300-days',
+                            '301-330',
+                            '301-330 days',
+                            '301 to 330 days',
+                            '301-330-days',
+                            '331-365',
+                            '331-365 days',
+                            '331 to 365 days',
+                            '331-365-days'
+                        )
+                        THEN qty_charged
+                        ELSE 0
+                    END
+                ), 0) AS inv_age_271_to_365_days,
+
+                COALESCE(SUM(
+                    CASE
+                        WHEN surcharge_age_tier IN (
+                            '365+',
+                            '365+ days',
+                            '365 plus days',
+                            '365-plus-days',
+                            '366-455',
+                            '366-455 days',
+                            '366 to 455 days',
+                            '366-455-days',
+                            '456+',
+                            '456+ days',
+                            '456 plus days',
+                            '456-plus-days'
+                        )
+                        THEN qty_charged
+                        ELSE 0
+                    END
+                ), 0) AS inv_age_365_plus_days
+            FROM inventory_aged_history
+            WHERE user_id = :user_id
+              AND marketplace_id = :marketplace_id
+              AND snapshot_date IS NOT NULL
+              AND EXTRACT(YEAR FROM snapshot_date)::int = :year
+              AND EXTRACT(MONTH FROM snapshot_date)::int = :month_number
+        """)
+
+        with amazon_engine.connect() as amazon_connection:
+            history_result = amazon_connection.execute(history_query, {
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+                "year": year_int,
+                "month_number": month_number,
+            }).mappings().first()
+
+        month_summary.append({
+            "country_key": country_key,
+            "month": month_display,
+            "month_number": month_number,
+            "year": year_int,
+            "source": "inventory_aged_history",
+            "source_type": "inventory_aged_history",
+            "totals": {
+                "inv-age-181-to-270-days": float(history_result["inv_age_181_to_270_days"] or 0) if history_result else 0,
+                "inv-age-271-to-365-days": float(history_result["inv_age_271_to_365_days"] or 0) if history_result else 0,
+                "inv-age-365-plus-days": float(history_result["inv_age_365_plus_days"] or 0) if history_result else 0,
+            },
+        })
+
+    age_summary = []
+
+    for month_row in month_summary:
+        age_summary.extend([
+            {
+                "country_key": country_key,
+                "month": month_row["month"],
+                "month_number": month_row["month_number"],
+                "year": month_row["year"],
+                "source": month_row["source"],
+                "source_type": month_row["source_type"],
+                "age_bucket": "181-270 days",
+                "column": "inv-age-181-to-270-days",
+                "units": month_row["totals"]["inv-age-181-to-270-days"],
+            },
+            {
+                "country_key": country_key,
+                "month": month_row["month"],
+                "month_number": month_row["month_number"],
+                "year": month_row["year"],
+                "source": month_row["source"],
+                "source_type": month_row["source_type"],
+                "age_bucket": "271-365 days",
+                "column": "inv-age-271-to-365-days",
+                "units": month_row["totals"]["inv-age-271-to-365-days"],
+            },
+            {
+                "country_key": country_key,
+                "month": month_row["month"],
+                "month_number": month_row["month_number"],
+                "year": month_row["year"],
+                "source": month_row["source"],
+                "source_type": month_row["source_type"],
+                "age_bucket": "365+ days",
+                "column": "inv-age-365-plus-days",
+                "units": month_row["totals"]["inv-age-365-plus-days"],
+            },
+        ])
+
+    grand_totals = {
+        "inv-age-181-to-270-days": sum(
+            row["totals"]["inv-age-181-to-270-days"]
+            for row in month_summary
+        ),
+        "inv-age-271-to-365-days": sum(
+            row["totals"]["inv-age-271-to-365-days"]
+            for row in month_summary
+        ),
+        "inv-age-365-plus-days": sum(
+            row["totals"]["inv-age-365-plus-days"]
+            for row in month_summary
+        ),
+    }
+
+    return {
+        "success": True,
+        "country_key": country_key,
+        "marketplace_id": marketplace_id,
+        "tried_sources": tried_sources,
+        "month_summary": month_summary,
+        "age_summary": age_summary,
+        "totals": grand_totals,
+    }
 
 @inventory_current_bp.route("/inventory_current_age_summary", methods=["GET", "OPTIONS"])
 def get_inventory_current_age_summary():
@@ -1437,6 +1995,48 @@ def get_inventory_current_age_summary():
                 "success": False,
                 "message": f"Invalid month_name: {month_name}"
             }), 400
+        
+        if is_global_country(country_key):
+            country_results = {}
+
+            for child_country in GLOBAL_COUNTRIES:
+                child_result = get_age_summary_for_single_country(
+                    user_id=user_id,
+                    country_key=child_country,
+                    month_name=month_name,
+                    year=year,
+                )
+
+                country_results[child_country] = child_result
+
+            tried_sources = []
+
+            for child_result in country_results.values():
+                tried_sources.extend(child_result.get("tried_sources", []))
+
+            return jsonify({
+                "success": True,
+                "requested_month": month_name.capitalize(),
+                "year": int(year),
+                "country_key": "global",
+                "marketplace_id": None,
+                "combined_countries": GLOBAL_COUNTRIES,
+                "history_range": {
+                    "from_month": "January",
+                    "to_month": month_name.capitalize(),
+                },
+                "source_priority": [
+                    "currentinventory dynamic table",
+                    "inventory_aged_history fallback",
+                ],
+                "tried_sources": tried_sources,
+
+                "country_results": country_results,
+
+                "totals": None,
+                "month_summary": [],
+                "age_summary": [],
+            }), 200
 
         marketplace_id = get_marketplace_id(country_key)
 
