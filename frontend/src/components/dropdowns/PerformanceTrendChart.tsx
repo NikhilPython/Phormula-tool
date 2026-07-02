@@ -505,70 +505,36 @@ const LiveLineChart: React.FC<{
     }, [isDaily, isQuarterCompare, filteredXAxis]);
 
     const selectedYearNum = Number(year);
-    const currentCalendarYear = new Date().getFullYear();
+    const now = new Date();
+    const currentCalendarYear = now.getFullYear();
+    const currentCalendarMonthIdx = now.getMonth();
 
-    const latestCurrentYearMonthIdx = useMemo(() => {
+    const lastCompletedMonthIdx = useMemo(() => {
       if (!isMonthAbbrAxis) return null;
       if (range !== "yearly") return null;
       if (!selectedYearNum) return null;
       if (selectedYearNum !== currentCalendarYear) return null;
 
-      const currentSeries =
-        series.find((s) => s.name === String(selectedYearNum)) ??
-        series.find((s) => {
-          const parsed = parseLabelKey(s.name);
-          return parsed?.key === selectedYearNum * 100;
-        });
-
-      if (!currentSeries) return null;
-
-      let maxIdx = -1;
-
-      currentSeries.points.forEach((pt) => {
-        const monthIdx = MONTH_ABBR_TO_IDX[String(pt.x).toLowerCase()];
-        if (monthIdx == null) return;
-
-        const hasData =
-          (pt.net_sales !== null && pt.net_sales !== undefined) ||
-          (pt.units !== null && pt.units !== undefined);
-
-        if (hasData) {
-          maxIdx = Math.max(maxIdx, monthIdx);
-        }
-      });
-
-      return maxIdx >= 0 ? maxIdx : null;
+      // Current month should not be shown in historic/yearly view.
+      // Example: if today is July, show only Jan-Jun.
+      return currentCalendarMonthIdx - 1;
     }, [
       isMonthAbbrAxis,
       range,
       selectedYearNum,
       currentCalendarYear,
-      series,
+      currentCalendarMonthIdx,
     ]);
-
-    // const fullYearXAxis = useMemo(() => {
-    //   if (!isMonthAbbrAxis) return filteredXAxis;
-
-    //   // ✅ Collapsed ongoing year:
-    //   // If current year has data till Apr, show Jan-Apr only.
-    //   if (latestCurrentYearMonthIdx != null) {
-    //     return FULL_MONTHS.slice(0, latestCurrentYearMonthIdx + 1);
-    //   }
-
-    //   // ✅ Expanded view or past year:
-    //   // Keep existing behavior: Jan-Dec.
-    //   return FULL_MONTHS;
-    // }, [isMonthAbbrAxis, filteredXAxis, latestCurrentYearMonthIdx]);
-
     const fullYearXAxis = useMemo(() => {
       if (!isMonthAbbrAxis) return filteredXAxis;
 
-      if (!isExpanded && latestCurrentYearMonthIdx != null) {
-        return FULL_MONTHS.slice(0, latestCurrentYearMonthIdx + 1);
+      if (lastCompletedMonthIdx != null) {
+        if (lastCompletedMonthIdx < 0) return [];
+        return FULL_MONTHS.slice(0, lastCompletedMonthIdx + 1);
       }
 
       return FULL_MONTHS;
-    }, [isMonthAbbrAxis, filteredXAxis, latestCurrentYearMonthIdx, isExpanded]);
+    }, [isMonthAbbrAxis, filteredXAxis, lastCompletedMonthIdx]);
 
     // Fallback single-point fix for non-month cases (daily / numeric / etc.)
     const PAD_X = "__single_point_pad__";
@@ -823,26 +789,14 @@ const LiveLineChart: React.FC<{
                 selectedYearNum === currentCalendarYear &&
                 ser.name === String(selectedYearNum);
 
-              const isFutureMonthForCurrentYear =
+              const isCurrentOrFutureMonthForCurrentYear =
                 isCurrentOngoingYearSeries &&
-                latestCurrentYearMonthIdx != null &&
+                lastCompletedMonthIdx != null &&
                 monthIdx != null &&
-                monthIdx > latestCurrentYearMonthIdx;
+                monthIdx > lastCompletedMonthIdx;
 
-              if (isFutureMonthForCurrentYear) {
-                // Collapsed view: do not render future current-year months
-                if (!isExpanded) {
-                  return null;
-                }
-
-                // Expanded view:
-                // show only ONE grounding point right after the last real month.
-                // Example: data till Apr => May = 0, Jun-Dec = null
-                const isFirstFutureMonth =
-                  latestCurrentYearMonthIdx != null &&
-                  monthIdx === latestCurrentYearMonthIdx + 1;
-
-                return isFirstFutureMonth ? 0 : null;
+              if (isCurrentOrFutureMonthForCurrentYear) {
+                return null;
               }
 
               // ✅ For previous year, keep Jan-Dec comparison as-is.

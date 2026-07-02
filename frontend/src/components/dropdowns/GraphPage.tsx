@@ -191,25 +191,18 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const fullLabel = (key: MetricKey) => getMetricLabel(key, false);
 
   const selectedYearNum = Number(selectedYear);
-  const currentCalendarYear = new Date().getFullYear();
+  const now = new Date();
+  const currentCalendarYear = now.getFullYear();
+  const currentCalendarMonthIdx = now.getMonth();
 
-  const latestAvailableMonthIdx = useMemo(() => {
+  const lastCompletedMonthIdx = useMemo(() => {
     if (range !== "yearly") return null;
     if (!selectedYearNum || selectedYearNum !== currentCalendarYear) return null;
 
-    let maxIdx = -1;
-
-    uploads.forEach((upload) => {
-      if (Number(upload.year) !== selectedYearNum) return;
-
-      const idx = MONTH_NAME_TO_IDX[String(upload.month).toLowerCase()];
-      if (idx == null) return;
-
-      maxIdx = Math.max(maxIdx, idx);
-    });
-
-    return maxIdx >= 0 ? maxIdx : null;
-  }, [range, selectedYearNum, currentCalendarYear, uploads]);
+    // Current month should not be shown in historic/yearly view.
+    // Example: if today is July, show only Jan-Jun.
+    return currentCalendarMonthIdx - 1;
+  }, [range, selectedYearNum, currentCalendarYear, currentCalendarMonthIdx]);
 
   const monthlyLabels = useMemo(() => {
     if (range === "monthly" && selectedMonth && selectedYear) {
@@ -234,11 +227,12 @@ const GraphPage: React.FC<GraphPageProps> = ({
         `December ${selectedYear}`,
       ].map((l) => l.toLowerCase());
 
-      // Collapsed current-year view:
-      // show only months that actually exist.
-      if (isCollapsed && latestAvailableMonthIdx != null) {
-        return yearLabels.slice(0, latestAvailableMonthIdx + 1);
+      if (lastCompletedMonthIdx != null) {
+        if (lastCompletedMonthIdx < 0) return [];
+        return yearLabels.slice(0, lastCompletedMonthIdx + 1);
       }
+
+      return yearLabels;
 
       // Expanded view:
       // keep Jan-Dec axis.
@@ -251,7 +245,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
     selectedQuarter,
     selectedYear,
     isCollapsed,
-    latestAvailableMonthIdx,
+    lastCompletedMonthIdx,
   ]);
 
 
@@ -370,20 +364,15 @@ const GraphPage: React.FC<GraphPageProps> = ({
             const isCurrentOngoingYear =
               range === "yearly" &&
               selectedYearNum === currentCalendarYear &&
-              latestAvailableMonthIdx != null;
+              lastCompletedMonthIdx != null;
 
-            const isFutureMonth =
+            const isCurrentOrFutureMonth =
               isCurrentOngoingYear &&
               monthIdx != null &&
-              monthIdx > latestAvailableMonthIdx;
+              monthIdx > lastCompletedMonthIdx;
 
-            if (isFutureMonth) {
-              if (isCollapsed) return null;
-
-              const isFirstFutureMonth = monthIdx === latestAvailableMonthIdx + 1;
-
-              // Expanded: only one grounding point, then stop.
-              return isFirstFutureMonth ? 0 : null;
+            if (isCurrentOrFutureMonth) {
+              return null;
             }
 
             return (dataToUse as any)[l]?.[metric] ?? 0;
