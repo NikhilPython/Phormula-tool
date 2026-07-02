@@ -1431,7 +1431,8 @@ def _safe_ident(s: str) -> str:
 
 
 def _build_skuwise_table_name(user_id: int, country: str, month: int, year: int) -> str:
-    return f"skuwisemonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
+    month_name = _month_name_lower(int(month))
+    return f"skuwisemonthly_{int(user_id)}_{_safe_ident(country)}_{month_name}{int(year)}"
 
 
 def _build_adsmonthly_table_name(user_id: int, country: str, month: int, year: int) -> str:
@@ -1463,9 +1464,9 @@ def get_current_global_data_for_live_bi(user_id: int):
     now_utc = datetime.now(timezone.utc)
     month_name = _month_name_lower(now_utc.month)
 
-    uk_table = f"skuwisemonthly_{user_id}_uk_{month_name}_{now_utc.year}"
-    us_table = f"skuwisemonthly_{user_id}_us_{month_name}_{now_utc.year}"
-    global_table = f"skuwisemonthly_{user_id}_global_{month_name}_{now_utc.year}"
+    uk_table = f"skuwisemonthly_{user_id}_uk_{month_name}{now_utc.year}"
+    us_table = f"skuwisemonthly_{user_id}_us_{month_name}{now_utc.year}"
+    global_table = f"skuwisemonthly_{user_id}_global_{month_name}{now_utc.year}_table"
 
     # -------------------------------------------------------------------------
     # SAFE TABLE READS
@@ -2941,7 +2942,7 @@ def finances_mtd_transactions():
     # ============================================================
     # SKU-WISE TABLE
     # ============================================================
-    skuwise_table_name = f"skuwisemonthly_{int(user_id)}_{_safe_ident(ui_country)}_{_safe_ident(month_name)}_{int(now_utc.year)}"
+    skuwise_table_name = f"skuwisemonthly_{int(user_id)}_{_safe_ident(ui_country)}_{_safe_ident(month_name)}{int(now_utc.year)}"
     ads_table_name = _build_adsmonthly_table_name(user_id, ui_country, now_utc.month, now_utc.year)
 
     sku_summary_saved = False
