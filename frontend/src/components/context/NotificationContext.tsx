@@ -8,7 +8,6 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { useParams } from "next/navigation";
 
 export type HeaderNotificationItem = {
   id: string;
@@ -88,17 +87,26 @@ function isWithinLast7Days(dateString?: string | null) {
 
 export function NotificationProvider({
   children,
+  countryName,
+  month: routeMonth,
+  year: routeYear,
 }: {
   children: React.ReactNode;
+  countryName?: string;
+  month?: string;
+  year?: string;
 }) {
   const [items, setItems] = useState<HeaderNotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const params = useParams();
+  const rawCountry = (countryName || "uk").toLowerCase();
 
-  const country = ((params?.countryName as string) || "uk").toLowerCase();
-  const month = (params?.month as string) || "NA";
-  const year = (params?.year as string) || "NA";
+  const country = ["uk", "us", "global"].includes(rawCountry)
+    ? rawCountry
+    : "uk";
+
+  const month = routeMonth || "NA";
+  const year = routeYear || "NA";
 
   const refreshNotifications = useCallback(async () => {
     try {
@@ -109,22 +117,35 @@ export function NotificationProvider({
           ? localStorage.getItem("jwtToken")
           : null;
 
+      console.log("[NOTIFICATION DEBUG]", {
+        baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000",
+        country,
+        month,
+        year,
+        hasToken: !!token,
+      });
+
       if (!token) {
         setItems([]);
         return;
       }
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/notification`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ country }),
-        }
-      );
+      const baseURL =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+
+      const response = await fetch(`${baseURL}/notification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          country,
+          month: month !== "NA" ? month : null,
+          year: year !== "NA" ? year : null,
+        }),
+      });
 
       const result = await response.json();
 
@@ -138,26 +159,25 @@ export function NotificationProvider({
 
       const mappedItems: HeaderNotificationItem[] = Object.entries(data)
         .map(([productName, value]: [string, any]) => {
-          const alert = value?.alert;
+          const alert = String(value?.alert || "").trim().toLowerCase();
           const ratio = value?.inventory_coverage_ratio;
 
-          if (!alert || String(alert).trim().toLowerCase() !== "high alert") {
+          if (alert !== "high alert") {
             return null;
           }
 
           const alertTime =
-            value?.first_alert_time ||
             value?.last_alert_time ||
+            value?.first_alert_time ||
             null;
 
-          // Hide notifications older than 7 days
           if (!isWithinLast7Days(alertTime)) {
             return null;
           }
 
           return {
             id: value?.sku || productName,
-            title: productName,
+            title: value?.product_name || productName,
             message:
               ratio !== null && ratio !== undefined
                 ? `High alert (Coverage ratio (in months): ${Number(ratio).toFixed(2)})`

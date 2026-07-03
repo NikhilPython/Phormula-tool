@@ -46,7 +46,11 @@ export default function AdminLayout({
 
   return (
     <AuthGuard>
-      <NotificationProvider>
+      <NotificationProvider
+        countryName={currentParams.countryName}
+        month={currentParams.month}
+        year={currentParams.year}
+      >
         <div className="h-screen xl:flex bg-[#D9D9D933] overflow-hidden">
           <AppSidebar />
           <Backdrop />
