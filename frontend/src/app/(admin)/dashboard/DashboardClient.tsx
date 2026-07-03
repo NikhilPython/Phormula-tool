@@ -2936,6 +2936,10 @@ export default function DashboardPage() {
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
 
+    const boldSummaryText = (value: React.ReactNode) => (
+        <span className="font-semibold">{value}</span>
+    );
+
     type MetricItem = {
         label: string;
         value: string;
@@ -11560,9 +11564,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? liveCm2Rows
                 : finalMonthlySkuwiseRowsForTable || [];
 
-        const rows = sourceRows
+        const rows: Cm1PieSlice[] = sourceRows
             .filter(isValidPieRow)
-            .map((r: any) => {
+            .map((r: any): Cm1PieSlice => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
                 );
@@ -11581,12 +11585,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                 const mapPrevCm2 = prevCm2ByName.get(normalizePieName(name));
 
-                /**
-                 * IMPORTANT:
-                 * Your API currently sends cm2_profit_prev = 0.
-                 * So fallback to profit_prev only when CM2 previous is missing/zero.
-                 * Once backend sends real cm2_profit_prev, that value will be used first.
-                 */
                 const fallbackPrevProfit = getFirstNumber(
                     r?.profit_prev,
                     r?.cm1_profit_prev
@@ -11595,7 +11593,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 const prevValue =
                     apiPrevCm2 !== null && apiPrevCm2 !== 0
                         ? apiPrevCm2
-                        : typeof mapPrevCm2 === "number" && Number.isFinite(mapPrevCm2) && mapPrevCm2 !== 0
+                        : typeof mapPrevCm2 === "number" &&
+                            Number.isFinite(mapPrevCm2) &&
+                            mapPrevCm2 !== 0
                             ? mapPrevCm2
                             : fallbackPrevProfit ?? 0;
 
@@ -11628,17 +11628,18 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 };
             })
             .filter(
-                (row) =>
+                (row: Cm1PieSlice) =>
                     Number(row.value || 0) !== 0 ||
                     Number(row.prevValue || 0) !== 0
             );
 
         const totalAbs = rows.reduce(
-            (sum, row) => sum + Math.abs(Number(row.value || 0)),
+            (sum: number, row: Cm1PieSlice) =>
+                sum + Math.abs(Number(row.value || 0)),
             0
         );
 
-        return rows.map((row) => ({
+        return rows.map((row: Cm1PieSlice): Cm1PieSlice => ({
             ...row,
             pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
         }));
@@ -14262,8 +14263,8 @@ ${pageLoading
                                                     {
                                                         type: "fixed",
                                                         id: "cm2_profit",
-                                                        label: "CM2 Profit/Loss",
-                                                        endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+                                                        label: boldSummaryText("CM2 Profit/Loss"),
+                                                        endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
                                                     },
                                                     {
                                                         type: "fixed",
