@@ -20,10 +20,11 @@ type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
 type Cm1PieSlice = {
   name: string;
-  value: number; // current CM1 profit (already in display currency)
-  prevValue: number; // previous CM1 profit (same currency)
-  pct: number; // share of current total
-  deltaPct: number | null; // % change vs previous
+  value: number;
+  prevValue: number;
+  pct: number;
+  deltaPct: number | null;
+  chartValue?: number;
 };
 
 type Props = {
@@ -90,72 +91,6 @@ export default function Cm1ProfitBreakdownPie({
   const MIN_SKUS = 5;
   const TARGET_SHARE = 0.8;
 
-  // const displayData = useMemo<Cm1PieSlice[]>(() => {
-  //   const arr = (data || []).filter((d) => Number(d.value || 0) !== 0);
-  //   if (!arr.length) return [];
-
-  //   // Sort by current profit magnitude (matches your chart logic)
-  //   const sorted = [...arr].sort(
-  //     (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
-  //   );
-
-  //   const total = sorted.reduce(
-  //     (s, d) => s + Math.abs(Number(d.value || 0)),
-  //     0
-  //   );
-  //   if (!total) return [];
-
-  //   let cum = 0;
-  //   let cutoff = 0;
-
-  //   for (let i = 0; i < sorted.length; i++) {
-  //     cum += Math.abs(Number(sorted[i].value || 0));
-  //     cutoff = i + 1;
-  //     if (cum / total >= TARGET_SHARE) break;
-  //   }
-
-  //   const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
-  //   const kept = sorted.slice(0, keepCount);
-  //   const rest = sorted.slice(keepCount);
-
-  //   const rebuiltKept: Cm1PieSlice[] = kept.map((d) => {
-  //     const v = Math.abs(Number(d.value || 0));
-  //     const pv = Math.abs(Number(d.prevValue || 0));
-  //     const pct = total ? (v / total) * 100 : 0;
-
-  //     // Recompute deltaPct to remain consistent after abs/grouping
-  //     const deltaPct = pv === 0 ? null : ((v - pv) / pv) * 100;
-
-  //     return { ...d, value: v, prevValue: pv, pct, deltaPct };
-  //   });
-
-  //   if (!rest.length) return rebuiltKept;
-
-  //   const othersValue = rest.reduce(
-  //     (s, d) => s + Math.abs(Number(d.value || 0)),
-  //     0
-  //   );
-  //   const othersPrev = rest.reduce(
-  //     (s, d) => s + Math.abs(Number(d.prevValue || 0)),
-  //     0
-  //   );
-
-  //   const othersPct = total ? (othersValue / total) * 100 : 0;
-  //   const othersDeltaPct =
-  //     othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
-
-  //   return [
-  //     ...rebuiltKept,
-  //     {
-  //       name: "Others",
-  //       value: othersValue,
-  //       prevValue: othersPrev,
-  //       pct: othersPct,
-  //       deltaPct: othersDeltaPct,
-  //     },
-  //   ];
-  // }, [data]);
-
   const displayData = useMemo<Cm1PieSlice[]>(() => {
     const isOthers = (name?: string) =>
       String(name || "").trim().toLowerCase() === "others";
@@ -170,79 +105,116 @@ export default function Cm1ProfitBreakdownPie({
       );
     };
 
-    // ✅ Remove Total rows first
+    const isCm2 = profitPieType === "cm2";
+
     const arr = (activeData || [])
       .filter((d) => !isTotal(d.name))
-      .filter((d) => Number(d.value || 0) !== 0 || Number(d.prevValue || 0) !== 0);
+      .filter(
+        (d) =>
+          Number(d.value || 0) !== 0 ||
+          Number(d.prevValue || 0) !== 0
+      );
 
     if (!arr.length) return [];
 
     const normalized = arr.map((d) => {
-      const v = Math.abs(Number(d.value || 0));
-      const pv = Math.abs(Number(d.prevValue || 0));
-      const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
+      const rawValue = Number(d.value || 0);
+      const rawPrevValue = Number(d.prevValue || 0);
+
+      const displayValue = isCm2 ? rawValue : Math.abs(rawValue);
+      const displayPrevValue = isCm2 ? rawPrevValue : Math.abs(rawPrevValue);
+
+      const chartValue = Math.abs(rawValue);
+      const chartPrevValue = Math.abs(rawPrevValue);
+
+      const fallbackDelta =
+        displayPrevValue === 0
+          ? null
+          : ((displayValue - displayPrevValue) / Math.abs(displayPrevValue)) * 100;
 
       return {
         ...d,
         name: String(d.name || "").trim() || "Others",
-        value: v,
-        prevValue: pv,
+        value: displayValue,
+        prevValue: displayPrevValue,
+        chartValue,
+        chartPrevValue,
         pct: Number(d.pct || 0),
         deltaPct: d.deltaPct ?? fallbackDelta,
       };
     });
 
-    // ✅ Separate existing Others, but do NOT skip grouping
     const existingOthersRows = normalized.filter((d) => isOthers(d.name));
     const skuRows = normalized.filter((d) => !isOthers(d.name));
 
     const sorted = [...skuRows].sort(
-      (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
+      (a, b) =>
+        Math.abs(Number(b.chartValue ?? b.value ?? 0)) -
+        Math.abs(Number(a.chartValue ?? a.value ?? 0))
     );
 
-    const totalAbs =
-      normalized.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0) || 1;
+    const totalChartAbs =
+      normalized.reduce(
+        (sum, d) => sum + Math.abs(Number(d.chartValue ?? d.value ?? 0)),
+        0
+      ) || 1;
 
     let cumulative = 0;
     let cutoff = 0;
 
     for (let i = 0; i < sorted.length; i++) {
-      cumulative += Math.abs(Number(sorted[i].value || 0));
+      cumulative += Math.abs(Number(sorted[i].chartValue ?? sorted[i].value ?? 0));
       cutoff = i + 1;
 
-      if (cumulative / totalAbs >= TARGET_SHARE) break;
+      if (cumulative / totalChartAbs >= TARGET_SHARE) break;
     }
 
-    // ✅ Minimum 5 SKUs, or more if needed to reach 80%
     const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
 
     const kept = sorted.slice(0, keepCount);
     const rest = sorted.slice(keepCount);
 
-    // ✅ Existing Others + all non-kept SKUs become one Others row
     const othersSource = [...rest, ...existingOthersRows];
 
     const rebuiltKept = kept.map((d) => ({
       ...d,
-      pct: (Math.abs(Number(d.value || 0)) / totalAbs) * 100,
+      pct:
+        (Math.abs(Number(d.chartValue ?? d.value ?? 0)) / totalChartAbs) * 100,
     }));
 
     if (!othersSource.length) {
       return rebuiltKept;
     }
 
-    const othersValue = othersSource.reduce(
-      (sum, d) => sum + Math.abs(Number(d.value || 0)),
-      0
-    );
+    /**
+     * Display value:
+     * CM2 = raw signed sum
+     * CM1 = positive sum
+     */
+    const othersValue = isCm2
+      ? othersSource.reduce((sum, d) => sum + Number(d.value || 0), 0)
+      : othersSource.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0);
 
-    const othersPrev = othersSource.reduce(
-      (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
+    const othersPrev = isCm2
+      ? othersSource.reduce((sum, d) => sum + Number(d.prevValue || 0), 0)
+      : othersSource.reduce(
+        (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
+        0
+      );
+
+    /**
+     * Chart value:
+     * Always absolute because pie area cannot be negative.
+     */
+    const othersChartValue = othersSource.reduce(
+      (sum, d) => sum + Math.abs(Number(d.chartValue ?? d.value ?? 0)),
       0
     );
 
     const othersDeltaPct =
-      othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+      othersPrev === 0
+        ? null
+        : ((othersValue - othersPrev) / Math.abs(othersPrev)) * 100;
 
     return [
       ...rebuiltKept,
@@ -250,13 +222,12 @@ export default function Cm1ProfitBreakdownPie({
         name: "Others",
         value: othersValue,
         prevValue: othersPrev,
-        pct: (othersValue / totalAbs) * 100,
+        chartValue: othersChartValue,
+        pct: (othersChartValue / totalChartAbs) * 100,
         deltaPct: othersDeltaPct,
       },
     ];
-  }, [activeData]);
-
-
+  }, [activeData, profitPieType]);
 
   const exportChartBase64 = () => {
     try {
@@ -290,7 +261,7 @@ export default function Cm1ProfitBreakdownPie({
   const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
     const labels = (displayData || []).map((d) => d.name);
     const values = (displayData || []).map((d) =>
-      Math.round(Math.abs(Number(d.value || 0)))
+      Math.round(Math.abs(Number(d.chartValue ?? d.value ?? 0)))
     );
 
     if (!labels.length || values.every((v) => v === 0)) return null;
@@ -342,7 +313,9 @@ export default function Cm1ProfitBreakdownPie({
             label: (ctx: TooltipItem<"pie">) => {
               const i = ctx.dataIndex;
               const slice = displayData?.[i];
-              const val = Math.round(Number(ctx.raw || 0));
+              const rawValue = Number(slice?.value || 0);
+              const val = Math.round(Math.abs(rawValue));
+              const valuePrefix = profitPieType === "cm2" && rawValue < 0 ? "-" : "";
               const delta = slice?.deltaPct;
               const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
 
@@ -353,7 +326,7 @@ export default function Cm1ProfitBreakdownPie({
                 ? `${deltaSymbol} ${Math.abs(Number(delta)).toFixed(2)}%`
                 : "";
 
-              return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toLocaleString()} (${Math.round(
+              return `${slice?.name ?? ctx.label}: ${valuePrefix}${currencySymbol}${val.toLocaleString()} (${Math.round(
                 slice?.pct ?? 0
               )}%)${showDelta && hasDelta ? ` (${deltaText})` : ""}`;
             },
@@ -361,7 +334,7 @@ export default function Cm1ProfitBreakdownPie({
         },
       },
     };
-  }, [currencySymbol, isLaptop, isDesktop, displayData, showDelta]);
+  }, [currencySymbol, isLaptop, isDesktop, displayData, showDelta, profitPieType]);
 
   // ✅ Sync legend once chart mounts (so isVisible reads correctly)
   useEffect(() => {
@@ -542,7 +515,9 @@ export default function Cm1ProfitBreakdownPie({
                       const chart = chartRef.current;
                       const isVisible = chart ? chart.getDataVisibility(i) : true;
 
-                      const value = Math.round(Math.abs(Number(slice.value || 0)));
+                      const rawValue = Number(slice.value || 0);
+                      const value = Math.round(Math.abs(rawValue));
+                      const valuePrefix = profitPieType === "cm2" && rawValue < 0 ? "-" : "";
                       const pct = Math.round(Number(slice.pct || 0));
                       const delta = slice.deltaPct;
                       const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
@@ -597,6 +572,7 @@ export default function Cm1ProfitBreakdownPie({
                                 className="text-[10px] 2xl:text-xs break-words"
                                 style={{ color: "#414042" }}
                               >
+                                {valuePrefix}
                                 {currencySymbol}
                                 {value.toLocaleString()} ({pct}%){" "}
                                 {showDelta && hasDelta && (
