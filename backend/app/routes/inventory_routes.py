@@ -2972,7 +2972,8 @@ def inventory_ledger_summary_store_month():
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
-    country = request.args.get("country", "us")
+    country = (request.args.get("country") or "us").strip().lower()
+    sort_order = request.args.get("sort", "desc")
 
     try:
         month = int(request.args.get("month", "0"))
@@ -2985,24 +2986,28 @@ def inventory_ledger_summary_store_month():
 
     try:
         with amazon_conn() as conn:
-            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
-            for r in items:
-                r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
-                    r.get("ending_total"), r.get("sold_total")
-                )
+            # ✅ Do not create/update table here.
+            # ✅ Only check table exists.
+            if not _table_exists(conn, "public", table_name):
+                return jsonify({
+                    "success": False,
+                    "error": "Inventory monthly table not found. Please fetch/sync inventory first.",
+                    "table": f"public.{table_name}",
+                    "marketplace_id": mp,
+                    "mode": "month",
+                    "country": country,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "count": 0,
+                    "items": [],
+                }), 404
 
-            grand_total = _compute_grand_total(items)
-            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
-                grand_total.get("ending_total"), grand_total.get("sold_total")
+            # ✅ Only read existing table data
+            read_items = _read_inventory_summary_table(
+                conn,
+                table_name,
+                sort_order=sort_order,
             )
-            to_save = items + [grand_total]
-
-            _ensure_inventory_summary_table_exists(conn, table_name)
-            saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
-            sort_order = request.args.get("sort", "desc")
-
-            # ✅ Read back rows from created table
-            read_items = _read_inventory_summary_table(conn, table_name, sort_order=sort_order)
 
         return jsonify({
             "success": True,
@@ -3010,7 +3015,8 @@ def inventory_ledger_summary_store_month():
             "mode": "month",
             "country": country,
             "table": f"public.{table_name}",
-            "saved_rows": saved,
+            "created_or_updated": False,
+            "saved_rows": 0,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "count": max(len(read_items) - 1, 0) if read_items else 0,
@@ -3020,6 +3026,7 @@ def inventory_ledger_summary_store_month():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
     
+       
 def _quarter_range_upto_latest_completed_month_end(
     conn,
     user_id: int,
