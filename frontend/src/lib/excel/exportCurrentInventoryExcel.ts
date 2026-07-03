@@ -3854,35 +3854,49 @@ border: tableBorder,
 }
 
 
-
 export function exportAgeingRiskHeatmapExcel(params: {
   filename: string;
   titleLine?: string;
+
+  countryName?: string;
   countryLabel?: string;
+  titleCountry?: string;
+
   platformLabel?: string;
   periodLabel?: string;
+
   companyName?: string;
   brandName?: string;
+  homeCurrencyCode?: string;
+
   buckets: {
     key: string;
     label: string;
     color?: string;
   }[];
+
   dataRows: Record<string, any>[];
   showInventoryAlerts?: boolean;
 }) {
-const {
-  filename,
-  titleLine = "Ageing Risk Heatmap",
-  countryLabel = "",
-  platformLabel = "Phormula",
-  periodLabel = "",
-  companyName = "",
-  brandName = "",
-  buckets,
-  dataRows,
-  showInventoryAlerts = true,
-} = params;
+  const {
+    filename,
+    titleLine = "Ageing Risk Heatmap",
+
+    countryName = "",
+    countryLabel = "",
+    titleCountry = "",
+
+    platformLabel = "Phormula",
+    periodLabel = "",
+
+    companyName = "",
+    brandName = "",
+    homeCurrencyCode,
+
+    buckets,
+    dataRows,
+    showInventoryAlerts = true,
+  } = params;
 
   if (!dataRows?.length) return;
 
@@ -3894,13 +3908,55 @@ const {
     return Number.isFinite(n) ? n : 0;
   };
 
+  const displayCountry = titleCountry || countryLabel || countryName || "";
+
+  const currencySymbol = getCurrencySymbol({
+    countryName: countryName || displayCountry,
+    homeCurrencyCode,
+  });
+
+  const headers = [
+    "S.No.",
+    "Product Name",
+    "SKU",
+    ...buckets.map((bucket) => bucket.label),
+    "Sellable Units",
+    "Inbound Units",
+    "Sales Rank",
+    "Unfulfillable Units",
+    "Units Sold",
+    "Coverage Ratio (in Months)",
+    ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
+  ];
+
+  const headerCount = headers.length;
+  const ANCHOR_COL_1_BASED = headerCount;
+
+  const tableBorder = {
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
+  };
+
   const realRows = [...dataRows]
-    .filter(
-      (row) =>
+    .filter((row) => {
+      const productName = String(row?.productName || "").trim().toLowerCase();
+      const sku = String(row?.sku || "").trim().toLowerCase();
+
+      if (!productName && !sku) return false;
+
+      return (
         !row.isOthersRow &&
         !row.isTotalRow &&
-        !row.isPercentageRow
-    )
+        !row.isPercentageRow &&
+        productName !== "total" &&
+        productName !== "grand total" &&
+        productName !== "% of total" &&
+        sku !== "total" &&
+        sku !== "grand total"
+      );
+    })
     .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
 
   const totalRow: Record<string, any> = {
@@ -3923,6 +3979,13 @@ const {
 
   totalRow.totalUnits = totalRow.available;
 
+  totalRow.inboundUnits = realRows.reduce(
+    (sum, row) => sum + toNum(row.inboundUnits),
+    0
+  );
+
+  totalRow.salesRank = "";
+
   totalRow.unsellableUnits = realRows.reduce(
     (sum, row) => sum + toNum(row.unsellableUnits),
     0
@@ -3936,73 +3999,117 @@ const {
   totalRow.coverageRatio = "";
   totalRow.inventoryAlert = "";
 
-  /**
-   * IMPORTANT:
-   * Export rows = all source rows + Total only.
-   * No 9 rows + Others.
-   * No % of Total row.
-   */
-  const exportRows = [...realRows, totalRow];
+  const ageingTotal = buckets.reduce(
+    (sum, bucket) => sum + toNum(totalRow[bucket.key]),
+    0
+  );
 
-  const headers = [
-    "S.No.",
-    "Product Name",
-    "SKU",
-    ...buckets.map((bucket) => bucket.label),
-    "Sellable Units",
-    "Unfulfillable Units",
-    "Units Sold",
-    "Coverage Ratio (in Months)",
-    ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
+  const percentageRow: Record<string, any> = {
+    productName: "% of Total",
+    sku: "",
+    isPercentageRow: true,
+  };
+
+  buckets.forEach((bucket) => {
+    percentageRow[bucket.key] =
+      ageingTotal > 0
+        ? `${((toNum(totalRow[bucket.key]) / ageingTotal) * 100).toFixed(2)}%`
+        : "";
+  });
+
+  percentageRow.available =
+    ageingTotal > 0
+      ? `${((toNum(totalRow.available) / ageingTotal) * 100).toFixed(2)}%`
+      : "";
+
+  percentageRow.inboundUnits = "";
+  percentageRow.salesRank = "";
+
+  percentageRow.unsellableUnits =
+    ageingTotal > 0
+      ? `${((toNum(totalRow.unsellableUnits) / ageingTotal) * 100).toFixed(2)}%`
+      : "";
+
+  percentageRow.unitsSold = "";
+  percentageRow.coverageRatio = "";
+  percentageRow.inventoryAlert = "";
+
+  const exportRows = [...realRows, totalRow, percentageRow];
+
+  const topExtraLines = [
+    `Country : ${displayCountry}`,
+    `Platform : ${platformLabel}`,
+    `Currency : ${currencySymbol}`,
+    `Period : ${periodLabel}`,
   ];
 
-  const headerCount = headers.length;
+  const topAoA = buildTopAoA({
+    headerCount,
+    title: titleLine,
+    companyName,
+    brandName,
+    anchorCol1Based: ANCHOR_COL_1_BASED,
+    extraLines: topExtraLines,
+  });
 
-const topRows: any[][] = [
-  [titleLine, ...new Array(headerCount - 1).fill("")],
-  [
-    `Company Name : ${companyName || ""}`,
-    ...new Array(headerCount - 2).fill(""),
-    brandName || "",
-  ],
-  [`Country : ${countryLabel || ""}`, ...new Array(headerCount - 1).fill("")],
-  [`Platform : ${platformLabel || ""}`, ...new Array(headerCount - 1).fill("")],
-  [`Period : ${periodLabel || ""}`, ...new Array(headerCount - 1).fill("")],
-  new Array(headerCount).fill(""),
-];
+  const headerRowIndex = topAoA.length;
+  const firstBodyRowIndex = headerRowIndex + 1;
 
   const bodyRows = exportRows.map((row, index) => {
     const isTotalRow = row.isTotalRow;
+    const isPercentageRow = row.isPercentageRow;
 
     return [
-      isTotalRow ? "" : index + 1,
+      isTotalRow || isPercentageRow ? "" : index + 1,
       row.productName || "",
-      isTotalRow ? "" : row.sku || "-",
+      isTotalRow || isPercentageRow ? "" : row.sku || "-",
 
-      ...buckets.map((bucket) => toNum(row[bucket.key])),
+      ...buckets.map((bucket) => {
+        if (isPercentageRow) return row[bucket.key] || "";
+        const n = toNum(row[bucket.key]);
+        return n > 0 ? n : "";
+      }),
 
-      toNum(row.available ?? row.totalUnits),
-      toNum(row.unsellableUnits),
-      toNum(row.unitsSold),
+      isPercentageRow
+        ? row.available || ""
+        : toNum(row.available ?? row.totalUnits),
 
-      isTotalRow
+      isPercentageRow
+        ? ""
+        : toNum(row.inboundUnits) > 0
+          ? toNum(row.inboundUnits)
+          : "",
+
+      isTotalRow || isPercentageRow
+        ? ""
+        : row.salesRank || "",
+
+      isPercentageRow
+        ? row.unsellableUnits || ""
+        : toNum(row.unsellableUnits) > 0
+          ? toNum(row.unsellableUnits)
+          : "",
+
+      isPercentageRow
+        ? ""
+        : toNum(row.unitsSold) > 0
+          ? toNum(row.unitsSold)
+          : "",
+
+      isTotalRow || isPercentageRow
         ? ""
         : toNum(row.coverageRatio) > 0
           ? Number(row.coverageRatio).toFixed(2)
           : "",
 
       ...(showInventoryAlerts
-        ? [isTotalRow ? "" : row.inventoryAlert || ""]
+        ? [isTotalRow || isPercentageRow ? "" : row.inventoryAlert || ""]
         : []),
     ];
   });
 
-  const sheetAoA = [...topRows, headers, ...bodyRows];
-
+  const sheetAoA = [...topAoA, headers, ...bodyRows];
   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
-
-  const headerRowIndex = topRows.length;
-  const firstBodyRowIndex = headerRowIndex + 1;
 
   ws["!freeze"] = {
     xSplit: 0,
@@ -4013,27 +4120,41 @@ const topRows: any[][] = [
     if (header === "S.No.") return { wch: 8 };
     if (header === "Product Name") return { wch: 28 };
     if (header === "SKU") return { wch: 18 };
+
+    if (header.includes("Days")) return { wch: 18 };
+
+    if (header === "Sellable Units") return { wch: 16 };
+    if (header === "Inbound Units") return { wch: 16 };
+    if (header === "Sales Rank") return { wch: 14 };
+    if (header === "Unfulfillable Units") return { wch: 20 };
+    if (header === "Units Sold") return { wch: 14 };
     if (header === "Coverage Ratio (in Months)") return { wch: 24 };
     if (header === "Inventory Alerts") return { wch: 32 };
-    if (header.includes("Days")) return { wch: 18 };
+
     return { wch: 16 };
   });
 
-  const tableBorder = {
-    top: { style: "thin", color: { rgb: "000000" } },
-    bottom: { style: "thin", color: { rgb: "000000" } },
-    left: { style: "thin", color: { rgb: "000000" } },
-    right: { style: "thin", color: { rgb: "000000" } },
-  };
+  applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
 
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
 
   for (let c = 0; c < headerCount; c++) {
     const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
-    if (!ws[addr]) continue;
+
+    if (!ws[addr]) {
+      ws[addr] = { t: "s", v: "" };
+    }
 
     ws[addr].s = {
-      font: { bold: true, sz: 11 },
+      ...(ws[addr].s || {}),
+      font: {
+        bold: true,
+        sz: 11,
+        color: { rgb: "000000" },
+      },
+      fill: {
+        fgColor: { rgb: "FFFFFF" },
+      },
       alignment: {
         horizontal: "center",
         vertical: "center",
@@ -4045,8 +4166,12 @@ const topRows: any[][] = [
 
   for (let r = firstBodyRowIndex; r <= range.e.r; r++) {
     const productNameAddr = XLSX.utils.encode_cell({ r, c: 1 });
-    const productName = String(ws[productNameAddr]?.v || "").trim().toLowerCase();
+    const productName = String(ws[productNameAddr]?.v || "")
+      .trim()
+      .toLowerCase();
+
     const isTotalRow = productName === "total";
+    const isPercentageRow = productName === "% of total";
 
     for (let c = 0; c < headerCount; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
@@ -4056,34 +4181,44 @@ const topRows: any[][] = [
       }
 
       const cell = ws[addr];
-
       const header = headers[c];
+
       const shouldStayText =
         header === "Product Name" ||
         header === "SKU" ||
         header === "Inventory Alerts" ||
-        header === "Coverage Ratio (in Months)";
+        header === "Coverage Ratio (in Months)" ||
+        isPercentageRow;
 
       if (!shouldStayText && cell.v !== "") {
-        const n = toNum(cell.v);
-        cell.v = n;
-        cell.t = "n";
-        cell.z = "#,##0";
+        const n = toNumberLoose(cell.v);
+
+        if (n !== null) {
+          cell.v = n;
+          cell.t = "n";
+          cell.z = "#,##0";
+        }
       }
 
       if (header === "Coverage Ratio (in Months)" && cell.v !== "") {
-        const n = toNum(cell.v);
-        cell.v = n;
-        cell.t = "n";
-        cell.z = "#,##0.00";
+        const n = toNumberLoose(cell.v);
+
+        if (n !== null) {
+          cell.v = n;
+          cell.t = "n";
+          cell.z = "#,##0.00";
+        }
       }
 
       cell.s = {
         ...(cell.s || {}),
         font: {
-          bold: isTotalRow,
+          bold: isTotalRow || isPercentageRow,
           sz: 11,
           color: { rgb: "000000" },
+        },
+        fill: {
+          fgColor: { rgb: "FFFFFF" },
         },
         alignment: {
           horizontal: c === 1 ? "left" : "center",
@@ -4091,25 +4226,6 @@ const topRows: any[][] = [
           wrapText: true,
         },
         border: tableBorder,
-      };
-    }
-  }
-
-  // top rows styling
-  for (let r = 0; r < topRows.length - 1; r++) {
-    for (let c = 0; c < headerCount; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      if (!ws[addr]) continue;
-
-      ws[addr].s = {
-        font: {
-          bold: r === 1 && c === headerCount - 1,
-          sz: 11,
-        },
-        alignment: {
-          horizontal: c === headerCount - 1 ? "right" : "left",
-          vertical: "center",
-        },
       };
     }
   }

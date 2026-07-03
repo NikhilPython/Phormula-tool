@@ -183,7 +183,7 @@ export function NotificationProvider({
                 ? `High alert (Coverage ratio (in months): ${Number(ratio).toFixed(2)})`
                 : "High alert",
             type: "critical",
-            href: `/live-dashboard/${country}/${month}/${year}#current-inventory`,
+            href: `/live-dashboard/${country}/${month}/${year}#inventory-insights`,
             timeAgo: getTimeAgo(alertTime),
             alertTime,
           };

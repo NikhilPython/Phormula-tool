@@ -56,6 +56,7 @@ import GroupedCollapsibleTable, {
 import {
     exportPnLProductwiseBreakdownMtdExcel,
     exportCurrentInventoryExcel,
+    exportAgeingRiskHeatmapExcel,
 } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
@@ -2251,12 +2252,12 @@ const buildInventoryInsightsFromResponses = (
 
                 unitsSold: getCurrentMonthUnitsSold(row),
                 salesRank:
-        row?.["sales-rank"] ??
-        row?.sales_rank ??
-        row?.salesRank ??
-        row?.["Sales Rank"] ??
-        row?.["sales rank"] ??
-        "",
+                    row?.["sales-rank"] ??
+                    row?.sales_rank ??
+                    row?.salesRank ??
+                    row?.["Sales Rank"] ??
+                    row?.["sales rank"] ??
+                    "",
                 salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
                 inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
@@ -2882,8 +2883,8 @@ export default function DashboardPage() {
         () => new Set()
     );
     const pageTopRef = useRef<HTMLDivElement | null>(null);
-const tabTopRef = useRef<HTMLDivElement | null>(null);
-const shouldScrollTabTopRef = useRef(false);
+    const tabTopRef = useRef<HTMLDivElement | null>(null);
+    const shouldScrollTabTopRef = useRef(false);
 
     const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
         useState<string>("365+ days");
@@ -3722,10 +3723,10 @@ const shouldScrollTabTopRef = useRef(false);
     ]);
 
     useEffect(() => {
-    if (!pendingHash) return;
+        if (!pendingHash) return;
 
-    setPendingHash("");
-}, [pendingHash]);
+        setPendingHash("");
+    }, [pendingHash]);
 
     useEffect(() => {
         if (activeTab === "summary") {
@@ -10776,66 +10777,66 @@ Keep enough stock for validation but avoid over-committing too early.`,
     }, []);
 
     const scrollDashboardPageToTop = useCallback(() => {
-    if (typeof window === "undefined") return;
+        if (typeof window === "undefined") return;
 
-    const target = tabTopRef.current || pageTopRef.current;
+        const target = tabTopRef.current || pageTopRef.current;
 
-    const scrollParents: HTMLElement[] = [];
+        const scrollParents: HTMLElement[] = [];
 
-    let parent = target?.parentElement || null;
+        let parent = target?.parentElement || null;
 
-    while (parent) {
-        const style = window.getComputedStyle(parent);
-        const overflowY = style.overflowY;
+        while (parent) {
+            const style = window.getComputedStyle(parent);
+            const overflowY = style.overflowY;
 
-        const canScroll =
-            (overflowY === "auto" || overflowY === "scroll") &&
-            parent.scrollHeight > parent.clientHeight;
+            const canScroll =
+                (overflowY === "auto" || overflowY === "scroll") &&
+                parent.scrollHeight > parent.clientHeight;
 
-        if (canScroll) {
-            scrollParents.push(parent);
+            if (canScroll) {
+                scrollParents.push(parent);
+            }
+
+            parent = parent.parentElement;
         }
 
-        parent = parent.parentElement;
-    }
+        window.scrollTo({
+            top: 0,
+            left: 0,
+            behavior: "auto",
+        });
 
-    window.scrollTo({
-        top: 0,
-        left: 0,
-        behavior: "auto",
-    });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
 
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
+        scrollParents.forEach((el) => {
+            el.scrollTop = 0;
+        });
+    }, []);
 
-    scrollParents.forEach((el) => {
-        el.scrollTop = 0;
-    });
-}, []);
+    useEffect(() => {
+        if (!shouldScrollTabTopRef.current) return;
 
-useEffect(() => {
-    if (!shouldScrollTabTopRef.current) return;
+        shouldScrollTabTopRef.current = false;
 
-    shouldScrollTabTopRef.current = false;
+        const scrollNow = () => {
+            scrollDashboardPageToTop();
+        };
 
-    const scrollNow = () => {
-        scrollDashboardPageToTop();
-    };
+        scrollNow();
 
-    scrollNow();
+        const r1 = requestAnimationFrame(scrollNow);
+        const t1 = window.setTimeout(scrollNow, 50);
+        const t2 = window.setTimeout(scrollNow, 150);
+        const t3 = window.setTimeout(scrollNow, 350);
 
-    const r1 = requestAnimationFrame(scrollNow);
-    const t1 = window.setTimeout(scrollNow, 50);
-    const t2 = window.setTimeout(scrollNow, 150);
-    const t3 = window.setTimeout(scrollNow, 350);
-
-    return () => {
-        cancelAnimationFrame(r1);
-        window.clearTimeout(t1);
-        window.clearTimeout(t2);
-        window.clearTimeout(t3);
-    };
-}, [activeTab, scrollDashboardPageToTop]);
+        return () => {
+            cancelAnimationFrame(r1);
+            window.clearTimeout(t1);
+            window.clearTimeout(t2);
+            window.clearTimeout(t3);
+        };
+    }, [activeTab, scrollDashboardPageToTop]);
 
     const isStickyGlobal = platform === "global";
 
@@ -12641,6 +12642,165 @@ useEffect(() => {
         currentInventoryExportRows,
     ]);
 
+    const formatHeatmapCell = (value: any, showZero = false) => {
+        if (value === null || value === undefined || value === "") return "-";
+
+        const n = Number(String(value).replace(/,/g, ""));
+        if (Number.isFinite(n)) {
+            if (n === 0 && !showZero) return "-";
+            return n;
+        }
+
+        return value;
+    };
+
+    const canDownloadInventoryInsightsExcel =
+        !!inventoryInsightsData?.heatmapData?.length;
+
+    const handleInventoryInsightsExcelDownload = useCallback(() => {
+        const titleCountry =
+            platform === "global"
+                ? selectedGlobalInventoryCountry.toUpperCase()
+                : countryName.toUpperCase();
+
+        exportAgeingRiskHeatmapExcel({
+            filename: `Inventory_Insights_${titleCountry}_${formattedMonthYear}.xlsx`,
+            titleLine: `Amazon ${titleCountry} - Inventory Insights - ${formattedMonthYear}`,
+            countryName,
+            titleCountry,
+            countryLabel: titleCountry,
+            platformLabel: "Phormula",
+            periodLabel: formattedMonthYear,
+            companyName,
+            brandName: brandName || "",
+            homeCurrencyCode: profileHomeCurrency,
+            buckets: inventoryInsightsData?.heatmapBuckets || [],
+            dataRows: inventoryInsightsData?.heatmapData || [],
+            showInventoryAlerts: true,
+        });
+    }, [
+        platform,
+        selectedGlobalInventoryCountry,
+        countryName,
+        formattedMonthYear,
+        companyName,
+        brandName,
+        profileHomeCurrency,
+        inventoryInsightsData?.heatmapBuckets,
+        inventoryInsightsData?.heatmapData,
+    ]);
+    const formatExcelDash = (value: any) => {
+        if (value === null || value === undefined || value === "") return "-";
+        if (Number(value) === 0) return "-";
+        return value;
+    };
+
+    const inventoryInsightsExcelRows = useMemo(() => {
+        const rows = inventoryInsightsData?.heatmapData || [];
+
+        const bodyRows = rows
+            .filter((row: any) => {
+                const productName = String(row?.productName || "").trim();
+                const sku = String(row?.sku || "").trim();
+
+                const isTotal =
+                    productName.toLowerCase() === "total" ||
+                    sku.toLowerCase() === "total";
+
+                return (productName || sku) && !isTotal;
+            })
+            .map((row: any, index: number) => ({
+                "S.No.": index + 1,
+                "Product Name": row.productName || "-",
+                "SKU": row.sku || "-",
+                "0–90 Days": formatExcelDash(row.zeroToNinety),
+                "91–180 Days": formatExcelDash(row.ninetyOneToOneEighty),
+                "181–270 Days": formatExcelDash(row.oneEightyOneToTwoSeventy),
+                "271–365 Days": formatExcelDash(row.twoSeventyOneToThreeSixtyFive),
+                "365+ Days": formatExcelDash(row.threeSixtyFivePlus),
+                "Sellable Units": formatExcelDash(row.available ?? row.totalUnits),
+                "Inbound Units": formatExcelDash(row.inboundUnits),
+                "Sales Rank": formatExcelDash(row.salesRank),
+                "Unfulfillable Units": formatExcelDash(row.unsellableUnits),
+                "Units Sold": formatExcelDash(row.unitsSold),
+                "Coverage Ratio (in Months)": formatExcelDash(row.coverageRatio),
+                "Inventory Alerts": row.inventoryAlert || "-",
+            }));
+
+        const totals = bodyRows.reduce(
+            (acc: any, row: any) => {
+                acc.zeroToNinety += Number(row["0–90 Days"]) || 0;
+                acc.ninetyOneToOneEighty += Number(row["91–180 Days"]) || 0;
+                acc.oneEightyOneToTwoSeventy += Number(row["181–270 Days"]) || 0;
+                acc.twoSeventyOneToThreeSixtyFive += Number(row["271–365 Days"]) || 0;
+                acc.threeSixtyFivePlus += Number(row["365+ Days"]) || 0;
+                acc.sellable += Number(row["Sellable Units"]) || 0;
+                acc.inbound += Number(row["Inbound Units"]) || 0;
+                acc.unfulfillable += Number(row["Unfulfillable Units"]) || 0;
+                acc.unitsSold += Number(row["Units Sold"]) || 0;
+                return acc;
+            },
+            {
+                zeroToNinety: 0,
+                ninetyOneToOneEighty: 0,
+                oneEightyOneToTwoSeventy: 0,
+                twoSeventyOneToThreeSixtyFive: 0,
+                threeSixtyFivePlus: 0,
+                sellable: 0,
+                inbound: 0,
+                unfulfillable: 0,
+                unitsSold: 0,
+            }
+        );
+
+        const ageingTotal =
+            totals.zeroToNinety +
+            totals.ninetyOneToOneEighty +
+            totals.oneEightyOneToTwoSeventy +
+            totals.twoSeventyOneToThreeSixtyFive +
+            totals.threeSixtyFivePlus;
+
+        return [
+            ...bodyRows,
+            {
+                "S.No.": "",
+                "Product Name": "Total",
+                "SKU": "",
+                "0–90 Days": formatExcelDash(totals.zeroToNinety),
+                "91–180 Days": formatExcelDash(totals.ninetyOneToOneEighty),
+                "181–270 Days": formatExcelDash(totals.oneEightyOneToTwoSeventy),
+                "271–365 Days": formatExcelDash(totals.twoSeventyOneToThreeSixtyFive),
+                "365+ Days": formatExcelDash(totals.threeSixtyFivePlus),
+                "Sellable Units": formatExcelDash(totals.sellable),
+                "Inbound Units": formatExcelDash(totals.inbound),
+                "Sales Rank": "",
+                "Unfulfillable Units": formatExcelDash(totals.unfulfillable),
+                "Units Sold": formatExcelDash(totals.unitsSold),
+                "Coverage Ratio (in Months)": "",
+                "Inventory Alerts": "",
+            },
+            {
+                "S.No.": "",
+                "Product Name": "% of Total",
+                "SKU": "",
+                "0–90 Days": ageingTotal ? `${((totals.zeroToNinety / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "91–180 Days": ageingTotal ? `${((totals.ninetyOneToOneEighty / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "181–270 Days": ageingTotal ? `${((totals.oneEightyOneToTwoSeventy / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "271–365 Days": ageingTotal ? `${((totals.twoSeventyOneToThreeSixtyFive / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "365+ Days": ageingTotal ? `${((totals.threeSixtyFivePlus / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "Sellable Units": ageingTotal ? `${((totals.sellable / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "Inbound Units": "",
+                "Sales Rank": "",
+                "Unfulfillable Units": ageingTotal ? `${((totals.unfulfillable / ageingTotal) * 100).toFixed(2)}%` : "-",
+                "Units Sold": "",
+                "Coverage Ratio (in Months)": "",
+                "Inventory Alerts": "",
+            },
+        ];
+    }, [inventoryInsightsData?.heatmapData]);
+
+
+
     const mtdCm2ProfitCurrent = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
         : useBiForAmazonCards
@@ -13161,7 +13321,7 @@ useEffect(() => {
 
     return (
         <div ref={pageTopRef} className="relative w-full">
-        <div ref={tabTopRef} />
+            <div ref={tabTopRef} />
             <Toaster
                 position="top-right"
                 richColors
@@ -13256,12 +13416,12 @@ ${pageLoading
                 <SegmentedToggle<TopTab>
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                   onChange={(tab) => {
-    shouldScrollTabTopRef.current = true;
+                    onChange={(tab) => {
+                        shouldScrollTabTopRef.current = true;
 
-    setActiveTab(tab);
-    syncTabToHash(tab);
-}}
+                        setActiveTab(tab);
+                        syncTabToHash(tab);
+                    }}
                     className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
@@ -14453,7 +14613,7 @@ ${pageLoading
                             )}
 
                         </div>
-<div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
+                        <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
                             <div
                                 className={[
                                     "grid grid-cols-1 gap-4 items-stretch",
@@ -14640,8 +14800,8 @@ ${pageLoading
                                     onTrendBucketChange={handleAgeingTrendBucketChange}
                                     actions={inventoryInsightsData.actions}
                                     actionLogic={inventoryInsightsData.actionLogic}
-                                    onDownloadInventoryExcel={downloadInventoryExcel}
-                                    canDownloadInventoryExcel={canDownloadInventoryExcel}
+                                    onDownloadInventoryExcel={handleInventoryInsightsExcelDownload}
+                                    canDownloadInventoryExcel={canDownloadInventoryInsightsExcel}
                                     onHeatmapProductClick={handleHeatmapProductClick}
                                     heatmapExcelCountryLabel={
                                         platform === "global"
