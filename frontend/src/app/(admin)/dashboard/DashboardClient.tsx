@@ -57,6 +57,7 @@ import {
     exportPnLProductwiseBreakdownMtdExcel,
     exportCurrentInventoryExcel,
     exportAgeingRiskHeatmapExcel,
+    exportGlobalAgeingRiskHeatmapExcel,
 } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
@@ -12305,52 +12306,52 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     color: aspGrowth < 0 ? "#FF5C5C" : "#5EA68E",
                 },
                 ...(hasCm2
-    ? [
-        {
-            label: "CM2 profit",
-            value: formatDrawerMetricValue(
-                cm2Profit,
-                cm2ProfitGrowth,
-                "money",
-                valueCurrency,
-                true
-            ),
-            color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-        },
-        {
-            label: "CM2 profit per unit",
-            value: formatDrawerMetricValue(
-                cm2ProfitPerUnit,
-                cm2ProfitPerUnitGrowth,
-                "money",
-                valueCurrency
-            ),
-            color: cm2ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-        },
-    ]
-    : [
-        {
-            label: "CM1 profit",
-            value: formatDrawerMetricValue(
-                cm1Profit,
-                cm1ProfitGrowth,
-                "money",
-                valueCurrency,
-                true
-            ),
-            color: cm1ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-        },
-        {
-            label: "CM1 profit per unit",
-            value: formatDrawerMetricValue(
-                cm1ProfitPerUnit,
-                cm1ProfitPerUnitGrowth,
-                "money",
-                valueCurrency
-            ),
-            color: cm1ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-        },
-    ]),
+                    ? [
+                        {
+                            label: "CM2 profit",
+                            value: formatDrawerMetricValue(
+                                cm2Profit,
+                                cm2ProfitGrowth,
+                                "money",
+                                valueCurrency,
+                                true
+                            ),
+                            color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                        },
+                        {
+                            label: "CM2 profit per unit",
+                            value: formatDrawerMetricValue(
+                                cm2ProfitPerUnit,
+                                cm2ProfitPerUnitGrowth,
+                                "money",
+                                valueCurrency
+                            ),
+                            color: cm2ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                        },
+                    ]
+                    : [
+                        {
+                            label: "CM1 profit",
+                            value: formatDrawerMetricValue(
+                                cm1Profit,
+                                cm1ProfitGrowth,
+                                "money",
+                                valueCurrency,
+                                true
+                            ),
+                            color: cm1ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                        },
+                        {
+                            label: "CM1 profit per unit",
+                            value: formatDrawerMetricValue(
+                                cm1ProfitPerUnit,
+                                cm1ProfitPerUnitGrowth,
+                                "money",
+                                valueCurrency
+                            ),
+                            color: cm1ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+                        },
+                    ]),
                 ...buildPnlDrawerInventoryMetrics(source),
             ];
         },
@@ -12739,8 +12740,44 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const handleInventoryInsightsExcelDownload = useCallback(() => {
         const titleCountry =
             platform === "global"
-                ? selectedGlobalInventoryCountry.toUpperCase()
+                ? "GLOBAL"
                 : countryName.toUpperCase();
+
+        if (platform === "global") {
+            const ukInventoryInsights = buildInventoryInsightsFromResponses(
+                inventoryInsightResponses,
+                inventoryAgeSummaryResponses,
+                "global",
+                profileHomeCurrency,
+                selectedAgeingTrendBucket,
+                "uk"
+            );
+
+            const usInventoryInsights = buildInventoryInsightsFromResponses(
+                inventoryInsightResponses,
+                inventoryAgeSummaryResponses,
+                "global",
+                profileHomeCurrency,
+                selectedAgeingTrendBucket,
+                "us"
+            );
+
+            exportGlobalAgeingRiskHeatmapExcel({
+                filename: `Inventory_Insights_Global_${formattedMonthYear}.xlsx`,
+                titleLine: `Amazon Global - Inventory Insights - ${formattedMonthYear}`,
+                platformLabel: "Phormula",
+                periodLabel: formattedMonthYear,
+                companyName,
+                brandName: brandName || "",
+                homeCurrencyCode: profileHomeCurrency,
+                buckets: inventoryInsightsData?.heatmapBuckets || [],
+                ukRows: ukInventoryInsights.heatmapData || [],
+                usRows: usInventoryInsights.heatmapData || [],
+                showInventoryAlerts: true,
+            });
+
+            return;
+        }
 
         exportAgeingRiskHeatmapExcel({
             filename: `Inventory_Insights_${titleCountry}_${formattedMonthYear}.xlsx`,
@@ -12759,7 +12796,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
         });
     }, [
         platform,
-        selectedGlobalInventoryCountry,
         countryName,
         formattedMonthYear,
         companyName,
@@ -12767,7 +12803,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
         profileHomeCurrency,
         inventoryInsightsData?.heatmapBuckets,
         inventoryInsightsData?.heatmapData,
+        inventoryInsightResponses,
+        inventoryAgeSummaryResponses,
+        selectedAgeingTrendBucket,
     ]);
+    
     const formatExcelDash = (value: any) => {
         if (value === null || value === undefined || value === "") return "-";
         if (Number(value) === 0) return "-";
