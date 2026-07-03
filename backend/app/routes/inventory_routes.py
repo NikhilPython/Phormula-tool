@@ -1873,12 +1873,28 @@ def inventory_ledger_summary():
         "items": display_rows,
     }
 
-    # ---- Store to DB (only filtered rows get stored) ----
+    # ---- Store to DB ----
     if store_in_db and rows:
         try:
-            out["db"]["saved_rows"] = _upsert_monthwise_inventory_rows(rows, user_id)
+            # 1. First save raw Amazon ledger rows into public.monthwise_inventory
+            saved_rows = _upsert_monthwise_inventory_rows(rows, user_id)
+            out["db"]["saved_rows"] = saved_rows
+
+            # 2. Then create/update monthly summary table
+            country = (
+                request.args.get("country")
+                or MARKETPLACE_TO_COUNTRY.get(mp, "us")
+            ).strip().lower()
+
+            out["db"]["inventorymonthly_tables"] = _create_inventorymonthly_after_fetch(
+                user_id=user_id,
+                country=country,
+                mp=mp,
+                rows=rows,
+            )
+
         except Exception as e:
-            logger.exception("Failed to upsert monthwise inventory")
+            logger.exception("Failed to save monthwise inventory or create inventorymonthly table")
             out["db"]["error"] = str(e)
 
     if not display_rows:
@@ -2838,6 +2854,83 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
 
     return len(rows)
 
+def _create_inventorymonthly_after_fetch(
+    user_id: int,
+    country: str,
+    mp: str,
+    rows: list[dict],
+) -> list[dict]:
+    """
+    After saving raw rows in public.monthwise_inventory,
+    create/update inventorymonthly_{user_id}_{country}_{MM}_{YYYY}.
+    """
+    if not rows:
+        return []
+
+    dates = sorted({
+        r.get("date")
+        for r in rows
+        if isinstance(r.get("date"), date)
+    })
+
+    if not dates:
+        return []
+
+    # group rows by month
+    month_groups: dict[tuple[int, int], list[date]] = {}
+
+    for d in dates:
+        month_groups.setdefault((d.year, d.month), []).append(d)
+
+    created_tables = []
+
+    with amazon_conn() as conn:
+        for (year, month), month_dates in sorted(month_groups.items()):
+            start_date = min(month_dates)
+            end_date = max(month_dates)
+
+            table_name = _monthly_table_name(
+                user_id=user_id,
+                country=country,
+                month=month,
+                year=year,
+            )
+
+            items = _aggregate_from_monthwise_inventory(
+                conn=conn,
+                user_id=user_id,
+                mp=mp,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            for r in items:
+                r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                    r.get("ending_total"),
+                    r.get("sold_total"),
+                )
+
+            grand_total = _compute_grand_total(items)
+            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                grand_total.get("ending_total"),
+                grand_total.get("sold_total"),
+            )
+
+            to_save = items + [grand_total]
+
+            _ensure_inventory_summary_table_exists(conn, table_name)
+            saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+            created_tables.append({
+                "table": f"public.{table_name}",
+                "month": month,
+                "year": year,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "saved_rows": saved,
+            })
+
+    return created_tables
 
 def _safe_ident(name: str) -> str:
     # only allow identifiers you generate internally

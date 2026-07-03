@@ -1327,6 +1327,12 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             "units_source_error": None,
         }
 
+        previous_sales_rank_result = {
+            "previous_sales_rank_column": None,
+            "previous_sales_rank_source_table": None,
+            "previous_sales_rank_error": None,
+        }
+
         if selected_month_for_units:
             units_sold_result = attach_current_month_units_sold(
                 rows=rows,
@@ -1339,6 +1345,18 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
 
             rows = units_sold_result["rows"]
             columns = units_sold_result["columns"]
+
+            previous_sales_rank_result = attach_previous_month_sales_rank(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = previous_sales_rank_result["rows"]
+            columns = previous_sales_rank_result["columns"]
 
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
@@ -1386,6 +1404,9 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             "units_sold_column": units_sold_result["units_column"],
             "units_sold_source_table": units_sold_result["units_source_table"],
             "units_sold_source_error": units_sold_result["units_source_error"],
+            "previous_sales_rank_column": previous_sales_rank_result["previous_sales_rank_column"],
+            "previous_sales_rank_source_table": previous_sales_rank_result["previous_sales_rank_source_table"],
+            "previous_sales_rank_error": previous_sales_rank_result["previous_sales_rank_error"],
             "tried_sources": source_result["tried_sources"],
 
             "columns": columns,
@@ -1413,6 +1434,213 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
         "found": found_any,
         "country_results": country_results,
         "tried_sources": tried_sources,
+    }
+
+def get_previous_month_name_year(month_name, year):
+    current_month_number = MONTH_NAME_TO_NUMBER.get(str(month_name).strip().lower())
+
+    if not current_month_number:
+        return None, None, None
+
+    year_int = int(year)
+
+    if current_month_number == 1:
+        previous_month_number = 12
+        previous_year = year_int - 1
+    else:
+        previous_month_number = current_month_number - 1
+        previous_year = year_int
+
+    previous_month_name = calendar_month_name[previous_month_number].lower()
+
+    return previous_month_name, previous_month_number, previous_year
+
+
+def find_sales_rank_column(columns):
+    sales_rank_candidates = [
+        "sales-rank",
+        "sales_rank",
+        "Sales Rank",
+        "Sales-Rank",
+        "sales rank",
+    ]
+
+    normalized_map = {
+        str(col).strip().lower().replace("_", "-"): col
+        for col in columns
+    }
+
+    for candidate in sales_rank_candidates:
+        key = candidate.strip().lower().replace("_", "-")
+        if key in normalized_map:
+            return normalized_map[key]
+
+    for col in columns:
+        col_text = str(col).strip().lower()
+        if "sales" in col_text and "rank" in col_text:
+            return col
+
+    return None
+
+
+def fetch_previous_month_sales_rank_map(user_id, country_key, month_name, year):
+    previous_month_name, previous_month_number, previous_year = get_previous_month_name_year(
+        month_name=month_name,
+        year=year,
+    )
+
+    if not previous_month_name:
+        return {
+            "table_name": None,
+            "previous_month": None,
+            "previous_year": None,
+            "sales_rank_by_sku": {},
+            "error": "Invalid month_name",
+        }
+
+    previous_table_name = build_current_inventory_table_name(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=previous_month_name,
+        year=previous_year,
+    )
+
+    if not is_safe_identifier(previous_table_name):
+        return {
+            "table_name": previous_table_name,
+            "previous_month": previous_month_name,
+            "previous_year": previous_year,
+            "sales_rank_by_sku": {},
+            "error": "Invalid previous current inventory table name",
+        }
+
+    inspector = inspect(primary_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    if previous_table_name not in existing_tables:
+        return {
+            "table_name": previous_table_name,
+            "previous_month": previous_month_name,
+            "previous_year": previous_year,
+            "sales_rank_by_sku": {},
+            "error": f"Previous current inventory table not found: {previous_table_name}",
+        }
+
+    query = text(f'SELECT * FROM "{previous_table_name}"')
+
+    with primary_engine.connect() as connection:
+        df = pd.read_sql(query, connection)
+
+    if df is None or df.empty:
+        return {
+            "table_name": previous_table_name,
+            "previous_month": previous_month_name,
+            "previous_year": previous_year,
+            "sales_rank_by_sku": {},
+            "error": None,
+        }
+
+    if "SKU" not in df.columns:
+        return {
+            "table_name": previous_table_name,
+            "previous_month": previous_month_name,
+            "previous_year": previous_year,
+            "sales_rank_by_sku": {},
+            "error": "SKU column not found in previous current inventory table",
+        }
+
+    sales_rank_column = find_sales_rank_column(df.columns)
+
+    if not sales_rank_column:
+        return {
+            "table_name": previous_table_name,
+            "previous_month": previous_month_name,
+            "previous_year": previous_year,
+            "sales_rank_by_sku": {},
+            "error": "sales-rank column not found in previous current inventory table",
+        }
+
+    sales_rank_by_sku = {}
+
+    for _, row in df.iterrows():
+        sku = str(row.get("SKU") or "").strip()
+        product_name = str(row.get("Product Name") or "").strip().lower()
+
+        if not sku or product_name == "total":
+            continue
+
+        sales_rank_by_sku[sku] = clean_value(row.get(sales_rank_column))
+
+    return {
+        "table_name": previous_table_name,
+        "previous_month": previous_month_name,
+        "previous_year": previous_year,
+        "sales_rank_column": sales_rank_column,
+        "sales_rank_by_sku": sales_rank_by_sku,
+        "error": None,
+    }
+
+
+def attach_previous_month_sales_rank(rows, columns, user_id, country_key, month_name, year):
+    previous_month_name, previous_month_number, previous_year = get_previous_month_name_year(
+        month_name=month_name,
+        year=year,
+    )
+
+    if not previous_month_name:
+        return {
+            "rows": rows,
+            "columns": columns,
+            "previous_sales_rank_column": None,
+            "previous_sales_rank_source_table": None,
+            "previous_sales_rank_error": "Invalid month_name",
+        }
+
+    previous_month_display = month_label(previous_month_number)
+    previous_sales_rank_column = f"Previous Month Sales Rank ({previous_month_display})"
+
+    if previous_sales_rank_column in columns:
+        return {
+            "rows": rows,
+            "columns": columns,
+            "previous_sales_rank_column": previous_sales_rank_column,
+            "previous_sales_rank_source_table": None,
+            "previous_sales_rank_error": None,
+        }
+
+    previous_rank_result = fetch_previous_month_sales_rank_map(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
+
+    sales_rank_by_sku = previous_rank_result["sales_rank_by_sku"]
+
+    updated_rows = []
+
+    for row in rows:
+        new_row = dict(row)
+
+        if is_total_row(new_row):
+            new_row[previous_sales_rank_column] = None
+        else:
+            sku = str(new_row.get("SKU") or "").strip()
+            new_row[previous_sales_rank_column] = sales_rank_by_sku.get(sku)
+
+        updated_rows.append(new_row)
+
+    updated_columns = list(columns)
+
+    if previous_sales_rank_column not in updated_columns:
+        updated_columns.append(previous_sales_rank_column)
+
+    return {
+        "rows": updated_rows,
+        "columns": updated_columns,
+        "previous_sales_rank_column": previous_sales_rank_column,
+        "previous_sales_rank_source_table": previous_rank_result["table_name"],
+        "previous_sales_rank_error": previous_rank_result["error"],
     }
 
 
@@ -1577,6 +1805,12 @@ def get_inventory_current_table():
             "units_source_error": None,
         }
 
+        previous_sales_rank_result = {
+            "previous_sales_rank_column": None,
+            "previous_sales_rank_source_table": None,
+            "previous_sales_rank_error": None,
+        }
+
         if selected_month_for_units and not is_global_country(country_key):
             units_sold_result = attach_current_month_units_sold(
                 rows=rows,
@@ -1589,6 +1823,18 @@ def get_inventory_current_table():
 
             rows = units_sold_result["rows"]
             columns = units_sold_result["columns"]
+
+            previous_sales_rank_result = attach_previous_month_sales_rank(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = previous_sales_rank_result["rows"]
+            columns = previous_sales_rank_result["columns"]
 
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
@@ -1668,6 +1914,9 @@ def get_inventory_current_table():
             "units_sold_column": units_sold_result["units_column"],
             "units_sold_source_table": units_sold_result["units_source_table"],
             "units_sold_source_error": units_sold_result["units_source_error"],
+            "previous_sales_rank_column": previous_sales_rank_result["previous_sales_rank_column"],
+            "previous_sales_rank_source_table": previous_sales_rank_result["previous_sales_rank_source_table"],
+            "previous_sales_rank_error": previous_sales_rank_result["previous_sales_rank_error"],
             "tried_sources": source_result["tried_sources"],
 
             "columns": columns,
