@@ -63,8 +63,14 @@ type PieChartPayload = {
   current_data?: ApiSkuRow[];
   previous_data?: ApiSkuRow[];
 
-  // CM2 format from your /pie-chart response
+  // CM2 current format from /pie-chart
   cm2_profit?: Cm2ProfitItem[];
+
+  // CM2 previous format from /pie-chart
+  previous?: {
+    available?: boolean;
+    cm2_profit?: Cm2ProfitItem[];
+  };
 
   error?: string;
 };
@@ -323,15 +329,35 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     });
   };
 
+  const normalizeName = (value: unknown) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
   const buildSlicesFromCm2Profit = (
-    cm2Rows: Cm2ProfitItem[]
+    cm2Rows: Cm2ProfitItem[],
+    previousCm2Rows: Cm2ProfitItem[] = []
   ): CmPieSlice[] => {
+    const previousMap = new Map<string, number>();
+
+    previousCm2Rows.forEach((row) => {
+      const key = normalizeName(row.product_name);
+      if (!key) return;
+
+      previousMap.set(key, toNum(row.cm2_profit));
+    });
+
     const rows = cm2Rows
-      .map((row) => ({
-        name: String(row.product_name || "").trim(),
-        value: toNum(row.cm2_profit),
-        prevValue: 0,
-      }))
+      .map((row) => {
+        const name = String(row.product_name || "").trim();
+
+        return {
+          name,
+          value: toNum(row.cm2_profit),
+          prevValue: previousMap.get(normalizeName(name)) ?? 0,
+        };
+      })
       .filter((row) => row.name && Number.isFinite(row.value) && row.value !== 0)
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
 
@@ -339,6 +365,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     const remaining = rows.slice(5);
 
     const othersValue = remaining.reduce((sum, row) => sum + row.value, 0);
+    const othersPrevValue = remaining.reduce((sum, row) => sum + row.prevValue, 0);
 
     const finalRows =
       remaining.length > 0
@@ -347,7 +374,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           {
             name: "Others",
             value: othersValue,
-            prevValue: 0,
+            prevValue: othersPrevValue,
           },
         ]
         : top5;
@@ -359,16 +386,17 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
     return finalRows.map((row) => {
       const currentAbs = Math.abs(row.value);
+      const previousAbs = Math.abs(row.prevValue);
 
       return {
         name: row.name,
         value: currentAbs,
-        prevValue: 0,
+        prevValue: previousAbs,
         pct: totalCurrent ? (currentAbs / totalCurrent) * 100 : 0,
-
-        // Your response does not provide previous CM2 values,
-        // so do not show CM1 delta percentages for CM2.
-        deltaPct: null,
+        deltaPct:
+          previousAbs === 0
+            ? null
+            : ((currentAbs - previousAbs) / previousAbs) * 100,
       };
     });
   };
@@ -467,7 +495,10 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             return;
           }
 
-          built = buildSlicesFromCm2Profit(payload.cm2_profit);
+          built = buildSlicesFromCm2Profit(
+            payload.cm2_profit,
+            payload.previous?.cm2_profit ?? []
+          );
         } else if (
           Array.isArray(payload.current_data) &&
           Array.isArray(payload.previous_data)

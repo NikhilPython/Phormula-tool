@@ -1276,6 +1276,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
       { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+
       { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
       ...(hasCm2Data
         ? [
@@ -1866,51 +1867,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
 
   /* --------- Render guards --------- */
-  // if (loading) return <div className="flex flex-col items-center justify-center py-12 text-center">
-  //   <Loader fullscreen transparent />
-  // </div>;
-  // if (error) return <div className="text-red-600">Error: {error}</div>;
-
-  // const renderNetSalesDelta = (row: TableRow) => {
-  //   if (
-  //     row.net_sales_delta_percentage === undefined ||
-  //     row.net_sales_delta_percentage === null
-  //   ) {
-  //     return null;
-  //   }
-
-  //   const rawPct = toNumber(row.net_sales_delta_percentage);
-  //   const isPositive = rawPct >= 0;
-
-  //   return (
-  //     <span
-  //       className={`shrink-0 text-[11px] min-[1700px]:text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
-  //         }`}
-  //       title={`Previous Net Sales: ${formatValue(
-  //         row.previous_net_sales,
-  //         "net_sales"
-  //       )}`}
-  //     >
-  //       {isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%
-  //     </span>
-  //   );
-  // };
-
-  // const productRowCount = useMemo(() => {
-  //   return (tableData || []).filter((row) => {
-  //     const name = String((row as any)?.product_name || "").trim().toLowerCase();
-  //     const sku = String((row as any)?.sku || "").trim().toLowerCase();
-
-  //     return (
-  //       name !== "total" &&
-  //       sku !== "total" &&
-  //       name !== "others" &&
-  //       sku !== "others"
-  //     );
-  //   }).length;
-  // }, [tableData]);
-
-
   const productRowCount = useMemo(() => {
     return (tableData || []).filter((row) => {
       const name = String((row as any)?.product_name || "").trim().toLowerCase();
@@ -1962,6 +1918,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </span>
     );
   };
+
+  const boldSummaryText = (value: React.ReactNode) => (
+    <span className="font-semibold">{value}</span>
+  );
 
   // const VISIBLE_PRODUCT_ROWS = 13.61;
 
@@ -2323,8 +2283,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     {
                       type: "fixed",
                       id: "cm2_profit",
-                      label: "CM2 Profit/Loss",
-                      endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+                      label: boldSummaryText("CM2 Profit/Loss"),
+                      endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
                     },
                     {
                       type: "fixed",

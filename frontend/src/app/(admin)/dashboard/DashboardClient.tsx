@@ -2874,6 +2874,9 @@ export default function DashboardPage() {
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
+    const pageTopRef = useRef<HTMLDivElement | null>(null);
+const tabTopRef = useRef<HTMLDivElement | null>(null);
+const shouldScrollTabTopRef = useRef(false);
 
     const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
         useState<string>("365+ days");
@@ -2935,6 +2938,10 @@ export default function DashboardPage() {
     const [showAllMtdProductwiseRows, setShowAllMtdProductwiseRows] = useState(false);
     const [previousSkuwiseGlobalData, setPreviousSkuwiseGlobalData] = useState<any>(null);
     const [previousSkuwiseGlobalLoading, setPreviousSkuwiseGlobalLoading] = useState(false);
+
+    const boldSummaryText = (value: React.ReactNode) => (
+        <span className="font-semibold">{value}</span>
+    );
 
     type MetricItem = {
         label: string;
@@ -3662,25 +3669,10 @@ export default function DashboardPage() {
     ]);
 
     useEffect(() => {
-        if (activeTab !== "live") return;
-        if (!pendingHash) return;
+    if (!pendingHash) return;
 
-        const run = () => {
-            const targetId = pendingHash.replace("#", "");
-            const el = document.getElementById(targetId);
-
-            if (el) {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-                setPendingHash("");
-            }
-        };
-
-        const timer = setTimeout(run, 250);
-        return () => clearTimeout(timer);
-    }, [activeTab, pendingHash]);
+    setPendingHash("");
+}, [pendingHash]);
 
     useEffect(() => {
         if (activeTab === "summary") {
@@ -10116,22 +10108,6 @@ export default function DashboardPage() {
         };
     }, [handleHashNavigation]);
 
-    useEffect(() => {
-        if (!pendingHash) return;
-
-        const timer = setTimeout(() => {
-            const el = document.getElementById(pendingHash);
-            if (el) {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-            }
-            setPendingHash("");
-        }, 250);
-
-        return () => clearTimeout(timer);
-    }, [activeTab, pendingHash]);
 
     const dummyStatData = {
         units: { current: 0, previous: 0, deltaPct: 0 },
@@ -10746,6 +10722,68 @@ Keep enough stock for validation but avoid over-committing too early.`,
         window.history.replaceState(null, "", nextUrl);
     }, []);
 
+    const scrollDashboardPageToTop = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const target = tabTopRef.current || pageTopRef.current;
+
+    const scrollParents: HTMLElement[] = [];
+
+    let parent = target?.parentElement || null;
+
+    while (parent) {
+        const style = window.getComputedStyle(parent);
+        const overflowY = style.overflowY;
+
+        const canScroll =
+            (overflowY === "auto" || overflowY === "scroll") &&
+            parent.scrollHeight > parent.clientHeight;
+
+        if (canScroll) {
+            scrollParents.push(parent);
+        }
+
+        parent = parent.parentElement;
+    }
+
+    window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "auto",
+    });
+
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    scrollParents.forEach((el) => {
+        el.scrollTop = 0;
+    });
+}, []);
+
+useEffect(() => {
+    if (!shouldScrollTabTopRef.current) return;
+
+    shouldScrollTabTopRef.current = false;
+
+    const scrollNow = () => {
+        scrollDashboardPageToTop();
+    };
+
+    scrollNow();
+
+    const r1 = requestAnimationFrame(scrollNow);
+    const t1 = window.setTimeout(scrollNow, 50);
+    const t2 = window.setTimeout(scrollNow, 150);
+    const t3 = window.setTimeout(scrollNow, 350);
+
+    return () => {
+        cancelAnimationFrame(r1);
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+        window.clearTimeout(t3);
+    };
+}, [activeTab, scrollDashboardPageToTop]);
+
     const isStickyGlobal = platform === "global";
 
     const roundedMoneyFormatter = (value: number) => {
@@ -11072,7 +11110,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             previousFormatter: (val: number) =>
                 formatDisplayAmount(Math.round(val), "Net Sales"),
 
-            bottomLabel: "Last Month",
+            bottomLabel: prevLabel,
             className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },
 
@@ -11092,7 +11130,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             formatter: fmtPct,
             previousFormatter: fmtPct,
 
-            bottomLabel: "Last Month",
+            bottomLabel: prevLabel,
             className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
         },
     ];
@@ -11517,51 +11555,133 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const prevCm2ByName = buildPreviousProfitMap("cm2_profit");
 
-        const rows = (finalMonthlySkuwiseRowsForTable || [])
-            .filter((r: any) => {
-                const name = String(r?.product_name || "").trim().toLowerCase();
-                const sku = String(r?.sku || "").trim().toUpperCase();
+        const toNullableNumber = (value: any): number | null => {
+            if (value === undefined || value === null || value === "") return null;
 
-                return (
-                    !r?.isTotal &&
-                    !r?.isOthers &&
-                    sku !== "TOTAL" &&
-                    sku !== "GRAND_TOTAL" &&
-                    name !== "total" &&
-                    name !== "grand total"
-                );
-            })
-            .map((r: any) => {
+            const n = Number(String(value).replace(/,/g, "").trim());
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const getFirstNumber = (...values: any[]): number | null => {
+            for (const value of values) {
+                const n = toNullableNumber(value);
+                if (n !== null) return n;
+            }
+
+            return null;
+        };
+
+        const isValidPieRow = (r: any) => {
+            const name = String(r?.product_name || "").trim().toLowerCase();
+            const sku = String(r?.sku || "").trim().toUpperCase();
+
+            return (
+                !r?.isTotal &&
+                !r?.isOthers &&
+                name !== "total" &&
+                name !== "grand total" &&
+                sku !== "GRAND_TOTAL" &&
+                sku !== "TOTAL" &&
+                sku !== "TOTAL_SEGMENT"
+            );
+        };
+
+        const liveCm2Rows =
+            Array.isArray(liveBiPayload?.all_action_rows) && liveBiPayload.all_action_rows.length > 0
+                ? liveBiPayload.all_action_rows
+                : Array.isArray(liveBiPayload?.focus_sku_rows) && liveBiPayload.focus_sku_rows.length > 0
+                    ? liveBiPayload.focus_sku_rows
+                    : [];
+
+        const sourceRows =
+            liveCm2Rows.length > 0
+                ? liveCm2Rows
+                : finalMonthlySkuwiseRowsForTable || [];
+
+        const rows: Cm1PieSlice[] = sourceRows
+            .filter(isValidPieRow)
+            .map((r: any): Cm1PieSlice => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
                 );
 
-                const value = Number(r?.cm2_profit || 0);
-                const prevValue = prevCm2ByName.get(normalizePieName(name)) ?? 0;
+                const currentValue =
+                    getFirstNumber(
+                        r?.cm2_profit_curr,
+                        r?.cm2_profit,
+                        r?.total_cm2_profit
+                    ) ?? 0;
+
+                const apiPrevCm2 = getFirstNumber(
+                    r?.cm2_profit_prev,
+                    r?.previous_cm2_profit
+                );
+
+                const mapPrevCm2 = prevCm2ByName.get(normalizePieName(name));
+
+                const fallbackPrevProfit = getFirstNumber(
+                    r?.profit_prev,
+                    r?.cm1_profit_prev
+                );
+
+                const prevValue =
+                    apiPrevCm2 !== null && apiPrevCm2 !== 0
+                        ? apiPrevCm2
+                        : typeof mapPrevCm2 === "number" &&
+                            Number.isFinite(mapPrevCm2) &&
+                            mapPrevCm2 !== 0
+                            ? mapPrevCm2
+                            : fallbackPrevProfit ?? 0;
+
+                const apiDelta = getFirstNumber(
+                    r?.cm2_profit_growth_pct,
+                    r?.cm2_delta_pct,
+                    r?.cm2_profit_delta_percentage
+                );
+
+                const hasPreviousCm2 =
+                    Number.isFinite(prevValue) && Number(prevValue) !== 0;
+
+                const hasRealApiDelta =
+                    apiDelta !== null &&
+                    Number.isFinite(apiDelta) &&
+                    apiDelta !== 0;
+
+                const deltaPct = hasPreviousCm2
+                    ? hasRealApiDelta
+                        ? apiDelta
+                        : safeDeltaPct(currentValue, prevValue)
+                    : null;
 
                 return {
                     name,
-                    value,
+                    value: currentValue,
                     prevValue,
                     pct: 0,
-                    deltaPct: safeDeltaPct(value, prevValue),
+                    deltaPct,
                 };
             })
-            .filter((r) => r.value !== 0 || r.prevValue !== 0);
+            .filter(
+                (row: Cm1PieSlice) =>
+                    Number(row.value || 0) !== 0 ||
+                    Number(row.prevValue || 0) !== 0
+            );
 
-        const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
+        const totalAbs = rows.reduce(
+            (sum: number, row: Cm1PieSlice) =>
+                sum + Math.abs(Number(row.value || 0)),
+            0
+        );
 
-        return rows
-            .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-            .map((r) => ({
-                ...r,
-                pct: (Math.abs(r.value) / total) * 100,
-            }));
+        return rows.map((row: Cm1PieSlice): Cm1PieSlice => ({
+            ...row,
+            pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
+        }));
     }, [
+        liveBiPayload,
         finalMonthlySkuwiseRowsForTable,
         buildPreviousProfitMap,
     ]);
-
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const isInvalidPieRow = (name: string, sku?: string) => {
@@ -12972,7 +13092,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
         MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
 
     return (
-        <div className="relative w-full">
+        <div ref={pageTopRef} className="relative w-full">
+        <div ref={tabTopRef} />
             <Toaster
                 position="top-right"
                 richColors
@@ -13067,10 +13188,12 @@ ${pageLoading
                 <SegmentedToggle<TopTab>
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                    onChange={(tab) => {
-                        setActiveTab(tab);
-                        syncTabToHash(tab);
-                    }}
+                   onChange={(tab) => {
+    shouldScrollTabTopRef.current = true;
+
+    setActiveTab(tab);
+    syncTabToHash(tab);
+}}
                     className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
@@ -14177,8 +14300,8 @@ ${pageLoading
                                                     {
                                                         type: "fixed",
                                                         id: "cm2_profit",
-                                                        label: "CM2 Profit/Loss",
-                                                        endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+                                                        label: boldSummaryText("CM2 Profit/Loss"),
+                                                        endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
                                                     },
                                                     {
                                                         type: "fixed",
@@ -14342,7 +14465,7 @@ ${pageLoading
                         ) : inventoryInsightsData ? (
                             <>
                                 <div className="mb-4 flex items-center justify-between gap-4">
-                                     <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
+                                    <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
 
                                     {platform === "global" && (
                                         <SegmentedToggle
