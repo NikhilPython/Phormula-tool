@@ -462,19 +462,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 cellClassName:
                     "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
                 render: (row) => {
+                    // hide Inbound Units value in "% of Total" row
                     if (row.isPercentageRow) {
-                        const value = Number(row.inboundUnits || 0);
-
-                        return (
-                            <span>
-                                {value > 0
-                                    ? `${value.toLocaleString(undefined, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                    })}%`
-                                    : "-"}
-                            </span>
-                        );
+                        return <span></span>;
                     }
 
                     const inboundUnits = Number(row.inboundUnits || 0);

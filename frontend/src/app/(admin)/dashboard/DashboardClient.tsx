@@ -2982,23 +2982,69 @@ export default function DashboardPage() {
 
             if (!Array.isArray(rows)) return map;
 
+            const toNullableNumber = (value: any): number | null => {
+                if (value === undefined || value === null || value === "") return null;
+
+                const n = Number(String(value).replace(/,/g, "").trim());
+                return Number.isFinite(n) ? n : null;
+            };
+
+            const getFirstNonZeroNumber = (...values: any[]): number | null => {
+                for (const value of values) {
+                    const n = toNullableNumber(value);
+                    if (n !== null && n !== 0) return n;
+                }
+
+                return null;
+            };
+
             rows.forEach((row: any) => {
-                const name = String(row?.product_name || "").trim();
-                const sku = String(row?.sku || "").trim().toUpperCase();
+                const rawName = String(row?.product_name || "").trim();
+                const rawSku = String(row?.sku || "").trim().toUpperCase();
 
-                if (!name) return;
-                if (sku === "TOTAL") return;
-                if (name.toLowerCase() === "total") return;
+                if (!rawName && !rawSku) return;
+                if (rawSku === "TOTAL" || rawSku === "GRAND_TOTAL") return;
 
-                const normalizedName = normalizePieName(name);
-                const value = Number(row?.[key] ?? 0);
+                const normalizedName = normalizePieName(rawName || rawSku);
+
+                if (
+                    !normalizedName ||
+                    normalizedName === "total" ||
+                    normalizedName === "grand total"
+                ) {
+                    return;
+                }
+
+                /**
+                 * IMPORTANT FOR GLOBAL:
+                 * /previous_skuwise_global currently does not send SKU-level cm2_profit.
+                 * It sends SKU-level profit only.
+                 * So for cm2_profit previous map, fallback to profit.
+                 */
+                const value =
+                    key === "cm2_profit"
+                        ? getFirstNonZeroNumber(
+                            row?.cm2_profit,
+                            row?.total_cm2_profit,
+                            row?.profit
+                        )
+                        : getFirstNonZeroNumber(
+                            row?.profit,
+                            row?.cm1_profit
+                        );
+
+                if (value === null) return;
 
                 map.set(normalizedName, value);
+
+                if (rawSku) {
+                    map.set(rawSku.toLowerCase(), value);
+                }
             });
 
             return map;
         },
-        [platform, previousSkuwiseGlobalData]
+        [platform, previousSkuwiseGlobalData, normalizePieName]
     );
 
     type GlobalMtdView = "global" | "uk" | "us";
@@ -11537,6 +11583,15 @@ Keep enough stock for validation but avoid over-committing too early.`,
             return null;
         };
 
+        const getFirstNonZeroNumber = (...values: any[]): number | null => {
+            for (const value of values) {
+                const n = toNullableNumber(value);
+                if (n !== null && n !== 0) return n;
+            }
+
+            return null;
+        };
+
         const isValidPieRow = (r: any) => {
             const name = String(r?.product_name || "").trim().toLowerCase();
             const sku = String(r?.sku || "").trim().toUpperCase();
@@ -11564,12 +11619,15 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 ? liveCm2Rows
                 : finalMonthlySkuwiseRowsForTable || [];
 
-        const rows: Cm1PieSlice[] = sourceRows
+        const rows = sourceRows
             .filter(isValidPieRow)
-            .map((r: any): Cm1PieSlice => {
+            .map((r: any) => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
                 );
+
+                const normalizedName = normalizePieName(name);
+                const normalizedSku = String(r?.sku || "").trim().toLowerCase();
 
                 const currentValue =
                     getFirstNumber(
@@ -11578,46 +11636,47 @@ Keep enough stock for validation but avoid over-committing too early.`,
                         r?.total_cm2_profit
                     ) ?? 0;
 
-                const apiPrevCm2 = getFirstNumber(
+                /**
+                 * Priority:
+                 * 1. Real SKU-level cm2_profit_prev from /live_mtd_bi if backend sends it
+                 * 2. /previous_skuwise_global map for global
+                 * 3. profit_prev fallback for countrywise/current live response
+                 */
+                const apiPrevCm2 = getFirstNonZeroNumber(
                     r?.cm2_profit_prev,
                     r?.previous_cm2_profit
                 );
 
-                const mapPrevCm2 = prevCm2ByName.get(normalizePieName(name));
+                const prevFromGlobalMap =
+                    prevCm2ByName.get(normalizedName) ??
+                    (normalizedSku ? prevCm2ByName.get(normalizedSku) : undefined);
 
-                const fallbackPrevProfit = getFirstNumber(
+                const fallbackPrevProfit = getFirstNonZeroNumber(
                     r?.profit_prev,
                     r?.cm1_profit_prev
                 );
 
                 const prevValue =
-                    apiPrevCm2 !== null && apiPrevCm2 !== 0
+                    apiPrevCm2 !== null
                         ? apiPrevCm2
-                        : typeof mapPrevCm2 === "number" &&
-                            Number.isFinite(mapPrevCm2) &&
-                            mapPrevCm2 !== 0
-                            ? mapPrevCm2
+                        : typeof prevFromGlobalMap === "number" &&
+                            Number.isFinite(prevFromGlobalMap) &&
+                            prevFromGlobalMap !== 0
+                            ? prevFromGlobalMap
                             : fallbackPrevProfit ?? 0;
 
-                const apiDelta = getFirstNumber(
+                const apiDelta = getFirstNonZeroNumber(
                     r?.cm2_profit_growth_pct,
                     r?.cm2_delta_pct,
                     r?.cm2_profit_delta_percentage
                 );
 
-                const hasPreviousCm2 =
-                    Number.isFinite(prevValue) && Number(prevValue) !== 0;
-
-                const hasRealApiDelta =
-                    apiDelta !== null &&
-                    Number.isFinite(apiDelta) &&
-                    apiDelta !== 0;
-
-                const deltaPct = hasPreviousCm2
-                    ? hasRealApiDelta
-                        ? apiDelta
-                        : safeDeltaPct(currentValue, prevValue)
-                    : null;
+                const deltaPct =
+                    prevValue !== 0
+                        ? apiDelta !== null
+                            ? apiDelta
+                            : safeDeltaPct(currentValue, prevValue)
+                        : null;
 
                 return {
                     name,
@@ -11628,25 +11687,27 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 };
             })
             .filter(
-                (row: Cm1PieSlice) =>
+                (row) =>
                     Number(row.value || 0) !== 0 ||
                     Number(row.prevValue || 0) !== 0
             );
 
         const totalAbs = rows.reduce(
-            (sum: number, row: Cm1PieSlice) =>
-                sum + Math.abs(Number(row.value || 0)),
+            (sum, row) => sum + Math.abs(Number(row.value || 0)),
             0
         );
 
-        return rows.map((row: Cm1PieSlice): Cm1PieSlice => ({
-            ...row,
-            pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
-        }));
+        return rows
+            .sort((a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0)))
+            .map((row) => ({
+                ...row,
+                pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
+            }));
     }, [
         liveBiPayload,
         finalMonthlySkuwiseRowsForTable,
         buildPreviousProfitMap,
+        normalizePieName,
     ]);
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
