@@ -11072,7 +11072,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             previousFormatter: (val: number) =>
                 formatDisplayAmount(Math.round(val), "Net Sales"),
 
-            bottomLabel: "Last Month",
+            bottomLabel: prevLabel,
             className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },
 
@@ -11092,7 +11092,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
             formatter: fmtPct,
             previousFormatter: fmtPct,
 
-            bottomLabel: "Last Month",
+            bottomLabel: prevLabel,
             className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
         },
     ];
@@ -11517,51 +11517,136 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const cm2ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const prevCm2ByName = buildPreviousProfitMap("cm2_profit");
 
-        const rows = (finalMonthlySkuwiseRowsForTable || [])
-            .filter((r: any) => {
-                const name = String(r?.product_name || "").trim().toLowerCase();
-                const sku = String(r?.sku || "").trim().toUpperCase();
+        const toNullableNumber = (value: any): number | null => {
+            if (value === undefined || value === null || value === "") return null;
 
-                return (
-                    !r?.isTotal &&
-                    !r?.isOthers &&
-                    sku !== "TOTAL" &&
-                    sku !== "GRAND_TOTAL" &&
-                    name !== "total" &&
-                    name !== "grand total"
-                );
-            })
+            const n = Number(String(value).replace(/,/g, "").trim());
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const getFirstNumber = (...values: any[]): number | null => {
+            for (const value of values) {
+                const n = toNullableNumber(value);
+                if (n !== null) return n;
+            }
+
+            return null;
+        };
+
+        const isValidPieRow = (r: any) => {
+            const name = String(r?.product_name || "").trim().toLowerCase();
+            const sku = String(r?.sku || "").trim().toUpperCase();
+
+            return (
+                !r?.isTotal &&
+                !r?.isOthers &&
+                name !== "total" &&
+                name !== "grand total" &&
+                sku !== "GRAND_TOTAL" &&
+                sku !== "TOTAL" &&
+                sku !== "TOTAL_SEGMENT"
+            );
+        };
+
+        const liveCm2Rows =
+            Array.isArray(liveBiPayload?.all_action_rows) && liveBiPayload.all_action_rows.length > 0
+                ? liveBiPayload.all_action_rows
+                : Array.isArray(liveBiPayload?.focus_sku_rows) && liveBiPayload.focus_sku_rows.length > 0
+                    ? liveBiPayload.focus_sku_rows
+                    : [];
+
+        const sourceRows =
+            liveCm2Rows.length > 0
+                ? liveCm2Rows
+                : finalMonthlySkuwiseRowsForTable || [];
+
+        const rows = sourceRows
+            .filter(isValidPieRow)
             .map((r: any) => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
                 );
 
-                const value = Number(r?.cm2_profit || 0);
-                const prevValue = prevCm2ByName.get(normalizePieName(name)) ?? 0;
+                const currentValue =
+                    getFirstNumber(
+                        r?.cm2_profit_curr,
+                        r?.cm2_profit,
+                        r?.total_cm2_profit
+                    ) ?? 0;
+
+                const apiPrevCm2 = getFirstNumber(
+                    r?.cm2_profit_prev,
+                    r?.previous_cm2_profit
+                );
+
+                const mapPrevCm2 = prevCm2ByName.get(normalizePieName(name));
+
+                /**
+                 * IMPORTANT:
+                 * Your API currently sends cm2_profit_prev = 0.
+                 * So fallback to profit_prev only when CM2 previous is missing/zero.
+                 * Once backend sends real cm2_profit_prev, that value will be used first.
+                 */
+                const fallbackPrevProfit = getFirstNumber(
+                    r?.profit_prev,
+                    r?.cm1_profit_prev
+                );
+
+                const prevValue =
+                    apiPrevCm2 !== null && apiPrevCm2 !== 0
+                        ? apiPrevCm2
+                        : typeof mapPrevCm2 === "number" && Number.isFinite(mapPrevCm2) && mapPrevCm2 !== 0
+                            ? mapPrevCm2
+                            : fallbackPrevProfit ?? 0;
+
+                const apiDelta = getFirstNumber(
+                    r?.cm2_profit_growth_pct,
+                    r?.cm2_delta_pct,
+                    r?.cm2_profit_delta_percentage
+                );
+
+                const hasPreviousCm2 =
+                    Number.isFinite(prevValue) && Number(prevValue) !== 0;
+
+                const hasRealApiDelta =
+                    apiDelta !== null &&
+                    Number.isFinite(apiDelta) &&
+                    apiDelta !== 0;
+
+                const deltaPct = hasPreviousCm2
+                    ? hasRealApiDelta
+                        ? apiDelta
+                        : safeDeltaPct(currentValue, prevValue)
+                    : null;
 
                 return {
                     name,
-                    value,
+                    value: currentValue,
                     prevValue,
                     pct: 0,
-                    deltaPct: safeDeltaPct(value, prevValue),
+                    deltaPct,
                 };
             })
-            .filter((r) => r.value !== 0 || r.prevValue !== 0);
+            .filter(
+                (row) =>
+                    Number(row.value || 0) !== 0 ||
+                    Number(row.prevValue || 0) !== 0
+            );
 
-        const total = rows.reduce((sum, r) => sum + Math.abs(r.value), 0) || 1;
+        const totalAbs = rows.reduce(
+            (sum, row) => sum + Math.abs(Number(row.value || 0)),
+            0
+        );
 
-        return rows
-            .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-            .map((r) => ({
-                ...r,
-                pct: (Math.abs(r.value) / total) * 100,
-            }));
+        return rows.map((row) => ({
+            ...row,
+            pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
+        }));
     }, [
+        liveBiPayload,
         finalMonthlySkuwiseRowsForTable,
         buildPreviousProfitMap,
     ]);
-
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const isInvalidPieRow = (name: string, sku?: string) => {
@@ -14342,7 +14427,7 @@ ${pageLoading
                         ) : inventoryInsightsData ? (
                             <>
                                 <div className="mb-4 flex items-center justify-between gap-4">
-                                     <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
+                                    <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
 
                                     {platform === "global" && (
                                         <SegmentedToggle

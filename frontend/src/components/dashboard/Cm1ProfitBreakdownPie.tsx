@@ -67,9 +67,14 @@ export default function Cm1ProfitBreakdownPie({
   const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
 
   const activeData = profitPieType === "cm1" ? data : cm2Data;
-  const activeTitle ="Profit Breakdown";
+  const activeTitle = "Profit Breakdown";
 
-  const showDelta = profitPieType === "cm1";
+  const showDelta = useMemo(() => {
+    return (activeData || []).some((item) => {
+      const delta = Number(item?.deltaPct);
+      return item?.deltaPct !== null && Number.isFinite(delta);
+    });
+  }, [activeData]);
 
   const [isLaptop, setIsLaptop] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -151,105 +156,105 @@ export default function Cm1ProfitBreakdownPie({
   //   ];
   // }, [data]);
 
- const displayData = useMemo<Cm1PieSlice[]>(() => {
-  const isOthers = (name?: string) =>
-    String(name || "").trim().toLowerCase() === "others";
+  const displayData = useMemo<Cm1PieSlice[]>(() => {
+    const isOthers = (name?: string) =>
+      String(name || "").trim().toLowerCase() === "others";
 
-  const isTotal = (name?: string) => {
-    const n = String(name || "").trim().toLowerCase();
-    return (
-      n === "total" ||
-      n === "grand total" ||
-      n === "total_segment" ||
-      n.includes("total")
-    );
-  };
-
-  // ✅ Remove Total rows first
-  const arr = (activeData || [])
-    .filter((d) => !isTotal(d.name))
-    .filter((d) => Number(d.value || 0) !== 0 || Number(d.prevValue || 0) !== 0);
-
-  if (!arr.length) return [];
-
-  const normalized = arr.map((d) => {
-    const v = Math.abs(Number(d.value || 0));
-    const pv = Math.abs(Number(d.prevValue || 0));
-    const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
-
-    return {
-      ...d,
-      name: String(d.name || "").trim() || "Others",
-      value: v,
-      prevValue: pv,
-      pct: Number(d.pct || 0),
-      deltaPct: d.deltaPct ?? fallbackDelta,
+    const isTotal = (name?: string) => {
+      const n = String(name || "").trim().toLowerCase();
+      return (
+        n === "total" ||
+        n === "grand total" ||
+        n === "total_segment" ||
+        n.includes("total")
+      );
     };
-  });
 
-  // ✅ Separate existing Others, but do NOT skip grouping
-  const existingOthersRows = normalized.filter((d) => isOthers(d.name));
-  const skuRows = normalized.filter((d) => !isOthers(d.name));
+    // ✅ Remove Total rows first
+    const arr = (activeData || [])
+      .filter((d) => !isTotal(d.name))
+      .filter((d) => Number(d.value || 0) !== 0 || Number(d.prevValue || 0) !== 0);
 
-  const sorted = [...skuRows].sort(
-    (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
-  );
+    if (!arr.length) return [];
 
-  const totalAbs =
-    normalized.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0) || 1;
+    const normalized = arr.map((d) => {
+      const v = Math.abs(Number(d.value || 0));
+      const pv = Math.abs(Number(d.prevValue || 0));
+      const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
 
-  let cumulative = 0;
-  let cutoff = 0;
+      return {
+        ...d,
+        name: String(d.name || "").trim() || "Others",
+        value: v,
+        prevValue: pv,
+        pct: Number(d.pct || 0),
+        deltaPct: d.deltaPct ?? fallbackDelta,
+      };
+    });
 
-  for (let i = 0; i < sorted.length; i++) {
-    cumulative += Math.abs(Number(sorted[i].value || 0));
-    cutoff = i + 1;
+    // ✅ Separate existing Others, but do NOT skip grouping
+    const existingOthersRows = normalized.filter((d) => isOthers(d.name));
+    const skuRows = normalized.filter((d) => !isOthers(d.name));
 
-    if (cumulative / totalAbs >= TARGET_SHARE) break;
-  }
+    const sorted = [...skuRows].sort(
+      (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
+    );
 
-  // ✅ Minimum 5 SKUs, or more if needed to reach 80%
-  const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
+    const totalAbs =
+      normalized.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0) || 1;
 
-  const kept = sorted.slice(0, keepCount);
-  const rest = sorted.slice(keepCount);
+    let cumulative = 0;
+    let cutoff = 0;
 
-  // ✅ Existing Others + all non-kept SKUs become one Others row
-  const othersSource = [...rest, ...existingOthersRows];
+    for (let i = 0; i < sorted.length; i++) {
+      cumulative += Math.abs(Number(sorted[i].value || 0));
+      cutoff = i + 1;
 
-  const rebuiltKept = kept.map((d) => ({
-    ...d,
-    pct: (Math.abs(Number(d.value || 0)) / totalAbs) * 100,
-  }));
+      if (cumulative / totalAbs >= TARGET_SHARE) break;
+    }
 
-  if (!othersSource.length) {
-    return rebuiltKept;
-  }
+    // ✅ Minimum 5 SKUs, or more if needed to reach 80%
+    const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
 
-  const othersValue = othersSource.reduce(
-    (sum, d) => sum + Math.abs(Number(d.value || 0)),
-    0
-  );
+    const kept = sorted.slice(0, keepCount);
+    const rest = sorted.slice(keepCount);
 
-  const othersPrev = othersSource.reduce(
-    (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
-    0
-  );
+    // ✅ Existing Others + all non-kept SKUs become one Others row
+    const othersSource = [...rest, ...existingOthersRows];
 
-  const othersDeltaPct =
-    othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+    const rebuiltKept = kept.map((d) => ({
+      ...d,
+      pct: (Math.abs(Number(d.value || 0)) / totalAbs) * 100,
+    }));
 
-  return [
-    ...rebuiltKept,
-    {
-      name: "Others",
-      value: othersValue,
-      prevValue: othersPrev,
-      pct: (othersValue / totalAbs) * 100,
-      deltaPct: othersDeltaPct,
-    },
-  ];
-}, [activeData]);
+    if (!othersSource.length) {
+      return rebuiltKept;
+    }
+
+    const othersValue = othersSource.reduce(
+      (sum, d) => sum + Math.abs(Number(d.value || 0)),
+      0
+    );
+
+    const othersPrev = othersSource.reduce(
+      (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
+      0
+    );
+
+    const othersDeltaPct =
+      othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+
+    return [
+      ...rebuiltKept,
+      {
+        name: "Others",
+        value: othersValue,
+        prevValue: othersPrev,
+        pct: (othersValue / totalAbs) * 100,
+        deltaPct: othersDeltaPct,
+      },
+    ];
+  }, [activeData]);
 
 
 
@@ -339,16 +344,18 @@ export default function Cm1ProfitBreakdownPie({
               const slice = displayData?.[i];
               const val = Math.round(Number(ctx.raw || 0));
               const delta = slice?.deltaPct;
+              const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
 
               const deltaSymbol =
-                delta == null ? "—" : delta > 0 ? "▲" : delta < 0 ? "▼" : "■";
+                hasDelta ? Number(delta) > 0 ? "▲" : Number(delta) < 0 ? "▼" : "■" : "";
 
-              const deltaText =
-                delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
+              const deltaText = hasDelta
+                ? `${deltaSymbol} ${Math.abs(Number(delta)).toFixed(2)}%`
+                : "";
 
               return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toLocaleString()} (${Math.round(
                 slice?.pct ?? 0
-              )}%)${showDelta ? ` (${deltaText})` : ""}`;
+              )}%)${showDelta && hasDelta ? ` (${deltaText})` : ""}`;
             },
           },
         },
@@ -538,19 +545,21 @@ export default function Cm1ProfitBreakdownPie({
                       const value = Math.round(Math.abs(Number(slice.value || 0)));
                       const pct = Math.round(Number(slice.pct || 0));
                       const delta = slice.deltaPct;
+                      const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
 
                       const deltaSymbol =
-                        delta == null ? "—" : delta > 0 ? "▲" : delta < 0 ? "▼" : "■";
+                        hasDelta ? Number(delta) > 0 ? "▲" : Number(delta) < 0 ? "▼" : "■" : "";
 
-                      const deltaText =
-                        delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
+                      const deltaText = hasDelta
+                        ? `${deltaSymbol} ${Math.abs(Number(delta)).toFixed(2)}%`
+                        : "";
 
                       const deltaClass =
-                        delta == null
-                          ? "text-[#414042]"
-                          : delta >= 0
-                            ? "text-green-500"
-                            : "text-red-500";
+                        hasDelta && Number(delta) >= 0
+                          ? "text-green-500"
+                          : hasDelta
+                            ? "text-red-500"
+                            : "text-[#414042]";
 
                       return (
                         <button
@@ -590,7 +599,9 @@ export default function Cm1ProfitBreakdownPie({
                               >
                                 {currencySymbol}
                                 {value.toLocaleString()} ({pct}%){" "}
-                                {showDelta && <span className={deltaClass}>({deltaText})</span>}
+                                {showDelta && hasDelta && (
+                                  <span className={deltaClass}>({deltaText})</span>
+                                )}
                               </div>
                             </div>
                           </div>
