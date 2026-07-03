@@ -11657,14 +11657,14 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     ? liveBiPayload.focus_sku_rows
                     : [];
 
-        const sourceRows =
+        const sourceRows: any[] =
             liveCm2Rows.length > 0
                 ? liveCm2Rows
                 : finalMonthlySkuwiseRowsForTable || [];
 
-        const rows = sourceRows
+        const rows: Cm1PieSlice[] = sourceRows
             .filter(isValidPieRow)
-            .map((r: any) => {
+            .map((r: any): Cm1PieSlice => {
                 const name = normalizeProductDisplayName(
                     r?.product_name || r?.sku || "Unknown"
                 );
@@ -11730,19 +11730,24 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 };
             })
             .filter(
-                (row) =>
+                (row: Cm1PieSlice) =>
                     Number(row.value || 0) !== 0 ||
                     Number(row.prevValue || 0) !== 0
             );
 
         const totalAbs = rows.reduce(
-            (sum, row) => sum + Math.abs(Number(row.value || 0)),
+            (sum: number, row: Cm1PieSlice) =>
+                sum + Math.abs(Number(row.value || 0)),
             0
         );
 
         return rows
-            .sort((a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0)))
-            .map((row) => ({
+            .sort(
+                (a: Cm1PieSlice, b: Cm1PieSlice) =>
+                    Math.abs(Number(b.value || 0)) -
+                    Math.abs(Number(a.value || 0))
+            )
+            .map((row: Cm1PieSlice): Cm1PieSlice => ({
                 ...row,
                 pct: totalAbs ? (Math.abs(row.value) / totalAbs) * 100 : 0,
             }));
@@ -12807,7 +12812,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
         inventoryAgeSummaryResponses,
         selectedAgeingTrendBucket,
     ]);
-    
+
     const formatExcelDash = (value: any) => {
         if (value === null || value === undefined || value === "") return "-";
         if (Number(value) === 0) return "-";
