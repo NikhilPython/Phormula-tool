@@ -4556,6 +4556,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("businessSummary");
+  const shouldScrollTabTopRef = useRef(false);
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
     target_sales?: number;
@@ -4605,28 +4606,47 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    if (!pendingHash) return;
-    if (!allDropdownsSelected) return;
+ useEffect(() => {
+  if (!pendingHash) return;
+  if (!allDropdownsSelected) return;
 
-    if (isDemoMode) {
-      setPendingHash("");
-      return;
-    }
+  const timer = setTimeout(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "auto",
+    });
 
-    const timer = setTimeout(() => {
-      const el = document.getElementById(pendingHash);
-      if (el) {
-        el.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-      setPendingHash("");
-    }, 250);
+    setPendingHash("");
+  }, 50);
 
-    return () => clearTimeout(timer);
-  }, [activeTab, pendingHash, allDropdownsSelected, isDemoMode]);
+  return () => clearTimeout(timer);
+}, [activeTab, pendingHash, allDropdownsSelected]);
+
+useEffect(() => {
+  if (!shouldScrollTabTopRef.current) return;
+
+  shouldScrollTabTopRef.current = false;
+
+  const scrollNow = () => {
+    scrollFinancePageToTop();
+  };
+
+  scrollNow();
+
+  const r1 = requestAnimationFrame(scrollNow);
+  const t1 = window.setTimeout(scrollNow, 50);
+  const t2 = window.setTimeout(scrollNow, 150);
+  const t3 = window.setTimeout(scrollNow, 350);
+
+  return () => {
+    cancelAnimationFrame(r1);
+    window.clearTimeout(t1);
+    window.clearTimeout(t2);
+    window.clearTimeout(t3);
+  };
+}, [activeTab]);
+
+
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
     if (isDemoMode) {
@@ -4899,6 +4919,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const tabTopRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
     left: number;
     width: number;
@@ -7622,6 +7643,49 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     window.history.replaceState(null, "", nextUrl);
   };
 
+
+const scrollFinancePageToTop = () => {
+  if (typeof window === "undefined") return;
+
+  const target = tabTopRef.current || layoutRef.current;
+
+  const scrollParents: HTMLElement[] = [];
+
+  let parent = target?.parentElement || null;
+
+  while (parent) {
+    const style = window.getComputedStyle(parent);
+    const overflowY = style.overflowY;
+
+    const canScroll =
+      (overflowY === "auto" || overflowY === "scroll") &&
+      parent.scrollHeight > parent.clientHeight;
+
+    if (canScroll) {
+      scrollParents.push(parent);
+    }
+
+    parent = parent.parentElement;
+  }
+
+  // window/body scroll reset
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: "auto",
+  });
+
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  // any custom scroll container reset
+  scrollParents.forEach((el) => {
+    el.scrollTop = 0;
+  });
+};
+
+
+
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
   };
@@ -7630,6 +7694,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
+      <div ref={tabTopRef} />
       <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
         <div className="flex flex-col leading-tight w-full md:w-auto ">
           <div className="flex items-baseline gap-2">
@@ -7684,26 +7749,28 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         <SegmentedToggle<DashboardTab>
           value={activeTab}
           options={TAB_OPTIONS}
-          onChange={(t) => {
-            if (tabsDisabled?.[t]) return;
+         onChange={(t) => {
+  if (tabsDisabled?.[t]) return;
 
-            setActiveTab(t);
+  shouldScrollTabTopRef.current = true;
 
-            if (t === "skuwiseProfit" && range === "monthly") {
-              setRange("yearly");
-              setSelectedMonth("");
-              setSelectedQuarter("");
-              setUploadsData({
-                summary: zeroData,
-                summaryComparisons: zeroComparisons,
-              });
-              setSkuRows([]);
-              setSkuNoDataFound(false);
-              setSkuRowsError(null);
-            }
+  setActiveTab(t);
 
-            syncTabToHash(t);
-          }}
+  if (t === "skuwiseProfit" && range === "monthly") {
+    setRange("yearly");
+    setSelectedMonth("");
+    setSelectedQuarter("");
+    setUploadsData({
+      summary: zeroData,
+      summaryComparisons: zeroComparisons,
+    });
+    setSkuRows([]);
+    setSkuNoDataFound(false);
+    setSkuRowsError(null);
+  }
+
+  syncTabToHash(t);
+}}
           className="w-full"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
           compact
