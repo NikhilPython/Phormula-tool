@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useMemo } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import "@/lib/chartSetup";
 import {
   Chart as ChartJS,
@@ -16,30 +16,26 @@ import { Bar } from "react-chartjs-2";
 
 const hoverPopPlugin = {
   id: "hoverPopPlugin",
-
   afterDatasetsDraw(chart: any) {
     const active = chart.getActiveElements?.() || [];
     if (!active.length) return;
 
     const { datasetIndex, index } = active[0];
-
     const meta = chart.getDatasetMeta(datasetIndex);
     const bar = meta?.data?.[index];
-
     if (!bar) return;
 
     const ctx = chart.ctx;
-    const props = bar.getProps(["x", "y", "base", "width"], true);
 
+    const props = bar.getProps(["x", "y", "base", "width"], true);
     const x = props.x;
     const y = props.y;
     const base = props.base;
     const w = props.width;
 
-    if (!w) return;
-
-    const popW = w * 1.08;
+    const popW = w * 1.18;
     const left = x - popW / 2;
+
     const top = Math.min(y, base);
     const height = Math.abs(base - y);
 
@@ -74,6 +70,7 @@ type SimpleBarChartProps = {
   values: number[];
   prevValues?: number[];
   colors?: string[];
+  prevColors?: string[];
   currentLabel?: string;
   prevLabel?: string;
   xTitle?: string;
@@ -86,6 +83,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   values,
   prevValues = [],
   colors = [],
+  prevColors = [],
   currentLabel = "MTD",
   prevLabel = "Last month till date",
   xTitle,
@@ -96,18 +94,45 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   const [isSmallScreen, setIsSmallScreen] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1280px)");
+    const mq = window.matchMedia("(max-width: 1280px)") as MediaQueryList & {
+      addListener?: (
+        callback: (e: MediaQueryListEvent | MediaQueryList) => void
+      ) => void;
+      removeListener?: (
+        callback: (e: MediaQueryListEvent | MediaQueryList) => void
+      ) => void;
+    };
 
-    const onChange = (e: MediaQueryListEvent) => {
+    const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
       setIsSmallScreen(e.matches);
     };
 
     setIsSmallScreen(mq.matches);
 
-    mq.addEventListener("change", onChange);
+    if ("addEventListener" in mq) {
+      mq.addEventListener("change", onChange as any);
+    } else {
+      (
+        mq as MediaQueryList & {
+          addListener: (
+            callback: (e: MediaQueryListEvent | MediaQueryList) => void
+          ) => void;
+        }
+      ).addListener?.(onChange as any);
+    }
 
     return () => {
-      mq.removeEventListener("change", onChange);
+      if ("removeEventListener" in mq) {
+        mq.removeEventListener("change", onChange as any);
+      } else {
+        (
+          mq as MediaQueryList & {
+            removeListener: (
+              callback: (e: MediaQueryListEvent | MediaQueryList) => void
+            ) => void;
+          }
+        ).removeListener?.(onChange as any);
+      }
     };
   }, []);
 
@@ -116,56 +141,37 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
     Array.isArray(prevValues) &&
     prevValues.length === labels.length;
 
-  const currentColors = useMemo(() => {
-    return labels.map((_, index) => colors?.[index] ?? "#75BBDA");
-  }, [labels, colors]);
+  const currentColors = colors.length ? colors : "#75BBDA";
+  const previousColors =
+    prevColors.length === labels.length ? prevColors : "#D9D9D9";
 
-  const legendCurrentColor = "#414042";
-const legendPreviousColor = "#D9E2EA";
-
- const previousColors = useMemo(() => {
-  return labels.map(() => legendPreviousColor);
-}, [labels]);
-
-  const maxValue = useMemo(() => {
-    const allValues = [
-      ...(values || []),
-      ...(hasPrev ? prevValues || [] : []),
-    ].map((v) => Math.abs(Number(v || 0)));
-
-    const max = Math.max(...allValues, 0);
-
-    return max > 0 ? max * 1.18 : undefined;
-  }, [values, prevValues, hasPrev]);
-
-  const data = {
-    labels,
-    datasets: [
-      ...(hasPrev
-        ? [
-            {
-              label: prevLabel,
-              data: prevValues,
-              backgroundColor: previousColors,
-              borderRadius: 5,
-              borderWidth: 0,
-              barPercentage: 0.82,
-              categoryPercentage: 0.72,
-            },
-          ]
-        : []),
-
-      {
-        label: currentLabel,
-        data: values,
-        backgroundColor: currentColors,
-        borderRadius: 5,
-        borderWidth: 0,
-        barPercentage: hasPrev ? 0.82 : 0.9,
-        categoryPercentage: 0.72,
-      },
-    ],
-  };
+ const data = {
+  labels,
+  datasets: [
+    ...(hasPrev
+      ? [
+          {
+            label: prevLabel,
+            data: prevValues,
+            backgroundColor: previousColors,
+            borderRadius: 4,
+            borderWidth: 0,
+            barPercentage: 0.9,
+            categoryPercentage: 0.7,
+          },
+        ]
+      : []),
+    {
+      label: currentLabel,
+      data: values,
+      backgroundColor: currentColors,
+      borderRadius: 4,
+      borderWidth: 0,
+      barPercentage: 0.9,
+      categoryPercentage: 0.7,
+    },
+  ],
+};
 
   const shortLabel = (s: string) => {
     const map: Record<string, string> = {
@@ -179,7 +185,6 @@ const legendPreviousColor = "#D9E2EA";
       "Other Charges": "Other",
       Others: "Other",
     };
-
     return map[s] ?? s;
   };
 
@@ -205,75 +210,55 @@ const legendPreviousColor = "#D9E2EA";
       },
     },
 
-    plugins: {
-      legend: {
-  display: hasPrev,
-  position: "top",
-  labels: {
-    padding: 18,
-    generateLabels: () => {
-      return [
-        {
-          text: prevLabel,
-          fillStyle: legendPreviousColor,
-          strokeStyle: legendPreviousColor,
-          lineWidth: 0,
-          hidden: false,
-          datasetIndex: 0,
-        },
-        {
-          text: currentLabel,
-          fillStyle: legendCurrentColor,
-          strokeStyle: legendCurrentColor,
-          lineWidth: 0,
-          hidden: false,
-          datasetIndex: 1,
-        },
-      ];
+   plugins: {
+  legend: {
+    display: hasPrev,
+    position: "top",
+    labels: {
+      padding: 18,
+      usePointStyle: true,
+      pointStyle: "rectRounded",
+      boxWidth: 12,
+      boxHeight: 12,
+      generateLabels: (chart) => {
+        const datasets = chart.data.datasets || [];
+
+        return datasets.map((dataset: any, index) => {
+          const bg = dataset.backgroundColor;
+          const color = Array.isArray(bg) ? bg[0] : bg;
+
+          return {
+            text: dataset.label,
+            fillStyle: color,
+            strokeStyle: color,
+            lineWidth: 0,
+            hidden: !chart.isDatasetVisible(index),
+            datasetIndex: index,
+            pointStyle: "rectRounded",
+          };
+        });
+      },
     },
   },
-},
+  tooltip: {
+    mode: "index",
+    intersect: false,
+    callbacks: {
+      label: (context) => {
+        const v = Number(context.raw ?? 0);
+        const dsLabel = context.dataset.label || "";
+        const prefix = yTitle
+          ? `${dsLabel} - ${yTitle}`
+          : dsLabel || "Value";
 
-      tooltip: {
-        mode: "index",
-        intersect: false,
-        callbacks: {
-          title: (items) => {
-            const index = items?.[0]?.dataIndex ?? 0;
-            return labels[index] || "";
-          },
-
-          label: (context) => {
-            const index = context.dataIndex;
-            const value = Number(context.raw ?? 0);
-            const datasetLabel = context.dataset.label || "";
-
-            return `${datasetLabel}: ${value.toLocaleString()}`;
-          },
-
-          afterBody: (items) => {
-            if (!hasPrev || !items.length) return [];
-
-            const index = items[0].dataIndex;
-            const current = Number(values[index] ?? 0);
-            const previous = Number(prevValues[index] ?? 0);
-            const diff = current - previous;
-
-            const diffPct = previous
-              ? (diff / Math.abs(previous)) * 100
-              : 0;
-
-            return [
-              `Change: ${diff >= 0 ? "+" : ""}${diff.toLocaleString()} (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(2)}%)`,
-            ];
-          },
-        },
-      },
-
-      title: {
-        display: false,
+        return `${prefix}: ${v.toLocaleString()}`;
       },
     },
+  },
+  title: {
+    display: false,
+  },
+},
 
     scales: {
       x: {
@@ -299,11 +284,9 @@ const legendPreviousColor = "#D9E2EA";
 
               if (finalLabel.length > 8) {
                 const parts = finalLabel.split(" ");
-
                 if (parts.length >= 2) {
                   return [parts[0], parts.slice(1).join(" ")];
                 }
-
                 return [finalLabel.slice(0, 8), finalLabel.slice(8)];
               }
 
@@ -314,7 +297,6 @@ const legendPreviousColor = "#D9E2EA";
 
             if (parts.length >= 2) {
               const mid = Math.ceil(parts.length / 2);
-
               return [
                 parts.slice(0, mid).join(" "),
                 parts.slice(mid).join(" "),
@@ -325,10 +307,8 @@ const legendPreviousColor = "#D9E2EA";
           },
         },
       },
-
       y: {
         beginAtZero: true,
-        suggestedMax: maxValue,
         grid: {
           display: true,
           drawOnChartArea: true,
@@ -350,9 +330,7 @@ const legendPreviousColor = "#D9E2EA";
   return (
     <div className="relative w-full h-full">
       <Bar
-        key={`${isSmallScreen ? "small" : "large"}-${
-          hasPrev ? "grouped-prev-current" : "current-only"
-        }`}
+        key={isSmallScreen ? "small" : "large"}
         ref={chartRef}
         data={data}
         options={options}
