@@ -2250,6 +2250,13 @@ const buildInventoryInsightsFromResponses = (
                 unsellableUnits,
 
                 unitsSold: getCurrentMonthUnitsSold(row),
+                salesRank:
+        row?.["sales-rank"] ??
+        row?.sales_rank ??
+        row?.salesRank ??
+        row?.["Sales Rank"] ??
+        row?.["sales rank"] ??
+        "",
                 salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
                 inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),

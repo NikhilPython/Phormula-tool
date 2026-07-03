@@ -24,6 +24,7 @@ export type AgeingRiskHeatmapRow = {
     inboundUnits?: number;
     unsellableUnits?: number;
     unitsSold?: number;
+     salesRank?: number | string;
 
     // ✅ For Others coverage ratio
     salesLast30Days?: number;
@@ -121,6 +122,7 @@ const buildAggregateRow = (
         (sum, row) => sum + Number(row.unsellableUnits || 0),
         0
     );
+    aggregate.salesRank = "";
 
     aggregate.unitsSold = rows.reduce(
         (sum, row) => sum + Number(row.unitsSold || 0),
@@ -486,6 +488,40 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 },
             },
+            {
+    key: "salesRank",
+    header: "Sales Rank",
+    width: "85px",
+    headerClassName: heatmapHeaderClassName,
+    cellClassName:
+        "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+    render: (row) => {
+        if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+            return <span></span>;
+        }
+
+        const salesRank = row.salesRank;
+
+        if (
+            salesRank === null ||
+            salesRank === undefined ||
+            salesRank === "" ||
+            String(salesRank).toLowerCase() === "nan"
+        ) {
+            return <span>-</span>;
+        }
+
+        const rankNumber = Number(String(salesRank).replace(/,/g, ""));
+
+        return (
+            <span>
+                {Number.isFinite(rankNumber)
+                    ? rankNumber.toLocaleString()
+                    : String(salesRank)}
+            </span>
+        );
+    },
+},
             {
                 key: "unsellableUnits",
                 header: "Unfulfillable Units",

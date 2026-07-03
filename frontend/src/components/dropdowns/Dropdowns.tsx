@@ -3836,6 +3836,13 @@ const buildInventoryInsightsFromResponses = (
         unitsSold: currentMonthUnitsSoldKey
           ? toNum(row?.[currentMonthUnitsSoldKey])
           : 0,
+          salesRank:
+    row?.["sales-rank"] ??
+    row?.sales_rank ??
+    row?.salesRank ??
+    row?.["Sales Rank"] ??
+    row?.["sales rank"] ??
+    "",
 
         salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
@@ -9080,6 +9087,7 @@ const scrollFinancePageToTop = () => {
                     trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
                     actions={inventoryInsightsData.actions}
                     actionLogic={inventoryInsightsData.actionLogic}
+                    onHeatmapProductClick={handleHeatmapProductClick}
                     showInventoryAlerts={true}
                     heatmapExcelCountryLabel={
                       isGlobalPage
