@@ -24,7 +24,7 @@ export type AgeingRiskHeatmapRow = {
     inboundUnits?: number;
     unsellableUnits?: number;
     unitsSold?: number;
-     salesRank?: number | string;
+    salesRank?: number | string;
 
     // ✅ For Others coverage ratio
     salesLast30Days?: number;
@@ -81,6 +81,27 @@ const getHeatColor = (
     const b = parseInt(hex.substring(4, 6), 16);
 
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+const getHeatmapColorBaseTotal = (
+    row: AgeingRiskHeatmapRow,
+    buckets: AgeingBucket[]
+) => {
+    const bucketTotal = buckets.reduce(
+        (sum, bucket) => sum + Number(row[bucket.key] || 0),
+        0
+    );
+
+    const available = Number(row.available ?? 0);
+    const totalUnits = Number(row.totalUnits ?? 0);
+
+    // For current month, available is fine.
+    // For history months, available/totalUnits can be 0,
+    // so use bucketTotal to keep heatmap colors working.
+    if (available > 0) return available;
+    if (totalUnits > 0) return totalUnits;
+
+    return bucketTotal;
 };
 
 const buildAggregateRow = (
@@ -289,6 +310,22 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
     }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
 
+
+    const bucketMaxValues = useMemo(() => {
+        const maxMap: Record<string, number> = {};
+
+        buckets.forEach((bucket) => {
+            maxMap[bucket.key] = Math.max(
+                ...displayRows
+                    .filter((row) => !row.isPercentageRow && !row.isTotalRow)
+                    .map((row) => Number(row[bucket.key] || 0)),
+                0
+            );
+        });
+
+        return maxMap;
+    }, [buckets, displayRows]);
+
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
@@ -301,13 +338,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             cellClassName:
                 "relative !p-0 overflow-hidden text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
             render: (row) => {
-                const calculatedTotal = buckets.reduce(
-                    (sum, b) => sum + Number(row[b.key] || 0),
-                    0
-                );
-
-                const totalUnits = Number(row.available ?? row.totalUnits ?? calculatedTotal);
                 const value = Number(row[bucket.key] || 0);
+
+                const colorBaseTotal =
+                    row.isTotalRow
+                        ? getHeatmapColorBaseTotal(row, buckets)
+                        : bucketMaxValues[bucket.key] || value;
 
                 if (row.isPercentageRow) {
                     const displayValue =
@@ -338,7 +374,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 }
 
-                const percentage = totalUnits ? (value / totalUnits) * 100 : 0;
+                const percentage = colorBaseTotal ? (value / colorBaseTotal) * 100 : 0;
 
                 return (
                     <div
@@ -350,7 +386,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             backgroundColor:
                                 row.isTotalRow && value === 0
                                     ? "#EFEFEF"
-                                    : getHeatColor(bucket.color, value, totalUnits),
+                                    : getHeatColor(bucket.color, value, colorBaseTotal),
                         }}
                     >
                         {value === 0 ? "-" : value.toLocaleString()}
@@ -479,39 +515,39 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 },
             },
             {
-    key: "salesRank",
-    header: "Sales Rank",
-    width: "85px",
-    headerClassName: heatmapHeaderClassName,
-    cellClassName:
-        "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    render: (row) => {
-        if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
-            return <span></span>;
-        }
+                key: "salesRank",
+                header: "Sales Rank",
+                width: "85px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+                        return <span></span>;
+                    }
 
-        const salesRank = row.salesRank;
+                    const salesRank = row.salesRank;
 
-        if (
-            salesRank === null ||
-            salesRank === undefined ||
-            salesRank === "" ||
-            String(salesRank).toLowerCase() === "nan"
-        ) {
-            return <span>-</span>;
-        }
+                    if (
+                        salesRank === null ||
+                        salesRank === undefined ||
+                        salesRank === "" ||
+                        String(salesRank).toLowerCase() === "nan"
+                    ) {
+                        return <span>-</span>;
+                    }
 
-        const rankNumber = Number(String(salesRank).replace(/,/g, ""));
+                    const rankNumber = Number(String(salesRank).replace(/,/g, ""));
 
-        return (
-            <span>
-                {Number.isFinite(rankNumber)
-                    ? rankNumber.toLocaleString()
-                    : String(salesRank)}
-            </span>
-        );
-    },
-},
+                    return (
+                        <span>
+                            {Number.isFinite(rankNumber)
+                                ? rankNumber.toLocaleString()
+                                : String(salesRank)}
+                        </span>
+                    );
+                },
+            },
             {
                 key: "unsellableUnits",
                 header: "Unfulfillable Units",
