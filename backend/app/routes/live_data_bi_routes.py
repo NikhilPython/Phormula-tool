@@ -4486,13 +4486,9 @@ def live_mtd_vs_previous():
             currency_symbol=currency["symbol"],
         )    
 
-        # =========================================================
-        # ✅ Attach frontend-only inventory fields to categorized_growth
-        # Source: frontend_all_action_rows from build_ai_summary()
-        # This does NOT call AI and does NOT change AI payload.
-        # =========================================================
 
-                # =========================================================
+
+        # =========================================================
         # ✅ Attach frontend-only inventory + Ads/CM2 fields to categorized_growth
         # Source: frontend_all_action_rows from build_ai_summary()
         # This does NOT call AI and does NOT change AI payload.
@@ -4506,14 +4502,17 @@ def live_mtd_vs_previous():
             if not sku:
                 continue
 
+            # ✅ Normalize SKU key so UK/US SKU case/spacing mismatch does not break CM2 lookup
+            sku_key = sku.upper()
+
             # Used only for inventory fields
-            frontend_inventory_by_sku[sku] = {
+            frontend_inventory_by_sku[sku_key] = {
                 "current_inventory": row.get("current_inventory", 0.0),
                 "coverage_ratio_months": row.get("coverage_ratio_months", 0.0),
             }
 
             # Used for Ads / CM2 fields
-            frontend_enriched_by_sku[sku] = row
+            frontend_enriched_by_sku[sku_key] = row
 
         def _attach_inventory_to_categorized_row(row):
             if not isinstance(row, dict):
@@ -4523,8 +4522,11 @@ def live_mtd_vs_previous():
 
             sku = str(row.get("sku") or "").strip()
 
-            inv = frontend_inventory_by_sku.get(sku, {})
-            enriched = frontend_enriched_by_sku.get(sku, {})
+            # ✅ Use same normalized key used while creating frontend_enriched_by_sku
+            sku_key = sku.upper()
+
+            inv = frontend_inventory_by_sku.get(sku_key, {})
+            enriched = frontend_enriched_by_sku.get(sku_key, {})
 
             # Inventory fields
             row["current_inventory"] = inv.get(
