@@ -12168,7 +12168,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
     const buildDrawerMetricsForPnlRow = useCallback(
         (pnlRow: MonthlySkuwiseTableRow, liveRow?: any): MetricItem[] => {
-            const source = liveRow || pnlRow;
+            const source = {
+                ...(pnlRow || {}),
+                ...(liveRow || {}),
+            };
 
             const units =
                 Number(
@@ -12208,6 +12211,30 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     0
                 ) || 0;
 
+            const cm2Profit =
+                Number(
+                    source?.cm2_profit_curr ??
+                    source?.total_cm2_profit ??
+                    source?.cm2_profit_total ??
+                    source?.cm2_profit ??
+                    0
+                ) || 0;
+
+            const cm2ProfitPerUnit =
+                Number(
+                    source?.cm2_profit_per_unit_curr ??
+                    source?.cm2_profit_per_unit ??
+                    source?.cm2_profit_per ??
+                    source?.cm2_profit_unit ??
+                    0
+                ) || (units > 0 ? cm2Profit / units : 0);
+
+            const hasCm2 =
+                source?.cm2_profit_curr !== undefined ||
+                source?.total_cm2_profit !== undefined ||
+                source?.cm2_profit_total !== undefined ||
+                source?.cm2_profit !== undefined;
+
             const unitGrowth = getDrawerGrowth(source, "Unit Growth", "Unit Growth (%)");
             const salesGrowth = getDrawerGrowth(
                 source,
@@ -12216,16 +12243,42 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 "Net Sales Growth (%)"
             );
             const aspGrowth = getDrawerGrowth(source, "ASP Growth", "ASP Growth (%)");
-            const profitGrowth = getDrawerGrowth(
+            const cm1ProfitGrowth = getDrawerGrowth(
                 source,
                 "CM1 Profit Impact",
                 "CM1 Profit Impact (%)"
             );
-            const profitPerUnitGrowth = getDrawerGrowth(
+
+            const cm1ProfitPerUnitGrowth = getDrawerGrowth(
                 source,
                 "Profit Per Unit",
                 "Profit Per Unit (%)"
             );
+
+            const cm2ProfitPrev = Number(
+                source?.cm2_profit_prev ??
+                source?.previous_cm2_profit ??
+                0
+            ) || 0;
+
+            const cm2ProfitPerUnitPrev = Number(
+                source?.cm2_profit_per_unit_prev ??
+                0
+            ) || 0;
+
+            const cm2ProfitGrowth =
+                source?.cm2_profit_growth_pct !== undefined
+                    ? Number(source.cm2_profit_growth_pct)
+                    : cm2ProfitPrev
+                        ? ((cm2Profit - cm2ProfitPrev) / Math.abs(cm2ProfitPrev)) * 100
+                        : 0;
+
+            const cm2ProfitPerUnitGrowth =
+                source?.cm2_profit_per_unit_growth_pct !== undefined
+                    ? Number(source.cm2_profit_per_unit_growth_pct)
+                    : cm2ProfitPerUnitPrev
+                        ? ((cm2ProfitPerUnit - cm2ProfitPerUnitPrev) / Math.abs(cm2ProfitPerUnitPrev)) * 100
+                        : 0;
 
             const valueCurrency: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency;
 
@@ -12251,27 +12304,53 @@ Keep enough stock for validation but avoid over-committing too early.`,
                     value: formatDrawerMetricValue(asp, aspGrowth, "money", valueCurrency),
                     color: aspGrowth < 0 ? "#FF5C5C" : "#5EA68E",
                 },
-                {
-                    label: "CM1 profit",
-                    value: formatDrawerMetricValue(
-                        cm1Profit,
-                        profitGrowth,
-                        "money",
-                        valueCurrency,
-                        true
-                    ),
-                    color: profitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-                },
-                {
-                    label: "CM1 profit per unit",
-                    value: formatDrawerMetricValue(
-                        cm1ProfitPerUnit,
-                        profitPerUnitGrowth,
-                        "money",
-                        valueCurrency
-                    ),
-                    color: profitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-                },
+                ...(hasCm2
+    ? [
+        {
+            label: "CM2 profit",
+            value: formatDrawerMetricValue(
+                cm2Profit,
+                cm2ProfitGrowth,
+                "money",
+                valueCurrency,
+                true
+            ),
+            color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+        },
+        {
+            label: "CM2 profit per unit",
+            value: formatDrawerMetricValue(
+                cm2ProfitPerUnit,
+                cm2ProfitPerUnitGrowth,
+                "money",
+                valueCurrency
+            ),
+            color: cm2ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+        },
+    ]
+    : [
+        {
+            label: "CM1 profit",
+            value: formatDrawerMetricValue(
+                cm1Profit,
+                cm1ProfitGrowth,
+                "money",
+                valueCurrency,
+                true
+            ),
+            color: cm1ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+        },
+        {
+            label: "CM1 profit per unit",
+            value: formatDrawerMetricValue(
+                cm1ProfitPerUnit,
+                cm1ProfitPerUnitGrowth,
+                "money",
+                valueCurrency
+            ),
+            color: cm1ProfitPerUnitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+        },
+    ]),
                 ...buildPnlDrawerInventoryMetrics(source),
             ];
         },

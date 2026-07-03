@@ -577,17 +577,23 @@ const hasCm2ProfitData = (row: any) => {
 const formatMetricValueWithGrowth = (
   actualValue: number,
   growthValue: number,
-  type: "money" | "number" = "money"
+  type: "money" | "number" = "money",
+  noDecimals: boolean = false
 ) => {
   const sign = growthValue > 0 ? "+" : "";
   const growthText = `${sign}${growthValue.toFixed(2)}%`;
 
+  const convertedValue = convertToDisplayCurrency(
+    Number(actualValue || 0),
+    sourceCurrency
+  );
+
   const mainValue =
     type === "number"
       ? Number(actualValue || 0).toLocaleString()
-      : formatDisplayAmount(
-          convertToDisplayCurrency(Number(actualValue || 0), sourceCurrency)
-        );
+      : noDecimals
+        ? formatDisplayAmountNoDecimals(convertedValue)
+        : formatDisplayAmount(convertedValue);
 
   return `${mainValue} (${growthText})`;
 };
@@ -612,15 +618,16 @@ const buildProfitMetricCards = (
     );
 
     return [
-      {
-        label: "CM2 profit",
-        value: formatMetricValueWithGrowth(
-          cm2ProfitCurr,
-          cm2ProfitGrowth,
-          "money"
-        ),
-        color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
-      },
+     {
+  label: "CM2 profit",
+  value: formatMetricValueWithGrowth(
+    cm2ProfitCurr,
+    cm2ProfitGrowth,
+    "money",
+    true
+  ),
+  color: cm2ProfitGrowth < 0 ? "#FF5C5C" : "#5EA68E",
+},
       {
         label: "CM2 profit per unit",
         value: formatMetricValueWithGrowth(
@@ -3638,9 +3645,11 @@ return {
     const main =
       type === "number"
         ? Number(value || 0).toLocaleString()
-        : normalizedLabel === "net sales" || normalizedLabel === "cm1 profit"
-          ? formatDisplayAmountNoDecimals(Number(value || 0))
-          : formatDisplayAmount(Number(value || 0));
+        : normalizedLabel === "net sales" ||
+  normalizedLabel === "cm1 profit" ||
+  normalizedLabel === "cm2 profit"
+  ? formatDisplayAmountNoDecimals(Number(value || 0))
+  : formatDisplayAmount(Number(value || 0));
 
     return `${main} ${formatGrowth(growth)}`;
   };

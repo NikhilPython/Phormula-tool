@@ -1577,6 +1577,28 @@ const getInventoryRowSalesLast30Days = (row: InventoryCurrentRow) => {
   ]);
 };
 
+const getInventoryRowSalesRank = (row: InventoryCurrentRow) => {
+  const directValue =
+    row?.["sales-rank"] ??
+    row?.sales_rank ??
+    row?.salesRank ??
+    row?.["Sales Rank"] ??
+    row?.["sales rank"] ??
+    row?.rank ??
+    "";
+
+  if (
+    directValue === null ||
+    directValue === undefined ||
+    String(directValue).trim() === "" ||
+    String(directValue).trim().toLowerCase() === "nan"
+  ) {
+    return "";
+  }
+
+  return directValue;
+};
+
 const getInventoryRowEstimatedStorageCost = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
     // actual backend key used by dropdown/dashboard
@@ -1920,6 +1942,7 @@ const buildInventoryInsightsFromResponses = (
         unsellableUnits: getInventoryRowUnfulfillableUnits(row),
         unitsSold,
         salesLast30Days,
+        salesRank: getInventoryRowSalesRank(row),
 
         coverageRatio: getInventoryRowCoverageRatio(row),
         estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
@@ -1934,7 +1957,8 @@ const buildInventoryInsightsFromResponses = (
         toNum((row as any).coverageRatio) > 0 ||
         toNum((row as any).estimatedStorageCost) > 0 ||
         toNum((row as any).unitsSold) > 0 ||
-        toNum((row as any).salesLast30Days) > 0
+        toNum((row as any).salesLast30Days) > 0 ||
+        String((row as any).salesRank || "").trim() !== ""
     );
 
   const overallAgeing = heatmapData.reduce(

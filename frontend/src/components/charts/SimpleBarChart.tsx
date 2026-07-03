@@ -212,34 +212,8 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
    plugins: {
   legend: {
-    display: hasPrev,
-    position: "top",
-    labels: {
-      padding: 18,
-      usePointStyle: true,
-      pointStyle: "rectRounded",
-      boxWidth: 12,
-      boxHeight: 12,
-      generateLabels: (chart) => {
-        const datasets = chart.data.datasets || [];
-
-        return datasets.map((dataset: any, index) => {
-          const bg = dataset.backgroundColor;
-          const color = Array.isArray(bg) ? bg[0] : bg;
-
-          return {
-            text: dataset.label,
-            fillStyle: color,
-            strokeStyle: color,
-            lineWidth: 0,
-            hidden: !chart.isDatasetVisible(index),
-            datasetIndex: index,
-            pointStyle: "rectRounded",
-          };
-        });
-      },
-    },
-  },
+  display: false,
+},
   tooltip: {
     mode: "index",
     intersect: false,
