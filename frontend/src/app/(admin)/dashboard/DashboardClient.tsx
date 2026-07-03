@@ -2250,6 +2250,13 @@ const buildInventoryInsightsFromResponses = (
                 unsellableUnits,
 
                 unitsSold: getCurrentMonthUnitsSold(row),
+                salesRank:
+        row?.["sales-rank"] ??
+        row?.sales_rank ??
+        row?.salesRank ??
+        row?.["Sales Rank"] ??
+        row?.["sales rank"] ??
+        "",
                 salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
                 inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
@@ -2874,6 +2881,9 @@ export default function DashboardPage() {
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
+    const pageTopRef = useRef<HTMLDivElement | null>(null);
+const tabTopRef = useRef<HTMLDivElement | null>(null);
+const shouldScrollTabTopRef = useRef(false);
 
     const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
         useState<string>("365+ days");
@@ -3712,25 +3722,10 @@ export default function DashboardPage() {
     ]);
 
     useEffect(() => {
-        if (activeTab !== "live") return;
-        if (!pendingHash) return;
+    if (!pendingHash) return;
 
-        const run = () => {
-            const targetId = pendingHash.replace("#", "");
-            const el = document.getElementById(targetId);
-
-            if (el) {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-                setPendingHash("");
-            }
-        };
-
-        const timer = setTimeout(run, 250);
-        return () => clearTimeout(timer);
-    }, [activeTab, pendingHash]);
+    setPendingHash("");
+}, [pendingHash]);
 
     useEffect(() => {
         if (activeTab === "summary") {
@@ -10166,22 +10161,6 @@ export default function DashboardPage() {
         };
     }, [handleHashNavigation]);
 
-    useEffect(() => {
-        if (!pendingHash) return;
-
-        const timer = setTimeout(() => {
-            const el = document.getElementById(pendingHash);
-            if (el) {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-            }
-            setPendingHash("");
-        }, 250);
-
-        return () => clearTimeout(timer);
-    }, [activeTab, pendingHash]);
 
     const dummyStatData = {
         units: { current: 0, previous: 0, deltaPct: 0 },
@@ -10795,6 +10774,68 @@ Keep enough stock for validation but avoid over-committing too early.`,
         // Only update URL. Do not trigger scroll on manual tab switch.
         window.history.replaceState(null, "", nextUrl);
     }, []);
+
+    const scrollDashboardPageToTop = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const target = tabTopRef.current || pageTopRef.current;
+
+    const scrollParents: HTMLElement[] = [];
+
+    let parent = target?.parentElement || null;
+
+    while (parent) {
+        const style = window.getComputedStyle(parent);
+        const overflowY = style.overflowY;
+
+        const canScroll =
+            (overflowY === "auto" || overflowY === "scroll") &&
+            parent.scrollHeight > parent.clientHeight;
+
+        if (canScroll) {
+            scrollParents.push(parent);
+        }
+
+        parent = parent.parentElement;
+    }
+
+    window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "auto",
+    });
+
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    scrollParents.forEach((el) => {
+        el.scrollTop = 0;
+    });
+}, []);
+
+useEffect(() => {
+    if (!shouldScrollTabTopRef.current) return;
+
+    shouldScrollTabTopRef.current = false;
+
+    const scrollNow = () => {
+        scrollDashboardPageToTop();
+    };
+
+    scrollNow();
+
+    const r1 = requestAnimationFrame(scrollNow);
+    const t1 = window.setTimeout(scrollNow, 50);
+    const t2 = window.setTimeout(scrollNow, 150);
+    const t3 = window.setTimeout(scrollNow, 350);
+
+    return () => {
+        cancelAnimationFrame(r1);
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+        window.clearTimeout(t3);
+    };
+}, [activeTab, scrollDashboardPageToTop]);
 
     const isStickyGlobal = platform === "global";
 
@@ -13119,7 +13160,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
         MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT * MTD_PRODUCTWISE_SUMMARY_ROW_COUNT;
 
     return (
-        <div className="relative w-full">
+        <div ref={pageTopRef} className="relative w-full">
+        <div ref={tabTopRef} />
             <Toaster
                 position="top-right"
                 richColors
@@ -13214,10 +13256,12 @@ ${pageLoading
                 <SegmentedToggle<TopTab>
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                    onChange={(tab) => {
-                        setActiveTab(tab);
-                        syncTabToHash(tab);
-                    }}
+                   onChange={(tab) => {
+    shouldScrollTabTopRef.current = true;
+
+    setActiveTab(tab);
+    syncTabToHash(tab);
+}}
                     className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"

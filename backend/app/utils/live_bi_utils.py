@@ -3370,6 +3370,129 @@ def run_inventory_ai_summary(inventory_summary: dict) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
+# def fetch_skuwisemonthly_ads_cm2_by_month(
+#     user_id: int,
+#     country: str,
+#     year: int,
+#     month: int,
+# ) -> tuple[dict, dict]:
+#     """
+#     Reads skuwisemonthly table for a full month.
+
+#     Table format:
+#       skuwisemonthly_{user_id}_{country}_{month_name}_{year}
+
+#     Required columns:
+#       sku, product_name, cm2_profit
+
+#     Optional column:
+#       ads_spend
+
+#     Since this table has no date/time column, this always returns full-month values.
+#     """
+
+#     country = str(country or "uk").strip().lower()
+#     month = int(month)
+#     year = int(year)
+
+#     mn = month_name[month].lower()
+#     table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}{int(year)}"
+
+#     try:
+#         with engine_hist.connect() as conn:
+#             df = pd.read_sql(
+#                 text(f'SELECT * FROM "{table}"'),
+#                 conn,
+#             )
+#     except Exception as e:
+#         print(f"[WARN] Could not read CM2 from {table}: {e}")
+#         return {}, {
+#             "ads_spend": 0.0,
+#             "cm2_profit": 0.0,
+#             "source_table": table,
+#         }
+
+#     if df is None or df.empty or "sku" not in df.columns:
+#         return {}, {
+#             "ads_spend": 0.0,
+#             "cm2_profit": 0.0,
+#             "source_table": table,
+#         }
+
+#     df = df.copy()
+
+#     df["sku"] = df["sku"].astype(str).str.strip()
+#     df.loc[
+#         df["sku"].str.lower().isin(["", "none", "nan", "null"]),
+#         "sku"
+#     ] = None
+
+#     if "product_name" not in df.columns:
+#         df["product_name"] = None
+
+#     if "cm2_profit" not in df.columns:
+#         df["cm2_profit"] = 0.0
+#     else:
+#         df["cm2_profit"] = safe_num(df["cm2_profit"])
+
+#     if "ads_spend" not in df.columns:
+#         df["ads_spend"] = 0.0
+#     else:
+#         df["ads_spend"] = safe_num(df["ads_spend"])
+
+#     sku_lower = df["sku"].fillna("").astype(str).str.strip().str.lower()
+
+#     product_lower = (
+#         df["product_name"].fillna("").astype(str).str.strip().str.lower()
+#         if "product_name" in df.columns
+#         else pd.Series([""] * len(df), index=df.index)
+#     )
+
+#     total_mask = (
+#         sku_lower.isin(["total", "totals", "grand_total", "grand total"])
+#         | product_lower.isin(["total", "totals", "grand_total", "grand total"])
+#     )
+
+#     total_row = df[total_mask]
+
+#     if not total_row.empty:
+#         totals = {
+#             "ads_spend": float(safe_num(total_row["ads_spend"]).sum()),
+#             "cm2_profit": float(safe_num(total_row["cm2_profit"]).sum()),
+#             "source_table": table,
+#         }
+#     else:
+#         sku_only = df[
+#             df["sku"].notna()
+#             & ~df["sku"].str.lower().eq("total")
+#         ]
+
+#         totals = {
+#             "ads_spend": float(safe_num(sku_only["ads_spend"]).sum()),
+#             "cm2_profit": float(safe_num(sku_only["cm2_profit"]).sum()),
+#             "source_table": table,
+#         }
+
+#     sku_df = df[
+#         df["sku"].notna()
+#         & ~df["sku"].str.lower().eq("total")
+#     ]
+
+#     sku_map = {}
+
+#     for _, r in sku_df.iterrows():
+#         sku = str(r.get("sku") or "").strip()
+#         if not sku:
+#             continue
+
+#         sku_map[sku] = {
+#             "product_name": r.get("product_name"),
+#             "ads_spend": float(r.get("ads_spend") or 0.0),
+#             "cm2_profit": float(r.get("cm2_profit") or 0.0),
+#         }
+
+#     return sku_map, totals
+
 def fetch_skuwisemonthly_ads_cm2_by_month(
     user_id: int,
     country: str,
@@ -3379,8 +3502,12 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
     """
     Reads skuwisemonthly table for a full month.
 
-    Table format:
-      skuwisemonthly_{user_id}_{country}_{month_name}_{year}
+    Table lookup priority:
+      1. skuwisemonthly_{user_id}_{country}_{month_name}{year}
+         Example: skuwisemonthly_1_uk_july2026
+
+      2. skuwisemonthly_{user_id}_{country}_{month_name}_{year}
+         Example: skuwisemonthly_1_uk_july_2026
 
     Required columns:
       sku, product_name, cm2_profit
@@ -3396,21 +3523,44 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
     year = int(year)
 
     mn = month_name[month].lower()
-    table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}{int(year)}"
+
+    # First priority table
+    primary_table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}{int(year)}"
+
+    # Fallback table
+    fallback_table = f"skuwisemonthly_{int(user_id)}_{country}_{mn}_{int(year)}"
+
+    candidate_tables = [
+        primary_table,
+        fallback_table,
+    ]
+
+    df = None
+    table = None
 
     try:
         with engine_hist.connect() as conn:
-            df = pd.read_sql(
-                text(f'SELECT * FROM "{table}"'),
-                conn,
-            )
+            for table_name in candidate_tables:
+                exists = conn.execute(
+                    text("SELECT to_regclass(:table_name)"),
+                    {"table_name": f"public.{table_name}"},
+                ).scalar()
+
+                if not exists:
+                    print(f"[WARN] CM2 table not found: {table_name}")
+                    continue
+
+                df = pd.read_sql(
+                    text(f'SELECT * FROM "{table_name}"'),
+                    conn,
+                )
+
+                table = table_name
+                print(f"[INFO] CM2 table used: {table}")
+                break
+
     except Exception as e:
-        print(f"[WARN] Could not read CM2 from {table}: {e}")
-        return {}, {
-            "ads_spend": 0.0,
-            "cm2_profit": 0.0,
-            "source_table": table,
-        }
+        print(f"[WARN] Could not read CM2 tables {candidate_tables}: {e}")
 
     if df is None or df.empty or "sku" not in df.columns:
         return {}, {
@@ -3464,7 +3614,7 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
     else:
         sku_only = df[
             df["sku"].notna()
-            & ~df["sku"].str.lower().eq("total")
+            & ~df["sku"].str.lower().isin(["total", "totals", "grand_total", "grand total"])
         ]
 
         totals = {
@@ -3475,13 +3625,14 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
 
     sku_df = df[
         df["sku"].notna()
-        & ~df["sku"].str.lower().eq("total")
+        & ~df["sku"].str.lower().isin(["total", "totals", "grand_total", "grand total"])
     ]
 
     sku_map = {}
 
     for _, r in sku_df.iterrows():
         sku = str(r.get("sku") or "").strip()
+
         if not sku:
             continue
 
@@ -3492,6 +3643,7 @@ def fetch_skuwisemonthly_ads_cm2_by_month(
         }
 
     return sku_map, totals
+
 
 
 def fetch_skuwisemonthly_ads_cm2_current_month(
@@ -4092,6 +4244,23 @@ def build_ai_summary(
                 month=int(previous_month),
             )
 
+            # ✅ DEBUG: confirm tables and SKU keys
+            print("[BUILD AI CM2 DEBUG]", {
+                "country": resolved_country,
+                "current_year": current_year,
+                "current_month": current_month,
+                "previous_year": previous_year,
+                "previous_month": previous_month,
+                "current_table": curr_ads_monthly_totals.get("source_table"),
+                "previous_table": prev_ads_monthly_totals.get("source_table"),
+                "current_total_cm2": curr_ads_monthly_totals.get("cm2_profit"),
+                "previous_total_cm2": prev_ads_monthly_totals.get("cm2_profit"),
+                "current_sku_count": len(curr_ads_sku_map or {}),
+                "previous_sku_count": len(prev_ads_sku_map or {}),
+                "sample_current_skus": list((curr_ads_sku_map or {}).keys())[:10],
+                "sample_previous_skus": list((prev_ads_sku_map or {}).keys())[:10],
+            })
+
         except Exception as e:
             print("[WARN] Ads/CM2 enrichment failed:", e)
 
@@ -4115,14 +4284,29 @@ def build_ai_summary(
         if not sku:
             continue
 
-        curr_ads_data = curr_ads_sku_map.get(sku, {})
-        prev_ads_data = prev_ads_sku_map.get(sku, {})
+        # ✅ Normalize SKU key to match fetch_skuwisemonthly_ads_cm2_by_month()
+        sku_key = str(sku).strip().upper()
 
-        ads_spend_curr = float(curr_ads_data.get("ads_spend", 0.0))
-        cm2_profit_curr = float(curr_ads_data.get("cm2_profit", 0.0))
+        curr_ads_data = (curr_ads_sku_map or {}).get(sku_key, {})
+        prev_ads_data = (prev_ads_sku_map or {}).get(sku_key, {})
 
-        ads_spend_prev = float(prev_ads_data.get("ads_spend", 0.0))
-        cm2_profit_prev = float(prev_ads_data.get("cm2_profit", 0.0))
+        ads_spend_curr = float(curr_ads_data.get("ads_spend", 0.0) or 0.0)
+        cm2_profit_curr = float(curr_ads_data.get("cm2_profit", 0.0) or 0.0)
+
+        ads_spend_prev = float(prev_ads_data.get("ads_spend", 0.0) or 0.0)
+        cm2_profit_prev = float(prev_ads_data.get("cm2_profit", 0.0) or 0.0)
+
+        # ✅ DEBUG only when previous CM2 is missing
+        if cm2_profit_prev == 0:
+            print("[CM2 SKU MISSING PREV DEBUG]", {
+                "sku": sku,
+                "sku_key": sku_key,
+                "current_found": bool(curr_ads_data),
+                "previous_found": bool(prev_ads_data),
+                "current_cm2": cm2_profit_curr,
+                "previous_cm2": cm2_profit_prev,
+                "available_previous_sku_sample": list((prev_ads_sku_map or {}).keys())[:10],
+            })
 
         net_sales_curr = safe_float_local(row.get("net_sales_curr"))
         if net_sales_curr is None:

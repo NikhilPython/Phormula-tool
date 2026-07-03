@@ -2700,6 +2700,9 @@ export default function InputCostPage({ params }: Params) {
     | 'lost-compensation'
     | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
+  const pageTopRef = useRef<HTMLDivElement | null>(null);
+const tabTopRef = useRef<HTMLDivElement | null>(null);
+const shouldScrollTabTopRef = useRef(false);
 
   const INPUT_COST_TAB_HASHES: InputCostTab[] = [
     'inventory-insights',
@@ -2709,15 +2712,78 @@ export default function InputCostPage({ params }: Params) {
     'lost-compensation',
   ];
 
-  const syncTabFromHash = useCallback(() => {
-    if (typeof window === "undefined") return;
+  const scrollInputCostPageToTop = useCallback(() => {
+  if (typeof window === "undefined") return;
 
-    const hash = window.location.hash.replace("#", "") as InputCostTab;
+  const target = tabTopRef.current || pageTopRef.current;
 
-    if (INPUT_COST_TAB_HASHES.includes(hash)) {
-      setActiveTab(hash);
+  const scrollParents: HTMLElement[] = [];
+
+  let parent = target?.parentElement || null;
+
+  while (parent) {
+    const style = window.getComputedStyle(parent);
+    const overflowY = style.overflowY;
+
+    const canScroll =
+      (overflowY === "auto" || overflowY === "scroll") &&
+      parent.scrollHeight > parent.clientHeight;
+
+    if (canScroll) {
+      scrollParents.push(parent);
     }
-  }, []);
+
+    parent = parent.parentElement;
+  }
+
+  window.scrollTo({
+    top: 0,
+    left: 0,
+    behavior: "auto",
+  });
+
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  scrollParents.forEach((el) => {
+    el.scrollTop = 0;
+  });
+}, []);
+
+useEffect(() => {
+  if (!shouldScrollTabTopRef.current) return;
+
+  shouldScrollTabTopRef.current = false;
+
+  const scrollNow = () => {
+    scrollInputCostPageToTop();
+  };
+
+  scrollNow();
+
+  const r1 = requestAnimationFrame(scrollNow);
+  const t1 = window.setTimeout(scrollNow, 50);
+  const t2 = window.setTimeout(scrollNow, 150);
+  const t3 = window.setTimeout(scrollNow, 350);
+
+  return () => {
+    cancelAnimationFrame(r1);
+    window.clearTimeout(t1);
+    window.clearTimeout(t2);
+    window.clearTimeout(t3);
+  };
+}, [activeTab, scrollInputCostPageToTop]);
+
+ const syncTabFromHash = useCallback(() => {
+  if (typeof window === "undefined") return;
+
+  const hash = window.location.hash.replace("#", "") as InputCostTab;
+
+  if (INPUT_COST_TAB_HASHES.includes(hash)) {
+    shouldScrollTabTopRef.current = true;
+    setActiveTab(hash);
+  }
+}, []);
 
   useEffect(() => {
     syncTabFromHash();
@@ -2731,10 +2797,11 @@ export default function InputCostPage({ params }: Params) {
       const hash = customEvent.detail?.hash as InputCostTab | undefined;
 
       if (hash && INPUT_COST_TAB_HASHES.includes(hash)) {
-        setActiveTab(hash);
-      } else {
-        syncTabFromHash();
-      }
+  shouldScrollTabTopRef.current = true;
+  setActiveTab(hash);
+} else {
+  syncTabFromHash();
+}
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -5443,7 +5510,8 @@ export default function InputCostPage({ params }: Params) {
     warehouseData.length > INPUT_COST_VISIBLE_ROWS;
 
   return (
-    <div className="space-y-3 relative">
+    <div ref={pageTopRef} className="space-y-3 relative">
+      <div ref={tabTopRef} />
       <style>{`
         div { font-family: 'Lato', sans-serif; }
         .gross-margin-positive { color: #28a745; font-weight: bold; }
@@ -5578,22 +5646,19 @@ export default function InputCostPage({ params }: Params) {
       <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
         <SegmentedToggle<InputCostTab>
           value={activeTab}
-          onChange={(nextTab) => {
-            setActiveTab(nextTab);
+         onChange={(nextTab) => {
+  shouldScrollTabTopRef.current = true;
 
-            if (typeof window !== "undefined") {
-              const nextHash = `#${nextTab}`;
-              const nextUrl = `${window.location.pathname}${nextHash}`;
+  setActiveTab(nextTab);
 
-              window.history.pushState(null, "", nextUrl);
+  if (typeof window !== "undefined") {
+    const nextUrl = `${window.location.pathname}#${nextTab}`;
 
-              window.dispatchEvent(
-                new CustomEvent("page-hash-navigate", {
-                  detail: { hash: nextTab },
-                })
-              );
-            }
-          }}
+    // Only update URL. Do not dispatch page-hash-navigate,
+    // because that can trigger hash scroll behavior.
+    window.history.replaceState(null, "", nextUrl);
+  }
+}}
           options={tabOptions}
           compact
           className="w-full"

@@ -432,6 +432,62 @@ def fetch_month_end_inventory_lookup(user_id: int):
 
     return lookup
 
+# def build_rolling_sku_series(
+#     user_id: int,
+#     country: str,
+#     sku: str,
+#     anchor_year: int,
+#     anchor_month: int
+# ):
+
+#     series = []
+
+#     # 🔹 fetch inventory once
+#     inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+
+#     for y, m in rolling_months(anchor_year, anchor_month, 24):
+
+#         df = fetch_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period="monthly",
+#             timeline=str(m),
+#             year=y
+#         )
+
+#         if df.empty:
+#             continue
+
+#         df = _normalize_sku_col(df)
+#         row = df[df["sku"] == sku]
+
+#         if row.empty:
+#             continue
+
+#         # 🔹 inventory lookup
+#         inv = inventory_lookup.get((sku, y, m), {})
+
+#         series.append({
+#             "year": y,
+#             "month": m,
+
+#             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
+#             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
+#             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
+#             "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
+#             "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
+#             "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
+#             "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+
+#             # 🔹 NEW inventory fields
+#             "sellable_inventory": inv.get("sellable_inventory"),
+#             "damaged_inventory": inv.get("damaged_inventory"),
+#             "expired_inventory": inv.get("expired_inventory")
+#         })
+
+    
+#     return series
+
 def build_rolling_sku_series(
     user_id: int,
     country: str,
@@ -444,6 +500,8 @@ def build_rolling_sku_series(
 
     # 🔹 fetch inventory once
     inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+
+    sku_key = str(sku).strip()
 
     for y, m in rolling_months(anchor_year, anchor_month, 24):
 
@@ -459,34 +517,51 @@ def build_rolling_sku_series(
             continue
 
         df = _normalize_sku_col(df)
-        row = df[df["sku"] == sku]
 
-        if row.empty:
+        if "sku" not in df.columns:
+            continue
+
+        df = df.copy()
+        df["sku"] = df["sku"].astype(str).str.strip()
+
+        # ✅ remove total row and use your existing recalculation logic
+        df_detail, _ = _split_total_row(df)
+
+        if df_detail.empty:
+            continue
+
+        # ✅ this recalculates unit_wise_profitability, asp, sales_mix, profit_mix safely
+        sku_month = compute_sku_precalc(df_detail)
+
+        sku_data = sku_month.get(sku_key)
+
+        if not isinstance(sku_data, dict):
             continue
 
         # 🔹 inventory lookup
-        inv = inventory_lookup.get((sku, y, m), {})
+        inv = inventory_lookup.get((sku_key, y, m), {})
 
         series.append({
             "year": y,
             "month": m,
 
-            "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
-            "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
-            "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
-            "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
-            "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
-            "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
-            "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+            "units": sku_data.get("total_quantity"),
+            "asp": sku_data.get("asp"),
+            "cm1_profit": sku_data.get("profit"),
+            "net_sales": sku_data.get("net_sales"),
+            "unit_wise_profitability": sku_data.get("unit_wise_profitability"),
+            "sales_mix": sku_data.get("sales_mix"),
+            "profit_mix": sku_data.get("profit_mix"),
 
-            # 🔹 NEW inventory fields
+            # 🔹 inventory fields
             "sellable_inventory": inv.get("sellable_inventory"),
             "damaged_inventory": inv.get("damaged_inventory"),
             "expired_inventory": inv.get("expired_inventory")
         })
 
-    
     return series
+
+
 
 def build_remaining_skus_time_series(
     user_id: int,
