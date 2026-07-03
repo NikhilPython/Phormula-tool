@@ -4887,7 +4887,7 @@ return {
                                 );
 
                                 return (
-                                  <div className="space-y-1 text-[10px] 2xl:text-xs text-slate-700 leading-relaxed">
+                                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                                     {otherActionPoints[0] && (
                                       <div className="flex gap-2">
                                         <span className="shrink-0 font-semibold">1.</span>
