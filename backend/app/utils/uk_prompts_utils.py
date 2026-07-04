@@ -1331,10 +1331,10 @@ If sku_time_series is missing or sparse for a SKU:
 - do not leave it empty
 
 If ads data is missing or zero:
-- still return ads_recommendation as "Monitor current advertising."
+- still return ads_recommendation as "Monitor & cross check current advertising."
 
 If inventory data is missing:
-- return inventory_recommendation as "Inventory position is stable."
+- return inventory_recommendation as "Cross Check current inventory."
 
 You are producing executive-level commercial reasoning,
 not pricing commands.
@@ -1707,7 +1707,7 @@ Formatting rules:
 If no inventory_alert_type exists:
 
 inventory_recommendation MUST be:
-"Inventory position is stable."
+"Cross Check current inventory."
 
 IMPORTANT:
 
@@ -2292,7 +2292,7 @@ ads_recommendation RULES (MANDATORY):
 - Must reference advertising efficiency or CM2 impact
   ONLY if sku_ads_context contains meaningful data.
 - If no ads signal exists, return:
-  "Monitor current advertising."
+  "Monitor & cross check current advertising."
 - Must follow recommendation language simplicity rules.
 - No technical jargon.
 - No extra commentary.
@@ -2302,7 +2302,7 @@ inventory_recommendation RULES (MANDATORY):
 - Maximum 1 short sentence.
 - Must reflect supply, excess, overaged, or cost risk IF sku_inventory_flags exists.
 - If no SKU-level inventory signal exists, return:
-  "Inventory position is stable."
+  "Cross Check current inventory."
 - Must NOT include pricing or margin strategy.
 - Must NOT repeat the main recommendation.
 - Must follow recommendation language simplicity rules.
@@ -3905,9 +3905,14 @@ def get_ads_visibility_driver_recommendation(
 
     # Visibility means either traffic/clicks dropped or ad-attributed sales dropped.
     ads_visibility_down = (
-        ads_clicks_pct <= -20.0
-        or ads_sales_pct <= -20.0
-    )
+    ads_clicks_pct <= -20.0
+      or ads_sales_pct <= -20.0
+      or (
+          ads_spend_pct <= -15.0
+          and ads_clicks_pct == 0
+          and ads_sales_pct == 0
+      )
+  )
 
     if not (
         asp_not_primary_driver

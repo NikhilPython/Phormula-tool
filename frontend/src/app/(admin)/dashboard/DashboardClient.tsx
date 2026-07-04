@@ -336,6 +336,15 @@ const MANUAL_LAST_MONTH_USD_CA = Number(
 const LAST_REFRESH_KEY = "live-dashboard-last-refresh";
 
 
+const getFirstPositiveInventoryValue = (...values: any[]) => {
+    for (const value of values) {
+        const n = inventoryToNum(value);
+        if (n > 0) return n;
+    }
+
+    return 0;
+};
+
 const formatValue = (label: string, value: number) => {
     if (value == null || isNaN(value)) return "—";
 
@@ -2235,15 +2244,19 @@ const buildInventoryInsightsFromResponses = (
                 row?.available
             );
 
-            const inboundUnits = inventoryToNum(
-                row?.["Inbound Units"] ??
-                row?.inbound_units ??
-                row?.inboundUnits ??
-                row?.transit_total ??
-                row?.inbound_quantity ??
-                row?.["inbound_quantity"] ??
-                row?.inboundQuantity ??
-                row?.["Inbound Quantity"]
+            const inboundUnits = getFirstPositiveInventoryValue(
+                row?.inbound_quantity,
+                row?.["inbound_quantity"],
+                row?.["inbound-quantity"],
+                row?.inboundQuantity,
+                row?.["Inbound Quantity"],
+                row?.["Inbound Units"],
+                row?.inbound_units,
+                row?.inboundUnits,
+                row?.transit_total,
+                row?.["inbound-shipped"],
+                row?.["inbound-working"],
+                row?.["inbound-received"]
             );
 
             const totalUnits = available;
