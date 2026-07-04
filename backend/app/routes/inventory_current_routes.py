@@ -1026,6 +1026,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
                 "sellable": 0,
                 "inbound": 0,
                 "unfulfillable": 0,
+                "inventory_coverage_ratio": 0,
             },
             "error": "Invalid month",
         }
@@ -1038,6 +1039,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
                 "sellable": 0,
                 "inbound": 0,
                 "unfulfillable": 0,
+                "inventory_coverage_ratio": 0,
             },
             "error": "Invalid inventory monthly table name",
         }
@@ -1053,6 +1055,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
                 "sellable": 0,
                 "inbound": 0,
                 "unfulfillable": 0,
+                "inventory_coverage_ratio": 0,
             },
             "error": f"Inventory monthly table not found: {table_name}",
         }
@@ -1074,6 +1077,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
                 "sellable": 0,
                 "inbound": 0,
                 "unfulfillable": 0,
+                "inventory_coverage_ratio": 0,
             },
             "error": None,
         }
@@ -1092,6 +1096,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
                 "sellable": 0,
                 "inbound": 0,
                 "unfulfillable": 0,
+                "inventory_coverage_ratio": 0,
             },
             "error": "SKU column not found in inventory monthly table",
         }
@@ -1099,6 +1104,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
     required_columns = [
         "sellable_sum_last",
         "transit_total",
+        "inventory_coverage_ratio",
         "defective_sum_last",
         "warehouse_damaged_sum_last",
         "expired_sum_last",
@@ -1125,6 +1131,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
 
         sellable_units = to_number(row.get("sellable_sum_last"))
         inbound_units = to_number(row.get("transit_total"))
+        inventory_coverage_ratio = to_number(row.get("inventory_coverage_ratio"))
 
         unfulfillable_units = (
             to_number(row.get("defective_sum_last"))
@@ -1138,12 +1145,24 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
             "sellable_units": sellable_units,
             "inbound_units": inbound_units,
             "unfulfillable_units": unfulfillable_units,
+            "inventory_coverage_ratio": inventory_coverage_ratio,
         }
+
+    coverage_values = [
+        to_number(v.get("inventory_coverage_ratio"))
+        for v in data_by_sku.values()
+        if to_number(v.get("inventory_coverage_ratio")) > 0
+    ]
 
     totals = {
         "sellable": sum(v["sellable_units"] for v in data_by_sku.values()),
         "inbound": sum(v["inbound_units"] for v in data_by_sku.values()),
         "unfulfillable": sum(v["unfulfillable_units"] for v in data_by_sku.values()),
+        "inventory_coverage_ratio": (
+            sum(coverage_values) / len(coverage_values)
+            if coverage_values
+            else 0
+        ),
     }
 
     return {
@@ -1175,15 +1194,29 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
             new_row["Sellable Units"] = monthly_result["totals"]["sellable"]
             new_row["Inbound Units"] = monthly_result["totals"]["inbound"]
             new_row["unfulfillable-quantity"] = monthly_result["totals"]["unfulfillable"]
+            new_row["inventory_coverage_ratio"] = monthly_result["totals"].get(
+                "inventory_coverage_ratio",
+                0,
+            )
+            new_row["Coverage Ratio (In Months)"] = monthly_result["totals"].get(
+                "inventory_coverage_ratio",
+                0,
+            )
             updated_rows.append(new_row)
             continue
 
         sku = str(new_row.get("SKU") or "").strip()
         monthly_data = data_by_sku.get(sku, {})
 
+        coverage_ratio = monthly_data.get("inventory_coverage_ratio", 0)
+
         new_row["Sellable Units"] = monthly_data.get("sellable_units", 0)
         new_row["Inbound Units"] = monthly_data.get("inbound_units", 0)
         new_row["unfulfillable-quantity"] = monthly_data.get("unfulfillable_units", 0)
+
+        # Add both keys because frontend checks both names
+        new_row["inventory_coverage_ratio"] = coverage_ratio
+        new_row["Coverage Ratio (In Months)"] = coverage_ratio
 
         updated_rows.append(new_row)
 
@@ -1207,16 +1240,34 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
         for r in updated_rows
         if not is_total_row(r)
     )
+    coverage_values = [
+        to_number(r.get("inventory_coverage_ratio"))
+        for r in updated_rows
+        if not is_total_row(r) and to_number(r.get("inventory_coverage_ratio")) > 0
+    ]
+
+    coverage_ratio_avg = (
+        sum(coverage_values) / len(coverage_values)
+        if coverage_values
+        else 0
+    )
 
     for row in updated_rows:
         if is_total_row(row):
             row["Sellable Units"] = sellable_total
             row["Inbound Units"] = inbound_total
             row["unfulfillable-quantity"] = unfulfillable_total
+            row["inventory_coverage_ratio"] = coverage_ratio_avg
+            row["Coverage Ratio (In Months)"] = coverage_ratio_avg
 
     updated_columns = list(columns or [])
 
-    for col in ["Sellable Units", "Inbound Units"]:
+    for col in [
+        "Sellable Units",
+        "Inbound Units",
+        "inventory_coverage_ratio",
+        "Coverage Ratio (In Months)",
+    ]:
         if col not in updated_columns:
             updated_columns.append(col)
 
@@ -1529,6 +1580,21 @@ def rebuild_total_row(rows):
 
     for col in numeric_columns:
         total_row[col] = sum(to_number(r.get(col)) for r in data_rows)
+
+    coverage_values = [
+        to_number(r.get("inventory_coverage_ratio"))
+        for r in data_rows
+        if to_number(r.get("inventory_coverage_ratio")) > 0
+    ]
+
+    coverage_ratio_avg = (
+        sum(coverage_values) / len(coverage_values)
+        if coverage_values
+        else 0
+    )
+
+    total_row["inventory_coverage_ratio"] = coverage_ratio_avg
+    total_row["Coverage Ratio (In Months)"] = coverage_ratio_avg
 
     for row in data_rows:
         for col in row.keys():
