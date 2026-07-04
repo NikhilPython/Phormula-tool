@@ -1499,45 +1499,49 @@ const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
 const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
-  // ✅ Sellable Units should come from backend available column
-  const available = toNum(row?.available);
-
-  if (available > 0) return available;
-
-  return toNum(row?.total_quantity);
+  return pickInventoryNumber(row, [
+    "Sellable Units",
+    "sellable_units",
+    "sellableUnits",
+    "sellable_sum_last",
+    "available",
+    "totalUnits",
+    "total_units",
+    "total_quantity",
+  ]);
 };
 
 const getInventoryRowUnfulfillableUnits = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
-    'unfulfillableUnits',
-    'unfulfillable_units',
-    'unfulfillable-quantity',
-    'unfulfillable_quantity',
-    'Unfulfillable Units',
-    'unfulfillable units',
-    'unsellableUnits',
-    'unsellable_units',
-    'unsellable-quantity',
-    'unsellable_quantity',
-    'afn_unsellable_quantity',
-    'afn-unsellable-quantity',
-    'afn-unsellable-quantity',
+    "unfulfillable-quantity",
+    "Unfulfillable Units",
+    "unfulfillableUnits",
+    "unfulfillable_units",
+    "unfulfillable_quantity",
+    "unfulfillable units",
+    "unsellableUnits",
+    "unsellable_units",
+    "unsellable-quantity",
+    "unsellable_quantity",
+    "afn_unsellable_quantity",
+    "afn-unsellable-quantity",
   ]);
 };
 
 const getInventoryRowInboundUnits = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
-    'inbound_quantity',
-    'inboundQuantity',
-    'inbound_units',
-    'inboundUnits',
-    'Inbound Quantity',
-    'Inbound Units',
-    'inbound units',
-    'inbound-quantity',
-    'inbound-units',
-    'afn_inbound_quantity',
-    'afn-inbound-quantity',
+    "Inbound Units",
+    "inbound_units",
+    "inboundUnits",
+    "transit_total",
+    "inbound_quantity",
+    "inboundQuantity",
+    "Inbound Quantity",
+    "inbound units",
+    "inbound-quantity",
+    "inbound-units",
+    "afn_inbound_quantity",
+    "afn-inbound-quantity",
   ]);
 };
 
@@ -1597,6 +1601,52 @@ const getInventoryRowSalesRank = (row: InventoryCurrentRow) => {
   }
 
   return directValue;
+};
+
+const getInventoryRowPreviousSalesRank = (
+  row: InventoryCurrentRow,
+  selectedMonth?: string
+) => {
+  const keys = Object.keys(row || {});
+
+  const selectedMonthFull = String(selectedMonth || "").trim().toLowerCase();
+  const selectedMonthShort = selectedMonthFull.slice(0, 3);
+
+  // Example:
+  // Previous Month Sales Rank (June)
+  // Previous Month Sales Rank (Jun)
+  const selectedMonthRankKey = keys.find((key) => {
+    const lowerKey = key.toLowerCase();
+
+    return (
+      lowerKey.startsWith("previous month sales rank") &&
+      (
+        lowerKey.includes(selectedMonthFull) ||
+        lowerKey.includes(selectedMonthShort)
+      )
+    );
+  });
+
+  if (selectedMonthRankKey) {
+    return row?.[selectedMonthRankKey];
+  }
+
+  // Fallback: any backend key starting with Previous Month Sales Rank
+  const anyPreviousRankKey = keys.find((key) =>
+    key.toLowerCase().startsWith("previous month sales rank")
+  );
+
+  if (anyPreviousRankKey) {
+    return row?.[anyPreviousRankKey];
+  }
+
+  return (
+    row?.previous_sales_rank ??
+    row?.previousSalesRank ??
+    row?.["Previous Month Sales Rank"] ??
+    row?.["previous sales rank"] ??
+    ""
+  );
 };
 
 const getInventoryRowEstimatedStorageCost = (row: InventoryCurrentRow) => {
@@ -1792,7 +1842,9 @@ const buildInventoryInsightsFromResponses = (
   ageSummaryResponses: InventoryAgeSummaryApiResponse[],
   selectedTrendBucket: string,
   countryName: string,
-  selectedGlobalInventoryCountry: string = "uk"
+  selectedGlobalInventoryCountry: string = "uk",
+  selectedRange: RangeType = "monthly",
+  selectedMonthForRank: string = ""
 ): InventoryInsightsData => {
   const isGlobalInventory =
     String(countryName || "").toLowerCase() === "global";
@@ -1905,13 +1957,11 @@ const buildInventoryInsightsFromResponses = (
         threeSixtyFivePlus;
 
       // ✅ Sellable Units should come from backend available column
-      const available = toNum(row?.available);
+      const available = getInventoryRowTotalUnits(row);
 
-      // ✅ Map backend inbound_quantity as Inbound Units
       const inboundUnits = getInventoryRowInboundUnits(row);
 
-      // ✅ Keep totalUnits same as available for fallback compatibility
-      const totalUnits = available || getInventoryRowTotalUnits(row);
+      const totalUnits = available;
 
       const unitsSold = currentMonthUnitsSoldKey
         ? toNum(row?.[currentMonthUnitsSoldKey])
@@ -1943,6 +1993,10 @@ const buildInventoryInsightsFromResponses = (
         unitsSold,
         salesLast30Days,
         salesRank: getInventoryRowSalesRank(row),
+        previousSalesRank:
+  selectedRange === "monthly"
+    ? getInventoryRowPreviousSalesRank(row, selectedMonthForRank)
+    : "",
 
         coverageRatio: getInventoryRowCoverageRatio(row),
         estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
@@ -1951,7 +2005,7 @@ const buildInventoryInsightsFromResponses = (
     .filter(
       (row) =>
         toNum(row.available) > 0 ||
-        toNum((row as any).inboundUnits) > 0 ||
+        toNum((row as any).inboundUnits) !== 0 ||
         toNum(row.totalUnits) > 0 ||
         toNum((row as any).unsellableUnits) > 0 ||
         toNum((row as any).coverageRatio) > 0 ||
@@ -2725,8 +2779,8 @@ export default function InputCostPage({ params }: Params) {
     | 'extra';
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
   const pageTopRef = useRef<HTMLDivElement | null>(null);
-const tabTopRef = useRef<HTMLDivElement | null>(null);
-const shouldScrollTabTopRef = useRef(false);
+  const tabTopRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollTabTopRef = useRef(false);
 
   const INPUT_COST_TAB_HASHES: InputCostTab[] = [
     'inventory-insights',
@@ -2737,77 +2791,77 @@ const shouldScrollTabTopRef = useRef(false);
   ];
 
   const scrollInputCostPageToTop = useCallback(() => {
-  if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
 
-  const target = tabTopRef.current || pageTopRef.current;
+    const target = tabTopRef.current || pageTopRef.current;
 
-  const scrollParents: HTMLElement[] = [];
+    const scrollParents: HTMLElement[] = [];
 
-  let parent = target?.parentElement || null;
+    let parent = target?.parentElement || null;
 
-  while (parent) {
-    const style = window.getComputedStyle(parent);
-    const overflowY = style.overflowY;
+    while (parent) {
+      const style = window.getComputedStyle(parent);
+      const overflowY = style.overflowY;
 
-    const canScroll =
-      (overflowY === "auto" || overflowY === "scroll") &&
-      parent.scrollHeight > parent.clientHeight;
+      const canScroll =
+        (overflowY === "auto" || overflowY === "scroll") &&
+        parent.scrollHeight > parent.clientHeight;
 
-    if (canScroll) {
-      scrollParents.push(parent);
+      if (canScroll) {
+        scrollParents.push(parent);
+      }
+
+      parent = parent.parentElement;
     }
 
-    parent = parent.parentElement;
-  }
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
 
-  window.scrollTo({
-    top: 0,
-    left: 0,
-    behavior: "auto",
-  });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
+    scrollParents.forEach((el) => {
+      el.scrollTop = 0;
+    });
+  }, []);
 
-  scrollParents.forEach((el) => {
-    el.scrollTop = 0;
-  });
-}, []);
+  useEffect(() => {
+    if (!shouldScrollTabTopRef.current) return;
 
-useEffect(() => {
-  if (!shouldScrollTabTopRef.current) return;
+    shouldScrollTabTopRef.current = false;
 
-  shouldScrollTabTopRef.current = false;
+    const scrollNow = () => {
+      scrollInputCostPageToTop();
+    };
 
-  const scrollNow = () => {
-    scrollInputCostPageToTop();
-  };
+    scrollNow();
 
-  scrollNow();
+    const r1 = requestAnimationFrame(scrollNow);
+    const t1 = window.setTimeout(scrollNow, 50);
+    const t2 = window.setTimeout(scrollNow, 150);
+    const t3 = window.setTimeout(scrollNow, 350);
 
-  const r1 = requestAnimationFrame(scrollNow);
-  const t1 = window.setTimeout(scrollNow, 50);
-  const t2 = window.setTimeout(scrollNow, 150);
-  const t3 = window.setTimeout(scrollNow, 350);
+    return () => {
+      cancelAnimationFrame(r1);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [activeTab, scrollInputCostPageToTop]);
 
-  return () => {
-    cancelAnimationFrame(r1);
-    window.clearTimeout(t1);
-    window.clearTimeout(t2);
-    window.clearTimeout(t3);
-  };
-}, [activeTab, scrollInputCostPageToTop]);
+  const syncTabFromHash = useCallback(() => {
+    if (typeof window === "undefined") return;
 
- const syncTabFromHash = useCallback(() => {
-  if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace("#", "") as InputCostTab;
 
-  const hash = window.location.hash.replace("#", "") as InputCostTab;
-
-  if (INPUT_COST_TAB_HASHES.includes(hash)) {
-    shouldScrollTabTopRef.current = true;
-    setActiveTab(hash);
-  }
-}, []);
+    if (INPUT_COST_TAB_HASHES.includes(hash)) {
+      shouldScrollTabTopRef.current = true;
+      setActiveTab(hash);
+    }
+  }, []);
 
   useEffect(() => {
     syncTabFromHash();
@@ -2821,11 +2875,11 @@ useEffect(() => {
       const hash = customEvent.detail?.hash as InputCostTab | undefined;
 
       if (hash && INPUT_COST_TAB_HASHES.includes(hash)) {
-  shouldScrollTabTopRef.current = true;
-  setActiveTab(hash);
-} else {
-  syncTabFromHash();
-}
+        shouldScrollTabTopRef.current = true;
+        setActiveTab(hash);
+      } else {
+        syncTabFromHash();
+      }
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -4213,13 +4267,15 @@ useEffect(() => {
           ageSummary: fulfilledAgeSummary,
         };
 
-        const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
-          fulfilledInventory,
-          fulfilledAgeSummary,
-          selectedAgeingTrendBucket,
-          countryName,
-          selectedGlobalInventoryCountry
-        );
+       const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
+  fulfilledInventory,
+  fulfilledAgeSummary,
+  selectedAgeingTrendBucket,
+  countryName,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth
+);
 
         if (ac.signal.aborted) return;
 
@@ -4259,21 +4315,25 @@ useEffect(() => {
     if (countryName !== "global") return;
     if (!inventoryRawResponses) return;
 
-    const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
-      inventoryRawResponses.inventory,
-      inventoryRawResponses.ageSummary,
-      selectedAgeingTrendBucket,
-      countryName,
-      selectedGlobalInventoryCountry
-    );
+const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
+  inventoryRawResponses.inventory,
+  inventoryRawResponses.ageSummary,
+  selectedAgeingTrendBucket,
+  countryName,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth
+);
 
     setInventoryInsightsData(rebuiltInventoryInsightsData);
   }, [
-    countryName,
-    inventoryRawResponses,
-    selectedAgeingTrendBucket,
-    selectedGlobalInventoryCountry,
-  ]);
+  countryName,
+  inventoryRawResponses,
+  selectedAgeingTrendBucket,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth,
+]);
 
   useEffect(() => {
     setShowAllReconRows(false);
@@ -5670,19 +5730,19 @@ useEffect(() => {
       <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
         <SegmentedToggle<InputCostTab>
           value={activeTab}
-         onChange={(nextTab) => {
-  shouldScrollTabTopRef.current = true;
+          onChange={(nextTab) => {
+            shouldScrollTabTopRef.current = true;
 
-  setActiveTab(nextTab);
+            setActiveTab(nextTab);
 
-  if (typeof window !== "undefined") {
-    const nextUrl = `${window.location.pathname}#${nextTab}`;
+            if (typeof window !== "undefined") {
+              const nextUrl = `${window.location.pathname}#${nextTab}`;
 
-    // Only update URL. Do not dispatch page-hash-navigate,
-    // because that can trigger hash scroll behavior.
-    window.history.replaceState(null, "", nextUrl);
-  }
-}}
+              // Only update URL. Do not dispatch page-hash-navigate,
+              // because that can trigger hash scroll behavior.
+              window.history.replaceState(null, "", nextUrl);
+            }
+          }}
           options={tabOptions}
           compact
           className="w-full"

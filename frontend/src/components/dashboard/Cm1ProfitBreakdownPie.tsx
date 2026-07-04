@@ -121,8 +121,8 @@ export default function Cm1ProfitBreakdownPie({
       const rawValue = Number(d.value || 0);
       const rawPrevValue = Number(d.prevValue || 0);
 
-      const displayValue = isCm2 ? rawValue : Math.abs(rawValue);
-      const displayPrevValue = isCm2 ? rawPrevValue : Math.abs(rawPrevValue);
+      const displayValue = rawValue;
+      const displayPrevValue = rawPrevValue;
 
       const chartValue = Math.abs(rawValue);
       const chartPrevValue = Math.abs(rawPrevValue);
@@ -147,26 +147,43 @@ export default function Cm1ProfitBreakdownPie({
     const existingOthersRows = normalized.filter((d) => isOthers(d.name));
     const skuRows = normalized.filter((d) => !isOthers(d.name));
 
-    const sorted = [...skuRows].sort(
-      (a, b) =>
-        Math.abs(Number(b.chartValue ?? b.value ?? 0)) -
-        Math.abs(Number(a.chartValue ?? a.value ?? 0))
-    );
+    const getRankValue = (d: Cm1PieSlice) => {
+      const v = Number(d.value ?? 0);
+
+      // CM2 top list should be based on positive contribution only.
+      // Negative CM2 rows should not push out profitable rows.
+      if (isCm2) return v > 0 ? v : 0;
+
+      // CM1 can stay absolute/positive.
+      return Math.abs(v);
+    };
+
+    const getPieValue = (d: Cm1PieSlice) =>
+      Math.abs(Number(d.chartValue ?? d.value ?? 0));
+
+    const sorted = [...skuRows].sort((a, b) => {
+      const rankDiff = getRankValue(b) - getRankValue(a);
+
+      if (rankDiff !== 0) return rankDiff;
+
+      // fallback only when rank is same
+      return getPieValue(b) - getPieValue(a);
+    });
+
+    const totalRankValue =
+      sorted.reduce((sum, d) => sum + getRankValue(d), 0) || 1;
 
     const totalChartAbs =
-      normalized.reduce(
-        (sum, d) => sum + Math.abs(Number(d.chartValue ?? d.value ?? 0)),
-        0
-      ) || 1;
+      normalized.reduce((sum, d) => sum + getPieValue(d), 0) || 1;
 
     let cumulative = 0;
     let cutoff = 0;
 
     for (let i = 0; i < sorted.length; i++) {
-      cumulative += Math.abs(Number(sorted[i].chartValue ?? sorted[i].value ?? 0));
+      cumulative += getRankValue(sorted[i]);
       cutoff = i + 1;
 
-      if (cumulative / totalChartAbs >= TARGET_SHARE) break;
+      if (cumulative / totalRankValue >= TARGET_SHARE) break;
     }
 
     const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
@@ -191,16 +208,15 @@ export default function Cm1ProfitBreakdownPie({
      * CM2 = raw signed sum
      * CM1 = positive sum
      */
-    const othersValue = isCm2
-      ? othersSource.reduce((sum, d) => sum + Number(d.value || 0), 0)
-      : othersSource.reduce((sum, d) => sum + Math.abs(Number(d.value || 0)), 0);
+    const othersValue = othersSource.reduce(
+      (sum, d) => sum + Number(d.value || 0),
+      0
+    );
 
-    const othersPrev = isCm2
-      ? othersSource.reduce((sum, d) => sum + Number(d.prevValue || 0), 0)
-      : othersSource.reduce(
-        (sum, d) => sum + Math.abs(Number(d.prevValue || 0)),
-        0
-      );
+    const othersPrev = othersSource.reduce(
+      (sum, d) => sum + Number(d.prevValue || 0),
+      0
+    );
 
     /**
      * Chart value:
@@ -315,7 +331,7 @@ export default function Cm1ProfitBreakdownPie({
               const slice = displayData?.[i];
               const rawValue = Number(slice?.value || 0);
               const val = Math.round(Math.abs(rawValue));
-              const valuePrefix = profitPieType === "cm2" && rawValue < 0 ? "-" : "";
+              const valuePrefix = rawValue < 0 ? "-" : "";
               const delta = slice?.deltaPct;
               const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
 
@@ -517,7 +533,7 @@ export default function Cm1ProfitBreakdownPie({
 
                       const rawValue = Number(slice.value || 0);
                       const value = Math.round(Math.abs(rawValue));
-                      const valuePrefix = profitPieType === "cm2" && rawValue < 0 ? "-" : "";
+                      const valuePrefix = rawValue < 0 ? "-" : "";
                       const pct = Math.round(Number(slice.pct || 0));
                       const delta = slice.deltaPct;
                       const hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));

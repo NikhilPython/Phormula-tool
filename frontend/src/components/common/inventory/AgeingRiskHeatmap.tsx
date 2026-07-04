@@ -25,6 +25,7 @@ export type AgeingRiskHeatmapRow = {
     unsellableUnits?: number;
     unitsSold?: number;
     salesRank?: number | string;
+    previousSalesRank?: number | string;
 
     // ✅ For Others coverage ratio
     salesLast30Days?: number;
@@ -64,6 +65,37 @@ type AgeingRiskHeatmapProps = {
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
+
+const parseSalesRankNumber = (value: any) => {
+    if (
+        value === null ||
+        value === undefined ||
+        value === "" ||
+        String(value).trim().toLowerCase() === "nan"
+    ) {
+        return null;
+    }
+
+    const n = Number(String(value).replace(/,/g, "").trim());
+
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const getSalesRankDelta = (currentRankValue: any, previousRankValue: any) => {
+    const currentRank = parseSalesRankNumber(currentRankValue);
+    const previousRank = parseSalesRankNumber(previousRankValue);
+
+    if (!currentRank || !previousRank) return null;
+
+    // Sales Rank me lower rank better hota hai.
+    // Example: previous 300, current 200 => improvement +33.33%
+    const deltaPct = ((previousRank - currentRank) / Math.abs(previousRank)) * 100;
+
+    return {
+        value: deltaPct,
+        isGood: deltaPct > 0,
+    };
+};
 
 const getHeatColor = (
     bucketColor: string,
@@ -326,9 +358,23 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         return maxMap;
     }, [buckets, displayRows]);
 
+
+    const hasAnySalesRankDelta = useMemo(() => {
+        return displayRows.some((row) => {
+            if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+                return false;
+            }
+
+            return !!getSalesRankDelta(row.salesRank, row.previousSalesRank);
+        });
+    }, [displayRows]);
+
     const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
+
+        const percentageRowTextClassName =
+            "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
 
         const bucketColumns: ColumnDef<HeatmapTableRow>[] = buckets.map((bucket) => ({
             key: bucket.key,
@@ -363,6 +409,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             }
                             className={[
                                 "absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs font-semibold",
+                                percentageRowTextClassName,
                                 value > 0 ? "text-charcoal-500" : "text-charcoal-400",
                             ].join(" ")}
                             style={{
@@ -427,6 +474,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                 className={[
                                     "block max-w-full truncate",
                                     row.isOthersRow ? "text-green-500" : "",
+                                    row.isPercentageRow ? percentageRowTextClassName : "",
                                 ].join(" ")}
                                 title={row.productName}
                             >
@@ -450,13 +498,73 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "sku",
                 header: "SKU",
-                width: "105px",
+                width: "95px",
                 headerClassName: heatmapHeaderClassName,
-                cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                cellClassName:
+                    "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 !px-1 overflow-hidden",
                 render: (row) => {
                     if (row.isTotalRow || row.isPercentageRow) return "";
 
-                    return <span>{row.sku || "-"}</span>;
+                    const sku = String(row.sku || "-").trim();
+
+                    return (
+                        <span
+                            title={sku}
+                            className="mx-auto block max-w-full truncate whitespace-nowrap text-center tabular-nums"
+                        >
+                            {sku}
+                        </span>
+                    );
+                },
+            },
+            {
+                key: "salesRank",
+                header: "Sales Rank",
+                width: hasAnySalesRankDelta ? "140px" : "90px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+                        return <span></span>;
+                    }
+
+                    const rankNumber = parseSalesRankNumber(row.salesRank);
+
+                    if (!rankNumber) {
+                        return <span>-</span>;
+                    }
+
+                    const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
+
+                    if (!delta) {
+                        return (
+                            <div className="flex w-full items-center justify-center whitespace-nowrap tabular-nums">
+                                {rankNumber.toLocaleString()}
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="grid w-full grid-cols-[minmax(48px,1fr)_minmax(52px,auto)] items-center gap-2 whitespace-nowrap">
+                            <span className="text-right tabular-nums">
+                                {rankNumber.toLocaleString()}
+                            </span>
+
+                            <span
+                                className={[
+                                    "inline-flex min-w-[52px] items-center justify-start text-left text-xs font-semibold tabular-nums",
+                                    delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
+                                ].join(" ")}
+                                title="Compared with previous month sales rank"
+                            >
+                                <span className="w-3 shrink-0 text-center">
+                                    {delta.isGood ? "▲" : "▼"}
+                                </span>
+                                <span>{Math.abs(delta.value).toFixed(2)}%</span>
+                            </span>
+                        </div>
+                    );
                 },
             },
             ...bucketColumns,
@@ -472,7 +580,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         const value = Number(row.available ?? row.totalUnits ?? 0);
 
                         return (
-                            <span>
+                            <span className={percentageRowTextClassName}>
                                 {value > 0
                                     ? `${value.toLocaleString(undefined, {
                                         minimumFractionDigits: 2,
@@ -509,45 +617,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                     return (
                         <span>
-                            {inboundUnits > 0 ? inboundUnits.toLocaleString() : "-"}
+                            {Number.isFinite(inboundUnits) && inboundUnits !== 0
+                                ? inboundUnits.toLocaleString()
+                                : "-"}
                         </span>
                     );
                 },
             },
-            {
-                key: "salesRank",
-                header: "Sales Rank",
-                width: "85px",
-                headerClassName: heatmapHeaderClassName,
-                cellClassName:
-                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-                render: (row) => {
-                    if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
-                        return <span></span>;
-                    }
 
-                    const salesRank = row.salesRank;
-
-                    if (
-                        salesRank === null ||
-                        salesRank === undefined ||
-                        salesRank === "" ||
-                        String(salesRank).toLowerCase() === "nan"
-                    ) {
-                        return <span>-</span>;
-                    }
-
-                    const rankNumber = Number(String(salesRank).replace(/,/g, ""));
-
-                    return (
-                        <span>
-                            {Number.isFinite(rankNumber)
-                                ? rankNumber.toLocaleString()
-                                : String(salesRank)}
-                        </span>
-                    );
-                },
-            },
             {
                 key: "unsellableUnits",
                 header: "Unfulfillable Units",
@@ -559,7 +636,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         const value = Number(row.unsellableUnits || 0);
 
                         return (
-                            <span>
+                            <span className={percentageRowTextClassName}>
                                 {value > 0
                                     ? `${value.toLocaleString(undefined, {
                                         minimumFractionDigits: 2,
@@ -717,7 +794,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         }
 
         return baseColumns;
-    }, [buckets, onProductClick, showInventoryAlerts]);
+    }, [buckets, onProductClick, showInventoryAlerts, hasAnySalesRankDelta, bucketMaxValues]);
 
     const handleDownloadExcel = () => {
         if (onDownloadInventoryExcel) {

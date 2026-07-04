@@ -449,6 +449,73 @@ const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
   return `${mon}'${yy}`;
 };
 
+const getPreviousMonthName = (monthName?: string, year?: string | number) => {
+  const monthKey = String(monthName || "").toLowerCase();
+  const monthIndex = monthIndexMap[monthKey];
+
+  if (monthIndex === undefined) {
+    return {
+      month: "",
+      shortMonth: "",
+      year: Number(year || new Date().getFullYear()),
+    };
+  }
+
+  const selectedYear = Number(year || new Date().getFullYear());
+  const prevDate = new Date(selectedYear, monthIndex - 1, 1);
+
+  const month = prevDate.toLocaleString("en-US", {
+    month: "long",
+  });
+
+  return {
+    month: month.toLowerCase(),
+    shortMonth: month.slice(0, 3).toLowerCase(),
+    year: prevDate.getFullYear(),
+  };
+};
+
+const getPreviousSalesRankForSelectedMonth = (
+  row: InventoryCurrentRow,
+  selectedMonth?: string,
+  selectedYear?: string | number
+) => {
+  const keys = Object.keys(row || {});
+
+  const previousMonth = getPreviousMonthName(selectedMonth, selectedYear);
+
+  // ✅ For selected June, first prefer:
+  // Previous Month Sales Rank (May)
+  const exactPreviousMonthKey = keys.find((key) => {
+    const lowerKey = key.toLowerCase();
+
+    return (
+      lowerKey.startsWith("previous month sales rank") &&
+      (
+        lowerKey.includes(previousMonth.month) ||
+        lowerKey.includes(previousMonth.shortMonth)
+      )
+    );
+  });
+
+  if (exactPreviousMonthKey) {
+    return row?.[exactPreviousMonthKey];
+  }
+
+  // ✅ fallback: if backend sends any key like:
+  // Previous Month Sales Rank (June)
+  const anyPreviousRankKey = keys.find((key) =>
+    key.toLowerCase().startsWith("previous month sales rank")
+  );
+
+  return anyPreviousRankKey
+    ? row?.[anyPreviousRankKey]
+    : row?.previous_sales_rank ??
+    row?.previousSalesRank ??
+    row?.["Previous Month Sales Rank"] ??
+    "";
+};
+
 const getCurrencySymbol = (codeOrCountry: string) => {
   const v = (codeOrCountry || "").toLowerCase();
 
@@ -542,6 +609,49 @@ const formatMetricDelta = (delta: string) => {
   if (isNegative) return `▼ ${valueWithoutSign}`;
 
   return valueWithoutSign;
+};
+
+
+const RecommendationMetricCard = ({
+  metric,
+}: {
+  metric: { label: string; value: string; color?: string };
+}) => {
+  const { main, delta, deltaColor } = splitMetricValue(metric.value);
+
+  const displayMain = formatRecommendationCardMainValue(
+    metric.label,
+    main
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 min-w-0">
+      <div
+        title={metric.label}
+        className="text-xs font-medium text-charcoal-500 leading-tight truncate"
+      >
+        {metric.label}
+      </div>
+
+      <div className="mt-1 min-[1700px]:flex min-[1700px]:w-full min-[1700px]:items-baseline min-[1700px]:justify-between min-[1700px]:gap-2 leading-tight tabular-nums">
+        <div className="text-xs font-semibold text-charcoal-500 truncate">
+          {displayMain}
+        </div>
+
+        {delta ? (
+          <div
+            className={[
+              "mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap",
+              "min-[1700px]:shrink-0 min-[1700px]:text-right",
+              deltaColor,
+            ].join(" ")}
+          >
+            {formatMetricDelta(delta)}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 };
 
 const formatRecommendationCardMainValue = (label: string, main: string) => {
@@ -2246,41 +2356,16 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-              {sortedCardMetrics.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {sortedCardMetrics.map((m, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
-                    >
-                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
-                        {m.label}
-                      </div>
-
-                      {(() => {
-                        const { main, delta, deltaColor } = splitMetricValue(m.value);
-                        const displayMain = formatRecommendationCardMainValue(m.label, main);
-
-                        return (
-                          <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
-                            <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate">
-                              {displayMain}
-                            </span>
-
-                            {delta ? (
-                              <span
-                                className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
-                              >
-                                {formatMetricDelta(delta)}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </div>
-              )}
+             {sortedCardMetrics.length > 0 && (
+  <div className="grid grid-cols-3 gap-2">
+    {sortedCardMetrics.map((m, i) => (
+      <RecommendationMetricCard
+        key={`${m.label}-${i}`}
+        metric={m}
+      />
+    ))}
+  </div>
+)}
               {b.recommendationBullets?.length > 0 && (
                 <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.map((line, i) => (
@@ -3753,7 +3838,10 @@ const buildInventoryInsightsFromResponses = (
   countryName: string,
   homeCurrency?: string,
   selectedTrendBucketValue: string = "365+ days",
-  selectedGlobalInventoryCountry: string = "uk"
+  selectedGlobalInventoryCountry: string = "uk",
+  selectedRange: RangeType = "monthly",
+  selectedMonthForRank: string = "",
+  selectedYearForRank: string | number = ""
 ): InventoryInsightsData => {
   const validResponses = responses.filter((res) => res?.success);
   const latestRawResponse = validResponses[validResponses.length - 1];
@@ -3794,24 +3882,32 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
-      // ✅ Sellable Units should come from backend available column
-      const available = toNum(row?.available);
+      const available = toNum(
+        row?.["Sellable Units"] ??
+        row?.sellable_units ??
+        row?.sellableUnits ??
+        row?.sellable_sum_last ??
+        row?.available
+      );
 
-      // ✅ Map backend inbound_quantity as Inbound Units
       const inboundUnits = toNum(
+        row?.["Inbound Units"] ??
+        row?.inbound_units ??
+        row?.inboundUnits ??
+        row?.transit_total ??
         row?.inbound_quantity ??
         row?.["inbound_quantity"] ??
         row?.inboundQuantity ??
-        row?.["Inbound Quantity"] ??
-        row?.["Inbound Units"]
+        row?.["Inbound Quantity"]
       );
 
-      // ✅ Keep totalUnits same as available only as fallback for old logic
       const totalUnits = available;
 
       const unsellableUnits = toNum(
         row?.["unfulfillable-quantity"] ??
-        row?.unfulfillable_quantity
+        row?.unfulfillable_quantity ??
+        row?.unfulfillableUnits ??
+        row?.unfulfillable_units
       );
 
       return {
@@ -3836,13 +3932,21 @@ const buildInventoryInsightsFromResponses = (
         unitsSold: currentMonthUnitsSoldKey
           ? toNum(row?.[currentMonthUnitsSoldKey])
           : 0,
-          salesRank:
-    row?.["sales-rank"] ??
-    row?.sales_rank ??
-    row?.salesRank ??
-    row?.["Sales Rank"] ??
-    row?.["sales rank"] ??
-    "",
+        salesRank:
+          row?.["sales-rank"] ??
+          row?.sales_rank ??
+          row?.salesRank ??
+          row?.["Sales Rank"] ??
+          row?.["sales rank"] ??
+          "",
+        previousSalesRank:
+          selectedRange === "monthly"
+            ? getPreviousSalesRankForSelectedMonth(
+              row,
+              selectedMonthForRank,
+              selectedYearForRank
+            )
+            : "",
 
         salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
@@ -4613,45 +4717,45 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   }, []);
 
- useEffect(() => {
-  if (!pendingHash) return;
-  if (!allDropdownsSelected) return;
+  useEffect(() => {
+    if (!pendingHash) return;
+    if (!allDropdownsSelected) return;
 
-  const timer = setTimeout(() => {
-    window.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
+    const timer = setTimeout(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "auto",
+      });
 
-    setPendingHash("");
-  }, 50);
+      setPendingHash("");
+    }, 50);
 
-  return () => clearTimeout(timer);
-}, [activeTab, pendingHash, allDropdownsSelected]);
+    return () => clearTimeout(timer);
+  }, [activeTab, pendingHash, allDropdownsSelected]);
 
-useEffect(() => {
-  if (!shouldScrollTabTopRef.current) return;
+  useEffect(() => {
+    if (!shouldScrollTabTopRef.current) return;
 
-  shouldScrollTabTopRef.current = false;
+    shouldScrollTabTopRef.current = false;
 
-  const scrollNow = () => {
-    scrollFinancePageToTop();
-  };
+    const scrollNow = () => {
+      scrollFinancePageToTop();
+    };
 
-  scrollNow();
+    scrollNow();
 
-  const r1 = requestAnimationFrame(scrollNow);
-  const t1 = window.setTimeout(scrollNow, 50);
-  const t2 = window.setTimeout(scrollNow, 150);
-  const t3 = window.setTimeout(scrollNow, 350);
+    const r1 = requestAnimationFrame(scrollNow);
+    const t1 = window.setTimeout(scrollNow, 50);
+    const t2 = window.setTimeout(scrollNow, 150);
+    const t3 = window.setTimeout(scrollNow, 350);
 
-  return () => {
-    cancelAnimationFrame(r1);
-    window.clearTimeout(t1);
-    window.clearTimeout(t2);
-    window.clearTimeout(t3);
-  };
-}, [activeTab]);
+    return () => {
+      cancelAnimationFrame(r1);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [activeTab]);
 
 
 
@@ -6689,7 +6793,10 @@ useEffect(() => {
         effectiveCountryName,
         effectiveHomeCurrency,
         selectedAgeingTrendBucket,
-        selectedGlobalInventoryCountry
+        selectedGlobalInventoryCountry,
+        range,
+        selectedMonth,
+        selectedYear
       )
     );
   }, [
@@ -6715,7 +6822,17 @@ useEffect(() => {
     } else {
       setAllDropdownsSelected(false);
     }
-  }, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
+  }, [
+    selectedAgeingTrendBucket,
+    inventoryRawResponses,
+    effectiveCountryName,
+    effectiveHomeCurrency,
+    isDemoMode,
+    selectedGlobalInventoryCountry,
+    range,
+    selectedMonth,
+    selectedYear,
+  ]);
 
 
   useEffect(() => {
@@ -7148,7 +7265,10 @@ useEffect(() => {
             effectiveCountryName,
             effectiveHomeCurrency,
             "all",
-            selectedGlobalInventoryCountry
+            selectedGlobalInventoryCountry,
+            range,
+            selectedMonth,
+            selectedYear
           )
         );
       } catch (error: any) {
@@ -7651,45 +7771,45 @@ useEffect(() => {
   };
 
 
-const scrollFinancePageToTop = () => {
-  if (typeof window === "undefined") return;
+  const scrollFinancePageToTop = () => {
+    if (typeof window === "undefined") return;
 
-  const target = tabTopRef.current || layoutRef.current;
+    const target = tabTopRef.current || layoutRef.current;
 
-  const scrollParents: HTMLElement[] = [];
+    const scrollParents: HTMLElement[] = [];
 
-  let parent = target?.parentElement || null;
+    let parent = target?.parentElement || null;
 
-  while (parent) {
-    const style = window.getComputedStyle(parent);
-    const overflowY = style.overflowY;
+    while (parent) {
+      const style = window.getComputedStyle(parent);
+      const overflowY = style.overflowY;
 
-    const canScroll =
-      (overflowY === "auto" || overflowY === "scroll") &&
-      parent.scrollHeight > parent.clientHeight;
+      const canScroll =
+        (overflowY === "auto" || overflowY === "scroll") &&
+        parent.scrollHeight > parent.clientHeight;
 
-    if (canScroll) {
-      scrollParents.push(parent);
+      if (canScroll) {
+        scrollParents.push(parent);
+      }
+
+      parent = parent.parentElement;
     }
 
-    parent = parent.parentElement;
-  }
+    // window/body scroll reset
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
 
-  // window/body scroll reset
-  window.scrollTo({
-    top: 0,
-    left: 0,
-    behavior: "auto",
-  });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-
-  // any custom scroll container reset
-  scrollParents.forEach((el) => {
-    el.scrollTop = 0;
-  });
-};
+    // any custom scroll container reset
+    scrollParents.forEach((el) => {
+      el.scrollTop = 0;
+    });
+  };
 
 
 
@@ -7756,28 +7876,28 @@ const scrollFinancePageToTop = () => {
         <SegmentedToggle<DashboardTab>
           value={activeTab}
           options={TAB_OPTIONS}
-         onChange={(t) => {
-  if (tabsDisabled?.[t]) return;
+          onChange={(t) => {
+            if (tabsDisabled?.[t]) return;
 
-  shouldScrollTabTopRef.current = true;
+            shouldScrollTabTopRef.current = true;
 
-  setActiveTab(t);
+            setActiveTab(t);
 
-  if (t === "skuwiseProfit" && range === "monthly") {
-    setRange("yearly");
-    setSelectedMonth("");
-    setSelectedQuarter("");
-    setUploadsData({
-      summary: zeroData,
-      summaryComparisons: zeroComparisons,
-    });
-    setSkuRows([]);
-    setSkuNoDataFound(false);
-    setSkuRowsError(null);
-  }
+            if (t === "skuwiseProfit" && range === "monthly") {
+              setRange("yearly");
+              setSelectedMonth("");
+              setSelectedQuarter("");
+              setUploadsData({
+                summary: zeroData,
+                summaryComparisons: zeroComparisons,
+              });
+              setSkuRows([]);
+              setSkuNoDataFound(false);
+              setSkuRowsError(null);
+            }
 
-  syncTabToHash(t);
-}}
+            syncTabToHash(t);
+          }}
           className="w-full"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
           compact

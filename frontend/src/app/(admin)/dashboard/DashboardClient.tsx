@@ -2236,6 +2236,17 @@ const buildInventoryInsightsFromResponses = (
                 row?.unfulfillable_quantity
             );
 
+            const previousSalesRankKey = Object.keys(row || {}).find((key) =>
+    String(key).toLowerCase().startsWith("previous month sales rank")
+);
+
+const previousSalesRank = previousSalesRankKey
+    ? row?.[previousSalesRankKey]
+    : row?.previous_sales_rank ??
+      row?.previousSalesRank ??
+      row?.["Previous Month Sales Rank"] ??
+      "";
+
             return {
                 productName: productName || sku || "-",
                 sku,
@@ -2259,6 +2270,7 @@ const buildInventoryInsightsFromResponses = (
                     row?.["Sales Rank"] ??
                     row?.["sales rank"] ??
                     "",
+                    previousSalesRank,
                 salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
                 coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
                 inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),

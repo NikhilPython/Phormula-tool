@@ -65,7 +65,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
 
                         {action.key === "estimated_storage_cost" ? (
                             <div className="mt-2 flex flex-col items-center justify-center gap-2 text-charcoal-500">
-                                <span className="text-sm 2xl:text-lg  font-extrabold leading-none">
+                                <span className="text-sm 2xl:text-lg font-semibold leading-none">
                                     {action.displayValue ?? action.count}
                                 </span>
 
@@ -73,8 +73,8 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
                                     <span
                                         className={
                                             action.deltaPercentage <= 0
-                                                ? "text-[9.5px] sm:text-[10px] 2xl:text-xs font-bold leading-none text-emerald-600"
-                                                : "text-[9.5px] sm:text-[10px] 2xl:text-xs font-bold leading-none text-red-600"
+                                                ? "text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none text-emerald-600"
+                                                : "text-[9.5px] sm:text-[10px] 2xl:text-xs font-semibold leading-none text-red-600"
                                         }
                                         title={
                                             action.deltaValue
