@@ -25,6 +25,7 @@ export type AgeingRiskHeatmapRow = {
     unsellableUnits?: number;
     unitsSold?: number;
     salesRank?: number | string;
+    previousSalesRank?: number | string;
 
     // ✅ For Others coverage ratio
     salesLast30Days?: number;
@@ -64,6 +65,37 @@ type AgeingRiskHeatmapProps = {
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
+
+const parseSalesRankNumber = (value: any) => {
+    if (
+        value === null ||
+        value === undefined ||
+        value === "" ||
+        String(value).trim().toLowerCase() === "nan"
+    ) {
+        return null;
+    }
+
+    const n = Number(String(value).replace(/,/g, "").trim());
+
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const getSalesRankDelta = (currentRankValue: any, previousRankValue: any) => {
+    const currentRank = parseSalesRankNumber(currentRankValue);
+    const previousRank = parseSalesRankNumber(previousRankValue);
+
+    if (!currentRank || !previousRank) return null;
+
+    // Sales Rank me lower rank better hota hai.
+    // Example: previous 300, current 200 => improvement +33.33%
+    const deltaPct = ((previousRank - currentRank) / Math.abs(previousRank)) * 100;
+
+    return {
+        value: deltaPct,
+        isGood: deltaPct > 0,
+    };
+};
 
 const getHeatColor = (
     bucketColor: string,
@@ -459,6 +491,46 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return <span>{row.sku || "-"}</span>;
                 },
             },
+           {
+    key: "salesRank",
+    header: "Sales Rank",
+    width: "115px",
+    headerClassName: heatmapHeaderClassName,
+    cellClassName:
+        "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+    render: (row) => {
+        if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+            return <span></span>;
+        }
+
+        const rankNumber = parseSalesRankNumber(row.salesRank);
+
+        if (!rankNumber) {
+            return <span>-</span>;
+        }
+
+        const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
+
+        return (
+            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
+                <span>{rankNumber.toLocaleString()}</span>
+
+                {delta ? (
+                    <span
+                        className={[
+                            "inline-flex items-center gap-1 text-[11px] font-semibold",
+                            delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
+                        ].join(" ")}
+                        title="Compared with previous month sales rank"
+                    >
+                        <span>{delta.isGood ? "▲" : "▼"}</span>
+                        <span>{Math.abs(delta.value).toFixed(2)}%</span>
+                    </span>
+                ) : null}
+            </div>
+        );
+    },
+},
             ...bucketColumns,
             {
                 key: "available",
@@ -514,40 +586,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 },
             },
-            {
-                key: "salesRank",
-                header: "Sales Rank",
-                width: "85px",
-                headerClassName: heatmapHeaderClassName,
-                cellClassName:
-                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-                render: (row) => {
-                    if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
-                        return <span></span>;
-                    }
-
-                    const salesRank = row.salesRank;
-
-                    if (
-                        salesRank === null ||
-                        salesRank === undefined ||
-                        salesRank === "" ||
-                        String(salesRank).toLowerCase() === "nan"
-                    ) {
-                        return <span>-</span>;
-                    }
-
-                    const rankNumber = Number(String(salesRank).replace(/,/g, ""));
-
-                    return (
-                        <span>
-                            {Number.isFinite(rankNumber)
-                                ? rankNumber.toLocaleString()
-                                : String(salesRank)}
-                        </span>
-                    );
-                },
-            },
+            
             {
                 key: "unsellableUnits",
                 header: "Unfulfillable Units",

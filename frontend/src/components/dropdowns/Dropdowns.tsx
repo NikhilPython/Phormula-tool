@@ -449,6 +449,73 @@ const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
   return `${mon}'${yy}`;
 };
 
+const getPreviousMonthName = (monthName?: string, year?: string | number) => {
+  const monthKey = String(monthName || "").toLowerCase();
+  const monthIndex = monthIndexMap[monthKey];
+
+  if (monthIndex === undefined) {
+    return {
+      month: "",
+      shortMonth: "",
+      year: Number(year || new Date().getFullYear()),
+    };
+  }
+
+  const selectedYear = Number(year || new Date().getFullYear());
+  const prevDate = new Date(selectedYear, monthIndex - 1, 1);
+
+  const month = prevDate.toLocaleString("en-US", {
+    month: "long",
+  });
+
+  return {
+    month: month.toLowerCase(),
+    shortMonth: month.slice(0, 3).toLowerCase(),
+    year: prevDate.getFullYear(),
+  };
+};
+
+const getPreviousSalesRankForSelectedMonth = (
+  row: InventoryCurrentRow,
+  selectedMonth?: string,
+  selectedYear?: string | number
+) => {
+  const keys = Object.keys(row || {});
+
+  const previousMonth = getPreviousMonthName(selectedMonth, selectedYear);
+
+  // ✅ For selected June, first prefer:
+  // Previous Month Sales Rank (May)
+  const exactPreviousMonthKey = keys.find((key) => {
+    const lowerKey = key.toLowerCase();
+
+    return (
+      lowerKey.startsWith("previous month sales rank") &&
+      (
+        lowerKey.includes(previousMonth.month) ||
+        lowerKey.includes(previousMonth.shortMonth)
+      )
+    );
+  });
+
+  if (exactPreviousMonthKey) {
+    return row?.[exactPreviousMonthKey];
+  }
+
+  // ✅ fallback: if backend sends any key like:
+  // Previous Month Sales Rank (June)
+  const anyPreviousRankKey = keys.find((key) =>
+    key.toLowerCase().startsWith("previous month sales rank")
+  );
+
+  return anyPreviousRankKey
+    ? row?.[anyPreviousRankKey]
+    : row?.previous_sales_rank ??
+        row?.previousSalesRank ??
+        row?.["Previous Month Sales Rank"] ??
+        "";
+};
+
 const getCurrencySymbol = (codeOrCountry: string) => {
   const v = (codeOrCountry || "").toLowerCase();
 
@@ -3753,7 +3820,10 @@ const buildInventoryInsightsFromResponses = (
   countryName: string,
   homeCurrency?: string,
   selectedTrendBucketValue: string = "365+ days",
-  selectedGlobalInventoryCountry: string = "uk"
+  selectedGlobalInventoryCountry: string = "uk",
+  selectedRange: RangeType = "monthly",
+  selectedMonthForRank: string = "",
+  selectedYearForRank: string | number = ""
 ): InventoryInsightsData => {
   const validResponses = responses.filter((res) => res?.success);
   const latestRawResponse = validResponses[validResponses.length - 1];
@@ -3843,6 +3913,14 @@ const buildInventoryInsightsFromResponses = (
     row?.["Sales Rank"] ??
     row?.["sales rank"] ??
     "",
+    previousSalesRank:
+  selectedRange === "monthly"
+    ? getPreviousSalesRankForSelectedMonth(
+        row,
+        selectedMonthForRank,
+        selectedYearForRank
+      )
+    : "",
 
         salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
@@ -6683,15 +6761,18 @@ useEffect(() => {
     if (!inventoryRawResponses) return;
 
     setInventoryInsightsData(
-      buildInventoryInsightsFromResponses(
-        inventoryRawResponses.inventory,
-        inventoryRawResponses.ageSummary,
-        effectiveCountryName,
-        effectiveHomeCurrency,
-        selectedAgeingTrendBucket,
-        selectedGlobalInventoryCountry
-      )
-    );
+  buildInventoryInsightsFromResponses(
+    inventoryRawResponses.inventory,
+    inventoryRawResponses.ageSummary,
+    effectiveCountryName,
+    effectiveHomeCurrency,
+    selectedAgeingTrendBucket,
+    selectedGlobalInventoryCountry,
+    range,
+    selectedMonth,
+    selectedYear
+  )
+);
   }, [
     selectedAgeingTrendBucket,
     inventoryRawResponses,
@@ -6715,7 +6796,17 @@ useEffect(() => {
     } else {
       setAllDropdownsSelected(false);
     }
-  }, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
+  }, [
+  selectedAgeingTrendBucket,
+  inventoryRawResponses,
+  effectiveCountryName,
+  effectiveHomeCurrency,
+  isDemoMode,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth,
+  selectedYear,
+]);
 
 
   useEffect(() => {
@@ -7142,15 +7233,18 @@ useEffect(() => {
         });
 
         setInventoryInsightsData(
-          buildInventoryInsightsFromResponses(
-            fulfilledInventory,
-            fulfilledAgeSummary,
-            effectiveCountryName,
-            effectiveHomeCurrency,
-            "all",
-            selectedGlobalInventoryCountry
-          )
-        );
+  buildInventoryInsightsFromResponses(
+    fulfilledInventory,
+    fulfilledAgeSummary,
+    effectiveCountryName,
+    effectiveHomeCurrency,
+    "all",
+    selectedGlobalInventoryCountry,
+    range,
+    selectedMonth,
+    selectedYear
+  )
+);
       } catch (error: any) {
         if (error?.name === "AbortError") return;
         setInventoryInsightsError(
