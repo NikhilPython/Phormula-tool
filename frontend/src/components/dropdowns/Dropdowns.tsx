@@ -9495,7 +9495,7 @@ lines.push(
                     actions={inventoryInsightsData.actions}
                     actionLogic={inventoryInsightsData.actionLogic}
                     onHeatmapProductClick={handleHeatmapProductClick}
-                    showInventoryAlerts={true}
+                    showInventoryAlerts={false}
                     heatmapExcelCountryLabel={
                       isGlobalPage
                         ? selectedGlobalInventoryCountry.toUpperCase()
