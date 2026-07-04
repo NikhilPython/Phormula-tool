@@ -491,46 +491,46 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return <span>{row.sku || "-"}</span>;
                 },
             },
-           {
-    key: "salesRank",
-    header: "Sales Rank",
-    width: "115px",
-    headerClassName: heatmapHeaderClassName,
-    cellClassName:
-        "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    render: (row) => {
-        if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
-            return <span></span>;
-        }
+            {
+                key: "salesRank",
+                header: "Sales Rank",
+                width: "115px",
+                headerClassName: heatmapHeaderClassName,
+                cellClassName:
+                    "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                render: (row) => {
+                    if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
+                        return <span></span>;
+                    }
 
-        const rankNumber = parseSalesRankNumber(row.salesRank);
+                    const rankNumber = parseSalesRankNumber(row.salesRank);
 
-        if (!rankNumber) {
-            return <span>-</span>;
-        }
+                    if (!rankNumber) {
+                        return <span>-</span>;
+                    }
 
-        const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
+                    const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
 
-        return (
-            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
-                <span>{rankNumber.toLocaleString()}</span>
+                    return (
+                        <div className="flex items-center justify-center gap-2 whitespace-nowrap">
+                            <span>{rankNumber.toLocaleString()}</span>
 
-                {delta ? (
-                    <span
-                        className={[
-                            "inline-flex items-center gap-1 text-[11px] font-semibold",
-                            delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
-                        ].join(" ")}
-                        title="Compared with previous month sales rank"
-                    >
-                        <span>{delta.isGood ? "▲" : "▼"}</span>
-                        <span>{Math.abs(delta.value).toFixed(2)}%</span>
-                    </span>
-                ) : null}
-            </div>
-        );
-    },
-},
+                            {delta ? (
+                                <span
+                                    className={[
+                                        "inline-flex items-center gap-1 text-[11px] font-semibold",
+                                        delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
+                                    ].join(" ")}
+                                    title="Compared with previous month sales rank"
+                                >
+                                    <span>{delta.isGood ? "▲" : "▼"}</span>
+                                    <span>{Math.abs(delta.value).toFixed(2)}%</span>
+                                </span>
+                            ) : null}
+                        </div>
+                    );
+                },
+            },
             ...bucketColumns,
             {
                 key: "available",
@@ -581,12 +581,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                     return (
                         <span>
-                            {inboundUnits > 0 ? inboundUnits.toLocaleString() : "-"}
+                            {Number.isFinite(inboundUnits) && inboundUnits !== 0
+                                ? inboundUnits.toLocaleString()
+                                : "-"}
                         </span>
                     );
                 },
             },
-            
+
             {
                 key: "unsellableUnits",
                 header: "Unfulfillable Units",

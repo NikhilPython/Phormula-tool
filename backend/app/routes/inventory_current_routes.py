@@ -291,6 +291,7 @@ def build_inventory_categories(rows):
 
         inv_0_90 = to_number(row.get("inv-age-0-to-90-days"))
         inv_91_180 = to_number(row.get("inv-age-91-to-180-days"))
+        inv_0_180 = to_number(row.get("inv-age-0-to-180-days"))
         inv_181_270 = to_number(row.get("inv-age-181-to-270-days"))
         inv_271_365 = to_number(row.get("inv-age-271-to-365-days"))
         inv_365_plus = to_number(row.get("inv-age-365-plus-days"))
@@ -315,18 +316,11 @@ def build_inventory_categories(rows):
                 build_inventory_item(row, ["inv-age-181-to-270-days"])
             )
 
-        if not is_total and (inv_0_90 > 0 or inv_91_180 > 0):
-            trigger_columns = []
-
-            if inv_0_90 > 0:
-                trigger_columns.append("inv-age-0-to-90-days")
-
-            if inv_91_180 > 0:
-                trigger_columns.append("inv-age-91-to-180-days")
-
+        if not is_total and inv_0_180 > 0:
             categories["monitor"]["items"].append(
-                build_inventory_item(row, trigger_columns)
+                build_inventory_item(row, ["inv-age-0-to-180-days"])
             )
+
 
         if not is_total and unfulfillable_qty > 0:
             categories["unfulfillable"]["items"].append(
@@ -355,8 +349,7 @@ def build_inventory_categories(rows):
     return categories
 
 INVENTORY_AGE_COLUMNS = [
-    "inv-age-0-to-90-days",
-    "inv-age-91-to-180-days",
+    "inv-age-0-to-180-days",
     "inv-age-181-to-270-days",
     "inv-age-271-to-365-days",
     "inv-age-365-plus-days",
@@ -977,6 +970,313 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
 
     return columns, rows
 
+def build_inventory_monthly_table_name(user_id, country_key, month_name, year):
+    month_number = MONTH_NAME_TO_NUMBER.get(str(month_name).lower())
+
+    if not month_number:
+        return None
+
+    return f"inventorymonthly_{user_id}_{country_key}_{month_number:02d}_{year}"
+
+
+def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
+    """
+    Reads public.inventorymonthly_{user}_{country}_{MM}_{YYYY}
+
+    Mapping:
+      Sellable Units = sellable_sum_last
+      Inbound Units = transit_total
+      Unfulfillable Units =
+          defective_sum_last
+        + warehouse_damaged_sum_last
+        + expired_sum_last
+        + customer_damaged_sum_last
+        + distributor_damaged_sum_last
+    """
+
+    table_name = build_inventory_monthly_table_name(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
+
+    if not table_name:
+        return {
+            "table_name": None,
+            "data_by_sku": {},
+            "totals": {
+                "sellable": 0,
+                "inbound": 0,
+                "unfulfillable": 0,
+            },
+            "error": "Invalid month",
+        }
+
+    if not is_safe_identifier(table_name):
+        return {
+            "table_name": table_name,
+            "data_by_sku": {},
+            "totals": {
+                "sellable": 0,
+                "inbound": 0,
+                "unfulfillable": 0,
+            },
+            "error": "Invalid inventory monthly table name",
+        }
+
+    inspector = inspect(amazon_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    if table_name not in existing_tables:
+        return {
+            "table_name": table_name,
+            "data_by_sku": {},
+            "totals": {
+                "sellable": 0,
+                "inbound": 0,
+                "unfulfillable": 0,
+            },
+            "error": f"Inventory monthly table not found: {table_name}",
+        }
+
+    query = text(f"""
+        SELECT *
+        FROM public.{table_name}
+        ORDER BY id ASC
+    """)
+
+    with amazon_engine.connect() as connection:
+        df = pd.read_sql(query, connection)
+
+    if df is None or df.empty:
+        return {
+            "table_name": table_name,
+            "data_by_sku": {},
+            "totals": {
+                "sellable": 0,
+                "inbound": 0,
+                "unfulfillable": 0,
+            },
+            "error": None,
+        }
+
+    sku_col = None
+    for candidate in ["msku", "sku", "seller_sku", "SKU"]:
+        if candidate in df.columns:
+            sku_col = candidate
+            break
+
+    if not sku_col:
+        return {
+            "table_name": table_name,
+            "data_by_sku": {},
+            "totals": {
+                "sellable": 0,
+                "inbound": 0,
+                "unfulfillable": 0,
+            },
+            "error": "SKU column not found in inventory monthly table",
+        }
+
+    required_columns = [
+        "sellable_sum_last",
+        "transit_total",
+        "defective_sum_last",
+        "warehouse_damaged_sum_last",
+        "expired_sum_last",
+        "customer_damaged_sum_last",
+        "distributor_damaged_sum_last",
+    ]
+
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = 0
+
+    data_by_sku = {}
+
+    for _, row in df.iterrows():
+        sku = str(row.get(sku_col) or "").strip()
+        product_name = str(row.get("product_name") or "").strip().lower()
+
+        if (
+            not sku
+            or sku.strip().lower() in ["total", "grand total"]
+            or product_name in ["total", "grand total"]
+        ):
+            continue
+
+        sellable_units = to_number(row.get("sellable_sum_last"))
+        inbound_units = to_number(row.get("transit_total"))
+
+        unfulfillable_units = (
+            to_number(row.get("defective_sum_last"))
+            + to_number(row.get("warehouse_damaged_sum_last"))
+            + to_number(row.get("expired_sum_last"))
+            + to_number(row.get("customer_damaged_sum_last"))
+            + to_number(row.get("distributor_damaged_sum_last"))
+        )
+
+        data_by_sku[sku] = {
+            "sellable_units": sellable_units,
+            "inbound_units": inbound_units,
+            "unfulfillable_units": unfulfillable_units,
+        }
+
+    totals = {
+        "sellable": sum(v["sellable_units"] for v in data_by_sku.values()),
+        "inbound": sum(v["inbound_units"] for v in data_by_sku.values()),
+        "unfulfillable": sum(v["unfulfillable_units"] for v in data_by_sku.values()),
+    }
+
+    return {
+        "table_name": table_name,
+        "data_by_sku": data_by_sku,
+        "totals": totals,
+        "error": None,
+    }
+
+
+def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name, year):
+    monthly_result = fetch_inventory_monthly_qty_map(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
+
+    data_by_sku = monthly_result["data_by_sku"]
+
+    updated_rows = []
+
+    for row in rows:
+        new_row = dict(row)
+
+        if is_total_row(new_row):
+            # Add placeholders first.
+            # We will force these totals again from visible SKU rows below.
+            new_row["Sellable Units"] = monthly_result["totals"]["sellable"]
+            new_row["Inbound Units"] = monthly_result["totals"]["inbound"]
+            new_row["unfulfillable-quantity"] = monthly_result["totals"]["unfulfillable"]
+            updated_rows.append(new_row)
+            continue
+
+        sku = str(new_row.get("SKU") or "").strip()
+        monthly_data = data_by_sku.get(sku, {})
+
+        new_row["Sellable Units"] = monthly_data.get("sellable_units", 0)
+        new_row["Inbound Units"] = monthly_data.get("inbound_units", 0)
+        new_row["unfulfillable-quantity"] = monthly_data.get("unfulfillable_units", 0)
+
+        updated_rows.append(new_row)
+
+    # IMPORTANT:
+    # Force total row to match visible SKU rows.
+    # Do not rely on monthly table Grand Total because it can create mismatch.
+    sellable_total = sum(
+        to_number(r.get("Sellable Units"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
+    inbound_total = sum(
+        to_number(r.get("Inbound Units"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
+    unfulfillable_total = sum(
+        to_number(r.get("unfulfillable-quantity"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
+    for row in updated_rows:
+        if is_total_row(row):
+            row["Sellable Units"] = sellable_total
+            row["Inbound Units"] = inbound_total
+            row["unfulfillable-quantity"] = unfulfillable_total
+
+    updated_columns = list(columns or [])
+
+    for col in ["Sellable Units", "Inbound Units"]:
+        if col not in updated_columns:
+            updated_columns.append(col)
+
+    if "unfulfillable-quantity" not in updated_columns:
+        updated_columns.append("unfulfillable-quantity")
+
+    return {
+        "rows": updated_rows,
+        "columns": updated_columns,
+        "inventory_monthly_source_table": monthly_result["table_name"],
+        "inventory_monthly_source_error": monthly_result["error"],
+    }
+
+
+
+def attach_zero_to_180_days(rows, columns):
+    updated_rows = []
+
+    for row in rows:
+        new_row = dict(row)
+
+        inv_0_90 = to_number(new_row.get("inv-age-0-to-90-days"))
+        inv_91_180 = to_number(new_row.get("inv-age-91-to-180-days"))
+
+        inv_181_270 = to_number(new_row.get("inv-age-181-to-270-days"))
+        inv_271_365 = to_number(new_row.get("inv-age-271-to-365-days"))
+        inv_365_plus = to_number(new_row.get("inv-age-365-plus-days"))
+
+        existing_0_180 = inv_0_90 + inv_91_180
+
+        if existing_0_180 > 0:
+            zero_to_180 = existing_0_180
+        else:
+            sellable_units = to_number(new_row.get("Sellable Units"))
+
+            zero_to_180 = (
+                sellable_units
+                - inv_181_270
+                - inv_271_365
+                - inv_365_plus
+            )
+
+            if zero_to_180 < 0:
+                zero_to_180 = 0
+
+        new_row["inv-age-0-to-180-days"] = zero_to_180
+        updated_rows.append(new_row)
+
+    # Force total row to equal sum of SKU rows
+    total_0_180 = sum(
+        to_number(r.get("inv-age-0-to-180-days"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
+    for row in updated_rows:
+        if is_total_row(row):
+            row["inv-age-0-to-180-days"] = total_0_180
+
+    updated_columns = list(columns or [])
+
+    if "inv-age-0-to-180-days" not in updated_columns:
+        insert_before = "inv-age-181-to-270-days"
+
+        if insert_before in updated_columns:
+            updated_columns.insert(
+                updated_columns.index(insert_before),
+                "inv-age-0-to-180-days"
+            )
+        else:
+            updated_columns.append("inv-age-0-to-180-days")
+
+    return {
+        "rows": updated_rows,
+        "columns": updated_columns,
+    }
+
 
 def resolve_inventory_current_source(user_id, country_key, range_type, month_name, year, quarter):
     """
@@ -1017,14 +1317,25 @@ def resolve_inventory_current_source(user_id, country_key, range_type, month_nam
         if table_name in existing_tables:
             columns, rows = fetch_rows_from_current_inventory_table(table_name)
 
+            monthly_attach = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=candidate_month,
+                year=year,
+            )
+
             return {
                 "found": True,
                 "source_type": "currentinventory_table",
                 "source_name": table_name,
                 "selected_month": candidate_month,
-                "columns": columns,
-                "rows": rows,
+                "columns": monthly_attach["columns"],
+                "rows": monthly_attach["rows"],
                 "tried_sources": tried_sources,
+                "inventory_monthly_source_table": monthly_attach["inventory_monthly_source_table"],
+                "inventory_monthly_source_error": monthly_attach["inventory_monthly_source_error"],
             }
 
     # 2. Fallback to public.inventory_aged_history
@@ -1039,14 +1350,25 @@ def resolve_inventory_current_source(user_id, country_key, range_type, month_nam
         tried_sources.append(f"inventory_aged_history:{candidate_month}{year}")
 
         if rows:
+            monthly_attach = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=candidate_month,
+                year=year,
+            )
+
             return {
                 "found": True,
                 "source_type": "inventory_aged_history",
                 "source_name": "public.inventory_aged_history",
                 "selected_month": candidate_month,
-                "columns": columns,
-                "rows": rows,
+                "columns": monthly_attach["columns"],
+                "rows": monthly_attach["rows"],
                 "tried_sources": tried_sources,
+                "inventory_monthly_source_table": monthly_attach["inventory_monthly_source_table"],
+                "inventory_monthly_source_error": monthly_attach["inventory_monthly_source_error"],
             }
 
     return {
@@ -1176,11 +1498,14 @@ def rebuild_total_row(rows):
     }
 
     numeric_columns = [
+        "inv-age-0-to-180-days",
         "inv-age-0-to-90-days",
         "inv-age-91-to-180-days",
         "inv-age-181-to-270-days",
         "inv-age-271-to-365-days",
         "inv-age-365-plus-days",
+        "Sellable Units",
+        "Inbound Units",
         "unfulfillable-quantity",
         "estimated-storage-cost-next-month",
     ]
@@ -1345,6 +1670,27 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
 
             rows = units_sold_result["rows"]
             columns = units_sold_result["columns"]
+
+            # Re-attach monthly inventory values after missing SKUs are appended.
+            monthly_attach_after_units = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = monthly_attach_after_units["rows"]
+            columns = monthly_attach_after_units["columns"]
+
+            zero_to_180_attach = attach_zero_to_180_days(
+                rows=rows,
+                columns=columns,
+            )
+
+            rows = zero_to_180_attach["rows"]
+            columns = zero_to_180_attach["columns"]
 
             previous_sales_rank_result = attach_previous_month_sales_rank(
                 rows=rows,
@@ -1823,6 +2169,28 @@ def get_inventory_current_table():
 
             rows = units_sold_result["rows"]
             columns = units_sold_result["columns"]
+
+            # IMPORTANT:
+            # attach_current_month_units_sold can append missing SKUs from skuwisemonthly.
+            monthly_attach_after_units = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=selected_month_for_units,
+                year=year,
+            )
+
+            rows = monthly_attach_after_units["rows"]
+            columns = monthly_attach_after_units["columns"]
+
+            zero_to_180_attach = attach_zero_to_180_days(
+                rows=rows,
+                columns=columns,
+            )
+
+            rows = zero_to_180_attach["rows"]
+            columns = zero_to_180_attach["columns"]
 
             previous_sales_rank_result = attach_previous_month_sales_rank(
                 rows=rows,

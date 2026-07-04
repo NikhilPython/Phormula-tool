@@ -511,9 +511,9 @@ const getPreviousSalesRankForSelectedMonth = (
   return anyPreviousRankKey
     ? row?.[anyPreviousRankKey]
     : row?.previous_sales_rank ??
-        row?.previousSalesRank ??
-        row?.["Previous Month Sales Rank"] ??
-        "";
+    row?.previousSalesRank ??
+    row?.["Previous Month Sales Rank"] ??
+    "";
 };
 
 const getCurrencySymbol = (codeOrCountry: string) => {
@@ -3864,24 +3864,32 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
-      // ✅ Sellable Units should come from backend available column
-      const available = toNum(row?.available);
+      const available = toNum(
+        row?.["Sellable Units"] ??
+        row?.sellable_units ??
+        row?.sellableUnits ??
+        row?.sellable_sum_last ??
+        row?.available
+      );
 
-      // ✅ Map backend inbound_quantity as Inbound Units
       const inboundUnits = toNum(
+        row?.["Inbound Units"] ??
+        row?.inbound_units ??
+        row?.inboundUnits ??
+        row?.transit_total ??
         row?.inbound_quantity ??
         row?.["inbound_quantity"] ??
         row?.inboundQuantity ??
-        row?.["Inbound Quantity"] ??
-        row?.["Inbound Units"]
+        row?.["Inbound Quantity"]
       );
 
-      // ✅ Keep totalUnits same as available only as fallback for old logic
       const totalUnits = available;
 
       const unsellableUnits = toNum(
         row?.["unfulfillable-quantity"] ??
-        row?.unfulfillable_quantity
+        row?.unfulfillable_quantity ??
+        row?.unfulfillableUnits ??
+        row?.unfulfillable_units
       );
 
       return {
@@ -3906,21 +3914,21 @@ const buildInventoryInsightsFromResponses = (
         unitsSold: currentMonthUnitsSoldKey
           ? toNum(row?.[currentMonthUnitsSoldKey])
           : 0,
-          salesRank:
-    row?.["sales-rank"] ??
-    row?.sales_rank ??
-    row?.salesRank ??
-    row?.["Sales Rank"] ??
-    row?.["sales rank"] ??
-    "",
-    previousSalesRank:
-  selectedRange === "monthly"
-    ? getPreviousSalesRankForSelectedMonth(
-        row,
-        selectedMonthForRank,
-        selectedYearForRank
-      )
-    : "",
+        salesRank:
+          row?.["sales-rank"] ??
+          row?.sales_rank ??
+          row?.salesRank ??
+          row?.["Sales Rank"] ??
+          row?.["sales rank"] ??
+          "",
+        previousSalesRank:
+          selectedRange === "monthly"
+            ? getPreviousSalesRankForSelectedMonth(
+              row,
+              selectedMonthForRank,
+              selectedYearForRank
+            )
+            : "",
 
         salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
         coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
@@ -4691,45 +4699,45 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   }, []);
 
- useEffect(() => {
-  if (!pendingHash) return;
-  if (!allDropdownsSelected) return;
+  useEffect(() => {
+    if (!pendingHash) return;
+    if (!allDropdownsSelected) return;
 
-  const timer = setTimeout(() => {
-    window.scrollTo({
-      top: 0,
-      behavior: "auto",
-    });
+    const timer = setTimeout(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "auto",
+      });
 
-    setPendingHash("");
-  }, 50);
+      setPendingHash("");
+    }, 50);
 
-  return () => clearTimeout(timer);
-}, [activeTab, pendingHash, allDropdownsSelected]);
+    return () => clearTimeout(timer);
+  }, [activeTab, pendingHash, allDropdownsSelected]);
 
-useEffect(() => {
-  if (!shouldScrollTabTopRef.current) return;
+  useEffect(() => {
+    if (!shouldScrollTabTopRef.current) return;
 
-  shouldScrollTabTopRef.current = false;
+    shouldScrollTabTopRef.current = false;
 
-  const scrollNow = () => {
-    scrollFinancePageToTop();
-  };
+    const scrollNow = () => {
+      scrollFinancePageToTop();
+    };
 
-  scrollNow();
+    scrollNow();
 
-  const r1 = requestAnimationFrame(scrollNow);
-  const t1 = window.setTimeout(scrollNow, 50);
-  const t2 = window.setTimeout(scrollNow, 150);
-  const t3 = window.setTimeout(scrollNow, 350);
+    const r1 = requestAnimationFrame(scrollNow);
+    const t1 = window.setTimeout(scrollNow, 50);
+    const t2 = window.setTimeout(scrollNow, 150);
+    const t3 = window.setTimeout(scrollNow, 350);
 
-  return () => {
-    cancelAnimationFrame(r1);
-    window.clearTimeout(t1);
-    window.clearTimeout(t2);
-    window.clearTimeout(t3);
-  };
-}, [activeTab]);
+    return () => {
+      cancelAnimationFrame(r1);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [activeTab]);
 
 
 
@@ -6761,18 +6769,18 @@ useEffect(() => {
     if (!inventoryRawResponses) return;
 
     setInventoryInsightsData(
-  buildInventoryInsightsFromResponses(
-    inventoryRawResponses.inventory,
-    inventoryRawResponses.ageSummary,
-    effectiveCountryName,
-    effectiveHomeCurrency,
-    selectedAgeingTrendBucket,
-    selectedGlobalInventoryCountry,
-    range,
-    selectedMonth,
-    selectedYear
-  )
-);
+      buildInventoryInsightsFromResponses(
+        inventoryRawResponses.inventory,
+        inventoryRawResponses.ageSummary,
+        effectiveCountryName,
+        effectiveHomeCurrency,
+        selectedAgeingTrendBucket,
+        selectedGlobalInventoryCountry,
+        range,
+        selectedMonth,
+        selectedYear
+      )
+    );
   }, [
     selectedAgeingTrendBucket,
     inventoryRawResponses,
@@ -6797,16 +6805,16 @@ useEffect(() => {
       setAllDropdownsSelected(false);
     }
   }, [
-  selectedAgeingTrendBucket,
-  inventoryRawResponses,
-  effectiveCountryName,
-  effectiveHomeCurrency,
-  isDemoMode,
-  selectedGlobalInventoryCountry,
-  range,
-  selectedMonth,
-  selectedYear,
-]);
+    selectedAgeingTrendBucket,
+    inventoryRawResponses,
+    effectiveCountryName,
+    effectiveHomeCurrency,
+    isDemoMode,
+    selectedGlobalInventoryCountry,
+    range,
+    selectedMonth,
+    selectedYear,
+  ]);
 
 
   useEffect(() => {
@@ -7233,18 +7241,18 @@ useEffect(() => {
         });
 
         setInventoryInsightsData(
-  buildInventoryInsightsFromResponses(
-    fulfilledInventory,
-    fulfilledAgeSummary,
-    effectiveCountryName,
-    effectiveHomeCurrency,
-    "all",
-    selectedGlobalInventoryCountry,
-    range,
-    selectedMonth,
-    selectedYear
-  )
-);
+          buildInventoryInsightsFromResponses(
+            fulfilledInventory,
+            fulfilledAgeSummary,
+            effectiveCountryName,
+            effectiveHomeCurrency,
+            "all",
+            selectedGlobalInventoryCountry,
+            range,
+            selectedMonth,
+            selectedYear
+          )
+        );
       } catch (error: any) {
         if (error?.name === "AbortError") return;
         setInventoryInsightsError(
@@ -7745,45 +7753,45 @@ useEffect(() => {
   };
 
 
-const scrollFinancePageToTop = () => {
-  if (typeof window === "undefined") return;
+  const scrollFinancePageToTop = () => {
+    if (typeof window === "undefined") return;
 
-  const target = tabTopRef.current || layoutRef.current;
+    const target = tabTopRef.current || layoutRef.current;
 
-  const scrollParents: HTMLElement[] = [];
+    const scrollParents: HTMLElement[] = [];
 
-  let parent = target?.parentElement || null;
+    let parent = target?.parentElement || null;
 
-  while (parent) {
-    const style = window.getComputedStyle(parent);
-    const overflowY = style.overflowY;
+    while (parent) {
+      const style = window.getComputedStyle(parent);
+      const overflowY = style.overflowY;
 
-    const canScroll =
-      (overflowY === "auto" || overflowY === "scroll") &&
-      parent.scrollHeight > parent.clientHeight;
+      const canScroll =
+        (overflowY === "auto" || overflowY === "scroll") &&
+        parent.scrollHeight > parent.clientHeight;
 
-    if (canScroll) {
-      scrollParents.push(parent);
+      if (canScroll) {
+        scrollParents.push(parent);
+      }
+
+      parent = parent.parentElement;
     }
 
-    parent = parent.parentElement;
-  }
+    // window/body scroll reset
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
 
-  // window/body scroll reset
-  window.scrollTo({
-    top: 0,
-    left: 0,
-    behavior: "auto",
-  });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-
-  // any custom scroll container reset
-  scrollParents.forEach((el) => {
-    el.scrollTop = 0;
-  });
-};
+    // any custom scroll container reset
+    scrollParents.forEach((el) => {
+      el.scrollTop = 0;
+    });
+  };
 
 
 
@@ -7850,28 +7858,28 @@ const scrollFinancePageToTop = () => {
         <SegmentedToggle<DashboardTab>
           value={activeTab}
           options={TAB_OPTIONS}
-         onChange={(t) => {
-  if (tabsDisabled?.[t]) return;
+          onChange={(t) => {
+            if (tabsDisabled?.[t]) return;
 
-  shouldScrollTabTopRef.current = true;
+            shouldScrollTabTopRef.current = true;
 
-  setActiveTab(t);
+            setActiveTab(t);
 
-  if (t === "skuwiseProfit" && range === "monthly") {
-    setRange("yearly");
-    setSelectedMonth("");
-    setSelectedQuarter("");
-    setUploadsData({
-      summary: zeroData,
-      summaryComparisons: zeroComparisons,
-    });
-    setSkuRows([]);
-    setSkuNoDataFound(false);
-    setSkuRowsError(null);
-  }
+            if (t === "skuwiseProfit" && range === "monthly") {
+              setRange("yearly");
+              setSelectedMonth("");
+              setSelectedQuarter("");
+              setUploadsData({
+                summary: zeroData,
+                summaryComparisons: zeroComparisons,
+              });
+              setSkuRows([]);
+              setSkuNoDataFound(false);
+              setSkuRowsError(null);
+            }
 
-  syncTabToHash(t);
-}}
+            syncTabToHash(t);
+          }}
           className="w-full"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
           compact
