@@ -1603,6 +1603,52 @@ const getInventoryRowSalesRank = (row: InventoryCurrentRow) => {
   return directValue;
 };
 
+const getInventoryRowPreviousSalesRank = (
+  row: InventoryCurrentRow,
+  selectedMonth?: string
+) => {
+  const keys = Object.keys(row || {});
+
+  const selectedMonthFull = String(selectedMonth || "").trim().toLowerCase();
+  const selectedMonthShort = selectedMonthFull.slice(0, 3);
+
+  // Example:
+  // Previous Month Sales Rank (June)
+  // Previous Month Sales Rank (Jun)
+  const selectedMonthRankKey = keys.find((key) => {
+    const lowerKey = key.toLowerCase();
+
+    return (
+      lowerKey.startsWith("previous month sales rank") &&
+      (
+        lowerKey.includes(selectedMonthFull) ||
+        lowerKey.includes(selectedMonthShort)
+      )
+    );
+  });
+
+  if (selectedMonthRankKey) {
+    return row?.[selectedMonthRankKey];
+  }
+
+  // Fallback: any backend key starting with Previous Month Sales Rank
+  const anyPreviousRankKey = keys.find((key) =>
+    key.toLowerCase().startsWith("previous month sales rank")
+  );
+
+  if (anyPreviousRankKey) {
+    return row?.[anyPreviousRankKey];
+  }
+
+  return (
+    row?.previous_sales_rank ??
+    row?.previousSalesRank ??
+    row?.["Previous Month Sales Rank"] ??
+    row?.["previous sales rank"] ??
+    ""
+  );
+};
+
 const getInventoryRowEstimatedStorageCost = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
     // actual backend key used by dropdown/dashboard
@@ -1796,7 +1842,9 @@ const buildInventoryInsightsFromResponses = (
   ageSummaryResponses: InventoryAgeSummaryApiResponse[],
   selectedTrendBucket: string,
   countryName: string,
-  selectedGlobalInventoryCountry: string = "uk"
+  selectedGlobalInventoryCountry: string = "uk",
+  selectedRange: RangeType = "monthly",
+  selectedMonthForRank: string = ""
 ): InventoryInsightsData => {
   const isGlobalInventory =
     String(countryName || "").toLowerCase() === "global";
@@ -1945,6 +1993,10 @@ const buildInventoryInsightsFromResponses = (
         unitsSold,
         salesLast30Days,
         salesRank: getInventoryRowSalesRank(row),
+        previousSalesRank:
+  selectedRange === "monthly"
+    ? getInventoryRowPreviousSalesRank(row, selectedMonthForRank)
+    : "",
 
         coverageRatio: getInventoryRowCoverageRatio(row),
         estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
@@ -4215,13 +4267,15 @@ export default function InputCostPage({ params }: Params) {
           ageSummary: fulfilledAgeSummary,
         };
 
-        const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
-          fulfilledInventory,
-          fulfilledAgeSummary,
-          selectedAgeingTrendBucket,
-          countryName,
-          selectedGlobalInventoryCountry
-        );
+       const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
+  fulfilledInventory,
+  fulfilledAgeSummary,
+  selectedAgeingTrendBucket,
+  countryName,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth
+);
 
         if (ac.signal.aborted) return;
 
@@ -4261,21 +4315,25 @@ export default function InputCostPage({ params }: Params) {
     if (countryName !== "global") return;
     if (!inventoryRawResponses) return;
 
-    const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
-      inventoryRawResponses.inventory,
-      inventoryRawResponses.ageSummary,
-      selectedAgeingTrendBucket,
-      countryName,
-      selectedGlobalInventoryCountry
-    );
+const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
+  inventoryRawResponses.inventory,
+  inventoryRawResponses.ageSummary,
+  selectedAgeingTrendBucket,
+  countryName,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth
+);
 
     setInventoryInsightsData(rebuiltInventoryInsightsData);
   }, [
-    countryName,
-    inventoryRawResponses,
-    selectedAgeingTrendBucket,
-    selectedGlobalInventoryCountry,
-  ]);
+  countryName,
+  inventoryRawResponses,
+  selectedAgeingTrendBucket,
+  selectedGlobalInventoryCountry,
+  range,
+  selectedMonth,
+]);
 
   useEffect(() => {
     setShowAllReconRows(false);
