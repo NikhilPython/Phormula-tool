@@ -1875,6 +1875,266 @@ def build_inventory_alerts(df: pd.DataFrame, user_id: int, country: str) -> dict
 
     return alerts
 
+def fetch_high_alert_threshold(user_id: int, country: str) -> float | None:
+    """
+    High alert threshold = transit_time + stock_unit.
+    Fallback is handled inside generate_sku_inventory_flags().
+    """
+
+    country_key = str(country or "").strip().lower()
+
+    marketplace = None
+    if country_key == "uk":
+        marketplace = "A1F83G8C2ARO7P"
+    elif country_key == "us":
+        marketplace = "ATVPDKIKX0DER"
+
+    try:
+        query = text("""
+            SELECT
+                transit_time,
+                stock_unit
+            FROM public.country_profile
+            WHERE user_id = :user_id
+              AND LOWER(TRIM(country)) = :country
+              AND (:marketplace IS NULL OR marketplace = :marketplace)
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+
+        with phormula_engine.connect() as conn:
+            row = conn.execute(query, {
+                "user_id": user_id,
+                "country": country_key,
+                "marketplace": marketplace,
+            }).fetchone()
+
+        if not row:
+            return None
+
+        transit_time = safe_float(row.transit_time)
+        stock_unit = safe_float(row.stock_unit)
+
+        threshold = transit_time + stock_unit
+
+        return float(threshold) if threshold > 0 else None
+
+    except Exception as e:
+        print("[WARN] Failed to fetch high alert threshold:", e)
+        return None
+
+
+def generate_sku_inventory_flags(
+    user_id: int,
+    country: str,
+    focus_skus: list[str] | None = None,
+    coverage_override_by_sku: dict | None = None,
+) -> dict:
+    """
+    SKU-level inventory flags including inventory_recommendation.
+    Same logic as live BI, but compatible with historic inventory_aged aliases.
+    """
+
+    flags = {}
+
+    high_alert_threshold = fetch_high_alert_threshold(user_id, country)
+
+    if high_alert_threshold is None:
+        high_alert_threshold = 2.0
+
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+    coverage_map = {}
+
+    if coverage_df is not None and not coverage_df.empty:
+        for _, r in coverage_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            cov = pd.to_numeric(
+                r.get("inventory_coverage_ratio"),
+                errors="coerce"
+            )
+
+            coverage_map[sku.upper()] = float(cov) if pd.notna(cov) else None
+
+    # selected period override
+    for sku, cov in (coverage_override_by_sku or {}).items():
+        sku_key = str(sku or "").strip().upper()
+        if not sku_key:
+            continue
+
+        cov_num = pd.to_numeric(cov, errors="coerce")
+        if pd.notna(cov_num):
+            coverage_map[sku_key] = float(cov_num)
+
+    inv_df = fetch_inventory_aged_by_user(user_id, country)
+
+    inv_by_sku = {}
+
+    if inv_df is not None and not inv_df.empty:
+        for _, r in inv_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+            inv_by_sku[sku.upper()] = r
+
+    focus_set = (
+        {str(x).strip().upper() for x in focus_skus if str(x).strip()}
+        if focus_skus
+        else None
+    )
+
+    candidate_skus = set(coverage_map.keys()) | set(inv_by_sku.keys())
+
+    if focus_set:
+        candidate_skus = candidate_skus & focus_set
+
+    def _num(row, *cols):
+        if row is None:
+            return 0.0
+
+        for col in cols:
+            if col not in row:
+                continue
+
+            try:
+                value = row.get(col)
+                if value is None or pd.isna(value):
+                    continue
+                return float(value)
+            except Exception:
+                continue
+
+        return 0.0
+
+    for sku_key in sorted(candidate_skus):
+        r = inv_by_sku.get(sku_key)
+
+        coverage_ratio = coverage_map.get(sku_key)
+
+        cov_num = pd.to_numeric(coverage_ratio, errors="coerce")
+        coverage_ratio = float(cov_num) if pd.notna(cov_num) else None
+
+        legacy_aged_units = (
+            _num(r, "age_181_270", "inv-age-181-to-270-days")
+            + _num(r, "age_271_365", "inv-age-271-to-365-days")
+            + _num(r, "age_365_plus", "inv-age-365-plus-days")
+        )
+
+        detailed_aged_units = (
+            _num(r, "inv-age-181-to-330-days")
+            + _num(r, "inv-age-331-to-365-days")
+            + _num(r, "inv-age-366-to-455-days")
+            + _num(r, "inv-age-456-plus-days")
+        )
+
+        estimated_storage_cost = _num(
+            r,
+            "storage_cost_next_month",
+            "estimated-storage-cost-next-month",
+        )
+
+        long_term_aged_units = (
+            detailed_aged_units
+            if detailed_aged_units > 0
+            else legacy_aged_units
+        )
+
+        overaged = long_term_aged_units > 0
+
+        alert_type = "none"
+        alert = "No alert"
+
+        if (
+            coverage_ratio is not None
+            and coverage_ratio > 0
+            and coverage_ratio <= high_alert_threshold
+        ):
+            alert_type = "supply"
+            alert = "High alert"
+
+        elif (
+            coverage_ratio is not None
+            and coverage_ratio > high_alert_threshold
+            and coverage_ratio <= 5
+        ):
+            alert_type = "supply"
+            alert = "Please send shipment"
+
+        elif coverage_ratio is not None and coverage_ratio >= 6:
+            alert_type = "excess"
+            alert = "High inventory coverage ratio"
+
+        elif overaged:
+            alert_type = "overaged"
+            alert = "Long-term aged inventory"
+
+        elif estimated_storage_cost > 100:
+            alert_type = "cost"
+            alert = "High storage cost"
+
+        cov_str = (
+            round(float(coverage_ratio), 1)
+            if coverage_ratio is not None
+            else None
+        )
+
+        inventory_recommendation = "Inventory looks stable. Continue monitoring stock coverage."
+
+        if alert == "High alert" and cov_str is not None:
+            inventory_recommendation = (
+                f"Your coverage ratio is {cov_str} months. "
+                f"Please immediately send stock to avoid stock-out."
+            )
+
+        elif alert == "Please send shipment" and cov_str is not None:
+            inventory_recommendation = (
+                f"Your coverage ratio is {cov_str} months. "
+                f"Please supply inventory soon to avoid stock-out risk."
+            )
+
+        elif alert == "High inventory coverage ratio" and cov_str is not None:
+            if overaged:
+                inventory_recommendation = (
+                    f"Your coverage ratio is {cov_str} months and "
+                    f"{int(long_term_aged_units)} units are ageing long-term. "
+                    f"Improve sell-through or reduce replenishment to avoid excess storage fees."
+                )
+            else:
+                inventory_recommendation = (
+                    f"Your coverage ratio is {cov_str} months, which may increase storage cost. "
+                    f"Please improve sell-through to avoid excess storage fees."
+                )
+
+        elif alert == "Long-term aged inventory":
+            inventory_recommendation = (
+                f"{int(long_term_aged_units)} units are ageing long-term. "
+                f"Review and liquidate this stock to avoid additional storage cost."
+            )
+
+        elif alert == "High storage cost":
+            inventory_recommendation = (
+                f"Estimated storage cost is {round(estimated_storage_cost, 2)}. "
+                f"Reduce inventory exposure to control storage expense."
+            )
+
+        flags[sku_key] = {
+            "inventory_alert": alert,
+            "inventory_alert_type": alert_type,
+            "inventory_coverage_ratio": coverage_ratio,
+            "coverage_ratio_months": coverage_ratio,
+            "high_alert_threshold": high_alert_threshold,
+            "long_term_aged_units": int(long_term_aged_units),
+            "estimated_storage_cost": round(estimated_storage_cost, 2),
+            "inventory_recommendation": inventory_recommendation,
+        }
+
+    return flags
+
+
+
 def compare_sku_metrics(current: dict, previous: dict) -> dict:
     output = {}
 
@@ -2255,6 +2515,8 @@ def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
         output[sku] = rec
 
     return output
+
+
 
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     ranked = []
@@ -3138,8 +3400,8 @@ def get_or_create_summary(
     if single_sku_mode:
         inventory_lost = 0.0
 
-    inventory_alerts = {}        # ✅ portfolio-level alerts (unchanged)
-    sku_inventory_flags = {}     # ✅ new SKU-level alerts
+    inventory_alerts = {}        # ✅ portfolio-level alerts
+    sku_inventory_flags = {}     # ✅ SKU-level inventory recommendations
 
     if allow_inventory:
 
@@ -3147,26 +3409,43 @@ def get_or_create_summary(
 
         if not inventory_aged_df.empty:
 
-            # 🔵 PORTFOLIO ALERTS (DO NOT CHANGE LOGIC)
+            # 🔵 PORTFOLIO ALERTS (KEEP SAME)
             inventory_alerts = build_inventory_alerts(
                 inventory_aged_df,
                 user_id=user_id,
                 country=country
             )
 
-            # 🟢 SKU-LEVEL FLAGS (NEW ADDITION)
-            all_sku_flags = build_sku_inventory_flags(
-                inventory_aged_df,
-                user_id=user_id,
-                country=country
-            )
+        # ✅ IMPORTANT:
+        # Build SKU-level deterministic inventory recommendation
+        # after selected-period inventory has already been added to sku_current.
+        coverage_override_by_sku = {}
 
-            # Only pass Top 5 SKUs to strategy layer
-            sku_inventory_flags = {
-                sku: all_sku_flags.get(sku)
-                for sku in top_5_skus
-                if sku in all_sku_flags
-            }     
+        for sku, row in (sku_current or {}).items():
+            if not isinstance(row, dict):
+                continue
+
+            sku_key = str(sku or "").strip().upper()
+            if not sku_key:
+                continue
+
+            cov = row.get("selected_period_coverage_ratio")
+
+            if cov is None:
+                cov = row.get("inventory_coverage_ratio")
+
+            if cov is None:
+                cov = row.get("coverage_ratio_months")
+
+            if cov is not None:
+                coverage_override_by_sku[sku_key] = cov
+
+        sku_inventory_flags = generate_sku_inventory_flags(
+            user_id=user_id,
+            country=country,
+            focus_skus=top_5_skus if single_sku_mode else None,
+            coverage_override_by_sku=coverage_override_by_sku,
+        )   
 
     
 
@@ -3467,7 +3746,78 @@ def get_or_create_summary(
     excel_sku_recommendations = build_excel_sku_recommendations(
         sku_mom=sku_mom,
         objective_v2=objective_v2
-    )    
+    )
+
+    # ============================================================
+    # ADS CONTEXT FOR PROMPT-2 ADS RECOMMENDATIONS
+    # ============================================================
+    sku_ads_context = []
+
+    for sku, metrics in (sku_mom or {}).items():
+        if not isinstance(metrics, dict):
+            continue
+
+        product_name = metrics.get("product_name") or sku
+
+        ads_metric = (
+            metrics.get("productwise_ads_spend")
+            or metrics.get("advertising_total")
+            or metrics.get("advertising")
+            or {}
+        )
+
+        net_sales = metrics.get("net_sales") or {}
+        cm2_profit = metrics.get("cm2_profit") or {}
+
+        ads_prev = safe_float((ads_metric or {}).get("previous"))
+        ads_curr = safe_float((ads_metric or {}).get("current"))
+
+        net_sales_prev = safe_float((net_sales or {}).get("previous"))
+        net_sales_curr = safe_float((net_sales or {}).get("current"))
+
+        cm2_prev = safe_float((cm2_profit or {}).get("previous"))
+        cm2_curr = safe_float((cm2_profit or {}).get("current"))
+
+        sku_ads_context.append({
+            "sku": sku,
+            "product_name": product_name,
+
+            "ads_spend_prev": round(ads_prev, 2),
+            "ads_spend_curr": round(ads_curr, 2),
+            "ads_spend_change_pct": (
+                round(((ads_curr - ads_prev) / abs(ads_prev)) * 100, 2)
+                if ads_prev
+                else None
+            ),
+
+            "net_sales_prev": round(net_sales_prev, 2),
+            "net_sales_curr": round(net_sales_curr, 2),
+
+            "tacos_prev": (
+                round((ads_prev / net_sales_prev) * 100, 2)
+                if net_sales_prev
+                else 0.0
+            ),
+            "tacos_curr": (
+                round((ads_curr / net_sales_curr) * 100, 2)
+                if net_sales_curr
+                else 0.0
+            ),
+
+            "cm2_profit_prev": round(cm2_prev, 2),
+            "cm2_profit_curr": round(cm2_curr, 2),
+        })
+
+    ads_monthly = {
+        "total_ads_spend": round(
+            sum(float(x.get("ads_spend_curr") or 0) for x in sku_ads_context),
+            2,
+        ),
+        "total_cm2_profit": round(
+            sum(float(x.get("cm2_profit_curr") or 0) for x in sku_ads_context),
+            2,
+        ),
+    }   
 
     # ============================================================
     # PROMPT 1 (ANALYSIS)
@@ -3581,7 +3931,12 @@ def get_or_create_summary(
             sku_time_series=sku_time_series,
             inventory_alerts=inventory_alerts,
             country=str(country).lower(),
+
+            # ✅ NEW
             sku_inventory_flags=sku_inventory_flags,
+            sku_ads_context=sku_ads_context,
+            ads_monthly=ads_monthly,
+
             remaining_skus_context=remaining_skus_context
         )
        
@@ -3596,23 +3951,50 @@ def get_or_create_summary(
 
 
             # -------------------------------------------------
-            # Merge AI outputs + Excel recommendation
+            # Merge AI outputs + Excel + Ads + Inventory recommendations
             # ✅ Now stores actions for all individual SKUs
             # -------------------------------------------------
             action_skus = top_5_skus if single_sku_mode else all_individual_skus
 
             for sku in action_skus:
-                ai_data = ai_sku_actions.get(sku, {}) or {}
+                sku_key = str(sku or "").strip()
+                sku_lookup_key = sku_key.upper()
 
-                sku_actions[sku] = {
+                ai_data = (
+                    ai_sku_actions.get(sku_key)
+                    or ai_sku_actions.get(sku_lookup_key)
+                    or {}
+                )
+
+                inv_flag = sku_inventory_flags.get(sku_lookup_key) or sku_inventory_flags.get(sku_key) or {}
+
+                sku_actions[sku_key] = {
                     "journey_summary": ai_data.get("journey_summary", []),
 
                     # ✅ Excel-based deterministic recommendation
-                    "recommendation": excel_sku_recommendations.get(sku, ""),
+                    "recommendation": (
+                        excel_sku_recommendations.get(sku_key)
+                        or excel_sku_recommendations.get(sku_lookup_key)
+                        or ""
+                    ),
 
-                    # # ✅ Keep AI-generated recommendations
-                    # "ads_recommendation": ai_data.get("ads_recommendation", ""),
-                    # "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
+                    # ✅ AI-generated ads recommendation from Prompt-2
+                    "ads_recommendation": ai_data.get("ads_recommendation", ""),
+
+                    # ✅ Deterministic inventory recommendation from live-style logic
+                    "inventory_recommendation": (
+                        inv_flag.get("inventory_recommendation")
+                        or ai_data.get("inventory_recommendation", "")
+                    ),
+
+                    # ✅ Useful for frontend badges/debug
+                    "inventory_alert": inv_flag.get("inventory_alert"),
+                    "inventory_alert_type": inv_flag.get("inventory_alert_type"),
+                    "inventory_coverage_ratio": inv_flag.get("inventory_coverage_ratio"),
+                    "coverage_ratio_months": inv_flag.get("coverage_ratio_months"),
+                    "high_alert_threshold": inv_flag.get("high_alert_threshold"),
+                    "long_term_aged_units": inv_flag.get("long_term_aged_units"),
+                    "estimated_storage_cost": inv_flag.get("estimated_storage_cost"),
                 }
             # ✅ Capture consolidated recommendation for remaining SKUs
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
@@ -3622,6 +4004,14 @@ def get_or_create_summary(
             remaining_journey = parsed.get("remaining_skus_journey_summary")
             if isinstance(remaining_journey, list) and remaining_journey:
                 sku_actions["remaining_skus_journey_summary"] = remaining_journey
+
+            remaining_ads_rec = parsed.get("remaining_skus_ads_recommendation")
+            if isinstance(remaining_ads_rec, str) and remaining_ads_rec.strip():
+                sku_actions["remaining_skus_ads_recommendation"] = remaining_ads_rec
+
+            remaining_inventory_rec = parsed.get("remaining_skus_inventory_recommendation")
+            if isinstance(remaining_inventory_rec, str) and remaining_inventory_rec.strip():
+                sku_actions["remaining_skus_inventory_recommendation"] = remaining_inventory_rec
 
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
@@ -3686,16 +4076,16 @@ def get_or_create_summary(
 
     if not single_sku_mode:
         save_summary_to_db({
-            "user_id": user_id,
-            "country": country,
-            "marketplace_id": marketplace_id,
-            "period": period,
-            "timeline": timeline,
-            "year": year,
-            "summary": final_text,
-            "recommendations": json.dumps(sku_actions or {}),
-            "upsert": True
-        })
+        "user_id": user_id,
+        "country": country,
+        "marketplace_id": marketplace_id,
+        "period": period,
+        "timeline": timeline,
+        "year": year,
+        "summary": final_text,
+        "recommendations": sku_actions or {},
+        "upsert": True
+    })
 
     return {
         "summary": final_text,
