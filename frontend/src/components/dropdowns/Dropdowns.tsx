@@ -7153,22 +7153,29 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return [];
     }
 
-    if (range === "monthly") {
-      return selectedMonth ? [selectedMonth.toLowerCase()] : [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    // ✅ current month - 1
+    const lastCompletedDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastCompletedMonth = monthNames[
+      lastCompletedDate.getMonth()
+    ].toLowerCase();
+
+    // ✅ Future year: no historic trend
+    if (selectedYearNum > currentYear) {
+      return [];
     }
 
-    if (range === "quarterly" && selectedQuarter) {
-      const quarterMonths = quarterToMonths[selectedQuarter] || [];
-      const lastQuarterMonth = quarterMonths[quarterMonths.length - 1];
-
-      return lastQuarterMonth ? [lastQuarterMonth.toLowerCase()] : [];
-    }
-
-    if (range === "yearly") {
+    // ✅ Past year: full historic year
+    if (selectedYearNum < currentYear) {
       return ["december"];
     }
 
-    return [];
+    // ✅ Current year:
+    // Monthly / Quarterly / Yearly all should show Jan -> current month - 1
+    // Example: current month is July, trend should go till June.
+    return [lastCompletedMonth];
   };
 
   useEffect(() => {

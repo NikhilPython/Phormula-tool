@@ -1261,23 +1261,23 @@ const getInventoryAgeSummaryMonthsForTrend = (
     return [];
   }
 
-  if (rangeValue === "monthly") {
-    const safeMonth = getSafeInventoryMonth(monthValue, yearValue);
-    return safeMonth ? [safeMonth.toLowerCase()] : [];
+  const previousCompleted = getPreviousCompletedPeriod();
+  const previousCompletedYear = Number(previousCompleted.year);
+
+  // ✅ Future year: no historic trend
+  if (selectedYearNum > previousCompletedYear) {
+    return [];
   }
 
-  if (rangeValue === "quarterly" && quarterValue) {
-    const quarterMonths = quarterToMonths[quarterValue] || [];
-    const lastMonthOfQuarter = quarterMonths[quarterMonths.length - 1];
-
-    return lastMonthOfQuarter ? [lastMonthOfQuarter.toLowerCase()] : [];
-  }
-
-  if (rangeValue === "yearly") {
+  // ✅ Past year: full year trend
+  if (selectedYearNum < previousCompletedYear) {
     return ["december"];
   }
 
-  return [];
+  // ✅ Current year:
+  // Ignore selected month/quarter.
+  // Always show Jan -> current month - 1.
+  return [previousCompleted.month];
 };
 
 const isSameOrBeforePreviousCompletedMonth = (
@@ -2166,27 +2166,34 @@ const buildInventoryInsightsFromResponses = (
   });
 
   const maxTrendMonthNumber = (() => {
-    if (selectedRange === "monthly") {
-      return allMonths.indexOf(String(selectedMonthForRank || "").toLowerCase()) + 1;
+    const previousCompleted = getPreviousCompletedPeriod();
+
+    const selectedYearFromSummary =
+      selectedAgeSummaryResponses
+        ?.flatMap((res) => res.month_summary || [])
+        ?.find((item) => item?.year)?.year;
+
+    const trendYear = Number(selectedYearFromSummary || previousCompleted.year);
+    const previousCompletedYear = Number(previousCompleted.year);
+
+    // ✅ Past year: show full year
+    if (trendYear < previousCompletedYear) {
+      return 12;
     }
 
-    if (selectedRange === "quarterly" && selectedQuarterForTrend) {
-      const quarterMonths = quarterToMonths[selectedQuarterForTrend] || [];
-      const lastMonth = quarterMonths[quarterMonths.length - 1];
-
-      return allMonths.indexOf(String(lastMonth || "").toLowerCase()) + 1;
+    // ✅ Future year: show nothing
+    if (trendYear > previousCompletedYear) {
+      return 0;
     }
 
-    return 12;
+    // ✅ Current year: show till current month - 1
+    return previousCompleted.monthIndex + 1;
   })();
 
   const sortedMonthSummaryValues = Array.from(monthSummaryMap.values())
-    .filter((item) => {
-      if (selectedRange === "yearly") return true;
-
-      return Number(item.month_number) <= maxTrendMonthNumber;
-    })
+    .filter((item) => Number(item.month_number) <= maxTrendMonthNumber)
     .sort((a, b) => a.year - b.year || a.month_number - b.month_number);
+
   const trendData: AgeingTrendItem[] = sortedMonthSummaryValues.map((item) => ({
     label: getShortMonthLabel(item.month),
     value: toNum(item.totals?.[selectedTrendOption.column]),
