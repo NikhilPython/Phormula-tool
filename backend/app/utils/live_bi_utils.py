@@ -4244,22 +4244,7 @@ def build_ai_summary(
                 month=int(previous_month),
             )
 
-            # ✅ DEBUG: confirm tables and SKU keys
-            print("[BUILD AI CM2 DEBUG]", {
-                "country": resolved_country,
-                "current_year": current_year,
-                "current_month": current_month,
-                "previous_year": previous_year,
-                "previous_month": previous_month,
-                "current_table": curr_ads_monthly_totals.get("source_table"),
-                "previous_table": prev_ads_monthly_totals.get("source_table"),
-                "current_total_cm2": curr_ads_monthly_totals.get("cm2_profit"),
-                "previous_total_cm2": prev_ads_monthly_totals.get("cm2_profit"),
-                "current_sku_count": len(curr_ads_sku_map or {}),
-                "previous_sku_count": len(prev_ads_sku_map or {}),
-                "sample_current_skus": list((curr_ads_sku_map or {}).keys())[:10],
-                "sample_previous_skus": list((prev_ads_sku_map or {}).keys())[:10],
-            })
+            
 
         except Exception as e:
             print("[WARN] Ads/CM2 enrichment failed:", e)
@@ -4296,17 +4281,7 @@ def build_ai_summary(
         ads_spend_prev = float(prev_ads_data.get("ads_spend", 0.0) or 0.0)
         cm2_profit_prev = float(prev_ads_data.get("cm2_profit", 0.0) or 0.0)
 
-        # ✅ DEBUG only when previous CM2 is missing
-        if cm2_profit_prev == 0:
-            print("[CM2 SKU MISSING PREV DEBUG]", {
-                "sku": sku,
-                "sku_key": sku_key,
-                "current_found": bool(curr_ads_data),
-                "previous_found": bool(prev_ads_data),
-                "current_cm2": cm2_profit_curr,
-                "previous_cm2": cm2_profit_prev,
-                "available_previous_sku_sample": list((prev_ads_sku_map or {}).keys())[:10],
-            })
+       
 
         net_sales_curr = safe_float_local(row.get("net_sales_curr"))
         if net_sales_curr is None:
@@ -5579,7 +5554,7 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
 
     except Exception as e:
         import traceback
-        print("[LIVE STRATEGY ENGINE ERROR]", e)
+        # print("[LIVE STRATEGY ENGINE ERROR]", e)
         traceback.print_exc()
 
 
