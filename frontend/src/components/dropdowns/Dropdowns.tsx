@@ -630,7 +630,7 @@ const RecommendationMetricCard = ({
         title={metric.label}
         className="text-xs font-medium text-charcoal-500 leading-tight truncate"
       >
-        {metric.label}
+        {formatDisplayMetricLabel(metric.label)}
       </div>
 
       <div className="mt-1 min-[1700px]:flex min-[1700px]:w-full min-[1700px]:items-baseline min-[1700px]:justify-between min-[1700px]:gap-2 leading-tight tabular-nums">
@@ -683,6 +683,16 @@ const formatMetricTitle = (label: string) => {
     .replace("Cm2", "CM2");
 };
 
+const formatDisplayMetricLabel = (label: string) => {
+  const normalized = String(label || "").trim().toLowerCase();
+
+  if (normalized === "stock cover") {
+    return "Stock Cover (Months)";
+  }
+
+  return formatMetricTitle(label);
+};
+
 const monthNameToNumber = (m: string): string => {
   const idx = monthIndexMap[(m || "").toLowerCase()];
   return typeof idx === "number" ? String(idx + 1) : "";
@@ -693,10 +703,20 @@ type OtherSkuItem = {
   sku: string;
 };
 
+type ProductInsightMetric = {
+  label: string;
+  value: string;
+  color?: string;
+};
+
 type ProductInsightBlock = {
   name: string;
   skuKey?: string;
-  metrics: { label: string; value: string; color?: string }[];
+  metrics: ProductInsightMetric[];
+
+  // ✅ Only drawer metrics. These will NOT show on recommendation cards.
+  drawerOnlyMetrics?: ProductInsightMetric[];
+
   journeyBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
@@ -706,7 +726,20 @@ type ProductInsightBlock = {
 
 
 const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
-  const metricLabels = ["ASP", "Units", "Net sales", "CM1 profit", "CM1 profit per unit"];
+  const metricLabels = [
+  "ASP",
+  "Units",
+  "Net sales",
+  "CM1 profit",
+  "CM1 profit per unit",
+  "CM2 profit",
+  "CM2 profit per unit",
+  "Productwise ads spend",
+  "Stock Cover",
+  "Coverage ratio",
+  "Current inventory",
+  "Current Inventory",
+];
 
   const isMetric = (s: string) =>
     metricLabels.some((m) => s.toLowerCase().startsWith(m.toLowerCase() + ":"));
@@ -714,10 +747,74 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   const blocks: ProductInsightBlock[] = [];
   let current: ProductInsightBlock | null = null;
 
-  const pushCurrent = () => {
-    if (current && current.name.trim()) blocks.push(current);
-    current = null;
+ const getMetricNumberValue = (value?: string) => {
+  const main = String(value || "").split("(")[0] || "";
+  const n = Number(main.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const cleanProfitMetricsForDisplay = (block: ProductInsightBlock): ProductInsightBlock => {
+  const metrics = block.metrics || [];
+
+  const cm2Profit = metrics.find(
+    (m) => m.label.trim().toLowerCase() === "cm2 profit"
+  );
+
+  const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
+
+  const useCm1 = !cm2Profit || cm2ProfitValue === 0;
+
+  const cleanedMetrics = metrics
+    .map((m) => {
+      const label = m.label.trim();
+      const lower = label.toLowerCase();
+
+      if (lower === "coverage ratio") {
+        return {
+          ...m,
+          label: "Stock Cover",
+          value: m.value && m.value !== "0.00" ? getMetricNumberValue(m.value).toFixed(2) : "-",
+        };
+      }
+
+      return m;
+    })
+    .filter((m) => {
+      const lower = m.label.trim().toLowerCase();
+
+      // Ads ko recommendation card/drawer metrics me nahi dikhana
+      if (lower === "productwise ads spend") return false;
+
+      // Current inventory sirf drawerOnlyMetrics me rahega
+      if (lower === "current inventory") return false;
+      if (lower === "current inventory") return false;
+
+      // Agar CM2 zero hai to CM1 rakho, CM2 hatao
+      if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
+        return false;
+      }
+
+      // Agar CM2 non-zero hai to CM2 rakho, CM1 hatao
+      if (!useCm1 && (lower === "cm1 profit" || lower === "cm1 profit per unit")) {
+        return false;
+      }
+
+      return true;
+    });
+
+  return {
+    ...block,
+    metrics: cleanedMetrics,
   };
+};
+
+const pushCurrent = () => {
+  if (current && current.name.trim()) {
+    blocks.push(cleanProfitMetricsForDisplay(current));
+  }
+
+  current = null;
+};
 
   let inJourney = false;
   let inIncludedSkus = false;
@@ -765,15 +862,16 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       const isOther = (cleanName || line).trim().toLowerCase() === "other skus";
 
       current = {
-        name: cleanName || line,
-        skuKey: skuFromParen || skuFromPrefix,
-        metrics: [],
-        journeyBullets: [],
-        recommendationBullets: [],
-        inventoryBullets: [],
-        isOtherSkus: isOther,
-        includedSkus: [],
-      };
+  name: cleanName || line,
+  skuKey: skuFromParen || skuFromPrefix,
+  metrics: [],
+  drawerOnlyMetrics: [],
+  journeyBullets: [],
+  recommendationBullets: [],
+  inventoryBullets: [],
+  isOtherSkus: isOther,
+  includedSkus: [],
+};
 
       inJourney = false;
       inIncludedSkus = false;
@@ -863,8 +961,41 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       const color =
         !isNaN(n) ? (n < 0 ? "#DC2626" : n > 0 ? "#059669" : "#414042") : "#414042";
 
-      current.metrics.push({ label: label.trim(), value, color });
-      continue;
+      const cleanLabel = label.trim();
+const normalizedMetricLabel = cleanLabel.toLowerCase();
+
+const finalLabel =
+  normalizedMetricLabel === "coverage ratio"
+    ? "Stock Cover"
+    : cleanLabel;
+
+const finalValue =
+  normalizedMetricLabel === "coverage ratio" ||
+  normalizedMetricLabel === "stock cover"
+    ? getMetricNumberValue(value).toFixed(2)
+    : value;
+
+const metricItem = {
+  label: finalLabel,
+  value: finalValue,
+  color,
+};
+
+// ✅ Current Inventory sirf drawer me dikhega, cards me nahi
+if (normalizedMetricLabel === "current inventory") {
+  current.drawerOnlyMetrics = [
+    ...(current.drawerOnlyMetrics || []),
+    {
+      label: "Current Inventory",
+      value,
+      color,
+    },
+  ];
+} else {
+  current.metrics.push(metricItem);
+}
+
+continue;
     }
 
     if (inJourney) {
@@ -1084,15 +1215,33 @@ const buildOtherSkusInsightLines = (
       currencySymbol
     )} ${formatPct(remainingAgg?.net_sales?.delta_pct)}`,
 
-    `CM1 profit: ${formatMoney(
-      remainingAgg?.profit?.current,
-      currencySymbol
-    )} ${formatPct(remainingAgg?.profit?.delta_pct)}`,
+    (() => {
+  const profitConfig = getProfitMetricConfig(remainingAgg);
 
-    `CM1 profit per unit: ${formatMoney(
-      remainingAgg?.unit_wise_profitability?.current,
-      currencySymbol
-    )} ${formatPct(remainingAgg?.unit_wise_profitability?.delta_pct)}`,
+  return `${profitConfig.profitLabel}: ${formatMetricObjectWithDelta(
+    profitConfig.profitMetric,
+    "money",
+    currencySymbol
+  )}`;
+})(),
+
+(() => {
+  const profitConfig = getProfitMetricConfig(remainingAgg);
+
+  return `${profitConfig.profitPerUnitLabel}: ${formatMetricObjectWithDelta(
+    profitConfig.profitPerUnitMetric,
+    "money",
+    currencySymbol
+  )}`;
+})(),
+
+`Stock Cover: ${formatCoverageValue(
+  remainingAgg?.selected_period_coverage_ratio
+)}`,
+
+`Current Inventory: ${formatInventoryUnitsValue(
+  remainingAgg?.current_inventory
+)}`,
 
     ...includedSkuLines,
 
@@ -1147,6 +1296,72 @@ const formatMetricValueWithDelta = (
   return `${main}${delta}`;
 };
 
+const getMetricCurrent = (metric: any) => {
+  if (metric && typeof metric === "object" && "current" in metric) {
+    return metric.current;
+  }
+
+  return metric;
+};
+
+const getMetricDeltaPct = (metric: any) => {
+  if (metric && typeof metric === "object" && "delta_pct" in metric) {
+    return metric.delta_pct;
+  }
+
+  return null;
+};
+
+const isCm2ProfitZero = (row: any) => {
+  const cm2Current = getMetricCurrent(row?.cm2_profit);
+
+  // ✅ Missing ya 0 dono case me CM1 fallback
+  return toNum(cm2Current) === 0;
+};
+
+const getProfitMetricConfig = (row: any) => {
+  const useCm1 = isCm2ProfitZero(row);
+
+  return {
+    profitLabel: useCm1 ? "CM1 profit" : "CM2 profit",
+    profitMetric: useCm1 ? row?.profit : row?.cm2_profit,
+
+    profitPerUnitLabel: useCm1 ? "CM1 profit per unit" : "CM2 profit per unit",
+    profitPerUnitMetric: useCm1
+      ? row?.unit_wise_profitability
+      : row?.cm2_profit_per_unit ?? row?.cm2_profit_per,
+  };
+};
+
+const formatCoverageValue = (value: any) => {
+  const n = toNum(getMetricCurrent(value));
+
+  if (!Number.isFinite(n) || n <= 0) return "-";
+
+  return n.toFixed(2);
+};
+
+const formatInventoryUnitsValue = (value: any) => {
+  const n = toNum(getMetricCurrent(value));
+
+  if (!Number.isFinite(n)) return "-";
+
+  return Math.round(n).toLocaleString();
+};
+
+const formatMetricObjectWithDelta = (
+  metric: any,
+  type: "money" | "number",
+  currencySymbol = "$"
+) => {
+  return formatMetricValueWithDelta(
+    getMetricCurrent(metric),
+    getMetricDeltaPct(metric),
+    type,
+    currencySymbol
+  );
+};
+
 const buildDrawerBlockFromSkuRow = (
   sku: string,
   row: any,
@@ -1154,6 +1369,7 @@ const buildDrawerBlockFromSkuRow = (
   currencySymbol = "$"
 ): ProductInsightBlock => {
   const name = String(row?.product_name || sku).trim();
+  const profitConfig = getProfitMetricConfig(row);
 
   return {
     name,
@@ -1161,50 +1377,58 @@ const buildDrawerBlockFromSkuRow = (
     metrics: [
       {
         label: "Units",
-        value: formatMetricValueWithDelta(
-          row?.total_quantity?.current ?? row?.quantity?.current,
-          row?.total_quantity?.delta_pct ?? row?.quantity?.delta_pct,
+        value: formatMetricObjectWithDelta(
+          row?.total_quantity ?? row?.quantity,
           "number",
           currencySymbol
         ),
       },
       {
         label: "Net sales",
-        value: formatMetricValueWithDelta(
-          row?.net_sales?.current,
-          row?.net_sales?.delta_pct,
+        value: formatMetricObjectWithDelta(
+          row?.net_sales,
           "money",
           currencySymbol
         ),
       },
       {
         label: "ASP",
-        value: formatMetricValueWithDelta(
-          row?.asp?.current,
-          row?.asp?.delta_pct,
+        value: formatMetricObjectWithDelta(
+          row?.asp,
           "money",
           currencySymbol
         ),
       },
       {
-        label: "CM1 profit",
-        value: formatMetricValueWithDelta(
-          row?.profit?.current,
-          row?.profit?.delta_pct,
+        label: profitConfig.profitLabel,
+        value: formatMetricObjectWithDelta(
+          profitConfig.profitMetric,
           "money",
           currencySymbol
         ),
       },
       {
-        label: "CM1 profit per unit",
-        value: formatMetricValueWithDelta(
-          row?.unit_wise_profitability?.current,
-          row?.unit_wise_profitability?.delta_pct,
+        label: profitConfig.profitPerUnitLabel,
+        value: formatMetricObjectWithDelta(
+          profitConfig.profitPerUnitMetric,
           "money",
           currencySymbol
         ),
+      },
+      {
+        label: "Stock Cover",
+        value: formatCoverageValue(row?.selected_period_coverage_ratio),
       },
     ],
+
+    // ✅ Sirf drawer me show hoga
+    drawerOnlyMetrics: [
+      {
+        label: "Current Inventory",
+        value: formatInventoryUnitsValue(row?.current_inventory),
+      },
+    ],
+
     journeyBullets: Array.isArray(recObj?.journey_summary)
       ? recObj.journey_summary
       : [],
@@ -1294,22 +1518,27 @@ const metricColors = [
   "border border-[#FDD36F] border-t-4", // Units
   "border border-[#75BBDA] border-t-4", // Net Sales
   "border border-[#B75A5A] border-t-4", // ASP
-  "border border-[#C49466] border-t-4", // Ads
   "border border-[#7B9A6D] border-t-4", // CM2 Profit
   "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
   "border border-[#7B9A6D] border-t-4", // CM1 Profit
   "border border-[#C49466] border-t-4", // CM1 Profit Per Unit
+  "border border-[#7B9A6D] border-t-4", // Current Inventory
+  "border border-[#C49466] border-t-4", // Stock Cover
+  "border border-[#C49466] border-t-4", // Ads
 ];
 
 const metricOrder = [
   "units",
   "net sales",
   "asp",
-  "ads",
   "cm2 profit",
   "cm2 profit per unit",
   "cm1 profit",
   "cm1 profit per unit",
+  "current inventory",
+  "stock cover",
+  "productwise ads spend",
+  "ads",
 ];
 
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
@@ -1345,15 +1574,18 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
     currencySymbol || getCurrencySymbol(countryName || "");
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
-  const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
-    const aIndex = metricOrder.indexOf(a.label.toLowerCase());
-    const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+  const sortedMetrics = [
+  ...(block?.metrics || []),
+  ...(block?.drawerOnlyMetrics || []),
+].sort((a, b) => {
+  const aIndex = metricOrder.indexOf(a.label.toLowerCase());
+  const bIndex = metricOrder.indexOf(b.label.toLowerCase());
 
-    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+  const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+  const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
 
-    return safeAIndex - safeBIndex;
-  });
+  return safeAIndex - safeBIndex;
+});
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
@@ -1505,7 +1737,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-                              {formatMetricTitle(m.label)}
+                              {formatDisplayMetricLabel(m.label)}
                             </span>
                           </div>
 
@@ -2366,13 +2598,15 @@ const ProductInsightsSection = ({
                   ))}
                 </div>
               )}
-              {b.recommendationBullets?.length > 0 && (
-                <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                  {b.recommendationBullets.map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-              )}
+              <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+  {b.recommendationBullets?.length > 0 ? (
+    b.recommendationBullets.map((line, i) => (
+      <p key={i}>{line}</p>
+    ))
+  ) : (
+    <p className="text-slate-400">—</p>
+  )}
+</div>
             </motion.div>
           );
         })}
@@ -5859,17 +6093,49 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         )}`
       );
 
-      lines.push(
-        `CM1 profit: ${formatMoneyValue(currentRow?.profit)}${formatDelta(
-          getMetricDelta(momRow, "profit")
-        )}`
-      );
+      const useCm1Profit = toNum(currentRow?.cm2_profit) === 0;
 
-      lines.push(
-        `CM1 profit per unit: ${formatMoneyValue(
-          currentRow?.unit_wise_profitability
-        )}${formatDelta(getMetricDelta(momRow, "unit_wise_profitability"))}`
-      );
+const profitLabel = useCm1Profit ? "CM1 profit" : "CM2 profit";
+const profitKey = useCm1Profit ? "profit" : "cm2_profit";
+const profitValue = useCm1Profit
+  ? currentRow?.profit
+  : currentRow?.cm2_profit;
+
+const profitPerUnitLabel = useCm1Profit
+  ? "CM1 profit per unit"
+  : "CM2 profit per unit";
+
+const profitPerUnitKey = useCm1Profit
+  ? "unit_wise_profitability"
+  : "cm2_profit_per_unit";
+
+const profitPerUnitValue = useCm1Profit
+  ? currentRow?.unit_wise_profitability
+  : currentRow?.cm2_profit_per_unit ?? currentRow?.cm2_profit_per;
+
+lines.push(
+  `${profitLabel}: ${formatMoneyValue(profitValue)}${formatDelta(
+    getMetricDelta(momRow, profitKey)
+  )}`
+);
+
+lines.push(
+  `${profitPerUnitLabel}: ${formatMoneyValue(profitPerUnitValue)}${formatDelta(
+    getMetricDelta(momRow, profitPerUnitKey)
+  )}`
+);
+
+lines.push(
+  `Stock Cover: ${formatCoverageValue(
+    currentRow?.selected_period_coverage_ratio
+  )}`
+);
+
+lines.push(
+  `Current Inventory: ${formatInventoryUnitsValue(
+    currentRow?.current_inventory
+  )}`
+);
 
       lines.push("Product Journey");
 
