@@ -611,6 +611,49 @@ const formatMetricDelta = (delta: string) => {
   return valueWithoutSign;
 };
 
+
+const RecommendationMetricCard = ({
+  metric,
+}: {
+  metric: { label: string; value: string; color?: string };
+}) => {
+  const { main, delta, deltaColor } = splitMetricValue(metric.value);
+
+  const displayMain = formatRecommendationCardMainValue(
+    metric.label,
+    main
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 min-w-0">
+      <div
+        title={metric.label}
+        className="text-xs font-medium text-charcoal-500 leading-tight truncate"
+      >
+        {metric.label}
+      </div>
+
+      <div className="mt-1 min-[1700px]:flex min-[1700px]:w-full min-[1700px]:items-baseline min-[1700px]:justify-between min-[1700px]:gap-2 leading-tight tabular-nums">
+        <div className="text-xs font-semibold text-charcoal-500 truncate">
+          {displayMain}
+        </div>
+
+        {delta ? (
+          <div
+            className={[
+              "mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap",
+              "min-[1700px]:shrink-0 min-[1700px]:text-right",
+              deltaColor,
+            ].join(" ")}
+          >
+            {formatMetricDelta(delta)}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
 const formatRecommendationCardMainValue = (label: string, main: string) => {
   const normalizedLabel = String(label || "").trim().toLowerCase();
 
@@ -2313,41 +2356,16 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-              {sortedCardMetrics.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {sortedCardMetrics.map((m, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg px-2 border border-slate-200 bg-slate-50 py-2 min-w-0"
-                    >
-                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 leading-none truncate">
-                        {m.label}
-                      </div>
-
-                      {(() => {
-                        const { main, delta, deltaColor } = splitMetricValue(m.value);
-                        const displayMain = formatRecommendationCardMainValue(m.label, main);
-
-                        return (
-                          <div className="mt-1 flex w-full items-baseline justify-between gap-2 min-w-0">
-                            <span className="text-[10px] 2xl:text-xs font-semibold text-charcoal-500 truncate">
-                              {displayMain}
-                            </span>
-
-                            {delta ? (
-                              <span
-                                className={`text-[10px] 2xl:text-xs font-semibold shrink-0 whitespace-nowrap text-right ${deltaColor}`}
-                              >
-                                {formatMetricDelta(delta)}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </div>
-              )}
+             {sortedCardMetrics.length > 0 && (
+  <div className="grid grid-cols-3 gap-2">
+    {sortedCardMetrics.map((m, i) => (
+      <RecommendationMetricCard
+        key={`${m.label}-${i}`}
+        metric={m}
+      />
+    ))}
+  </div>
+)}
               {b.recommendationBullets?.length > 0 && (
                 <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.map((line, i) => (
