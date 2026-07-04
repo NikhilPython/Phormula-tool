@@ -1331,7 +1331,7 @@ If sku_time_series is missing or sparse for a SKU:
 - do not leave it empty
 
 If ads data is missing or zero:
-- still return ads_recommendation as "Monitor current advertising."
+- still return ads_recommendation as "Monitor & cross check current advertising."
 
 If inventory data is missing:
 - return inventory_recommendation as "Cross Check current inventory."
@@ -1707,7 +1707,7 @@ Formatting rules:
 If no inventory_alert_type exists:
 
 inventory_recommendation MUST be:
-"Inventory position is stable."
+"Cross Check current inventory."
 
 IMPORTANT:
 
@@ -2292,7 +2292,7 @@ ads_recommendation RULES (MANDATORY):
 - Must reference advertising efficiency or CM2 impact
   ONLY if sku_ads_context contains meaningful data.
 - If no ads signal exists, return:
-  "Monitor current advertising."
+  "Monitor & cross check current advertising."
 - Must follow recommendation language simplicity rules.
 - No technical jargon.
 - No extra commentary.
@@ -2302,7 +2302,7 @@ inventory_recommendation RULES (MANDATORY):
 - Maximum 1 short sentence.
 - Must reflect supply, excess, overaged, or cost risk IF sku_inventory_flags exists.
 - If no SKU-level inventory signal exists, return:
-  "Inventory position is stable."
+  "Cross Check current inventory."
 - Must NOT include pricing or margin strategy.
 - Must NOT repeat the main recommendation.
 - Must follow recommendation language simplicity rules.

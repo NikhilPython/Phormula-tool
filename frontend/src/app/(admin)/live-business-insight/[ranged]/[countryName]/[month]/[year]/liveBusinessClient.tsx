@@ -1380,8 +1380,8 @@ const replaceProfitMetricsWithCm2IfAvailable = (
         flat[key] = [
           `Product Journey: ${(action?.journey_summary || []).join(" ")}`,
           `Recommendation: ${action?.recommendation || "Monitor performance"}`,
-          `Advertising: ${action?.ads_recommendation || "Monitor current advertising."}`,
-          `Inventory: ${action?.inventory_recommendation || "Inventory position is stable."}`,
+          `Advertising: ${action?.ads_recommendation || "Monitor & cross check current advertising."}`,
+          `Inventory: ${action?.inventory_recommendation || "Cross Check current inventory."}`,
           `Product: ${productName}`,
         ].join("\n");
       });
@@ -1438,7 +1438,7 @@ const replaceProfitMetricsWithCm2IfAvailable = (
       if (first?.ads_recommendation) return first.ads_recommendation;
     }
 
-    return "Monitor current advertising.";
+    return "Monitor & cross check current advertising.";
   };
 
   const extractGlobalInventory = (journey: any): string => {
@@ -1450,7 +1450,7 @@ const replaceProfitMetricsWithCm2IfAvailable = (
       if (first?.inventory_recommendation) return first.inventory_recommendation;
     }
 
-    return "Inventory position is stable.";
+    return "Cross Check current inventory.";
   };
 
   const hydrateFromPayload = (payload: ApiResponse) => {
