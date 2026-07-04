@@ -1342,14 +1342,19 @@ const quarterToMonths: Record<Quarter, string[]> = {
 };
 
 const INVENTORY_BUCKETS: AgeingBucket[] = [
-  { key: 'zeroToNinety', label: '0–90 Days', color: '#7B9A6D' },
-  { key: 'ninetyOneToOneEighty', label: '91–180 Days', color: '#FDD36F' },
+  { key: 'zeroToOneEighty', label: '0–180 Days', color: '#7B9A6D' },
   { key: 'oneEightyOneToTwoSeventy', label: '181–270 Days', color: '#ED9F50' },
   { key: 'twoSeventyOneToThreeSixtyFive', label: '271–365 Days', color: '#C49466' },
   { key: 'threeSixtyFivePlus', label: '365+ Days', color: '#B75A5A' },
 ];
 
 const AGEING_TREND_BUCKET_OPTIONS = [
+  {
+    label: '0–180 Days',
+    value: '0-180 days',
+    column: 'inv-age-0-to-180-days',
+    color: '#7B9A6D',
+  },
   {
     label: '181–270 Days',
     value: '181-270 days',
@@ -1374,7 +1379,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: 'healthy',
     label: 'Healthy',
-    description: 'Stock covers 0–90 days',
+    description: 'Stock covers 0–180 days',
     color: '#7B9A6D',
   },
   {
@@ -1383,12 +1388,12 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     description: 'Shipment Required',
     color: '#B75A5A',
   },
-  {
-    key: 'discount',
-    label: 'Discount',
-    description: 'Stock aged 91–180 days',
-    color: '#FDD36F',
-  },
+  // {
+  //   key: 'discount',
+  //   label: 'Discount',
+  //   description: 'Stock aged 0–180 days',
+  //   color: '#FDD36F',
+  // },
   {
     key: 'liquidate',
     label: 'Liquidate',
@@ -1701,8 +1706,14 @@ const getRowAgeingTotalUnits = (row: any) => {
   if (available > 0) return available;
 
   return (
-    toNum(row?.zeroToNinety ?? row?.['inv-age-0-to-90-days']) +
-    toNum(row?.ninetyOneToOneEighty ?? row?.['inv-age-91-to-180-days']) +
+    toNum(
+      row?.zeroToOneEighty ??
+      row?.['inv-age-0-to-180-days'] ??
+      (
+        toNum(row?.zeroToNinety ?? row?.['inv-age-0-to-90-days']) +
+        toNum(row?.ninetyOneToOneEighty ?? row?.['inv-age-91-to-180-days'])
+      )
+    ) +
     toNum(row?.oneEightyOneToTwoSeventy ?? row?.['inv-age-181-to-270-days']) +
     toNum(row?.twoSeventyOneToThreeSixtyFive ?? row?.['inv-age-271-to-365-days']) +
     toNum(row?.threeSixtyFivePlus ?? row?.['inv-age-365-plus-days'])
@@ -1943,15 +1954,19 @@ const buildInventoryInsightsFromResponses = (
 
   const heatmapData: AgeingRiskHeatmapRow[] = productRows
     .map((row) => {
-      const zeroToNinety = getInventoryAgeValue(row, 'inv-age-0-to-90-days');
-      const ninetyOneToOneEighty = getInventoryAgeValue(row, 'inv-age-91-to-180-days');
+      const zeroToOneEighty =
+        getInventoryAgeValue(row, 'inv-age-0-to-180-days') ||
+        (
+          getInventoryAgeValue(row, 'inv-age-0-to-90-days') +
+          getInventoryAgeValue(row, 'inv-age-91-to-180-days')
+        );
+
       const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, 'inv-age-181-to-270-days');
       const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, 'inv-age-271-to-365-days');
       const threeSixtyFivePlus = getInventoryAgeValue(row, 'inv-age-365-plus-days');
 
       const bucketTotal =
-        zeroToNinety +
-        ninetyOneToOneEighty +
+        zeroToOneEighty +
         oneEightyOneToTwoSeventy +
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
@@ -1981,8 +1996,7 @@ const buildInventoryInsightsFromResponses = (
           ""
         ).trim(),
 
-        zeroToNinety,
-        ninetyOneToOneEighty,
+        zeroToOneEighty,
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
@@ -1994,9 +2008,9 @@ const buildInventoryInsightsFromResponses = (
         salesLast30Days,
         salesRank: getInventoryRowSalesRank(row),
         previousSalesRank:
-  selectedRange === "monthly"
-    ? getInventoryRowPreviousSalesRank(row, selectedMonthForRank)
-    : "",
+          selectedRange === "monthly"
+            ? getInventoryRowPreviousSalesRank(row, selectedMonthForRank)
+            : "",
 
         coverageRatio: getInventoryRowCoverageRatio(row),
         estimatedStorageCost: getInventoryRowEstimatedStorageCost(row),
@@ -2017,8 +2031,13 @@ const buildInventoryInsightsFromResponses = (
 
   const overallAgeing = heatmapData.reduce(
     (acc, row) => {
-      acc.zeroToNinety += toNum(row.zeroToNinety);
-      acc.ninetyOneToOneEighty += toNum(row.ninetyOneToOneEighty);
+      acc.zeroToOneEighty +=
+        toNum((row as any).zeroToOneEighty) ||
+        (
+          toNum((row as any).zeroToNinety) +
+          toNum((row as any).ninetyOneToOneEighty)
+        );
+
       acc.oneEightyOneToTwoSeventy += toNum(row.oneEightyOneToTwoSeventy);
       acc.twoSeventyOneToThreeSixtyFive += toNum(row.twoSeventyOneToThreeSixtyFive);
       acc.threeSixtyFivePlus += toNum(row.threeSixtyFivePlus);
@@ -2026,8 +2045,7 @@ const buildInventoryInsightsFromResponses = (
       return acc;
     },
     {
-      zeroToNinety: 0,
-      ninetyOneToOneEighty: 0,
+      zeroToOneEighty: 0,
       oneEightyOneToTwoSeventy: 0,
       twoSeventyOneToThreeSixtyFive: 0,
       threeSixtyFivePlus: 0,
@@ -2036,14 +2054,9 @@ const buildInventoryInsightsFromResponses = (
 
   const donutData: DonutChartItem[] = [
     {
-      bucket: '0–90 Days',
-      units: overallAgeing.zeroToNinety,
+      bucket: '0–180 Days',
+      units: overallAgeing.zeroToOneEighty,
       color: '#7B9A6D',
-    },
-    {
-      bucket: '91–180 Days',
-      units: overallAgeing.ninetyOneToOneEighty,
-      color: '#FDD36F',
     },
     {
       bucket: '181–270 Days',
@@ -2195,7 +2208,10 @@ const buildInventoryInsightsFromResponses = (
       : null;
 
   const healthyRows = heatmapData.filter(
-    (row) => toNum(row.zeroToNinety) > 0
+    (row) =>
+      toNum((row as any).zeroToOneEighty) > 0 ||
+      toNum((row as any).zeroToNinety) > 0 ||
+      toNum((row as any).ninetyOneToOneEighty) > 0
   );
 
   const highAlertRows = heatmapData.filter((row) =>
@@ -2223,7 +2239,7 @@ const buildInventoryInsightsFromResponses = (
     getUniqueInventorySkuCount(highAlertRows);
 
   const discountRows = heatmapData.filter(
-    (row) => toNum(row.ninetyOneToOneEighty) > 0
+    (row) => toNum((row as any).zeroToOneEighty) > 0
   );
 
   const liquidateRows = heatmapData.filter(
@@ -2249,10 +2265,10 @@ const buildInventoryInsightsFromResponses = (
       displayValue: getUniqueInventorySkuCount(healthyRows),
       skuCount: getUniqueInventorySkuCount(healthyRows),
       unitCount: healthyRows.reduce(
-        (sum, row) => sum + toNum(row.zeroToNinety),
+        (sum, row) => sum + toNum((row as any).zeroToOneEighty),
         0
       ),
-      description: 'Stock covers 0–90 days',
+      description: 'Stock covers 0–180 days',
       color: '#7B9A6D',
       backgroundColor: '#ffffff',
     },
@@ -2270,20 +2286,20 @@ const buildInventoryInsightsFromResponses = (
       color: '#B75A5A',
       backgroundColor: '#ffffff',
     },
-    {
-      key: 'discount',
-      label: 'Discount',
-      count: getUniqueInventorySkuCount(discountRows),
-      displayValue: getUniqueInventorySkuCount(discountRows),
-      skuCount: getUniqueInventorySkuCount(discountRows),
-      unitCount: discountRows.reduce(
-        (sum, row) => sum + toNum(row.ninetyOneToOneEighty),
-        0
-      ),
-      description: 'Stock aged 91–180 days',
-      color: '#FDD36F',
-      backgroundColor: '#ffffff',
-    },
+    // {
+    //   key: 'discount',
+    //   label: 'Discount',
+    //   count: getUniqueInventorySkuCount(discountRows),
+    //   displayValue: getUniqueInventorySkuCount(discountRows),
+    //   skuCount: getUniqueInventorySkuCount(discountRows),
+    //   unitCount: discountRows.reduce(
+    //     (sum, row) => sum + toNum((row as any).zeroToOneEighty),
+    //     0
+    //   ),
+    //   description: 'Stock aged 0–180 days',
+    //   color: '#FDD36F',
+    //   backgroundColor: '#ffffff',
+    // },
     {
       key: 'liquidate',
       label: 'Liquidate',
@@ -4267,15 +4283,15 @@ export default function InputCostPage({ params }: Params) {
           ageSummary: fulfilledAgeSummary,
         };
 
-       const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
-  fulfilledInventory,
-  fulfilledAgeSummary,
-  selectedAgeingTrendBucket,
-  countryName,
-  selectedGlobalInventoryCountry,
-  range,
-  selectedMonth
-);
+        const nextInventoryInsightsData = buildInventoryInsightsFromResponses(
+          fulfilledInventory,
+          fulfilledAgeSummary,
+          selectedAgeingTrendBucket,
+          countryName,
+          selectedGlobalInventoryCountry,
+          range,
+          selectedMonth
+        );
 
         if (ac.signal.aborted) return;
 
@@ -4315,25 +4331,25 @@ export default function InputCostPage({ params }: Params) {
     if (countryName !== "global") return;
     if (!inventoryRawResponses) return;
 
-const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
-  inventoryRawResponses.inventory,
-  inventoryRawResponses.ageSummary,
-  selectedAgeingTrendBucket,
-  countryName,
-  selectedGlobalInventoryCountry,
-  range,
-  selectedMonth
-);
+    const rebuiltInventoryInsightsData = buildInventoryInsightsFromResponses(
+      inventoryRawResponses.inventory,
+      inventoryRawResponses.ageSummary,
+      selectedAgeingTrendBucket,
+      countryName,
+      selectedGlobalInventoryCountry,
+      range,
+      selectedMonth
+    );
 
     setInventoryInsightsData(rebuiltInventoryInsightsData);
   }, [
-  countryName,
-  inventoryRawResponses,
-  selectedAgeingTrendBucket,
-  selectedGlobalInventoryCountry,
-  range,
-  selectedMonth,
-]);
+    countryName,
+    inventoryRawResponses,
+    selectedAgeingTrendBucket,
+    selectedGlobalInventoryCountry,
+    range,
+    selectedMonth,
+  ]);
 
   useEffect(() => {
     setShowAllReconRows(false);

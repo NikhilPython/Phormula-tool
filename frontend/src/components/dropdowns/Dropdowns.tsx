@@ -2356,16 +2356,16 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-             {sortedCardMetrics.length > 0 && (
-  <div className="grid grid-cols-3 gap-2">
-    {sortedCardMetrics.map((m, i) => (
-      <RecommendationMetricCard
-        key={`${m.label}-${i}`}
-        metric={m}
-      />
-    ))}
-  </div>
-)}
+              {sortedCardMetrics.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {sortedCardMetrics.map((m, i) => (
+                    <RecommendationMetricCard
+                      key={`${m.label}-${i}`}
+                      metric={m}
+                    />
+                  ))}
+                </div>
+              )}
               {b.recommendationBullets?.length > 0 && (
                 <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.map((line, i) => (
@@ -3259,8 +3259,7 @@ const DEMO_TARGET_SUMMARY = {
 };
 
 const heatmapBuckets: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "zeroToOneEighty", label: "0–180 Days", color: "#7B9A6D" },
   { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
   { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
@@ -3270,8 +3269,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product A",
     sku: "SKU-A",
-    zeroToNinety: 420,
-    ninetyOneToOneEighty: 110,
+    zeroToOneEighty: 530,
     oneEightyOneToTwoSeventy: 60,
     twoSeventyOneToThreeSixtyFive: 25,
     threeSixtyFivePlus: 10,
@@ -3283,8 +3281,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product B",
     sku: "SKU-B",
-    zeroToNinety: 120,
-    ninetyOneToOneEighty: 240,
+    zeroToOneEighty: 360,
     oneEightyOneToTwoSeventy: 180,
     twoSeventyOneToThreeSixtyFive: 90,
     threeSixtyFivePlus: 130,
@@ -3296,8 +3293,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product C",
     sku: "SKU-C",
-    zeroToNinety: 560,
-    ninetyOneToOneEighty: 75,
+    zeroToOneEighty: 635,
     oneEightyOneToTwoSeventy: 20,
     twoSeventyOneToThreeSixtyFive: 5,
     threeSixtyFivePlus: 0,
@@ -3309,8 +3305,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product D",
     sku: "SKU-D",
-    zeroToNinety: 80,
-    ninetyOneToOneEighty: 130,
+    zeroToOneEighty: 210,
     oneEightyOneToTwoSeventy: 160,
     twoSeventyOneToThreeSixtyFive: 220,
     threeSixtyFivePlus: 310,
@@ -3322,8 +3317,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product E",
     sku: "SKU-E",
-    zeroToNinety: 300,
-    ninetyOneToOneEighty: 210,
+    zeroToOneEighty: 510,
     oneEightyOneToTwoSeventy: 95,
     twoSeventyOneToThreeSixtyFive: 40,
     threeSixtyFivePlus: 35,
@@ -3335,8 +3329,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
   {
     productName: "Demo Product F",
     sku: "SKU-F",
-    zeroToNinety: 180,
-    ninetyOneToOneEighty: 160,
+    zeroToOneEighty: 340,
     oneEightyOneToTwoSeventy: 120,
     twoSeventyOneToThreeSixtyFive: 80,
     threeSixtyFivePlus: 60,
@@ -3350,14 +3343,19 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
 const selectedDonutSku = "SKU-B";
 
 const INVENTORY_BUCKETS: AgeingBucket[] = [
-  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
-  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "zeroToOneEighty", label: "0–180 Days", color: "#7B9A6D" },
   { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
   { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
   { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
 ];
 
 const AGEING_TREND_BUCKET_OPTIONS = [
+  {
+    label: "0–180 Days",
+    value: "0-180 days",
+    column: "inv-age-0-to-180-days",
+    color: "#7B9A6D",
+  },
   {
     label: "181–270 Days",
     value: "181-270 days",
@@ -3382,7 +3380,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Stock covers 0–90 days",
+    description: "Stock covers 0–180 days",
     color: "#7B9A6D",
   },
   {
@@ -3391,12 +3389,12 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     description: "Shipment Required",
     color: "#B75A5A",
   },
-  {
-    key: "discount",
-    label: "Discount",
-    description: "Stock aged 91–180 days",
-    color: "#FDD36F",
-  },
+  // {
+  //   key: "discount",
+  //   label: "Discount",
+  //   description: "Stock aged 0–180 days",
+  //   color: "#FDD36F",
+  // },
   {
     key: "liquidate",
     label: "Liquidate",
@@ -3428,7 +3426,7 @@ const INVENTORY_ACTION_META: Record<
 > = {
   healthy: {
     label: "Healthy",
-    description: "Stock covers 0–90 days",
+    description: "Stock covers 0–180 days",
     color: "#7B9A6D",
     backgroundColor: "#ffffff",
   },
@@ -3438,12 +3436,12 @@ const INVENTORY_ACTION_META: Record<
     color: "#B75A5A",
     backgroundColor: "#ffffff",
   },
-  discount: {
-    label: "Discount",
-    description: "Stock aged 91–180 days",
-    color: "#FDD36F",
-    backgroundColor: "#ffffff",
-  },
+  // discount: {
+  //   label: "Discount",
+  //   description: "Stock aged 0–180 days",
+  //   color: "#FDD36F",
+  //   backgroundColor: "#ffffff",
+  // },
   liquidate: {
     label: "Liquidate",
     description: "Stock older than 180 days",
@@ -3564,8 +3562,7 @@ const sumInventoryUnitsByKeys = (
 
 const getRowAgeingTotalUnits = (row: InventoryCurrentRow) => {
   return sumInventoryUnitsByKeys([row], [
-    "inv-age-0-to-90-days",
-    "inv-age-91-to-180-days",
+    "inv-age-0-to-180-days",
     "inv-age-181-to-270-days",
     "inv-age-271-to-365-days",
     "inv-age-365-plus-days",
@@ -3869,15 +3866,19 @@ const buildInventoryInsightsFromResponses = (
       const sku = getInventoryRowSku(row);
       const productName = getInventoryRowProductName(row);
 
-      const zeroToNinety = getInventoryAgeValue(row, "inv-age-0-to-90-days");
-      const ninetyOneToOneEighty = getInventoryAgeValue(row, "inv-age-91-to-180-days");
+      const zeroToOneEighty =
+        getInventoryAgeValue(row, "inv-age-0-to-180-days") ||
+        (
+          getInventoryAgeValue(row, "inv-age-0-to-90-days") +
+          getInventoryAgeValue(row, "inv-age-91-to-180-days")
+        );
+
       const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, "inv-age-181-to-270-days");
       const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
       const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
 
       const bucketTotal =
-        zeroToNinety +
-        ninetyOneToOneEighty +
+        zeroToOneEighty +
         oneEightyOneToTwoSeventy +
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
@@ -3917,9 +3918,7 @@ const buildInventoryInsightsFromResponses = (
         countryKey: String(latestResponse?.country_key || countryName || "").toLowerCase(),
         rawProductName: productName || sku || "-",
         rawSku: sku,
-
-        zeroToNinety,
-        ninetyOneToOneEighty,
+        zeroToOneEighty,
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
@@ -3956,8 +3955,13 @@ const buildInventoryInsightsFromResponses = (
 
   const overallAgeing = latestRows.reduce(
     (acc, row) => {
-      acc.zeroToNinety += getInventoryAgeValue(row, "inv-age-0-to-90-days");
-      acc.ninetyOneToOneEighty += getInventoryAgeValue(row, "inv-age-91-to-180-days");
+      acc.zeroToOneEighty +=
+        getInventoryAgeValue(row, "inv-age-0-to-180-days") ||
+        (
+          getInventoryAgeValue(row, "inv-age-0-to-90-days") +
+          getInventoryAgeValue(row, "inv-age-91-to-180-days")
+        );
+
       acc.oneEightyOneToTwoSeventy += getInventoryAgeValue(row, "inv-age-181-to-270-days");
       acc.twoSeventyOneToThreeSixtyFive += getInventoryAgeValue(row, "inv-age-271-to-365-days");
       acc.threeSixtyFivePlus += getInventoryAgeValue(row, "inv-age-365-plus-days");
@@ -3965,8 +3969,7 @@ const buildInventoryInsightsFromResponses = (
       return acc;
     },
     {
-      zeroToNinety: 0,
-      ninetyOneToOneEighty: 0,
+      zeroToOneEighty: 0,
       oneEightyOneToTwoSeventy: 0,
       twoSeventyOneToThreeSixtyFive: 0,
       threeSixtyFivePlus: 0,
@@ -3975,14 +3978,9 @@ const buildInventoryInsightsFromResponses = (
 
   const donutData: DonutChartItem[] = [
     {
-      bucket: "0–90 Days",
-      units: overallAgeing.zeroToNinety,
+      bucket: "0–180 Days",
+      units: overallAgeing.zeroToOneEighty,
       color: "#7B9A6D",
-    },
-    {
-      bucket: "91–180 Days",
-      units: overallAgeing.ninetyOneToOneEighty,
-      color: "#FDD36F",
     },
     {
       bucket: "181–270 Days",
@@ -4037,7 +4035,9 @@ const buildInventoryInsightsFromResponses = (
   });
 
   const healthyRows = latestRows.filter((row) =>
-    hasInventoryValue(row, "inv-age-0-to-90-days")
+    hasInventoryValue(row, "inv-age-0-to-180-days") ||
+    hasInventoryValue(row, "inv-age-0-to-90-days") ||
+    hasInventoryValue(row, "inv-age-91-to-180-days")
   );
 
   const highAlertRows = latestRows.filter((row) => hasHighAlert(row));
@@ -4060,7 +4060,7 @@ const buildInventoryInsightsFromResponses = (
       })();
 
   const discountRows = latestRows.filter((row) =>
-    hasInventoryValue(row, "inv-age-91-to-180-days")
+    hasInventoryValue(row, "inv-age-0-to-180-days")
   );
 
   const liquidateRows = latestRows.filter((row) =>
@@ -4108,7 +4108,7 @@ const buildInventoryInsightsFromResponses = (
       displayValue: getUniqueSkuCount(healthyRows),
       skuCount: getUniqueSkuCount(healthyRows),
       unitCount: sumInventoryUnitsByKeys(healthyRows, [
-        "inv-age-0-to-90-days",
+        "inv-age-0-to-180-days",
       ]),
       color: INVENTORY_ACTION_META.healthy.color,
       backgroundColor: INVENTORY_ACTION_META.healthy.backgroundColor,
@@ -4129,19 +4129,19 @@ const buildInventoryInsightsFromResponses = (
       color: INVENTORY_ACTION_META.high_alert.color,
       backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
     },
-    {
-      key: "discount",
-      label: INVENTORY_ACTION_META.discount.label,
-      description: INVENTORY_ACTION_META.discount.description,
-      count: getUniqueSkuCount(discountRows),
-      displayValue: getUniqueSkuCount(discountRows),
-      skuCount: getUniqueSkuCount(discountRows),
-      unitCount: sumInventoryUnitsByKeys(discountRows, [
-        "inv-age-91-to-180-days",
-      ]),
-      color: INVENTORY_ACTION_META.discount.color,
-      backgroundColor: INVENTORY_ACTION_META.discount.backgroundColor,
-    },
+    //     {
+    //       key: "discount",
+    //       label: INVENTORY_ACTION_META.discount.label,
+    //       description: INVENTORY_ACTION_META.discount.description,
+    //       count: getUniqueSkuCount(discountRows),
+    //       displayValue: getUniqueSkuCount(discountRows),
+    //       skuCount: getUniqueSkuCount(discountRows),
+    //     unitCount: sumInventoryUnitsByKeys(discountRows, [
+    //   "inv-age-0-to-180-days",
+    // ]),
+    //       color: INVENTORY_ACTION_META.discount.color,
+    //       backgroundColor: INVENTORY_ACTION_META.discount.backgroundColor,
+    //     },
     {
       key: "liquidate",
       label: INVENTORY_ACTION_META.liquidate.label,
@@ -4221,10 +4221,8 @@ const buildInventoryInsightsFromResponses = (
   };
 };
 
-
 const donutData: DonutChartItem[] = [
-  { bucket: "0–90 Days", units: 120, color: "#7B9A6D" },
-  { bucket: "91–180 Days", units: 240, color: "#FDD36F" },
+  { bucket: "0–180 Days", units: 360, color: "#7B9A6D" },
   { bucket: "181–270 Days", units: 180, color: "#ED9F50" },
   { bucket: "271–365 Days", units: 90, color: "#C49466" },
   { bucket: "365+ Days", units: 130, color: "#B75A5A" },
@@ -4247,9 +4245,24 @@ const trendData: AgeingTrendItem[] = [
 
 const trendAllSeriesData = [
   {
+    bucketValue: "0-180 days",
+    bucketLabel: "0–180 Days",
+    color: "#7B9A6D",
+    data: [
+      { label: "Jan", value: 80 },
+      { label: "Feb", value: 120 },
+      { label: "Mar", value: 150 },
+      { label: "Apr", value: 190 },
+      { label: "May", value: 220 },
+      { label: "Jun", value: 210 },
+      { label: "Jul", value: 180 },
+      { label: "Aug", value: 160 },
+    ],
+  },
+  {
     bucketValue: "181-270 days",
     bucketLabel: "181–270 Days",
-    color: "#FDD36F",
+    color: "#ED9F50",
     data: [
       { label: "Jan", value: 40 },
       { label: "Feb", value: 70 },
@@ -4264,7 +4277,7 @@ const trendAllSeriesData = [
   {
     bucketValue: "271-365 days",
     bucketLabel: "271–365 Days",
-    color: "#ED9F50",
+    color: "#C49466",
     data: [
       { label: "Jan", value: 60 },
       { label: "Feb", value: 90 },
@@ -4291,7 +4304,7 @@ const inventoryActions: ActionCardItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Stock covers 0–90 days",
+    description: "Stock covers 0–180 days",
     count: 6,
     displayValue: 6,
     skuCount: 6,
@@ -4310,17 +4323,17 @@ const inventoryActions: ActionCardItem[] = [
     color: "#B75A5A",
     backgroundColor: "#ffffff",
   },
-  {
-    key: "discount",
-    label: "Discount",
-    description: "Stock aged 91–180 days",
-    count: 3,
-    displayValue: 3,
-    skuCount: 3,
-    unitCount: 4,
-    color: "#FDD36F",
-    backgroundColor: "#ffffff",
-  },
+  // {
+  //   key: "discount",
+  //   label: "Discount",
+  //   description: "Stock aged 91–180 days",
+  //   count: 3,
+  //   displayValue: 3,
+  //   skuCount: 3,
+  //   unitCount: 4,
+  //   color: "#FDD36F",
+  //   backgroundColor: "#ffffff",
+  // },
   {
     key: "liquidate",
     label: "Liquidate",
@@ -4362,7 +4375,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
   {
     key: "healthy",
     label: "Healthy",
-    description: "Stock covers 0–90 days",
+    description: "Stock covers 0–180 days",
     color: "#7B9A6D",
   },
   {
@@ -4371,12 +4384,12 @@ const inventoryActionLogic: ActionLogicItem[] = [
     description: "Shipment Required",
     color: "#B75A5A",
   },
-  {
-    key: "discount",
-    label: "Discount",
-    description: "Stock aged 91–180 days",
-    color: "#FDD36F",
-  },
+  // {
+  //   key: "discount",
+  //   label: "Discount",
+  //   description: "Stock aged 91–180 days",
+  //   color: "#FDD36F",
+  // },
   {
     key: "liquidate",
     label: "Liquidate",

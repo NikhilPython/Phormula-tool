@@ -44,7 +44,7 @@ const ActionBasedDashboard: React.FC<ActionBasedDashboardProps> = ({
 }) => {
     return (
         <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-6 min-[1700px]:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-5 min-[1700px]:grid-cols-5">
                 {actions.map((action) => (
                     <div
                         key={action.key}
