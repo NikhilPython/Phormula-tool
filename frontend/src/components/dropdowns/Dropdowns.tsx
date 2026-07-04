@@ -138,6 +138,8 @@ type RecommendationsMap = Record<
   }
 > & {
   remaining_skus_recommendation?: string;
+  remaining_skus_inventory_recommendation?: string;
+  remaining_skus_ads_recommendation?: string;
 };
 
 type AiSummaryResponse = {
@@ -2412,6 +2414,58 @@ const ProductInsightsSection = ({
     recommendationsMap ??
     {};
 
+    const getOtherSkusRecObj = () => {
+  const source: any = skuActions || {};
+
+  const remainingObj =
+    source?.remaining_skus ||
+    source?.other_skus ||
+    source?.["Other SKUs"] ||
+    source?.["other skus"] ||
+    {};
+
+  return {
+    recommendation:
+      source?.remaining_skus_recommendation ||
+      remainingObj?.recommendation ||
+      "",
+
+    inventory_recommendation:
+      source?.remaining_skus_inventory_recommendation ||
+      remainingObj?.inventory_recommendation ||
+      "",
+
+    ads_recommendation:
+      source?.remaining_skus_ads_recommendation ||
+      remainingObj?.ads_recommendation ||
+      "",
+
+    journey_summary:
+      remainingObj?.journey_summary || [],
+  };
+};
+
+const getRecObjForBlock = (b: ProductInsightBlock) => {
+  const isOther =
+    b.isOtherSkus ||
+    normalizeKey(b.name) === "other skus" ||
+    normalizeKey(b.name) === "others";
+
+  if (isOther) {
+    return getOtherSkusRecObj();
+  }
+
+  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+  const skuKey = b.skuKey || mappedSku;
+
+  return (
+    (skuKey && (skuActions as any)[skuKey]) ||
+    (skuActions as any)[b.name] ||
+    (skuActions as any)[b.name.trim()] ||
+    null
+  );
+};
+
   useEffect(() => {
     if (!hasBlocks) return;
     if (!selectedBlock) return;
@@ -2642,19 +2696,12 @@ const ProductInsightsSection = ({
   ]);
   if (!hasBlocks) return null;
 
-  const openDrawer = (b: ProductInsightBlock) => {
-    const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-    const skuKey = b.skuKey || mappedSku;
+const openDrawer = (b: ProductInsightBlock) => {
+  const recObj = getRecObjForBlock(b);
 
-    const recObj =
-      (skuKey && (skuActions as any)[skuKey]) ||
-      (skuActions as any)[b.name] ||
-      (skuActions as any)[b.name.trim()] ||
-      null;
-
-    setSelectedRecObj(recObj);
-    setSelectedBlock(b);
-  };
+  setSelectedRecObj(recObj);
+  setSelectedBlock(b);
+};
 
   return (
     <div className="space-y-5">
@@ -2712,16 +2759,9 @@ const ProductInsightsSection = ({
                 </div>
               )}
               {(() => {
-  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-  const skuKey = b.skuKey || mappedSku;
+  const recObj = getRecObjForBlock(b);
 
-  const recObj =
-    (skuKey && (skuActions as any)[skuKey]) ||
-    (skuActions as any)[b.name] ||
-    (skuActions as any)[b.name.trim()] ||
-    null;
-
- const actionText = getActionTextFromRecObj(recObj);
+const actionText = getActionTextFromRecObj(recObj);
 const inventoryText = getInventoryTextFromRecObj(recObj);
 
 const cardLines = dedupeRecommendationLines([
