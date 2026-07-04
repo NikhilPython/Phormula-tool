@@ -323,6 +323,160 @@ def fetch_ads_table(user_id: int, country: str, timeline: str, year: int) -> pd.
     except Exception:
         return pd.DataFrame()
 
+def build_productwise_adsmonthly_table_name(
+    user_id: int,
+    country: str,
+    timeline: str,
+    year: int
+) -> str:
+    """
+    Productwise ads spend table:
+    adsmonthly_{user_id}_{country}_{month_number}_{year}
+
+    Example:
+    adsmonthly_1_uk_6_2026
+    """
+    month_num = int(timeline)
+    return f"adsmonthly_{user_id}_{str(country).lower()}_{month_num}_{year}".lower()
+
+def fetch_productwise_adsmonthly_table(
+    user_id: int,
+    country: str,
+    timeline: str,
+    year: int
+) -> pd.DataFrame:
+    """
+    Fetch productwise adsmonthly table.
+    Returns empty DataFrame if table does not exist.
+    """
+    table = build_productwise_adsmonthly_table_name(
+        user_id=user_id,
+        country=country,
+        timeline=timeline,
+        year=year,
+    )
+
+    query = f'SELECT * FROM public."{table}"'
+
+    try:
+        return pd.read_sql(query, phormula_engine)
+    except Exception:
+        return pd.DataFrame()
+
+
+def apply_productwise_ads_cm2_from_adsmonthly(
+    df_main: pd.DataFrame,
+    *,
+    user_id: int,
+    country: str,
+    period: str,
+    timeline: str,
+    year: int,
+) -> pd.DataFrame:
+    """
+    Adds productwise ads spend and calculated CM2 profit into SKU rows.
+
+    Formula:
+        productwise_ads_spend = adsmonthly.spend
+        cm2_profit = profit - productwise_ads_spend
+        cm2_profit_per_unit = cm2_profit / total_quantity
+
+    Important:
+    - This does NOT touch total ads logic.
+    - If adsmonthly table is missing, no error is thrown.
+    - If adsmonthly table is missing, productwise cm2_profit is passed as 0.
+    """
+
+    if df_main.empty:
+        return df_main
+
+    df = _normalize_sku_col(df_main.copy())
+
+    if "sku" not in df.columns:
+        return df
+
+    # Productwise adsmonthly table is monthly only.
+    if period != "monthly":
+        if "cm2_profit" not in df.columns:
+            df["cm2_profit"] = 0.0
+        if "cm2_profit_per_unit" not in df.columns:
+            df["cm2_profit_per_unit"] = 0.0
+        if "productwise_ads_spend" not in df.columns:
+            df["productwise_ads_spend"] = 0.0
+        return df
+
+    if "profit" not in df.columns:
+        df["profit"] = 0.0
+
+    if "total_quantity" not in df.columns:
+        df["total_quantity"] = 0.0
+
+    df["profit"] = pd.to_numeric(df["profit"], errors="coerce").fillna(0)
+    df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0)
+
+    # Default requested fallback
+    df["productwise_ads_spend"] = 0.0
+    df["cm2_profit"] = 0.0
+    df["cm2_profit_per_unit"] = 0.0
+
+    df_ads = fetch_productwise_adsmonthly_table(
+        user_id=user_id,
+        country=country,
+        timeline=timeline,
+        year=year,
+    )
+
+    # If productwise ads table missing, do not throw error.
+    # Keep CM2 as 0 as requested.
+    if df_ads.empty:
+        return df
+
+    df_ads = _normalize_sku_col(df_ads.copy())
+
+    # adsmonthly table uses "products" column, but it contains SKU values
+    if "sku" not in df_ads.columns and "products" in df_ads.columns:
+        df_ads.rename(columns={"products": "sku"}, inplace=True)
+
+    if "sku" not in df_ads.columns or "spend" not in df_ads.columns:
+        return df
+
+    df["sku_key"] = df["sku"].astype(str).str.strip().str.upper()
+    df_ads["sku_key"] = df_ads["sku"].astype(str).str.strip().str.upper()
+
+    df_ads = df_ads[
+        ~df_ads["sku_key"].str.lower().isin(TOTAL_LABELS)
+    ].copy()
+
+    df_ads["spend"] = pd.to_numeric(df_ads["spend"], errors="coerce").fillna(0).abs()
+
+    ads_by_sku = (
+        df_ads.groupby("sku_key", as_index=False)["spend"]
+        .sum()
+        .rename(columns={"spend": "productwise_ads_spend"})
+    )
+
+    df = df.merge(ads_by_sku, on="sku_key", how="left", suffixes=("", "_from_ads"))
+
+    df["productwise_ads_spend"] = (
+        pd.to_numeric(df["productwise_ads_spend_from_ads"], errors="coerce")
+        .fillna(0)
+    )
+
+    df["cm2_profit"] = (df["profit"] - df["productwise_ads_spend"]).round(2)
+
+    df["cm2_profit_per_unit"] = np.where(
+        df["total_quantity"] != 0,
+        (df["cm2_profit"] / df["total_quantity"]).round(2),
+        0.0
+    )
+
+    df.drop(
+        columns=["sku_key", "productwise_ads_spend_from_ads"],
+        inplace=True,
+        errors="ignore"
+    )
+
+    return df
 
 def build_rolling_monthly_series(
     user_id: int,
@@ -432,61 +586,63 @@ def fetch_month_end_inventory_lookup(user_id: int):
 
     return lookup
 
-# def build_rolling_sku_series(
-#     user_id: int,
-#     country: str,
-#     sku: str,
-#     anchor_year: int,
-#     anchor_month: int
-# ):
+def enrich_sku_current_with_selected_inventory(
+    sku_current: dict,
+    *,
+    user_id: int,
+    year: int,
+    month: int,
+) -> dict:
+    """
+    Adds current-only selected-period inventory fields to each SKU.
 
-#     series = []
+    current_inventory = sellable_inventory + damaged_inventory + expired_inventory
+    selected_period_coverage_ratio = current_inventory / selected period total_quantity
 
-#     # 🔹 fetch inventory once
-#     inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+    No previous value.
+    No delta.
+    No delta_pct.
+    """
 
-#     for y, m in rolling_months(anchor_year, anchor_month, 24):
+    if not isinstance(sku_current, dict) or not sku_current:
+        return sku_current or {}
 
-#         df = fetch_precalc_table(
-#             user_id=user_id,
-#             country=country,
-#             period="monthly",
-#             timeline=str(m),
-#             year=y
-#         )
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
 
-#         if df.empty:
-#             continue
+    output = {}
 
-#         df = _normalize_sku_col(df)
-#         row = df[df["sku"] == sku]
+    for sku, data in sku_current.items():
+        if not isinstance(data, dict):
+            output[sku] = data
+            continue
 
-#         if row.empty:
-#             continue
+        row = dict(data)
 
-#         # 🔹 inventory lookup
-#         inv = inventory_lookup.get((sku, y, m), {})
+        sku_key = str(sku).strip()
 
-#         series.append({
-#             "year": y,
-#             "month": m,
+        inv = inventory_lookup.get(
+            (sku_key, int(year), int(month)),
+            {}
+        ) or {}
 
-#             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
-#             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
-#             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
-#             "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
-#             "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
-#             "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
-#             "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+        sellable_inventory = safe_float(inv.get("sellable_inventory"))
 
-#             # 🔹 NEW inventory fields
-#             "sellable_inventory": inv.get("sellable_inventory"),
-#             "damaged_inventory": inv.get("damaged_inventory"),
-#             "expired_inventory": inv.get("expired_inventory")
-#         })
+        current_inventory = sellable_inventory
 
-    
-#     return series
+        total_quantity = safe_float(row.get("total_quantity"))
+
+        selected_period_coverage_ratio = (
+            round(current_inventory / total_quantity, 2)
+            if total_quantity
+            else 0.0
+        )
+
+        row["current_inventory"] = round(current_inventory, 2)
+        row["selected_period_coverage_ratio"] = selected_period_coverage_ratio
+
+        output[sku] = row
+
+    return output
 
 def build_rolling_sku_series(
     user_id: int,
@@ -1203,6 +1359,8 @@ METRIC_COLUMNS = {
 
     "profit",
     "cm2_profit",
+
+    "productwise_ads_spend",
  
     
 }
@@ -1217,7 +1375,12 @@ PERCENTAGE_COLUMNS = {
     "profit_mix",
 }
 
-NON_ADDITIVE_COMPARABLE = {"asp", "unit_wise_profitability"}
+NON_ADDITIVE_COMPARABLE = {
+    "asp",
+    "unit_wise_profitability",
+    "cm2_profit_per_unit",
+    
+}
 
 MOVEMENT_COLUMNS = METRIC_COLUMNS | PERCENTAGE_COLUMNS | NON_ADDITIVE_COMPARABLE
 
@@ -1300,6 +1463,14 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
             (g["profit"] / g["total_quantity"]).round(2),
             None
         )
+
+    # CM2 profit per unit = calculated CM2 profit / units
+    if "cm2_profit" in g.columns and "total_quantity" in g.columns:
+        g["cm2_profit_per_unit"] = np.where(
+            g["total_quantity"] != 0,
+            (g["cm2_profit"] / g["total_quantity"]).round(2),
+            0.0
+        )    
 
     # CM1 profit percentage = profit / net sales
     if "profit" in g.columns and "net_sales" in g.columns:
@@ -1850,12 +2021,31 @@ def build_remaining_skus_aggregate(
     cur_profit = sum_metric(sku_current, "profit")
     prev_profit = sum_metric(sku_prev, "profit")
 
+    cur_productwise_ads = sum_metric(sku_current, "productwise_ads_spend")
+    prev_productwise_ads = sum_metric(sku_prev, "productwise_ads_spend")
+
+    cur_cm2_profit = sum_metric(sku_current, "cm2_profit")
+    prev_cm2_profit = sum_metric(sku_prev, "cm2_profit")
+
+    # ✅ Current-only selected-period inventory for Other SKUs
+    cur_current_inventory = sum_metric(sku_current, "current_inventory")
+
     # --- recalculated ---
     cur_asp = round(cur_sales / cur_units, 2) if cur_units else None
     prev_asp = round(prev_sales / prev_units, 2) if prev_units else None
 
     cur_ppu = round(cur_profit / cur_units, 2) if cur_units else None
     prev_ppu = round(prev_profit / prev_units, 2) if prev_units else None
+
+    cur_cm2_ppu = round(cur_cm2_profit / cur_units, 2) if cur_units else None
+    prev_cm2_ppu = round(prev_cm2_profit / prev_units, 2) if prev_units else None
+
+    # ✅ Other SKUs coverage ratio = total current inventory / current total quantity
+    cur_selected_period_coverage_ratio = (
+        round(cur_current_inventory / cur_units, 2)
+        if cur_units
+        else 0.0
+    )
 
     def mk(cur, prev):
         if cur is None or prev is None:
@@ -1879,15 +2069,23 @@ def build_remaining_skus_aggregate(
     return {
         "product_name": "Other SKUs",
 
-        # ✅ NEW
         "included_products": included_products,
         "included_product_count": len(included_products),
 
         "total_quantity": mk(cur_units, prev_units),
         "net_sales": mk(cur_sales, prev_sales),
         "profit": mk(cur_profit, prev_profit),
+
+        "productwise_ads_spend": mk(cur_productwise_ads, prev_productwise_ads),
+        "cm2_profit": mk(cur_cm2_profit, prev_cm2_profit),
+
+        # ✅ Current-only selected-period inventory fields
+        "current_inventory": round(cur_current_inventory, 2),
+        "selected_period_coverage_ratio": cur_selected_period_coverage_ratio,
+
         "asp": mk(cur_asp, prev_asp),
         "unit_wise_profitability": mk(cur_ppu, prev_ppu),
+        "cm2_profit_per_unit": mk(cur_cm2_ppu, prev_cm2_ppu),
     }
 
 def compute_yoy_pct(df_current_total, df_prev_total, col):
@@ -2370,7 +2568,21 @@ def render_month_end_summary(
 
         pct_str = fmt_pct(pct)
 
-        return f"{current_str} ({pct_str})"    
+        return f"{current_str} ({pct_str})"
+
+
+    def fmt_current_only(value, is_currency=False, decimals=2):
+        """
+        Formats current-only values like inventory and coverage ratio.
+        Does not expect current/previous/delta object.
+        """
+        if not isinstance(value, (int, float)):
+            return "N/A"
+
+        if is_currency:
+            return fmt_currency(value)
+
+        return fmt_number(value, decimals=decimals)   
 
     is_yearly = period == "yearly"
     comparison = build_comparison_label(period, timeline, year)
@@ -2405,77 +2617,7 @@ def render_month_end_summary(
         if isinstance(takeaway, str) and takeaway.strip():
             lines.append(takeaway)
 
-        # # Units
-        # u = es.get("units", {})
-        # units_label = "Units sold (YoY)" if is_yearly else "Units sold"
-        # lines.append(
-        #     f"• {units_label}: {fmt_pct(u.get('pct_change'))}"
-        #     f"{severity_suffix(u.get('severity'), period=period)}"
-        # )
-
-        # # Net Sales
-        # ns = es.get("net_sales", {})
-        # ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
-        # lines.append(
-        #     f"• {ns_label}: {fmt_pct(ns.get('pct_change'))}"
-        #     f"{severity_suffix(ns.get('severity'), period=period)}"
-        # )
-
-        # # ASP
-        # asp = es.get("asp", {})
-        # asp_label = "ASP (YoY)" if is_yearly else "ASP"
-        # lines.append(
-        #     f"• {asp_label}: {fmt_pct(asp.get('pct_change'))}"
-        #     f"{severity_suffix(asp.get('severity'), period=period)}"
-        # )
-
-        # # CM1 Profit
-        # cm1 = es.get("cm1_profit", {})
-        # cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
-        # lines.append(
-        #     f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))}"
-        #     f"{severity_suffix(cm1.get('severity'), period=period)}"
-        # )
-
-        # # CM1 Profit per Unit
-        # ppu = es.get("cm1_profit_per_unit", {})
-        # ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
-        # lines.append(
-        #     f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))}"
-        #     f"{severity_suffix(ppu.get('severity'), period=period)}"
-        # )
-
-        # # Advertising
-        # cp = es.get("cost_pressure", {})
-        # ad = cp.get("advertising", {})
-        # lines.append(
-        #     f"• Advertising spends: {fmt_pct(ad.get('pct_change'))}"
-        #     f"{severity_suffix(ad.get('severity'), period=period)}, "
-        #     f"ACOS change: {fmt_pct(ad.get('acos_delta'))}"
-        # )
-
-        # # Storage
-        # st = cp.get("storage_fees", {})
-        # lines.append(
-        #     f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))}"
-        #     f"{severity_suffix(st.get('severity'), period=period)}"
-        # )
-
-        # # CM2 Profit
-        # cm2 = es.get("cm2_profit", {})
-        # cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
-        # lines.append(
-        #     f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))}"
-        #     f"{severity_suffix(cm2.get('severity'), period=period)}"
-        # )
-
-        # # Reimbursements
-        # reimb = es.get("reimbursements", {})
-        # if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
-        #     lines.append(
-        #         f"• Amazon reimbursements for lost inventory: "
-        #         f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
-        #     )
+       
 
     # =========================================================
     # PORTFOLIO RECOMMENDATION
@@ -2517,6 +2659,26 @@ def render_month_end_summary(
 
         lines.append(
             f"• CM1 profit per unit: {fmt_value_with_pct(s.get('unit_wise_profitability'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• Productwise ads spend: {fmt_value_with_pct(s.get('productwise_ads_spend'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM2 profit: {fmt_value_with_pct(s.get('cm2_profit'), is_currency=True, decimals=0)}"
+        )
+
+        lines.append(
+            f"• CM2 profit per unit: {fmt_value_with_pct(s.get('cm2_profit_per_unit'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• Current inventory: {fmt_current_only(s.get('current_inventory'), decimals=0)}"
+        )
+
+        lines.append(
+            f"• Coverage ratio: {fmt_current_only(s.get('selected_period_coverage_ratio'))}"
         )
 
         # Product Journey
@@ -2570,6 +2732,26 @@ def render_month_end_summary(
 
         lines.append(
             f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• Productwise ads spend: {fmt_value_with_pct(remaining_agg.get('productwise_ads_spend'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM2 profit: {fmt_value_with_pct(remaining_agg.get('cm2_profit'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM2 profit per unit: {fmt_value_with_pct(remaining_agg.get('cm2_profit_per_unit'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• Current inventory: {fmt_current_only(remaining_agg.get('current_inventory'), decimals=0)}"
+        )
+
+        lines.append(
+            f"• Coverage ratio: {fmt_current_only(remaining_agg.get('selected_period_coverage_ratio'))}"
         )
 
         # ✅ Product names should come AFTER metrics
@@ -2659,6 +2841,26 @@ def render_month_end_summary(
                 f"• CM1 profit per unit: {fmt_value_with_pct(s.get('unit_wise_profitability'), is_currency=True)}"
             )
 
+            lines.append(
+                f"• Productwise ads spend: {fmt_value_with_pct(s.get('productwise_ads_spend'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• CM2 profit: {fmt_value_with_pct(s.get('cm2_profit'), is_currency=True, decimals=0)}"
+            )
+
+            lines.append(
+                f"• CM2 profit per unit: {fmt_value_with_pct(s.get('cm2_profit_per_unit'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• Current inventory: {fmt_current_only(s.get('current_inventory'), decimals=0)}"
+            )
+
+            lines.append(
+                f"• Coverage ratio: {fmt_current_only(s.get('selected_period_coverage_ratio'))}"
+            )
+
             # ✅ NEW: Individual journey + recommendation for every SKU
             sku_data = sku_actions.get(sku_clean, {}) if isinstance(sku_actions, dict) else {}
 
@@ -2673,13 +2875,7 @@ def render_month_end_summary(
             if isinstance(recommendation, str) and recommendation.strip():
                 lines.append(f"• Recommendation: {recommendation}")
 
-            # ads_rec = sku_data.get("ads_recommendation")
-            # if isinstance(ads_rec, str) and ads_rec.strip():
-            #     lines.append(f"• Ads action: {ads_rec}")
-
-            # inv_rec = sku_data.get("inventory_recommendation")
-            # if isinstance(inv_rec, str) and inv_rec.strip():
-            #     lines.append(f"• Inventory action: {inv_rec}")
+            
 
 
 
@@ -2823,6 +3019,15 @@ def get_or_create_summary(
     # ============================================================
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
 
+    df_current = apply_productwise_ads_cm2_from_adsmonthly(
+        df_current,
+        user_id=user_id,
+        country=country,
+        period=period,
+        timeline=timeline,
+        year=year,
+    )
+
     df_current = apply_advertising_total_final_from_ads_table(
         df_current,
         user_id=user_id,
@@ -2835,6 +3040,16 @@ def get_or_create_summary(
     df_current_detail, df_current_total = _split_total_row(df_current)
 
     sku_current = compute_sku_precalc(df_current_detail)
+
+    # ✅ Add selected-period current inventory and coverage ratio only
+    if period == "monthly":
+        sku_current = enrich_sku_current_with_selected_inventory(
+            sku_current,
+            user_id=user_id,
+            year=year,
+            month=int(timeline),
+        )
+
     top_5_skus = select_focus_skus_by_sales_mix(sku_current)
 
     # ============================================================
@@ -3035,6 +3250,15 @@ def get_or_create_summary(
 
         df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
 
+        df_prev = apply_productwise_ads_cm2_from_adsmonthly(
+            df_prev,
+            user_id=user_id,
+            country=country,
+            period=p_period,
+            timeline=p_timeline,
+            year=p_year,
+        )
+
         df_prev = apply_advertising_total_final_from_ads_table(
             df_prev,
             user_id=user_id,
@@ -3174,9 +3398,24 @@ def get_or_create_summary(
             )    
 
     sku_mom = compare_sku_metrics(
-        sku_current_for_comparison,
-        sku_prev,
+    sku_current_for_comparison,
+    sku_prev,
     )
+
+    # ✅ Add current-only selected-period inventory fields into sku_mom
+    # These are NOT previous/delta metrics.
+    for sku, curr_data in (sku_current_for_comparison or {}).items():
+        if sku not in sku_mom:
+            continue
+
+        if not isinstance(curr_data, dict):
+            continue
+
+        sku_mom[sku]["current_inventory"] = curr_data.get("current_inventory", 0)
+        sku_mom[sku]["selected_period_coverage_ratio"] = curr_data.get(
+            "selected_period_coverage_ratio",
+            0
+        )
 
     # ✅ NEW: keep full all-SKU metrics before any single-SKU filtering
     all_sku_mom = dict(sku_mom or {})
