@@ -1130,14 +1130,14 @@ def live_mtd_vs_previous():
         today = ranges["meta"]["today"]
         ai_refresh_slot = get_ai_refresh_slot(today)
 
-        print("[LIVE BI DEBUG] RANGE + CACHE SLOT", {
-    "today": str(today),
-    "curr_start": str(curr_start),
-    "curr_end": str(curr_end),
-    "prev_start": str(prev_start),
-    "prev_end": str(prev_end),
-    "ai_refresh_slot": str(ai_refresh_slot),
-})
+#         print("[LIVE BI DEBUG] RANGE + CACHE SLOT", {
+#     "today": str(today),
+#     "curr_start": str(curr_start),
+#     "curr_end": str(curr_end),
+#     "prev_start": str(prev_start),
+#     "prev_end": str(prev_end),
+#     "ai_refresh_slot": str(ai_refresh_slot),
+# })
 
         # --------------------------------------------
         # HISTORIC MOVEMENT CONTEXT (24 MONTHS)
@@ -1450,18 +1450,18 @@ def live_mtd_vs_previous():
                     if target_sales else 0.0
                 )
 
-                print("[GLOBAL TARGET DEBUG]", {
-                    "global_current_net_sales": global_current_net_sales,
-                    "uk_current_net_sales_input": uk_current_net_sales_usd,
-                    "us_current_net_sales_input": us_current_net_sales,
-                    "uk_target_sales_usd": uk_target_sales_usd,
-                    "us_target_sales": us_target_sales,
-                    "target_sales": target_sales,
-                    "current_net_sales": current_net_sales,
-                    "target_achievement_pct": target_achievement_pct,
-                    "target_remaining": target_remaining,
-                    "target_trend_pct": target_trend_pct,
-                })
+                # print("[GLOBAL TARGET DEBUG]", {
+                #     "global_current_net_sales": global_current_net_sales,
+                #     "uk_current_net_sales_input": uk_current_net_sales_usd,
+                #     "us_current_net_sales_input": us_current_net_sales,
+                #     "uk_target_sales_usd": uk_target_sales_usd,
+                #     "us_target_sales": us_target_sales,
+                #     "target_sales": target_sales,
+                #     "current_net_sales": current_net_sales,
+                #     "target_achievement_pct": target_achievement_pct,
+                #     "target_remaining": target_remaining,
+                #     "target_trend_pct": target_trend_pct,
+                # })
 
                 return {
                     "target_sales": round(target_sales, 2),

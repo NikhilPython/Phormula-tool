@@ -644,6 +644,71 @@ def enrich_sku_current_with_selected_inventory(
 
     return output
 
+def build_portfolio_inventory_coverage_summary(
+    *,
+    user_id: int,
+    country: str,
+    year: int,
+    month: int,
+    df_current_total: pd.DataFrame,
+) -> dict:
+    """
+    Portfolio inventory coverage for Performance Summary.
+
+    Formula:
+        total_coverage_ratio = total_sellable_inventory / total_quantity
+
+    Monthly only.
+    """
+
+    if df_current_total is None or df_current_total.empty:
+        return {}
+
+    total_quantity = _total_value(df_current_total, "total_quantity")
+    total_quantity = safe_float(total_quantity)
+
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+
+    total_sellable_inventory = 0.0
+
+    for (_sku, inv_year, inv_month), inv in (inventory_lookup or {}).items():
+        if int(inv_year) == int(year) and int(inv_month) == int(month):
+            total_sellable_inventory += safe_float(inv.get("sellable_inventory"))
+
+    if total_quantity <= 0:
+        return {}
+
+    total_coverage_ratio = round(total_sellable_inventory / total_quantity, 2)
+
+    required_coverage = fetch_high_alert_threshold(user_id, country)
+
+    if required_coverage is None:
+        required_coverage = 5.0
+
+    required_coverage = round(float(required_coverage), 2)
+
+    if total_coverage_ratio < required_coverage:
+        status = "low stock"
+    elif total_coverage_ratio >= 6:
+        status = "excess stock"
+    else:
+        status = "healthy stock"
+
+    return {
+        "total_quantity": round(total_quantity, 2),
+        "total_sellable_inventory": round(total_sellable_inventory, 2),
+        "total_coverage_ratio": total_coverage_ratio,
+        "required_coverage": required_coverage,
+        "status": status,
+        "sentence": (
+            f"Inventory Coverage: Total coverage ratio is "
+            f"{total_coverage_ratio} months, required coverage is "
+            f"{required_coverage} months, indicating {status}."
+        ),
+    }
+
+
+
 def build_rolling_sku_series(
     user_id: int,
     country: str,
@@ -2482,7 +2547,7 @@ def run_prompt_3_polish(bullets: dict) -> dict:
 def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
     """
     Deterministic SKU recommendation lookup from Excel-derived rule engine.
-    Uses latest period current vs previous metrics already present in sku_mom.
+    Includes ads-led visibility driver before falling back to ASP/Units/Sales/CM1 rule.
     """
 
     growth_intent = str(objective_v2.get("growth_intent", "balanced")).lower()
@@ -2499,15 +2564,40 @@ def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
         net_sales = metrics.get("net_sales", {}) or {}
         profit = metrics.get("profit", {}) or {}
 
+        # ✅ productwise ads spend already exists in sku_mom if current/previous SKU data has it
+        ads = (
+            metrics.get("productwise_ads_spend")
+            or metrics.get("advertising_total")
+            or metrics.get("advertising")
+            or {}
+        )
+
+        ads_current = ads.get("current")
+        ads_previous = ads.get("previous")
+        ads_growth_pct = ads.get("delta_pct")
+
         rec = get_excel_recommendation_from_metrics(
             asp_current=asp.get("current"),
             asp_previous=asp.get("previous"),
+
             units_current=units.get("current"),
             units_previous=units.get("previous"),
+
             net_sales_current=net_sales.get("current"),
             net_sales_previous=net_sales.get("previous"),
+
             cm1_profit_current=profit.get("current"),
             cm1_profit_previous=profit.get("previous"),
+
+            # ✅ important: pass ads values into helper
+            ads_spend_current=ads_current,
+            ads_spend_previous=ads_previous,
+            ads_spend_growth_pct=ads_growth_pct,
+
+            # ✅ fallback because your historic table may not have ads sales/clicks
+            ads_sales_growth_pct=ads_growth_pct,
+            ads_clicks_growth_pct=ads_growth_pct,
+
             growth_intent=growth_intent,
             profit_priority=profit_priority,
         )
@@ -2794,6 +2884,9 @@ def render_month_end_summary(
     portfolio_recommendation: str | None = None,
     remaining_agg: dict | None = None,
 
+    # ✅ Monthly-only portfolio inventory coverage line
+    portfolio_inventory_coverage: dict | None = None,
+
     # ✅ NEW: all SKU individual insights
     all_sku_mom: dict | None = None,
 ) -> str:
@@ -2878,6 +2971,14 @@ def render_month_end_summary(
         takeaway = analysis_insights.get("executive_takeaway")
         if isinstance(takeaway, str) and takeaway.strip():
             lines.append(takeaway)
+
+        # ✅ Monthly-only portfolio inventory coverage line
+        if (
+            period == "monthly"
+            and isinstance(portfolio_inventory_coverage, dict)
+            and portfolio_inventory_coverage.get("sentence")
+        ):
+            lines.append(portfolio_inventory_coverage["sentence"])
 
        
 
@@ -3303,6 +3404,10 @@ def get_or_create_summary(
 
     sku_current = compute_sku_precalc(df_current_detail)
 
+    # ✅ Portfolio-level inventory coverage for Performance Summary
+    # Monthly only.
+    portfolio_inventory_coverage = {}
+
     # ✅ Add selected-period current inventory and coverage ratio only
     if period == "monthly":
         sku_current = enrich_sku_current_with_selected_inventory(
@@ -3310,6 +3415,14 @@ def get_or_create_summary(
             user_id=user_id,
             year=year,
             month=int(timeline),
+        )
+
+        portfolio_inventory_coverage = build_portfolio_inventory_coverage_summary(
+            user_id=user_id,
+            country=country,
+            year=year,
+            month=int(timeline),
+            df_current_total=df_current_total,
         )
 
     top_5_skus = select_focus_skus_by_sales_mix(sku_current)
@@ -4039,22 +4152,7 @@ def get_or_create_summary(
     # final_text = strategy_raw if strategy_raw else analysis_raw
 
     ######################################################################
-    # print("\n================ RENDER ADS DEBUG ================")
-    # print(
-    #     "renderer advertising object:",
-    #     analysis_insights
-    #     .get("executive_summary_signals", {})
-    #     .get("cost_pressure", {})
-    #     .get("advertising", {})
-    # )
-    # print(
-    #     "renderer storage object:",
-    #     analysis_insights
-    #     .get("executive_summary_signals", {})
-    #     .get("cost_pressure", {})
-    #     .get("storage_fees", {})
-    # )
-    # print("==================================================\n")
+   
 ##################################################################################
     final_text = render_month_end_summary(
     period=period,
@@ -4070,8 +4168,12 @@ def get_or_create_summary(
     currency_symbol="£" if country == "uk" else "$",
     strategy_actions=sku_actions,
     remaining_agg=remaining_agg,
+
+    # ✅ NEW
+    portfolio_inventory_coverage=portfolio_inventory_coverage,
+
     all_sku_mom=all_sku_mom,
-    )
+)
 
 
     if not single_sku_mode:

@@ -154,12 +154,7 @@ def parse_order_datetime_series(
         s2 = _expand_two_digit_years(s[needs2])
         s2 = _replace_tz_abbrev_with_offset(s2)
 
-        print(
-            "[PARSE]   s2 rows:",
-            len(s2),
-            "| index aligned:",
-            s2.index.equals(dt1.index[needs2])
-        )
+       
 
         dt2 = pd.to_datetime(
             s2,
@@ -515,15 +510,15 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
 
         if (type_norm == 'shipment').any():
             filtered_df = global_df[type_norm == 'shipment'].copy()
-            print("[PF] Using SHIPMENT rows only (preferred)")
+            
         elif (type_norm == 'order').any():
             filtered_df = global_df[type_norm == 'order'].copy()
-            print("[PF] No shipments found — using ORDER rows")
+
         else:
-            print("[PF][WARN] No Order/Shipment rows found — using all rows")
+
             filtered_df = global_df.copy()
     else:
-        print("[PF][WARN] 'type' column missing — assuming all rows are demand")
+   
         filtered_df = global_df.copy()
 
     
@@ -557,12 +552,7 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
         .dt.normalize()
     )
 
-    print("\n=== MONTH AFTER PARSING (BEFORE CLIP) ===")
-    print(
-        filtered_df
-        .groupby(filtered_df['date_time'].dt.to_period('M'))['quantity']
-        .sum()
-    )
+    
 
 
     # 🔥 CRITICAL FIX: impute missing dates using source month
@@ -625,11 +615,7 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
             "error": "No usable data inside the 12-month window."
         }
     
-    print("LAST TRAINING DATE:", new_df.index.max())
-    print("LAST TRAINING MONTH:", new_df.index.max().to_period('M'))
 
-    print("\nMONTH DISTRIBUTION:")
-    print(new_df.index.to_period('M').value_counts().sort_index())
 
    
     # ---- Compute contiguous-month streak ----
@@ -683,7 +669,7 @@ def forecast_next_two_months_with_append(sku_id, data, global_last_training_mont
 
         sku_data = data[data['sku'] == sku_id].copy()
         if sku_data.empty:
-            print(f"[ARIMA][WARN] No data found for SKU: {sku_id}")
+            
             return None
 
         sku_data = sku_data.drop(columns=['sku'])
@@ -692,7 +678,7 @@ def forecast_next_two_months_with_append(sku_id, data, global_last_training_mont
         sku_data['quantity'] = sku_data['quantity'].interpolate(method='linear').fillna(0)
 
         # Fit auto_arima ONCE to discover params
-        print(f"[ARIMA] Fitting auto_arima once for SKU: {sku_id}")
+
         auto_model = auto_arima(
             sku_data['quantity'],
             seasonal=True,
@@ -905,11 +891,7 @@ def _hybrid_forecast_for_sku(
 
         last_date = s_raw.index.max()
 
-        print(
-            f"\n[HYBRID DEBUG] SKU={sku_id}"
-            f"\n  RAW LAST DATE={last_date}"
-            f"\n  RAW LAST MONTH={last_date.to_period('M')}"
-        )
+     
 
         start_cut = last_date - pd.Timedelta(days=365)
 
@@ -933,12 +915,7 @@ def _hybrid_forecast_for_sku(
 
             last_dt = s.index.max()
 
-            print(
-                f"[HYBRID DEBUG] SKU={sku_id}"
-                f"\n  AGG=weekly"
-                f"\n  last_dt={last_dt}"
-                f"\n  last_dt_month={last_dt.to_period('M')}"
-            )
+           
 
             fc_idx = pd.date_range(
                 last_dt + pd.offsets.Week(weekday=0),
@@ -956,12 +933,7 @@ def _hybrid_forecast_for_sku(
 
             last_dt = s.index.max()
 
-            print(
-                f"[HYBRID DEBUG] SKU={sku_id}"
-                f"\n  AGG=daily"
-                f"\n  last_dt={last_dt}"
-                f"\n  last_dt_month={last_dt.to_period('M')}"
-            )
+           
 
             fc_idx = pd.date_range(
                 last_dt + pd.Timedelta(days=1),
@@ -970,10 +942,7 @@ def _hybrid_forecast_for_sku(
             )
 
         if len(s) < MIN_SERIES_LENGTH:
-            print(
-                f"[HYBRID] {sku_id} skipped "
-                f"(len={len(s)} < {MIN_SERIES_LENGTH})"
-            )
+         
             return None
 
         # =========================================================
@@ -988,12 +957,7 @@ def _hybrid_forecast_for_sku(
             freq="MS"
         )
 
-        print(
-            f"\n[HYBRID GLOBAL ANCHOR] SKU={sku_id}"
-            f"\n  global_last_training_month={global_last_training_month}"
-            f"\n  anchor_dt={anchor_dt}"
-            f"\n  future_months={[d.strftime('%b%Y') for d in future_months]}"
-        )
+      
 
         # === MODEL CHOICE ===
         try:
@@ -1023,7 +987,7 @@ def _hybrid_forecast_for_sku(
 
         except Exception as e:
 
-            print(f"[HYBRID WARN] {sku_id}: modeling error -> {e}")
+
 
             avg_val = (
                 s_daily
@@ -1033,10 +997,7 @@ def _hybrid_forecast_for_sku(
                 .mean()
             )
 
-            print(
-                f"\n[HYBRID FALLBACK MONTHS] SKU={sku_id}"
-                f"\n  future_months={[d.strftime('%b%Y') for d in future_months]}"
-            )
+       
 
             monthly_out = pd.DataFrame({
                 "sku": sku_id,
@@ -1048,10 +1009,7 @@ def _hybrid_forecast_for_sku(
                 np.rint(monthly_out["Forecast"]).astype(int)
             )
 
-            print(
-                f"\n[HYBRID FALLBACK FINAL] SKU={sku_id}"
-                f"\n{monthly_out}"
-            )
+    
 
             return (
                 sku_id,
@@ -1079,10 +1037,7 @@ def _hybrid_forecast_for_sku(
             .sum()
         )
 
-        print(
-            f"[HYBRID DEBUG] SKU={sku_id}"
-            f"\n  future_months={[d.strftime('%b%Y') for d in future_months]}"
-        )
+
 
         monthly = monthly[
             monthly["Month"].isin(future_months)
@@ -1098,10 +1053,7 @@ def _hybrid_forecast_for_sku(
             "Forecast": monthly["Forecast"]
         })
 
-        print(
-            f"\n[HYBRID NORMAL FINAL] SKU={sku_id}"
-            f"\n{monthly_out}"
-        )
+
 
         return (
             sku_id,
@@ -1111,7 +1063,6 @@ def _hybrid_forecast_for_sku(
 
     except Exception as e:
 
-        print(f"[HYBRID ERROR] {sku_id}: {e}")
 
         return None
 
@@ -1269,14 +1220,7 @@ def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_mont
         else:
             winner = None
 
-        print(
-            f"[GPT ADJUDICATOR] SKU={sku} | Country={country} | "
-            f"Last actual={lastN_months} | "
-            f"ARIMA forecast={arima_months} | "
-            f"HYBRID forecast={hybrid_months} | "
-            f"Raw GPT response={text} | "
-            f"Winning forecast={winner}"
-        )
+       
 
         return winner
 
@@ -1407,8 +1351,7 @@ def fetch_and_merge_inventory_monthwise_sellable(
     inv_df = pd.read_sql(text(sql), con=engine1, params=params)
 
     if debug:
-        print("inventory_date:", inventory_date)
-        print("inv_df shape:", inv_df.shape)
+
         if not inv_df.empty:
             print(inv_df.head(20).to_string(index=False))
 
@@ -1451,13 +1394,10 @@ def fetch_and_merge_inventory_monthwise_sellable(
         inventory_keys = set(inventory_totals["sku_norm"])
         common = forecast_keys & inventory_keys
 
-        print("forecast rows:", len(out))
-        print("inventory rows after group:", len(inventory_totals))
-        print("matched sku count:", len(common))
-        print("example matched sku:", list(sorted(common))[:20])
+
 
         missing = forecast_keys - inventory_keys
-        print("example missing forecast sku:", list(sorted(missing))[:20])
+
 
     if use_marketplace:
         inv_merge = inventory_totals[["sku_norm", "marketplace_id", "Ending Warehouse Balance"]].copy()
@@ -1807,21 +1747,13 @@ def apply_asp_adjustment_to_forecast(
         .astype(int)
     )
 
-    print(
-        f"[ASP ADJUST] SKU={sku} | "
-        f"previous_asp={asp_info.get('previous_asp')} | "
-        f"latest_asp={asp_info.get('latest_asp')} | "
-        f"asp_change={round(asp_change * 100, 2)}% | "
-        f"factor={round(adjustment_factor, 4)}"
-    )
-
     return out
 
 
 def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
     import time
     start_time = time.time()
-    print("\n========== FORECAST START ==========")
+
 
     engine = create_engine(db_url)
     engine1 = create_engine(db_url2)  # Amazon DB
@@ -1849,13 +1781,13 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
 
     # HARD CAP workers to prevent EC2 OOM
     max_workers = min(2, max(1, cpu_count() - 1))
-    print("Using workers:", max_workers)
+
 
     # Build small per-SKU series map (cheap + avoids pickling huge DF)
     sku_daily_map = _build_sku_daily_map(new_df)
 
     # ---------------- ARIMA PARALLEL ----------------
-    print("\n--- ARIMA START ---")
+
     arima_results = {}
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futs = {
@@ -1871,13 +1803,13 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                     arima_results[sku] = res
             except Exception as e:
                 print(f"[ARIMA][ERROR] SKU={sku}: {e}")
-    print("--- ARIMA COMPLETE ---")
+
 
     
     # ---------------- HYBRID PARALLEL ----------------
     hybrid_results = {}
     if hybrid_allowed:
-        print("\n--- HYBRID START ---")
+
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futs = {
                 executor.submit(
@@ -1903,7 +1835,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                         f"[HYBRID][ERROR] SKU={sku}: {e} "
                         f"(fallback to ARIMA)"
                     )
-        print("--- HYBRID COMPLETE ---")
+
 
     else:
 
@@ -1911,7 +1843,6 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             "[HYBRID] Disabled — ARIMA-only path based on streak gate."
         )
 
-    print("\n=== MODELING COMPLETE ===")
 
     # ---------------- SOLD + ASP HISTORY FOR ADJUSTMENT ----------------
     sold_anchor_dt = add_months(add_months(global_last_training_month.to_timestamp(), 1), -1)
@@ -1950,7 +1881,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
 
     asp_change_map = build_latest_asp_change_map(sold_df)
 
-    print(f"[ASP] ASP change map built for {len(asp_change_map)} SKU(s)")
+
 
     # ---------------- Adjudicate ----------------
     for sku in unique_skus:
@@ -2314,8 +2245,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     wb.save(inv_buf)
     inv_buf.seek(0)
 
-    print("\n========== FORECAST FINISHED ==========")
-    print("Total time:", round(time.time() - start_time, 2), "seconds\n")
+
 
     return {
         "forecast_filename": forecast_filename,
