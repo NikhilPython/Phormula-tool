@@ -362,6 +362,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
 
+        const percentageRowTextClassName =
+            "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
+
         const bucketColumns: ColumnDef<HeatmapTableRow>[] = buckets.map((bucket) => ({
             key: bucket.key,
             width: "72px",
@@ -395,6 +398,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             }
                             className={[
                                 "absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs font-semibold",
+                                percentageRowTextClassName,
                                 value > 0 ? "text-charcoal-500" : "text-charcoal-400",
                             ].join(" ")}
                             style={{
@@ -459,6 +463,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                 className={[
                                     "block max-w-full truncate",
                                     row.isOthersRow ? "text-green-500" : "",
+                                    row.isPercentageRow ? percentageRowTextClassName : "",
                                 ].join(" ")}
                                 title={row.productName}
                             >
@@ -494,7 +499,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "salesRank",
                 header: "Sales Rank",
-                width: "115px",
+                width: "140px",
                 headerClassName: heatmapHeaderClassName,
                 cellClassName:
                     "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
@@ -512,21 +517,28 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
 
                     return (
-                        <div className="flex items-center justify-center gap-2 whitespace-nowrap">
-                            <span>{rankNumber.toLocaleString()}</span>
+                        <div className="grid w-full grid-cols-[minmax(48px,1fr)_minmax(52px,auto)] items-center gap-2 whitespace-nowrap">
+                            <span className="text-right tabular-nums">
+                                {rankNumber.toLocaleString()}
+                            </span>
 
                             {delta ? (
                                 <span
                                     className={[
-                                        "inline-flex items-center gap-1 text-[11px] font-semibold",
+                                        "inline-flex min-w-[52px] items-center justify-start  text-left text-xs font-semibold tabular-nums",
+                                        "",
                                         delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
                                     ].join(" ")}
                                     title="Compared with previous month sales rank"
                                 >
-                                    <span>{delta.isGood ? "▲" : "▼"}</span>
+                                    <span className="w-3 shrink-0 text-center">
+                                        {delta.isGood ? "▲" : "▼"}
+                                    </span>
                                     <span>{Math.abs(delta.value).toFixed(2)}%</span>
                                 </span>
-                            ) : null}
+                            ) : (
+                                <span className="min-w-[52px]" />
+                            )}
                         </div>
                     );
                 },
@@ -544,7 +556,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         const value = Number(row.available ?? row.totalUnits ?? 0);
 
                         return (
-                            <span>
+                            <span className={percentageRowTextClassName}>
                                 {value > 0
                                     ? `${value.toLocaleString(undefined, {
                                         minimumFractionDigits: 2,
@@ -600,7 +612,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         const value = Number(row.unsellableUnits || 0);
 
                         return (
-                            <span>
+                            <span className={percentageRowTextClassName}>
                                 {value > 0
                                     ? `${value.toLocaleString(undefined, {
                                         minimumFractionDigits: 2,
