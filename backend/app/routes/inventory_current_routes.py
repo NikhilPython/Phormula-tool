@@ -556,7 +556,7 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
     total_units = 0
 
     for _, row in df.iterrows():
-        sku = str(row.get("sku") or "").strip()
+        sku = normalize_sku_key(row.get("sku"))
         product_name = str(row.get("product_name") or "").strip()
 
         is_total = sku == "" or product_name.strip().lower() == "total"
@@ -645,7 +645,7 @@ def attach_current_month_units_sold(rows, columns, user_id, country_key, month_n
             total_row = new_row
             continue
 
-        sku = str(new_row.get("SKU") or "").strip()
+        sku = normalize_sku_key(get_row_sku(new_row))
 
         if sku:
             existing_skus.add(sku)
@@ -1119,12 +1119,12 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
     data_by_sku = {}
 
     for _, row in df.iterrows():
-        sku = str(row.get(sku_col) or "").strip()
+        sku = normalize_sku_key(row.get(sku_col))
         product_name = str(row.get("product_name") or "").strip().lower()
 
         if (
             not sku
-            or sku.strip().lower() in ["total", "grand total"]
+            or sku in ["TOTAL", "GRAND TOTAL"]
             or product_name in ["total", "grand total"]
         ):
             continue
@@ -1189,11 +1189,10 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
         new_row = dict(row)
 
         if is_total_row(new_row):
-            # Add placeholders first.
-            # We will force these totals again from visible SKU rows below.
             new_row["Sellable Units"] = monthly_result["totals"]["sellable"]
             new_row["Inbound Units"] = monthly_result["totals"]["inbound"]
             new_row["unfulfillable-quantity"] = monthly_result["totals"]["unfulfillable"]
+
             new_row["inventory_coverage_ratio"] = monthly_result["totals"].get(
                 "inventory_coverage_ratio",
                 0,
@@ -1202,27 +1201,80 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
                 "inventory_coverage_ratio",
                 0,
             )
+
             updated_rows.append(new_row)
             continue
 
-        sku = str(new_row.get("SKU") or "").strip()
-        monthly_data = data_by_sku.get(sku, {})
+        sku = normalize_sku_key(get_row_sku(new_row))
+        monthly_data = data_by_sku.get(sku)
 
-        coverage_ratio = monthly_data.get("inventory_coverage_ratio", 0)
+        existing_sellable_units = get_first_number(
+            new_row,
+            [
+                "Sellable Units",
+                "available",
+                "sellable_sum_last",
+                "ending_total",
+            ],
+        )
 
-        new_row["Sellable Units"] = monthly_data.get("sellable_units", 0)
-        new_row["Inbound Units"] = monthly_data.get("inbound_units", 0)
-        new_row["unfulfillable-quantity"] = monthly_data.get("unfulfillable_units", 0)
+        existing_inbound_units = get_first_number(
+            new_row,
+            [
+                "Inbound Units",
+                "inbound_quantity",
+                "inboundQuantity",
+                "Inbound Quantity",
+                "transit_total",
+            ],
+        )
 
-        # Add both keys because frontend checks both names
+        existing_unfulfillable_units = get_first_number(
+            new_row,
+            [
+                "unfulfillable-quantity",
+                "Unfulfillable Units",
+                "unfulfillable_quantity",
+            ],
+        )
+
+        existing_coverage_ratio = get_first_number(
+            new_row,
+            [
+                "inventory_coverage_ratio",
+                "Coverage Ratio (In Months)",
+                "coverage_ratio_months",
+            ],
+        )
+
+        if monthly_data:
+            sellable_units = monthly_data.get("sellable_units", existing_sellable_units)
+            inbound_units = monthly_data.get("inbound_units", existing_inbound_units)
+            unfulfillable_units = monthly_data.get(
+                "unfulfillable_units",
+                existing_unfulfillable_units,
+            )
+            coverage_ratio = monthly_data.get(
+                "inventory_coverage_ratio",
+                existing_coverage_ratio,
+            )
+        else:
+            # Important for current month:
+            # If inventorymonthly table is missing or SKU is not matched,
+            # do not overwrite currentinventory values with 0.
+            sellable_units = existing_sellable_units
+            inbound_units = existing_inbound_units
+            unfulfillable_units = existing_unfulfillable_units
+            coverage_ratio = existing_coverage_ratio
+
+        new_row["Sellable Units"] = sellable_units
+        new_row["Inbound Units"] = inbound_units
+        new_row["unfulfillable-quantity"] = unfulfillable_units
         new_row["inventory_coverage_ratio"] = coverage_ratio
         new_row["Coverage Ratio (In Months)"] = coverage_ratio
 
         updated_rows.append(new_row)
 
-    # IMPORTANT:
-    # Force total row to match visible SKU rows.
-    # Do not rely on monthly table Grand Total because it can create mismatch.
     sellable_total = sum(
         to_number(r.get("Sellable Units"))
         for r in updated_rows
@@ -1240,10 +1292,12 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
         for r in updated_rows
         if not is_total_row(r)
     )
+
     coverage_values = [
         to_number(r.get("inventory_coverage_ratio"))
         for r in updated_rows
-        if not is_total_row(r) and to_number(r.get("inventory_coverage_ratio")) > 0
+        if not is_total_row(r)
+        and to_number(r.get("inventory_coverage_ratio")) > 0
     ]
 
     coverage_ratio_avg = (
@@ -1265,14 +1319,12 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
     for col in [
         "Sellable Units",
         "Inbound Units",
+        "unfulfillable-quantity",
         "inventory_coverage_ratio",
         "Coverage Ratio (In Months)",
     ]:
         if col not in updated_columns:
             updated_columns.append(col)
-
-    if "unfulfillable-quantity" not in updated_columns:
-        updated_columns.append("unfulfillable-quantity")
 
     return {
         "rows": updated_rows,
@@ -2072,6 +2124,30 @@ def attach_previous_month_sales_rank(rows, columns, user_id, country_key, month_
         "previous_sales_rank_error": previous_rank_result["error"],
     }
 
+def normalize_sku_key(value):
+    return str(value or "").strip().upper()
+
+
+def get_row_sku(row):
+    return (
+        row.get("SKU")
+        or row.get("sku")
+        or row.get("msku")
+        or row.get("seller_sku")
+        or row.get("seller-sku")
+        or ""
+    )
+
+
+def get_first_number(row, keys, default=0):
+    for key in keys:
+        if key in row and row.get(key) is not None:
+            value = to_number(row.get(key))
+
+            # Return even if value is 0, because 0 can be valid.
+            return value
+
+    return default
 
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
 def get_inventory_current_table():
