@@ -725,7 +725,10 @@ type ProductInsightBlock = {
 };
 
 
-const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
+const parseProductInsightsBlocks = (
+  lines: string[],
+  range: RangeType = "monthly"
+): ProductInsightBlock[] => {
   const metricLabels = [
   "ASP",
   "Units",
@@ -753,7 +756,9 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const cleanProfitMetricsForDisplay = (block: ProductInsightBlock): ProductInsightBlock => {
+const cleanProfitMetricsForDisplay = (
+  block: ProductInsightBlock
+): ProductInsightBlock => {
   const metrics = block.metrics || [];
 
   const cm2Profit = metrics.find(
@@ -762,7 +767,9 @@ const cleanProfitMetricsForDisplay = (block: ProductInsightBlock): ProductInsigh
 
   const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
 
-  const useCm1 = !cm2Profit || cm2ProfitValue === 0;
+  // ✅ Quarterly / Yearly me always CM1
+  // ✅ Monthly me CM2 only if value non-zero
+  const useCm1 = !isMonthlyRange(range) || !cm2Profit || cm2ProfitValue === 0;
 
   const cleanedMetrics = metrics
     .map((m) => {
@@ -773,7 +780,10 @@ const cleanProfitMetricsForDisplay = (block: ProductInsightBlock): ProductInsigh
         return {
           ...m,
           label: "Stock Cover",
-          value: m.value && m.value !== "0.00" ? getMetricNumberValue(m.value).toFixed(2) : "-",
+          value:
+            m.value && m.value !== "0.00"
+              ? getMetricNumberValue(m.value).toFixed(2)
+              : "-",
         };
       }
 
@@ -782,19 +792,18 @@ const cleanProfitMetricsForDisplay = (block: ProductInsightBlock): ProductInsigh
     .filter((m) => {
       const lower = m.label.trim().toLowerCase();
 
-      // Ads ko recommendation card/drawer metrics me nahi dikhana
-      if (lower === "productwise ads spend") return false;
+      // ✅ Ads sirf drawer me dikhega, card me nahi
+      if (lower === "productwise ads spend" || lower === "ads") return false;
 
-      // Current inventory sirf drawerOnlyMetrics me rahega
-      if (lower === "current inventory") return false;
+      // ✅ Current inventory sirf drawer me dikhega, card me nahi
       if (lower === "current inventory") return false;
 
-      // Agar CM2 zero hai to CM1 rakho, CM2 hatao
+      // ✅ Quarterly / Yearly me CM2 card se remove
       if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
         return false;
       }
 
-      // Agar CM2 non-zero hai to CM2 rakho, CM1 hatao
+      // ✅ Monthly me agar CM2 valid hai to CM1 remove
       if (!useCm1 && (lower === "cm1 profit" || lower === "cm1 profit per unit")) {
         return false;
       }
@@ -981,7 +990,7 @@ const metricItem = {
   color,
 };
 
-// ✅ Current Inventory sirf drawer me dikhega, cards me nahi
+// ✅ Current Inventory sirf drawer me dikhega
 if (normalizedMetricLabel === "current inventory") {
   current.drawerOnlyMetrics = [
     ...(current.drawerOnlyMetrics || []),
@@ -991,9 +1000,27 @@ if (normalizedMetricLabel === "current inventory") {
       color,
     },
   ];
-} else {
-  current.metrics.push(metricItem);
+
+  continue;
 }
+
+// ✅ Productwise ads spend sirf monthly drawer me dikhega
+if (normalizedMetricLabel === "productwise ads spend") {
+  if (isMonthlyRange(range)) {
+    current.drawerOnlyMetrics = [
+      ...(current.drawerOnlyMetrics || []),
+      {
+        label: "Ads",
+        value,
+        color: "#414042",
+      },
+    ];
+  }
+
+  continue;
+}
+
+current.metrics.push(metricItem);
 
 continue;
     }
@@ -1162,7 +1189,8 @@ const formatBestPerformancePeriod = (month?: string, year?: string | number) => 
 const buildOtherSkusInsightLines = (
   apiData: any,
   currencySymbol = "$",
-  countryName = "global"
+  countryName = "global",
+  range: RangeType = "monthly"
 ): string[] => {
   const otherComparison = apiData?.global_ai?.other_skus_comparison;
 
@@ -1216,7 +1244,7 @@ const buildOtherSkusInsightLines = (
     )} ${formatPct(remainingAgg?.net_sales?.delta_pct)}`,
 
     (() => {
-  const profitConfig = getProfitMetricConfig(remainingAgg);
+  const profitConfig = getProfitMetricConfig(remainingAgg, range);
 
   return `${profitConfig.profitLabel}: ${formatMetricObjectWithDelta(
     profitConfig.profitMetric,
@@ -1226,7 +1254,7 @@ const buildOtherSkusInsightLines = (
 })(),
 
 (() => {
-  const profitConfig = getProfitMetricConfig(remainingAgg);
+  const profitConfig = getProfitMetricConfig(remainingAgg, range);
 
   return `${profitConfig.profitPerUnitLabel}: ${formatMetricObjectWithDelta(
     profitConfig.profitPerUnitMetric,
@@ -1242,6 +1270,16 @@ const buildOtherSkusInsightLines = (
 `Current Inventory: ${formatInventoryUnitsValue(
   remainingAgg?.current_inventory
 )}`,
+
+...(isMonthlyRange(range)
+  ? [
+      `Productwise ads spend: ${formatMetricObjectWithDelta(
+        remainingAgg?.productwise_ads_spend,
+        "money",
+        currencySymbol
+      )}`,
+    ]
+  : []),
 
     ...includedSkuLines,
 
@@ -1319,8 +1357,10 @@ const isCm2ProfitZero = (row: any) => {
   return toNum(cm2Current) === 0;
 };
 
-const getProfitMetricConfig = (row: any) => {
-  const useCm1 = isCm2ProfitZero(row);
+const getProfitMetricConfig = (row: any, range: RangeType = "monthly") => {
+  // ✅ Quarterly / Yearly me always CM1
+  // ✅ Monthly me CM2 only if CM2 available and non-zero
+  const useCm1 = !isMonthlyRange(range) || isCm2ProfitZero(row);
 
   return {
     profitLabel: useCm1 ? "CM1 profit" : "CM2 profit",
@@ -1349,6 +1389,44 @@ const formatInventoryUnitsValue = (value: any) => {
   return Math.round(n).toLocaleString();
 };
 
+const isMonthlyRange = (range?: RangeType) => range === "monthly";
+
+const cleanInventoryRecommendationText = (text?: string) => {
+  return String(text || "")
+    .replace(
+      /^Your coverage ratio is\s*[\d.]+\s*months\s*(?:and\s*)?/i,
+      ""
+    )
+    .replace(/^and\s+/i, "")
+    .trim();
+};
+
+const getActionTextFromRecObj = (recObj: any) => {
+  return String(recObj?.recommendation || "").trim();
+};
+
+const getInventoryTextFromRecObj = (recObj: any) => {
+  return cleanInventoryRecommendationText(recObj?.inventory_recommendation);
+};
+
+const getAdsTextFromRecObj = (recObj: any) => {
+  return String(recObj?.ads_recommendation || "").trim();
+};
+
+const dedupeRecommendationLines = (lines: any[]) => {
+  const seen = new Set<string>();
+
+  return (lines || [])
+    .map((line) => String(line || "").replace(/^\.+\s*/, "").trim())
+    .filter(Boolean)
+    .filter((line) => {
+      const key = line.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
 const formatMetricObjectWithDelta = (
   metric: any,
   type: "money" | "number",
@@ -1366,10 +1444,11 @@ const buildDrawerBlockFromSkuRow = (
   sku: string,
   row: any,
   recObj: any,
-  currencySymbol = "$"
+  currencySymbol = "$",
+  range: RangeType = "monthly"
 ): ProductInsightBlock => {
   const name = String(row?.product_name || sku).trim();
-  const profitConfig = getProfitMetricConfig(row);
+  const profitConfig = getProfitMetricConfig(row, range);
 
   return {
     name,
@@ -1423,11 +1502,24 @@ const buildDrawerBlockFromSkuRow = (
 
     // ✅ Sirf drawer me show hoga
     drawerOnlyMetrics: [
-      {
-        label: "Current Inventory",
-        value: formatInventoryUnitsValue(row?.current_inventory),
-      },
-    ],
+  {
+    label: "Current Inventory",
+    value: formatInventoryUnitsValue(row?.current_inventory),
+  },
+  ...(isMonthlyRange(range)
+    ? [
+        {
+          label: "Ads",
+          value: formatMetricObjectWithDelta(
+            row?.productwise_ads_spend,
+            "money",
+            currencySymbol
+          ),
+          color: "#414042",
+        },
+      ]
+    : []),
+],
 
     journeyBullets: Array.isArray(recObj?.journey_summary)
       ? recObj.journey_summary
@@ -1524,6 +1616,7 @@ const metricColors = [
   "border border-[#C49466] border-t-4", // CM1 Profit Per Unit
   "border border-[#7B9A6D] border-t-4", // Current Inventory
   "border border-[#C49466] border-t-4", // Stock Cover
+  "border border-[#C49466] border-t-4", // Productwise Ads Spend
   "border border-[#C49466] border-t-4", // Ads
 ];
 
@@ -1596,14 +1689,16 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
     ];
   };
 
-  const getCurrentQuarter = (): Quarter => {
-    const monthIndex = new Date().getMonth();
+  const getRecentQuarterFromPreviousMonth = () => {
+  const previousMonth = getPreviousCompletedMonth();
 
-    if (monthIndex <= 2) return "Q1";
-    if (monthIndex <= 5) return "Q2";
-    if (monthIndex <= 8) return "Q3";
-    return "Q4";
+  const monthIndex = monthIndexMap[previousMonth.month];
+
+  return {
+    quarter: getQuarterFromMonthIndex(monthIndex),
+    year: previousMonth.year,
   };
+};
 
   const getPreviousCompletedMonth = () => {
     const prevMonthDate = new Date();
@@ -1618,24 +1713,26 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   };
 
   const showCurrentPeriodRecommendations = (() => {
-    const currentYear = String(new Date().getFullYear());
+  const previousMonth = getPreviousCompletedMonth();
 
-    if (range === "yearly") {
-      return String(year) === currentYear;
-    }
-
+  if (range === "yearly") {
+    return String(year) === previousMonth.year;
+  }
     if (range === "quarterly") {
-      return String(year) === currentYear && quarter === getCurrentQuarter();
-    }
+  const recentQuarter = getRecentQuarterFromPreviousMonth();
 
-    if (range === "monthly") {
-      const previousMonth = getPreviousCompletedMonth();
+  return (
+    String(year) === recentQuarter.year &&
+    String(quarter) === recentQuarter.quarter
+  );
+}
 
-      return (
-        String(year) === previousMonth.year &&
-        String(month).toLowerCase() === previousMonth.month
-      );
-    }
+   if (range === "monthly") {
+  return (
+    String(year) === previousMonth.year &&
+    String(month).toLowerCase() === previousMonth.month
+  );
+}
 
     return false;
   })();
@@ -1946,17 +2043,33 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     ) : null}
 
                     {inventoryRecoBullets.length ? (
-                      <div className="mt-2">
-                        <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-                          Inventory
-                        </div>
-                        <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-                          {inventoryRecoBullets.map((pt, i) => (
-                            <li key={i}>{pt}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
+  <div className="mt-2">
+    <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+      Inventory
+    </div>
+    <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+      {inventoryRecoBullets
+        .map(cleanInventoryRecommendationText)
+        .filter(Boolean)
+        .map((pt, i) => (
+          <li key={i}>{pt}</li>
+        ))}
+    </ul>
+  </div>
+) : null}
+
+{adsRecoBullets.length ? (
+  <div className="mt-2">
+    <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+      Ads
+    </div>
+    <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+      {adsRecoBullets.map((pt, i) => (
+        <li key={i}>{pt}</li>
+      ))}
+    </ul>
+  </div>
+) : null}
 
                     {!block.recommendationBullets?.length &&
                       !inventoryRecoBullets.length &&
@@ -2598,15 +2711,37 @@ const ProductInsightsSection = ({
                   ))}
                 </div>
               )}
-              <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-  {b.recommendationBullets?.length > 0 ? (
-    b.recommendationBullets.map((line, i) => (
-      <p key={i}>{line}</p>
-    ))
-  ) : (
-    <p className="text-slate-400">—</p>
-  )}
-</div>
+              {(() => {
+  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+  const skuKey = b.skuKey || mappedSku;
+
+  const recObj =
+    (skuKey && (skuActions as any)[skuKey]) ||
+    (skuActions as any)[b.name] ||
+    (skuActions as any)[b.name.trim()] ||
+    null;
+
+ const actionText = getActionTextFromRecObj(recObj);
+const inventoryText = getInventoryTextFromRecObj(recObj);
+
+const cardLines = dedupeRecommendationLines([
+  ...(b.recommendationBullets || []),
+  actionText,
+  inventoryText,
+]);
+
+if (!cardLines.length) return null;
+
+return (
+  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+    {cardLines.map((line, i) => (
+      <p key={i}>
+        <span className="font-semibold">{i + 1}.</span> {line}
+      </p>
+    ))}
+  </div>
+);
+})()}
             </motion.div>
           );
         })}
@@ -3018,11 +3153,11 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         )}
 
         {/* Product Insights */}
-        {!hasNoAiData && parseProductInsightsBlocks(skuInsightsBullets).length > 0 && (
+       {!hasNoAiData && parseProductInsightsBlocks(skuInsightsBullets, range).length > 0 && (
           <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="space-y-5">
               <ProductInsightsSection
-                blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+                blocks={parseProductInsightsBlocks(skuInsightsBullets, range)}
                 objective={objective}
                 recommendationsMap={recommendationsMap}
                 nameToSkuMap={nameToSkuMap}
@@ -6045,7 +6180,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return momRow?.[key]?.delta_pct;
   };
 
-  const buildGlobalProductInsightLines = (data: any): string[] => {
+  const buildGlobalProductInsightLines = (
+  data: any,
+  range: RangeType = "monthly"
+): string[] => {
     const products = data?.global_ai?.product_journey_comparison ?? [];
     const skuCurrent = data?.metrics?.sku_current ?? {};
     const skuMom = data?.metrics?.sku_mom ?? {};
@@ -6093,7 +6231,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         )}`
       );
 
-      const useCm1Profit = toNum(currentRow?.cm2_profit) === 0;
+     const useCm1Profit =
+  !isMonthlyRange(range) || toNum(currentRow?.cm2_profit) === 0;
 
 const profitLabel = useCm1Profit ? "CM1 profit" : "CM2 profit";
 const profitKey = useCm1Profit ? "profit" : "cm2_profit";
@@ -6136,6 +6275,16 @@ lines.push(
     currentRow?.current_inventory
   )}`
 );
+
+if (isMonthlyRange(range)) {
+  lines.push(
+    `Productwise ads spend: ${formatMetricObjectWithDelta(
+      momRow?.productwise_ads_spend ?? currentRow?.productwise_ads_spend,
+      "money",
+      currencySymbol
+    )}`
+  );
+}
 
       lines.push("Product Journey");
 
@@ -6257,7 +6406,10 @@ lines.push(
     return lines;
   };
 
-  const mapGlobalAiResponseToPanel = (data: any): AiPanelData => {
+ const mapGlobalAiResponseToPanel = (
+  data: any,
+  rangeType: RangeType = "monthly"
+): AiPanelData => {
     const globalAi = data?.global_ai ?? {};
 
     const comparison = data?.comparison;
@@ -6330,9 +6482,9 @@ lines.push(
     return {
       summaryBullets,
       skuInsightsBullets: [
-        ...buildGlobalProductInsightLines(data),
-        ...buildOtherSkusInsightLines(data, currencySymbol, "global"),
-      ],
+  ...buildGlobalProductInsightLines(data, rangeType),
+  ...buildOtherSkusInsightLines(data, currencySymbol, "global", rangeType),
+],
       recommendationBullets: [],
       inventoryBullets: buildGlobalInventoryLines(data),
       recommendationsMap: buildGlobalRecommendationsMap(data),
@@ -6439,7 +6591,7 @@ lines.push(
         data?.global_ai ||
         countryName.toLowerCase() === "global"
       ) {
-        setAiPanel(mapGlobalAiResponseToPanel(data));
+        setAiPanel(mapGlobalAiResponseToPanel(data, rangeType));
         return;
       }
 
