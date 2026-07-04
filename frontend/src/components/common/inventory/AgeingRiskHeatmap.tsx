@@ -494,7 +494,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
            {
     key: "salesRank",
     header: "Sales Rank",
-    width: "130px",
+    width: "140px",
     headerClassName: heatmapHeaderClassName,
     cellClassName:
         "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
@@ -512,7 +512,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
 
 return (
-    <div className="grid w-full grid-cols-[minmax(48px,1fr)_minmax(52px,auto)] items-center gap-1 whitespace-nowrap">
+    <div className="grid w-full grid-cols-[minmax(48px,1fr)_minmax(52px,auto)] items-center gap-2 whitespace-nowrap">
         <span className="text-right tabular-nums">
             {rankNumber.toLocaleString()}
         </span>
@@ -520,8 +520,8 @@ return (
         {delta ? (
             <span
                 className={[
-                    "inline-flex min-w-[52px] items-center justify-start gap-1 text-left text-[11px] font-semibold tabular-nums",
-                    "lg:text-[10px] min-[1700px]:text-[11px]",
+                    "inline-flex min-w-[52px] items-center justify-start  text-left text-xs font-semibold tabular-nums",
+                    "",
                     delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
                 ].join(" ")}
                 title="Compared with previous month sales rank"
