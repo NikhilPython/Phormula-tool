@@ -1334,7 +1334,7 @@ If ads data is missing or zero:
 - still return ads_recommendation as "Monitor current advertising."
 
 If inventory data is missing:
-- return inventory_recommendation as "Inventory position is stable."
+- return inventory_recommendation as "Cross Check current inventory."
 
 You are producing executive-level commercial reasoning,
 not pricing commands.
@@ -3905,9 +3905,14 @@ def get_ads_visibility_driver_recommendation(
 
     # Visibility means either traffic/clicks dropped or ad-attributed sales dropped.
     ads_visibility_down = (
-        ads_clicks_pct <= -20.0
-        or ads_sales_pct <= -20.0
-    )
+    ads_clicks_pct <= -20.0
+      or ads_sales_pct <= -20.0
+      or (
+          ads_spend_pct <= -15.0
+          and ads_clicks_pct == 0
+          and ads_sales_pct == 0
+      )
+  )
 
     if not (
         asp_not_primary_driver
