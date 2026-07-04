@@ -2227,15 +2227,23 @@ const buildInventoryInsightsFromResponses = (
                 threeSixtyFivePlus;
 
             // ✅ Sellable Units should come from backend "available" column
-            const available = inventoryToNum(row?.available);
+            const available = inventoryToNum(
+                row?.["Sellable Units"] ??
+                row?.sellable_units ??
+                row?.sellableUnits ??
+                row?.sellable_sum_last ??
+                row?.available
+            );
 
-            // ✅ Map backend inbound_quantity as Inbound Units
             const inboundUnits = inventoryToNum(
+                row?.["Inbound Units"] ??
+                row?.inbound_units ??
+                row?.inboundUnits ??
+                row?.transit_total ??
                 row?.inbound_quantity ??
                 row?.["inbound_quantity"] ??
                 row?.inboundQuantity ??
-                row?.["Inbound Quantity"] ??
-                row?.["Inbound Units"]
+                row?.["Inbound Quantity"]
             );
 
             const totalUnits = available;
@@ -4293,35 +4301,30 @@ export default function DashboardPage() {
             const currentMonth = invMonthYear.month;
             const currentYear = invMonthYear.year;
 
-            // ✅ Last 6 months including current month.
-            // Example: Jan, Feb, Mar, Apr, May, Jun
-            const monthsToFetch = getInventoryInsightMonthRange(
-                currentMonth,
-                currentYear,
-                6
-            );
+            // ✅ Backend age-summary already returns Jan → selected month in month_summary.
+            // So frontend should call only selected/current month.
+            const selectedInventoryMonth = {
+                month: currentMonth,
+                year: currentYear,
+            };
 
-            const inventoryResults = await Promise.allSettled(
-                monthsToFetch.map((item) =>
-                    fetchSingleMonthInventoryCurrentForInsights(
-                        item.month,
-                        item.year,
-                        country,
-                        ac.signal
-                    )
-                )
-            );
+            const inventoryResults = await Promise.allSettled([
+                fetchSingleMonthInventoryCurrentForInsights(
+                    selectedInventoryMonth.month,
+                    selectedInventoryMonth.year,
+                    country,
+                    ac.signal
+                ),
+            ]);
 
-            const ageSummaryResults = await Promise.allSettled(
-                monthsToFetch.map((item) =>
-                    fetchSingleMonthInventoryAgeSummaryForInsights(
-                        item.month,
-                        item.year,
-                        country,
-                        ac.signal
-                    )
-                )
-            );
+            const ageSummaryResults = await Promise.allSettled([
+                fetchSingleMonthInventoryAgeSummaryForInsights(
+                    selectedInventoryMonth.month,
+                    selectedInventoryMonth.year,
+                    country,
+                    ac.signal
+                ),
+            ]);
 
             const inventoryResponses = inventoryResults
                 .filter(

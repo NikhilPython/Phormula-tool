@@ -110,6 +110,20 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
 
   //   return [];
   // }, [allChartSeriesData]);
+  const monthOrder = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
 
   const categories = useMemo(() => {
     const monthSet = new Set<string>();
@@ -120,7 +134,9 @@ const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
       });
     });
 
-    return Array.from(monthSet);
+    return Array.from(monthSet).sort(
+      (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b)
+    );
   }, [allChartSeriesData]);
 
   // const chartSeries = useMemo(() => {

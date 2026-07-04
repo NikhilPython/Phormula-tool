@@ -7147,30 +7147,28 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const getInventoryAgeSummaryMonthsForTrend = () => {
-    const lastCompleted = getLastCompletedMonth();
-
     const selectedYearNum = Number(selectedYear);
-    const currentYearNum = Number(new Date().getFullYear());
 
     if (!selectedYearNum || Number.isNaN(selectedYearNum)) {
       return [];
     }
 
-    // Future year should not show trend data
-    if (selectedYearNum > currentYearNum) {
-      return [];
+    if (range === "monthly") {
+      return selectedMonth ? [selectedMonth.toLowerCase()] : [];
     }
 
-    // For current year, show only up to current - 1 month
-    // Example: if current month is June, show Jan to May
-    const maxMonthIndex =
-      selectedYearNum === currentYearNum
-        ? lastCompleted.monthIndex
-        : 11;
+    if (range === "quarterly" && selectedQuarter) {
+      const quarterMonths = quarterToMonths[selectedQuarter] || [];
+      const lastQuarterMonth = quarterMonths[quarterMonths.length - 1];
 
-    return allMonths
-      .slice(0, maxMonthIndex + 1)
-      .map((m) => m.toLowerCase());
+      return lastQuarterMonth ? [lastQuarterMonth.toLowerCase()] : [];
+    }
+
+    if (range === "yearly") {
+      return ["december"];
+    }
+
+    return [];
   };
 
   useEffect(() => {
@@ -7307,6 +7305,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedYear,
     countryName,
     isDemoMode,
+    selectedGlobalInventoryCountry,
+    effectiveCountryName,
+    effectiveHomeCurrency,
   ]);
 
 

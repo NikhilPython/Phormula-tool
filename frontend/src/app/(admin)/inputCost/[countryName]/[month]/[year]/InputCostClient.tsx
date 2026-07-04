@@ -1249,28 +1249,35 @@ const getPreviousCompletedPeriod = () => {
   };
 };
 
-const getInventoryAgeSummaryMonthsForTrend = (yearValue: string) => {
-  const previousCompleted = getPreviousCompletedPeriod();
-
+const getInventoryAgeSummaryMonthsForTrend = (
+  rangeValue: RangeType,
+  monthValue: string,
+  quarterValue: Quarter | "",
+  yearValue: string
+) => {
   const selectedYearNum = Number(yearValue);
-  const currentYearNum = Number(new Date().getFullYear());
 
   if (!selectedYearNum || Number.isNaN(selectedYearNum)) {
     return [];
   }
 
-  if (selectedYearNum > currentYearNum) {
-    return [];
+  if (rangeValue === "monthly") {
+    const safeMonth = getSafeInventoryMonth(monthValue, yearValue);
+    return safeMonth ? [safeMonth.toLowerCase()] : [];
   }
 
-  const maxMonthIndex =
-    selectedYearNum === currentYearNum
-      ? previousCompleted.monthIndex
-      : 11;
+  if (rangeValue === "quarterly" && quarterValue) {
+    const quarterMonths = quarterToMonths[quarterValue] || [];
+    const lastMonthOfQuarter = quarterMonths[quarterMonths.length - 1];
 
-  return allMonths
-    .slice(0, maxMonthIndex + 1)
-    .map((m) => m.toLowerCase());
+    return lastMonthOfQuarter ? [lastMonthOfQuarter.toLowerCase()] : [];
+  }
+
+  if (rangeValue === "yearly") {
+    return ["december"];
+  }
+
+  return [];
 };
 
 const isSameOrBeforePreviousCompletedMonth = (
@@ -1701,7 +1708,7 @@ const getUniqueInventorySkuCount = (rows: any[]) => {
 };
 
 const getRowAgeingTotalUnits = (row: any) => {
-  const available = toNum(row?.available);
+  const available = getInventoryRowTotalUnits(row);
 
   if (available > 0) return available;
 
@@ -1855,7 +1862,8 @@ const buildInventoryInsightsFromResponses = (
   countryName: string,
   selectedGlobalInventoryCountry: string = "uk",
   selectedRange: RangeType = "monthly",
-  selectedMonthForRank: string = ""
+  selectedMonthForRank: string = "",
+  selectedQuarterForTrend: Quarter | "" = ""
 ): InventoryInsightsData => {
   const isGlobalInventory =
     String(countryName || "").toLowerCase() === "global";
@@ -2157,13 +2165,28 @@ const buildInventoryInsightsFromResponses = (
     }
   });
 
+  const maxTrendMonthNumber = (() => {
+    if (selectedRange === "monthly") {
+      return allMonths.indexOf(String(selectedMonthForRank || "").toLowerCase()) + 1;
+    }
+
+    if (selectedRange === "quarterly" && selectedQuarterForTrend) {
+      const quarterMonths = quarterToMonths[selectedQuarterForTrend] || [];
+      const lastMonth = quarterMonths[quarterMonths.length - 1];
+
+      return allMonths.indexOf(String(lastMonth || "").toLowerCase()) + 1;
+    }
+
+    return 12;
+  })();
+
   const sortedMonthSummaryValues = Array.from(monthSummaryMap.values())
-    .filter((item) =>
-      isSameOrBeforePreviousCompletedMonth(item.month_number, item.year)
-    )
+    .filter((item) => {
+      if (selectedRange === "yearly") return true;
+
+      return Number(item.month_number) <= maxTrendMonthNumber;
+    })
     .sort((a, b) => a.year - b.year || a.month_number - b.month_number);
-
-
   const trendData: AgeingTrendItem[] = sortedMonthSummaryValues.map((item) => ({
     label: getShortMonthLabel(item.month),
     value: toNum(item.totals?.[selectedTrendOption.column]),
@@ -4242,7 +4265,12 @@ export default function InputCostPage({ params }: Params) {
 
       try {
         const trendMonthsToFetch: string[] =
-          getInventoryAgeSummaryMonthsForTrend(selectedYear);
+          getInventoryAgeSummaryMonthsForTrend(
+            range,
+            selectedMonth,
+            selectedQuarter,
+            selectedYear
+          );
 
         const [inventoryResult, ageSummaryResults]: [
           InventoryCurrentApiResponse,
@@ -4290,7 +4318,8 @@ export default function InputCostPage({ params }: Params) {
           countryName,
           selectedGlobalInventoryCountry,
           range,
-          selectedMonth
+          selectedMonth,
+          selectedQuarter
         );
 
         if (ac.signal.aborted) return;
@@ -4338,7 +4367,8 @@ export default function InputCostPage({ params }: Params) {
       countryName,
       selectedGlobalInventoryCountry,
       range,
-      selectedMonth
+      selectedMonth,
+      selectedQuarter
     );
 
     setInventoryInsightsData(rebuiltInventoryInsightsData);
@@ -4349,6 +4379,7 @@ export default function InputCostPage({ params }: Params) {
     selectedGlobalInventoryCountry,
     range,
     selectedMonth,
+    selectedQuarter
   ]);
 
   useEffect(() => {

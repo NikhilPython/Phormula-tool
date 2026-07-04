@@ -849,16 +849,9 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
     Fallback source:
       public.inventory_aged_history
 
-    Converts history rows into the same shape as currentinventory table rows:
-      SKU
-      Product Name
-      inv-age-0-to-90-days
-      inv-age-91-to-180-days
-      inv-age-181-to-270-days
-      inv-age-271-to-365-days
-      inv-age-365-plus-days
-      unfulfillable-quantity
-      estimated-storage-cost-next-month
+    Important:
+      Use only latest snapshot date inside the selected month.
+      This avoids 5x / duplicate monthly snapshot totals.
     """
 
     month_number = MONTH_NAME_TO_NUMBER.get(month_name)
@@ -868,7 +861,6 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
 
     marketplace_id = get_marketplace_id(country_key)
 
-    where_country_sql = ""
     params = {
         "user_id": int(user_id),
         "year": int(year),
@@ -876,28 +868,40 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
     }
 
     if marketplace_id:
-        where_country_sql = "AND marketplace_id = :marketplace_id"
+        latest_country_filter_sql = "AND marketplace_id = :marketplace_id"
+        row_country_filter_sql = "AND h.marketplace_id = :marketplace_id"
         params["marketplace_id"] = marketplace_id
     else:
-        # fallback if marketplace_id is not mapped
-        where_country_sql = "AND LOWER(COALESCE(country, '')) = :country_key"
+        latest_country_filter_sql = "AND LOWER(COALESCE(country, '')) = :country_key"
+        row_country_filter_sql = "AND LOWER(COALESCE(h.country, '')) = :country_key"
         params["country_key"] = country_key.lower()
 
     query = text(f"""
+        WITH latest_snapshot AS (
+            SELECT MAX(snapshot_date::date) AS latest_snapshot_day
+            FROM public.inventory_aged_history
+            WHERE user_id = :user_id
+              {latest_country_filter_sql}
+              AND snapshot_date IS NOT NULL
+              AND EXTRACT(YEAR FROM snapshot_date)::int = :year
+              AND EXTRACT(MONTH FROM snapshot_date)::int = :month
+        )
         SELECT
-            sku,
-            COALESCE(product_name, '') AS product_name,
-            surcharge_age_tier,
-            COALESCE(SUM(qty_charged), 0) AS qty_charged,
-            COALESCE(SUM(amount_charged), 0) AS amount_charged,
-            MAX(snapshot_date) AS snapshot_date
-        FROM public.inventory_aged_history
-        WHERE user_id = :user_id
-          {where_country_sql}
-          AND snapshot_date IS NOT NULL
-          AND EXTRACT(YEAR FROM snapshot_date)::int = :year
-          AND EXTRACT(MONTH FROM snapshot_date)::int = :month
-        GROUP BY sku, product_name, surcharge_age_tier
+            h.sku,
+            COALESCE(h.product_name, '') AS product_name,
+            h.surcharge_age_tier,
+            COALESCE(SUM(h.qty_charged), 0) AS qty_charged,
+            COALESCE(SUM(h.amount_charged), 0) AS amount_charged,
+            MAX(h.snapshot_date) AS snapshot_date
+        FROM public.inventory_aged_history h
+        CROSS JOIN latest_snapshot ls
+        WHERE h.user_id = :user_id
+          {row_country_filter_sql}
+          AND h.snapshot_date IS NOT NULL
+          AND h.snapshot_date::date = ls.latest_snapshot_day
+          AND EXTRACT(YEAR FROM h.snapshot_date)::int = :year
+          AND EXTRACT(MONTH FROM h.snapshot_date)::int = :month
+        GROUP BY h.sku, h.product_name, h.surcharge_age_tier
     """)
 
     with amazon_engine.connect() as connection:
@@ -934,18 +938,30 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
         if target_column:
             grouped[key][target_column] += to_number(row["qty_charged"])
 
-        grouped[key]["estimated-storage-cost-next-month"] += to_number(row["amount_charged"])
+        grouped[key]["estimated-storage-cost-next-month"] += to_number(
+            row["amount_charged"]
+        )
 
     rows = list(grouped.values())
 
     total_row = {
         "SKU": "",
         "Product Name": "Total",
-        "inv-age-0-to-90-days": sum(to_number(r.get("inv-age-0-to-90-days")) for r in rows),
-        "inv-age-91-to-180-days": sum(to_number(r.get("inv-age-91-to-180-days")) for r in rows),
-        "inv-age-181-to-270-days": sum(to_number(r.get("inv-age-181-to-270-days")) for r in rows),
-        "inv-age-271-to-365-days": sum(to_number(r.get("inv-age-271-to-365-days")) for r in rows),
-        "inv-age-365-plus-days": sum(to_number(r.get("inv-age-365-plus-days")) for r in rows),
+        "inv-age-0-to-90-days": sum(
+            to_number(r.get("inv-age-0-to-90-days")) for r in rows
+        ),
+        "inv-age-91-to-180-days": sum(
+            to_number(r.get("inv-age-91-to-180-days")) for r in rows
+        ),
+        "inv-age-181-to-270-days": sum(
+            to_number(r.get("inv-age-181-to-270-days")) for r in rows
+        ),
+        "inv-age-271-to-365-days": sum(
+            to_number(r.get("inv-age-271-to-365-days")) for r in rows
+        ),
+        "inv-age-365-plus-days": sum(
+            to_number(r.get("inv-age-365-plus-days")) for r in rows
+        ),
         "unfulfillable-quantity": 0,
         "estimated-storage-cost-next-month": sum(
             to_number(r.get("estimated-storage-cost-next-month")) for r in rows
@@ -969,6 +985,7 @@ def fetch_rows_from_inventory_aged_history(user_id, country_key, month_name, yea
     ]
 
     return columns, rows
+
 
 def build_inventory_monthly_table_name(user_id, country_key, month_name, year):
     month_number = MONTH_NAME_TO_NUMBER.get(str(month_name).lower())
@@ -2338,32 +2355,33 @@ def month_label(month_number):
 def get_age_summary_for_single_country(user_id, country_key, month_name, year):
     marketplace_id = get_marketplace_id(country_key)
 
+    empty_totals = {
+        "inv-age-0-to-180-days": 0,
+        "inv-age-181-to-270-days": 0,
+        "inv-age-271-to-365-days": 0,
+        "inv-age-365-plus-days": 0,
+    }
+
     if not marketplace_id:
         return {
             "success": False,
             "message": f"Unsupported country_key: {country_key}",
             "month_summary": [],
             "age_summary": [],
-            "selected_month_totals": {
-                "inv-age-0-to-180-days": 0,
-                "inv-age-181-to-270-days": 0,
-                "inv-age-271-to-365-days": 0,
-                "inv-age-365-plus-days": 0,
-            },
-            "grand_totals": {
-                "inv-age-0-to-180-days": 0,
-                "inv-age-181-to-270-days": 0,
-                "inv-age-271-to-365-days": 0,
-                "inv-age-365-plus-days": 0,
-            },
+            "selected_month_totals": empty_totals,
+            "grand_totals": empty_totals,
             "tried_sources": [],
         }
 
     current_month_number = MONTH_NAME_TO_NUMBER[month_name]
     year_int = int(year)
 
-    inspector = inspect(primary_engine)
-    existing_tables = set(inspector.get_table_names(schema="public"))
+    age_columns = [
+        "inv-age-0-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+    ]
 
     month_summary = []
     tried_sources = []
@@ -2372,223 +2390,115 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
         month_text = calendar_month_name[month_number].lower()
         month_display = month_label(month_number)
 
-        candidate_table_name = (
-            f"currentinventory_{user_id}_{country_key}_{month_text}{year}_table"
-        )
-
-        tried_sources.append(candidate_table_name)
-
-        sellable_total = fetch_monthly_sellable_total(
+        source_result = resolve_inventory_current_source(
             user_id=user_id,
             country_key=country_key,
+            range_type="monthly",
             month_name=month_text,
             year=year,
+            quarter=None,
         )
 
-        if candidate_table_name in existing_tables:
-            current_query = text(f'''
-                SELECT
-                    COALESCE(SUM(CAST(NULLIF("inv-age-0-to-90-days"::text, '') AS NUMERIC)), 0) AS inv_age_0_to_90_days,
-                    COALESCE(SUM(CAST(NULLIF("inv-age-91-to-180-days"::text, '') AS NUMERIC)), 0) AS inv_age_91_to_180_days,
-                    COALESCE(SUM(CAST(NULLIF("inv-age-181-to-270-days"::text, '') AS NUMERIC)), 0) AS inv_age_181_to_270_days,
-                    COALESCE(SUM(CAST(NULLIF("inv-age-271-to-365-days"::text, '') AS NUMERIC)), 0) AS inv_age_271_to_365_days,
-                    COALESCE(SUM(CAST(NULLIF("inv-age-365-plus-days"::text, '') AS NUMERIC)), 0) AS inv_age_365_plus_days
-                FROM "{candidate_table_name}"
-                WHERE LOWER(COALESCE("Product Name"::text, '')) != 'total'
-            ''')
+        tried_sources.extend(source_result.get("tried_sources", []))
 
-            with primary_engine.connect() as primary_connection:
-                current_result = primary_connection.execute(current_query).mappings().first()
-
-            inv_0_90 = to_number(current_result["inv_age_0_to_90_days"] if current_result else 0)
-            inv_91_180 = to_number(current_result["inv_age_91_to_180_days"] if current_result else 0)
-            inv_181_270 = to_number(current_result["inv_age_181_to_270_days"] if current_result else 0)
-            inv_271_365 = to_number(current_result["inv_age_271_to_365_days"] if current_result else 0)
-            inv_365_plus = to_number(current_result["inv_age_365_plus_days"] if current_result else 0)
-
-            existing_0_180 = inv_0_90 + inv_91_180
-
-            if existing_0_180 > 0:
-                inv_0_180 = existing_0_180
-            else:
-                inv_0_180 = sellable_total - inv_181_270 - inv_271_365 - inv_365_plus
-                if inv_0_180 < 0:
-                    inv_0_180 = 0
-
+        if not source_result.get("found"):
             month_summary.append({
                 "country_key": country_key,
                 "month": month_display,
                 "month_number": month_number,
                 "year": year_int,
-                "source": candidate_table_name,
-                "source_type": "currentinventory_table",
-                "sellable_total": sellable_total,
-                "totals": {
-                    "inv-age-0-to-180-days": float(inv_0_180),
-                    "inv-age-181-to-270-days": float(inv_181_270),
-                    "inv-age-271-to-365-days": float(inv_271_365),
-                    "inv-age-365-plus-days": float(inv_365_plus),
-                },
+                "source": None,
+                "source_type": None,
+                "sellable_total": 0,
+                "totals": dict(empty_totals),
             })
-
             continue
 
-        history_source = f"inventory_aged_history:{country_key}:{month_text}{year}"
-        tried_sources.append(history_source)
+        rows = source_result["rows"]
+        columns = source_result["columns"]
+        selected_month_for_units = source_result["selected_month"]
 
-        history_query = text("""
-            SELECT
-                COALESCE(SUM(
-                    CASE
-                        WHEN surcharge_age_tier IN (
-                            '181-210',
-                            '181-210 days',
-                            '181 to 210 days',
-                            '181-210-days',
-                            '211-240',
-                            '211-240 days',
-                            '211 to 240 days',
-                            '211-240-days',
-                            '241-270',
-                            '241-270 days',
-                            '241 to 270 days',
-                            '241-270-days'
-                        )
-                        THEN qty_charged
-                        ELSE 0
-                    END
-                ), 0) AS inv_age_181_to_270_days,
+        if selected_month_for_units:
+            units_sold_result = attach_current_month_units_sold(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=selected_month_for_units,
+                year=year,
+            )
 
-                COALESCE(SUM(
-                    CASE
-                        WHEN surcharge_age_tier IN (
-                            '271-300',
-                            '271-300 days',
-                            '271 to 300 days',
-                            '271-300-days',
-                            '301-330',
-                            '301-330 days',
-                            '301 to 330 days',
-                            '301-330-days',
-                            '331-365',
-                            '331-365 days',
-                            '331 to 365 days',
-                            '331-365-days'
-                        )
-                        THEN qty_charged
-                        ELSE 0
-                    END
-                ), 0) AS inv_age_271_to_365_days,
+            rows = units_sold_result["rows"]
+            columns = units_sold_result["columns"]
 
-                COALESCE(SUM(
-                    CASE
-                        WHEN surcharge_age_tier IN (
-                            '365+',
-                            '365+ days',
-                            '365 plus days',
-                            '365-plus-days',
-                            '366-455',
-                            '366-455 days',
-                            '366 to 455 days',
-                            '366-455-days',
-                            '456+',
-                            '456+ days',
-                            '456 plus days',
-                            '456-plus-days'
-                        )
-                        THEN qty_charged
-                        ELSE 0
-                    END
-                ), 0) AS inv_age_365_plus_days
-            FROM inventory_aged_history
-            WHERE user_id = :user_id
-              AND marketplace_id = :marketplace_id
-              AND snapshot_date IS NOT NULL
-              AND EXTRACT(YEAR FROM snapshot_date)::int = :year
-              AND EXTRACT(MONTH FROM snapshot_date)::int = :month_number
-        """)
+            monthly_attach_after_units = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=country_key,
+                month_name=selected_month_for_units,
+                year=year,
+            )
 
-        with amazon_engine.connect() as amazon_connection:
-            history_result = amazon_connection.execute(history_query, {
-                "user_id": int(user_id),
-                "marketplace_id": marketplace_id,
-                "year": year_int,
-                "month_number": month_number,
-            }).mappings().first()
+            rows = monthly_attach_after_units["rows"]
+            columns = monthly_attach_after_units["columns"]
 
-        inv_181_270 = to_number(history_result["inv_age_181_to_270_days"] if history_result else 0)
-        inv_271_365 = to_number(history_result["inv_age_271_to_365_days"] if history_result else 0)
-        inv_365_plus = to_number(history_result["inv_age_365_plus_days"] if history_result else 0)
+            zero_to_180_attach = attach_zero_to_180_days(
+                rows=rows,
+                columns=columns,
+            )
 
-        inv_0_180 = sellable_total - inv_181_270 - inv_271_365 - inv_365_plus
-        if inv_0_180 < 0:
-            inv_0_180 = 0
+            rows = zero_to_180_attach["rows"]
+            columns = zero_to_180_attach["columns"]
+
+        data_rows = [
+            row for row in rows
+            if not is_total_row(row)
+        ]
+
+        totals = {
+            column: sum(
+                to_number(row.get(column))
+                for row in data_rows
+            )
+            for column in age_columns
+        }
+
+        sellable_total = sum(totals.values())
 
         month_summary.append({
             "country_key": country_key,
             "month": month_display,
             "month_number": month_number,
             "year": year_int,
-            "source": "inventory_aged_history",
-            "source_type": "inventory_aged_history",
+            "source": source_result["source_name"],
+            "source_type": source_result["source_type"],
             "sellable_total": sellable_total,
-            "totals": {
-                "inv-age-0-to-180-days": float(inv_0_180),
-                "inv-age-181-to-270-days": float(inv_181_270),
-                "inv-age-271-to-365-days": float(inv_271_365),
-                "inv-age-365-plus-days": float(inv_365_plus),
-            },
+            "totals": totals,
         })
 
     age_summary = []
 
+    bucket_labels = {
+        "inv-age-0-to-180-days": "0-180 days",
+        "inv-age-181-to-270-days": "181-270 days",
+        "inv-age-271-to-365-days": "271-365 days",
+        "inv-age-365-plus-days": "365+ days",
+    }
+
     for month_row in month_summary:
-        age_summary.extend([
-            {
+        for column in age_columns:
+            age_summary.append({
                 "country_key": country_key,
                 "month": month_row["month"],
                 "month_number": month_row["month_number"],
                 "year": month_row["year"],
                 "source": month_row["source"],
                 "source_type": month_row["source_type"],
-                "age_bucket": "0-180 days",
-                "column": "inv-age-0-to-180-days",
-                "units": month_row["totals"]["inv-age-0-to-180-days"],
-            },
-            {
-                "country_key": country_key,
-                "month": month_row["month"],
-                "month_number": month_row["month_number"],
-                "year": month_row["year"],
-                "source": month_row["source"],
-                "source_type": month_row["source_type"],
-                "age_bucket": "181-270 days",
-                "column": "inv-age-181-to-270-days",
-                "units": month_row["totals"]["inv-age-181-to-270-days"],
-            },
-            {
-                "country_key": country_key,
-                "month": month_row["month"],
-                "month_number": month_row["month_number"],
-                "year": month_row["year"],
-                "source": month_row["source"],
-                "source_type": month_row["source_type"],
-                "age_bucket": "271-365 days",
-                "column": "inv-age-271-to-365-days",
-                "units": month_row["totals"]["inv-age-271-to-365-days"],
-            },
-            {
-                "country_key": country_key,
-                "month": month_row["month"],
-                "month_number": month_row["month_number"],
-                "year": month_row["year"],
-                "source": month_row["source"],
-                "source_type": month_row["source_type"],
-                "age_bucket": "365+ days",
-                "column": "inv-age-365-plus-days",
-                "units": month_row["totals"]["inv-age-365-plus-days"],
-            },
-        ])
+                "age_bucket": bucket_labels[column],
+                "column": column,
+                "units": month_row["totals"][column],
+            })
 
     selected_month_row = next(
         (
@@ -2601,31 +2511,15 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
     selected_month_totals = (
         selected_month_row["totals"]
         if selected_month_row
-        else {
-            "inv-age-0-to-180-days": 0,
-            "inv-age-181-to-270-days": 0,
-            "inv-age-271-to-365-days": 0,
-            "inv-age-365-plus-days": 0,
-        }
+        else dict(empty_totals)
     )
 
     grand_totals = {
-        "inv-age-0-to-180-days": sum(
-            row["totals"]["inv-age-0-to-180-days"]
+        column: sum(
+            row["totals"][column]
             for row in month_summary
-        ),
-        "inv-age-181-to-270-days": sum(
-            row["totals"]["inv-age-181-to-270-days"]
-            for row in month_summary
-        ),
-        "inv-age-271-to-365-days": sum(
-            row["totals"]["inv-age-271-to-365-days"]
-            for row in month_summary
-        ),
-        "inv-age-365-plus-days": sum(
-            row["totals"]["inv-age-365-plus-days"]
-            for row in month_summary
-        ),
+        )
+        for column in age_columns
     }
 
     return {
@@ -2635,17 +2529,10 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
         "tried_sources": tried_sources,
         "month_summary": month_summary,
         "age_summary": age_summary,
-
-        # selected month only, e.g. March only
         "selected_month_totals": selected_month_totals,
-
-        # January to selected month cumulative
         "grand_totals": grand_totals,
-
-        # Keep old key as selected month totals so frontend does not show cumulative by mistake
         "totals": selected_month_totals,
     }
-
 
 
 
@@ -2823,6 +2710,6 @@ def get_inventory_current_age_summary():
             "message": "Error fetching inventory age summary",
             "error": str(e),
         }), 500
-    
-     
+
+
 
