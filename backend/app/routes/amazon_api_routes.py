@@ -2551,6 +2551,7 @@ def finances_mtd_transactions():
         + float(totals.get("gift_wrap_credits", 0.0))
         + float(totals.get("product_sales_tax", 0.0))
         + float(totals.get("shipping_credits_tax", 0.0))
+        + float(totals.get("giftwrap_credits_tax", 0.0))
         + float(totals.get("promotional_rebates_tax", 0.0))
         + float(totals.get("marketplace_facilitator_tax", 0.0))
     )
@@ -3098,7 +3099,7 @@ def finances_mtd_transactions():
         ).fillna(0.0)
 
         df_sku["tax_and_credits"] = (
-            df_sku["credits"] - df_sku["tax"].abs()
+            df_sku["credits"] + df_sku["tax"]
         ).round(2)
 
         # ---------------- SKU-WISE NET SALES FIX ----------------
