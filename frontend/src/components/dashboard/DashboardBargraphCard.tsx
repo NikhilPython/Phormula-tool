@@ -60,9 +60,26 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
     return normalizedLabels.map((_, i) => colors?.[i] ?? "#75BBDA");
   }, [normalizedLabels, colors]);
 
-  const prevColors = useMemo(() => {
-  return normalizedLabels.map(() => "#D9D9D9");
-}, [normalizedLabels]);
+ const makeLighterColor = (color: string) => {
+  if (!color) return "#D9D9D9";
+
+  // For hex colors like #75BBDA
+  if (color.startsWith("#") && color.length === 7) {
+    return `${color}66`; // 40% opacity
+  }
+
+  // For rgb colors like rgb(117, 187, 218)
+  if (color.startsWith("rgb(")) {
+    return color.replace("rgb(", "rgba(").replace(")", ", 0.4)");
+  }
+
+  // For rgba colors, keep as fallback
+  return color;
+};
+
+const prevColors = useMemo(() => {
+  return normalizedColors.map((color) => makeLighterColor(color));
+}, [normalizedColors]);
 
   const chartValues = useMemo(() => {
     if (previewMode) return normalizedLabels.map(() => 0);
