@@ -283,7 +283,7 @@ export default function DataTable<T extends Row>({
           <table
             className={clsx(
               "border-separate border-spacing-0",
-              "text-xs  text-slate-700",
+              "text-xs 2xl:text-sm text-slate-700",
               "min-w-max w-max lg:w-full",
               "table-fixed",
               tableClassName
@@ -338,7 +338,7 @@ export default function DataTable<T extends Row>({
           <table
             className={clsx(
               "border-separate border-spacing-0",
-              "text-xs  text-slate-700",
+              "text-xs 2xl:text-sm text-slate-700",
               "min-w-max w-max lg:w-full",
               "table-fixed",
               tableClassName
@@ -429,7 +429,7 @@ export default function DataTable<T extends Row>({
             <table
               className={clsx(
                 "border-separate border-spacing-0",
-                "text-xs  text-slate-700",
+                "text-xs 2xl:text-sm text-slate-700",
                 "min-w-max w-max lg:w-full",
                 "table-fixed",
                 tableClassName
