@@ -35,7 +35,7 @@ export default function SuperAdminLayoutClient({
     const [showFormulaCountryModal, setShowFormulaCountryModal] = useState(false);
     const [selectedFormulaCountry, setSelectedFormulaCountry] =
         useState<"uk" | "us">("uk");
-
+    const [superAdminEmail, setSuperAdminEmail] = useState<string>("");
 
     const publicSuperAdminRoutes = [
         "/superadmin/CDPAdminConsole",
@@ -48,10 +48,14 @@ export default function SuperAdminLayoutClient({
         if (isPublicRoute) return;
 
         const token = localStorage.getItem("superadmin_token");
+        const storedEmail = localStorage.getItem("superadmin_email");
 
         if (!token) {
             router.push("/superadmin/CDPAdminConsole");
+            return;
         }
+
+        setSuperAdminEmail(storedEmail || "");
     }, [isPublicRoute, router]);
 
     if (isPublicRoute) {
@@ -299,7 +303,7 @@ export default function SuperAdminLayoutClient({
                                                 Super Admin
                                             </p>
                                             <p className="text-xs text-white/55">
-                                                care@phormula.io
+                                                {superAdminEmail || "care@phormula.io"}
                                             </p>
                                         </div>
 
