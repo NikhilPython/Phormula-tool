@@ -16,7 +16,7 @@ import {
     KeyRound,
     ChevronLeft,
     ChevronRight,
-    Building2 , 
+    Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -72,7 +72,7 @@ export default function SuperAdminLayoutClient({
         {
             label: "Brands",
             href: "/superadmin/Brands",
-            icon: Building2  ,
+            icon: Building2,
         },
     ];
 
@@ -207,17 +207,6 @@ export default function SuperAdminLayoutClient({
 
                 <div className="flex h-[calc(100vh-80px)] flex-col justify-between px-4 py-5">
                     <div>
-                        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-sm">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
-                                <Shield size={20} />
-                            </span>
-
-                            <div>
-                                <p className="text-sm font-semibold text-white">Super Admin</p>
-                                <p className="text-xs text-white/60">Control Panel</p>
-                            </div>
-                        </div>
-
                         <nav className="space-y-2">
                             {navItems.map((item) => {
                                 const Icon = item.icon;
@@ -239,6 +228,17 @@ export default function SuperAdminLayoutClient({
                                 );
                             })}
                         </nav>
+                    </div>
+
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 shadow-sm">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
+                            <Shield size={20} />
+                        </span>
+
+                        <div>
+                            <p className="text-sm font-semibold text-white">Super Admin</p>
+                            <p className="text-xs text-white/60">Control Panel</p>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -296,10 +296,10 @@ export default function SuperAdminLayoutClient({
                                     <div className="absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#484962] shadow-[0_24px_55px_rgba(20,22,45,0.40)]">
                                         <div className="border-b border-white/10 px-4 py-3">
                                             <p className="text-sm font-semibold text-white">
-                                                Settings
+                                                Super Admin
                                             </p>
                                             <p className="text-xs text-white/55">
-                                                Super Admin controls
+                                                care@phormula.io
                                             </p>
                                         </div>
 
@@ -357,90 +357,92 @@ export default function SuperAdminLayoutClient({
                 <main className="p-4 sm:p-6">{children}</main>
             </div>
 
-            {showFormulaCountryModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
-                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#484962] text-white shadow-[0_28px_70px_rgba(20,22,45,0.50)]">
-                        <div className="border-b border-white/10 px-6 py-4">
-                            <h2 className="text-lg font-semibold text-white">
-                                Formula Update
-                            </h2>
-                            <p className="mt-1 text-sm text-white/60">
-                                Select country for formula update
-                            </p>
-                        </div>
+            {
+                showFormulaCountryModal && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+                        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#484962] text-white shadow-[0_28px_70px_rgba(20,22,45,0.50)]">
+                            <div className="border-b border-white/10 px-6 py-4">
+                                <h2 className="text-lg font-semibold text-white">
+                                    Formula Update
+                                </h2>
+                                <p className="mt-1 text-sm text-white/60">
+                                    Select country for formula update
+                                </p>
+                            </div>
 
-                        <div className="space-y-3 px-6 py-5">
-                            <label
-                                className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "uk"
-                                    ? "border-[#31d9e5] bg-[#31d9e5]/10"
-                                    : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
-                                    }`}
-                            >
-                                <div>
-                                    <p className="font-medium text-white">UK</p>
-                                    <p className="text-xs text-white/55">
-                                        Marketplace: A1F83G8C2ARO7P
-                                    </p>
-                                </div>
+                            <div className="space-y-3 px-6 py-5">
+                                <label
+                                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "uk"
+                                        ? "border-[#31d9e5] bg-[#31d9e5]/10"
+                                        : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                                        }`}
+                                >
+                                    <div>
+                                        <p className="font-medium text-white">UK</p>
+                                        <p className="text-xs text-white/55">
+                                            Marketplace: A1F83G8C2ARO7P
+                                        </p>
+                                    </div>
 
-                                <input
-                                    type="radio"
-                                    name="formula_country"
-                                    value="uk"
-                                    checked={selectedFormulaCountry === "uk"}
-                                    onChange={() => setSelectedFormulaCountry("uk")}
-                                    className="h-4 w-4 accent-[#31d9e5]"
-                                />
-                            </label>
+                                    <input
+                                        type="radio"
+                                        name="formula_country"
+                                        value="uk"
+                                        checked={selectedFormulaCountry === "uk"}
+                                        onChange={() => setSelectedFormulaCountry("uk")}
+                                        className="h-4 w-4 accent-[#31d9e5]"
+                                    />
+                                </label>
 
-                            <label
-                                className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "us"
-                                    ? "border-[#31d9e5] bg-[#31d9e5]/10"
-                                    : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
-                                    }`}
-                            >
-                                <div>
-                                    <p className="font-medium text-white">US</p>
-                                    <p className="text-xs text-white/55">
-                                        Marketplace: ATVPDKIKX0DER
-                                    </p>
-                                </div>
+                                <label
+                                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "us"
+                                        ? "border-[#31d9e5] bg-[#31d9e5]/10"
+                                        : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                                        }`}
+                                >
+                                    <div>
+                                        <p className="font-medium text-white">US</p>
+                                        <p className="text-xs text-white/55">
+                                            Marketplace: ATVPDKIKX0DER
+                                        </p>
+                                    </div>
 
-                                <input
-                                    type="radio"
-                                    name="formula_country"
-                                    value="us"
-                                    checked={selectedFormulaCountry === "us"}
-                                    onChange={() => setSelectedFormulaCountry("us")}
-                                    className="h-4 w-4 accent-[#31d9e5]"
-                                />
-                            </label>
-                        </div>
+                                    <input
+                                        type="radio"
+                                        name="formula_country"
+                                        value="us"
+                                        checked={selectedFormulaCountry === "us"}
+                                        onChange={() => setSelectedFormulaCountry("us")}
+                                        className="h-4 w-4 accent-[#31d9e5]"
+                                    />
+                                </label>
+                            </div>
 
-                        <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={() => setShowFormulaCountryModal(false)}
-                                disabled={formulaUpdating}
-                                className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-60"
-                            >
-                                Cancel
-                            </button>
+                            <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFormulaCountryModal(false)}
+                                    disabled={formulaUpdating}
+                                    className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-60"
+                                >
+                                    Cancel
+                                </button>
 
-                            <button
-                                type="button"
-                                onClick={() => handleFormulaUpdate(selectedFormulaCountry)}
-                                disabled={formulaUpdating}
-                                className="rounded-lg bg-[#31d9e5] px-4 py-2 text-sm font-semibold text-[#303247] transition hover:bg-[#28cbd6] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {formulaUpdating
-                                    ? "Updating..."
-                                    : `Update ${selectedFormulaCountry.toUpperCase()}`}
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleFormulaUpdate(selectedFormulaCountry)}
+                                    disabled={formulaUpdating}
+                                    className="rounded-lg bg-[#31d9e5] px-4 py-2 text-sm font-semibold text-[#303247] transition hover:bg-[#28cbd6] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {formulaUpdating
+                                        ? "Updating..."
+                                        : `Update ${selectedFormulaCountry.toUpperCase()}`}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

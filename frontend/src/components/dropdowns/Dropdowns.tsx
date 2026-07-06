@@ -732,19 +732,19 @@ const parseProductInsightsBlocks = (
   range: RangeType = "monthly"
 ): ProductInsightBlock[] => {
   const metricLabels = [
-  "ASP",
-  "Units",
-  "Net sales",
-  "CM1 profit",
-  "CM1 profit per unit",
-  "CM2 profit",
-  "CM2 profit per unit",
-  "Productwise ads spend",
-  "Stock Cover",
-  "Coverage ratio",
-  "Current inventory",
-  "Current Inventory",
-];
+    "ASP",
+    "Units",
+    "Net sales",
+    "CM1 profit",
+    "CM1 profit per unit",
+    "CM2 profit",
+    "CM2 profit per unit",
+    "Productwise ads spend",
+    "Stock Cover",
+    "Coverage ratio",
+    "Current inventory",
+    "Current Inventory",
+  ];
 
   const isMetric = (s: string) =>
     metricLabels.some((m) => s.toLowerCase().startsWith(m.toLowerCase() + ":"));
@@ -752,80 +752,80 @@ const parseProductInsightsBlocks = (
   const blocks: ProductInsightBlock[] = [];
   let current: ProductInsightBlock | null = null;
 
- const getMetricNumberValue = (value?: string) => {
-  const main = String(value || "").split("(")[0] || "";
-  const n = Number(main.replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? n : 0;
-};
-
-const cleanProfitMetricsForDisplay = (
-  block: ProductInsightBlock
-): ProductInsightBlock => {
-  const metrics = block.metrics || [];
-
-  const cm2Profit = metrics.find(
-    (m) => m.label.trim().toLowerCase() === "cm2 profit"
-  );
-
-  const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
-
-  // ✅ Quarterly / Yearly me always CM1
-  // ✅ Monthly me CM2 only if value non-zero
-  const useCm1 = !isMonthlyRange(range) || !cm2Profit || cm2ProfitValue === 0;
-
-  const cleanedMetrics = metrics
-    .map((m) => {
-      const label = m.label.trim();
-      const lower = label.toLowerCase();
-
-      if (lower === "coverage ratio") {
-        return {
-          ...m,
-          label: "Stock Cover",
-          value:
-            m.value && m.value !== "0.00"
-              ? getMetricNumberValue(m.value).toFixed(2)
-              : "-",
-        };
-      }
-
-      return m;
-    })
-    .filter((m) => {
-      const lower = m.label.trim().toLowerCase();
-
-      // ✅ Ads sirf drawer me dikhega, card me nahi
-      if (lower === "productwise ads spend" || lower === "ads") return false;
-
-      // ✅ Current inventory sirf drawer me dikhega, card me nahi
-      if (lower === "current inventory") return false;
-
-      // ✅ Quarterly / Yearly me CM2 card se remove
-      if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
-        return false;
-      }
-
-      // ✅ Monthly me agar CM2 valid hai to CM1 remove
-      if (!useCm1 && (lower === "cm1 profit" || lower === "cm1 profit per unit")) {
-        return false;
-      }
-
-      return true;
-    });
-
-  return {
-    ...block,
-    metrics: cleanedMetrics,
+  const getMetricNumberValue = (value?: string) => {
+    const main = String(value || "").split("(")[0] || "";
+    const n = Number(main.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? n : 0;
   };
-};
 
-const pushCurrent = () => {
-  if (current && current.name.trim()) {
-    blocks.push(cleanProfitMetricsForDisplay(current));
-  }
+  const cleanProfitMetricsForDisplay = (
+    block: ProductInsightBlock
+  ): ProductInsightBlock => {
+    const metrics = block.metrics || [];
 
-  current = null;
-};
+    const cm2Profit = metrics.find(
+      (m) => m.label.trim().toLowerCase() === "cm2 profit"
+    );
+
+    const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
+
+    // ✅ Quarterly / Yearly me always CM1
+    // ✅ Monthly me CM2 only if value non-zero
+    const useCm1 = !isMonthlyRange(range) || !cm2Profit || cm2ProfitValue === 0;
+
+    const cleanedMetrics = metrics
+      .map((m) => {
+        const label = m.label.trim();
+        const lower = label.toLowerCase();
+
+        if (lower === "coverage ratio") {
+          return {
+            ...m,
+            label: "Stock Cover",
+            value:
+              m.value && m.value !== "0.00"
+                ? getMetricNumberValue(m.value).toFixed(2)
+                : "-",
+          };
+        }
+
+        return m;
+      })
+      .filter((m) => {
+        const lower = m.label.trim().toLowerCase();
+
+        // ✅ Ads sirf drawer me dikhega, card me nahi
+        if (lower === "productwise ads spend" || lower === "ads") return false;
+
+        // ✅ Current inventory sirf drawer me dikhega, card me nahi
+        if (lower === "current inventory") return false;
+
+        // ✅ Quarterly / Yearly me CM2 card se remove
+        if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
+          return false;
+        }
+
+        // ✅ Monthly me agar CM2 valid hai to CM1 remove
+        if (!useCm1 && (lower === "cm1 profit" || lower === "cm1 profit per unit")) {
+          return false;
+        }
+
+        return true;
+      });
+
+    return {
+      ...block,
+      metrics: cleanedMetrics,
+    };
+  };
+
+  const pushCurrent = () => {
+    if (current && current.name.trim()) {
+      blocks.push(cleanProfitMetricsForDisplay(current));
+    }
+
+    current = null;
+  };
 
   let inJourney = false;
   let inIncludedSkus = false;
@@ -873,16 +873,16 @@ const pushCurrent = () => {
       const isOther = (cleanName || line).trim().toLowerCase() === "other skus";
 
       current = {
-  name: cleanName || line,
-  skuKey: skuFromParen || skuFromPrefix,
-  metrics: [],
-  drawerOnlyMetrics: [],
-  journeyBullets: [],
-  recommendationBullets: [],
-  inventoryBullets: [],
-  isOtherSkus: isOther,
-  includedSkus: [],
-};
+        name: cleanName || line,
+        skuKey: skuFromParen || skuFromPrefix,
+        metrics: [],
+        drawerOnlyMetrics: [],
+        journeyBullets: [],
+        recommendationBullets: [],
+        inventoryBullets: [],
+        isOtherSkus: isOther,
+        includedSkus: [],
+      };
 
       inJourney = false;
       inIncludedSkus = false;
@@ -973,58 +973,58 @@ const pushCurrent = () => {
         !isNaN(n) ? (n < 0 ? "#DC2626" : n > 0 ? "#059669" : "#414042") : "#414042";
 
       const cleanLabel = label.trim();
-const normalizedMetricLabel = cleanLabel.toLowerCase();
+      const normalizedMetricLabel = cleanLabel.toLowerCase();
 
-const finalLabel =
-  normalizedMetricLabel === "coverage ratio"
-    ? "Stock Cover"
-    : cleanLabel;
+      const finalLabel =
+        normalizedMetricLabel === "coverage ratio"
+          ? "Stock Cover"
+          : cleanLabel;
 
-const finalValue =
-  normalizedMetricLabel === "coverage ratio" ||
-  normalizedMetricLabel === "stock cover"
-    ? getMetricNumberValue(value).toFixed(2)
-    : value;
+      const finalValue =
+        normalizedMetricLabel === "coverage ratio" ||
+          normalizedMetricLabel === "stock cover"
+          ? getMetricNumberValue(value).toFixed(2)
+          : value;
 
-const metricItem = {
-  label: finalLabel,
-  value: finalValue,
-  color,
-};
+      const metricItem = {
+        label: finalLabel,
+        value: finalValue,
+        color,
+      };
 
-// ✅ Current Inventory sirf drawer me dikhega
-if (normalizedMetricLabel === "current inventory") {
-  current.drawerOnlyMetrics = [
-    ...(current.drawerOnlyMetrics || []),
-    {
-      label: "Current Inventory",
-      value,
-      color,
-    },
-  ];
+      // ✅ Current Inventory sirf drawer me dikhega
+      if (normalizedMetricLabel === "current inventory") {
+        current.drawerOnlyMetrics = [
+          ...(current.drawerOnlyMetrics || []),
+          {
+            label: "Current Inventory",
+            value,
+            color,
+          },
+        ];
 
-  continue;
-}
+        continue;
+      }
 
-// ✅ Productwise ads spend sirf monthly drawer me dikhega
-if (normalizedMetricLabel === "productwise ads spend") {
-  if (isMonthlyRange(range)) {
-    current.drawerOnlyMetrics = [
-      ...(current.drawerOnlyMetrics || []),
-      {
-        label: "Ads",
-        value,
-        color: "#414042",
-      },
-    ];
-  }
+      // ✅ Productwise ads spend sirf monthly drawer me dikhega
+      if (normalizedMetricLabel === "productwise ads spend") {
+        if (isMonthlyRange(range)) {
+          current.drawerOnlyMetrics = [
+            ...(current.drawerOnlyMetrics || []),
+            {
+              label: "Ads",
+              value,
+              color: "#414042",
+            },
+          ];
+        }
 
-  continue;
-}
+        continue;
+      }
 
-current.metrics.push(metricItem);
+      current.metrics.push(metricItem);
 
-continue;
+      continue;
     }
 
     if (inJourney) {
@@ -1246,42 +1246,42 @@ const buildOtherSkusInsightLines = (
     )} ${formatPct(remainingAgg?.net_sales?.delta_pct)}`,
 
     (() => {
-  const profitConfig = getProfitMetricConfig(remainingAgg, range);
+      const profitConfig = getProfitMetricConfig(remainingAgg, range);
 
-  return `${profitConfig.profitLabel}: ${formatMetricObjectWithDelta(
-    profitConfig.profitMetric,
-    "money",
-    currencySymbol
-  )}`;
-})(),
-
-(() => {
-  const profitConfig = getProfitMetricConfig(remainingAgg, range);
-
-  return `${profitConfig.profitPerUnitLabel}: ${formatMetricObjectWithDelta(
-    profitConfig.profitPerUnitMetric,
-    "money",
-    currencySymbol
-  )}`;
-})(),
-
-`Stock Cover: ${formatCoverageValue(
-  remainingAgg?.selected_period_coverage_ratio
-)}`,
-
-`Current Inventory: ${formatInventoryUnitsValue(
-  remainingAgg?.current_inventory
-)}`,
-
-...(isMonthlyRange(range)
-  ? [
-      `Productwise ads spend: ${formatMetricObjectWithDelta(
-        remainingAgg?.productwise_ads_spend,
+      return `${profitConfig.profitLabel}: ${formatMetricObjectWithDelta(
+        profitConfig.profitMetric,
         "money",
         currencySymbol
-      )}`,
-    ]
-  : []),
+      )}`;
+    })(),
+
+    (() => {
+      const profitConfig = getProfitMetricConfig(remainingAgg, range);
+
+      return `${profitConfig.profitPerUnitLabel}: ${formatMetricObjectWithDelta(
+        profitConfig.profitPerUnitMetric,
+        "money",
+        currencySymbol
+      )}`;
+    })(),
+
+    `Stock Cover: ${formatCoverageValue(
+      remainingAgg?.selected_period_coverage_ratio
+    )}`,
+
+    `Current Inventory: ${formatInventoryUnitsValue(
+      remainingAgg?.current_inventory
+    )}`,
+
+    ...(isMonthlyRange(range)
+      ? [
+        `Productwise ads spend: ${formatMetricObjectWithDelta(
+          remainingAgg?.productwise_ads_spend,
+          "money",
+          currencySymbol
+        )}`,
+      ]
+      : []),
 
     ...includedSkuLines,
 
@@ -1504,24 +1504,24 @@ const buildDrawerBlockFromSkuRow = (
 
     // ✅ Sirf drawer me show hoga
     drawerOnlyMetrics: [
-  {
-    label: "Current Inventory",
-    value: formatInventoryUnitsValue(row?.current_inventory),
-  },
-  ...(isMonthlyRange(range)
-    ? [
-        {
-          label: "Ads",
-          value: formatMetricObjectWithDelta(
-            row?.productwise_ads_spend,
-            "money",
-            currencySymbol
-          ),
-          color: "#414042",
-        },
-      ]
-    : []),
-],
+      {
+        label: "Current Inventory",
+        value: formatInventoryUnitsValue(row?.current_inventory),
+      },
+      ...(isMonthlyRange(range)
+        ? [
+          {
+            label: "Ads",
+            value: formatMetricObjectWithDelta(
+              row?.productwise_ads_spend,
+              "money",
+              currencySymbol
+            ),
+            color: "#414042",
+          },
+        ]
+        : []),
+    ],
 
     journeyBullets: Array.isArray(recObj?.journey_summary)
       ? recObj.journey_summary
@@ -1612,6 +1612,7 @@ const metricColors = [
   "border border-[#FDD36F] border-t-4", // Units
   "border border-[#75BBDA] border-t-4", // Net Sales
   "border border-[#B75A5A] border-t-4", // ASP
+  "border border-[#C49466] border-t-4", // Ads
   "border border-[#7B9A6D] border-t-4", // CM2 Profit
   "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
   "border border-[#7B9A6D] border-t-4", // CM1 Profit
@@ -1619,13 +1620,13 @@ const metricColors = [
   "border border-[#7B9A6D] border-t-4", // Current Inventory
   "border border-[#C49466] border-t-4", // Stock Cover
   "border border-[#C49466] border-t-4", // Productwise Ads Spend
-  "border border-[#C49466] border-t-4", // Ads
 ];
 
 const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "ads", // ✅ Ads will now come beside ASP in drawer
   "cm2 profit",
   "cm2 profit per unit",
   "cm1 profit",
@@ -1633,7 +1634,6 @@ const metricOrder = [
   "current inventory",
   "stock cover",
   "productwise ads spend",
-  "ads",
 ];
 
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
@@ -1670,17 +1670,17 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
   const sortedMetrics = [
-  ...(block?.metrics || []),
-  ...(block?.drawerOnlyMetrics || []),
-].sort((a, b) => {
-  const aIndex = metricOrder.indexOf(a.label.toLowerCase());
-  const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+    ...(block?.metrics || []),
+    ...(block?.drawerOnlyMetrics || []),
+  ].sort((a, b) => {
+    const aIndex = metricOrder.indexOf(a.label.toLowerCase());
+    const bIndex = metricOrder.indexOf(b.label.toLowerCase());
 
-  const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-  const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
 
-  return safeAIndex - safeBIndex;
-});
+    return safeAIndex - safeBIndex;
+  });
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
@@ -1692,15 +1692,15 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   };
 
   const getRecentQuarterFromPreviousMonth = () => {
-  const previousMonth = getPreviousCompletedMonth();
+    const previousMonth = getPreviousCompletedMonth();
 
-  const monthIndex = monthIndexMap[previousMonth.month];
+    const monthIndex = monthIndexMap[previousMonth.month];
 
-  return {
-    quarter: getQuarterFromMonthIndex(monthIndex),
-    year: previousMonth.year,
+    return {
+      quarter: getQuarterFromMonthIndex(monthIndex),
+      year: previousMonth.year,
+    };
   };
-};
 
   const getPreviousCompletedMonth = () => {
     const prevMonthDate = new Date();
@@ -1715,26 +1715,26 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   };
 
   const showCurrentPeriodRecommendations = (() => {
-  const previousMonth = getPreviousCompletedMonth();
+    const previousMonth = getPreviousCompletedMonth();
 
-  if (range === "yearly") {
-    return String(year) === previousMonth.year;
-  }
+    if (range === "yearly") {
+      return String(year) === previousMonth.year;
+    }
     if (range === "quarterly") {
-  const recentQuarter = getRecentQuarterFromPreviousMonth();
+      const recentQuarter = getRecentQuarterFromPreviousMonth();
 
-  return (
-    String(year) === recentQuarter.year &&
-    String(quarter) === recentQuarter.quarter
-  );
-}
+      return (
+        String(year) === recentQuarter.year &&
+        String(quarter) === recentQuarter.quarter
+      );
+    }
 
-   if (range === "monthly") {
-  return (
-    String(year) === previousMonth.year &&
-    String(month).toLowerCase() === previousMonth.month
-  );
-}
+    if (range === "monthly") {
+      return (
+        String(year) === previousMonth.year &&
+        String(month).toLowerCase() === previousMonth.month
+      );
+    }
 
     return false;
   })();
@@ -2045,33 +2045,33 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     ) : null}
 
                     {inventoryRecoBullets.length ? (
-  <div className="mt-2">
-    <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-      Inventory
-    </div>
-    <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-      {inventoryRecoBullets
-        .map(cleanInventoryRecommendationText)
-        .filter(Boolean)
-        .map((pt, i) => (
-          <li key={i}>{pt}</li>
-        ))}
-    </ul>
-  </div>
-) : null}
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                          Inventory
+                        </div>
+                        <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                          {inventoryRecoBullets
+                            .map(cleanInventoryRecommendationText)
+                            .filter(Boolean)
+                            .map((pt, i) => (
+                              <li key={i}>{pt}</li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : null}
 
-{adsRecoBullets.length ? (
-  <div className="mt-2">
-    <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
-      Ads
-    </div>
-    <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
-      {adsRecoBullets.map((pt, i) => (
-        <li key={i}>{pt}</li>
-      ))}
-    </ul>
-  </div>
-) : null}
+                    {adsRecoBullets.length ? (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                          Ads
+                        </div>
+                        <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                          {adsRecoBullets.map((pt, i) => (
+                            <li key={i}>{pt}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
 
                     {!block.recommendationBullets?.length &&
                       !inventoryRecoBullets.length &&
@@ -2414,57 +2414,57 @@ const ProductInsightsSection = ({
     recommendationsMap ??
     {};
 
-    const getOtherSkusRecObj = () => {
-  const source: any = skuActions || {};
+  const getOtherSkusRecObj = () => {
+    const source: any = skuActions || {};
 
-  const remainingObj =
-    source?.remaining_skus ||
-    source?.other_skus ||
-    source?.["Other SKUs"] ||
-    source?.["other skus"] ||
-    {};
+    const remainingObj =
+      source?.remaining_skus ||
+      source?.other_skus ||
+      source?.["Other SKUs"] ||
+      source?.["other skus"] ||
+      {};
 
-  return {
-    recommendation:
-      source?.remaining_skus_recommendation ||
-      remainingObj?.recommendation ||
-      "",
+    return {
+      recommendation:
+        source?.remaining_skus_recommendation ||
+        remainingObj?.recommendation ||
+        "",
 
-    inventory_recommendation:
-      source?.remaining_skus_inventory_recommendation ||
-      remainingObj?.inventory_recommendation ||
-      "",
+      inventory_recommendation:
+        source?.remaining_skus_inventory_recommendation ||
+        remainingObj?.inventory_recommendation ||
+        "",
 
-    ads_recommendation:
-      source?.remaining_skus_ads_recommendation ||
-      remainingObj?.ads_recommendation ||
-      "",
+      ads_recommendation:
+        source?.remaining_skus_ads_recommendation ||
+        remainingObj?.ads_recommendation ||
+        "",
 
-    journey_summary:
-      remainingObj?.journey_summary || [],
+      journey_summary:
+        remainingObj?.journey_summary || [],
+    };
   };
-};
 
-const getRecObjForBlock = (b: ProductInsightBlock) => {
-  const isOther =
-    b.isOtherSkus ||
-    normalizeKey(b.name) === "other skus" ||
-    normalizeKey(b.name) === "others";
+  const getRecObjForBlock = (b: ProductInsightBlock) => {
+    const isOther =
+      b.isOtherSkus ||
+      normalizeKey(b.name) === "other skus" ||
+      normalizeKey(b.name) === "others";
 
-  if (isOther) {
-    return getOtherSkusRecObj();
-  }
+    if (isOther) {
+      return getOtherSkusRecObj();
+    }
 
-  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-  const skuKey = b.skuKey || mappedSku;
+    const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+    const skuKey = b.skuKey || mappedSku;
 
-  return (
-    (skuKey && (skuActions as any)[skuKey]) ||
-    (skuActions as any)[b.name] ||
-    (skuActions as any)[b.name.trim()] ||
-    null
-  );
-};
+    return (
+      (skuKey && (skuActions as any)[skuKey]) ||
+      (skuActions as any)[b.name] ||
+      (skuActions as any)[b.name.trim()] ||
+      null
+    );
+  };
 
   useEffect(() => {
     if (!hasBlocks) return;
@@ -2696,12 +2696,12 @@ const getRecObjForBlock = (b: ProductInsightBlock) => {
   ]);
   if (!hasBlocks) return null;
 
-const openDrawer = (b: ProductInsightBlock) => {
-  const recObj = getRecObjForBlock(b);
+  const openDrawer = (b: ProductInsightBlock) => {
+    const recObj = getRecObjForBlock(b);
 
-  setSelectedRecObj(recObj);
-  setSelectedBlock(b);
-};
+    setSelectedRecObj(recObj);
+    setSelectedBlock(b);
+  };
 
   return (
     <div className="space-y-5">
@@ -2759,29 +2759,29 @@ const openDrawer = (b: ProductInsightBlock) => {
                 </div>
               )}
               {(() => {
-  const recObj = getRecObjForBlock(b);
+                const recObj = getRecObjForBlock(b);
 
-const actionText = getActionTextFromRecObj(recObj);
-const inventoryText = getInventoryTextFromRecObj(recObj);
+                const actionText = getActionTextFromRecObj(recObj);
+                const inventoryText = getInventoryTextFromRecObj(recObj);
 
-const cardLines = dedupeRecommendationLines([
-  ...(b.recommendationBullets || []),
-  actionText,
-  inventoryText,
-]);
+                const cardLines = dedupeRecommendationLines([
+                  ...(b.recommendationBullets || []),
+                  actionText,
+                  inventoryText,
+                ]);
 
-if (!cardLines.length) return null;
+                if (!cardLines.length) return null;
 
-return (
-  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-    {cardLines.map((line, i) => (
-      <p key={i}>
-        <span className="font-semibold">{i + 1}.</span> {line}
-      </p>
-    ))}
-  </div>
-);
-})()}
+                return (
+                  <div className="space-y-1 text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                    {cardLines.map((line, i) => (
+                      <p key={i}>
+                        <span className="font-semibold">{i + 1}.</span> {line}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
             </motion.div>
           );
         })}
@@ -3193,7 +3193,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         )}
 
         {/* Product Insights */}
-       {!hasNoAiData && parseProductInsightsBlocks(skuInsightsBullets, range).length > 0 && (
+        {!hasNoAiData && parseProductInsightsBlocks(skuInsightsBullets, range).length > 0 && (
           <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="space-y-5">
               <ProductInsightsSection
@@ -4238,6 +4238,92 @@ const getCurrentMonthUnitsSoldKeyForResponse = (
   );
 };
 
+const SPLIT_FIRST_180_INVENTORY_BUCKETS: AgeingBucket[] = [
+  { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
+  { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
+  { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
+];
+
+const COMBINED_FIRST_180_INVENTORY_BUCKETS: AgeingBucket[] = [
+  { key: "zeroToOneEighty", label: "0–180 Days", color: "#7B9A6D" },
+  { key: "oneEightyOneToTwoSeventy", label: "181–270 Days", color: "#ED9F50" },
+  { key: "twoSeventyOneToThreeSixtyFive", label: "271–365 Days", color: "#C49466" },
+  { key: "threeSixtyFivePlus", label: "365+ Days", color: "#B75A5A" },
+];
+
+const getDynamicInventoryBuckets = (
+  rows: InventoryCurrentRow[]
+): AgeingBucket[] => {
+  const splitFirst180Total = rows.reduce((sum, row) => {
+    return (
+      sum +
+      getInventoryAgeValue(row, "inv-age-0-to-90-days") +
+      getInventoryAgeValue(row, "inv-age-91-to-180-days")
+    );
+  }, 0);
+
+  const combinedFirst180Total = rows.reduce((sum, row) => {
+    return sum + getInventoryAgeValue(row, "inv-age-0-to-180-days");
+  }, 0);
+
+  if (splitFirst180Total > 0) {
+    return SPLIT_FIRST_180_INVENTORY_BUCKETS;
+  }
+
+  if (combinedFirst180Total > 0) {
+    return COMBINED_FIRST_180_INVENTORY_BUCKETS;
+  }
+
+  return COMBINED_FIRST_180_INVENTORY_BUCKETS;
+};
+
+const buildDonutDataFromInventoryAgeSummary = (
+  inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
+): DonutChartItem[] => {
+  const columns = inventoryAgeSummary?.columns || {};
+
+  const summaryBuckets = [
+    {
+      bucket: "0–180 Days",
+      column: "inv-age-0-to-180-days",
+      color: "#7B9A6D",
+    },
+    {
+      bucket: "181–270 Days",
+      column: "inv-age-181-to-270-days",
+      color: "#ED9F50",
+    },
+    {
+      bucket: "271–365 Days",
+      column: "inv-age-271-to-365-days",
+      color: "#C49466",
+    },
+    {
+      bucket: "365+ Days",
+      column: "inv-age-365-plus-days",
+      color: "#B75A5A",
+    },
+  ];
+
+  return summaryBuckets
+    .map((bucket) => {
+      const item = columns[bucket.column];
+
+      return {
+        bucket: bucket.bucket,
+        units: toNum(item?.total),
+        percentageShare:
+          typeof item?.percentage_share === "number"
+            ? item.percentage_share
+            : undefined,
+        color: bucket.color,
+      };
+    })
+    .filter((item) => item.units > 0);
+};
+
 const buildInventoryInsightsFromResponses = (
   responses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
@@ -4265,119 +4351,176 @@ const buildInventoryInsightsFromResponses = (
     (row) => !isInventoryTotalRow(row)
   );
 
+  const dynamicHeatmapBuckets = getDynamicInventoryBuckets(latestRows);
+
+  const isUsingSplitFirst180 = dynamicHeatmapBuckets.some(
+    (bucket) => bucket.key === "zeroToNinety"
+  );
+
   const currentMonthUnitsSoldKey = getCurrentMonthUnitsSoldKeyForResponse(
     latestResponse,
     latestRows?.[0]
   );
 
-  const heatmapData: AgeingRiskHeatmapRow[] = latestRows
-    .map((row) => {
-      const sku = getInventoryRowSku(row);
-      const productName = getInventoryRowProductName(row);
+  const heatmapData: AgeingRiskHeatmapRow[] = latestRows.map((row) => {
+    const sku = getInventoryRowSku(row);
+    const productName = getInventoryRowProductName(row);
 
-      const zeroToOneEighty =
-        getInventoryAgeValue(row, "inv-age-0-to-180-days") ||
-        (
-          getInventoryAgeValue(row, "inv-age-0-to-90-days") +
-          getInventoryAgeValue(row, "inv-age-91-to-180-days")
-        );
+    const zeroToNinety = getInventoryAgeValue(row, "inv-age-0-to-90-days");
+    const ninetyOneToOneEighty = getInventoryAgeValue(
+      row,
+      "inv-age-91-to-180-days"
+    );
 
-      const oneEightyOneToTwoSeventy = getInventoryAgeValue(row, "inv-age-181-to-270-days");
-      const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(row, "inv-age-271-to-365-days");
-      const threeSixtyFivePlus = getInventoryAgeValue(row, "inv-age-365-plus-days");
+    const zeroToOneEighty = getInventoryAgeValue(
+      row,
+      "inv-age-0-to-180-days"
+    );
 
-      const bucketTotal =
-        zeroToOneEighty +
-        oneEightyOneToTwoSeventy +
-        twoSeventyOneToThreeSixtyFive +
-        threeSixtyFivePlus;
+    const oneEightyOneToTwoSeventy = getInventoryAgeValue(
+      row,
+      "inv-age-181-to-270-days"
+    );
 
-      const available = toNum(
-        row?.["Sellable Units"] ??
-        row?.sellable_units ??
-        row?.sellableUnits ??
-        row?.sellable_sum_last ??
-        row?.available
-      );
+    const twoSeventyOneToThreeSixtyFive = getInventoryAgeValue(
+      row,
+      "inv-age-271-to-365-days"
+    );
 
-      const inboundUnits = toNum(
-        row?.["Inbound Units"] ??
-        row?.inbound_units ??
-        row?.inboundUnits ??
-        row?.transit_total ??
-        row?.inbound_quantity ??
-        row?.["inbound_quantity"] ??
-        row?.inboundQuantity ??
-        row?.["Inbound Quantity"]
-      );
+    const threeSixtyFivePlus = getInventoryAgeValue(
+      row,
+      "inv-age-365-plus-days"
+    );
 
-      const totalUnits = available;
+    const first180Total = isUsingSplitFirst180
+      ? zeroToNinety + ninetyOneToOneEighty
+      : zeroToOneEighty;
 
-      const unsellableUnits = toNum(
-        row?.["unfulfillable-quantity"] ??
-        row?.unfulfillable_quantity ??
-        row?.unfulfillableUnits ??
-        row?.unfulfillable_units
-      );
+    const bucketTotal =
+      first180Total +
+      oneEightyOneToTwoSeventy +
+      twoSeventyOneToThreeSixtyFive +
+      threeSixtyFivePlus;
 
-      return {
-        productName: productName || sku || "-",
-        sku,
+    const available = toNum(
+      row?.["Sellable Units"] ??
+      row?.sellable_units ??
+      row?.sellableUnits ??
+      row?.sellable_sum_last ??
+      row?.available
+    );
 
-        countryKey: String(latestResponse?.country_key || countryName || "").toLowerCase(),
-        rawProductName: productName || sku || "-",
-        rawSku: sku,
-        zeroToOneEighty,
-        oneEightyOneToTwoSeventy,
-        twoSeventyOneToThreeSixtyFive,
-        threeSixtyFivePlus,
+    const inboundUnits = toNum(
+      row?.["Inbound Units"] ??
+      row?.inbound_units ??
+      row?.inboundUnits ??
+      row?.transit_total ??
+      row?.inbound_quantity ??
+      row?.["inbound_quantity"] ??
+      row?.inboundQuantity ??
+      row?.["Inbound Quantity"]
+    );
 
-        available,
-        inboundUnits,
-        totalUnits,
-        unsellableUnits,
+    const totalUnits = available || bucketTotal;
 
-        unitsSold: currentMonthUnitsSoldKey
-          ? toNum(row?.[currentMonthUnitsSoldKey])
-          : 0,
-        salesRank:
-          row?.["sales-rank"] ??
-          row?.sales_rank ??
-          row?.salesRank ??
-          row?.["Sales Rank"] ??
-          row?.["sales rank"] ??
-          "",
-        previousSalesRank:
-          selectedRange === "monthly"
-            ? getPreviousSalesRankForSelectedMonth(
-              row,
-              selectedMonthForRank,
-              selectedYearForRank
-            )
-            : "",
+    const unsellableUnits = toNum(
+      row?.["unfulfillable-quantity"] ??
+      row?.unfulfillable_quantity ??
+      row?.unfulfillableUnits ??
+      row?.unfulfillable_units
+    );
 
-        salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
-        coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
-        inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
-      };
-    })
+    return {
+      productName: productName || sku || "-",
+      sku,
+
+      countryKey: String(
+        latestResponse?.country_key || countryName || ""
+      ).toLowerCase(),
+
+      rawProductName: productName || sku || "-",
+      rawSku: sku,
+
+      // Latest periods use these two columns
+      zeroToNinety,
+      ninetyOneToOneEighty,
+
+      // Older / yearly periods use this column
+      zeroToOneEighty,
+
+      oneEightyOneToTwoSeventy,
+      twoSeventyOneToThreeSixtyFive,
+      threeSixtyFivePlus,
+
+      available,
+      inboundUnits,
+      totalUnits,
+      unsellableUnits,
+
+      unitsSold: currentMonthUnitsSoldKey
+        ? toNum(row?.[currentMonthUnitsSoldKey])
+        : 0,
+
+      salesRank:
+        row?.["sales-rank"] ??
+        row?.sales_rank ??
+        row?.salesRank ??
+        row?.["Sales Rank"] ??
+        row?.["sales rank"] ??
+        "",
+
+      previousSalesRank:
+        selectedRange === "monthly"
+          ? getPreviousSalesRankForSelectedMonth(
+            row,
+            selectedMonthForRank,
+            selectedYearForRank
+          )
+          : "",
+
+      salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
+      coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
+      inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
+    };
+  });
 
   const overallAgeing = latestRows.reduce(
     (acc, row) => {
-      acc.zeroToOneEighty +=
-        getInventoryAgeValue(row, "inv-age-0-to-180-days") ||
-        (
-          getInventoryAgeValue(row, "inv-age-0-to-90-days") +
-          getInventoryAgeValue(row, "inv-age-91-to-180-days")
-        );
+      acc.zeroToNinety += getInventoryAgeValue(
+        row,
+        "inv-age-0-to-90-days"
+      );
 
-      acc.oneEightyOneToTwoSeventy += getInventoryAgeValue(row, "inv-age-181-to-270-days");
-      acc.twoSeventyOneToThreeSixtyFive += getInventoryAgeValue(row, "inv-age-271-to-365-days");
-      acc.threeSixtyFivePlus += getInventoryAgeValue(row, "inv-age-365-plus-days");
+      acc.ninetyOneToOneEighty += getInventoryAgeValue(
+        row,
+        "inv-age-91-to-180-days"
+      );
+
+      acc.zeroToOneEighty += getInventoryAgeValue(
+        row,
+        "inv-age-0-to-180-days"
+      );
+
+      acc.oneEightyOneToTwoSeventy += getInventoryAgeValue(
+        row,
+        "inv-age-181-to-270-days"
+      );
+
+      acc.twoSeventyOneToThreeSixtyFive += getInventoryAgeValue(
+        row,
+        "inv-age-271-to-365-days"
+      );
+
+      acc.threeSixtyFivePlus += getInventoryAgeValue(
+        row,
+        "inv-age-365-plus-days"
+      );
 
       return acc;
     },
     {
+      zeroToNinety: 0,
+      ninetyOneToOneEighty: 0,
       zeroToOneEighty: 0,
       oneEightyOneToTwoSeventy: 0,
       twoSeventyOneToThreeSixtyFive: 0,
@@ -4385,33 +4528,40 @@ const buildInventoryInsightsFromResponses = (
     }
   );
 
-  const donutData: DonutChartItem[] = [
-    {
-      bucket: "0–180 Days",
-      units: overallAgeing.zeroToOneEighty,
-      color: "#7B9A6D",
-    },
-    {
-      bucket: "181–270 Days",
-      units: overallAgeing.oneEightyOneToTwoSeventy,
-      color: "#ED9F50",
-    },
-    {
-      bucket: "271–365 Days",
-      units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-      color: "#C49466",
-    },
-    {
-      bucket: "365+ Days",
-      units: overallAgeing.threeSixtyFivePlus,
-      color: "#B75A5A",
-    },
-  ].filter((item) => item.units > 0);
-
-  const donutTotalUnits = donutData.reduce(
-    (sum, item) => sum + toNum(item.units),
-    0
+  const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
+    latestResponse?.inventory_age_summary
   );
+
+  const donutData: DonutChartItem[] =
+    backendSummaryDonutData.length > 0
+      ? backendSummaryDonutData
+      : [
+        {
+          bucket: "0–180 Days",
+          units: overallAgeing.zeroToOneEighty,
+          color: "#7B9A6D",
+        },
+        {
+          bucket: "181–270 Days",
+          units: overallAgeing.oneEightyOneToTwoSeventy,
+          color: "#ED9F50",
+        },
+        {
+          bucket: "271–365 Days",
+          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+          color: "#C49466",
+        },
+        {
+          bucket: "365+ Days",
+          units: overallAgeing.threeSixtyFivePlus,
+          color: "#B75A5A",
+        },
+      ].filter((item) => item.units > 0);
+
+  const donutTotalUnits =
+    latestResponse?.inventory_age_summary?.percentage_base_total ??
+    latestResponse?.inventory_age_summary?.total ??
+    donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const trendData: AgeingTrendItem[] = [];
 
@@ -4508,49 +4658,113 @@ const buildInventoryInsightsFromResponses = (
     toNum(row?.["estimated-storage-cost-next-month"]) > 0
   );
 
+  const hasSplitFirst180Ageing = (rows: InventoryCurrentRow[]) => {
+    const splitTotal = rows.reduce((sum, row) => {
+      return (
+        sum +
+        getInventoryAgeValue(row, "inv-age-0-to-90-days") +
+        getInventoryAgeValue(row, "inv-age-91-to-180-days")
+      );
+    }, 0);
+
+    return splitTotal > 0;
+  };
+
+  const getSkuCountForAgeColumn = (
+    rows: InventoryCurrentRow[],
+    column: string
+  ) => {
+    return rows.filter((row) => {
+      const productName = getInventoryRowProductName(row);
+      const sku = getInventoryRowSku(row);
+
+      if (!productName && !sku) return false;
+
+      return getInventoryAgeValue(row, column) > 0;
+    }).length;
+  };
+
+  const getUnitCountForAgeColumn = (
+    rows: InventoryCurrentRow[],
+    column: string
+  ) => {
+    return rows.reduce((sum, row) => {
+      return sum + getInventoryAgeValue(row, column);
+    }, 0);
+  };
+
   const actions: ActionCardItem[] = [
-    {
-      key: "healthy",
-      label: INVENTORY_ACTION_META.healthy.label,
-      description: INVENTORY_ACTION_META.healthy.description,
-      count: getUniqueSkuCount(healthyRows),
-      displayValue: getUniqueSkuCount(healthyRows),
-      skuCount: getUniqueSkuCount(healthyRows),
-      unitCount: sumInventoryUnitsByKeys(healthyRows, [
-        "inv-age-0-to-180-days",
+    ...(isUsingSplitFirst180
+      ? [
+        {
+          key: "age_0_90",
+          label: "Healthy",
+          description: "Stock aged 0–90 days",
+          count: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-90-days"),
+          skuCount: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-90-days"),
+          unitCount: getUnitCountForAgeColumn(latestRows, "inv-age-0-to-90-days"),
+          color: "#7B9A6D",
+          backgroundColor: "#ffffff",
+        },
+
+        // ✅ High Alert comes before Discount / 91–180 Days
+        {
+          key: "high_alert",
+          label: INVENTORY_ACTION_META.high_alert.label,
+          description: INVENTORY_ACTION_META.high_alert.description,
+          count: getUniqueSkuCount(highAlertRows),
+          displayValue: getUniqueSkuCount(highAlertRows),
+          skuCount:
+            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+            getUniqueSkuCount(highAlertRows),
+
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+
+          color: INVENTORY_ACTION_META.high_alert.color,
+          backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
+        },
+
+        {
+          key: "age_91_180",
+          label: "Discount",
+          description: "Stock aged 91–180 days",
+          count: getSkuCountForAgeColumn(latestRows, "inv-age-91-to-180-days"),
+          skuCount: getSkuCountForAgeColumn(latestRows, "inv-age-91-to-180-days"),
+          unitCount: getUnitCountForAgeColumn(latestRows, "inv-age-91-to-180-days"),
+          color: "#FDD36F",
+          backgroundColor: "#ffffff",
+        },
+      ]
+      : [
+        {
+          key: "healthy",
+          label: "Healthy",
+          description: "Stock covers 0–180 days",
+          count: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-180-days"),
+          skuCount: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-180-days"),
+          unitCount: getUnitCountForAgeColumn(latestRows, "inv-age-0-to-180-days"),
+          color: INVENTORY_ACTION_META.healthy.color,
+          backgroundColor: INVENTORY_ACTION_META.healthy.backgroundColor,
+        },
+
+        // ✅ High Alert comes after Healthy when 0–180 combined exists
+        {
+          key: "high_alert",
+          label: INVENTORY_ACTION_META.high_alert.label,
+          description: INVENTORY_ACTION_META.high_alert.description,
+          count: getUniqueSkuCount(highAlertRows),
+          displayValue: getUniqueSkuCount(highAlertRows),
+          skuCount:
+            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+            getUniqueSkuCount(highAlertRows),
+
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+
+          color: INVENTORY_ACTION_META.high_alert.color,
+          backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
+        },
       ]),
-      color: INVENTORY_ACTION_META.healthy.color,
-      backgroundColor: INVENTORY_ACTION_META.healthy.backgroundColor,
-    },
-    {
-      key: "high_alert",
-      label: INVENTORY_ACTION_META.high_alert.label,
-      description: INVENTORY_ACTION_META.high_alert.description,
-      count: getUniqueSkuCount(highAlertRows),
-      displayValue: getUniqueSkuCount(highAlertRows),
-      skuCount:
-        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-        getUniqueSkuCount(highAlertRows),
 
-      // ✅ New value for High Alert card
-      avgCoverageRatio: highAlertAvgCoverageRatio,
-
-      color: INVENTORY_ACTION_META.high_alert.color,
-      backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
-    },
-    //     {
-    //       key: "discount",
-    //       label: INVENTORY_ACTION_META.discount.label,
-    //       description: INVENTORY_ACTION_META.discount.description,
-    //       count: getUniqueSkuCount(discountRows),
-    //       displayValue: getUniqueSkuCount(discountRows),
-    //       skuCount: getUniqueSkuCount(discountRows),
-    //     unitCount: sumInventoryUnitsByKeys(discountRows, [
-    //   "inv-age-0-to-180-days",
-    // ]),
-    //       color: INVENTORY_ACTION_META.discount.color,
-    //       backgroundColor: INVENTORY_ACTION_META.discount.backgroundColor,
-    //     },
     {
       key: "liquidate",
       label: INVENTORY_ACTION_META.liquidate.label,
@@ -4566,6 +4780,7 @@ const buildInventoryInsightsFromResponses = (
       color: INVENTORY_ACTION_META.liquidate.color,
       backgroundColor: INVENTORY_ACTION_META.liquidate.backgroundColor,
     },
+
     {
       key: "unfulfillable",
       label: INVENTORY_ACTION_META.unfulfillable.label,
@@ -4580,6 +4795,7 @@ const buildInventoryInsightsFromResponses = (
       color: INVENTORY_ACTION_META.unfulfillable.color,
       backgroundColor: INVENTORY_ACTION_META.unfulfillable.backgroundColor,
     },
+
     {
       key: "estimated_storage_cost",
       label: INVENTORY_ACTION_META.estimated_storage_cost.label,
@@ -4611,7 +4827,7 @@ const buildInventoryInsightsFromResponses = (
   ];
 
   return {
-    heatmapBuckets: INVENTORY_BUCKETS,
+    heatmapBuckets: dynamicHeatmapBuckets,
     heatmapData,
     donutSku: "Overall",
     donutData,
@@ -6221,9 +6437,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const buildGlobalProductInsightLines = (
-  data: any,
-  range: RangeType = "monthly"
-): string[] => {
+    data: any,
+    range: RangeType = "monthly"
+  ): string[] => {
     const products = data?.global_ai?.product_journey_comparison ?? [];
     const skuCurrent = data?.metrics?.sku_current ?? {};
     const skuMom = data?.metrics?.sku_mom ?? {};
@@ -6271,60 +6487,60 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         )}`
       );
 
-     const useCm1Profit =
-  !isMonthlyRange(range) || toNum(currentRow?.cm2_profit) === 0;
+      const useCm1Profit =
+        !isMonthlyRange(range) || toNum(currentRow?.cm2_profit) === 0;
 
-const profitLabel = useCm1Profit ? "CM1 profit" : "CM2 profit";
-const profitKey = useCm1Profit ? "profit" : "cm2_profit";
-const profitValue = useCm1Profit
-  ? currentRow?.profit
-  : currentRow?.cm2_profit;
+      const profitLabel = useCm1Profit ? "CM1 profit" : "CM2 profit";
+      const profitKey = useCm1Profit ? "profit" : "cm2_profit";
+      const profitValue = useCm1Profit
+        ? currentRow?.profit
+        : currentRow?.cm2_profit;
 
-const profitPerUnitLabel = useCm1Profit
-  ? "CM1 profit per unit"
-  : "CM2 profit per unit";
+      const profitPerUnitLabel = useCm1Profit
+        ? "CM1 profit per unit"
+        : "CM2 profit per unit";
 
-const profitPerUnitKey = useCm1Profit
-  ? "unit_wise_profitability"
-  : "cm2_profit_per_unit";
+      const profitPerUnitKey = useCm1Profit
+        ? "unit_wise_profitability"
+        : "cm2_profit_per_unit";
 
-const profitPerUnitValue = useCm1Profit
-  ? currentRow?.unit_wise_profitability
-  : currentRow?.cm2_profit_per_unit ?? currentRow?.cm2_profit_per;
+      const profitPerUnitValue = useCm1Profit
+        ? currentRow?.unit_wise_profitability
+        : currentRow?.cm2_profit_per_unit ?? currentRow?.cm2_profit_per;
 
-lines.push(
-  `${profitLabel}: ${formatMoneyValue(profitValue)}${formatDelta(
-    getMetricDelta(momRow, profitKey)
-  )}`
-);
+      lines.push(
+        `${profitLabel}: ${formatMoneyValue(profitValue)}${formatDelta(
+          getMetricDelta(momRow, profitKey)
+        )}`
+      );
 
-lines.push(
-  `${profitPerUnitLabel}: ${formatMoneyValue(profitPerUnitValue)}${formatDelta(
-    getMetricDelta(momRow, profitPerUnitKey)
-  )}`
-);
+      lines.push(
+        `${profitPerUnitLabel}: ${formatMoneyValue(profitPerUnitValue)}${formatDelta(
+          getMetricDelta(momRow, profitPerUnitKey)
+        )}`
+      );
 
-lines.push(
-  `Stock Cover: ${formatCoverageValue(
-    currentRow?.selected_period_coverage_ratio
-  )}`
-);
+      lines.push(
+        `Stock Cover: ${formatCoverageValue(
+          currentRow?.selected_period_coverage_ratio
+        )}`
+      );
 
-lines.push(
-  `Current Inventory: ${formatInventoryUnitsValue(
-    currentRow?.current_inventory
-  )}`
-);
+      lines.push(
+        `Current Inventory: ${formatInventoryUnitsValue(
+          currentRow?.current_inventory
+        )}`
+      );
 
-if (isMonthlyRange(range)) {
-  lines.push(
-    `Productwise ads spend: ${formatMetricObjectWithDelta(
-      momRow?.productwise_ads_spend ?? currentRow?.productwise_ads_spend,
-      "money",
-      currencySymbol
-    )}`
-  );
-}
+      if (isMonthlyRange(range)) {
+        lines.push(
+          `Productwise ads spend: ${formatMetricObjectWithDelta(
+            momRow?.productwise_ads_spend ?? currentRow?.productwise_ads_spend,
+            "money",
+            currencySymbol
+          )}`
+        );
+      }
 
       lines.push("Product Journey");
 
@@ -6446,10 +6662,10 @@ if (isMonthlyRange(range)) {
     return lines;
   };
 
- const mapGlobalAiResponseToPanel = (
-  data: any,
-  rangeType: RangeType = "monthly"
-): AiPanelData => {
+  const mapGlobalAiResponseToPanel = (
+    data: any,
+    rangeType: RangeType = "monthly"
+  ): AiPanelData => {
     const globalAi = data?.global_ai ?? {};
 
     const comparison = data?.comparison;
@@ -6522,9 +6738,9 @@ if (isMonthlyRange(range)) {
     return {
       summaryBullets,
       skuInsightsBullets: [
-  ...buildGlobalProductInsightLines(data, rangeType),
-  ...buildOtherSkusInsightLines(data, currencySymbol, "global", rangeType),
-],
+        ...buildGlobalProductInsightLines(data, rangeType),
+        ...buildOtherSkusInsightLines(data, currencySymbol, "global", rangeType),
+      ],
       recommendationBullets: [],
       inventoryBullets: buildGlobalInventoryLines(data),
       recommendationsMap: buildGlobalRecommendationsMap(data),
