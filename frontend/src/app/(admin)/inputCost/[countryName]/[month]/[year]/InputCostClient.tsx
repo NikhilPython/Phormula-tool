@@ -755,6 +755,10 @@ type InventoryCurrentApiResponse = {
   country_key?: string;
   inventory_age_summary?: {
     total?: number;
+    percentage_base_total?: number;
+    sellable_total?: number;
+    unfulfillable_total?: number;
+    current_month_units_sold_total?: number;
     columns?: Record<
       string,
       {
@@ -1892,6 +1896,51 @@ const getSelectedCountryAgeSummaryResponses = (
   });
 };
 
+const buildDonutDataFromInventoryAgeSummary = (
+  inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
+): DonutChartItem[] => {
+  const columns = inventoryAgeSummary?.columns || {};
+
+  const summaryBuckets = [
+    {
+      bucket: "0–180 Days",
+      column: "inv-age-0-to-180-days",
+      color: "#7B9A6D",
+    },
+    {
+      bucket: "181–270 Days",
+      column: "inv-age-181-to-270-days",
+      color: "#ED9F50",
+    },
+    {
+      bucket: "271–365 Days",
+      column: "inv-age-271-to-365-days",
+      color: "#C49466",
+    },
+    {
+      bucket: "365+ Days",
+      column: "inv-age-365-plus-days",
+      color: "#B75A5A",
+    },
+  ];
+
+  return summaryBuckets
+    .map((bucket) => {
+      const item = columns[bucket.column];
+
+      return {
+        bucket: bucket.bucket,
+        units: toNum(item?.total),
+        percentageShare:
+          typeof item?.percentage_share === "number"
+            ? item.percentage_share
+            : undefined,
+        color: bucket.color,
+      };
+    })
+    .filter((item) => item.units > 0);
+};
+
 const buildInventoryInsightsFromResponses = (
   inventoryResponses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[],
@@ -2109,63 +2158,44 @@ const buildInventoryInsightsFromResponses = (
     }
   );
 
-  const donutData: DonutChartItem[] = (
-    isUsingSplitFirst180
-      ? [
-          {
-            bucket: '0–90 Days',
-            units: overallAgeing.zeroToNinety,
-            color: '#7B9A6D',
-          },
-          {
-            bucket: '91–180 Days',
-            units: overallAgeing.ninetyOneToOneEighty,
-            color: '#FDD36F',
-          },
-          {
-            bucket: '181–270 Days',
-            units: overallAgeing.oneEightyOneToTwoSeventy,
-            color: '#ED9F50',
-          },
-          {
-            bucket: '271–365 Days',
-            units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-            color: '#C49466',
-          },
-          {
-            bucket: '365+ Days',
-            units: overallAgeing.threeSixtyFivePlus,
-            color: '#B75A5A',
-          },
-        ]
-      : [
-          {
-            bucket: '0–180 Days',
-            units: overallAgeing.zeroToOneEighty,
-            color: '#7B9A6D',
-          },
-          {
-            bucket: '181–270 Days',
-            units: overallAgeing.oneEightyOneToTwoSeventy,
-            color: '#ED9F50',
-          },
-          {
-            bucket: '271–365 Days',
-            units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-            color: '#C49466',
-          },
-          {
-            bucket: '365+ Days',
-            units: overallAgeing.threeSixtyFivePlus,
-            color: '#B75A5A',
-          },
-        ]
-  ).filter((item) => item.units > 0);
+  const selectedInventoryResponseForDonut =
+    selectedInventoryResponses.find((res) => res?.success) ||
+    selectedInventoryResponses[0];
 
-  const donutTotalUnits = donutData.reduce(
-    (sum, item) => sum + toNum(item.units),
-    0
+  const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
+    selectedInventoryResponseForDonut?.inventory_age_summary
   );
+
+  const donutData: DonutChartItem[] =
+    backendSummaryDonutData.length > 0
+      ? backendSummaryDonutData
+      : [
+        {
+          bucket: "0–180 Days",
+          units: overallAgeing.zeroToOneEighty,
+          color: "#7B9A6D",
+        },
+        {
+          bucket: "181–270 Days",
+          units: overallAgeing.oneEightyOneToTwoSeventy,
+          color: "#ED9F50",
+        },
+        {
+          bucket: "271–365 Days",
+          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+          color: "#C49466",
+        },
+        {
+          bucket: "365+ Days",
+          units: overallAgeing.threeSixtyFivePlus,
+          color: "#B75A5A",
+        },
+      ].filter((item) => item.units > 0);
+
+  const donutTotalUnits =
+    selectedInventoryResponseForDonut?.inventory_age_summary?.percentage_base_total ??
+    selectedInventoryResponseForDonut?.inventory_age_summary?.total ??
+    donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const selectedTrendOption =
     AGEING_TREND_BUCKET_OPTIONS.find(
@@ -2369,91 +2399,91 @@ const buildInventoryInsightsFromResponses = (
   const actions: InventoryActionCardItem[] = [
     ...(isUsingSplitFirst180
       ? [
-          {
-            key: 'age_0_90',
-            label: '0–90 Days',
-            count: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
-            ),
-            displayValue: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
-            ),
-            skuCount: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
-            ),
-            unitCount: heatmapData.reduce(
-              (sum, row) => sum + toNum((row as any).zeroToNinety),
-              0
-            ),
-            description: 'Stock aged 0–90 days',
-            color: '#7B9A6D',
-            backgroundColor: '#ffffff',
-          },
-          {
-            key: 'age_91_180',
-            label: '91–180 Days',
-            count: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
-            ),
-            displayValue: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
-            ),
-            skuCount: getUniqueInventorySkuCount(
-              heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
-            ),
-            unitCount: heatmapData.reduce(
-              (sum, row) => sum + toNum((row as any).ninetyOneToOneEighty),
-              0
-            ),
-            description: 'Stock aged 91–180 days',
-            color: '#FDD36F',
-            backgroundColor: '#ffffff',
-          },
-        ]
+        {
+          key: 'age_0_90',
+          label: 'Healthy',
+          count: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
+          ),
+          displayValue: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
+          ),
+          skuCount: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).zeroToNinety) > 0)
+          ),
+          unitCount: heatmapData.reduce(
+            (sum, row) => sum + toNum((row as any).zeroToNinety),
+            0
+          ),
+          description: 'Stock aged 0–90 days',
+          color: '#7B9A6D',
+          backgroundColor: '#ffffff',
+        },
+
+        // ✅ High Alert comes before 91–180 Days
+        {
+          key: 'high_alert',
+          label: 'High Alert',
+          count: highAlertSkuCount,
+          displayValue: highAlertSkuCount,
+          skuCount: highAlertSkuCount,
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+          description: 'Shipment Required',
+          color: '#B75A5A',
+          backgroundColor: '#ffffff',
+        },
+
+        {
+          key: 'age_91_180',
+          label: 'Discount',
+          count: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
+          ),
+          displayValue: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
+          ),
+          skuCount: getUniqueInventorySkuCount(
+            heatmapData.filter((row) => toNum((row as any).ninetyOneToOneEighty) > 0)
+          ),
+          unitCount: heatmapData.reduce(
+            (sum, row) => sum + toNum((row as any).ninetyOneToOneEighty),
+            0
+          ),
+          description: 'Stock aged 91–180 days',
+          color: '#FDD36F',
+          backgroundColor: '#ffffff',
+        },
+      ]
       : [
-          {
-            key: 'healthy',
-            label: 'Healthy',
-            count: getUniqueInventorySkuCount(healthyRows),
-            displayValue: getUniqueInventorySkuCount(healthyRows),
-            skuCount: getUniqueInventorySkuCount(healthyRows),
-            unitCount: healthyRows.reduce(
-              (sum, row) => sum + toNum((row as any).zeroToOneEighty),
-              0
-            ),
-            description: 'Stock covers 0–180 days',
-            color: '#7B9A6D',
-            backgroundColor: '#ffffff',
-          },
-        ]),
-    {
-      key: 'high_alert',
-      label: 'High Alert',
-      count: highAlertSkuCount,
-      displayValue: highAlertSkuCount,
-      skuCount: highAlertSkuCount,
+        {
+          key: 'healthy',
+          label: 'Healthy',
+          count: getUniqueInventorySkuCount(healthyRows),
+          displayValue: getUniqueInventorySkuCount(healthyRows),
+          skuCount: getUniqueInventorySkuCount(healthyRows),
+          unitCount: healthyRows.reduce(
+            (sum, row) => sum + toNum((row as any).zeroToOneEighty),
+            0
+          ),
+          description: 'Stock covers 0–180 days',
+          color: '#7B9A6D',
+          backgroundColor: '#ffffff',
+        },
 
-      // ✅ Show avg coverage ratio instead of units
-      avgCoverageRatio: highAlertAvgCoverageRatio,
+        // ✅ High Alert comes after Healthy
+        {
+          key: 'high_alert',
+          label: 'High Alert',
+          count: highAlertSkuCount,
+          displayValue: highAlertSkuCount,
+          skuCount: highAlertSkuCount,
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+          description: 'Shipment Required',
+          color: '#B75A5A',
+          backgroundColor: '#ffffff',
+        },
+      ]),
 
-      description: 'Shipment Required',
-      color: '#B75A5A',
-      backgroundColor: '#ffffff',
-    },
-    // {
-    //   key: 'discount',
-    //   label: 'Discount',
-    //   count: getUniqueInventorySkuCount(discountRows),
-    //   displayValue: getUniqueInventorySkuCount(discountRows),
-    //   skuCount: getUniqueInventorySkuCount(discountRows),
-    //   unitCount: discountRows.reduce(
-    //     (sum, row) => sum + toNum((row as any).zeroToOneEighty),
-    //     0
-    //   ),
-    //   description: 'Stock aged 0–180 days',
-    //   color: '#FDD36F',
-    //   backgroundColor: '#ffffff',
-    // },
     {
       key: 'liquidate',
       label: 'Liquidate',
@@ -2472,6 +2502,7 @@ const buildInventoryInsightsFromResponses = (
       color: '#ED9F50',
       backgroundColor: '#ffffff',
     },
+
     {
       key: 'unfulfillable',
       label: 'Unfulfillable',
@@ -2486,6 +2517,7 @@ const buildInventoryInsightsFromResponses = (
       color: '#3A8EA4',
       backgroundColor: '#ffffff',
     },
+
     {
       key: 'estimated_storage_cost',
       label: 'Estimate Storage',

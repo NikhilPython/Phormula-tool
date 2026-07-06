@@ -15,6 +15,7 @@ export type DonutChartItem = {
     bucket: string;
     units: number;
     color: string;
+    percentageShare?: number;
 };
 
 type SkuAgeingDonutChartProps = {
@@ -42,7 +43,12 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
             ...item,
             fill: item.color,
             chartKey: `bucket_${index}`,
-            percentage: finalTotal ? (item.units / finalTotal) * 100 : 0,
+            percentage:
+                typeof item.percentageShare === "number"
+                    ? item.percentageShare
+                    : finalTotal
+                        ? (item.units / finalTotal) * 100
+                        : 0,
         }));
     }, [data, finalTotal]);
 
@@ -164,7 +170,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                 </div>
 
                 <div className="w-full min-w-0 rounded-lg min-[1700px]:flex-1">
-                  <table className="w-full table-fixed border-separate border-spacing-0 text-[11px] xl:text-xs">
+                    <table className="w-full table-fixed border-separate border-spacing-0 text-[11px] xl:text-xs">
                         <thead>
                             <tr className="text-slate-600">
                                 <th className="w-[48%] px-2 py-1.5 text-left font-semibold">

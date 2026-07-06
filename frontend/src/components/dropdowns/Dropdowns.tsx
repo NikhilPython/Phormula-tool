@@ -4279,6 +4279,51 @@ const getDynamicInventoryBuckets = (
   return COMBINED_FIRST_180_INVENTORY_BUCKETS;
 };
 
+const buildDonutDataFromInventoryAgeSummary = (
+  inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
+): DonutChartItem[] => {
+  const columns = inventoryAgeSummary?.columns || {};
+
+  const summaryBuckets = [
+    {
+      bucket: "0–180 Days",
+      column: "inv-age-0-to-180-days",
+      color: "#7B9A6D",
+    },
+    {
+      bucket: "181–270 Days",
+      column: "inv-age-181-to-270-days",
+      color: "#ED9F50",
+    },
+    {
+      bucket: "271–365 Days",
+      column: "inv-age-271-to-365-days",
+      color: "#C49466",
+    },
+    {
+      bucket: "365+ Days",
+      column: "inv-age-365-plus-days",
+      color: "#B75A5A",
+    },
+  ];
+
+  return summaryBuckets
+    .map((bucket) => {
+      const item = columns[bucket.column];
+
+      return {
+        bucket: bucket.bucket,
+        units: toNum(item?.total),
+        percentageShare:
+          typeof item?.percentage_share === "number"
+            ? item.percentage_share
+            : undefined,
+        color: bucket.color,
+      };
+    })
+    .filter((item) => item.units > 0);
+};
+
 const buildInventoryInsightsFromResponses = (
   responses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
@@ -4483,35 +4528,13 @@ const buildInventoryInsightsFromResponses = (
     }
   );
 
-  const donutData: DonutChartItem[] = (
-    isUsingSplitFirst180
-      ? [
-        {
-          bucket: "0–90 Days",
-          units: overallAgeing.zeroToNinety,
-          color: "#7B9A6D",
-        },
-        {
-          bucket: "91–180 Days",
-          units: overallAgeing.ninetyOneToOneEighty,
-          color: "#FDD36F",
-        },
-        {
-          bucket: "181–270 Days",
-          units: overallAgeing.oneEightyOneToTwoSeventy,
-          color: "#ED9F50",
-        },
-        {
-          bucket: "271–365 Days",
-          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-          color: "#C49466",
-        },
-        {
-          bucket: "365+ Days",
-          units: overallAgeing.threeSixtyFivePlus,
-          color: "#B75A5A",
-        },
-      ]
+  const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
+    latestResponse?.inventory_age_summary
+  );
+
+  const donutData: DonutChartItem[] =
+    backendSummaryDonutData.length > 0
+      ? backendSummaryDonutData
       : [
         {
           bucket: "0–180 Days",
@@ -4533,13 +4556,12 @@ const buildInventoryInsightsFromResponses = (
           units: overallAgeing.threeSixtyFivePlus,
           color: "#B75A5A",
         },
-      ]
-  ).filter((item) => item.units > 0);
+      ].filter((item) => item.units > 0);
 
-  const donutTotalUnits = donutData.reduce(
-    (sum, item) => sum + toNum(item.units),
-    0
-  );
+  const donutTotalUnits =
+    latestResponse?.inventory_age_summary?.percentage_base_total ??
+    latestResponse?.inventory_age_summary?.total ??
+    donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const trendData: AgeingTrendItem[] = [];
 
@@ -4676,7 +4698,7 @@ const buildInventoryInsightsFromResponses = (
       ? [
         {
           key: "age_0_90",
-          label: "0–90 Days",
+          label: "Healthy",
           description: "Stock aged 0–90 days",
           count: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-90-days"),
           skuCount: getSkuCountForAgeColumn(latestRows, "inv-age-0-to-90-days"),
@@ -4684,9 +4706,27 @@ const buildInventoryInsightsFromResponses = (
           color: "#7B9A6D",
           backgroundColor: "#ffffff",
         },
+
+        // ✅ High Alert comes before Discount / 91–180 Days
+        {
+          key: "high_alert",
+          label: INVENTORY_ACTION_META.high_alert.label,
+          description: INVENTORY_ACTION_META.high_alert.description,
+          count: getUniqueSkuCount(highAlertRows),
+          displayValue: getUniqueSkuCount(highAlertRows),
+          skuCount:
+            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+            getUniqueSkuCount(highAlertRows),
+
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+
+          color: INVENTORY_ACTION_META.high_alert.color,
+          backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
+        },
+
         {
           key: "age_91_180",
-          label: "91–180 Days",
+          label: "Discount",
           description: "Stock aged 91–180 days",
           count: getSkuCountForAgeColumn(latestRows, "inv-age-91-to-180-days"),
           skuCount: getSkuCountForAgeColumn(latestRows, "inv-age-91-to-180-days"),
@@ -4706,36 +4746,25 @@ const buildInventoryInsightsFromResponses = (
           color: INVENTORY_ACTION_META.healthy.color,
           backgroundColor: INVENTORY_ACTION_META.healthy.backgroundColor,
         },
+
+        // ✅ High Alert comes after Healthy when 0–180 combined exists
+        {
+          key: "high_alert",
+          label: INVENTORY_ACTION_META.high_alert.label,
+          description: INVENTORY_ACTION_META.high_alert.description,
+          count: getUniqueSkuCount(highAlertRows),
+          displayValue: getUniqueSkuCount(highAlertRows),
+          skuCount:
+            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
+            getUniqueSkuCount(highAlertRows),
+
+          avgCoverageRatio: highAlertAvgCoverageRatio,
+
+          color: INVENTORY_ACTION_META.high_alert.color,
+          backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
+        },
       ]),
-    {
-      key: "high_alert",
-      label: INVENTORY_ACTION_META.high_alert.label,
-      description: INVENTORY_ACTION_META.high_alert.description,
-      count: getUniqueSkuCount(highAlertRows),
-      displayValue: getUniqueSkuCount(highAlertRows),
-      skuCount:
-        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-        getUniqueSkuCount(highAlertRows),
 
-      // ✅ New value for High Alert card
-      avgCoverageRatio: highAlertAvgCoverageRatio,
-
-      color: INVENTORY_ACTION_META.high_alert.color,
-      backgroundColor: INVENTORY_ACTION_META.high_alert.backgroundColor,
-    },
-    //     {
-    //       key: "discount",
-    //       label: INVENTORY_ACTION_META.discount.label,
-    //       description: INVENTORY_ACTION_META.discount.description,
-    //       count: getUniqueSkuCount(discountRows),
-    //       displayValue: getUniqueSkuCount(discountRows),
-    //       skuCount: getUniqueSkuCount(discountRows),
-    //     unitCount: sumInventoryUnitsByKeys(discountRows, [
-    //   "inv-age-0-to-180-days",
-    // ]),
-    //       color: INVENTORY_ACTION_META.discount.color,
-    //       backgroundColor: INVENTORY_ACTION_META.discount.backgroundColor,
-    //     },
     {
       key: "liquidate",
       label: INVENTORY_ACTION_META.liquidate.label,
@@ -4751,6 +4780,7 @@ const buildInventoryInsightsFromResponses = (
       color: INVENTORY_ACTION_META.liquidate.color,
       backgroundColor: INVENTORY_ACTION_META.liquidate.backgroundColor,
     },
+
     {
       key: "unfulfillable",
       label: INVENTORY_ACTION_META.unfulfillable.label,
@@ -4765,6 +4795,7 @@ const buildInventoryInsightsFromResponses = (
       color: INVENTORY_ACTION_META.unfulfillable.color,
       backgroundColor: INVENTORY_ACTION_META.unfulfillable.backgroundColor,
     },
+
     {
       key: "estimated_storage_cost",
       label: INVENTORY_ACTION_META.estimated_storage_cost.label,
