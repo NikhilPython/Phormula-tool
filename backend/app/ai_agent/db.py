@@ -14,6 +14,43 @@ from config import Config
 
 _COUNTRY_RE = re.compile(r"^[a-z]{2}$|^global$")
 
+INVENTORY_MARKETPLACE_BY_COUNTRY = {
+    "uk": "A1F83G8C2ARO7P",
+    "gb": "A1F83G8C2ARO7P",
+    "us": "ATVPDKIKX0DER",
+    "usa": "ATVPDKIKX0DER",
+}
+
+INVENTORY_LOCATION_BY_COUNTRY = {
+    "uk": "gb",
+    "gb": "gb",
+    "us": "us",
+    "usa": "us",
+}
+
+INVENTORY_AGED_COLUMN_BY_METRIC = {
+    "available": '"available"',
+    "inbound_quantity": '"inbound-quantity"',
+    "total_reserved_quantity": '"Total Reserved Quantity"',
+    "unfulfillable_quantity": '"unfulfillable-quantity"',
+    "units_shipped_t30": '"units-shipped-t30"',
+    "units_shipped_t60": '"units-shipped-t60"',
+    "units_shipped_t90": '"units-shipped-t90"',
+    "sell_through": '"sell-through"',
+    "days_of_supply": '"days-of-supply"',
+    "estimated_excess_quantity": '"estimated-excess-quantity"',
+}
+
+MONTHWISE_INVENTORY_COLUMN_BY_METRIC = {
+    "available": "ending_warehouse_balance",
+}
+
+CURRENT_INVENTORY_COLUMN_BY_METRIC = {
+    "available": '"available"',
+    "inbound_quantity": '"inbound_quantity"',
+    "unfulfillable_quantity": '"unfulfillable-quantity"',
+}
+
 MONTH_NAME_TO_NUM = {
     "january": 1,
     "february": 2,
@@ -664,7 +701,7 @@ def available_metrics() -> list[str]:
 # INVENTORY FETCH
 # -------------------------
 
-def get_inventory_snapshot(
+def _legacy_inventory_snapshot_unused(
     user_id: int,
     metric_name: str,
     month: int,
@@ -726,6 +763,375 @@ def get_inventory_snapshot(
         "per_sku": per_sku,
         "period_label": f"{month}/{year}",
         "metric_kind": "inventory",
+    }
+
+
+def _inventory_marketplace_id(country: Optional[str]) -> Optional[str]:
+    return INVENTORY_MARKETPLACE_BY_COUNTRY.get((country or "").strip().lower())
+
+
+def _inventory_location_code(country: Optional[str]) -> Optional[str]:
+    return INVENTORY_LOCATION_BY_COUNTRY.get((country or "").strip().lower())
+
+
+def _empty_inventory_snapshot(metric_name: str, month: int, year: int, note: str) -> Dict[str, Any]:
+    return {
+        "metric": metric_name,
+        "total": None,
+        "per_sku": [],
+        "period_label": f"{month}/{year}",
+        "metric_kind": "inventory",
+        "note": note,
+    }
+
+
+def _month_end_sql() -> str:
+    return "(make_date(:year, :month, 1) + INTERVAL '1 month' - INTERVAL '1 day')::date"
+
+
+def _resolve_current_inventory_table(
+    engine: Engine,
+    user_id: int,
+    country: Optional[str],
+    month: int,
+    year: int,
+) -> Optional[tuple[str, MonthKey]]:
+    country_key = (country or "").strip().lower()
+    if country_key == "gb":
+        country_key = "uk"
+    if country_key == "usa":
+        country_key = "us"
+    if country_key not in {"uk", "us"}:
+        return None
+
+    exact = f"currentinventory_{int(user_id)}_{country_key}_{MONTH_NUM_TO_NAME[int(month)]}{int(year)}_table"
+    if table_exists(engine, exact):
+        return exact, MonthKey(year=int(year), month=int(month))
+
+    prefix = f"currentinventory_{int(user_id)}_{country_key}_"
+    query = text("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name LIKE :pattern
+    """)
+
+    with engine.connect() as conn:
+        names = [row[0] for row in conn.execute(query, {"pattern": prefix + "%_table"}).fetchall()]
+
+    candidates: list[tuple[MonthKey, str]] = []
+    pattern = re.compile(rf"^{re.escape(prefix)}([a-z]+)(\d{{4}})_table$")
+    for name in names:
+        match = pattern.match(name)
+        if not match:
+            continue
+        month_name, year_text = match.groups()
+        month_num = MONTH_NAME_TO_NUM.get(month_name)
+        if not month_num:
+            continue
+        try:
+            candidates.append((MonthKey(year=int(year_text), month=month_num), name))
+        except ValueError:
+            continue
+
+    if not candidates:
+        return None
+
+    requested = (int(year), int(month))
+    prior = [(mk, name) for mk, name in candidates if (mk.year, mk.month) <= requested]
+    selected = max(prior or candidates, key=lambda item: (item[0].year, item[0].month))
+    return selected[1], selected[0]
+
+
+def _get_current_inventory_snapshot(
+    user_id: int,
+    metric_name: str,
+    month: int,
+    year: int,
+    country: Optional[str] = None,
+) -> Dict[str, Any]:
+    metric_key = (metric_name or "").strip().lower()
+    column_expr = CURRENT_INVENTORY_COLUMN_BY_METRIC.get(metric_key)
+    if not column_expr:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "No current inventory fallback is available for this metric",
+        )
+
+    engine = get_engine()
+    resolved = _resolve_current_inventory_table(engine, user_id, country, month, year)
+    if not resolved:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "No current inventory table is available for this user/country",
+        )
+
+    table_name, table_month = resolved
+    query = text(f"""
+        SELECT
+            "SKU" AS sku,
+            "Product Name" AS product_name,
+            {column_expr} AS value
+        FROM "{table_name}"
+        WHERE COALESCE(LOWER(TRIM("Product Name")), '') <> 'total'
+    """)
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query).mappings().all()
+    except Exception:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "Current inventory table could not be read",
+        )
+
+    if not rows:
+        return _empty_inventory_snapshot(
+            metric_key,
+            table_month.month,
+            table_month.year,
+            f"No rows found in {table_name}",
+        )
+
+    per_sku = [
+        {
+            "sku": r["sku"],
+            "product_name": r["product_name"],
+            "__metric__": float(r["value"] or 0),
+        }
+        for r in rows
+    ]
+    total = sum(r["__metric__"] for r in per_sku)
+
+    return {
+        "metric": metric_key,
+        "total": total,
+        "per_sku": per_sku,
+        "period_label": table_month.label,
+        "metric_kind": "inventory",
+        "source_table": table_name,
+        "snapshot_date": None,
+        "country": country,
+    }
+
+
+def _get_monthwise_inventory_snapshot(
+    user_id: int,
+    metric_name: str,
+    month: int,
+    year: int,
+    country: Optional[str] = None,
+) -> Dict[str, Any]:
+    metric_key = (metric_name or "").strip().lower()
+    column_name = MONTHWISE_INVENTORY_COLUMN_BY_METRIC.get(metric_key)
+    if not column_name:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "No monthwise inventory fallback is available for this metric",
+        )
+
+    engine = get_amazon_engine()
+    marketplace_id = _inventory_marketplace_id(country)
+    location_code = _inventory_location_code(country)
+    country_filter = ""
+    params: Dict[str, Any] = {
+        "user_id": user_id,
+        "month": int(month),
+        "year": int(year),
+    }
+
+    if marketplace_id or location_code:
+        country_clauses = []
+        if marketplace_id:
+            country_clauses.append("marketplace_id = :marketplace_id")
+            params["marketplace_id"] = marketplace_id
+        if location_code:
+            country_clauses.append("LOWER(TRIM(location)) = :location_code")
+            params["location_code"] = location_code
+        country_filter = " AND (" + " OR ".join(country_clauses) + ")"
+
+    query = text(f"""
+        WITH latest_snapshot AS (
+            SELECT MAX(date::date) AS latest_date
+            FROM monthwise_inventory
+            WHERE user_id = :user_id
+              AND LOWER(TRIM(disposition)) = 'sellable'
+              {country_filter}
+              AND date::date <= {_month_end_sql()}
+        ),
+        fallback_snapshot AS (
+            SELECT COALESCE(
+                (SELECT latest_date FROM latest_snapshot),
+                (
+                    SELECT MAX(date::date)
+                    FROM monthwise_inventory
+                    WHERE user_id = :user_id
+                      AND LOWER(TRIM(disposition)) = 'sellable'
+                      {country_filter}
+                )
+            ) AS latest_date
+        )
+        SELECT
+            msku AS sku,
+            COALESCE(NULLIF(TRIM(product_name), ''), NULLIF(TRIM(title), ''), msku) AS product_name,
+            SUM(COALESCE({column_name}, 0)) AS value,
+            (SELECT latest_date FROM fallback_snapshot) AS snapshot_date
+        FROM monthwise_inventory
+        WHERE user_id = :user_id
+          AND LOWER(TRIM(disposition)) = 'sellable'
+          {country_filter}
+          AND date::date = (SELECT latest_date FROM fallback_snapshot)
+        GROUP BY msku, COALESCE(NULLIF(TRIM(product_name), ''), NULLIF(TRIM(title), ''), msku)
+        ORDER BY value DESC
+    """)
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, params).mappings().all()
+    except Exception:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "Monthwise inventory table could not be read",
+        )
+
+    if not rows:
+        return _empty_inventory_snapshot(
+            metric_key,
+            month,
+            year,
+            "No inventory snapshot available in monthwise_inventory",
+        )
+
+    snapshot_date = rows[0].get("snapshot_date")
+    per_sku = [
+        {
+            "sku": r["sku"],
+            "product_name": r["product_name"],
+            "__metric__": float(r["value"] or 0),
+        }
+        for r in rows
+    ]
+    total = sum(r["__metric__"] for r in per_sku)
+
+    return {
+        "metric": metric_key,
+        "total": total,
+        "per_sku": per_sku,
+        "period_label": snapshot_date.strftime("%b %Y") if snapshot_date else f"{month}/{year}",
+        "metric_kind": "inventory",
+        "source_table": "monthwise_inventory",
+        "snapshot_date": snapshot_date.isoformat() if snapshot_date else None,
+        "country": country,
+    }
+
+
+def get_inventory_snapshot(
+    user_id: int,
+    metric_name: str,
+    month: int,
+    year: int,
+    country: Optional[str] = None,
+) -> Dict[str, Any]:
+
+    metric_key = (metric_name or "").strip().lower()
+    column_expr = INVENTORY_AGED_COLUMN_BY_METRIC.get(metric_key)
+    if not column_expr:
+        current_snapshot = _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
+        if current_snapshot.get("per_sku") or current_snapshot.get("total") is not None:
+            return current_snapshot
+        return _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+
+    engine = get_amazon_engine()
+    marketplace_id = _inventory_marketplace_id(country)
+    marketplace_filter = ""
+    params: Dict[str, Any] = {
+        "user_id": user_id,
+        "month": int(month),
+        "year": int(year),
+    }
+
+    if marketplace_id:
+        marketplace_filter = " AND marketplace = :marketplace_id"
+        params["marketplace_id"] = marketplace_id
+
+    query = text(f"""
+        WITH latest_snapshot AS (
+            SELECT MAX("snapshot-date") AS latest_date
+            FROM inventory_aged
+            WHERE user_id = :user_id
+              {marketplace_filter}
+              AND "snapshot-date" <= {_month_end_sql()}
+        ),
+        fallback_snapshot AS (
+            SELECT COALESCE(
+                (SELECT latest_date FROM latest_snapshot),
+                (
+                    SELECT MAX("snapshot-date")
+                    FROM inventory_aged
+                    WHERE user_id = :user_id
+                      {marketplace_filter}
+                )
+            ) AS latest_date
+        )
+        SELECT
+            sku,
+            "product-name" AS product_name,
+            {column_expr} AS value,
+            "snapshot-date" AS snapshot_date,
+            marketplace
+        FROM inventory_aged
+        WHERE user_id = :user_id
+          {marketplace_filter}
+          AND "snapshot-date" = (SELECT latest_date FROM fallback_snapshot)
+        ORDER BY COALESCE({column_expr}, 0) DESC
+    """)
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(query, params).mappings().all()
+    except Exception:
+        current_snapshot = _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
+        if current_snapshot.get("per_sku") or current_snapshot.get("total") is not None:
+            return current_snapshot
+        return _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+
+    if not rows:
+        current_snapshot = _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
+        if current_snapshot.get("per_sku") or current_snapshot.get("total") is not None:
+            return current_snapshot
+        return _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+
+    snapshot_date = rows[0].get("snapshot_date")
+    per_sku = [
+        {
+            "sku": r["sku"],
+            "product_name": r["product_name"],
+            "__metric__": float(r["value"] or 0),
+        }
+        for r in rows
+    ]
+
+    total = sum(r["__metric__"] for r in per_sku)
+
+    return {
+        "metric": metric_key,
+        "total": total,
+        "per_sku": per_sku,
+        "period_label": snapshot_date.strftime("%b %Y") if snapshot_date else f"{month}/{year}",
+        "metric_kind": "inventory",
+        "source_table": "inventory_aged",
+        "snapshot_date": snapshot_date.isoformat() if snapshot_date else None,
+        "country": country,
     }
 
 INVENTORY_METRICS = {

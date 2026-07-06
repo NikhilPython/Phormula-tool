@@ -44,6 +44,8 @@ Rules:
 - Use seller-specific data first. Do not invent numbers, products, dates, or targets.
 - Give general ecommerce advice only when the needed data is missing, and clearly say which data is missing.
 - Every recommendation must tie back to a metric, product, SKU, trend, fee, ad, return, margin, or inventory signal in the context.
+- For sales-improvement or product advice, check business_context.inventory first. If inventory.requested=true and snapshots.available has source_table/row_count/matched_total, use that stock signal before saying inventory data is missing.
+- When product_query is present, snapshots.*.matched_total and snapshots.*.rows are the product-specific inventory view. If matched_row_count is 0, say product-specific inventory was not matched instead of saying all inventory data is unavailable.
 - Do not claim channel-wise ad ROAS unless channel-wise ad sales are present. If only product_spend, display_spend, and brand_spend exist, discuss spend mix only.
 - Keep simple questions short. For broad strategy, use a concise report with sections: What I see, What it means, What to do next.
 - Prefer concrete business actions over generic explanations.

@@ -12,6 +12,7 @@ export type Message = {
   liked?: "like" | "dislike";
   error?: boolean;
   timestamp?: number;
+  suggestedQuestions?: string[];
 };
 
 type ChatStore = {
@@ -64,6 +65,9 @@ const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
       sender: m.sender,
       text: m.text,
       timestamp: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+      suggestedQuestions: Array.isArray(m.suggested_questions)
+        ? m.suggested_questions.filter((q: unknown) => typeof q === "string")
+        : undefined,
     }));
 
     return items.length ? items : null;
@@ -153,6 +157,9 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       });
 
       const data = await res.json();
+      const suggestedQuestions = Array.isArray(data?.suggested_questions)
+        ? data.suggested_questions.filter((q: unknown) => typeof q === "string")
+        : [];
 
       const botMsg: Message = {
         id: uuid(),
@@ -163,6 +170,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           data?.result ||
           data?.message ||
           "No response",
+        suggestedQuestions,
         timestamp: Date.now(),
       };
 

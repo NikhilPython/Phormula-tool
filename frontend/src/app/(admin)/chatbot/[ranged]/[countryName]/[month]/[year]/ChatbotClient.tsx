@@ -21,6 +21,7 @@ type Message = {
   serverId?: number
   promptText?: string
   error?: boolean
+  suggestedQuestions?: string[]
 }
 
 type ParsedDetail = {
@@ -472,6 +473,13 @@ export default function ChatbotPage() {
     }
   }
 
+  const handleSuggestedQuestion = (question: string) => {
+    const cleaned = question.trim()
+    if (!cleaned || isLoading) return
+    setInputValue('')
+    sendMessage(cleaned)
+  }
+
   // Create message objects
 
 
@@ -841,6 +849,22 @@ export default function ChatbotPage() {
                           )}
                           <div className={`chat-msg-meta ${msg.sender === 'user' ? 'chat-msg-meta-user' : 'chat-msg-meta-bot'}`}>{formatTime(msg.timestamp)}</div>
                         </div>
+
+                        {msg.sender !== 'user' && idx === arr.length - 1 && Array.isArray(msg.suggestedQuestions) && msg.suggestedQuestions.length > 0 && (
+                          <div className="suggested-question-list" aria-label="Suggested follow-up questions">
+                            {msg.suggestedQuestions.slice(0, 3).map((question) => (
+                              <button
+                                key={question}
+                                type="button"
+                                className="suggested-question-chip"
+                                onClick={() => handleSuggestedQuestion(question)}
+                                disabled={isLoading}
+                              >
+                                {question}
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {msg.sender !== 'user' && (
                           <div className="chat-msg-actions ml-2 mb-2">

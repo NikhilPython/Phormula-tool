@@ -5696,8 +5696,23 @@ def chatbot_history():
         items = []
         for r in rows:
             ts_iso = (r.timestamp or dt.datetime.utcnow()).isoformat() + "Z"
+            meta = {}
+            try:
+                raw_meta = getattr(r, "meta", None)
+                meta = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else (raw_meta or {})
+            except Exception:
+                meta = {}
+            suggested_questions = meta.get("suggested_questions") if isinstance(meta, dict) else None
+            if not isinstance(suggested_questions, list):
+                suggested_questions = []
             items.append({"id": f"{r.id}-u", "sender": "user", "text": r.message, "timestamp": ts_iso})
-            items.append({"id": f"{r.id}-b", "sender": "bot", "text": r.response, "timestamp": ts_iso})
+            items.append({
+                "id": f"{r.id}-b",
+                "sender": "bot",
+                "text": r.response,
+                "timestamp": ts_iso,
+                "suggested_questions": [q for q in suggested_questions if isinstance(q, str)],
+            })
         return jsonify({"success": True, "items": items})
     except Exception:
         logger.exception("History fetch error")

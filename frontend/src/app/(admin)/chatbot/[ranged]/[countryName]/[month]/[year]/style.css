@@ -194,6 +194,39 @@ background-image: url('/src/assets/chat-user-bg.png'); */
 .chat-msg-meta-user{color:rgba(255,255,255,0.85);}
 .chat-msg-meta-bot{color:rgba(0,0,0,0.55);}
 
+/* ---- Suggested follow-up questions ---- */
+.suggested-question-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(640px, 72vw);
+  margin: 6px 0 2px 8px;
+}
+
+.suggested-question-chip {
+  max-width: 100%;
+  border: 1px solid rgba(94, 166, 142, 0.38);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #25384c;
+  font-size: 11px;
+  line-height: 1.25;
+  padding: 6px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.suggested-question-chip:hover:not(:disabled) {
+  border-color: rgba(94, 166, 142, 0.9);
+  background: rgba(94, 166, 142, 0.1);
+}
+
+.suggested-question-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 /* ---- Assistant response formatting ---- */
 .assistant-output {
   max-width: 100%;

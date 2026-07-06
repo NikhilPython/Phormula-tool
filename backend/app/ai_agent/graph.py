@@ -404,35 +404,13 @@ def _latest_month_result(
 
     # -------- INVENTORY FLOW --------
     if metric_name in INVENTORY_METRICS:
-        # get latest snapshot date from inventory DB
-        inv_engine = get_amazon_engine()
-
-        query = text("""
-            SELECT MAX("snapshot-date") AS latest_date
-            FROM inventory_aged
-            WHERE user_id = :user_id
-        """)
-
-        with inv_engine.connect() as conn:
-            row = conn.execute(query, {"user_id": user_id}).mappings().first()
-
-        if not row or not row["latest_date"]:
-            return {
-                "metric": metric_name,
-                "total": None,
-                "per_sku": [],
-                "period_label": "latest",
-                "metric_kind": "inventory",
-                "note": "No inventory data available",
-            }
-
-        latest_date = row["latest_date"]
-
+        now = datetime.utcnow()
         return get_inventory_snapshot(
             user_id=user_id,
             metric_name=metric_name,
-            month=latest_date.month,
-            year=latest_date.year,
+            month=now.month,
+            year=now.year,
+            country=country,
         )
 
     # -------- FINANCE FLOW --------
@@ -1100,36 +1078,21 @@ def _compute_ranking(state: AgentState) -> AgentState:
     if metric_name in INVENTORY_METRICS:
         logger.info("[RANKING_FIX] Using inventory snapshot")
 
-        inv_engine = get_amazon_engine()
-
-        query = text("""
-            SELECT MAX("snapshot-date") AS latest_date
-            FROM inventory_aged
-            WHERE user_id = :user_id
-        """)
-
-        with inv_engine.connect() as conn:
-            row = conn.execute(
-                query,
-                {"user_id": state["user_id"]}
-            ).mappings().first()
-
-        if not row or not row["latest_date"]:
-            result = {
-                "metric": metric_name,
-                "total": 0,
-                "per_sku": [],
-                "period_label": "latest",
-            }
+        if payload.get("type") == "single":
+            month = int(payload.get("month"))
+            year = int(payload.get("year"))
         else:
-            latest_date = row["latest_date"]
+            now = datetime.utcnow()
+            month = now.month
+            year = now.year
 
-            result = get_inventory_snapshot(
-                user_id=state["user_id"],
-                metric_name=metric_name,
-                month=latest_date.month,
-                year=latest_date.year,
-            )
+        result = get_inventory_snapshot(
+            user_id=state["user_id"],
+            metric_name=metric_name,
+            month=month,
+            year=year,
+            country=state["country"],
+        )
 
         ranked = rank_skus(
             result,
@@ -2326,6 +2289,7 @@ def get_unified_metric(engine, state, metric_name, month=None, year=None):
             metric_name=metric_name,
             month=month,
             year=year,
+            country=state["country"],
         )
 
     # -------- FINANCE --------

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from app.ai_agent.graph import build_graph
 from app.ai_agent.memory import recent_chat_history, save_chat_turn
@@ -10,12 +15,417 @@ from app.ai_agent.memory import recent_chat_history, save_chat_turn
 logger = logging.getLogger(__name__)
 
 _graph = build_graph()
+_suggestion_llm = (
+    ChatOpenAI(
+        model=os.getenv("AI_AGENT_SUGGESTION_MODEL", "gpt-4.1-mini"),
+        api_key=os.getenv("OPENAI_API_KEY"),
+        temperature=0.3,
+    )
+    if os.getenv("OPENAI_API_KEY")
+    else None
+)
+_verifier_llm = (
+    ChatOpenAI(
+        model=os.getenv("AI_AGENT_VERIFIER_MODEL", "gpt-4.1-mini"),
+        api_key=os.getenv("OPENAI_API_KEY"),
+        temperature=0,
+    )
+    if os.getenv("OPENAI_API_KEY")
+    else None
+)
 
 DEFAULT_THRESHOLDS = {
     "low_profit_margin": 10.0,
     "high_amazon_fee_ratio": 25.0,
     "high_advertising_ratio": 15.0,
 }
+
+
+class SuggestedQuestionModel(BaseModel):
+    questions: List[str] = Field(default_factory=list, max_length=3)
+
+
+class AnswerVerificationModel(BaseModel):
+    is_valid: bool = True
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    issues: List[str] = Field(default_factory=list)
+    corrected_answer: Optional[str] = None
+
+
+def _humanize_metric(metric: Optional[str]) -> str:
+    if not metric:
+        return "business performance"
+
+    key = str(metric).strip().lower()
+    replacements = {
+        "net_sales": "net sales",
+        "gross_sales": "gross sales",
+        "total_quantity": "units sold",
+        "profit": "profit",
+        "cm2_profit": "CM2 profit",
+        "total_cm2_profit": "CM2 profit",
+        "profit_percentage": "profit margin",
+        "acos": "ACOS",
+        "asp": "ASP",
+        "ads_spend": "ad spend",
+        "total_ads": "ad spend",
+        "product_spend": "Sponsored Product spend",
+        "brand_spend": "Sponsored Brand spend",
+        "display_spend": "Sponsored Display spend",
+        "sp_ads_sales": "Sponsored Product ad sales",
+        "sb_ads_sales": "Sponsored Brand ad sales",
+        "sd_ads_sales": "Sponsored Display ad sales",
+        "available": "available inventory",
+        "inbound_quantity": "inbound inventory",
+        "total_reserved_quantity": "reserved inventory",
+        "unfulfillable_quantity": "unfulfillable inventory",
+        "days_of_supply": "days of supply",
+        "sell_through": "sell-through",
+        "estimated_excess_quantity": "excess inventory",
+    }
+    return replacements.get(key, key.replace("_", " "))
+
+
+def _country_label(country: Optional[str]) -> str:
+    code = (country or "").strip().lower()
+    labels = {
+        "uk": "Amazon UK",
+        "gb": "Amazon UK",
+        "us": "Amazon US",
+        "usa": "Amazon US",
+        "global": "all marketplaces",
+    }
+    return labels.get(code, f"Amazon {code.upper()}" if code else "this marketplace")
+
+
+def _product_phrase(result: Dict[str, Any]) -> str:
+    product = result.get("product_query")
+    if not product:
+        products = result.get("product_queries") or []
+        if products:
+            product = products[0]
+    if not product:
+        analysis = result.get("analysis_result") or {}
+        product = analysis.get("product")
+    return f" for {str(product).strip()}" if product else ""
+
+
+def _period_phrase(result: Dict[str, Any]) -> str:
+    current = result.get("current_metrics") or {}
+    period = current.get("period_label")
+    if period:
+        return f" in {period}"
+
+    parsed = result.get("period_parsed") or {}
+    if parsed.get("type") == "multi_month":
+        months = parsed.get("months") or []
+        if months:
+            first = months[0]
+            last = months[-1]
+            return f" from {first.get('month')}/{first.get('year')} to {last.get('month')}/{last.get('year')}"
+
+    return ""
+
+
+def _fallback_suggested_questions(result: Dict[str, Any], user_query: str) -> List[str]:
+    intent = result.get("intent")
+    if intent in {"clarify", "chat", "explain"} or result.get("error"):
+        return []
+
+    metric_names = result.get("metric_names") or []
+    metric = result.get("metric_name") or (metric_names[0] if metric_names else "net_sales")
+    metric_label = _humanize_metric(metric)
+    country = _country_label(result.get("country"))
+    product = _product_phrase(result)
+    period = _period_phrase(result)
+    analysis = result.get("analysis_result") or {}
+    analysis_type = analysis.get("type") or result.get("analysis_type")
+
+    suggestions: List[str] = []
+
+    def add(question: str) -> None:
+        cleaned = " ".join(str(question).split()).strip()
+        if not cleaned:
+            return
+        if cleaned.lower() == (user_query or "").strip().lower():
+            return
+        if cleaned not in suggestions:
+            suggestions.append(cleaned)
+
+    inventory_metrics = {
+        "available",
+        "inbound_quantity",
+        "total_reserved_quantity",
+        "unfulfillable_quantity",
+        "sell_through",
+        "days_of_supply",
+        "units_shipped_t30",
+        "units_shipped_t60",
+        "units_shipped_t90",
+        "estimated_excess_quantity",
+    }
+    ad_metrics = {
+        "ads_spend",
+        "total_ads",
+        "product_spend",
+        "brand_spend",
+        "display_spend",
+        "sp_ads_sales",
+        "sb_ads_sales",
+        "sd_ads_sales",
+        "ads_sale_amount",
+        "acos",
+    }
+
+    if metric in inventory_metrics or analysis_type == "inventory_diagnosis":
+        add(f"Which SKUs are at stock-out risk in {country}?")
+        add(f"Which products have excess inventory in {country}?")
+        add(f"How much stock should I plan for next month in {country}?")
+    elif metric in ad_metrics:
+        add(f"Which SKUs are wasting ad spend in {country}{period}?")
+        add(f"How should I optimize ads to improve sales in {country}?")
+        add(f"Compare Sponsored Product, Brand, and Display spend in {country}{period}.")
+    elif analysis_type in {"business_advisor", "decision"}:
+        add(f"What are the top 3 actions I should take next month in {country}?")
+        add(f"Which products are hurting profit the most in {country}?")
+        add(f"Where can I reduce fees or ad waste in {country}?")
+    elif analysis_type in {"multi_month", "trend", "growth"}:
+        add(f"What is the month-on-month change in {metric_label}{product} in {country}?")
+        add(f"Which product contributed most to {metric_label} in {country}{period}?")
+        add(f"Why did {metric_label}{product} change during this period?")
+    elif analysis_type in {"ranking", "breakdown"}:
+        add(f"Show bottom 5 products by {metric_label} in {country}{period}.")
+        add(f"Why are the lowest {metric_label} products underperforming?")
+        add(f"What should I do to improve profit for these products?")
+    else:
+        add(f"Show {metric_label}{product} trend for the last 6 months in {country}.")
+        add(f"Compare {metric_label}{product} with profit in {country}{period}.")
+        add(f"What should I do next to improve {metric_label}{product}?")
+
+    return suggestions[:3]
+
+
+def _clean_suggested_questions(questions: List[Any], user_query: str) -> List[str]:
+    cleaned_questions: List[str] = []
+    original = (user_query or "").strip().lower()
+
+    for item in questions or []:
+        question = " ".join(str(item or "").replace("\n", " ").split()).strip()
+        if not question:
+            continue
+        if question.lower() == original:
+            continue
+        if len(question) > 140:
+            question = question[:137].rstrip() + "..."
+        if not question.endswith("?"):
+            question = question.rstrip(".") + "?"
+        if question not in cleaned_questions:
+            cleaned_questions.append(question)
+        if len(cleaned_questions) == 3:
+            break
+
+    return cleaned_questions
+
+
+def _compact_json(value: Any, max_chars: int = 4000) -> str:
+    try:
+        text = json.dumps(value, default=str, ensure_ascii=True)
+    except Exception:
+        text = str(value)
+    if len(text) > max_chars:
+        return text[:max_chars] + "...[truncated]"
+    return text
+
+
+def _answer_verification_context(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+    analysis = result.get("analysis_result") or {}
+
+    return {
+        "user_query": user_query,
+        "final_answer": result.get("final_response"),
+        "intent": result.get("intent"),
+        "analysis_type": result.get("analysis_type"),
+        "answer_shape": result.get("answer_shape"),
+        "country": result.get("country"),
+        "target_countries": result.get("target_countries"),
+        "metric_name": result.get("metric_name"),
+        "metric_names": result.get("metric_names"),
+        "product_query": result.get("product_query"),
+        "product_queries": result.get("product_queries"),
+        "period_parsed": result.get("period_parsed"),
+        "period_payload": result.get("period_payload"),
+        "current_metrics": result.get("current_metrics"),
+        "comparison": result.get("comparison"),
+        "analysis_result_type": analysis.get("type"),
+        "analysis_result": analysis,
+        "business_context": result.get("business_context"),
+        "advice": result.get("advice"),
+        "event_plan_result": result.get("event_plan_result"),
+        "sku_intelligence_result": result.get("sku_intelligence_result"),
+        "tool_trace": result.get("tool_trace"),
+        "error": result.get("error"),
+    }
+
+
+def _clean_verification_issues(issues: List[Any]) -> List[str]:
+    cleaned: List[str] = []
+    for item in issues or []:
+        issue = " ".join(str(item or "").split()).strip()
+        if issue and issue not in cleaned:
+            cleaned.append(issue[:240])
+        if len(cleaned) == 5:
+            break
+    return cleaned
+
+
+def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+    answer = (result.get("final_response") or "").strip()
+    if not answer:
+        result["answer_validation"] = {
+            "status": "skipped",
+            "reason": "empty_answer",
+            "corrected": False,
+        }
+        return result
+
+    if result.get("error"):
+        result["answer_validation"] = {
+            "status": "skipped",
+            "reason": "agent_error",
+            "corrected": False,
+        }
+        return result
+
+    if result.get("intent") in {"clarify", "chat", "explain"}:
+        result["answer_validation"] = {
+            "status": "skipped",
+            "reason": "non_business_data_answer",
+            "corrected": False,
+        }
+        return result
+
+    if not _verifier_llm:
+        result["answer_validation"] = {
+            "status": "skipped",
+            "reason": "verifier_llm_unavailable",
+            "corrected": False,
+        }
+        return result
+
+    prompt = """
+You are Phormula's answer verification agent for Amazon seller finance, ads, and inventory analytics.
+
+Your job is to check whether the chatbot's final answer is factually supported by the computed source data in the context.
+
+Check for:
+- Wrong metric, product/SKU, marketplace/country, or time period.
+- Incorrect arithmetic, totals, deltas, percentages, rankings, or comparisons.
+- Numbers or claims that are not present in or supported by the computed data.
+- Business advice that contradicts the available metrics.
+- Missing data presented as if it exists.
+
+Rules:
+- If the answer is correct enough, set is_valid=true and leave corrected_answer empty.
+- If the answer is wrong, set is_valid=false and provide a corrected_answer.
+- Correct only factual or business-logic problems. Do not rewrite style just to make it prettier.
+- Do not invent numbers, products, countries, time periods, or causes that are not supported by the context.
+- If the data is insufficient, the corrected answer must clearly say what is unavailable and avoid unsupported numbers.
+- Keep corrected_answer concise and user-facing.
+
+Context JSON:
+""" + _compact_json(_answer_verification_context(result, user_query), max_chars=12000)
+
+    try:
+        structured_llm = _verifier_llm.with_structured_output(AnswerVerificationModel)
+        verdict = structured_llm.invoke(prompt)
+        issues = _clean_verification_issues(verdict.issues)
+        corrected_answer = (verdict.corrected_answer or "").strip()
+        corrected = False
+
+        if not verdict.is_valid and corrected_answer and corrected_answer != answer:
+            result["final_response"] = corrected_answer
+            corrected = True
+
+        result["answer_validation"] = {
+            "status": "corrected" if corrected else ("passed" if verdict.is_valid else "flagged"),
+            "is_valid": bool(verdict.is_valid),
+            "confidence": float(verdict.confidence),
+            "issues": issues,
+            "corrected": corrected,
+        }
+    except Exception:
+        logger.exception("Answer verification failed")
+        result["answer_validation"] = {
+            "status": "failed",
+            "reason": "verifier_error",
+            "corrected": False,
+        }
+
+    return result
+
+
+def _suggestion_context(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+    analysis = result.get("analysis_result") or {}
+    current = result.get("current_metrics") or {}
+
+    return {
+        "user_query": user_query,
+        "answer": result.get("final_response"),
+        "intent": result.get("intent"),
+        "analysis_type": result.get("analysis_type"),
+        "result_type": analysis.get("type"),
+        "country": result.get("country"),
+        "target_countries": result.get("target_countries"),
+        "metric_name": result.get("metric_name"),
+        "metric_names": result.get("metric_names"),
+        "product_query": result.get("product_query"),
+        "product_queries": result.get("product_queries"),
+        "period_parsed": result.get("period_parsed"),
+        "current_metrics": current,
+        "comparison": result.get("comparison"),
+        "tool_trace": result.get("tool_trace"),
+    }
+
+
+def _llm_suggested_questions(result: Dict[str, Any], user_query: str) -> List[str]:
+    if not _suggestion_llm:
+        return []
+
+    intent = result.get("intent")
+    if intent in {"clarify", "chat", "explain"} or result.get("error"):
+        return []
+
+    prompt = """
+You generate the next suggested questions for Phormula, a finance SaaS chatbot for Amazon sellers, accountants, and ecommerce managers.
+
+Return exactly 3 useful follow-up questions.
+
+Rules:
+- Return questions only, no explanations.
+- Questions must be answerable from the seller's own Amazon/SP-API/PostgreSQL data or from business advice grounded in that data.
+- Use the actual context: metric, product, period, country, and result type.
+- Prefer a mix of: drill-down, comparison/trend, and business action.
+- Do not repeat the user's exact question.
+- Do not invent exact numbers, dates, products, or countries not present in the context.
+- Keep each question short enough for a clickable chip.
+
+Context JSON:
+""" + _compact_json(_suggestion_context(result, user_query))
+
+    try:
+        structured_llm = _suggestion_llm.with_structured_output(SuggestedQuestionModel)
+        response = structured_llm.invoke(prompt)
+        return _clean_suggested_questions(response.questions, user_query)
+    except Exception:
+        logger.exception("LLM suggested-question generation failed")
+        return []
+
+
+def build_suggested_questions(result: Dict[str, Any], user_query: str) -> List[str]:
+    llm_questions = _llm_suggested_questions(result, user_query)
+    if llm_questions:
+        return llm_questions
+    return _fallback_suggested_questions(result, user_query)
 
 
 def run_agent(
@@ -39,6 +449,8 @@ def run_agent(
         "chat_history": history,
     }
     result = _graph.invoke(state)
+    result = verify_and_correct_answer(result, user_query)
+    suggested_questions = build_suggested_questions(result, user_query)
     try:
         save_chat_turn(
             user_id=user_id,
@@ -60,6 +472,8 @@ def run_agent(
                 "event_plan_result": result.get("event_plan_result"),
                 "sku_intelligence_result": result.get("sku_intelligence_result"),
                 "tool_trace": result.get("tool_trace", []),
+                "answer_validation": result.get("answer_validation"),
+                "suggested_questions": suggested_questions,
             },
         )
     except Exception:
@@ -79,6 +493,8 @@ def run_agent(
         "email_result": result.get("email_result"),
         "event_plan_result": result.get("event_plan_result"),
         "sku_intelligence_result": result.get("sku_intelligence_result"),
+        "answer_validation": result.get("answer_validation"),
+        "suggested_questions": suggested_questions,
         "memory": history,
         "error": result.get("error"),
     }

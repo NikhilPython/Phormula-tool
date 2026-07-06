@@ -94,6 +94,7 @@ class AgentState(TypedDict, total=False):
     business_context: Dict[str, Any]
     advice: List[str]
     final_response: str
+    answer_validation: Dict[str, Any]
     email_result: Dict[str, Any]
     error: Optional[str]
 

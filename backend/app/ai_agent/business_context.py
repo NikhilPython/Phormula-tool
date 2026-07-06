@@ -450,11 +450,69 @@ def _history(
     return {"months": monthly_rows, "movement": movement}
 
 
-def _inventory_context(user_id: int, month_key: MonthKey, metric_name: Optional[str], user_query: str) -> Dict[str, Any]:
+def _compact_inventory_snapshot(
+    snapshot: Dict[str, Any],
+    product_query: Optional[str],
+    *,
+    limit: int = 8,
+) -> Dict[str, Any]:
+    rows = snapshot.get("per_sku") or []
+    product_text = (product_query or "").strip().lower()
+    matched_rows: List[Dict[str, Any]] = []
+
+    if product_text:
+        matched_rows = [
+            row for row in rows
+            if product_text in str(row.get("product_name", "")).lower()
+            or product_text in str(row.get("sku", "")).lower()
+        ]
+
+    selected_rows = matched_rows if matched_rows else rows[:limit]
+    selected_rows = selected_rows[:limit]
+    matched_total = sum(_safe_float(row.get("__metric__")) for row in matched_rows) if matched_rows else None
+
+    return {
+        "metric": snapshot.get("metric"),
+        "total": _round(snapshot.get("total")),
+        "period_label": snapshot.get("period_label"),
+        "snapshot_date": snapshot.get("snapshot_date"),
+        "source_table": snapshot.get("source_table"),
+        "note": snapshot.get("note"),
+        "row_count": len(rows),
+        "matched_product_query": product_query,
+        "matched_row_count": len(matched_rows),
+        "matched_total": _round(matched_total) if matched_total is not None else None,
+        "rows": [_clean_record(row) for row in selected_rows],
+    }
+
+
+def _inventory_context(
+    user_id: int,
+    country: str,
+    month_key: MonthKey,
+    metric_name: Optional[str],
+    user_query: str,
+    product_query: Optional[str] = None,
+) -> Dict[str, Any]:
     query = (user_query or "").lower()
+    business_inventory_triggers = [
+        "increase",
+        "improve",
+        "grow",
+        "sales",
+        "underperform",
+        "stockout",
+        "stock out",
+        "replenish",
+        "reorder",
+        "dispatch",
+        "planning",
+        "forecast",
+    ]
     wants_inventory = (
         metric_name in INVENTORY_METRICS
         or any(word in query for word in ["stock", "inventory", "coverage", "sell through", "days of supply", "reserved"])
+        or bool(product_query and any(word in query for word in business_inventory_triggers))
     )
     if not wants_inventory:
         return {"requested": False}
@@ -474,10 +532,23 @@ def _inventory_context(user_id: int, month_key: MonthKey, metric_name: Optional[
     snapshots: Dict[str, Any] = {}
     for metric in metrics:
         try:
-            snapshots[metric] = get_inventory_snapshot(user_id, metric, month_key.month, month_key.year)
+            snapshot = get_inventory_snapshot(
+                user_id=user_id,
+                metric_name=metric,
+                month=month_key.month,
+                year=month_key.year,
+                country=country,
+            )
+            snapshots[metric] = _compact_inventory_snapshot(snapshot, product_query)
         except Exception:
             snapshots[metric] = {"metric": metric, "note": "Unavailable"}
-    return {"requested": True, "period_label": month_key.label, "snapshots": snapshots}
+    return {
+        "requested": True,
+        "period_label": month_key.label,
+        "country": country,
+        "product_query": product_query,
+        "snapshots": snapshots,
+    }
 
 
 def _focus_products(sku_rows: pd.DataFrame, product_query: Optional[str]) -> List[Dict[str, Any]]:
@@ -583,7 +654,7 @@ def build_business_context(
         "rankings": _rankings(sku_rows),
         "focus_products": _focus_products(sku_rows, product_query),
         "history": _history(engine, user_id, country, loaded_months),
-        "inventory": _inventory_context(user_id, latest_month, metric_name, user_query),
+        "inventory": _inventory_context(user_id, country, latest_month, metric_name, user_query, product_query),
         "data_quality": {
             "row_count": int(len(sku_rows)),
             "has_sku_rows": bool(not sku_rows.empty),
