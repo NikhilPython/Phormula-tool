@@ -1612,6 +1612,7 @@ const metricColors = [
   "border border-[#FDD36F] border-t-4", // Units
   "border border-[#75BBDA] border-t-4", // Net Sales
   "border border-[#B75A5A] border-t-4", // ASP
+  "border border-[#C49466] border-t-4", // Ads
   "border border-[#7B9A6D] border-t-4", // CM2 Profit
   "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
   "border border-[#7B9A6D] border-t-4", // CM1 Profit
@@ -1619,13 +1620,13 @@ const metricColors = [
   "border border-[#7B9A6D] border-t-4", // Current Inventory
   "border border-[#C49466] border-t-4", // Stock Cover
   "border border-[#C49466] border-t-4", // Productwise Ads Spend
-  "border border-[#C49466] border-t-4", // Ads
 ];
 
 const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "ads", // ✅ Ads will now come beside ASP in drawer
   "cm2 profit",
   "cm2 profit per unit",
   "cm1 profit",
@@ -1633,7 +1634,6 @@ const metricOrder = [
   "current inventory",
   "stock cover",
   "productwise ads spend",
-  "ads",
 ];
 
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
