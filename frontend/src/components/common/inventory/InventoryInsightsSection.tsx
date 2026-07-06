@@ -47,6 +47,34 @@ type InventoryInsightsSectionProps = {
     heatmapExcelPeriodLabel?: string;
     heatmapExcelCompanyName?: string;
     heatmapExcelBrandName?: string;
+    inventoryAgeSummary?: {
+        total?: number;
+        current_month_units_sold_total?: number;
+        percentage_base_total?: number;
+        sellable_total?: number;
+        unfulfillable_total?: number;
+        total_units_summary?: {
+            current_month_units_sold?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            sellable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            unfulfillable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+        };
+        columns?: Record<
+            string,
+            {
+                total?: number;
+                percentage_share?: number;
+            }
+        >;
+    };
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
@@ -75,6 +103,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     heatmapExcelPeriodLabel = "",
     heatmapExcelCompanyName = "",
     heatmapExcelBrandName = "",
+    inventoryAgeSummary,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -118,6 +147,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         excelPeriodLabel={heatmapExcelPeriodLabel}
                         excelCompanyName={heatmapExcelCompanyName}
                         excelBrandName={heatmapExcelBrandName}
+                        inventoryAgeSummary={inventoryAgeSummary}
                     />
                 )}
 

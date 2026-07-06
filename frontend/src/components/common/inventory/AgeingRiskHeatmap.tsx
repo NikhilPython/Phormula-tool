@@ -62,6 +62,34 @@ type AgeingRiskHeatmapProps = {
     excelPeriodLabel?: string;
     excelCompanyName?: string;
     excelBrandName?: string;
+    inventoryAgeSummary?: {
+        total?: number;
+        current_month_units_sold_total?: number;
+        percentage_base_total?: number;
+        sellable_total?: number;
+        unfulfillable_total?: number;
+        total_units_summary?: {
+            current_month_units_sold?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            sellable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+            unfulfillable?: {
+                total?: number;
+                percentage_share?: number;
+            };
+        };
+        columns?: Record<
+            string,
+            {
+                total?: number;
+                percentage_share?: number;
+            }
+        >;
+    };
 };
 
 type HeatmapTableRow = AgeingRiskHeatmapRow & Row;
@@ -225,60 +253,98 @@ const buildAggregateRow = (
     return aggregate;
 };
 
+const bucketKeyToApiColumn: Record<string, string> = {
+    zeroToNinety: "inv-age-0-to-90-days",
+    ninetyOneToOneEighty: "inv-age-91-to-180-days",
+    zeroToOneEighty: "inv-age-0-to-180-days",
+    oneEightyOneToTwoSeventy: "inv-age-181-to-270-days",
+    twoSeventyOneToThreeSixtyFive: "inv-age-271-to-365-days",
+    threeSixtyFivePlus: "inv-age-365-plus-days",
+};
+
 const buildPercentageRow = (
     totalRow: AgeingRiskHeatmapRow,
     buckets: AgeingBucket[],
+    inventoryAgeSummary?: AgeingRiskHeatmapProps["inventoryAgeSummary"]
 ): AgeingRiskHeatmapRow => {
-    const sellableUnits = Number(totalRow.available ?? totalRow.totalUnits ?? 0);
-    const inboundUnits = Number(totalRow.inboundUnits || 0);
-    const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
-
-    // ✅ Backend percentage_base_total = sellable + inbound + unfulfillable
-    // Example: 2788 + 147 + 50 = 2985
-    const percentageBaseTotal = sellableUnits + inboundUnits + unfulfillableUnits;
+    const percentageBaseTotal = Number(
+        inventoryAgeSummary?.percentage_base_total || 0
+    );
 
     const percentageRow: AgeingRiskHeatmapRow = {
         productName: "% of Total",
         sku: "-",
-
-        available:
-            percentageBaseTotal > 0
-                ? (sellableUnits / percentageBaseTotal) * 100
-                : 0,
-
-        totalUnits:
-            percentageBaseTotal > 0
-                ? (sellableUnits / percentageBaseTotal) * 100
-                : 0,
-
-        inboundUnits:
-            percentageBaseTotal > 0
-                ? (inboundUnits / percentageBaseTotal) * 100
-                : 0,
-
-        unsellableUnits:
-            percentageBaseTotal > 0
-                ? (unfulfillableUnits / percentageBaseTotal) * 100
-                : 0,
-
+        available: 0,
+        totalUnits: 0,
+        inboundUnits: undefined,
+        unsellableUnits: 0,
         unitsSold: undefined,
-
         coverageRatio: undefined,
-
-        // ✅ NEW
         inventoryAlert: "",
-
         isPercentageRow: true,
     };
 
+    if (percentageBaseTotal > 0) {
+        buckets.forEach((bucket) => {
+            const apiColumn = bucketKeyToApiColumn[bucket.key];
+
+            const backendPercentage =
+                inventoryAgeSummary?.columns?.[apiColumn]?.percentage_share;
+
+            const backendTotal =
+                inventoryAgeSummary?.columns?.[apiColumn]?.total;
+
+            const frontendSplitTotal = Number(totalRow[bucket.key] || 0);
+
+            percentageRow[bucket.key] =
+                typeof backendPercentage === "number"
+                    ? backendPercentage
+                    : typeof backendTotal === "number"
+                        ? (backendTotal / percentageBaseTotal) * 100
+                        : frontendSplitTotal > 0
+                            ? (frontendSplitTotal / percentageBaseTotal) * 100
+                            : 0;
+        });
+
+        percentageRow.available =
+            inventoryAgeSummary?.total_units_summary?.sellable?.percentage_share ??
+            (
+                inventoryAgeSummary?.sellable_total
+                    ? (Number(inventoryAgeSummary.sellable_total) / percentageBaseTotal) * 100
+                    : 0
+            );
+
+        percentageRow.totalUnits = percentageRow.available;
+
+        percentageRow.unsellableUnits =
+            inventoryAgeSummary?.total_units_summary?.unfulfillable?.percentage_share ??
+            (
+                inventoryAgeSummary?.unfulfillable_total
+                    ? (Number(inventoryAgeSummary.unfulfillable_total) / percentageBaseTotal) * 100
+                    : 0
+            );
+
+        return percentageRow;
+    }
+
+    // fallback only when backend summary is missing
+    const sellableUnits = Number(totalRow.available ?? totalRow.totalUnits ?? 0);
+    const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
+    const fallbackBase = sellableUnits + unfulfillableUnits;
+
     buckets.forEach((bucket) => {
         const value = Number(totalRow[bucket.key] || 0);
-
         percentageRow[bucket.key] =
-            percentageBaseTotal > 0
-                ? (value / percentageBaseTotal) * 100
-                : 0;
+            fallbackBase > 0 ? (value / fallbackBase) * 100 : 0;
     });
+
+    percentageRow.available =
+        fallbackBase > 0 ? (sellableUnits / fallbackBase) * 100 : 0;
+
+    percentageRow.totalUnits = percentageRow.available;
+
+    percentageRow.unsellableUnits =
+        fallbackBase > 0 ? (unfulfillableUnits / fallbackBase) * 100 : 0;
 
     return percentageRow;
 };
@@ -303,6 +369,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     excelPeriodLabel = "",
     excelCompanyName = "",
     excelBrandName = "",
+    inventoryAgeSummary,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -319,9 +386,34 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             isTotalRow: true,
         });
 
+        if (inventoryAgeSummary) {
+            buckets.forEach((bucket) => {
+                const apiColumn = bucketKeyToApiColumn[bucket.key];
+                const backendTotal = inventoryAgeSummary.columns?.[apiColumn]?.total;
+
+                if (typeof backendTotal === "number") {
+                    totalRow[bucket.key] = backendTotal;
+                }
+            });
+
+            if (typeof inventoryAgeSummary.sellable_total === "number") {
+                totalRow.available = inventoryAgeSummary.sellable_total;
+                totalRow.totalUnits = inventoryAgeSummary.sellable_total;
+            }
+
+            if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
+                totalRow.unsellableUnits = inventoryAgeSummary.unfulfillable_total;
+            }
+
+            if (typeof inventoryAgeSummary.current_month_units_sold_total === "number") {
+                totalRow.unitsSold = inventoryAgeSummary.current_month_units_sold_total;
+            }
+        }
+
         const percentageRow = buildPercentageRow(
             totalRow,
             buckets,
+            inventoryAgeSummary
         );
 
         if (!canCollapse || isExpanded) {
@@ -340,7 +432,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
 
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows]);
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary]);
 
 
     const bucketMaxValues = useMemo(() => {
