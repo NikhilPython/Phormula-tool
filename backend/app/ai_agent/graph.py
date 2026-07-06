@@ -583,6 +583,9 @@ def _resolve_product_queries_from_data(engine: Any, user_id: int, country: str, 
 def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
     q = _normalize(query)
     metric_name = _metric_from_query(q)
+    wants_detailed_response = any(
+        x in q for x in ["detailed", "in detail", "full report", "deep dive", "comprehensive"]
+    )
     if any(x in q for x in ["hello", "hi", "hey", "thanks", "thank you"]):
         return RequestPlan("chat", "absolute", "lookup", "value_lookup", False, "short")
     if any(x in q for x in ["what is", "what does", "explain", "meaning of"]):
@@ -610,7 +613,7 @@ def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
         reasoning_mode=reasoning_mode,
         task_type="recommendation" if reasoning_mode == "decision" else ("diagnosis" if reasoning_mode == "analysis" else "value_lookup"),
         needs_advice=reasoning_mode in {"analysis", "decision"},
-        response_mode="detailed" if reasoning_mode in {"analysis", "decision"} else "short",
+        response_mode="detailed" if wants_detailed_response else "short",
         metric_name=metric_name,
         answer_shape=answer_shape,
         ranking_direction=ranking_direction,
@@ -637,6 +640,12 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
         analysis_type = result.analysis_type or fallback.analysis_type
         reasoning_mode = result.reasoning_mode or fallback.reasoning_mode
         task_type = result.task_type or fallback.task_type
+        wants_detailed_response = any(
+            x in q for x in ["detailed", "in detail", "full report", "deep dive", "comprehensive"]
+        )
+        response_mode = result.response_mode or fallback.response_mode
+        if not wants_detailed_response and reasoning_mode in {"analysis", "decision"}:
+            response_mode = "short"
         if analysis_type != "growth" and any(word in q for word in ["change", "increase", "decrease", "growth", "decline", "drop"]):
             analysis_type = "growth"
         if reasoning_mode != "decision" and any(trigger in q for trigger in ["improve", "optimize", "should", "recommend", "fix"]):
@@ -645,6 +654,8 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
         elif reasoning_mode == "lookup" and any(trigger in q for trigger in ["why", "reason", "underperform"]):
             reasoning_mode = "analysis"
             task_type = "diagnosis"
+        if not wants_detailed_response and reasoning_mode in {"analysis", "decision"}:
+            response_mode = "short"
         if analysis_type == "growth":
             answer_shape = "trend"
         dimension = "sku" if (subject_scope in {"product", "products"} or product_query or product_queries) else fallback.dimension
@@ -654,7 +665,7 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
             reasoning_mode=reasoning_mode,
             task_type=task_type,
             needs_advice=bool(result.needs_advice or reasoning_mode in {"analysis", "decision"}),
-            response_mode=result.response_mode or fallback.response_mode,
+            response_mode=response_mode,
             metric_name=metric_name,
             dimension=dimension,
             product_query=product_query,
@@ -3597,6 +3608,7 @@ def _render_response(state: AgentState) -> AgentState:
                         "question": analysis.get("question"),
                         "reasoning_mode": analysis.get("reasoning_mode"),
                         "task_type": analysis.get("task_type"),
+                        "response_mode": state.get("response_mode"),
                         "metric_name": analysis.get("metric_name"),
                         "metric_names": analysis.get("metric_names"),
                         "product_query": analysis.get("product_query"),
