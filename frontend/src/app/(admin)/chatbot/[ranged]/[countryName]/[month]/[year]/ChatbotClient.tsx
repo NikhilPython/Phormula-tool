@@ -1,12 +1,11 @@
 'use client'
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import { useParams } from 'next/navigation'
 import './style.css'
 import Delete from '@/components/chatbot/Delete'
 import RightArrow from '@/components/chatbot/RightArrow'
-import { Copy, Share2, ThumbsDown, ThumbsUp, Dot } from 'lucide-react'
+import { Copy, Share2, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useChatbotStore } from "@/lib/store/chatbotStore";
 
 // ---------- Types ----------
@@ -40,6 +39,12 @@ type ParsedAI = {
   details: ParsedDetail[]
   weeks: ParsedWeek[]
 }
+
+type AssistantBlock =
+  | { type: 'heading'; text: string; level: 2 | 3 }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'table'; headers: string[]; rows: string[][] }
 
 // ---------- Helpers ----------
 
@@ -152,6 +157,213 @@ function parseAIResponse(rawText: string): ParsedAI {
   }
 
   return result
+}
+
+const stripOuterMarkdown = (value: string) =>
+  value
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\*\*(.+)\*\*$/, '$1')
+    .replace(/^__(.+)__$/, '$1')
+    .trim()
+
+const isTableSeparatorLine = (line: string) =>
+  /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line.trim())
+
+const parsePipeRow = (line: string) =>
+  line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => stripOuterMarkdown(cell.trim()))
+
+const isPipeTableLine = (line: string) => {
+  const trimmed = line.trim()
+  return trimmed.includes('|') && trimmed.replace(/[^|]/g, '').length >= 2 && parsePipeRow(trimmed).length >= 2
+}
+
+const headingFromLine = (line: string): AssistantBlock | null => {
+  const trimmed = line.trim()
+  const markdownHeading = trimmed.match(/^(#{2,6})\s+(.+)$/)
+  if (markdownHeading) {
+    return {
+      type: 'heading',
+      level: markdownHeading[1].length <= 2 ? 2 : 3,
+      text: stripOuterMarkdown(markdownHeading[2]),
+    }
+  }
+
+  const boldOnly = trimmed.match(/^\*\*([^*]+?)\*\*:?$/)
+  if (boldOnly) {
+    return { type: 'heading', level: 3, text: stripOuterMarkdown(boldOnly[1].replace(/:$/, '')) }
+  }
+
+  const knownSection = trimmed.match(/^(Summary|Summary Table|Breakdown|Actions|Consolidated Actions|Recommendations?|Next Steps?|Key Metric to Improve|Data Limitations|Bottom Line|Analysis|Insights?):?$/i)
+  if (knownSection) {
+    return { type: 'heading', level: 3, text: stripOuterMarkdown(knownSection[1]) }
+  }
+
+  const shortLabel = trimmed.match(/^([A-Za-z][A-Za-z0-9 /&().,+-]{2,64}):$/)
+  if (shortLabel) {
+    return { type: 'heading', level: 3, text: stripOuterMarkdown(shortLabel[1]) }
+  }
+
+  return null
+}
+
+const listItemFromLine = (line: string): { ordered: boolean; text: string } | null => {
+  const trimmed = line.trim()
+  const bullet = trimmed.match(/^(?:[-*]|\u2022)\s+(.+)$/)
+  if (bullet) return { ordered: false, text: bullet[1].trim() }
+
+  const ordered = trimmed.match(/^(?:\d+[\.)]|[ivxlcdm]+[\.)])\s+(.+)$/i)
+  if (ordered) return { ordered: true, text: ordered[1].trim() }
+
+  return null
+}
+
+function parseAssistantBlocks(text: string): AssistantBlock[] {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const blocks: AssistantBlock[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i].trim()
+    if (!line || line.startsWith('```')) {
+      i += 1
+      continue
+    }
+
+    if (isPipeTableLine(line)) {
+      const tableLines: string[] = []
+      let j = i
+      while (j < lines.length && isPipeTableLine(lines[j])) {
+        tableLines.push(lines[j].trim())
+        j += 1
+      }
+
+      const hasSeparator = tableLines.some((tableLine) => isTableSeparatorLine(tableLine))
+      const rows = tableLines
+        .filter((tableLine) => !isTableSeparatorLine(tableLine))
+        .map(parsePipeRow)
+        .filter((row) => row.some(Boolean))
+
+      if (rows.length > 0 && (hasSeparator || rows.length > 1)) {
+        blocks.push({ type: 'table', headers: rows[0], rows: rows.slice(1) })
+        i = j
+        continue
+      }
+    }
+
+    const heading = headingFromLine(line)
+    if (heading) {
+      blocks.push(heading)
+      i += 1
+      continue
+    }
+
+    const listItem = listItemFromLine(line)
+    if (listItem) {
+      const items: string[] = []
+      const ordered = listItem.ordered
+      let j = i
+      while (j < lines.length) {
+        const nextItem = listItemFromLine(lines[j])
+        if (!nextItem || nextItem.ordered !== ordered) break
+        items.push(nextItem.text)
+        j += 1
+      }
+      blocks.push({ type: 'list', ordered, items })
+      i = j
+      continue
+    }
+
+    blocks.push({ type: 'paragraph', text: line })
+    i += 1
+  }
+
+  return blocks
+}
+
+function renderInlineText(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`)/g).filter(Boolean)
+
+  return parts.map((part, idx) => {
+    if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
+      return <strong key={idx}>{part.slice(2, -2)}</strong>
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={idx}>{part.slice(1, -1)}</code>
+    }
+    return <React.Fragment key={idx}>{part}</React.Fragment>
+  })
+}
+
+function renderParagraphText(text: string): React.ReactNode {
+  const labelValue = text.match(/^(\*\*)?([A-Za-z][A-Za-z0-9 /&().,+-]{2,64}):(\*\*)?\s+(.+)$/)
+  if (labelValue) {
+    return (
+      <>
+        <strong>{stripOuterMarkdown(labelValue[2])}:</strong> {renderInlineText(labelValue[4])}
+      </>
+    )
+  }
+
+  return renderInlineText(text)
+}
+
+function renderAssistantResponse(text: string) {
+  const blocks = parseAssistantBlocks(text)
+  if (!blocks.length) return <span>{text}</span>
+
+  return (
+    <div className="assistant-output">
+      {blocks.map((block, idx) => {
+        if (block.type === 'heading') {
+          const Tag: 'h2' | 'h3' = block.level === 2 ? 'h2' : 'h3'
+          return <Tag key={idx}>{renderInlineText(block.text)}</Tag>
+        }
+
+        if (block.type === 'list') {
+          const ListTag: 'ol' | 'ul' = block.ordered ? 'ol' : 'ul'
+          return (
+            <ListTag key={idx}>
+              {block.items.map((item, itemIdx) => (
+                <li key={itemIdx}>{renderParagraphText(item)}</li>
+              ))}
+            </ListTag>
+          )
+        }
+
+        if (block.type === 'table') {
+          return (
+            <div key={idx} className="assistant-table-wrap" role="region" aria-label="Response table">
+              <table className="assistant-table">
+                <thead>
+                  <tr>
+                    {block.headers.map((header, headerIdx) => (
+                      <th key={headerIdx}>{renderInlineText(header)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIdx) => (
+                    <tr key={rowIdx}>
+                      {block.headers.map((_, cellIdx) => (
+                        <td key={cellIdx}>{renderInlineText(row[cellIdx] || '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+
+        return <p key={idx}>{renderParagraphText(block.text)}</p>
+      })}
+    </div>
+  )
 }
 
 // ---------- Page component ----------
@@ -621,77 +833,8 @@ export default function ChatbotPage() {
                                 return renderJsonResponse(parsedJson)
                               }
 
-                              // -------- OLD TEXT MODE --------
-                              const parsed = parseAIResponse(msg.text)
-                              const isStructured =
-                                parsed.weeks.length > 0 ||
-                                /Title:/i.test(msg.text) ||
-                                /Week\s+\d+/i.test(msg.text)
-
-                              if (isStructured && (parsed.title || parsed.details.length > 0)) {
-                                return (
-                                  <div className="space-y-1">
-                                    {parsed.title && (
-                                      <h3 className="font-semibold text-gray-800">{parsed.title}</h3>
-                                    )}
-                                    {parsed.period && (
-                                      <p className="text-sm text-gray-500">{parsed.period}</p>
-                                    )}
-                                    {parsed.weeks.length > 0 && (
-                                      <div className="mt-2 space-y-2">
-                                        {parsed.weeks.map((w, idx) => (
-                                          <div key={idx} className="mt-2">
-                                            <h4 className="font-semibold text-sm text-gray-800">
-                                              {w.week}
-                                            </h4>
-                                            <ul className="list-disc pl-5 text-xs sm:text-sm text-gray-700 space-y-1">
-                                              {w.actions.map((action, i) => (
-                                                <li key={i}>{action}</li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    <ul className="space-y-2">
-                                      {parsed.details.map((d, i) => (
-                                        <li
-                                          key={i}
-                                          className="flex items-start gap-2 leading-relaxed"
-                                        >
-                                          <Dot className="mt-1 shrink-0" size={18} />
-                                          <div className="text-xs sm:text-sm">
-                                            <span className="font-bold text-gray-900">
-                                              {d.label}:
-                                            </span>{' '}
-                                            {d.value.split('\n').map((line, idx) => (
-                                              <span key={idx}>
-                                                {idx > 0 && <br />}
-                                                <span className="text-gray-700">{line}</span>
-                                              </span>
-                                            ))}
-                                          </div>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )
-                              } else {
-                                // Default: render as Markdown
-
-
-                                return (
-                                  <div className="markdown-body">
-                                    <div className="markdown-body">
-                                      <ReactMarkdown>
-                                        {convertPlainTextToMarkdown(msg.text)}
-                                      </ReactMarkdown>
-                                    </div>
-                                  </div>
-                                );
-
-                              }
+                              // -------- TEXT MODE --------
+                              return renderAssistantResponse(msg.text)
                             })()
                           ) : (
                             msg.text

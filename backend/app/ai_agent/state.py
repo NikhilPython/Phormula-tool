@@ -91,6 +91,7 @@ class AgentState(TypedDict, total=False):
     current_metrics: Dict[str, Any]
     comparison: Dict[str, Any]
     analysis_result: Dict[str, Any]
+    business_context: Dict[str, Any]
     advice: List[str]
     final_response: str
     email_result: Dict[str, Any]

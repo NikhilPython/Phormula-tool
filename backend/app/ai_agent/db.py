@@ -36,9 +36,25 @@ MONEY_METRICS = {
     "gross_sales",
     "profit",
     "cm2_profit",
+    "total_cm2_profit",
+
+    # Ads spend
     "advertising_total",
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "brand_spend",
+    "display_spend",
+
+    # Ads sales
+    "sp_ads_sales",
+    "sb_ads_sales",
+    "sd_ads_sales",
+    "ads_sale_amount",
+
     "platform_fee",
     "amazon_fee",
+    "amazon_fees",
     "fba_fees",
     "selling_fees",
     "refund_sales",
@@ -135,10 +151,7 @@ def resolve_nse_table_name(user_id: int, country: str, month: int | str, year: i
     month_num = normalize_month(month)
     mk = MonthKey(year=year, month=month_num)
 
-    if country == "global":
-        return f"skuwisemonthly_{user_id}_global_{mk.table_suffix}_table"
-
-    return f"nse_{user_id}_{country}_{mk.table_suffix}"
+    return f"skuwisemonthly_{user_id}_{country}_{mk.table_suffix}"
 
 
 def table_exists(engine: Engine, table_name: str) -> bool:
@@ -152,6 +165,48 @@ def table_exists(engine: Engine, table_name: str) -> bool:
     """)
     with engine.connect() as conn:
         return bool(conn.execute(query, {"table_name": table_name}).scalar())
+
+def normalize_skuwisemonthly_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Makes skuwisemonthly table compatible with this metric engine.
+
+    Productwise:
+    - ads spend = ads_spend
+    - CM2 profit = cm2_profit
+
+    Total/month:
+    - ads spend = total_ads
+    - CM2 profit = total_cm2_profit
+    """
+
+    df = df.copy()
+
+    alias_map = {
+        # Productwise ads compatibility
+        "advertising_total": "ads_spend",
+        "advertising_fees": "ads_spend",
+
+        # Productwise COGS compatibility
+        "cost_of_unit_sold": "cogs",
+
+        # Amazon fee compatibility
+        "amazon_fee": "amazon_fees",
+
+        # Tax / credits compatibility
+        "tex_and_credits": "tax_and_credits",
+
+        # CM2 margin compatibility
+        "cm2_margins": "cm2_profit_per",
+
+        # Reimbursement spelling compatibility
+        "rembursement_fee": "current_net_reimbursement",
+    }
+
+    for expected_col, source_col in alias_map.items():
+        if expected_col not in df.columns and source_col in df.columns:
+            df[expected_col] = df[source_col]
+
+    return df
 
 
 def fetch_nse_month_df(
@@ -173,17 +228,20 @@ def fetch_nse_month_df(
     if df.empty:
         raise ValueError(f"no data found in table {table_name}")
 
-    if country.lower() == "global":
-        missing_cols = {"sku", "product_name"} - set(df.columns)
-        if missing_cols:
-            raise ValueError(f"global table missing required columns: {missing_cols}")
+    missing_cols = {"sku", "product_name"} - set(df.columns)
+    if missing_cols:
+        raise ValueError(f"{table_name} missing required columns: {missing_cols}")
 
-    # ✅ Fix: make only these fee columns absolute
+    # New skuwisemonthly compatibility aliases
+    df = normalize_skuwisemonthly_columns(df)
+
+    # Make only these fee columns absolute
     for col in ["platform_fee", "platform_fee_inventory_storage"]:
         if col in df.columns:
-            df[col] = df[col].abs()
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).abs()
 
     return df
+
 
 
 def fetch_total_row(df: pd.DataFrame) -> pd.Series:
@@ -369,7 +427,28 @@ SKU_ADDITIVE_METRICS = {
     # -------- ADS --------
     "visible_ads": MetricDef("visible_ads", "visible_ads", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
     "dealsvouchar_ads": MetricDef("dealsvouchar_ads", "dealsvouchar_ads", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
-    "advertising_total": MetricDef("advertising_total", "advertising_total", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    # Productwise total ads spend
+    "ads_spend": MetricDef("ads_spend", "ads_spend", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    # Old metric name support, but productwise value should come from ads_spend
+    "advertising_total": MetricDef("advertising_total", "ads_spend", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    # Sponsored Product / Brand / Display spend
+    "product_spend": MetricDef("product_spend", "product_spend", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "brand_spend": MetricDef("brand_spend", "brand_spend", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "display_spend": MetricDef("display_spend", "display_spend", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    # Sponsored Product / Brand / Display sales
+    "sp_ads_sales": MetricDef("sp_ads_sales", "sp_ads_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "sb_ads_sales": MetricDef("sb_ads_sales", "sb_ads_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+    "sd_ads_sales": MetricDef("sd_ads_sales", "sd_ads_sales", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
+
+    # General ads performance
+    "ads_impressions": MetricDef("ads_impressions", "ads_impressions", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+    "ads_clicks": MetricDef("ads_clicks", "ads_clicks", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+    "ads_sale_units": MetricDef("ads_sale_units", "ads_sale_units", "sku_additive", "count", "sku", True, True, True, True, True, True, True),
+    "ads_sale_amount": MetricDef("ads_sale_amount", "ads_sale_amount", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
 
     # -------- OTHER --------
     "misc_transaction": MetricDef("misc_transaction", "misc_transaction", "sku_additive", "money", "sku", True, True, True, True, True, True, True),
@@ -390,15 +469,23 @@ SKU_ADDITIVE_METRICS = {
 
 TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
     "advertising": MetricDef(
-        "advertising", "advertising_total", "total_additive", "money", "total",
+        "advertising", "total_ads", "total_additive", "money", "total",
         False, True, True, True,
-        False,  # ❌ no product filter
-        False,  # ❌ no product breakdown
-        True,   # ✅ time breakdown
+        False,  # no product filter
+        False,  # no product breakdown
+        True,   # time breakdown
     ),
 
     "advertising_total": MetricDef(
-        "advertising_total", "advertising_total", "total_additive", "money", "total",
+        "advertising_total", "total_ads", "total_additive", "money", "total",
+        False, True, True, True,
+        False,
+        False,
+        True,
+    ),
+
+    "total_ads": MetricDef(
+        "total_ads", "total_ads", "total_additive", "money", "total",
         False, True, True, True,
         False,
         False,
@@ -453,7 +540,15 @@ TOTAL_ADDITIVE_METRICS: Dict[str, MetricDef] = {
     ),
 
     "cm2_profit": MetricDef(
-        "cm2_profit", "cm2_profit", "total_additive", "money", "total",
+        "cm2_profit", "total_cm2_profit", "total_additive", "money", "total",
+        False, True, True, True,
+        False,
+        False,
+        True,
+    ),
+
+    "total_cm2_profit": MetricDef(
+        "total_cm2_profit", "total_cm2_profit", "total_additive", "money", "total",
         False, True, True, True,
         False,
         False,
