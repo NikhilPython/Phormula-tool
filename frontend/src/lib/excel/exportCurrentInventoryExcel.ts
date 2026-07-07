@@ -4441,6 +4441,25 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
       right: { style: "thin", color: { rgb: "000000" } },
     };
 
+const backendPercentageRow = dataRows.find((row) => {
+  const productName = String(row?.productName || row?.["Product Name"] || "")
+    .trim()
+    .toLowerCase();
+
+  const sku = String(row?.sku || row?.SKU || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    row?.isPercentageRow === true ||
+    row?.is_percentage_row === true ||
+    productName === "% of total" ||
+    productName === "percentage" ||
+    sku === "% of total" ||
+    sku === "percentage"
+  );
+});
+
     const realRows = [...dataRows]
       .filter((row) => {
         const productName = String(row?.productName || "").trim().toLowerCase();
@@ -4449,15 +4468,19 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
         if (!productName && !sku) return false;
 
         return (
-          !row.isOthersRow &&
-          !row.isTotalRow &&
-          !row.isPercentageRow &&
-          productName !== "total" &&
-          productName !== "grand total" &&
-          productName !== "% of total" &&
-          sku !== "total" &&
-          sku !== "grand total"
-        );
+  !row.isOthersRow &&
+  !row.isTotalRow &&
+  !row.isPercentageRow &&
+  !row.is_percentage_row &&
+  productName !== "total" &&
+  productName !== "grand total" &&
+  productName !== "% of total" &&
+  productName !== "percentage" &&
+  sku !== "total" &&
+  sku !== "grand total" &&
+  sku !== "% of total" &&
+  sku !== "percentage"
+);
       })
       .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
 
@@ -4501,42 +4524,18 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
     totalRow.coverageRatio = "";
     totalRow.inventoryAlert = "";
 
-    const ageingTotal = buckets.reduce(
-      (sum, bucket) => sum + toNum(totalRow[bucket.key]),
-      0
-    );
-
-    const percentageRow: Record<string, any> = {
+const percentageRow: Record<string, any> | null = backendPercentageRow
+  ? {
+      ...backendPercentageRow,
       productName: "% of Total",
       sku: "",
       isPercentageRow: true,
-    };
+    }
+  : null;
 
-    buckets.forEach((bucket) => {
-      percentageRow[bucket.key] =
-        ageingTotal > 0
-          ? `${((toNum(totalRow[bucket.key]) / ageingTotal) * 100).toFixed(2)}%`
-          : "";
-    });
-
-    percentageRow.available =
-      ageingTotal > 0
-        ? `${((toNum(totalRow.available) / ageingTotal) * 100).toFixed(2)}%`
-        : "";
-
-    percentageRow.inboundUnits = "";
-    percentageRow.salesRank = "";
-
-    percentageRow.unsellableUnits =
-      ageingTotal > 0
-        ? `${((toNum(totalRow.unsellableUnits) / ageingTotal) * 100).toFixed(2)}%`
-        : "";
-
-    percentageRow.unitsSold = "";
-    percentageRow.coverageRatio = "";
-    percentageRow.inventoryAlert = "";
-
-    const exportRows = [...realRows, totalRow, percentageRow];
+const exportRows = percentageRow
+  ? [...realRows, totalRow, percentageRow]
+  : [...realRows, totalRow];
 
     const topExtraLines = [
       `Country : ${titleCountry}`,
@@ -4558,6 +4557,19 @@ const headerTopRowIndex = topAoA.length;
 const headerSubRowIndex = headerTopRowIndex + 1;
 const firstBodyRowIndex = headerSubRowIndex + 1;
 
+const formatPercentValue = (value: any) => {
+  if (value === null || value === undefined || value === "") return "";
+
+  const raw = String(value).trim();
+
+  if (raw.endsWith("%")) return raw;
+
+  const n = toNum(value);
+  if (!Number.isFinite(n) || n === 0) return "";
+
+  return `${n.toFixed(2)}%`;
+};
+
     const bodyRows = exportRows.map((row, index) => {
       const isTotalRow = row.isTotalRow;
       const isPercentageRow = row.isPercentageRow;
@@ -4567,15 +4579,18 @@ const firstBodyRowIndex = headerSubRowIndex + 1;
         row.productName || "",
         isTotalRow || isPercentageRow ? "" : row.sku || "-",
 
-        ...buckets.map((bucket) => {
-          if (isPercentageRow) return row[bucket.key] || "";
-          const n = toNum(row[bucket.key]);
-          return n > 0 ? n : "";
-        }),
+       ...buckets.map((bucket) => {
+  if (isPercentageRow) {
+    return formatPercentValue(row[bucket.key]);
+  }
 
-        isPercentageRow
-          ? row.available || ""
-          : toNum(row.available ?? row.totalUnits),
+  const n = toNum(row[bucket.key]);
+  return n > 0 ? n : "";
+}),
+
+       isPercentageRow
+  ? formatPercentValue(row.available ?? row.totalUnits ?? row["Sellable Units"])
+  : toNum(row.available ?? row.totalUnits),
 
         isPercentageRow
           ? ""
@@ -4587,11 +4602,15 @@ const firstBodyRowIndex = headerSubRowIndex + 1;
           ? ""
           : row.salesRank || "",
 
-        isPercentageRow
-          ? row.unsellableUnits || ""
-          : toNum(row.unsellableUnits) > 0
-            ? toNum(row.unsellableUnits)
-            : "",
+      isPercentageRow
+  ? formatPercentValue(
+      row.unsellableUnits ??
+        row["unfulfillable-quantity"] ??
+        row["Unfulfillable Units"]
+    )
+  : toNum(row.unsellableUnits) > 0
+    ? toNum(row.unsellableUnits)
+    : "",
 
         isPercentageRow
           ? ""
