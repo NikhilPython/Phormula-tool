@@ -55,8 +55,8 @@ def _get_member_from_token():
         return None, _error("Invalid token", 401)
 
 def _get_frontend_base_url():
-    # set FRONTEND_BASE_URL in config/env for production
-    return current_app.config.get("FRONTEND_BASE_URL", "http://phormula.io/signin")
+    # set FRONTEND_BASE_URL in config/env for production, fallback to localhost
+    return current_app.config.get("FRONTEND_BASE_URL", "http://localhost:3000")
 
 # ==========================================================
 # Email (Reset Password)

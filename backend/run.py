@@ -1,5 +1,8 @@
 from app import create_app
 
+
 app = create_app()
 
-# No app.run() in production
+
+if __name__ == '__main__':
+    app.run(debug=True, use_reloader=False)
