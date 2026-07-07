@@ -3915,16 +3915,22 @@ export function exportAgeingRiskHeatmapExcel(params: {
     homeCurrencyCode,
   });
 
- const headers = [
+const leftHeaders = [
   "S.No.",
   "Product Name",
   "SKU",
-
-  // ✅ Sales Rank after SKU, same as UI
   "Sales Rank",
+];
 
-  ...buckets.map((bucket) => bucket.label),
-  "Sellable Units",
+const bucketHeaders = buckets.map((bucket) => bucket.label);
+
+const sellableHeaders = [
+  "Available",
+  "FC Transfer",
+  "Total",
+];
+
+const rightHeaders = [
   "Inbound Units",
   "Unfulfillable Units",
   "Units Sold",
@@ -3932,8 +3938,34 @@ export function exportAgeingRiskHeatmapExcel(params: {
   ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
 ];
 
+const headers = [
+  ...leftHeaders,
+  ...bucketHeaders,
+  ...sellableHeaders,
+  ...rightHeaders,
+];
+
+const headerTopRow = [
+  ...leftHeaders,
+  ...bucketHeaders,
+  "Sellable Units",
+  "",
+  "",
+  ...rightHeaders,
+];
+
+const headerSubRow = [
+  ...leftHeaders.map(() => ""),
+  ...bucketHeaders.map(() => ""),
+  ...sellableHeaders,
+  ...rightHeaders.map(() => ""),
+];
+
 const headerCount = headers.length;
 const ANCHOR_COL_1_BASED = headerCount;
+
+const SELLABLE_START_INDEX = leftHeaders.length + bucketHeaders.length;
+const SELLABLE_END_INDEX = SELLABLE_START_INDEX + sellableHeaders.length - 1;
 
 const tableBorder = {
   top: { style: "thin", color: { rgb: "000000" } },
@@ -4004,11 +4036,22 @@ buckets.forEach((bucket) => {
 });
 
 totalRow.available = realRows.reduce(
-  (sum, row) => sum + toNum(row.available ?? row.totalUnits),
+  (sum, row) => sum + toNum(row.available),
   0
 );
 
-totalRow.totalUnits = totalRow.available;
+totalRow.fcTransfer = realRows.reduce(
+  (sum, row) => sum + toNum(row.fcTransfer),
+  0
+);
+
+totalRow.totalUnits = realRows.reduce((sum, row) => {
+  const available = toNum(row.available);
+  const fcTransfer = toNum(row.fcTransfer);
+  const totalUnits = toNum(row.totalUnits);
+
+  return sum + (totalUnits > 0 ? totalUnits : available + fcTransfer);
+}, 0);
 
 totalRow.inboundUnits = realRows.reduce(
   (sum, row) => sum + toNum(row.inboundUnits),
@@ -4060,8 +4103,9 @@ const exportRows = percentageRow
     extraLines: topExtraLines,
   });
 
-  const headerRowIndex = topAoA.length;
-  const firstBodyRowIndex = headerRowIndex + 1;
+const headerTopRowIndex = topAoA.length;
+const headerSubRowIndex = headerTopRowIndex + 1;
+const firstBodyRowIndex = headerSubRowIndex + 1;
 
 const formatPercentValue = (value: any) => {
   if (value === null || value === undefined || value === "") return "";
@@ -4099,9 +4143,32 @@ const bodyRows = exportRows.map((row, index) => {
       return n > 0 ? n : "";
     }),
 
-    isPercentageRow
-      ? formatPercentValue(row.available ?? row.totalUnits ?? row["Sellable Units"])
-      : toNum(row.available ?? row.totalUnits),
+// ✅ Sellable Units > Available
+isPercentageRow
+  ? formatPercentValue(row.available ?? row["Available"])
+  : toNum(row.available) > 0
+    ? toNum(row.available)
+    : "",
+
+// ✅ Sellable Units > FC Transfer
+isPercentageRow
+  ? formatPercentValue(row.fcTransfer ?? row["FC Transfer"])
+  : toNum(row.fcTransfer) > 0
+    ? toNum(row.fcTransfer)
+    : "",
+
+// ✅ Sellable Units > Total
+isPercentageRow
+  ? formatPercentValue(row.totalUnits ?? row.available ?? row["Sellable Units"])
+  : (() => {
+      const available = toNum(row.available);
+      const fcTransfer = toNum(row.fcTransfer);
+      const totalUnits = toNum(row.totalUnits);
+
+      const finalTotal = totalUnits > 0 ? totalUnits : available + fcTransfer;
+
+      return finalTotal > 0 ? finalTotal : "";
+    })(),
 
     isPercentageRow
       ? ""
@@ -4137,12 +4204,32 @@ const bodyRows = exportRows.map((row, index) => {
   ];
 });
 
-  const sheetAoA = [...topAoA, headers, ...bodyRows];
-  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+const sheetAoA = [...topAoA, headerTopRow, headerSubRow, ...bodyRows];
+const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+const headerMerges = [];
+
+// ✅ Merge "Sellable Units" over Available / FC Transfer / Total
+headerMerges.push({
+  s: { r: headerTopRowIndex, c: SELLABLE_START_INDEX },
+  e: { r: headerTopRowIndex, c: SELLABLE_END_INDEX },
+});
+
+// ✅ Merge all other headers vertically across 2 header rows
+for (let c = 0; c < headerCount; c++) {
+  if (c >= SELLABLE_START_INDEX && c <= SELLABLE_END_INDEX) continue;
+
+  headerMerges.push({
+    s: { r: headerTopRowIndex, c },
+    e: { r: headerSubRowIndex, c },
+  });
+}
+
+ws["!merges"] = [...(ws["!merges"] || []), ...headerMerges];
 
   ws["!freeze"] = {
     xSplit: 0,
-    ySplit: headerRowIndex + 1,
+    ySplit: headerSubRowIndex + 1,
   };
 
   ws["!cols"] = headers.map((header) => {
@@ -4152,7 +4239,9 @@ const bodyRows = exportRows.map((row, index) => {
 
     if (header.includes("Days")) return { wch: 18 };
 
-    if (header === "Sellable Units") return { wch: 16 };
+ if (header === "Available") return { wch: 14 };
+if (header === "FC Transfer") return { wch: 14 };
+if (header === "Total") return { wch: 14 };
     if (header === "Inbound Units") return { wch: 16 };
     if (header === "Sales Rank") return { wch: 14 };
     if (header === "Unfulfillable Units") return { wch: 20 };
@@ -4167,8 +4256,9 @@ const bodyRows = exportRows.map((row, index) => {
 
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
 
+for (let r = headerTopRowIndex; r <= headerSubRowIndex; r++) {
   for (let c = 0; c < headerCount; c++) {
-    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+    const addr = XLSX.utils.encode_cell({ r, c });
 
     if (!ws[addr]) {
       ws[addr] = { t: "s", v: "" };
@@ -4192,6 +4282,7 @@ const bodyRows = exportRows.map((row, index) => {
       border: tableBorder,
     };
   }
+}
 
   for (let r = firstBodyRowIndex; r <= range.e.r; r++) {
     const productNameAddr = XLSX.utils.encode_cell({ r, c: 1 });
@@ -4463,8 +4554,9 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
       extraLines: topExtraLines,
     });
 
-    const headerRowIndex = topAoA.length;
-    const firstBodyRowIndex = headerRowIndex + 1;
+const headerTopRowIndex = topAoA.length;
+const headerSubRowIndex = headerTopRowIndex + 1;
+const firstBodyRowIndex = headerSubRowIndex + 1;
 
     const bodyRows = exportRows.map((row, index) => {
       const isTotalRow = row.isTotalRow;
@@ -4524,7 +4616,7 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
 
     ws["!freeze"] = {
       xSplit: 0,
-      ySplit: headerRowIndex + 1,
+      ySplit: headerSubRowIndex + 1,
     };
 
     ws["!cols"] = headers.map((header) => {
@@ -4546,31 +4638,33 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
 
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
 
-    for (let c = 0; c < headerCount; c++) {
-      const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+ for (let r = headerTopRowIndex; r <= headerSubRowIndex; r++) {
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r, c });
 
-      if (!ws[addr]) {
-        ws[addr] = { t: "s", v: "" };
-      }
-
-      ws[addr].s = {
-        ...(ws[addr].s || {}),
-        font: {
-          bold: true,
-          sz: 11,
-          color: { rgb: "000000" },
-        },
-        fill: {
-          fgColor: { rgb: "FFFFFF" },
-        },
-        alignment: {
-          horizontal: "center",
-          vertical: "center",
-          wrapText: true,
-        },
-        border: tableBorder,
-      };
+    if (!ws[addr]) {
+      ws[addr] = { t: "s", v: "" };
     }
+
+    ws[addr].s = {
+      ...(ws[addr].s || {}),
+      font: {
+        bold: true,
+        sz: 11,
+        color: { rgb: "000000" },
+      },
+      fill: {
+        fgColor: { rgb: "FFFFFF" },
+      },
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+      border: tableBorder,
+    };
+  }
+}
 
     for (let r = firstBodyRowIndex; r <= range.e.r; r++) {
       const productNameAddr = XLSX.utils.encode_cell({ r, c: 1 });

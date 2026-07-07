@@ -5666,7 +5666,49 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   }, [activeTab]);
 
+  const formatInventoryExcelCountryLabel = (country?: string) => {
+    const value = String(country || "").trim().toLowerCase();
 
+    if (value === "uk") return "UK";
+    if (value === "us") return "US";
+    if (value === "global") return "Global";
+    if (value === "ca" || value === "canada") return "Canada";
+    if (value === "eu" || value === "europe") return "Europe";
+
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : "";
+  };
+
+  const formatInventoryExcelMonthName = (month?: string) => {
+    const value = String(month || "").trim();
+
+    if (!value) return "";
+
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  };
+
+  const getInventoryInsightsPeriodLabel = () => {
+    if (range === "monthly") {
+      return `${formatInventoryExcelMonthName(selectedMonth)} ${selectedYear}`;
+    }
+
+    if (range === "quarterly") {
+      return `${selectedQuarter} ${selectedYear}`;
+    }
+
+    return `${selectedYear}`;
+  };
+
+  const getInventoryInsightsReportCountry = () => {
+    return countryName === "global"
+      ? selectedGlobalInventoryCountry
+      : countryName;
+  };
+
+  const getInventoryInsightsFileName = () => {
+    return `Inventory Insights Report - ${formatInventoryExcelCountryLabel(
+      getInventoryInsightsReportCountry()
+    )} - ${getInventoryInsightsPeriodLabel()}.xlsx`;
+  };
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
     if (isDemoMode) {
@@ -10182,11 +10224,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     onHeatmapProductClick={handleHeatmapProductClick}
                     showInventoryAlerts={false}
                     inventoryAgeSummary={inventoryInsightsData.inventoryAgeSummary}
-                    heatmapExcelCountryLabel={
-                      isGlobalPage
-                        ? selectedGlobalInventoryCountry.toUpperCase()
-                        : countryName?.toUpperCase()
-                    }
+
+                    // ✅ Excel filename/title/meta
+                    heatmapExcelFilename={getInventoryInsightsFileName()}
+                    heatmapExcelTitleLine="Inventory Insights Report"
+                    heatmapExcelCountryLabel={formatInventoryExcelCountryLabel(
+                      getInventoryInsightsReportCountry()
+                    )}
+                    heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
                   />
                 </>
               ) : (

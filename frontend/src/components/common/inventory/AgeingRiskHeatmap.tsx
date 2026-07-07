@@ -1441,7 +1441,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: displayRows,
+            dataRows: data,
             showInventoryAlerts,
         });
     };
