@@ -199,6 +199,10 @@ type ProductInsightBlock = {
   name: string;
   skuKey?: string;
   metrics: { label: string; value: string; color?: string }[];
+
+  // ✅ Only drawer metrics. Cards me nahi, drawer me show honge.
+  drawerOnlyMetrics?: { label: string; value: string; color?: string }[];
+
   journeyBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
@@ -307,13 +311,23 @@ const extractRecoAndInventoryBullets = (
   };
 };
 
-const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
+const parseProductInsightsBlocks = (
+  lines: string[],
+  range: RangeType = "monthly"
+): ProductInsightBlock[] => {
   const metricLabels = [
     "ASP",
     "Units",
     "Net sales",
     "CM1 profit",
     "CM1 profit per unit",
+    "CM2 profit",
+    "CM2 profit per unit",
+    "Productwise ads spend",
+    "Stock Cover",
+    "Coverage ratio",
+    "Current inventory",
+    "Current Inventory",
   ];
 
   const isMetric = (s: string) =>
@@ -326,8 +340,53 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   let inJourney = false;
   let inIncludedSkus = false;
 
+  const getMetricNumberValue = (value?: string) => {
+    const main = String(value || "").split("(")[0] || "";
+    const n = Number(main.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const cleanProfitMetricsForDisplay = (
+    block: ProductInsightBlock
+  ): ProductInsightBlock => {
+    const metrics = block.metrics || [];
+
+    const cm2Profit = metrics.find(
+      (m) => m.label.trim().toLowerCase() === "cm2 profit"
+    );
+
+    const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
+
+    // ✅ Monthly me CM2 tabhi show jab CM2 non-zero ho
+    // ✅ CM2 0 / missing ho to CM1 show
+    // ✅ Quarterly / Yearly me always CM1
+    const useCm1 = !isMonthlyRange(range) || !cm2Profit || cm2ProfitValue === 0;
+
+    const cleanedMetrics = metrics.filter((m) => {
+      const lower = m.label.trim().toLowerCase();
+
+      if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
+        return false;
+      }
+
+      if (!useCm1 && (lower === "cm1 profit" || lower === "cm1 profit per unit")) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return {
+      ...block,
+      metrics: cleanedMetrics,
+    };
+  };
+
   const pushCurrent = () => {
-    if (current && current.name.trim()) blocks.push(current);
+    if (current && current.name.trim()) {
+      blocks.push(cleanProfitMetricsForDisplay(current));
+    }
+
     current = null;
   };
 
@@ -374,6 +433,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
         name: isOther ? "Other SKUs" : cleanName || line,
         skuKey: skuFromParen || skuFromPrefix,
         metrics: [],
+        drawerOnlyMetrics: [],
         journeyBullets: [],
         recommendationBullets: [],
         inventoryBullets: [],
@@ -473,9 +533,60 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
               : "#414042"
           : "#414042";
 
+      const cleanLabel = label.trim();
+      const normalizedMetricLabel = cleanLabel.toLowerCase();
+
+      const finalLabel =
+        normalizedMetricLabel === "coverage ratio"
+          ? "Stock Cover"
+          : cleanLabel;
+
+      const finalValue =
+        normalizedMetricLabel === "coverage ratio" ||
+          normalizedMetricLabel === "stock cover"
+          ? getMetricNumberValue(value).toFixed(2)
+          : value;
+
+      // ✅ Current Inventory drawer-only, monthly only
+      if (normalizedMetricLabel === "current inventory") {
+        if (isMonthlyRange(range)) {
+          current.drawerOnlyMetrics = [
+            ...(current.drawerOnlyMetrics || []),
+            {
+              label: "Current Inventory",
+              value,
+              color,
+            },
+          ];
+        }
+
+        continue;
+      }
+
+      // ✅ Ads drawer-only, monthly only
+      if (normalizedMetricLabel === "productwise ads spend") {
+        if (isMonthlyRange(range)) {
+          current.drawerOnlyMetrics = [
+            ...(current.drawerOnlyMetrics || []),
+            {
+              label: "Ads",
+              value,
+              color: "#414042",
+            },
+          ];
+        }
+
+        continue;
+      }
+
+      // ✅ Stock Cover monthly only
+      if (!isMonthlyRange(range) && finalLabel.toLowerCase() === "stock cover") {
+        continue;
+      }
+
       current.metrics.push({
-        label: label.trim(),
-        value,
+        label: finalLabel,
+        value: finalValue,
         color,
       });
 
@@ -568,6 +679,18 @@ const formatMetricTitle = (label: string) => {
     .replace("Cm1", "CM1")
     .replace("Cm2", "CM2");
 };
+
+const formatDisplayMetricLabel = (label: string) => {
+  const normalized = String(label || "").trim().toLowerCase();
+
+  if (normalized === "stock cover") {
+    return "Stock Cover (Months)";
+  }
+
+  return formatMetricTitle(label);
+};
+
+const isMonthlyRange = (range?: RangeType) => range === "monthly";
 
 const formatUnitsNoDecimal = (value: any) => {
   return Math.round(Number(value ?? 0)).toLocaleString(undefined, {
@@ -697,19 +820,31 @@ const formatSummaryPeriod = (text?: string) => {
 };
 
 const metricColors = [
-  "border border-[#FDD36F] border-t-4",
-  "border border-[#75BBDA] border-t-4",
-  "border border-[#B75A5A] border-t-4",
-  "border border-[#7B9A6D] border-t-4",
-  "border border-[#C49466] border-t-4",
+  "border border-[#FDD36F] border-t-4", // Units
+  "border border-[#75BBDA] border-t-4", // Net Sales
+  "border border-[#B75A5A] border-t-4", // ASP
+  "border border-[#C49466] border-t-4", // Ads
+  "border border-[#7B9A6D] border-t-4", // CM2 Profit
+  "border border-[#C49466] border-t-4", // CM2 Profit Per Unit
+  "border border-[#7B9A6D] border-t-4", // CM1 Profit
+  "border border-[#C49466] border-t-4", // CM1 Profit Per Unit
+  "border border-[#7B9A6D] border-t-4", // Current Inventory
+  "border border-[#C49466] border-t-4", // Stock Cover
+  "border border-[#C49466] border-t-4", // Productwise Ads Spend
 ];
 
 const metricOrder = [
   "units",
   "net sales",
   "asp",
+  "ads",
+  "cm2 profit",
+  "cm2 profit per unit",
   "cm1 profit",
   "cm1 profit per unit",
+  "current inventory",
+  "stock cover",
+  "productwise ads spend",
 ];
 
 type InventoryCurrentApiResponse = {
@@ -873,15 +1008,44 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
 
-  const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
-    const aIndex = metricOrder.indexOf(a.label.toLowerCase());
-    const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+  const sortedMetrics = [
+    ...(block?.metrics || []),
+    ...(block?.drawerOnlyMetrics || []),
+  ]
+    .filter((m) => {
+      const lower = m.label.trim().toLowerCase();
 
-    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+      // ✅ Monthly me show, Quarterly/Yearly me hide
+      if (!isMonthlyRange(range)) {
+        return ![
+          "ads",
+          "productwise ads spend",
+          "stock cover",
+          "current inventory",
+        ].includes(lower);
+      }
 
-    return safeAIndex - safeBIndex;
-  });
+      return true;
+    })
+    // ✅ duplicate metrics remove: Stock Cover do baar nahi aayega
+    .filter((metric, index, arr) => {
+      const key = metric.label.trim().toLowerCase();
+
+      return (
+        arr.findIndex(
+          (item) => item.label.trim().toLowerCase() === key
+        ) === index
+      );
+    })
+    .sort((a, b) => {
+      const aIndex = metricOrder.indexOf(a.label.toLowerCase());
+      const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+
+      const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+      return safeAIndex - safeBIndex;
+    });
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
@@ -977,7 +1141,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-                              {formatMetricTitle(m.label)}
+                              {formatDisplayMetricLabel(m.label)}
                             </span>
                           </div>
 
@@ -1551,17 +1715,41 @@ const getInventoryRowSku = (row: InventoryCurrentRow) =>
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
-const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+const getInventoryRowAvailableUnits = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
-    "Sellable Units",
-    "sellable_units",
-    "sellableUnits",
-    "sellable_sum_last",
     "available",
-    "totalUnits",
-    "total_units",
-    "total_quantity",
+    "available_quantity",
+    "fulfillable_quantity",
+    "afn_fulfillable_quantity",
+    "afn-fulfillable-quantity",
   ]);
+};
+
+const getInventoryRowFcTransferUnits = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    "fc-transfer",
+    "fc_transfer",
+    "fcTransfer",
+    "reserved_fc_transfer",
+    "reserved-fc-transfer",
+  ]);
+};
+
+const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+  const available = getInventoryRowAvailableUnits(row);
+  const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+  return (
+    pickInventoryNumber(row, [
+      "Sellable Units",
+      "sellable_units",
+      "sellableUnits",
+      "sellable_sum_last",
+      "totalUnits",
+      "total_units",
+      "total_quantity",
+    ]) || available + fcTransfer
+  );
 };
 
 const getInventoryRowUnfulfillableUnits = (row: InventoryCurrentRow) => {
@@ -1749,9 +1937,9 @@ const getUniqueInventorySkuCount = (rows: any[]) => {
 };
 
 const getRowAgeingTotalUnits = (row: any) => {
-  const available = getInventoryRowTotalUnits(row);
+  const sellableUnits = getInventoryRowTotalUnits(row);
 
-  if (available > 0) return available;
+  if (sellableUnits > 0) return sellableUnits;
 
   return (
     toNum(
@@ -1901,12 +2089,35 @@ const buildDonutDataFromInventoryAgeSummary = (
 ): DonutChartItem[] => {
   const columns = inventoryAgeSummary?.columns || {};
 
+  const hasSplitFirst180 =
+    toNum(columns["inv-age-0-to-90-days"]?.total) > 0 ||
+    toNum(columns["inv-age-91-to-180-days"]?.total) > 0;
+
+
+  const first180Buckets = hasSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        column: "inv-age-0-to-90-days",
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        column: "inv-age-91-to-180-days",
+        color: "#FDD36F",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        column: "inv-age-0-to-180-days",
+        color: "#7B9A6D",
+      },
+    ];
+
+
   const summaryBuckets = [
-    {
-      bucket: "0–180 Days",
-      column: "inv-age-0-to-180-days",
-      color: "#7B9A6D",
-    },
+    ...first180Buckets,
     {
       bucket: "181–270 Days",
       column: "inv-age-181-to-270-days",
@@ -1923,6 +2134,7 @@ const buildDonutDataFromInventoryAgeSummary = (
       color: "#B75A5A",
     },
   ];
+
 
   return summaryBuckets
     .map((bucket) => {
@@ -2072,12 +2284,15 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
-      // ✅ Sellable Units should come from backend available column
-      const available = getInventoryRowTotalUnits(row);
+      const available = getInventoryRowAvailableUnits(row);
+
+      const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+      const sellableUnits = getInventoryRowTotalUnits(row);
 
       const inboundUnits = getInventoryRowInboundUnits(row);
 
-      const totalUnits = available || bucketTotal;
+      const totalUnits = sellableUnits || bucketTotal;
 
       const unitsSold = currentMonthUnitsSoldKey
         ? toNum(row?.[currentMonthUnitsSoldKey])
@@ -2107,9 +2322,12 @@ const buildInventoryInsightsFromResponses = (
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
-        available,
+
+        available,      // backend available
+        fcTransfer,     // backend fc-transfer
         inboundUnits,
-        totalUnits,
+        totalUnits,     // backend Sellable Units
+
         unsellableUnits: getInventoryRowUnfulfillableUnits(row),
         unitsSold,
         salesLast30Days,
@@ -2166,35 +2384,65 @@ const buildInventoryInsightsFromResponses = (
     selectedInventoryResponseForDonut?.inventory_age_summary
   );
 
+  const fallbackDonutData: DonutChartItem[] = isUsingSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        units: overallAgeing.zeroToNinety,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        units: overallAgeing.ninetyOneToOneEighty,
+        color: "#FDD36F",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        units: overallAgeing.zeroToOneEighty,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ];
+
+
   const donutData: DonutChartItem[] =
     backendSummaryDonutData.length > 0
       ? backendSummaryDonutData
-      : [
-        {
-          bucket: "0–180 Days",
-          units: overallAgeing.zeroToOneEighty,
-          color: "#7B9A6D",
-        },
-        {
-          bucket: "181–270 Days",
-          units: overallAgeing.oneEightyOneToTwoSeventy,
-          color: "#ED9F50",
-        },
-        {
-          bucket: "271–365 Days",
-          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-          color: "#C49466",
-        },
-        {
-          bucket: "365+ Days",
-          units: overallAgeing.threeSixtyFivePlus,
-          color: "#B75A5A",
-        },
-      ].filter((item) => item.units > 0);
+      : fallbackDonutData.filter((item) => item.units > 0);
 
   const donutTotalUnits =
-    selectedInventoryResponseForDonut?.inventory_age_summary?.percentage_base_total ??
-    selectedInventoryResponseForDonut?.inventory_age_summary?.total ??
+    selectedInventoryResponseForDonut?.inventory_age_summary?.sellable_total ??
     donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const selectedTrendOption =
@@ -3229,7 +3477,7 @@ export default function InputCostPage({ params }: Params) {
   }, [skuData, countryName]);
 
   const aiProductBlocks = useMemo(() => {
-    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
+    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [], range)
   }, [aiPanel?.skuInsightsBullets]);
 
   const aiSkuActions = useMemo(() => {
@@ -4700,7 +4948,7 @@ export default function InputCostPage({ params }: Params) {
   }, [skuData, visibleColumns]);
 
   const openAiProductDrawerByName = useCallback(
-    (productName: string, sku?: string) => {
+    (productName: string, sku?: string, inventoryRow?: any) => {
       const cleanName = String(productName || "").trim();
       const cleanSku = String(sku || "").trim();
 
@@ -4741,7 +4989,47 @@ export default function InputCostPage({ params }: Params) {
         null;
 
       setSelectedAiProductRecObj(recObj);
-      setSelectedAiProductBlock(block);
+      const monthlyDrawerMetrics =
+        isMonthlyRange(range) && inventoryRow
+          ? [
+            {
+              label: "Current Inventory",
+              value: formatUnitsNoDecimal(
+                inventoryRow.available ??
+                inventoryRow.totalUnits ??
+                inventoryRow.total_units ??
+                inventoryRow.total_quantity ??
+                0
+              ),
+            },
+            {
+              label: "Stock Cover",
+              value:
+                Number(inventoryRow.coverageRatio ?? 0) > 0
+                  ? Number(inventoryRow.coverageRatio).toFixed(2)
+                  : "-",
+            },
+          ]
+          : [];
+
+      const existingDrawerOnlyMetrics = block.drawerOnlyMetrics || [];
+
+      const nextBlock: ProductInsightBlock = {
+        ...block,
+        drawerOnlyMetrics: [
+          ...existingDrawerOnlyMetrics,
+          ...monthlyDrawerMetrics.filter(
+            (metric) =>
+              !existingDrawerOnlyMetrics.some(
+                (existing) =>
+                  existing.label.trim().toLowerCase() ===
+                  metric.label.trim().toLowerCase()
+              )
+          ),
+        ],
+      };
+
+      setSelectedAiProductBlock(nextBlock);
     },
     [aiProductBlocks, aiSkuActions, inputCostNameToSkuMap]
   );
@@ -4755,7 +5043,7 @@ export default function InputCostPage({ params }: Params) {
 
       if (!productName && !sku) return;
 
-      openAiProductDrawerByName(productName, sku);
+      openAiProductDrawerByName(productName, sku, heatmapRow);
     },
     [openAiProductDrawerByName]
   );

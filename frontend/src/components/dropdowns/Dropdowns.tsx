@@ -997,20 +997,20 @@ const parseProductInsightsBlocks = (
 
       // ✅ Current Inventory sirf drawer me dikhega
       // ✅ Current Inventory sirf monthly drawer me dikhega
-if (normalizedMetricLabel === "current inventory") {
-  if (isMonthlyRange(range)) {
-    current.drawerOnlyMetrics = [
-      ...(current.drawerOnlyMetrics || []),
-      {
-        label: "Current Inventory",
-        value,
-        color,
-      },
-    ];
-  }
+      if (normalizedMetricLabel === "current inventory") {
+        if (isMonthlyRange(range)) {
+          current.drawerOnlyMetrics = [
+            ...(current.drawerOnlyMetrics || []),
+            {
+              label: "Current Inventory",
+              value,
+              color,
+            },
+          ];
+        }
 
-  continue;
-}
+        continue;
+      }
 
       // ✅ Productwise ads spend sirf monthly drawer me dikhega
       if (normalizedMetricLabel === "productwise ads spend") {
@@ -1518,24 +1518,24 @@ const buildDrawerBlockFromSkuRow = (
 
     // ✅ Sirf drawer me show hoga
     drawerOnlyMetrics: [
-  ...(isMonthlyRange(range)
-    ? [
-        {
-          label: "Current Inventory",
-          value: formatInventoryUnitsValue(row?.current_inventory),
-        },
-        {
-          label: "Ads",
-          value: formatMetricObjectWithDelta(
-            row?.productwise_ads_spend,
-            "money",
-            currencySymbol
-          ),
-          color: "#414042",
-        },
-      ]
-    : []),
-],
+      ...(isMonthlyRange(range)
+        ? [
+          {
+            label: "Current Inventory",
+            value: formatInventoryUnitsValue(row?.current_inventory),
+          },
+          {
+            label: "Ads",
+            value: formatMetricObjectWithDelta(
+              row?.productwise_ads_spend,
+              "money",
+              currencySymbol
+            ),
+            color: "#414042",
+          },
+        ]
+        : []),
+    ],
 
     journeyBullets: Array.isArray(recObj?.journey_summary)
       ? recObj.journey_summary
@@ -1688,14 +1688,22 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
     ...(block?.drawerOnlyMetrics || []),
   ]
     .filter((m) => {
-  const lower = m.label.trim().toLowerCase();
+      const lower = m.label.trim().toLowerCase();
 
-  if (!isMonthlyRange(range)) {
-    return lower !== "stock cover" && lower !== "current inventory";
-  }
+      // ✅ Quarterly / Yearly me drawer metric cards se ye teeno hide
+      if (!isMonthlyRange(range)) {
+        return ![
+          "ads",
+          "productwise ads spend",
+          "stock cover",
+          "current inventory",
+          "cm2 profit",
+          "cm2 profit per unit",
+        ].includes(lower);
+      }
 
-  return true;
-})
+      return true;
+    })
     .sort((a, b) => {
       const aIndex = metricOrder.indexOf(a.label.toLowerCase());
       const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -3712,6 +3720,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 25,
     threeSixtyFivePlus: 10,
     available: 625,
+    fcTransfer: 0,
     inboundUnits: 40,
     totalUnits: 625,
     unsellableUnits: 0,
@@ -3724,6 +3733,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 90,
     threeSixtyFivePlus: 130,
     available: 760,
+    fcTransfer: 0,
     inboundUnits: 65,
     totalUnits: 760,
     unsellableUnits: 0,
@@ -3736,6 +3746,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 5,
     threeSixtyFivePlus: 0,
     available: 660,
+    fcTransfer: 0,
     inboundUnits: 25,
     totalUnits: 660,
     unsellableUnits: 0,
@@ -3748,6 +3759,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 220,
     threeSixtyFivePlus: 310,
     available: 900,
+    fcTransfer: 0,
     inboundUnits: 90,
     totalUnits: 900,
     unsellableUnits: 0,
@@ -3760,6 +3772,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 40,
     threeSixtyFivePlus: 35,
     available: 680,
+    fcTransfer: 0,
     inboundUnits: 35,
     totalUnits: 680,
     unsellableUnits: 0,
@@ -3772,6 +3785,7 @@ const heatmapData: AgeingRiskHeatmapRow[] = [
     twoSeventyOneToThreeSixtyFive: 80,
     threeSixtyFivePlus: 60,
     available: 600,
+    fcTransfer: 0,
     inboundUnits: 55,
     totalUnits: 600,
     unsellableUnits: 0,
@@ -3961,13 +3975,33 @@ const formatInventoryStorageCost = (
   })}`;
 };
 
-const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
-  // ✅ Prefer backend available column for Sellable Units
-  const available = toNum(row?.available);
+const getInventoryRowAvailableUnits = (row: InventoryCurrentRow) => {
+  return toNum(
+    row?.available ??
+    row?.available_quantity ??
+    row?.fulfillable_quantity
+  );
+};
 
-  if (available > 0) return available;
+const getInventoryRowFcTransferUnits = (row: InventoryCurrentRow) => {
+  return toNum(
+    row?.["fc-transfer"] ??
+    row?.fc_transfer ??
+    row?.reserved_fc_transfer
+  );
+};
 
-  return toNum(row?.total_quantity);
+const getInventoryRowSellableUnits = (row: InventoryCurrentRow) => {
+  const available = getInventoryRowAvailableUnits(row);
+  const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+  return (
+    toNum(
+      row?.["Sellable Units"] ??
+      row?.sellable_units ??
+      row?.sellableUnits
+    ) || available + fcTransfer
+  );
 };
 
 const monthLabelFromMonthName = (monthName: string) => {
@@ -3999,12 +4033,22 @@ const sumInventoryUnitsByKeys = (
 };
 
 const getRowAgeingTotalUnits = (row: InventoryCurrentRow) => {
-  return sumInventoryUnitsByKeys([row], [
-    "inv-age-0-to-180-days",
-    "inv-age-181-to-270-days",
-    "inv-age-271-to-365-days",
-    "inv-age-365-plus-days",
-  ]);
+  const sellableUnits = getInventoryRowSellableUnits(row);
+
+  if (sellableUnits > 0) return sellableUnits;
+
+  const splitFirst180 =
+    toNum(row?.["inv-age-0-to-90-days"]) +
+    toNum(row?.["inv-age-91-to-180-days"]);
+
+  const combinedFirst180 = toNum(row?.["inv-age-0-to-180-days"]);
+
+  return (
+    (splitFirst180 > 0 ? splitFirst180 : combinedFirst180) +
+    toNum(row?.["inv-age-181-to-270-days"]) +
+    toNum(row?.["inv-age-271-to-365-days"]) +
+    toNum(row?.["inv-age-365-plus-days"])
+  );
 };
 
 const hasInventoryValue = (row: InventoryCurrentRow, key: string) => {
@@ -4313,12 +4357,35 @@ const buildDonutDataFromInventoryAgeSummary = (
 ): DonutChartItem[] => {
   const columns = inventoryAgeSummary?.columns || {};
 
+  const hasSplitFirst180 =
+    toNum(columns["inv-age-0-to-90-days"]?.total) > 0 ||
+    toNum(columns["inv-age-91-to-180-days"]?.total) > 0;
+
+
+  const first180Buckets = hasSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        column: "inv-age-0-to-90-days",
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        column: "inv-age-91-to-180-days",
+        color: "#FDD36F",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        column: "inv-age-0-to-180-days",
+        color: "#7B9A6D",
+      },
+    ];
+
+
   const summaryBuckets = [
-    {
-      bucket: "0–180 Days",
-      column: "inv-age-0-to-180-days",
-      color: "#7B9A6D",
-    },
+    ...first180Buckets,
     {
       bucket: "181–270 Days",
       column: "inv-age-181-to-270-days",
@@ -4335,6 +4402,7 @@ const buildDonutDataFromInventoryAgeSummary = (
       color: "#B75A5A",
     },
   ];
+
 
   return summaryBuckets
     .map((bucket) => {
@@ -4431,13 +4499,11 @@ const buildInventoryInsightsFromResponses = (
       twoSeventyOneToThreeSixtyFive +
       threeSixtyFivePlus;
 
-    const available = toNum(
-      row?.["Sellable Units"] ??
-      row?.sellable_units ??
-      row?.sellableUnits ??
-      row?.sellable_sum_last ??
-      row?.available
-    );
+    const available = getInventoryRowAvailableUnits(row);
+
+    const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+    const sellableUnits = getInventoryRowSellableUnits(row);
 
     const inboundUnits = toNum(
       row?.["Inbound Units"] ??
@@ -4450,7 +4516,7 @@ const buildInventoryInsightsFromResponses = (
       row?.["Inbound Quantity"]
     );
 
-    const totalUnits = available || bucketTotal;
+    const totalUnits = sellableUnits || bucketTotal;
 
     const unsellableUnits = toNum(
       row?.["unfulfillable-quantity"] ??
@@ -4482,6 +4548,7 @@ const buildInventoryInsightsFromResponses = (
       threeSixtyFivePlus,
 
       available,
+      fcTransfer,
       inboundUnits,
       totalUnits,
       unsellableUnits,
@@ -4561,35 +4628,66 @@ const buildInventoryInsightsFromResponses = (
     latestResponse?.inventory_age_summary
   );
 
+  const fallbackDonutData: DonutChartItem[] = isUsingSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        units: overallAgeing.zeroToNinety,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        units: overallAgeing.ninetyOneToOneEighty,
+        color: "#FDD36F",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        units: overallAgeing.zeroToOneEighty,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ];
+
+
   const donutData: DonutChartItem[] =
     backendSummaryDonutData.length > 0
       ? backendSummaryDonutData
-      : [
-        {
-          bucket: "0–180 Days",
-          units: overallAgeing.zeroToOneEighty,
-          color: "#7B9A6D",
-        },
-        {
-          bucket: "181–270 Days",
-          units: overallAgeing.oneEightyOneToTwoSeventy,
-          color: "#ED9F50",
-        },
-        {
-          bucket: "271–365 Days",
-          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-          color: "#C49466",
-        },
-        {
-          bucket: "365+ Days",
-          units: overallAgeing.threeSixtyFivePlus,
-          color: "#B75A5A",
-        },
-      ].filter((item) => item.units > 0);
+      : fallbackDonutData.filter((item) => item.units > 0);
 
   const donutTotalUnits =
-    latestResponse?.inventory_age_summary?.percentage_base_total ??
-    latestResponse?.inventory_age_summary?.total ??
+    latestResponse?.inventory_age_summary?.sellable_total ??
+    latestResponse?.inventory_age_summary?.total_units_summary?.sellable?.total ??
     donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const trendData: AgeingTrendItem[] = [];
@@ -5492,8 +5590,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     useState<ProductBestPerformanceData | null>(null);
 
   const aiProductBlocks = useMemo(() => {
-    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
-  }, [aiPanel?.skuInsightsBullets]);
+    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [], range);
+  }, [aiPanel?.skuInsightsBullets, range]);
 
   const aiSkuActions = useMemo(() => {
     const recommendationsMap = aiPanel?.recommendationsMap;
@@ -9813,7 +9911,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   });
 
                 const firstInsightProductName =
-                  parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [])?.[0]?.name || "";
+                  parseProductInsightsBlocks(
+                    aiPanel?.skuInsightsBullets ?? [],
+                    productWiseRange as RangeType
+                  )?.[0]?.name || "";
 
                 const productWiseInitialProductName = isDemoMode
                   ? defaultTopProductName || firstInsightProductName || "Demo Product A"
@@ -9849,7 +9950,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                     // ✅ Same source as Dropdown drawer
                     sharedInsightData={{
-                      blocks: parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []),
+                      blocks: parseProductInsightsBlocks(
+                        aiPanel?.skuInsightsBullets ?? [],
+                        productWiseRange as RangeType
+                      ),
                       objective: aiPanel?.objective ?? null,
                       recommendationsMap: aiPanel?.recommendationsMap,
                       drawerPeriodText: aiPanel?.summaryBullets?.[0]
