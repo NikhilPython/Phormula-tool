@@ -508,7 +508,7 @@ export default function SkuRecommendationDrawer({
                     className="mb-2"
                   />
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
                     {sortedMetrics.map((m, i) => {
                       const { main, delta, deltaColor } = splitMetricValue(m.value);
 
