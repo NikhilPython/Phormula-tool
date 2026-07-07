@@ -1689,14 +1689,30 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   ]
     .filter((m) => {
       const lower = m.label.trim().toLowerCase();
+      const isGlobal = String(countryName || "").toLowerCase() === "global";
 
-      // ✅ Quarterly / Yearly me drawer metric cards se ye teeno hide
+      // ✅ Global me stock cover/current inventory kabhi mat dikhao
+      if (
+        isGlobal &&
+        [
+          "stock cover",
+          "stock cover (months)",
+          "current inventory",
+          "current inventory units",
+        ].includes(lower)
+      ) {
+        return false;
+      }
+
+      // ✅ Quarterly / Yearly me drawer metric cards se ye hide
       if (!isMonthlyRange(range)) {
         return ![
           "ads",
           "productwise ads spend",
           "stock cover",
+          "stock cover (months)",
           "current inventory",
+          "current inventory units",
           "cm2 profit",
           "cm2 profit per unit",
         ].includes(lower);
@@ -2498,6 +2514,46 @@ const ProductInsightsSection = ({
     );
   };
 
+  const getCountryLabelFromText = (text: string) => {
+    const match = String(text || "").trim().match(/^(UK|US|CA|India|IN)\s*:/i);
+    return match?.[1]?.toUpperCase() || "";
+  };
+
+  const cleanCountryPrefix = (text: string) => {
+    return String(text || "")
+      .replace(/^(UK|US|CA|India|IN)\s*:\s*/i, "")
+      .trim();
+  };
+
+  const buildGlobalCardRecommendationLines = (
+    block: ProductInsightBlock,
+    recObj: any
+  ) => {
+    const rawLines = dedupeRecommendationLines([
+      ...(block.recommendationBullets || []),
+      getActionTextFromRecObj(recObj),
+    ]);
+
+    const countryMap = new Map<string, string>();
+
+    rawLines.forEach((line) => {
+      const country = getCountryLabelFromText(line);
+
+      // ✅ Agar country prefix hai, per country sirf first normal recommendation rakho
+      if (country && !countryMap.has(country)) {
+        countryMap.set(country, `${country}: ${cleanCountryPrefix(line)}`);
+        return;
+      }
+
+      // ✅ Agar country prefix nahi hai, single fallback point
+      if (!country && !countryMap.has("GLOBAL")) {
+        countryMap.set("GLOBAL", line);
+      }
+    });
+
+    return Array.from(countryMap.values()).filter(Boolean);
+  };
+
   useEffect(() => {
     if (!hasBlocks) return;
     if (!selectedBlock) return;
@@ -2748,6 +2804,21 @@ const ProductInsightsSection = ({
           const sortedCardMetrics = [...(b.metrics || [])]
             .filter((m) => {
               const lower = m.label.trim().toLowerCase();
+              const isGlobal = String(countryName || "").toLowerCase() === "global";
+
+              // ✅ Global cards me stock cover/current inventory hide
+              if (
+                isGlobal &&
+                [
+                  "stock cover",
+                  "stock cover (months)",
+                  "current inventory",
+                  "current inventory units",
+                ].includes(lower)
+              ) {
+                return false;
+              }
+
               return isMonthlyRange(range) || lower !== "stock cover";
             })
             .sort((a, b) => {
@@ -2797,15 +2868,18 @@ const ProductInsightsSection = ({
               )}
               {(() => {
                 const recObj = getRecObjForBlock(b);
+                const isGlobal = String(countryName || "").toLowerCase() === "global";
 
                 const actionText = getActionTextFromRecObj(recObj);
                 const inventoryText = getInventoryTextFromRecObj(recObj);
 
-                const cardLines = dedupeRecommendationLines([
-                  ...(b.recommendationBullets || []),
-                  actionText,
-                  inventoryText,
-                ]);
+                const cardLines = isGlobal
+                  ? buildGlobalCardRecommendationLines(b, recObj)
+                  : dedupeRecommendationLines([
+                    ...(b.recommendationBullets || []),
+                    actionText,
+                    inventoryText,
+                  ]);
 
                 if (!cardLines.length) return null;
 
