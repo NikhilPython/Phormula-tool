@@ -170,6 +170,14 @@ const getHeatmapColorBaseTotal = (
     return bucketTotal;
 };
 
+const hasSellableBreakdown = (rows: AgeingRiskHeatmapRow[]) => {
+    return rows.some(
+        (row) =>
+            Number(row.available || 0) > 0 ||
+            Number(row.fcTransfer || 0) > 0
+    );
+};
+
 const buildAggregateRow = (
     label: string,
     rows: AgeingRiskHeatmapRow[],
@@ -392,6 +400,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     inventoryAgeSummary,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+
+    const showSellableBreakdown = useMemo(
+        () => hasSellableBreakdown(data),
+        [data]
+    );
 
     const canCollapse = data.length > defaultVisibleRows;
 
@@ -911,6 +924,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const tableConfig = useMemo(() => {
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
+            
 
         const percentageRowTextClassName =
             "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
@@ -976,6 +990,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const sellableGroup: ColGroup<HeatmapTableRow> = {
             id: "sellable",
             label: "Sellable Units",
+
+            expandable: showSellableBreakdown,
+
             collapsedCols: [
                 {
                     key: "totalUnits",
@@ -985,29 +1002,40 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     thClassName: heatmapHeaderClassName,
                 },
             ],
-            expandedCols: [
-                {
-                    key: "available",
-                    label: "Available",
-                    width: "85px",
-                    align: "center",
-                    thClassName: heatmapHeaderClassName,
-                },
-                {
-                    key: "fcTransfer",
-                    label: "FC Transfer",
-                    width: "90px",
-                    align: "center",
-                    thClassName: heatmapHeaderClassName,
-                },
-                {
-                    key: "totalUnits",
-                    label: "Total",
-                    width: "85px",
-                    align: "center",
-                    thClassName: heatmapHeaderClassName,
-                },
-            ],
+
+            expandedCols: showSellableBreakdown
+                ? [
+                    {
+                        key: "available",
+                        label: "Available",
+                        width: "85px",
+                        align: "center",
+                        thClassName: heatmapHeaderClassName,
+                    },
+                    {
+                        key: "fcTransfer",
+                        label: "FC Transfer",
+                        width: "90px",
+                        align: "center",
+                        thClassName: heatmapHeaderClassName,
+                    },
+                    {
+                        key: "totalUnits",
+                        label: "Total",
+                        width: "85px",
+                        align: "center",
+                        thClassName: heatmapHeaderClassName,
+                    },
+                ]
+                : [
+                    {
+                        key: "totalUnits",
+                        label: "Sellable Units",
+                        width: "95px",
+                        align: "center",
+                        thClassName: heatmapHeaderClassName,
+                    },
+                ],
         };
 
         const singleCols: LeafCol<HeatmapTableRow>[] = [
@@ -1352,6 +1380,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         showInventoryAlerts,
         hasAnySalesRankDelta,
         bucketMaxValues,
+        showSellableBreakdown,
     ]);
 
     const handleDownloadExcel = () => {

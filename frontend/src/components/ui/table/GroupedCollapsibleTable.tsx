@@ -28,6 +28,9 @@ export type ColGroup<RowT> = {
   label: React.ReactNode;
   info?: React.ReactNode;
   headerClassName?: string;
+
+  expandable?: boolean;
+
   collapsedCols: LeafCol<RowT>[];
   expandedCols: LeafCol<RowT>[];
 };
@@ -634,8 +637,8 @@ export default function GroupedCollapsibleTable<RowT>({
     </colgroup>
   );
 
-const renderTableHead = () => (
-  <thead className={bodyMaxHeight ? "sticky top-0 z-20 font-bold" : "font-bold"}>
+  const renderTableHead = () => (
+    <thead className={bodyMaxHeight ? "sticky top-0 z-20 font-bold" : "font-bold"}>
       {/* -------- Header Row 1 -------- */}
       <tr className={headerRow1ClassName}>
         {leftCols.map((c) => (
@@ -700,7 +703,7 @@ const renderTableHead = () => (
                       </button>
                     )}
 
-                    <button
+                    {/* <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
@@ -711,7 +714,21 @@ const renderTableHead = () => (
                       title="Click to expand/collapse"
                     >
                       {isCollapsed ? "+" : "−"}
-                    </button>
+                    </button> */}
+                    {g.expandable !== false && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleGroup(g.id);
+                        }}
+                        className={iconButtonClass}
+                        title="Click to expand/collapse"
+                      >
+                        {isCollapsed ? "+" : "−"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </th>
