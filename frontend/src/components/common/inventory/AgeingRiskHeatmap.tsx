@@ -924,7 +924,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const tableConfig = useMemo(() => {
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
-            
+        const defaultTdClassName =
+            "text-charcoal-500 text-[14px] lg:text-[12px] min-[1700px]:text-[14px] whitespace-nowrap overflow-hidden truncate";
 
         const percentageRowTextClassName =
             "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
@@ -951,6 +952,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "48px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
             {
                 key: "productName",
@@ -958,8 +960,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "135px",
                 align: "left",
                 thClassName: heatmapHeaderClassName,
-                tdClassName:
-                    "text-left text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 overflow-hidden",
+                tdClassName: defaultTdClassName,
             },
             {
                 key: "sku",
@@ -967,6 +968,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "95px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+
             },
             {
                 key: "salesRank",
@@ -984,7 +986,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             align: "center",
             thClassName: heatmapHeaderClassName,
             tdClassName:
-                "relative !p-0 overflow-hidden text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
+                "relative !p-0 overflow-hidden text-center text-charcoal-500 text-[14px] lg:text-[12px] min-[1700px]:text-[14px] whitespace-normal break-words",
         }));
 
         const sellableGroup: ColGroup<HeatmapTableRow> = {
@@ -1000,6 +1002,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     width: "95px",
                     align: "center",
                     thClassName: heatmapHeaderClassName,
+                    tdClassName: defaultTdClassName,
                 },
             ],
 
@@ -1008,23 +1011,26 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     {
                         key: "available",
                         label: "Available",
-                        width: "85px",
+                        width: "110px",
                         align: "center",
                         thClassName: heatmapHeaderClassName,
+                        tdClassName: defaultTdClassName,
                     },
                     {
                         key: "fcTransfer",
                         label: "FC Transfer",
-                        width: "90px",
+                        width: "110px",
                         align: "center",
                         thClassName: heatmapHeaderClassName,
+                        tdClassName: defaultTdClassName,
                     },
                     {
                         key: "totalUnits",
                         label: "Total",
-                        width: "85px",
+                        width: "110px",
                         align: "center",
                         thClassName: heatmapHeaderClassName,
+                        tdClassName: defaultTdClassName,
                     },
                 ]
                 : [
@@ -1034,6 +1040,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         width: "95px",
                         align: "center",
                         thClassName: heatmapHeaderClassName,
+                        tdClassName: defaultTdClassName,
                     },
                 ],
         };
@@ -1046,6 +1053,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "85px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
             {
                 key: "unsellableUnits",
@@ -1053,6 +1061,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "95px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
             {
                 key: "unitsSold",
@@ -1060,6 +1069,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "85px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
             {
                 key: "coverageRatio",
@@ -1067,6 +1077,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "110px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
             ...(showInventoryAlerts
                 ? [
@@ -1121,6 +1132,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             colKey: string,
             rowIndex: number
         ): React.ReactNode => {
+            const textClass = "text-charcoal-500";
             if (colKey === "sno") {
                 if (row.isTotalRow || row.isPercentageRow) return "";
                 return rowIndex + 1;
@@ -1138,7 +1150,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     return (
                         <span
                             className={[
-                                "block max-w-full truncate",
+                                "block max-w-full truncate text-charcoal-500",
                                 row.isOthersRow ? "text-green-500" : "",
                                 row.isPercentageRow ? percentageRowTextClassName : "",
                             ].join(" ")}
@@ -1166,7 +1178,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 return (
                     <span
                         title={String(row.sku || "-")}
-                        className="mx-auto block max-w-full truncate whitespace-nowrap text-center tabular-nums"
+                        className="mx-auto block max-w-full truncate whitespace-nowrap text-center tabular-nums text-charcoal-500"
                     >
                         {row.sku || "-"}
                     </span>
@@ -1191,7 +1203,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                 return (
                     <div className="flex w-full items-center justify-between gap-2 whitespace-nowrap px-2">
-                        <span className="tabular-nums">
+                        <span className="tabular-nums text-charcoal-500">
                             {rankNumber.toLocaleString()}
                         </span>
 
@@ -1266,7 +1278,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 }
 
-                return numberDisplay(row.available);
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.available)}
+                    </span>
+                );
             }
 
             if (colKey === "fcTransfer") {
@@ -1278,7 +1294,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 }
 
-                return numberDisplay(row.fcTransfer);
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.fcTransfer)}
+                    </span>
+                );
             }
 
             if (colKey === "totalUnits") {
@@ -1295,12 +1315,21 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     Number(row.available || 0) + Number(row.fcTransfer || 0)
                 );
 
-                return totalUnits > 0 ? totalUnits.toLocaleString() : "0";
+                // return totalUnits > 0 ? totalUnits.toLocaleString() : "0";
+                return (
+                    <span className="text-charcoal-500">
+                        {totalUnits > 0 ? totalUnits.toLocaleString() : "0"}
+                    </span>
+                );
             }
 
             if (colKey === "inboundUnits") {
                 if (row.isPercentageRow) return "";
-                return numberDisplay(row.inboundUnits);
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.inboundUnits)}
+                    </span>
+                );
             }
 
             if (colKey === "unsellableUnits") {
@@ -1312,12 +1341,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     );
                 }
 
-                return numberDisplay(row.unsellableUnits);
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.unsellableUnits)}
+                    </span>
+                );
             }
 
             if (colKey === "unitsSold") {
                 if (row.isPercentageRow) return "";
-                return numberDisplay(row.unitsSold);
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.unitsSold)}
+                    </span>
+                );
             }
 
             if (colKey === "coverageRatio") {
@@ -1471,7 +1508,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                 : ""
                 }
             /> */}
-            <div className="w-full overflow-x-auto">
+            <div className="rounded-xl w-full overflow-x-auto">
                 <GroupedCollapsibleTable<HeatmapTableRow>
                     rows={displayRows}
                     leftCols={tableConfig.leftCols}
@@ -1485,7 +1522,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     getRowKey={(row, index) =>
                         `${row.sku || row.productName || "row"}-${index}`
                     }
-                    tableClassName="ageing-risk-heatmap-table w-full table-fixed border-collapse bg-white text-sm"
+                    tableClassName="ageing-risk-heatmap-table w-full table-fixed border-collapse bg-white text-sm text-charcoal-500"
                     headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
                     headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
                     getRowClassName={(row) =>

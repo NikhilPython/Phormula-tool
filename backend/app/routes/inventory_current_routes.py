@@ -1204,19 +1204,8 @@ def attach_inventory_monthly_qty(
         new_row = dict(row)
 
         if is_total_row(new_row):
-            new_row["Sellable Units"] = monthly_result["totals"]["sellable"]
-            new_row["Inbound Units"] = monthly_result["totals"]["inbound"]
-            new_row["unfulfillable-quantity"] = monthly_result["totals"]["unfulfillable"]
-
-            new_row["inventory_coverage_ratio"] = monthly_result["totals"].get(
-                "inventory_coverage_ratio",
-                0,
-            )
-            new_row["Coverage Ratio (In Months)"] = monthly_result["totals"].get(
-                "inventory_coverage_ratio",
-                0,
-            )
-
+            # Do not overwrite total row from inventorymonthly.
+            # Final total values are recalculated after SKU rows are processed.
             updated_rows.append(new_row)
             continue
 
@@ -1278,7 +1267,10 @@ def attach_inventory_monthly_qty(
             else:
                 sellable_units = monthly_data.get("sellable_units", existing_sellable_units)
 
-            inbound_units = monthly_data.get("inbound_units", existing_inbound_units)
+            if use_currentinventory_sellable:
+                inbound_units = existing_inbound_units
+            else:
+                inbound_units = monthly_data.get("inbound_units", existing_inbound_units)
 
             if use_currentinventory_sellable:
                 unfulfillable_units = existing_unfulfillable_units
@@ -1288,10 +1280,17 @@ def attach_inventory_monthly_qty(
                     existing_unfulfillable_units,
                 )
 
-            coverage_ratio = monthly_data.get(
-                "inventory_coverage_ratio",
-                existing_coverage_ratio,
-            )
+            if use_currentinventory_sellable:
+                # When currentinventory table exists:
+                # keep Coverage Ratio from currentinventory table
+                coverage_ratio = existing_coverage_ratio
+            else:
+                # When currentinventory table does not exist:
+                # fallback uses inventorymonthly coverage ratio
+                coverage_ratio = monthly_data.get(
+                    "inventory_coverage_ratio",
+                    existing_coverage_ratio,
+                )
         else:
             sellable_units = existing_sellable_units
             inbound_units = existing_inbound_units
@@ -1342,8 +1341,22 @@ def attach_inventory_monthly_qty(
             row["Sellable Units"] = sellable_total
             row["Inbound Units"] = inbound_total
             row["unfulfillable-quantity"] = unfulfillable_total
-            row["inventory_coverage_ratio"] = coverage_ratio_avg
-            row["Coverage Ratio (In Months)"] = coverage_ratio_avg
+
+            if use_currentinventory_sellable:
+                # keep total coverage ratio from currentinventory table
+                total_coverage_ratio = get_first_number(
+                    row,
+                    [
+                        "Coverage Ratio (In Months)",
+                        "inventory_coverage_ratio",
+                        "coverage_ratio_months",
+                    ],
+                )
+                row["inventory_coverage_ratio"] = total_coverage_ratio
+                row["Coverage Ratio (In Months)"] = total_coverage_ratio
+            else:
+                row["inventory_coverage_ratio"] = coverage_ratio_avg
+                row["Coverage Ratio (In Months)"] = coverage_ratio_avg
 
     updated_columns = list(columns or [])
 
@@ -2198,6 +2211,76 @@ def get_first_number(row, keys, default=0):
 
     return default
 
+def append_inventory_percentage_row(rows, columns):
+    updated_rows = list(rows or [])
+    updated_columns = list(columns or [])
+
+    total_row = None
+
+    # Find the final total row
+    for row in updated_rows:
+        if is_total_row(row):
+            total_row = row
+
+    if not total_row:
+        return {
+            "rows": updated_rows,
+            "columns": updated_columns,
+        }
+
+    sellable_units = to_number(total_row.get("Sellable Units"))
+    unfulfillable_units = to_number(total_row.get("unfulfillable-quantity"))
+
+    # User required denominator:
+    # Sellable Units + unfulfillable-quantity
+    percentage_base = sellable_units + unfulfillable_units
+
+    def pct(value):
+        if percentage_base <= 0:
+            return 0
+        return round((to_number(value) / percentage_base) * 100, 2)
+
+    percentage_row = {
+        "row_type": "percentage",
+        "is_percentage_row": True,
+
+        "Sno.": "",
+        "SKU": "",
+        "Product Name": "Percentage",
+
+        "inv-age-0-to-90-days": pct(total_row.get("inv-age-0-to-90-days")),
+        "inv-age-91-to-180-days": pct(total_row.get("inv-age-91-to-180-days")),
+        "inv-age-0-to-180-days": pct(total_row.get("inv-age-0-to-180-days")),
+        "inv-age-181-to-270-days": pct(total_row.get("inv-age-181-to-270-days")),
+        "inv-age-271-to-365-days": pct(total_row.get("inv-age-271-to-365-days")),
+        "inv-age-365-plus-days": pct(total_row.get("inv-age-365-plus-days")),
+
+        "Sellable Units": pct(sellable_units),
+        "unfulfillable-quantity": pct(unfulfillable_units),
+
+        # Optional reference values
+        "percentage_base_total": percentage_base,
+        "percentage_base_formula": "Sellable Units + unfulfillable-quantity",
+    }
+
+    updated_rows.append(percentage_row)
+
+    for col in [
+        "row_type",
+        "is_percentage_row",
+        "percentage_base_total",
+        "percentage_base_formula",
+    ]:
+        if col not in updated_columns:
+            updated_columns.append(col)
+
+    return {
+        "rows": updated_rows,
+        "columns": updated_columns,
+    }
+
+
+
 @inventory_current_bp.route("/inventory_current", methods=["GET", "OPTIONS"])
 def get_inventory_current_table():
     if request.method == "OPTIONS":
@@ -2475,6 +2558,14 @@ def get_inventory_current_table():
         categories["estimated_storage_cost"]["previous_storage_cost_source"] = previous_storage_cost["source_table"]
         categories["estimated_storage_cost"]["previous_storage_cost_period"] = previous_storage_cost["period"]
         categories["estimated_storage_cost"]["previous_storage_cost_error"] = previous_storage_cost["error"]
+
+        percentage_row_result = append_inventory_percentage_row(
+            rows=rows,
+            columns=columns,
+        )
+
+        rows = percentage_row_result["rows"]
+        columns = percentage_row_result["columns"]
 
         return jsonify({
             "success": True,
