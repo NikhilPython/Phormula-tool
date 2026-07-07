@@ -44,6 +44,37 @@ def get_previous_month_year(month, year):
 
 _TABLE_COL_CACHE = {}
 
+def table_exists_conn(conn, table_name: str, schema: str = "public") -> bool:
+    return bool(conn.execute(
+        text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                  AND table_name = :table_name
+            )
+        """),
+        {"schema": schema, "table_name": table_name}
+    ).scalar())
+
+
+def ensure_payment_columns(conn, table_name: str):
+    if not table_exists_conn(conn, table_name):
+        return
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS debt_payment DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS disbursement DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
+    
+
 def get_table_columns(conn, table_name: str, schema: str = "public"):
     cache_key = f"{schema}.{table_name}"
     if cache_key in _TABLE_COL_CACHE:
@@ -149,8 +180,8 @@ def process_skuwise_us_data(user_id, country, month, year):
                 cm2_profit_percentage REAL,
                 cm2_margins REAL,
                 acos REAL,
-                debt_payment REAL,
-                disbursement REAL,
+                debt_payment REAL DEFAULT 0,
+                disbursement REAL DEFAULT 0,
                 rembursement_fee REAL,
                 rembursment_vs_cm2_margins REAL,
                 reimbursement_vs_sales REAL,
@@ -227,8 +258,8 @@ def process_skuwise_us_data(user_id, country, month, year):
                 cm2_profit_percentage REAL,
                 cm2_margins REAL,
                 acos REAL,
-                debt_payment REAL,
-                disbursement REAL,
+                debt_payment REAL DEFAULT 0,
+                disbursement REAL DEFAULT 0,
                 rembursement_fee REAL,
                 rembursment_vs_cm2_margins REAL,
                 reimbursement_vs_sales REAL,
