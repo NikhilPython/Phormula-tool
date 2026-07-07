@@ -3915,126 +3915,134 @@ export function exportAgeingRiskHeatmapExcel(params: {
     homeCurrencyCode,
   });
 
-  const headers = [
-    "S.No.",
-    "Product Name",
-    "SKU",
-    ...buckets.map((bucket) => bucket.label),
-    "Sellable Units",
-    "Inbound Units",
-    "Sales Rank",
-    "Unfulfillable Units",
-    "Units Sold",
-    "Coverage Ratio (in Months)",
-    ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
-  ];
+ const headers = [
+  "S.No.",
+  "Product Name",
+  "SKU",
 
-  const headerCount = headers.length;
-  const ANCHOR_COL_1_BASED = headerCount;
+  // ✅ Sales Rank after SKU, same as UI
+  "Sales Rank",
 
-  const tableBorder = {
-    top: { style: "thin", color: { rgb: "000000" } },
-    bottom: { style: "thin", color: { rgb: "000000" } },
-    left: { style: "thin", color: { rgb: "000000" } },
-    right: { style: "thin", color: { rgb: "000000" } },
-  };
+  ...buckets.map((bucket) => bucket.label),
+  "Sellable Units",
+  "Inbound Units",
+  "Unfulfillable Units",
+  "Units Sold",
+  "Coverage Ratio (in Months)",
+  ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
+];
 
-  const realRows = [...dataRows]
-    .filter((row) => {
-      const productName = String(row?.productName || "").trim().toLowerCase();
-      const sku = String(row?.sku || "").trim().toLowerCase();
+const headerCount = headers.length;
+const ANCHOR_COL_1_BASED = headerCount;
 
-      if (!productName && !sku) return false;
+const tableBorder = {
+  top: { style: "thin", color: { rgb: "000000" } },
+  bottom: { style: "thin", color: { rgb: "000000" } },
+  left: { style: "thin", color: { rgb: "000000" } },
+  right: { style: "thin", color: { rgb: "000000" } },
+};
 
-      return (
-        !row.isOthersRow &&
-        !row.isTotalRow &&
-        !row.isPercentageRow &&
-        productName !== "total" &&
-        productName !== "grand total" &&
-        productName !== "% of total" &&
-        sku !== "total" &&
-        sku !== "grand total"
-      );
-    })
-    .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
+const backendPercentageRow = dataRows.find((row) => {
+  const productName = String(row?.productName || row?.["Product Name"] || "")
+    .trim()
+    .toLowerCase();
 
-  const totalRow: Record<string, any> = {
-    productName: "Total",
-    sku: "",
-    isTotalRow: true,
-  };
+  const sku = String(row?.sku || row?.SKU || "")
+    .trim()
+    .toLowerCase();
 
-  buckets.forEach((bucket) => {
-    totalRow[bucket.key] = realRows.reduce(
-      (sum, row) => sum + toNum(row[bucket.key]),
-      0
+  return (
+    row?.isPercentageRow === true ||
+    row?.is_percentage_row === true ||
+    productName === "% of total" ||
+    productName === "percentage" ||
+    sku === "% of total" ||
+    sku === "percentage"
+  );
+});
+
+const realRows = [...dataRows]
+  .filter((row) => {
+    const productName = String(row?.productName || row?.["Product Name"] || "")
+      .trim()
+      .toLowerCase();
+
+    const sku = String(row?.sku || row?.SKU || "")
+      .trim()
+      .toLowerCase();
+
+    if (!productName && !sku) return false;
+
+    return (
+      !row.isOthersRow &&
+      !row.isTotalRow &&
+      !row.isPercentageRow &&
+      !row.is_percentage_row &&
+      productName !== "total" &&
+      productName !== "grand total" &&
+      productName !== "% of total" &&
+      productName !== "percentage" &&
+      sku !== "total" &&
+      sku !== "grand total" &&
+      sku !== "% of total" &&
+      sku !== "percentage"
     );
-  });
+  })
+  .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
 
-  totalRow.available = realRows.reduce(
-    (sum, row) => sum + toNum(row.available ?? row.totalUnits),
+const totalRow: Record<string, any> = {
+  productName: "Total",
+  sku: "",
+  isTotalRow: true,
+};
+
+buckets.forEach((bucket) => {
+  totalRow[bucket.key] = realRows.reduce(
+    (sum, row) => sum + toNum(row[bucket.key]),
     0
   );
+});
 
-  totalRow.totalUnits = totalRow.available;
+totalRow.available = realRows.reduce(
+  (sum, row) => sum + toNum(row.available ?? row.totalUnits),
+  0
+);
 
-  totalRow.inboundUnits = realRows.reduce(
-    (sum, row) => sum + toNum(row.inboundUnits),
-    0
-  );
+totalRow.totalUnits = totalRow.available;
 
-  totalRow.salesRank = "";
+totalRow.inboundUnits = realRows.reduce(
+  (sum, row) => sum + toNum(row.inboundUnits),
+  0
+);
 
-  totalRow.unsellableUnits = realRows.reduce(
-    (sum, row) => sum + toNum(row.unsellableUnits),
-    0
-  );
+totalRow.salesRank = "";
 
-  totalRow.unitsSold = realRows.reduce(
-    (sum, row) => sum + toNum(row.unitsSold),
-    0
-  );
+totalRow.unsellableUnits = realRows.reduce(
+  (sum, row) => sum + toNum(row.unsellableUnits),
+  0
+);
 
-  totalRow.coverageRatio = "";
-  totalRow.inventoryAlert = "";
+totalRow.unitsSold = realRows.reduce(
+  (sum, row) => sum + toNum(row.unitsSold),
+  0
+);
 
-  const ageingTotal = buckets.reduce(
-    (sum, bucket) => sum + toNum(totalRow[bucket.key]),
-    0
-  );
+totalRow.coverageRatio = "";
+totalRow.inventoryAlert = "";
 
-  const percentageRow: Record<string, any> = {
-    productName: "% of Total",
-    sku: "",
-    isPercentageRow: true,
-  };
+// ✅ IMPORTANT: use backend/UI percentage row, do not calculate again
+const percentageRow: Record<string, any> | null = backendPercentageRow
+  ? {
+      ...backendPercentageRow,
+      productName: "% of Total",
+      sku: "",
+      isPercentageRow: true,
+    }
+  : null;
 
-  buckets.forEach((bucket) => {
-    percentageRow[bucket.key] =
-      ageingTotal > 0
-        ? `${((toNum(totalRow[bucket.key]) / ageingTotal) * 100).toFixed(2)}%`
-        : "";
-  });
-
-  percentageRow.available =
-    ageingTotal > 0
-      ? `${((toNum(totalRow.available) / ageingTotal) * 100).toFixed(2)}%`
-      : "";
-
-  percentageRow.inboundUnits = "";
-  percentageRow.salesRank = "";
-
-  percentageRow.unsellableUnits =
-    ageingTotal > 0
-      ? `${((toNum(totalRow.unsellableUnits) / ageingTotal) * 100).toFixed(2)}%`
-      : "";
-
-  percentageRow.unitsSold = "";
-  percentageRow.coverageRatio = "";
-  percentageRow.inventoryAlert = "";
-
-  const exportRows = [...realRows, totalRow, percentageRow];
+const exportRows = percentageRow
+  ? [...realRows, totalRow, percentageRow]
+  : [...realRows, totalRow];
 
   const topExtraLines = [
     `Country : ${displayCountry}`,
@@ -4055,58 +4063,79 @@ export function exportAgeingRiskHeatmapExcel(params: {
   const headerRowIndex = topAoA.length;
   const firstBodyRowIndex = headerRowIndex + 1;
 
-  const bodyRows = exportRows.map((row, index) => {
-    const isTotalRow = row.isTotalRow;
-    const isPercentageRow = row.isPercentageRow;
+const formatPercentValue = (value: any) => {
+  if (value === null || value === undefined || value === "") return "";
 
-    return [
-      isTotalRow || isPercentageRow ? "" : index + 1,
-      row.productName || "",
-      isTotalRow || isPercentageRow ? "" : row.sku || "-",
+  const raw = String(value).trim();
 
-      ...buckets.map((bucket) => {
-        if (isPercentageRow) return row[bucket.key] || "";
-        const n = toNum(row[bucket.key]);
-        return n > 0 ? n : "";
-      }),
+  if (raw.endsWith("%")) return raw;
 
-      isPercentageRow
-        ? row.available || ""
-        : toNum(row.available ?? row.totalUnits),
+  const n = toNum(value);
+  if (!Number.isFinite(n) || n === 0) return "";
 
-      isPercentageRow
-        ? ""
-        : toNum(row.inboundUnits) > 0
-          ? toNum(row.inboundUnits)
-          : "",
+  return `${n.toFixed(2)}%`;
+};
 
-      isTotalRow || isPercentageRow
-        ? ""
-        : row.salesRank || "",
+const bodyRows = exportRows.map((row, index) => {
+  const isTotalRow = row.isTotalRow;
+  const isPercentageRow = row.isPercentageRow || row.is_percentage_row;
 
-      isPercentageRow
-        ? row.unsellableUnits || ""
-        : toNum(row.unsellableUnits) > 0
-          ? toNum(row.unsellableUnits)
-          : "",
+  return [
+    isTotalRow || isPercentageRow ? "" : index + 1,
+    row.productName || row["Product Name"] || "",
+    isTotalRow || isPercentageRow ? "" : row.sku || row.SKU || "-",
 
-      isPercentageRow
-        ? ""
-        : toNum(row.unitsSold) > 0
-          ? toNum(row.unitsSold)
-          : "",
+    // ✅ Sales Rank after SKU
+    isTotalRow || isPercentageRow
+      ? ""
+      : row.salesRank || row["Sales Rank"] || "",
 
-      isTotalRow || isPercentageRow
-        ? ""
-        : toNum(row.coverageRatio) > 0
-          ? Number(row.coverageRatio).toFixed(2)
-          : "",
+    ...buckets.map((bucket) => {
+      if (isPercentageRow) {
+        return formatPercentValue(row[bucket.key]);
+      }
 
-      ...(showInventoryAlerts
-        ? [isTotalRow || isPercentageRow ? "" : row.inventoryAlert || ""]
-        : []),
-    ];
-  });
+      const n = toNum(row[bucket.key]);
+      return n > 0 ? n : "";
+    }),
+
+    isPercentageRow
+      ? formatPercentValue(row.available ?? row.totalUnits ?? row["Sellable Units"])
+      : toNum(row.available ?? row.totalUnits),
+
+    isPercentageRow
+      ? ""
+      : toNum(row.inboundUnits) > 0
+        ? toNum(row.inboundUnits)
+        : "",
+
+    isPercentageRow
+      ? formatPercentValue(
+          row.unsellableUnits ??
+            row["unfulfillable-quantity"] ??
+            row["Unfulfillable Units"]
+        )
+      : toNum(row.unsellableUnits) > 0
+        ? toNum(row.unsellableUnits)
+        : "",
+
+    isPercentageRow
+      ? ""
+      : toNum(row.unitsSold) > 0
+        ? toNum(row.unitsSold)
+        : "",
+
+    isTotalRow || isPercentageRow
+      ? ""
+      : toNum(row.coverageRatio) > 0
+        ? Number(row.coverageRatio).toFixed(2)
+        : "",
+
+    ...(showInventoryAlerts
+      ? [isTotalRow || isPercentageRow ? "" : row.inventoryAlert || ""]
+      : []),
+  ];
+});
 
   const sheetAoA = [...topAoA, headers, ...bodyRows];
   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
