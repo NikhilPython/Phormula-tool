@@ -1366,7 +1366,7 @@ def attach_inventory_monthly_qty(
 
 
 
-def attach_zero_to_180_days(rows, columns):
+def attach_zero_to_180_days(rows, columns, use_currentinventory_split=False):
     updated_rows = []
 
     for row in rows:
@@ -1375,13 +1375,43 @@ def attach_zero_to_180_days(rows, columns):
         inv_0_90 = to_number(new_row.get("inv-age-0-to-90-days"))
         inv_91_180 = to_number(new_row.get("inv-age-91-to-180-days"))
 
-        # 0-180 should always be exact sum of 0-90 + 91-180
-        zero_to_180 = inv_0_90 + inv_91_180
+        inv_181_270 = to_number(new_row.get("inv-age-181-to-270-days"))
+        inv_271_365 = to_number(new_row.get("inv-age-271-to-365-days"))
+        inv_365_plus = to_number(new_row.get("inv-age-365-plus-days"))
+
+        if use_currentinventory_split:
+            # Currentinventory table has real split buckets.
+            zero_to_180 = inv_0_90 + inv_91_180
+        else:
+            # inventory_aged_history fallback does not have 0-90 / 91-180.
+            # So infer 0-180 from sellable units minus older ageing buckets.
+            sellable_units = to_number(new_row.get("Sellable Units"))
+
+            zero_to_180 = (
+                sellable_units
+                - inv_181_270
+                - inv_271_365
+                - inv_365_plus
+            )
+
+            if zero_to_180 < 0:
+                zero_to_180 = 0
 
         new_row["inv-age-0-to-180-days"] = zero_to_180
         updated_rows.append(new_row)
 
-    # Force total row to equal sum of SKU rows
+    total_0_90 = sum(
+        to_number(r.get("inv-age-0-to-90-days"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
+    total_91_180 = sum(
+        to_number(r.get("inv-age-91-to-180-days"))
+        for r in updated_rows
+        if not is_total_row(r)
+    )
+
     total_0_180 = sum(
         to_number(r.get("inv-age-0-to-180-days"))
         for r in updated_rows
@@ -1390,20 +1420,24 @@ def attach_zero_to_180_days(rows, columns):
 
     for row in updated_rows:
         if is_total_row(row):
+            row["inv-age-0-to-90-days"] = total_0_90
+            row["inv-age-91-to-180-days"] = total_91_180
             row["inv-age-0-to-180-days"] = total_0_180
 
     updated_columns = list(columns or [])
 
-    if "inv-age-0-to-180-days" not in updated_columns:
-        insert_before = "inv-age-181-to-270-days"
+    for col in [
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-0-to-180-days",
+    ]:
+        if col not in updated_columns:
+            insert_before = "inv-age-181-to-270-days"
 
-        if insert_before in updated_columns:
-            updated_columns.insert(
-                updated_columns.index(insert_before),
-                "inv-age-0-to-180-days"
-            )
-        else:
-            updated_columns.append("inv-age-0-to-180-days")
+            if insert_before in updated_columns:
+                updated_columns.insert(updated_columns.index(insert_before), col)
+            else:
+                updated_columns.append(col)
 
     return {
         "rows": updated_rows,
@@ -1836,6 +1870,7 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             zero_to_180_attach = attach_zero_to_180_days(
                 rows=rows,
                 columns=columns,
+                use_currentinventory_split=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = zero_to_180_attach["rows"]
@@ -2361,6 +2396,7 @@ def get_inventory_current_table():
             zero_to_180_attach = attach_zero_to_180_days(
                 rows=rows,
                 columns=columns,
+                use_currentinventory_split=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = zero_to_180_attach["rows"]
@@ -2608,6 +2644,7 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
             zero_to_180_attach = attach_zero_to_180_days(
                 rows=rows,
                 columns=columns,
+                use_currentinventory_split=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = zero_to_180_attach["rows"]
