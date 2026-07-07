@@ -1820,7 +1820,6 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             rows = units_sold_result["rows"]
             columns = units_sold_result["columns"]
 
-            # Re-attach monthly inventory values after missing SKUs are appended.
             monthly_attach_after_units = attach_inventory_monthly_qty(
                 rows=rows,
                 columns=columns,
@@ -1828,6 +1827,7 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
                 country_key=child_country,
                 month_name=selected_month_for_units,
                 year=year,
+                use_currentinventory_sellable=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = monthly_attach_after_units["rows"]
@@ -2513,6 +2513,8 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
     marketplace_id = get_marketplace_id(country_key)
 
     empty_totals = {
+        "inv-age-0-to-90-days": 0,
+        "inv-age-91-to-180-days": 0,
         "inv-age-0-to-180-days": 0,
         "inv-age-181-to-270-days": 0,
         "inv-age-271-to-365-days": 0,
@@ -2534,6 +2536,8 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
     year_int = int(year)
 
     age_columns = [
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
         "inv-age-0-to-180-days",
         "inv-age-181-to-270-days",
         "inv-age-271-to-365-days",
@@ -2638,6 +2642,8 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
     age_summary = []
 
     bucket_labels = {
+        "inv-age-0-to-90-days": "0-90 days",
+        "inv-age-91-to-180-days": "91-180 days",
         "inv-age-0-to-180-days": "0-180 days",
         "inv-age-181-to-270-days": "181-270 days",
         "inv-age-271-to-365-days": "271-365 days",
