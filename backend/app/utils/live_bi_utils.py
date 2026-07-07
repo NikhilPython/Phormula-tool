@@ -2376,6 +2376,11 @@ growth_field_mapping = {
     "sales_mix": "Sales Mix Change (%)",
     "unit_wise_profitability": "Profit Per Unit (%)",
     "profit": "CM1 Profit Impact (%)",
+
+    # ✅ productwise ads + CM2 deltas
+    "ads_spend": "Ads Spend Growth (%)",
+    "cm2_profit": "CM2 Profit Growth (%)",
+    "cm2_profit_per_unit": "CM2 Profit Per Unit Growth (%)",
 }
 
 
@@ -2449,27 +2454,40 @@ def build_segment_total_row(prev_segment, curr_segment, key="sku", label="Total"
 
     Return: ek row jaisa calculate_growth deta hai, bas aggregated.
     """
-    # ---- totals for quantity / net_sales / profit ----
+    # ---- totals for quantity / net_sales / profit / ads / CM2 ----
     prev_qty = prev_net = prev_prof = 0.0
     curr_qty = curr_net = curr_prof = 0.0
+
+    prev_ads = prev_cm2 = 0.0
+    curr_ads = curr_cm2 = 0.0
 
     # previous
     for r in prev_segment:
         q = safe_float_local(r.get("quantity"))
         s = safe_float_local(r.get("net_sales"))
         p = safe_float_local(r.get("profit"))
+        a = safe_float_local(r.get("ads_spend"))
+        c2 = safe_float_local(r.get("cm2_profit"))
+
         if q is not None: prev_qty += q
         if s is not None: prev_net += s
         if p is not None: prev_prof += p
+        if a is not None: prev_ads += a
+        if c2 is not None: prev_cm2 += c2
 
     # current
     for r in curr_segment:
         q = safe_float_local(r.get("quantity"))
         s = safe_float_local(r.get("net_sales"))
         p = safe_float_local(r.get("profit"))
+        a = safe_float_local(r.get("ads_spend"))
+        c2 = safe_float_local(r.get("cm2_profit"))
+
         if q is not None: curr_qty += q
         if s is not None: curr_net += s
         if p is not None: curr_prof += p
+        if a is not None: curr_ads += a
+        if c2 is not None: curr_cm2 += c2
 
     # ASP / unit profit indexes (portfolio level)
     prev_asp = prev_net / prev_qty if prev_qty else None
@@ -2498,6 +2516,11 @@ def build_segment_total_row(prev_segment, curr_segment, key="sku", label="Total"
         "asp": prev_asp,
         "unit_wise_profitability": prev_up,
         "sales_mix": prev_mix,
+
+        # ✅ Ads + CM2 for segment/Other SKUs card
+        "ads_spend": prev_ads,
+        "cm2_profit": prev_cm2,
+        "cm2_profit_per_unit": (prev_cm2 / prev_qty) if prev_qty else 0.0,
     }
 
     curr_row = {
@@ -2509,6 +2532,11 @@ def build_segment_total_row(prev_segment, curr_segment, key="sku", label="Total"
         "asp": curr_asp,
         "unit_wise_profitability": curr_up,
         "sales_mix": curr_mix,
+
+        # ✅ Ads + CM2 for segment/Other SKUs card
+        "ads_spend": curr_ads,
+        "cm2_profit": curr_cm2,
+        "cm2_profit_per_unit": (curr_cm2 / curr_qty) if curr_qty else 0.0,
     }
 
     # existing logic reuse
