@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 
 
 MONTHS_REVERSE_MAP = {

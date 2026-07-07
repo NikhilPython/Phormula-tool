@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 
 fba_bp = Blueprint('fba_bp', __name__)
 

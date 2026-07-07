@@ -43,7 +43,7 @@ except Exception:
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/phormula")
+DB_URL = os.getenv("DATABASE_URL")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

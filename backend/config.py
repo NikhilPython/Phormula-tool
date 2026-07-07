@@ -1,12 +1,13 @@
+import http
 import os
 import logging
 from dotenv import load_dotenv
 from datetime import timedelta
 from celery.schedules import crontab
 
-# Load environment variables from .env file (early)
 load_dotenv()
 
+# Helpers to read env vars safely
 def _env(name, default=None, strip=True):
     v = os.getenv(name, default)
     if v is None:
@@ -23,37 +24,60 @@ def _env_int(name, default=None):
     except (TypeError, ValueError):
         return default
 
-FRONTEND_BASE_URL = _env("FRONTEND_BASE_URL", "http://localhost:3000")
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SECRET_KEY = _env("SECRET_KEY")
-    AMAZON_ADS_CLIENT_ID = _env("AMAZON_ADS_CLIENT_ID")
-    AMAZON_ADS_CLIENT_SECRET = _env("AMAZON_ADS_CLIENT_SECRET")
-    AMAZON_ADS_REDIRECT_URI = _env("AMAZON_ADS_REDIRECT_URI", f"{FRONTEND_BASE_URL}/api/ads/callback")
+    # --- Env flags ---
+    ENV = _env("FLASK_ENV")  # production|development
+    DEBUG = _env_bool("FLASK_DEBUG", False)
+    TESTING = _env_bool("FLASK_TESTING", False)
 
-    SQLALCHEMY_DATABASE_URI         = _env("DATABASE_URL")
-    SQLALCHEMY_DATABASE_ADMIN_URL   = _env("DATABASE_ADMIN_URL")
+    # --- Secret Key ---
+    SECRET_KEY = _env("SECRET_KEY")  # Must be set in AWS
+
+    # --- CORS ---
+    CORS_ORIGINS = [
+        o.strip()
+        for o in (
+            _env(
+                "CORS_ORIGINS",
+                "https://phormula.io,https://www.phormula.io,https://admin.phormula.io"
+            )
+        ).split(",")
+        if o.strip()
+    ]
+    CORS_SUPPORTS_CREDENTIALS = True
+
+    # --- Database ---
+    SQLALCHEMY_DATABASE_URI = _env("DATABASE_URL")
+    SQLALCHEMY_DATABASE_ADMIN_URL = _env("DATABASE_ADMIN_URL")
     SQLALCHEMY_DATABASE_SHOPIFY_URL = _env("DATABASE_SHOPIFY_URL")
     SQLALCHEMY_DATABASE_CHATBOT_URL = _env("DATABASE_CHATBOT_URL")
-    SQLALCHEMY_DATABASE_AMAZON_URL  = _env("DATABASE_AMAZON_URL")
-    SQLALCHEMY_TRACK_MODIFICATIONS  = False
+    SQLALCHEMY_DATABASE_AMAZON_URL = _env("DATABASE_AMAZON_URL")
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    MAIL_SERVER         = _env("MAIL_SERVER", "smtp.gmail.com")
-    MAIL_PORT           = _env_int("MAIL_PORT", 587)
-    MAIL_USE_TLS        = _env_bool("MAIL_USE_TLS", True)
-    MAIL_USE_SSL        = _env_bool("MAIL_USE_SSL", False)
-    MAIL_USERNAME       = _env("MAIL_USERNAME")
-    MAIL_PASSWORD       = _env("MAIL_PASSWORD")
-    MAIL_DEFAULT_SENDER = (
-        _env("MAIL_DEFAULT_SENDER_NAME", "Phormula Care"),
-        MAIL_USERNAME
-    )
-    MAIL_MAX_EMAILS     = _env_int("MAIL_MAX_EMAILS", 100) or 100
-    MAIL_SUPPRESS_SEND  = _env_bool("MAIL_SUPPRESS_SEND", False)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+        "pool_size": 5,
+        "max_overflow": 10,
+    }
 
-    # Flask-Session
+    
+
+    # --- Email ---
+    MAIL_SERVER = _env("MAIL_SERVER", "smtp.gmail.com")
+    MAIL_PORT = _env_int("MAIL_PORT", 587)
+    MAIL_USE_TLS = _env_bool("MAIL_USE_TLS", True)
+    MAIL_USE_SSL = _env_bool("MAIL_USE_SSL", False)
+    MAIL_USERNAME = _env("MAIL_USERNAME")
+    MAIL_PASSWORD = _env("MAIL_PASSWORD")
+    MAIL_DEFAULT_SENDER = (_env("MAIL_DEFAULT_SENDER_NAME", "Phormula Care"), MAIL_USERNAME)
+    MAIL_MAX_EMAILS = _env_int("MAIL_MAX_EMAILS", 100) or 100
+    MAIL_SUPPRESS_SEND = _env_bool("MAIL_SUPPRESS_SEND", False)
+
+     # Flask-Session
     SESSION_TYPE = _env("SESSION_TYPE", "filesystem")
     SESSION_PERMANENT = False
     SESSION_USE_SIGNER = True
@@ -70,42 +94,95 @@ class Config:
         "enable_utc": False,
         "beat_schedule": {
             "seed-currency-rates-every-month-1st-11am": {
-                "task": "tasks.seed_currency_rates_monthly",
-                "schedule": crontab(day_of_month=1, hour=10, minute=0),
+                 "task": "tasks.seed_currency_rates_monthly",
+                 "schedule": crontab(day_of_month=1, hour=9, minute=0),
             },
-            "sync-amazon-monthly-transactions-every-month-1st-11am": {
+            # UK - existing time
+            "sync-amazon-monthly-transactions-uk-every-month-1st": {
                 "task": "tasks.sync_amazon_monthly_transactions",
-                "schedule": crontab(day_of_month=1, hour=10, minute=15),
+                "schedule": crontab(day_of_month=1, hour=10, minute=0),
+                "args": ("uk",),
             },
-            # "sync-amazon-monthly-transactions-every-month-1st-11am": {
-            #     "task": "tasks.sync_amazon_monthly_transactions",
-            #     "schedule": crontab(hour=12, minute=44),
-            # },
-            "generate-forecast-every-month-1st-11-30am": {
+
+            "generate-forecast-uk-every-month-1st": {
                 "task": "tasks.generate_monthly_forecast_files",
-                "schedule": crontab(day_of_month=1, hour=11, minute=30),
+                "schedule": crontab(day_of_month=1, hour=14, minute=0),
+                "args": ("uk",),
             },
-            "send-live-bi-email-weekly": {
+
+            "send-live-bi-email-uk-weekly": {
                 "task": "tasks.send_live_bi_email_daily",
-                "schedule": crontab(day_of_month="1,8,15,22,29", hour=11, minute=30),
+                "schedule": crontab(day_of_month="1,8,15,22,29", hour=14, minute=0),
+                "args": ("uk",),
             },
-            "run-agent-summary-every-hour": {
-                "task": "tasks.run_agent_schedules",
-                "schedule": 300.0,
+
+            "refresh-dashboard-uk-daily-11am": {
+                "task": "tasks.refresh_dashboard_daily",
+                "schedule": crontab(hour=12, minute=30),
+                "args": ("uk",),
             },
-            # "generate-forecast-every-month-1st-11-30am": {
-            #     "task": "tasks.generate_monthly_forecast_files",
-            #     "schedule": crontab(hour=13, minute=23),
-            # },
-            
+
+
+            # US - 4 PM
+            "sync-amazon-monthly-transactions-us-every-month-1st-4pm": {
+                "task": "tasks.sync_amazon_monthly_transactions",
+                "schedule": crontab(day_of_month=1, hour=16, minute=0),
+                "args": ("us",),
+            },
+
+            "generate-forecast-us-every-month-1st-4pm": {
+                "task": "tasks.generate_monthly_forecast_files",
+                "schedule": crontab(day_of_month=1, hour=16, minute=20),
+                "args": ("us",),
+            },
+
+            "send-live-bi-email-us-weekly-4pm": {
+                "task": "tasks.send_live_bi_email_daily",
+                "schedule": crontab(day_of_month="1,8,15,22,29", hour=22, minute=0),
+                "args": ("us",),
+            },
+
+            "refresh-dashboard-us-daily-3pm": {
+                "task": "tasks.refresh_dashboard_daily",
+                "schedule": crontab(hour=20, minute=30),
+                "args": ("us",),
+            },
         }
+        # "beat_schedule": {
+        #     "seed-currency-rates-every-month-1st-11am": {
+        #         "task": "tasks.seed_currency_rates_monthly",
+        #         "schedule": crontab(day_of_month=1, hour=9, minute=0),
+        #     },
+        #     "sync-amazon-monthly-transactions-every-month-1st-11am": {
+        #         "task": "tasks.sync_amazon_monthly_transactions",
+        #         "schedule": crontab(day_of_month=1, hour=10, minute=0),
+        #     },
+        #     "generate-forecast-every-month-1st-11-30am": {
+        #         "task": "tasks.generate_monthly_forecast_files",
+        #         "schedule": crontab(day_of_month=1, hour=12, minute=15),
+        #     },
+        #     "send-live-bi-email-weekly": {
+        #         "task": "tasks.send_live_bi_email_daily",
+        #         "schedule": crontab(day_of_month="1,8,15,22,29", hour=11, minute=0),
+        #     },
+        #     # "send-live-bi-email-weekly": {
+        #     #     "task": "tasks.send_live_bi_email_daily",
+        #     #     "schedule": crontab(hour=16, minute=25),
+        #     # },
+        #     # "run-agent-summary-every-hour": {
+        #     #     "task": "tasks.run_agent_schedules",
+        #     #     "schedule": 300.0,
+        #     # },
+        # }
+        
     }
 
-    @staticmethod
-    def validate_mail():
-        u = Config.MAIL_USERNAME or ""
-        p = Config.MAIL_PASSWORD or ""
-        logging.info(f"MAIL_USERNAME: {repr(u)}")
-        logging.info(f"MAIL_PASSWORD length: {len(p)}")
-        logging.info(f"MAIL_PORT: {Config.MAIL_PORT}")
-        logging.info(f"TLS/SSL: {Config.MAIL_USE_TLS}/{Config.MAIL_USE_SSL}")
+    # --- Amazon Ads (LWA OAuth) ---
+    AMAZON_ADS_CLIENT_ID = _env("AMAZON_ADS_CLIENT_ID")
+    AMAZON_ADS_CLIENT_SECRET = _env("AMAZON_ADS_CLIENT_SECRET")
+    AMAZON_ADS_REDIRECT_URI = _env("AMAZON_ADS_REDIRECT_URI")
+
+    # --- Production switches ---
+    # In AWS set: AUTO_DB_CREATE=0 and AUTO_DB_SCHEMA=0
+    AUTO_DB_CREATE = _env_bool("AUTO_DB_CREATE", False)
+    AUTO_DB_SCHEMA = _env_bool("AUTO_DB_SCHEMA", False)

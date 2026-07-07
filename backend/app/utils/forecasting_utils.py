@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore")
 
 # ============================== ENV / CONFIG ==============================
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 db_url2 = os.getenv('DATABASE_AMAZON_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # ChatGPT adjudicator key
 ROLLING_HISTORY_MONTHS = 4  # 👈 compare last 4 months of actuals in ChatGPT/local adjudicator
