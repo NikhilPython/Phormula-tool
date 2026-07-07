@@ -143,6 +143,559 @@ def remove_total_rows(items):
 
     return clean
 
+def fetch_global_previous_mtd_ads_from_adsdaily(
+    user_id: int,
+    prev_start: date,
+    prev_end: date,
+    curr_end: date,
+) -> tuple[dict, dict]:
+    """
+    For GLOBAL previous MTD ads:
+    - Read UK previous MTD ads from adsdaily
+    - Read US previous MTD ads from adsdaily
+    - Convert UK ads to USD
+    - Map SKU -> product_name
+    - Aggregate by product_name because Global uses product_name as key
+    """
+
+    # ✅ previous MTD adsdaily maps by SKU
+    uk_ads_map, uk_ads_totals = fetch_adsdaily_sku_mtd_ads(
+        user_id=user_id,
+        country="uk",
+        start_date=prev_start,
+        end_date=prev_end,
+    )
+
+    us_ads_map, us_ads_totals = fetch_adsdaily_sku_mtd_ads(
+        user_id=user_id,
+        country="us",
+        start_date=prev_start,
+        end_date=prev_end,
+    )
+
+    # ✅ convert UK GBP ads to USD
+    uk_to_usd_rate = fetch_conversion_rate(
+        country="us",
+        year=curr_end.year,
+        month_name=month_name[curr_end.month].lower(),
+        user_currency="gbp",
+        selected_currency="usd",
+    ) or 1.0
+
+    sku_map_df = fetch_sku_product_mapping(user_id)
+
+    sku_to_product = {}
+
+    if sku_map_df is not None and not sku_map_df.empty:
+        sku_map_df = sku_map_df.copy()
+        sku_map_df["sku"] = sku_map_df["sku"].astype(str).str.strip()
+
+        if "product_name" in sku_map_df.columns:
+            for _, r in sku_map_df.iterrows():
+                sku = str(r.get("sku") or "").strip()
+                product_name = str(r.get("product_name") or "").strip()
+
+                if sku and product_name:
+                    sku_to_product[sku] = product_name
+
+    product_ads_map = {}
+
+    def add_ads(country_key: str, ads_map: dict, conversion_rate: float):
+        for sku, metrics in (ads_map or {}).items():
+            sku = str(sku or "").strip()
+            if not sku:
+                continue
+
+            product_name = sku_to_product.get(sku, sku)
+            product_key = product_name.strip().lower()
+
+            if not product_key:
+                continue
+
+            ads_spend = float((metrics or {}).get("ads_spend") or 0.0) * conversion_rate
+
+            if product_key not in product_ads_map:
+                product_ads_map[product_key] = {
+                    "product_name": product_name,
+                    "ads_spend": 0.0,
+                    "source": {
+                        "uk_adsdaily": uk_ads_totals.get("source_table"),
+                        "us_adsdaily": us_ads_totals.get("source_table"),
+                        "uk_to_usd_rate": uk_to_usd_rate,
+                    },
+                }
+
+            product_ads_map[product_key]["ads_spend"] += ads_spend
+
+    # UK converted to USD
+    add_ads("uk", uk_ads_map, uk_to_usd_rate)
+
+    # US already USD
+    add_ads("us", us_ads_map, 1.0)
+
+    for product_key in product_ads_map:
+        product_ads_map[product_key]["ads_spend"] = round(
+            product_ads_map[product_key]["ads_spend"],
+            2,
+        )
+
+    totals = {
+        "ads_spend": round(
+            sum(float(v.get("ads_spend") or 0.0) for v in product_ads_map.values()),
+            2,
+        ),
+        "uk_ads_spend_raw": uk_ads_totals.get("ads_spend", 0.0),
+        "uk_ads_spend_usd": round(float(uk_ads_totals.get("ads_spend") or 0.0) * uk_to_usd_rate, 2),
+        "us_ads_spend": us_ads_totals.get("ads_spend", 0.0),
+        "uk_to_usd_rate": uk_to_usd_rate,
+        "uk_source_table": uk_ads_totals.get("source_table"),
+        "us_source_table": us_ads_totals.get("source_table"),
+        "start_date": prev_start.isoformat(),
+        "end_date": prev_end.isoformat(),
+    }
+
+    return product_ads_map, totals
+
+
+# def fetch_current_global_monthly_ads_cm2(
+#     user_id: int,
+#     year: int,
+#     month: int,
+# ) -> tuple[dict, dict]:
+#     """
+#     Reads CURRENT global monthly table:
+#       skuwisemonthly_{user_id}_global_{month_name}{year}_table
+
+#     Used for current productwise:
+#       ads_spend
+#       cm2_profit
+#       cm2_profit_per_unit
+#     """
+
+#     month_str = month_name[int(month)].lower()
+#     table_name = f"skuwisemonthly_{int(user_id)}_global_{month_str}{int(year)}_table"
+
+#     empty_totals = {
+#         "ads_spend": 0.0,
+#         "cm2_profit": 0.0,
+#         "cm2_profit_per_unit": 0.0,
+#         "source_table": table_name,
+#     }
+
+#     try:
+#         with engine_hist.connect() as conn:
+#             exists = conn.execute(
+#                 text("SELECT to_regclass(:table_name)"),
+#                 {"table_name": f"public.{table_name}"},
+#             ).scalar()
+
+#             if not exists:
+#                 print(f"[WARN] Current global monthly table missing: {table_name}")
+#                 return {}, empty_totals
+
+#             df = pd.read_sql(
+#                 text(f'SELECT * FROM public."{table_name}"'),
+#                 conn,
+#             )
+
+#     except Exception as e:
+#         print(f"[WARN] Failed reading current global table {table_name}: {e}")
+#         return {}, empty_totals
+
+#     if df is None or df.empty or "product_name" not in df.columns:
+#         return {}, empty_totals
+
+#     df = df.copy()
+
+#     if "sku" not in df.columns:
+#         df["sku"] = ""
+
+#     product_name_series = df["product_name"].fillna("").astype(str).str.strip().str.lower()
+#     sku_series = df["sku"].fillna("").astype(str).str.strip().str.lower()
+
+#     total_mask = (
+#         product_name_series.isin(["total", "totals", "grand total"])
+#         | sku_series.isin(["total", "totals", "grand total"])
+#     )
+
+#     df = df[~total_mask].copy()
+
+#     for col in ["ads_spend", "cm2_profit", "cm2_profit_per_unit", "total_quantity", "quantity"]:
+#         if col not in df.columns:
+#             df[col] = 0.0
+
+#         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+#     df["product_key"] = df["product_name"].fillna("").astype(str).str.strip().str.lower()
+#     df = df[df["product_key"] != ""].copy()
+
+#     product_map = {}
+
+#     grouped = (
+#         df.groupby("product_key", as_index=False)
+#         .agg({
+#             "ads_spend": "sum",
+#             "cm2_profit": "sum",
+#             "cm2_profit_per_unit": "sum",
+#             "total_quantity": "sum",
+#             "quantity": "sum",
+#         })
+#     )
+
+#     for _, r in grouped.iterrows():
+#         product_key = str(r.get("product_key") or "").strip().lower()
+#         if not product_key:
+#             continue
+
+#         units = float(r.get("total_quantity") or r.get("quantity") or 0.0)
+#         cm2_profit = float(r.get("cm2_profit") or 0.0)
+#         cm2_profit_per_unit = float(r.get("cm2_profit_per_unit") or 0.0)
+
+#         if not cm2_profit_per_unit and units:
+#             cm2_profit_per_unit = cm2_profit / units
+
+#         product_map[product_key] = {
+#             "ads_spend": round(float(r.get("ads_spend") or 0.0), 2),
+#             "cm2_profit": round(cm2_profit, 2),
+#             "cm2_profit_per_unit": round(cm2_profit_per_unit, 2),
+#             "source_table": table_name,
+#         }
+
+#     total_ads = sum(float(v.get("ads_spend") or 0.0) for v in product_map.values())
+#     total_cm2 = sum(float(v.get("cm2_profit") or 0.0) for v in product_map.values())
+#     total_units = float(df["total_quantity"].sum() or df["quantity"].sum() or 0.0)
+
+#     totals = {
+#         "ads_spend": round(total_ads, 2),
+#         "cm2_profit": round(total_cm2, 2),
+#         "cm2_profit_per_unit": round(total_cm2 / total_units, 2) if total_units else 0.0,
+#         "source_table": table_name,
+#     }
+
+#     return product_map, totals
+
+def fetch_current_global_monthly_ads_cm2(
+    user_id: int,
+    year: int,
+    month: int,
+) -> tuple[dict, dict]:
+    """
+    Reads CURRENT global monthly table:
+      skuwisemonthly_{user_id}_global_{month_name}{year}_table
+
+    Productwise:
+      ads_spend              -> from product rows
+      cm2_profit             -> from product rows
+      cm2_profit_per_unit    -> from product rows
+
+    Overall/total:
+      cm2_profit             -> from TOTAL row column total_cm2_profit
+    """
+
+    month_str = month_name[int(month)].lower()
+    table_name = f"skuwisemonthly_{int(user_id)}_global_{month_str}{int(year)}_table"
+
+    empty_totals = {
+        "ads_spend": 0.0,
+        "cm2_profit": 0.0,
+        "total_cm2_profit": 0.0,
+        "cm2_profit_per_unit": 0.0,
+        "source_table": table_name,
+        "cm2_profit_source_column": None,
+    }
+
+    try:
+        with engine_hist.connect() as conn:
+            exists = conn.execute(
+                text("SELECT to_regclass(:table_name)"),
+                {"table_name": f"public.{table_name}"},
+            ).scalar()
+
+            if not exists:
+                print(f"[WARN] Current global monthly table missing: {table_name}")
+                return {}, empty_totals
+
+            df = pd.read_sql(
+                text(f'SELECT * FROM public."{table_name}"'),
+                conn,
+            )
+
+    except Exception as e:
+        print(f"[WARN] Failed reading current global table {table_name}: {e}")
+        return {}, empty_totals
+
+    if df is None or df.empty or "product_name" not in df.columns:
+        return {}, empty_totals
+
+    df = df.copy()
+
+    if "sku" not in df.columns:
+        df["sku"] = ""
+
+    # ✅ Make sure required columns exist before splitting Total/Product rows
+    for col in [
+        "ads_spend",
+        "cm2_profit",
+        "cm2_profit_per_unit",
+        "total_cm2_profit",
+        "total_quantity",
+        "quantity",
+    ]:
+        if col not in df.columns:
+            df[col] = 0.0
+
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    product_name_series = (
+        df["product_name"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    sku_series = (
+        df["sku"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    total_mask = (
+        product_name_series.isin(["total", "totals", "grand total", "grand_total"])
+        | sku_series.isin(["total", "totals", "grand total", "grand_total"])
+    )
+
+    # ✅ IMPORTANT:
+    # Keep Total row separately BEFORE removing it from productwise rows.
+    total_row_df = df[total_mask].copy()
+
+    # ✅ Productwise rows only
+    product_df = df[~total_mask].copy()
+
+    product_df["product_key"] = (
+        product_df["product_name"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    product_df = product_df[product_df["product_key"] != ""].copy()
+
+    product_map = {}
+
+    if not product_df.empty:
+        grouped = (
+            product_df.groupby("product_key", as_index=False)
+            .agg({
+                "ads_spend": "sum",
+                "cm2_profit": "sum",
+                "cm2_profit_per_unit": "sum",
+                "total_quantity": "sum",
+                "quantity": "sum",
+            })
+        )
+
+        for _, r in grouped.iterrows():
+            product_key = str(r.get("product_key") or "").strip().lower()
+            if not product_key:
+                continue
+
+            units = float(r.get("total_quantity") or r.get("quantity") or 0.0)
+
+            # ✅ Productwise CM2 from product row column cm2_profit
+            cm2_profit = float(r.get("cm2_profit") or 0.0)
+
+            # ✅ Productwise CM2/unit from product row column cm2_profit_per_unit
+            cm2_profit_per_unit = float(r.get("cm2_profit_per_unit") or 0.0)
+
+            if not cm2_profit_per_unit and units:
+                cm2_profit_per_unit = cm2_profit / units
+
+            product_map[product_key] = {
+                "ads_spend": round(float(r.get("ads_spend") or 0.0), 2),
+                "cm2_profit": round(cm2_profit, 2),
+                "cm2_profit_per_unit": round(cm2_profit_per_unit, 2),
+                "source_table": table_name,
+            }
+
+    # ✅ Productwise ads can be summed from product rows
+    total_ads = sum(
+        float(v.get("ads_spend") or 0.0)
+        for v in product_map.values()
+    )
+
+    # ✅ Overall CM2 must come from TOTAL row column total_cm2_profit
+    total_cm2 = 0.0
+    cm2_source_column = "productwise_cm2_profit_sum_fallback"
+
+    if not total_row_df.empty:
+        total_cm2 = float(
+            pd.to_numeric(
+                total_row_df["total_cm2_profit"],
+                errors="coerce",
+            ).fillna(0.0).sum()
+        )
+
+        cm2_source_column = "total_cm2_profit"
+
+    # ✅ Fallback only if Total row/column is missing or zero
+    if not total_cm2:
+        total_cm2 = sum(
+            float(v.get("cm2_profit") or 0.0)
+            for v in product_map.values()
+        )
+
+    # ✅ Total units preferably from Total row
+    if not total_row_df.empty:
+        total_units = float(
+            pd.to_numeric(
+                total_row_df["total_quantity"],
+                errors="coerce",
+            ).fillna(0.0).sum()
+        )
+
+        if not total_units:
+            total_units = float(
+                pd.to_numeric(
+                    total_row_df["quantity"],
+                    errors="coerce",
+                ).fillna(0.0).sum()
+            )
+    else:
+        total_units = float(
+            product_df["total_quantity"].sum()
+            or product_df["quantity"].sum()
+            or 0.0
+        )
+
+    totals = {
+        "ads_spend": round(total_ads, 2),
+
+        # ✅ This key is what your AI/business summary expects
+        "cm2_profit": round(total_cm2, 2),
+
+        # ✅ Keep explicit raw total key also for debugging/frontend
+        "total_cm2_profit": round(total_cm2, 2),
+
+        "cm2_profit_per_unit": round(total_cm2 / total_units, 2) if total_units else 0.0,
+        "source_table": table_name,
+        "cm2_profit_source_column": cm2_source_column,
+    }
+
+    return product_map, totals
+
+
+def attach_current_global_ads_cm2_to_rows(
+    rows: list[dict],
+    current_map: dict,
+) -> list[dict]:
+    output = []
+
+    for row in rows or []:
+        row = dict(row)
+
+        product_key = str(row.get("product_name") or "").strip().lower()
+        metrics = current_map.get(product_key, {}) if product_key else {}
+
+        row["ads_spend"] = float(metrics.get("ads_spend", row.get("ads_spend") or 0.0))
+        row["cm2_profit"] = float(metrics.get("cm2_profit", row.get("cm2_profit") or 0.0))
+        row["cm2_profit_per_unit"] = float(
+            metrics.get("cm2_profit_per_unit", row.get("cm2_profit_per_unit") or 0.0)
+        )
+
+        output.append(row)
+
+    return output
+
+
+def attach_previous_global_ads_to_rows(
+    rows: list[dict],
+    previous_ads_map: dict,
+) -> list[dict]:
+    """
+    Attach ONLY previous ads_spend from adsdaily-derived global previous MTD.
+    Do not overwrite previous CM2 here.
+    """
+
+    output = []
+
+    for row in rows or []:
+        row = dict(row)
+
+        product_key = str(row.get("product_name") or "").strip().lower()
+        metrics = previous_ads_map.get(product_key, {}) if product_key else {}
+
+        row["ads_spend"] = float(metrics.get("ads_spend", row.get("ads_spend") or 0.0))
+
+        output.append(row)
+
+    return output
+
+def attach_previous_global_calculated_cm2_to_rows(
+    rows: list[dict],
+) -> list[dict]:
+    """
+    Calculate previous productwise CM2 for Global.
+
+    Formula:
+      previous_cm2_profit = previous_cm1_profit - previous_ads_spend
+      previous_cm2_profit_per_unit = previous_cm2_profit / previous_units
+
+    Input rows must already have:
+      profit      -> previous CM1 profit
+      ads_spend  -> previous ads spend from adsdaily
+      quantity or total_quantity -> previous units
+    """
+
+    output = []
+
+    for row in rows or []:
+        row = dict(row)
+
+        try:
+            previous_cm1_profit = float(row.get("profit") or 0.0)
+        except Exception:
+            previous_cm1_profit = 0.0
+
+        try:
+            previous_ads_spend = float(row.get("ads_spend") or 0.0)
+        except Exception:
+            previous_ads_spend = 0.0
+
+        try:
+            previous_units = float(
+                row.get("total_quantity")
+                or row.get("quantity")
+                or 0.0
+            )
+        except Exception:
+            previous_units = 0.0
+
+        previous_cm2_profit = previous_cm1_profit - previous_ads_spend
+
+        previous_cm2_profit_per_unit = (
+            previous_cm2_profit / previous_units
+            if previous_units
+            else 0.0
+        )
+
+        # calculate_growth() reads these generic names from previous rows
+        # and converts them into cm2_profit_prev / cm2_profit_per_unit_prev.
+        row["cm2_profit"] = round(previous_cm2_profit, 2)
+        row["cm2_profit_per_unit"] = round(previous_cm2_profit_per_unit, 2)
+
+        row["cm2_profit_source"] = "previous_profit_minus_adsdaily_ads"
+        row["cm2_profit_formula"] = "profit - ads_spend"
+
+        output.append(row)
+
+    return output
+
+
+
 
 def build_zero_current_rows_from_previous(prev_data):
     """
@@ -236,22 +789,23 @@ def align_prev_curr_by_product_name(prev_data, curr_data):
     curr_df = base.merge(curr_df, on="product_name", how="left")
 
     numeric_cols = [
-        "total_quantity",
-        "quantity",
-        "net_sales",
-        "product_sales",
-        "gross_sales",
-        "profit",
-        "asp",
-        "unit_wise_profitability",
-        "sales_mix",
-        "advertising",
-        "platform_fee",
-        "ads_spend",
-        "cm2_profit",
-        "selling_fees",
-        "fba_fees",
-        "tax_and_credits",
+    "total_quantity",
+    "quantity",
+    "net_sales",
+    "product_sales",
+    "gross_sales",
+    "profit",
+    "asp",
+    "unit_wise_profitability",
+    "sales_mix",
+    "advertising",
+    "platform_fee",
+    "ads_spend",
+    "cm2_profit",
+    "cm2_profit_per_unit",  # ✅ add this
+    "selling_fees",
+    "fba_fees",
+    "tax_and_credits",
     ]
 
     for c in numeric_cols:
@@ -1192,6 +1746,104 @@ def live_mtd_vs_previous():
                 previous_global_payload.get("skuwise_items_global", [])
             )
 
+            # =========================================================
+            # ✅ GLOBAL current:
+            # Read productwise ads_spend, cm2_profit, cm2_profit_per_unit
+            # from current global monthly table.
+            # =========================================================
+            curr_global_ads_cm2_map, curr_global_ads_cm2_totals = fetch_current_global_monthly_ads_cm2(
+                user_id=int(user_id),
+                year=int(ranges["meta"]["current_year"]),
+                month=int(ranges["meta"]["current_month"]),
+            )
+
+            # =========================================================
+            # ✅ GLOBAL current source correction:
+            # Correct current_global_payload itself so every downstream
+            # consumer uses the same total CM2 value.
+            #
+            # Source of truth:
+            # skuwisemonthly_{user_id}_global_{month}{year}_table
+            # TOTAL row -> total_cm2_profit
+            # =========================================================
+            correct_global_current_cm2 = float(
+                curr_global_ads_cm2_totals.get("total_cm2_profit")
+                or curr_global_ads_cm2_totals.get("cm2_profit")
+                or 0.0
+            )
+
+            correct_global_current_cm2_per_unit = float(
+                curr_global_ads_cm2_totals.get("cm2_profit_per_unit")
+                or 0.0
+            )
+
+            if not isinstance(current_global_payload.get("derived_totals_global"), dict):
+                current_global_payload["derived_totals_global"] = {}
+
+            current_global_payload["derived_totals_global"]["cm2_profit"] = round(
+                correct_global_current_cm2,
+                2,
+            )
+            current_global_payload["derived_totals_global"]["total_cm2_profit"] = round(
+                correct_global_current_cm2,
+                2,
+            )
+            current_global_payload["derived_totals_global"]["cm2_profit_per_unit"] = round(
+                correct_global_current_cm2_per_unit,
+                2,
+            )
+
+            current_global_payload["derived_totals_global"]["cm2_profit_source_table"] = (
+                curr_global_ads_cm2_totals.get("source_table")
+            )
+            current_global_payload["derived_totals_global"]["cm2_profit_source_column"] = (
+                curr_global_ads_cm2_totals.get("cm2_profit_source_column")
+            )
+
+            print("[GLOBAL CURRENT CM2 SOURCE FIX]", {
+                "correct_cm2": correct_global_current_cm2,
+                "correct_cm2_per_unit": correct_global_current_cm2_per_unit,
+                "source_table": curr_global_ads_cm2_totals.get("source_table"),
+                "source_column": curr_global_ads_cm2_totals.get("cm2_profit_source_column"),
+            })
+
+            curr_global_items = attach_current_global_ads_cm2_to_rows(
+                curr_global_items,
+                curr_global_ads_cm2_map,
+            )
+
+            # =========================================================
+            # ✅ GLOBAL previous MTD ads:
+            # Do NOT read previous ads from previous global monthly table.
+            # Read previous MTD UK + US adsdaily, convert UK to USD,
+            # then aggregate by product_name.
+            # =========================================================
+            prev_global_ads_map, prev_global_ads_totals = fetch_global_previous_mtd_ads_from_adsdaily(
+                user_id=int(user_id),
+                prev_start=prev_start,
+                prev_end=prev_end,
+                curr_end=curr_end,
+            )
+
+            prev_global_items = attach_previous_global_ads_to_rows(
+                prev_global_items,
+                prev_global_ads_map,
+            )
+
+            # =========================================================
+            # ✅ GLOBAL previous productwise CM2:
+            # Previous CM2 = Previous CM1 Profit - Previous Ads Spend
+            # Previous CM2/unit = Previous CM2 / Previous Units
+            #
+            # Important:
+            # - Previous ads already comes from adsdaily UK + US converted to USD.
+            # - Previous profit comes from previous global product rows.
+            # - Do NOT use previous monthly CM2 table for productwise previous CM2.
+            # =========================================================
+            prev_global_items = attach_previous_global_calculated_cm2_to_rows(
+                prev_global_items
+            )
+
             curr_uk_items = remove_total_rows(
                 current_global_payload.get("skuwise_items_uk", [])
             )
@@ -1294,6 +1946,29 @@ def live_mtd_vs_previous():
 
             prev_totals = aggregate_totals(prev_data_aligned)
             curr_totals = aggregate_totals(curr_data)
+
+            # ✅ Previous global ads from previous MTD adsdaily UK + US converted to USD
+            prev_totals["ads_spend"] = prev_global_ads_totals.get("ads_spend", 0.0)
+            prev_totals["advertising"] = prev_global_ads_totals.get("ads_spend", 0.0)
+
+            # ✅ Current global ads from current global monthly product rows
+            curr_totals["ads_spend"] = curr_global_ads_cm2_totals.get("ads_spend", 0.0)
+            curr_totals["advertising"] = curr_global_ads_cm2_totals.get("ads_spend", 0.0)
+
+            # ✅ GLOBAL CURRENT TOTAL CM2:
+            # Source object was corrected above, so read from current_global_payload.
+            # Productwise rows still use product row cm2_profit.
+            # Overall/business summary uses TOTAL row total_cm2_profit.
+            current_global_totals_source = current_global_payload.get("derived_totals_global", {}) or {}
+
+            curr_totals["cm2_profit"] = current_global_totals_source.get("total_cm2_profit", 0.0)
+            curr_totals["total_cm2_profit"] = current_global_totals_source.get("total_cm2_profit", 0.0)
+            curr_totals["cm2_profit_per_unit"] = current_global_totals_source.get("cm2_profit_per_unit", 0.0)
+
+            # ✅ Debug/source tracking
+            curr_totals["cm2_profit_source_table"] = current_global_totals_source.get("cm2_profit_source_table")
+            curr_totals["cm2_profit_source_column"] = current_global_totals_source.get("cm2_profit_source_column")
+
 
             prev_totals["total_asp"] = compute_total_asp(prev_data_aligned)
             curr_totals["total_asp"] = compute_total_asp(curr_data)
@@ -2106,7 +2781,12 @@ def live_mtd_vs_previous():
 
                     "metric_rules": {
                         "primary_source": "Use numeric_context.clean_global_metrics as the primary source for Units, Net Sales, CM1 Profit, CM1 Profit per Unit, ASP, and ACOS/TACoS.",
-                        "profit_metric_source": "Use CM1 Profit only from clean_global_metrics.cm1_profit. Do not use CM2 Profit.",
+                        "profit_metric_source": "Use CM1 Profit only from clean_global_metrics.cm1_profit for CM1 lines.",
+                        "cm2_profit_source": (
+                            "For CM2 Profit line, use numeric_context.global_totals.current.total_cm2_profit "
+                            "or numeric_context.global_totals.current.cm2_profit. These values are already corrected "
+                            "from the Global monthly TOTAL row total_cm2_profit."
+                        ),
                         "target_source": "Use numeric_context.target_context for Global Target Progress. Do not use 0 values if target_context exists.",
                         "coverage_source": (
                             "For Global Inventory Coverage, do not use the combined/global average coverage ratio. "
@@ -2654,6 +3334,9 @@ def live_mtd_vs_previous():
                     "previous_us": previous_global_payload.get("derived_totals_us", {}),
                     "current_us": current_global_payload.get("derived_totals_us", {}),
                 },
+
+                # ✅ Debug: confirms global current CM2 source
+                "global_current_ads_cm2_totals": curr_global_ads_cm2_totals,
 
                 "conversion": {
                     "current": current_global_payload.get("conversion"),
