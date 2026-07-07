@@ -638,14 +638,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     }
 
                     return (
-                        <div className="grid w-full grid-cols-[minmax(48px,1fr)_minmax(52px,auto)] items-center gap-2 whitespace-nowrap">
-                            <span className="text-right tabular-nums">
+                        <div className="flex w-full items-center justify-between gap-2 whitespace-nowrap px-2">
+                            <span className="tabular-nums">
                                 {rankNumber.toLocaleString()}
                             </span>
 
                             <span
                                 className={[
-                                    "inline-flex min-w-[52px] items-center justify-start text-left text-xs font-semibold tabular-nums",
+                                    "inline-flex min-w-[52px] items-center justify-end text-right text-xs font-semibold tabular-nums",
                                     delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
                                 ].join(" ")}
                                 title="Compared with previous month sales rank"

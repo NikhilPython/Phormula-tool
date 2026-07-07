@@ -800,6 +800,9 @@ const parseProductInsightsBlocks = (
         // ✅ Current inventory sirf drawer me dikhega, card me nahi
         if (lower === "current inventory") return false;
 
+        // ✅ Stock Cover sirf monthly range me show hoga
+        if (!isMonthlyRange(range) && lower === "stock cover") return false;
+
         // ✅ Quarterly / Yearly me CM2 card se remove
         if (useCm1 && (lower === "cm2 profit" || lower === "cm2 profit per unit")) {
           return false;
@@ -993,18 +996,21 @@ const parseProductInsightsBlocks = (
       };
 
       // ✅ Current Inventory sirf drawer me dikhega
-      if (normalizedMetricLabel === "current inventory") {
-        current.drawerOnlyMetrics = [
-          ...(current.drawerOnlyMetrics || []),
-          {
-            label: "Current Inventory",
-            value,
-            color,
-          },
-        ];
+      // ✅ Current Inventory sirf monthly drawer me dikhega
+if (normalizedMetricLabel === "current inventory") {
+  if (isMonthlyRange(range)) {
+    current.drawerOnlyMetrics = [
+      ...(current.drawerOnlyMetrics || []),
+      {
+        label: "Current Inventory",
+        value,
+        color,
+      },
+    ];
+  }
 
-        continue;
-      }
+  continue;
+}
 
       // ✅ Productwise ads spend sirf monthly drawer me dikhega
       if (normalizedMetricLabel === "productwise ads spend") {
@@ -1265,9 +1271,13 @@ const buildOtherSkusInsightLines = (
       )}`;
     })(),
 
-    `Stock Cover: ${formatCoverageValue(
-      remainingAgg?.selected_period_coverage_ratio
-    )}`,
+    ...(isMonthlyRange(range)
+      ? [
+        `Stock Cover: ${formatCoverageValue(
+          remainingAgg?.selected_period_coverage_ratio
+        )}`,
+      ]
+      : []),
 
     `Current Inventory: ${formatInventoryUnitsValue(
       remainingAgg?.current_inventory
@@ -1496,32 +1506,36 @@ const buildDrawerBlockFromSkuRow = (
           currencySymbol
         ),
       },
-      {
-        label: "Stock Cover",
-        value: formatCoverageValue(row?.selected_period_coverage_ratio),
-      },
-    ],
-
-    // ✅ Sirf drawer me show hoga
-    drawerOnlyMetrics: [
-      {
-        label: "Current Inventory",
-        value: formatInventoryUnitsValue(row?.current_inventory),
-      },
       ...(isMonthlyRange(range)
         ? [
           {
-            label: "Ads",
-            value: formatMetricObjectWithDelta(
-              row?.productwise_ads_spend,
-              "money",
-              currencySymbol
-            ),
-            color: "#414042",
+            label: "Stock Cover",
+            value: formatCoverageValue(row?.selected_period_coverage_ratio),
           },
         ]
         : []),
     ],
+
+    // ✅ Sirf drawer me show hoga
+    drawerOnlyMetrics: [
+  ...(isMonthlyRange(range)
+    ? [
+        {
+          label: "Current Inventory",
+          value: formatInventoryUnitsValue(row?.current_inventory),
+        },
+        {
+          label: "Ads",
+          value: formatMetricObjectWithDelta(
+            row?.productwise_ads_spend,
+            "money",
+            currencySymbol
+          ),
+          color: "#414042",
+        },
+      ]
+    : []),
+],
 
     journeyBullets: Array.isArray(recObj?.journey_summary)
       ? recObj.journey_summary
@@ -1672,15 +1686,25 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const sortedMetrics = [
     ...(block?.metrics || []),
     ...(block?.drawerOnlyMetrics || []),
-  ].sort((a, b) => {
-    const aIndex = metricOrder.indexOf(a.label.toLowerCase());
-    const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+  ]
+    .filter((m) => {
+  const lower = m.label.trim().toLowerCase();
 
-    const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-    const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+  if (!isMonthlyRange(range)) {
+    return lower !== "stock cover" && lower !== "current inventory";
+  }
 
-    return safeAIndex - safeBIndex;
-  });
+  return true;
+})
+    .sort((a, b) => {
+      const aIndex = metricOrder.indexOf(a.label.toLowerCase());
+      const bIndex = metricOrder.indexOf(b.label.toLowerCase());
+
+      const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+
+      return safeAIndex - safeBIndex;
+    });
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
@@ -2713,15 +2737,20 @@ const ProductInsightsSection = ({
         {sortedBlocks.map((b, idx) => {
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
-          const sortedCardMetrics = [...(b.metrics || [])].sort((a, b) => {
-            const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
-            const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
+          const sortedCardMetrics = [...(b.metrics || [])]
+            .filter((m) => {
+              const lower = m.label.trim().toLowerCase();
+              return isMonthlyRange(range) || lower !== "stock cover";
+            })
+            .sort((a, b) => {
+              const aIndex = metricOrder.indexOf(a.label.trim().toLowerCase());
+              const bIndex = metricOrder.indexOf(b.label.trim().toLowerCase());
 
-            const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
-            const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+              const safeAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+              const safeBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
 
-            return safeAIndex - safeBIndex;
-          });
+              return safeAIndex - safeBIndex;
+            });
 
           return (
             <motion.div
