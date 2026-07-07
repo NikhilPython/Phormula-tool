@@ -1684,18 +1684,26 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
   const sortedMetrics = [
-    ...(block?.metrics || []),
-    ...(block?.drawerOnlyMetrics || []),
-  ]
-    .filter((m) => {
-  const lower = m.label.trim().toLowerCase();
+  ...(block?.metrics || []),
+  ...(block?.drawerOnlyMetrics || []),
+]
+  .filter((m) => {
+    const lower = m.label.trim().toLowerCase();
 
-  if (!isMonthlyRange(range)) {
-    return lower !== "stock cover" && lower !== "current inventory";
-  }
+    // ✅ Quarterly / Yearly me drawer metric cards se ye teeno hide
+    if (!isMonthlyRange(range)) {
+  return ![
+    "ads",
+    "productwise ads spend",
+    "stock cover",
+    "current inventory",
+    "cm2 profit",
+    "cm2 profit per unit",
+  ].includes(lower);
+}
 
-  return true;
-})
+    return true;
+  })
     .sort((a, b) => {
       const aIndex = metricOrder.indexOf(a.label.toLowerCase());
       const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -5492,8 +5500,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     useState<ProductBestPerformanceData | null>(null);
 
   const aiProductBlocks = useMemo(() => {
-    return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []);
-  }, [aiPanel?.skuInsightsBullets]);
+  return parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [], range);
+}, [aiPanel?.skuInsightsBullets, range]);
 
   const aiSkuActions = useMemo(() => {
     const recommendationsMap = aiPanel?.recommendationsMap;
@@ -9813,7 +9821,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   });
 
                 const firstInsightProductName =
-                  parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? [])?.[0]?.name || "";
+  parseProductInsightsBlocks(
+    aiPanel?.skuInsightsBullets ?? [],
+    productWiseRange as RangeType
+  )?.[0]?.name || "";
 
                 const productWiseInitialProductName = isDemoMode
                   ? defaultTopProductName || firstInsightProductName || "Demo Product A"
@@ -9849,13 +9860,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                     // ✅ Same source as Dropdown drawer
                     sharedInsightData={{
-                      blocks: parseProductInsightsBlocks(aiPanel?.skuInsightsBullets ?? []),
-                      objective: aiPanel?.objective ?? null,
-                      recommendationsMap: aiPanel?.recommendationsMap,
-                      drawerPeriodText: aiPanel?.summaryBullets?.[0]
-                        ? formatSummaryPeriod(aiPanel.summaryBullets[0])
-                        : "",
-                    }}
+  blocks: parseProductInsightsBlocks(
+    aiPanel?.skuInsightsBullets ?? [],
+    productWiseRange as RangeType
+  ),
+  objective: aiPanel?.objective ?? null,
+  recommendationsMap: aiPanel?.recommendationsMap,
+  drawerPeriodText: aiPanel?.summaryBullets?.[0]
+    ? formatSummaryPeriod(aiPanel.summaryBullets[0])
+    : "",
+}}
                   />
                 );
               })()}
