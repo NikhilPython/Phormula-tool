@@ -1543,17 +1543,21 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           selectedPeriod === 24 ? "lifetime" : Number(selectedPeriod)
         );
 
-        // 1) Hit aged-surcharge FIRST, once per selected month
-        for (let i = 0; i < months.length; i++) {
-          const { y, mNum } = months[i];
+        // 1) Hit aged-surcharge FIRST
+        // If 24 months is selected, fetch aged-surcharge only for latest 12 months
+        const surchargeMonths =
+          selectedPeriod === 24 ? months.slice(-12) : months;
 
-          const pct = Math.round(((i + 1) / months.length) * 30);
+        for (let i = 0; i < surchargeMonths.length; i++) {
+          const { y, mNum } = surchargeMonths[i];
+
+          const pct = Math.round(((i + 1) / surchargeMonths.length) * 30);
 
           setStep(
             5,
             "Inventory",
             pct,
-            `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${months.length})...`
+            `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${surchargeMonths.length})...`
           );
 
           await syncInventoryAgedSurchargeOnce({
