@@ -5901,6 +5901,7 @@ export default function DashboardPage() {
 
     const hasSavedRef = useRef(false);
     const didBootstrapRef = useRef<string | null>(null);
+    const isRangeChangeRef = useRef(false);
 
     const saveDashboardCacheToBackend = useCallback(
         async (payload: DashboardCachePayload): Promise<void> => {
@@ -5974,6 +5975,7 @@ export default function DashboardPage() {
         setBiDailySeries(parsed?.biDailySeries ?? null);
         setBiPeriods(parsed?.biPeriods ?? null);
         setLiveBiPayload(parsed?.liveBiPayload ?? null);
+
         setBiAlignedTotals(parsed?.biAlignedTotals ?? null);
 
         setInvRows(parsed?.invRows ?? []);
@@ -5995,58 +5997,95 @@ export default function DashboardPage() {
         setLiveBiReady(!!parsed?.liveBiReady);
         setBiStatus(parsed?.biStatus ?? (parsed?.biDailySeries ? "ready" : "idle"));
         setBiLoading(false);
+        setSummaryLoading(false);
         setBiError(null);
     }, []);
 
-    const getDashboardCacheFromBackend = useCallback(async () => {
-        if (typeof window === "undefined") return null;
 
-        const token = localStorage.getItem("jwtToken");
-        if (!token) return null;
+    const getDashboardCacheFromBackend = useCallback(
+        async (
+            rangeStartDay: number | null = selectedStartDay,
+            rangeEndDay: number | null = selectedEndDay
+        ) => {
+            if (typeof window === "undefined") return null;
 
-        const params = new URLSearchParams({
-            country: liveDashboardCountry,
-            platform: String(platform || "").toLowerCase(),
-            region: String(activeDateRegion || ""),
-        });
+            const token = localStorage.getItem("jwtToken");
+            if (!token) return null;
 
-        if (selectedStartDay != null) {
-            params.set("start_day", String(selectedStartDay));
-        }
+            const params = new URLSearchParams({
+                country: liveDashboardCountry,
+                platform: String(platform || "").toLowerCase(),
+                region: String(activeDateRegion || ""),
+            });
+            if (rangeStartDay != null) {
+                params.set("start_day", String(rangeStartDay));
+            }
 
-        if (selectedEndDay != null) {
-            params.set("end_day", String(selectedEndDay));
-        }
+            if (rangeEndDay != null) {
+                params.set("end_day", String(rangeEndDay));
+            }
 
-        const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params.toString()}`, {
-            method: "GET",
-            headers: {
-                Accept: "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            cache: "no-store",
-        });
+            const res = await fetch(`${LIVE_DASHBOARD_CACHE_ENDPOINT}?${params.toString()}`, {
+                method: "GET",
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                cache: "no-store",
+            });
 
-        const json = await res.json().catch(() => null);
+            const json = await res.json().catch(() => null);
 
-        if (!res.ok) {
-            throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
-        }
+            if (!res.ok) {
+                throw new Error(json?.error || `Failed to fetch dashboard cache (${res.status})`);
+            }
 
-        const payload = json?.data?.payload ?? null;
+            const payload = json?.data?.payload ?? null;
 
-        return {
-            found: Boolean(json?.found && payload),
-            payload,
-            updatedAt: json?.data?.updated_at ?? json?.data?.created_at ?? null,
-        };
-    }, [
+            return {
+                found: Boolean(json?.found && payload),
+                payload,
+                updatedAt: json?.data?.updated_at ?? json?.data?.created_at ?? null,
+            };
+        }, [
         liveDashboardCountry,
         platform,
         activeDateRegion,
         selectedStartDay,
         selectedEndDay,
     ]);
+
+    const loadRangeFromCache = useCallback(
+        async (
+            startDay: number | null,
+            endDay: number | null
+        ) => {
+
+            const cacheResult = await getDashboardCacheFromBackend(
+                startDay,
+                endDay
+            );
+
+            if (cacheResult?.found && cacheResult.payload) {
+
+                applyDashboardCachePayload(
+                    cacheResult.payload
+                );
+
+                setBiLoading(false);
+                setSummaryLoading(false);
+                setBiError(null);
+
+                return true;
+            }
+
+            return false;
+        },
+        [
+            getDashboardCacheFromBackend,
+            applyDashboardCachePayload
+        ]
+    );
 
     // const liveCacheKey = useMemo(() => {
     //     const country =
@@ -6506,153 +6545,6 @@ export default function DashboardPage() {
         return `${diffDay} day ago`;
     }, []);
 
-    // const handleHardRefresh = useCallback(async () => {
-    //     if (typeof window === "undefined") return;
-
-    //     resetStepState();
-
-    //     try {
-    //         await fetchCountryTime();
-
-    //         await runDashboardLoadWithSteps();
-
-    //         const refreshedAt = Date.now();
-
-    //         localStorage.setItem(lastRefreshKey, String(refreshedAt));
-    //         setLastRefreshAt(refreshedAt);
-
-    //         triggerCachePost();
-    //     } catch (err) {
-    //         console.error("Hard refresh failed:", err);
-    //         isManualRefreshRef.current = false;
-    //         shouldPostCacheRef.current = false;
-    //     }
-    // }, [
-    //     fetchCountryTime,
-    //     runDashboardLoadWithSteps,
-    //     triggerCachePost,
-    //     lastRefreshKey,
-    // ]);
-
-    // useEffect(() => {
-    //     if (!fxReady) return;
-
-    //     if (didBootstrapRef.current === liveCacheKey) return;
-
-    //     let cancelled = false;
-
-    //     const bootstrapDashboard = async () => {
-    //         try {
-    //             const cacheResult = await getDashboardCacheFromBackend();
-
-    //             if (cancelled) return;
-
-    //             didBootstrapRef.current = liveCacheKey;
-
-    //             if (cacheResult?.found && cacheResult.payload) {
-    //                 shouldPostCacheRef.current = false;
-    //                 isManualRefreshRef.current = false;
-
-    //                 applyDashboardCachePayload(cacheResult.payload);
-
-    //                 const normalizeRefreshTimestamp = (value: any): number | null => {
-    //                     if (!value) return null;
-
-    //                     const numeric = Number(value);
-    //                     if (Number.isFinite(numeric) && numeric > 0) {
-    //                         return numeric;
-    //                     }
-
-    //                     const parsed = new Date(value).getTime();
-    //                     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-    //                 };
-
-    //                 const payloadLastRefreshAt = normalizeRefreshTimestamp(
-    //                     cacheResult.payload?.lastRefreshAt
-    //                 );
-
-    //                 const backendUpdatedAt = normalizeRefreshTimestamp(cacheResult.updatedAt);
-
-    //                 const savedRefreshAt = localStorage.getItem(lastRefreshKey);
-    //                 const savedTs = normalizeRefreshTimestamp(savedRefreshAt);
-
-    //                 const finalRefreshAt =
-    //                     payloadLastRefreshAt ??
-    //                     backendUpdatedAt ??
-    //                     savedTs ??
-    //                     null;
-
-    //                 setLastRefreshAt(finalRefreshAt);
-
-    //                 if (finalRefreshAt) {
-    //                     localStorage.setItem(lastRefreshKey, String(finalRefreshAt));
-    //                 }
-
-    //                 localStorage.setItem(
-    //                     liveCacheKey,
-    //                     JSON.stringify({
-    //                         ...cacheResult.payload,
-    //                         savedAt: Date.now(),
-    //                     })
-    //                 );
-
-    //                 setDashboardBusy(false);
-    //                 setShowDashboardStepLoader(false);
-    //                 setStepProgress((prev) => ({
-    //                     ...prev,
-    //                     active: false,
-    //                 }));
-
-    //                 return;
-    //             }
-
-    //             const restoredFromLocal = restoreLiveCacheFromLocalStorage();
-
-    //             if (restoredFromLocal) {
-    //                 shouldPostCacheRef.current = false;
-    //                 isManualRefreshRef.current = false;
-
-    //                 setDashboardBusy(false);
-    //                 setShowDashboardStepLoader(false);
-    //                 setStepProgress((prev) => ({
-    //                     ...prev,
-    //                     active: false,
-    //                 }));
-
-    //                 return;
-    //             }
-
-    //             await runDashboardLoadWithSteps();
-
-    //             if (cancelled) return;
-
-    //             triggerCachePost();
-    //         } catch (err) {
-    //             console.error("Dashboard bootstrap failed:", err);
-
-    //             didBootstrapRef.current = null;
-
-    //             resetStepState();
-    //             setDashboardBusy(false);
-    //             setShowDashboardStepLoader(false);
-    //         }
-    //     };
-
-    //     bootstrapDashboard();
-
-    //     return () => {
-    //         cancelled = true;
-    //     };
-    // }, [
-    //     fxReady,
-    //     liveCacheKey,
-    //     lastRefreshKey,
-    //     getDashboardCacheFromBackend,
-    //     applyDashboardCachePayload,
-    //     restoreLiveCacheFromLocalStorage,
-    //     runDashboardLoadWithSteps,
-    //     triggerCachePost,
-    // ]);
 
     const handleHardRefresh = useCallback(async () => {
         try {
@@ -6679,6 +6571,12 @@ export default function DashboardPage() {
     ]);
 
     useEffect(() => {
+
+        if (isRangeChangeRef.current) {
+            isRangeChangeRef.current = false;
+            return;
+        }
+
         if (!fxReady) return;
 
         const bootstrapKey = [
@@ -6756,8 +6654,6 @@ export default function DashboardPage() {
         liveDashboardCountry,
         platform,
         activeDateRegion,
-        selectedStartDay,
-        selectedEndDay,
         getDashboardCacheFromBackend,
         applyDashboardCachePayload,
         runDashboardLoadWithSteps,
@@ -13939,10 +13835,34 @@ ${pageLoading
                                                         selectedStartDay={selectedStartDay}
                                                         selectedEndDay={selectedEndDay}
                                                         label={formatAppliedRangeLabel(selectedStartDay, selectedEndDay)}
-                                                        onSubmit={(s, e) => {
+                                                        onSubmit={async (s, e) => {
+
+                                                            isRangeChangeRef.current = true;
+
                                                             setSelectedStartDay(s);
                                                             setSelectedEndDay(e);
                                                             setBiError(null);
+
+
+                                                            const found = await loadRangeFromCache(
+                                                                s,
+                                                                e
+                                                            );
+
+
+                                                            if (found) {
+                                                                return;
+                                                            }
+
+
+                                                            await fetchLiveBiPayload({
+                                                                startDay: s,
+                                                                endDay: e,
+                                                                generateInsights: false,
+                                                                skipLoader: true,
+                                                                dataOnlyRefresh: false,
+                                                            });
+
                                                         }}
                                                         onClear={() => {
                                                             setSelectedStartDay(null);
