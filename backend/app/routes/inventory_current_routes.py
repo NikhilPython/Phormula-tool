@@ -349,6 +349,8 @@ def build_inventory_categories(rows):
     return categories
 
 INVENTORY_AGE_COLUMNS = [
+    "inv-age-0-to-90-days",
+    "inv-age-91-to-180-days",
     "inv-age-0-to-180-days",
     "inv-age-181-to-270-days",
     "inv-age-271-to-365-days",
@@ -394,7 +396,12 @@ def build_inventory_age_summary(rows):
                 row.get(current_month_units_sold_column)
             )
 
-    sellable_total = sum(totals.values())
+    sellable_total = (
+        totals.get("inv-age-0-to-180-days", 0)
+        + totals.get("inv-age-181-to-270-days", 0)
+        + totals.get("inv-age-271-to-365-days", 0)
+        + totals.get("inv-age-365-plus-days", 0)
+    )
 
     # Existing denominator for ageing bucket %:
     # sellable ageing units + unfulfillable units
@@ -1173,7 +1180,15 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
     }
 
 
-def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name, year):
+def attach_inventory_monthly_qty(
+    rows,
+    columns,
+    user_id,
+    country_key,
+    month_name,
+    year,
+    use_currentinventory_sellable=False,
+):
     monthly_result = fetch_inventory_monthly_qty_map(
         user_id=user_id,
         country_key=country_key,
@@ -1208,15 +1223,25 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
         sku = normalize_sku_key(get_row_sku(new_row))
         monthly_data = data_by_sku.get(sku)
 
-        existing_sellable_units = get_first_number(
-            new_row,
-            [
-                "Sellable Units",
-                "available",
-                "sellable_sum_last",
-                "ending_total",
-            ],
-        )
+        if use_currentinventory_sellable:
+            # When currentinventory table exists:
+            # Sellable Units = available + fc-transfer
+            existing_sellable_units = (
+                to_number(new_row.get("available"))
+                + to_number(new_row.get("fc-transfer"))
+            )
+        else:
+            # When currentinventory table does not exist:
+            # fallback uses inventorymonthly sellable_sum_last
+            existing_sellable_units = get_first_number(
+                new_row,
+                [
+                    "Sellable Units",
+                    "sellable_sum_last",
+                    "available",
+                    "ending_total",
+                ],
+            )
 
         existing_inbound_units = get_first_number(
             new_row,
@@ -1248,20 +1273,26 @@ def attach_inventory_monthly_qty(rows, columns, user_id, country_key, month_name
         )
 
         if monthly_data:
-            sellable_units = monthly_data.get("sellable_units", existing_sellable_units)
+            if use_currentinventory_sellable:
+                sellable_units = existing_sellable_units
+            else:
+                sellable_units = monthly_data.get("sellable_units", existing_sellable_units)
+
             inbound_units = monthly_data.get("inbound_units", existing_inbound_units)
-            unfulfillable_units = monthly_data.get(
-                "unfulfillable_units",
-                existing_unfulfillable_units,
-            )
+
+            if use_currentinventory_sellable:
+                unfulfillable_units = existing_unfulfillable_units
+            else:
+                unfulfillable_units = monthly_data.get(
+                    "unfulfillable_units",
+                    existing_unfulfillable_units,
+                )
+
             coverage_ratio = monthly_data.get(
                 "inventory_coverage_ratio",
                 existing_coverage_ratio,
             )
         else:
-            # Important for current month:
-            # If inventorymonthly table is missing or SKU is not matched,
-            # do not overwrite currentinventory values with 0.
             sellable_units = existing_sellable_units
             inbound_units = existing_inbound_units
             unfulfillable_units = existing_unfulfillable_units
@@ -1344,26 +1375,8 @@ def attach_zero_to_180_days(rows, columns):
         inv_0_90 = to_number(new_row.get("inv-age-0-to-90-days"))
         inv_91_180 = to_number(new_row.get("inv-age-91-to-180-days"))
 
-        inv_181_270 = to_number(new_row.get("inv-age-181-to-270-days"))
-        inv_271_365 = to_number(new_row.get("inv-age-271-to-365-days"))
-        inv_365_plus = to_number(new_row.get("inv-age-365-plus-days"))
-
-        existing_0_180 = inv_0_90 + inv_91_180
-
-        if existing_0_180 > 0:
-            zero_to_180 = existing_0_180
-        else:
-            sellable_units = to_number(new_row.get("Sellable Units"))
-
-            zero_to_180 = (
-                sellable_units
-                - inv_181_270
-                - inv_271_365
-                - inv_365_plus
-            )
-
-            if zero_to_180 < 0:
-                zero_to_180 = 0
+        # 0-180 should always be exact sum of 0-90 + 91-180
+        zero_to_180 = inv_0_90 + inv_91_180
 
         new_row["inv-age-0-to-180-days"] = zero_to_180
         updated_rows.append(new_row)
@@ -1444,6 +1457,7 @@ def resolve_inventory_current_source(user_id, country_key, range_type, month_nam
                 country_key=country_key,
                 month_name=candidate_month,
                 year=year,
+                use_currentinventory_sellable=True,
             )
 
             return {
@@ -2338,6 +2352,7 @@ def get_inventory_current_table():
                 country_key=country_key,
                 month_name=selected_month_for_units,
                 year=year,
+                use_currentinventory_sellable=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = monthly_attach_after_units["rows"]
@@ -2580,6 +2595,7 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
                 country_key=country_key,
                 month_name=selected_month_for_units,
                 year=year,
+                use_currentinventory_sellable=source_result["source_type"] == "currentinventory_table",
             )
 
             rows = monthly_attach_after_units["rows"]
