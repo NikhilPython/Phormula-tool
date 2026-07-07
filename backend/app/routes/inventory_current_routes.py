@@ -1910,6 +1910,15 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             country_key=child_country,
         )
 
+        # Add Percentage row for global country-wise result also
+        percentage_row_result = append_inventory_percentage_row(
+            rows=rows,
+            columns=columns,
+        )
+
+        rows = percentage_row_result["rows"]
+        columns = percentage_row_result["columns"]
+
         selected_month_number = MONTH_NAME_TO_NUMBER.get(source_result["selected_month"])
 
         previous_storage_cost = {
