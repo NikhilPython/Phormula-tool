@@ -465,7 +465,21 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [leftCols, resolvedLayout, collapsed, groupMap, singleMap]);
 
+
+
   const getMinWidthForCol = (col: LeafCol<RowT>) => {
+
+    if (col.key === "available") return 110;
+
+    if (col.key === "fcTransfer") return 110;
+
+    if (col.key === "totalUnits") return 110;
+
+    if (col.key === "productName") return 180;
+
+    if (col.key === "sku") return 120;
+
+    if (col.key === "salesRank") return 130;
     if (col.key === "sno") return 58;
     if (col.key === "product_name") return 220;
     if (col.key === "sku") return 135;
@@ -808,7 +822,13 @@ export default function GroupedCollapsibleTable<RowT>({
           {visibleLeafCols.map((c) => (
             <td
               key={c.key}
-              className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
+              className={[
+                "border",
+                cellPadding,
+                alignClass(c.align),
+                "overflow-hidden truncate",
+                c.tdClassName || "",
+              ].join(" ")}
             >
               {getValue(row, c.key, realIndex)}
             </td>
