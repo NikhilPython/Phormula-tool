@@ -130,7 +130,26 @@ def get_previous_month_year(month, year):
     prev_month = MONTHS_REVERSE_MAP[prev_month_num]
     return prev_month, year
 
+def table_exists_conn(conn, table_name: str, schema: str = "public") -> bool:
+    return bool(conn.execute(
+        text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                  AND table_name = :table_name
+            )
+        """),
+        {"schema": schema, "table_name": table_name}
+    ).scalar())
+
+
 def ensure_payment_columns(conn, table_name: str):
+    # First-time fetch: rolling table may not exist yet.
+    # Do not ALTER a missing table.
+    if not table_exists_conn(conn, table_name):
+        return
+
     conn.execute(text(f'''
         ALTER TABLE "{table_name}"
         ADD COLUMN IF NOT EXISTS debt_payment DOUBLE PRECISION DEFAULT 0
@@ -1524,9 +1543,8 @@ def process_skuwise_data(user_id, country, month, year):
             """))
 
         for tbl in (target_table2, target_table_usd_roll):
-            ensure_payment_columns(conn, tbl)
             conn.execute(text(f"""
-                CREATE TABLE IF NOT EXISTS {tbl} (
+                CREATE TABLE IF NOT EXISTS "{tbl}" (
                     id SERIAL PRIMARY KEY,
                     product_name TEXT,
                     sku TEXT,
@@ -1542,6 +1560,7 @@ def process_skuwise_data(user_id, country, month, year):
                     promotional_rebates_tax REAL,
                     gross_sales REAL,
                     refund_sales REAL,
+                    tex_and_credits REAL,
                     net_sales REAL,
                     cost_of_unit_sold REAL,
                     sales_tax_refund REAL,
@@ -1553,6 +1572,7 @@ def process_skuwise_data(user_id, country, month, year):
                     refund_selling_fees REAL,
                     fba_fees REAL,
                     total REAL,
+                    amazon_fee REAL,
                     net_taxes REAL,
                     digital_transaction_tax REAL,
                     net_credits REAL,
@@ -1568,22 +1588,21 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
-                    debt_payment REAL,
-                    disbursement REAL,
+                    debt_payment REAL DEFAULT 0,
+                    disbursement REAL DEFAULT 0,
                     rembursement_fee REAL,
                     reimbursement_vs_sales REAL,
                     cm2_margins REAL,
                     rembursment_vs_cm2_margins REAL,
                     misc_transaction REAL,
                     promotional_rebates_percentage REAL,
-                    tex_and_credits REAL,
                     price_in_gbp REAL,
                     shipping_credits_tax REAL,
                     other REAL,
-                    amazon_fee REAL,
                     unit_wise_profitability REAL,
                     asp REAL,
                     sales_mix REAL,
+                    profit_mix REAL,
                     sales_mix_analysis TEXT,
                     shipping_credits REAL,
                     shipment_charges REAL,
@@ -1593,10 +1612,11 @@ def process_skuwise_data(user_id, country, month, year):
                     month TEXT,
                     year TEXT,
                     country TEXT,
-                    profit_mix REAL,
                     user_id INTEGER
                 )
             """))
+
+            ensure_payment_columns(conn, tbl)
 
         currency1 = 'gbp'  # fallback/default
         def get_conversion_rate(dest_country: str):
