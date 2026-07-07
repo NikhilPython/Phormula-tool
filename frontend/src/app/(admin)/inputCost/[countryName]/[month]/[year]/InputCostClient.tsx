@@ -1715,17 +1715,41 @@ const getInventoryRowSku = (row: InventoryCurrentRow) =>
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
-const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+const getInventoryRowAvailableUnits = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
-    "Sellable Units",
-    "sellable_units",
-    "sellableUnits",
-    "sellable_sum_last",
     "available",
-    "totalUnits",
-    "total_units",
-    "total_quantity",
+    "available_quantity",
+    "fulfillable_quantity",
+    "afn_fulfillable_quantity",
+    "afn-fulfillable-quantity",
   ]);
+};
+
+const getInventoryRowFcTransferUnits = (row: InventoryCurrentRow) => {
+  return pickInventoryNumber(row, [
+    "fc-transfer",
+    "fc_transfer",
+    "fcTransfer",
+    "reserved_fc_transfer",
+    "reserved-fc-transfer",
+  ]);
+};
+
+const getInventoryRowTotalUnits = (row: InventoryCurrentRow) => {
+  const available = getInventoryRowAvailableUnits(row);
+  const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+  return (
+    pickInventoryNumber(row, [
+      "Sellable Units",
+      "sellable_units",
+      "sellableUnits",
+      "sellable_sum_last",
+      "totalUnits",
+      "total_units",
+      "total_quantity",
+    ]) || available + fcTransfer
+  );
 };
 
 const getInventoryRowUnfulfillableUnits = (row: InventoryCurrentRow) => {
@@ -1913,9 +1937,9 @@ const getUniqueInventorySkuCount = (rows: any[]) => {
 };
 
 const getRowAgeingTotalUnits = (row: any) => {
-  const available = getInventoryRowTotalUnits(row);
+  const sellableUnits = getInventoryRowTotalUnits(row);
 
-  if (available > 0) return available;
+  if (sellableUnits > 0) return sellableUnits;
 
   return (
     toNum(
@@ -2065,12 +2089,35 @@ const buildDonutDataFromInventoryAgeSummary = (
 ): DonutChartItem[] => {
   const columns = inventoryAgeSummary?.columns || {};
 
+  const hasSplitFirst180 =
+    toNum(columns["inv-age-0-to-90-days"]?.total) > 0 ||
+    toNum(columns["inv-age-91-to-180-days"]?.total) > 0;
+
+
+  const first180Buckets = hasSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        column: "inv-age-0-to-90-days",
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        column: "inv-age-91-to-180-days",
+        color: "#FDD36F",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        column: "inv-age-0-to-180-days",
+        color: "#7B9A6D",
+      },
+    ];
+
+
   const summaryBuckets = [
-    {
-      bucket: "0–180 Days",
-      column: "inv-age-0-to-180-days",
-      color: "#7B9A6D",
-    },
+    ...first180Buckets,
     {
       bucket: "181–270 Days",
       column: "inv-age-181-to-270-days",
@@ -2087,6 +2134,7 @@ const buildDonutDataFromInventoryAgeSummary = (
       color: "#B75A5A",
     },
   ];
+
 
   return summaryBuckets
     .map((bucket) => {
@@ -2236,12 +2284,15 @@ const buildInventoryInsightsFromResponses = (
         twoSeventyOneToThreeSixtyFive +
         threeSixtyFivePlus;
 
-      // ✅ Sellable Units should come from backend available column
-      const available = getInventoryRowTotalUnits(row);
+      const available = getInventoryRowAvailableUnits(row);
+
+      const fcTransfer = getInventoryRowFcTransferUnits(row);
+
+      const sellableUnits = getInventoryRowTotalUnits(row);
 
       const inboundUnits = getInventoryRowInboundUnits(row);
 
-      const totalUnits = available || bucketTotal;
+      const totalUnits = sellableUnits || bucketTotal;
 
       const unitsSold = currentMonthUnitsSoldKey
         ? toNum(row?.[currentMonthUnitsSoldKey])
@@ -2271,9 +2322,12 @@ const buildInventoryInsightsFromResponses = (
         oneEightyOneToTwoSeventy,
         twoSeventyOneToThreeSixtyFive,
         threeSixtyFivePlus,
-        available,
+
+        available,      // backend available
+        fcTransfer,     // backend fc-transfer
         inboundUnits,
-        totalUnits,
+        totalUnits,     // backend Sellable Units
+
         unsellableUnits: getInventoryRowUnfulfillableUnits(row),
         unitsSold,
         salesLast30Days,
@@ -2330,35 +2384,65 @@ const buildInventoryInsightsFromResponses = (
     selectedInventoryResponseForDonut?.inventory_age_summary
   );
 
+  const fallbackDonutData: DonutChartItem[] = isUsingSplitFirst180
+    ? [
+      {
+        bucket: "0–90 Days",
+        units: overallAgeing.zeroToNinety,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "91–180 Days",
+        units: overallAgeing.ninetyOneToOneEighty,
+        color: "#FDD36F",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ]
+    : [
+      {
+        bucket: "0–180 Days",
+        units: overallAgeing.zeroToOneEighty,
+        color: "#7B9A6D",
+      },
+      {
+        bucket: "181–270 Days",
+        units: overallAgeing.oneEightyOneToTwoSeventy,
+        color: "#ED9F50",
+      },
+      {
+        bucket: "271–365 Days",
+        units: overallAgeing.twoSeventyOneToThreeSixtyFive,
+        color: "#C49466",
+      },
+      {
+        bucket: "365+ Days",
+        units: overallAgeing.threeSixtyFivePlus,
+        color: "#B75A5A",
+      },
+    ];
+
+
   const donutData: DonutChartItem[] =
     backendSummaryDonutData.length > 0
       ? backendSummaryDonutData
-      : [
-        {
-          bucket: "0–180 Days",
-          units: overallAgeing.zeroToOneEighty,
-          color: "#7B9A6D",
-        },
-        {
-          bucket: "181–270 Days",
-          units: overallAgeing.oneEightyOneToTwoSeventy,
-          color: "#ED9F50",
-        },
-        {
-          bucket: "271–365 Days",
-          units: overallAgeing.twoSeventyOneToThreeSixtyFive,
-          color: "#C49466",
-        },
-        {
-          bucket: "365+ Days",
-          units: overallAgeing.threeSixtyFivePlus,
-          color: "#B75A5A",
-        },
-      ].filter((item) => item.units > 0);
+      : fallbackDonutData.filter((item) => item.units > 0);
 
   const donutTotalUnits =
-    selectedInventoryResponseForDonut?.inventory_age_summary?.percentage_base_total ??
-    selectedInventoryResponseForDonut?.inventory_age_summary?.total ??
+    selectedInventoryResponseForDonut?.inventory_age_summary?.sellable_total ??
     donutData.reduce((sum, item) => sum + toNum(item.units), 0);
 
   const selectedTrendOption =
