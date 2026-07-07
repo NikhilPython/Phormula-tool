@@ -604,6 +604,7 @@ type InventoryInsightsData = {
 
     actions: ActionCardItem[];
     actionLogic: ActionLogicItem[];
+    inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"];
 };
 
 /* ===================== SMALL HELPERS ===================== */
@@ -1939,6 +1940,21 @@ const isInventoryInsightsTotalRow = (row: InventoryCurrentRow) => {
     return sku === "total" || product === "total" || sku === "grand total" || product === "grand total";
 };
 
+const isInventoryInsightsPercentageRow = (row: InventoryCurrentRow) => {
+    const product = getInventoryRowProductName(row).toLowerCase();
+    const sku = getInventoryRowSku(row).toLowerCase();
+    const rowType = String(row?.row_type || "").trim().toLowerCase();
+
+    return (
+        row?.is_percentage_row === true ||
+        rowType === "percentage" ||
+        product === "percentage" ||
+        product === "% of total" ||
+        sku === "percentage" ||
+        sku === "% of total"
+    );
+};
+
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
     inventoryToNum(row?.[key]);
 
@@ -2280,6 +2296,38 @@ const buildDonutDataFromInventoryAgeSummary = (
         .filter((item) => item.units > 0);
 };
 
+const buildBackendPercentageHeatmapRow = (
+    row: InventoryCurrentRow | undefined,
+    isUsingSplitFirst180: boolean
+): AgeingRiskHeatmapRow | null => {
+    if (!row) return null;
+
+    return {
+        productName: "% of Total",
+        sku: "-",
+
+        zeroToNinety: inventoryToNum(row?.["inv-age-0-to-90-days"]),
+        ninetyOneToOneEighty: inventoryToNum(row?.["inv-age-91-to-180-days"]),
+        zeroToOneEighty: inventoryToNum(row?.["inv-age-0-to-180-days"]),
+
+        oneEightyOneToTwoSeventy: inventoryToNum(row?.["inv-age-181-to-270-days"]),
+        twoSeventyOneToThreeSixtyFive: inventoryToNum(row?.["inv-age-271-to-365-days"]),
+        threeSixtyFivePlus: inventoryToNum(row?.["inv-age-365-plus-days"]),
+
+        available: inventoryToNum(row?.["Sellable Units"]),
+        totalUnits: inventoryToNum(row?.["Sellable Units"]),
+
+        unsellableUnits: inventoryToNum(row?.["unfulfillable-quantity"]),
+
+        inboundUnits: undefined,
+        unitsSold: undefined,
+        coverageRatio: undefined,
+        inventoryAlert: "",
+
+        isPercentageRow: true,
+    };
+};
+
 const buildInventoryInsightsFromResponses = (
     responses: InventoryCurrentApiResponse[],
     ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
@@ -2298,8 +2346,16 @@ const buildInventoryInsightsFromResponses = (
         selectedGlobalInventoryCountry
     );
 
-    const latestRows = (latestResponse?.rows ?? []).filter(
-        (row) => !isInventoryInsightsTotalRow(row)
+    const rawRows = latestResponse?.rows ?? [];
+
+    const backendPercentageRawRow = rawRows.find((row) =>
+        isInventoryInsightsPercentageRow(row)
+    );
+
+    const latestRows = rawRows.filter(
+        (row) =>
+            !isInventoryInsightsTotalRow(row) &&
+            !isInventoryInsightsPercentageRow(row)
     );
 
     const dynamicHeatmapBuckets = getDynamicInventoryBuckets(latestRows);
@@ -2454,6 +2510,15 @@ const buildInventoryInsightsFromResponses = (
             inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
         };
     });
+
+    const backendPercentageHeatmapRow = buildBackendPercentageHeatmapRow(
+        backendPercentageRawRow,
+        isUsingSplitFirst180
+    );
+
+    const finalHeatmapData = backendPercentageHeatmapRow
+        ? [...heatmapData, backendPercentageHeatmapRow]
+        : heatmapData;
 
     const overallAgeing = latestRows.reduce(
         (acc, row) => {
@@ -2847,7 +2912,7 @@ const buildInventoryInsightsFromResponses = (
 
     return {
         heatmapBuckets: dynamicHeatmapBuckets,
-        heatmapData,
+        heatmapData: finalHeatmapData,
         donutSku: "Overall",
         donutData,
         donutTotalUnits,
@@ -2871,7 +2936,86 @@ const buildInventoryInsightsFromResponses = (
 
         actions,
         actionLogic: INVENTORY_ACTION_LOGIC,
+        inventoryAgeSummary: latestResponse?.inventory_age_summary,
     };
+};
+
+const bucketKeyToApiColumnForExcel: Record<string, string> = {
+    zeroToNinety: "inv-age-0-to-90-days",
+    ninetyOneToOneEighty: "inv-age-91-to-180-days",
+    zeroToOneEighty: "inv-age-0-to-180-days",
+    oneEightyOneToTwoSeventy: "inv-age-181-to-270-days",
+    twoSeventyOneToThreeSixtyFive: "inv-age-271-to-365-days",
+    threeSixtyFivePlus: "inv-age-365-plus-days",
+};
+
+const buildInventoryInsightsExcelRows = (
+    rows: AgeingRiskHeatmapRow[],
+    buckets: AgeingBucket[],
+    inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
+) => {
+    const percentageRow = rows.find((row) => row.isPercentageRow);
+    const productRows = rows.filter(
+        (row) => !row.isPercentageRow && !row.isTotalRow
+    );
+
+    const sortedRows = [...productRows].sort((a, b) => {
+        const aUnitsSold = Number(a.unitsSold || 0);
+        const bUnitsSold = Number(b.unitsSold || 0);
+        return bUnitsSold - aUnitsSold;
+    });
+
+    const totalRow: AgeingRiskHeatmapRow = {
+        productName: "Total",
+        sku: "-",
+        isTotalRow: true,
+
+        available: 0,
+        totalUnits: 0,
+        inboundUnits: 0,
+        unsellableUnits: 0,
+        unitsSold: 0,
+        salesRank: "",
+        coverageRatio: undefined,
+        inventoryAlert: "",
+    };
+
+    buckets.forEach((bucket) => {
+        const apiColumn = bucketKeyToApiColumnForExcel[bucket.key];
+
+        totalRow[bucket.key] =
+            inventoryAgeSummary?.columns?.[apiColumn]?.total ??
+            sortedRows.reduce(
+                (sum, row) => sum + Number(row[bucket.key] || 0),
+                0
+            );
+    });
+
+    totalRow.available =
+        inventoryAgeSummary?.sellable_total ??
+        sortedRows.reduce((sum, row) => sum + Number(row.available || 0), 0);
+
+    totalRow.totalUnits = totalRow.available;
+
+    totalRow.inboundUnits = sortedRows.reduce(
+        (sum, row) => sum + Number(row.inboundUnits || 0),
+        0
+    );
+
+    totalRow.unsellableUnits =
+        inventoryAgeSummary?.unfulfillable_total ??
+        sortedRows.reduce(
+            (sum, row) => sum + Number(row.unsellableUnits || 0),
+            0
+        );
+
+    totalRow.unitsSold =
+        inventoryAgeSummary?.current_month_units_sold_total ??
+        sortedRows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0);
+
+    return percentageRow
+        ? [...sortedRows, totalRow, percentageRow]
+        : [...sortedRows, totalRow];
 };
 
 const getUniqueSkuCount = (rows: InventoryCurrentRow[]) => {
@@ -12977,6 +13121,81 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const canDownloadInventoryInsightsExcel =
         !!inventoryInsightsData?.heatmapData?.length;
 
+    const buildInventoryInsightsExcelRows = (
+        rows: AgeingRiskHeatmapRow[],
+        buckets: AgeingBucket[],
+        inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
+    ) => {
+        const percentageRow = rows.find((row) => row.isPercentageRow);
+        const productRows = rows.filter((row) => !row.isPercentageRow && !row.isTotalRow);
+
+        const sortedRows = [...productRows].sort((a, b) => {
+            const aUnitsSold = Number(a.unitsSold || 0);
+            const bUnitsSold = Number(b.unitsSold || 0);
+            return bUnitsSold - aUnitsSold;
+        });
+
+        const totalRow: AgeingRiskHeatmapRow = {
+            productName: "Total",
+            sku: "-",
+            isTotalRow: true,
+            zeroToNinety: 0,
+            ninetyOneToOneEighty: 0,
+            zeroToOneEighty: 0,
+            oneEightyOneToTwoSeventy: 0,
+            twoSeventyOneToThreeSixtyFive: 0,
+            threeSixtyFivePlus: 0,
+            available: 0,
+            totalUnits: 0,
+            inboundUnits: 0,
+            unsellableUnits: 0,
+            unitsSold: 0,
+            salesRank: "",
+            coverageRatio: undefined,
+            inventoryAlert: "",
+        };
+
+        buckets.forEach((bucket) => {
+            const apiColumnMap: Record<string, string> = {
+                zeroToNinety: "inv-age-0-to-90-days",
+                ninetyOneToOneEighty: "inv-age-91-to-180-days",
+                zeroToOneEighty: "inv-age-0-to-180-days",
+                oneEightyOneToTwoSeventy: "inv-age-181-to-270-days",
+                twoSeventyOneToThreeSixtyFive: "inv-age-271-to-365-days",
+                threeSixtyFivePlus: "inv-age-365-plus-days",
+            };
+
+            const apiColumn = apiColumnMap[bucket.key];
+
+            totalRow[bucket.key] =
+                inventoryAgeSummary?.columns?.[apiColumn]?.total ??
+                sortedRows.reduce((sum, row) => sum + Number(row[bucket.key] || 0), 0);
+        });
+
+        totalRow.available =
+            inventoryAgeSummary?.sellable_total ??
+            sortedRows.reduce((sum, row) => sum + Number(row.available || 0), 0);
+
+        totalRow.totalUnits = totalRow.available;
+
+        totalRow.inboundUnits = sortedRows.reduce(
+            (sum, row) => sum + Number(row.inboundUnits || 0),
+            0
+        );
+
+        totalRow.unsellableUnits =
+            inventoryAgeSummary?.unfulfillable_total ??
+            sortedRows.reduce((sum, row) => sum + Number(row.unsellableUnits || 0), 0);
+
+        totalRow.unitsSold =
+            inventoryAgeSummary?.current_month_units_sold_total ??
+            sortedRows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0);
+
+        return percentageRow
+            ? [...sortedRows, totalRow, percentageRow]
+            : [...sortedRows, totalRow];
+    };
+
     const handleInventoryInsightsExcelDownload = useCallback(() => {
         const titleCountry =
             platform === "global"
@@ -13031,7 +13250,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
             brandName: brandName || "",
             homeCurrencyCode: profileHomeCurrency,
             buckets: inventoryInsightsData?.heatmapBuckets || [],
-            dataRows: inventoryInsightsData?.heatmapData || [],
+            dataRows: buildInventoryInsightsExcelRows(
+                inventoryInsightsData?.heatmapData || [],
+                inventoryInsightsData?.heatmapBuckets || [],
+                inventoryInsightsData?.inventoryAgeSummary
+            ),
             showInventoryAlerts: true,
         });
     }, [
