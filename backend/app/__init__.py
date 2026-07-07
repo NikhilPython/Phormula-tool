@@ -1,86 +1,98 @@
-from dotenv import load_dotenv
 import os
-from flask import Flask
+from dotenv import load_dotenv
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
 from flask_cors import CORS
-from config import Config
 from sqlalchemy import text
+from config import Config
 from flask_session import Session
 from datetime import timedelta
 from app.utils.celery_utils import celery_init_app
 
-# Load environment variables
-load_dotenv()
-
-# Create extension instances
 db = SQLAlchemy()
 mail = Mail()
 sess = Session()
 
 def create_app():
     app = Flask(__name__)
-
-    # ---------------- LOGGING FIX (CRITICAL) ----------------
-    import logging
-
-    root_logger = logging.getLogger()
-
-    # Remove existing handlers (Flask/Werkzeug adds its own)
-    if root_logger.handlers:
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-
-    # Add fresh handler
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-    )
-    handler.setFormatter(formatter)
-
-    root_logger.addHandler(handler)
-    root_logger.setLevel(logging.INFO)
-
-    # Make Flask logger use same handlers
-    app.logger.handlers = root_logger.handlers
-    app.logger.setLevel(logging.INFO)
-    # -------------------------------------------------------
-
     app.config.from_object(Config)
 
-    # Database configuration
-    app.config['SQLALCHEMY_BINDS'] = {
-        'superadmin': app.config['SQLALCHEMY_DATABASE_ADMIN_URL'],
-        'shopify': app.config['SQLALCHEMY_DATABASE_SHOPIFY_URL'],
-        'chatbot': app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'],
-        'amazon': app.config['SQLALCHEMY_DATABASE_AMAZON_URL']
-    }
+    # ------------------------
+    # CORS
+    # ------------------------
+    CORS(
+        app,
+        origins=app.config.get("CORS_ORIGINS", [
+            "https://phormula.io",
+            "https://www.phormula.io",
+            "https://admin.phormula.io",
+        ]),
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "Cookie"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    )
 
-    # Create databases if they don't exist
-    from app.utils.token_utils import create_database_if_not_exists
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_URI'])
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_ADMIN_URL'])
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_SHOPIFY_URL'])
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'])
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_AMAZON_URL'])
 
-    # Initialize extensions
+    # ------------------------
+    # DATABASE BINDS
+    # ------------------------
+    binds = {}
+
+    if app.config.get("SQLALCHEMY_DATABASE_ADMIN_URL"):
+        binds["superadmin"] = app.config["SQLALCHEMY_DATABASE_ADMIN_URL"]
+
+    if app.config.get("SQLALCHEMY_DATABASE_SHOPIFY_URL"):
+        binds["shopify"] = app.config["SQLALCHEMY_DATABASE_SHOPIFY_URL"]
+
+    if app.config.get("SQLALCHEMY_DATABASE_CHATBOT_URL"):
+        binds["chatbot"] = app.config["SQLALCHEMY_DATABASE_CHATBOT_URL"]
+
+    if app.config.get("SQLALCHEMY_DATABASE_AMAZON_URL"):
+        binds["amazon"] = app.config["SQLALCHEMY_DATABASE_AMAZON_URL"]
+
+    if binds:
+        app.config["SQLALCHEMY_BINDS"] = binds
+
+    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+        raise RuntimeError("DATABASE_URL is missing")
+
     db.init_app(app)
     mail.init_app(app)
     sess.init_app(app)
 
-    # CORS
-    CORS(
-        app,
-        resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
-        supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "Cookie"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    )
+    # ------------------------
+    # HEALTH CHECK
+    # ------------------------
+    @app.get("/health")
+    def health():
+        return jsonify({"status": "ok"}), 200
 
-    # Register blueprints
+    # ------------------------
+    # AUTO DB CREATE (DEV ONLY)
+    # ------------------------
+    if app.config.get("AUTO_DB_SCHEMA"):
+        with app.app_context():
+            # ✅ THIS IS THE KEY FIX
+            from app.models import user_models  # registers all models
+
+            db.create_all()
+
+            # Optional legacy patch
+            try:
+                with db.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE upload_history "
+                            "ALTER COLUMN month TYPE VARCHAR(20);"
+                        )
+                    )
+            except Exception:
+                pass
+
+    # ------------------------
+    # BLUEPRINTS
+    # ------------------------
     from app.routes.user_routes import user_bp
     from app.routes.upload_routes import upload_bp
     from app.routes.dashboard_routes import dashboard_bp
@@ -116,55 +128,18 @@ def create_app():
     from app.routes.notification_routes import notification_bp
     from app.routes.inventory_current_routes import inventory_current_bp
 
-    app.register_blueprint(user_bp)
-    app.register_blueprint(upload_bp)
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(chatbot_bp)
-    app.register_blueprint(forecast_bp)
-    app.register_blueprint(current_inventory_bp)
-    app.register_blueprint(product_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(pie_chart_bp)
-    app.register_blueprint(admin_dashboard_bp)
-    app.register_blueprint(superadmin_dashboard_bp)
-    app.register_blueprint(business_intelligence_bp)
-    app.register_blueprint(shopify_bp)
-    app.register_blueprint(add_member_bp)
-    app.register_blueprint(amazon_api_bp)
-    app.register_blueprint(skuwise_bp)
-    app.register_blueprint(fba_bp)
-    app.register_blueprint(error_status_bp)
-    app.register_blueprint(referral_fee_bp)
-    app.register_blueprint(fee_preview_bp)
-    app.register_blueprint(inventory_bp)
-    app.register_blueprint(conversion_bp)
-    app.register_blueprint(amazon_sales_api_bp)
-    app.register_blueprint(live_data_bi_bp)
-    app.register_blueprint(summary_bp)
-    app.register_blueprint(advertisement_api_routes_bp)
-    app.register_blueprint(member_auth_bp)
-    app.register_blueprint(inventory_breakup_bp)
-    app.register_blueprint(website_scrapper_bp)
-    app.register_blueprint(business_journey_bp)
-    app.register_blueprint(agent_bp)
-    app.register_blueprint(email_bp)
-    app.register_blueprint(notification_bp)
-    app.register_blueprint(inventory_current_bp)
+    for bp in [
+        user_bp, upload_bp, dashboard_bp, chatbot_bp, forecast_bp,
+        current_inventory_bp, product_bp, admin_bp, pie_chart_bp,
+        admin_dashboard_bp, superadmin_dashboard_bp, business_intelligence_bp,
+        shopify_bp, add_member_bp, amazon_api_bp,
+        skuwise_bp, fba_bp, error_status_bp, referral_fee_bp,
+        fee_preview_bp, inventory_bp, conversion_bp, inventory_breakup_bp, member_auth_bp,
+        amazon_sales_api_bp, live_data_bi_bp, summary_bp, advertisement_api_routes_bp,
+        website_scrapper_bp, business_journey_bp, agent_bp, email_bp, notification_bp, inventory_current_bp
 
-    with app.app_context():
-        db.create_all()
-
-        from sqlalchemy import inspect
-        inspector = inspect(db.engine)
-        if 'upload_history' in inspector.get_table_names():
-            try:
-                with db.engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE upload_history ALTER COLUMN month TYPE VARCHAR(20);"))
-                    conn.commit()
-            except Exception as e:
-                print(f"[WARNING] Could not alter upload_history table: {e}")
-
-    # Initialize Celery after app setup
+    ]:
+        app.register_blueprint(bp)
     celery_init_app(app)
 
     return app

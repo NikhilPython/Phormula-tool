@@ -18,7 +18,7 @@ import re
 warnings.filterwarnings("ignore")
 
 
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 db_url2 = os.getenv('DATABASE_AMAZON_URL')
 
 

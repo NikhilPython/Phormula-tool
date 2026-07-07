@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Dict, List
-
 import pandas as pd
 
-from app import db
 from app.models.user_models import amazon_user
 from app.utils.amazon_utils import (
     _month_date_range_utc,
     _month_date_range_us_pacific_utc,
     _flatten_transaction_to_row,
     run_upload_pipeline_from_df,
+    amazon_client,
 )
 from zoneinfo import ZoneInfo
 from app.utils.amazon_utils import amazon_client
@@ -209,6 +207,7 @@ def sync_monthly_transactions_for_user(
         "year": year,
         "month": month,
         "count": len(all_rows),
+        "transactions": all_rows,
         "store_in_db": store_in_db,
         "run_upload_pipeline": run_upload,
         "pipeline_result": pipeline_result,

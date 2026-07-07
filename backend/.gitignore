@@ -27,5 +27,18 @@ backend/env
 .env.*
 
 backend/uploads/*.xlsx
+__pycache__/
+.env
+.env.*
+venv/
+instance/
+*.log
+.idea/
+.vscode/
+
+.venv/
+.refresh_token
+main
+requirements.broken.txt
 
 flask_session/

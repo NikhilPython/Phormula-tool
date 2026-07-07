@@ -114,7 +114,7 @@ def callback():
         error_message = "Database error while saving store details."
         return redirect(f"{FRONTEND_BASE_URL}/shopify-error?message={error_message}")
 
-    frontend_url = f"http://localhost:3000/orders?shop={shop}&token={access_token}&email={email}"
+    frontend_url = f"https://phormula.io/orders?shop={shop}&token={access_token}&email={email}"
     return redirect(frontend_url)
 
 # -------------------------------- Helpers --------------------------------

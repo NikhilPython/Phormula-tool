@@ -1,0 +1,27 @@
+// components/charts/ApexCMChartOfSKU.tsx
+"use client";
+import dynamic from "next/dynamic";
+import React from "react";
+import { RangeApi, useGetChartCM2Query } from "@/lib/api/dashboardApi";
+const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
+
+export default function ApexCMChartOfSKU(props: { rangeApi: RangeApi; monthApi?: string; quarter?: string; year: string; country: string }) {
+  const enabled = !!props.year && (!!props.monthApi || !!props.quarter || props.rangeApi === "YTD");
+  const { data, error, isFetching } = useGetChartCM2Query(props, { skip: !enabled });
+
+  if (!enabled) return null;
+  if (isFetching) return <div className="text-sm text-slate-500">Loading…</div>;
+  if (error) return <div className="text-sm text-red-600">Failed to fetch</div>;
+  if (!data?.series?.length) return <div className="text-sm text-slate-500">No data.</div>;
+
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-sm">
+      <ReactApexChart
+        type="bar"
+        height={360}
+        series={data.series}
+        options={{ plotOptions: { bar: { horizontal: true } }, xaxis: { categories: data.categories || [] }, dataLabels: { enabled: false } }}
+      />
+    </div>
+  );
+}

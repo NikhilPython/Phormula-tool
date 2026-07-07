@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from decimal import Decimal, ROUND_HALF_UP
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 
 db_url1= os.getenv('DATABASE_ADMIN_URL')
 
@@ -104,7 +104,7 @@ def apply_modifications(df, country):
         
 
         # Database connection
-        db_url1 = os.getenv('DATABASE_ADMIN_URL', 'postgresql://postgres:password@localhost:5432/admin_db')
+        db_url1 = os.getenv('DATABASE_ADMIN_URL')
         engine_cat = create_engine(db_url1)
         
         # Category table load karo
@@ -342,7 +342,7 @@ def apply_modifications_fatch(df, country):
        
 
         # Database connection
-        db_url1 = os.getenv('DATABASE_ADMIN_URL', 'postgresql://postgres:password@localhost:5432/admin_db')
+        db_url1 = os.getenv('DATABASE_ADMIN_URL')
         engine_cat = create_engine(db_url1)
        
 

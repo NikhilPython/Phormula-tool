@@ -162,9 +162,7 @@ def register():
 
         # ✅ Generate verification token and link (IMPORTANT: link should hit BACKEND)
         verification_token = generate_verification_token(email)
-
-        # change port if your flask runs somewhere else
-        verification_link = f'http://127.0.0.1:5000/verify-email/{verification_token}'
+        verification_link = f'https://api.phormula.io/verify-email/{verification_token}'
 
         # Send welcome and verification emails
         try:
@@ -242,7 +240,7 @@ def forgot_password():
 
     # Generate and send email only if user exists
     token = generate_reset_token(user.id)
-    reset_url = f"http://localhost:3000/reset_password/{token}"
+    reset_url = f"https://phormula.io/reset_password/{token}"
     send_reset_email(user.email, reset_url, user.name)
 
     return jsonify({'success': True, 'message': 'Password reset email sent.'}), 200
@@ -322,7 +320,7 @@ def google_register():
             created = True
 
             try:
-                verification_link = 'http://127.0.0.1:5000/signin'
+                verification_link = 'https://api.phormula.io/dashboard'
                 send_welcome_and_verification_emails(email, name, verification_link)
             except Exception as e:
                 print(f"Failed to send welcome email to {email}: {e}")
@@ -369,7 +367,7 @@ def resend_verification_email():
 
     # Generate new verification token
     verification_token = generate_verification_token(email)
-    verification_link = f'http://127.0.0.1:5000/verify_email/{verification_token}'
+    verification_link = f'https://api.phormula.io/verify_email/{verification_token}'
 
     # Try sending the verification email
     try:
@@ -635,11 +633,11 @@ def verify_email(token):
         email = (email or "").strip().lower()
 
         if not email:
-            return redirect('http://localhost:3000/verify-email?status=failed')
+            return redirect('http://phormula.io/verify-email?status=failed')
 
         user = User.query.filter_by(email=email).first()
         if not user:
-            return redirect('http://localhost:3000/verify-email?status=failed')
+            return redirect('http://phormula.io/verify-email?status=failed')
 
         # ✅ mark verified (idempotent)
         user.is_verified = True
@@ -654,12 +652,10 @@ def verify_email(token):
         # Store user session after verification
         session['user_id'] = user.id
 
-        # ✅ redirect to frontend page that you already have
-        return redirect(f'http://localhost:3000/verify-email?status=success&email={email}')
-
+        return redirect('https://phormula.io/verify-email?status=success')
     except Exception as e:
         print(f"Email verification error: {str(e)}")
-        return redirect('http://localhost:3000/verify-email?status=failed')
+        return redirect('http://phormula.io/verify-email?status=failed')
 
 
 @user_bp.route('/switch_profile/<int:profile_id>', methods=['GET'])
