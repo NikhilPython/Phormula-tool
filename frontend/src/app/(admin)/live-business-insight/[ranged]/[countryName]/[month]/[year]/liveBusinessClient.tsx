@@ -4615,7 +4615,7 @@ export default function LiveBusinessClient({
                                         journeyPoints: card.journeyPoints,
                                         recommendationPoints: card.recommendationPoints,
                                         advertisingPoints: card.advertisingPoints,
-                                        inventoryPoints: [],
+                                        inventoryPoints: card.inventoryPoints,
 
                                         // ✅ keep chart visible for Other/Remaining SKU groups too
                                         showChart: true,
