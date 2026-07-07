@@ -72,11 +72,23 @@ DEFAULT_OBJECTIVE_V2 = {
 
 def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
     """
-    For a yearly selection, anchor insights to the latest available month
-    within that year (e.g., Dec if present, else latest month with data).
-    Returns (year, month) or None if no monthly data exists for that year.
+    For yearly selection, anchor insights to the latest completed month only.
+
+    Example:
+    If today is July 2026 and yearly 2026 is selected,
+    anchor should be June 2026, not July 2026.
     """
-    for m in range(12, 0, -1):
+
+    max_month = get_period_month_cap(
+        year=year,
+        period="yearly",
+        timeline="ALL",
+    )
+
+    if max_month <= 0:
+        return None
+
+    for m in range(max_month, 0, -1):
         df = fetch_precalc_table(
             user_id=user_id,
             country=country,
@@ -86,6 +98,7 @@ def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
         )
         if not df.empty:
             return year, m
+
     return None
 
 
@@ -142,6 +155,47 @@ def get_latest_completed_month(today=None):
     if today.month == 1:
         return today.year - 1, 12
     return today.year, today.month - 1
+
+def get_period_month_cap(year: int, period: str, timeline: str | None = None, today=None) -> int:
+    """
+    Caps yearly/quarterly reports to latest completed month.
+
+    Example:
+    If today is July 2026:
+      yearly 2026 should use Jan-Jun only
+      Q3 2026 should not use July incomplete data
+      Q2 2026 can use Apr-Jun
+    """
+
+    latest_completed_year, latest_completed_month = get_latest_completed_month(today)
+
+    year = int(year)
+
+    # Past years are fully completed
+    if year < latest_completed_year:
+        if period == "quarterly":
+            q = int(str(timeline).replace("Q", ""))
+            return q * 3
+        return 12
+
+    # Future years should not include anything
+    if year > latest_completed_year:
+        return 0
+
+    # Current year: cap to latest completed month
+    if period == "yearly":
+        return latest_completed_month
+
+    if period == "quarterly":
+        q = int(str(timeline).replace("Q", ""))
+        quarter_end_month = q * 3
+        return min(quarter_end_month, latest_completed_month)
+
+    return latest_completed_month
+
+
+
+
 
 def resolve_latest_two_months():
     """
@@ -1715,6 +1769,7 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
     fetch_monthly_func,
     country: str | None = None,
     apply_ads_final: bool = False,
+    max_month: int | None = None,
 ) -> dict:
     """
     Finds monthly tables available in selected year,
@@ -1737,7 +1792,16 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
     prev_detail_frames = []
     prev_total_frames = []
 
-    for m in range(1, 13):
+    if max_month is None:
+        max_month = get_period_month_cap(
+            year=year,
+            period="yearly",
+            timeline="ALL",
+        )
+
+    max_month = max(0, min(int(max_month), 12))
+
+    for m in range(1, max_month + 1):
         df_cur = fetch_monthly_func(
             user_id=user_id,
             timeline=str(m),
@@ -1783,6 +1847,139 @@ def aggregate_monthly_tables_for_yearly_comparison_generic(
                 period="monthly",
                 timeline=str(m),
                 year=year - 1,
+            )
+
+        prev_detail, prev_total = _split_total_row(df_prev)
+
+        if not prev_detail.empty:
+            prev_detail_frames.append(prev_detail)
+
+        if not prev_total.empty:
+            prev_total_frames.append(prev_total)
+
+    def concat_or_empty(frames):
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    current_detail_all = concat_or_empty(current_detail_frames)
+    current_total_all = concat_or_empty(current_total_frames)
+
+    prev_detail_all = concat_or_empty(prev_detail_frames)
+    prev_total_all = concat_or_empty(prev_total_frames)
+
+    return {
+        "available_months": available_months,
+        "df_current_detail": current_detail_all,
+        "df_current_total": aggregate_total_rows_for_partial_year(current_total_all),
+        "df_prev_detail": prev_detail_all,
+        "df_prev_total": aggregate_total_rows_for_partial_year(prev_total_all),
+        "sku_current": compute_sku_precalc(current_detail_all),
+        "sku_prev": compute_sku_precalc(prev_detail_all),
+    }
+
+def aggregate_monthly_tables_for_quarterly_comparison_generic(
+    *,
+    user_id: int,
+    year: int,
+    timeline: str,
+    fetch_monthly_func,
+    country: str | None = None,
+    apply_ads_final: bool = False,
+) -> dict:
+    """
+    Builds quarterly comparison from completed monthly tables only.
+
+    Example:
+    If Q3 2026 is selected during July 2026:
+    latest completed month is June 2026,
+    so Q3 has no completed months and July is not included.
+    """
+
+    q = int(str(timeline).replace("Q", ""))
+
+    quarter_start_month = (q - 1) * 3 + 1
+    quarter_end_month = q * 3
+
+    max_month = get_period_month_cap(
+        year=year,
+        period="quarterly",
+        timeline=timeline,
+    )
+
+    max_month = min(quarter_end_month, max_month)
+
+    available_months = []
+
+    current_detail_frames = []
+    current_total_frames = []
+
+    prev_detail_frames = []
+    prev_total_frames = []
+
+    if max_month < quarter_start_month:
+        return {
+            "available_months": [],
+            "df_current_detail": pd.DataFrame(),
+            "df_current_total": pd.DataFrame(),
+            "df_prev_detail": pd.DataFrame(),
+            "df_prev_total": pd.DataFrame(),
+            "sku_current": {},
+            "sku_prev": {},
+        }
+
+    for m in range(quarter_start_month, max_month + 1):
+        df_cur = fetch_monthly_func(
+            user_id=user_id,
+            timeline=str(m),
+            year=year,
+        )
+
+        if apply_ads_final and country:
+            df_cur = apply_advertising_total_final_from_ads_table(
+                df_cur,
+                user_id=user_id,
+                country=country,
+                period="monthly",
+                timeline=str(m),
+                year=year,
+            )
+
+        if df_cur.empty:
+            continue
+
+        available_months.append(m)
+
+        cur_detail, cur_total = _split_total_row(df_cur)
+
+        if not cur_detail.empty:
+            current_detail_frames.append(cur_detail)
+
+        if not cur_total.empty:
+            current_total_frames.append(cur_total)
+
+        # Previous quarter comparison:
+        # Q2 Apr-Jun compares to Q1 Jan-Mar.
+        # Q1 Jan-Mar compares to Q4 Oct-Dec previous year.
+        if q == 1:
+            prev_year = year - 1
+            prev_month = m + 9
+        else:
+            prev_year = year
+            prev_month = m - 3
+
+        df_prev = fetch_monthly_func(
+            user_id=user_id,
+            timeline=str(prev_month),
+            year=prev_year,
+        )
+
+        if apply_ads_final and country:
+            df_prev = apply_advertising_total_final_from_ads_table(
+                df_prev,
+                user_id=user_id,
+                country=country,
+                period="monthly",
+                timeline=str(prev_month),
+                year=prev_year,
             )
 
         prev_detail, prev_total = _split_total_row(df_prev)
@@ -3287,6 +3484,974 @@ def render_month_end_summary(
 
     return "\n".join(lines)
 
+# def get_or_create_summary(
+#     user_id,
+#     country,
+#     marketplace_id,
+#     period,
+#     timeline,
+#     year,
+#     objective=None,
+#     target_sku: str | list | None = None,
+#     force_regenerate=False
+# ):
+
+    
+
+#     # ============================================================
+#     # LOAD OBJECTIVE FROM DB
+#     # ============================================================
+#     user_objective_row = UserObjective.query.filter_by(
+#         user_id=user_id,
+#         country=country
+#     ).first()
+
+#     if user_objective_row:
+#         objective_v2 = {
+#             "growth_intent": user_objective_row.growth_intent,
+#             "profit_priority": user_objective_row.profit_priority,
+#             "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
+#             "business_context": user_objective_row.business_context,
+#             "country": str(country).lower(),
+#             "time_horizon": "1_month"
+#         }
+#     else:
+#         objective_v2 = {
+#             "growth_intent": "balanced",
+#             "profit_priority": "protect_growth",
+#             "inventory_clearance_priority": False,
+#             "business_context": None,
+#             "country": str(country).lower(),
+#             "time_horizon": "1_month"
+#         }
+
+#     # ============================================================
+#     # PERIOD RESOLUTION
+#     # ============================================================
+#     user_selected = bool(period and timeline and year)
+
+#     if not user_selected:
+#         year, month = resolve_latest_available_month(user_id, country)
+#         timeline = str(month)
+#         period = "monthly"
+
+#     is_latest = is_latest_period(
+#         period, timeline, year,
+#         user_id=user_id,
+#         country=country
+#     )
+
+#     # 🔥 NEW CONTROL FLAGS
+#     allow_inventory = False
+#     allow_recommendations = False
+
+#     if period in ("monthly", "quarterly"):
+#         allow_inventory = is_latest
+#         allow_recommendations = is_latest
+
+#     elif period == "yearly":
+#         allow_inventory = is_latest
+#         allow_recommendations = is_latest
+
+        
+
+#     # ============================================================
+#     # CACHE CHECK
+#     # ============================================================
+#     cached = fetch_existing_summary(
+#         user_id, country, marketplace_id, period, timeline, year
+#     )
+
+#     if cached and not force_regenerate and not target_sku:
+#         return {
+#             "summary": cached.summary,
+#             "recommendations": (
+#                 json.loads(cached.recommendations)
+#                 if cached.recommendations else {}
+#             ),
+#             "source": "db",
+#             "scope": "portfolio",
+#             "objective": objective_v2
+#         }
+
+#     # ============================================================
+#     # CURRENT DATA
+#     # ============================================================
+#     quarterly_compare = None
+
+#     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+
+#     df_current = apply_productwise_ads_cm2_from_adsmonthly(
+#         df_current,
+#         user_id=user_id,
+#         country=country,
+#         period=period,
+#         timeline=timeline,
+#         year=year,
+#     )
+
+#     df_current = apply_advertising_total_final_from_ads_table(
+#         df_current,
+#         user_id=user_id,
+#         country=country,
+#         period=period,
+#         timeline=timeline,
+#         year=year,
+#     )
+
+#     df_current_detail, df_current_total = _split_total_row(df_current)
+
+#     sku_current = compute_sku_precalc(df_current_detail)
+
+#     # For incomplete current-year quarter, do not use quarterly table
+#     # because it may contain current running month data.
+#     # Build quarter only from completed monthly tables.
+#     if period == "quarterly":
+#         quarterly_max_month = get_period_month_cap(
+#             year=year,
+#             period="quarterly",
+#             timeline=timeline,
+#         )
+
+#         q = int(str(timeline).replace("Q", ""))
+#         quarter_start_month = (q - 1) * 3 + 1
+#         quarter_end_month = q * 3
+
+#         if quarterly_max_month < quarter_end_month:
+#             quarterly_compare = aggregate_monthly_tables_for_quarterly_comparison_generic(
+#                 user_id=user_id,
+#                 year=year,
+#                 timeline=timeline,
+#                 country=country,
+#                 apply_ads_final=True,
+#                 fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
+#                     user_id=user_id,
+#                     country=country,
+#                     period="monthly",
+#                     timeline=timeline,
+#                     year=year,
+#                 ),
+#             )
+
+#             df_current_detail = quarterly_compare["df_current_detail"]
+#             df_current_total = quarterly_compare["df_current_total"]
+#             sku_current = quarterly_compare["sku_current"]
+
+#     # ✅ Portfolio-level inventory coverage for Performance Summary
+#     # Monthly only.
+#     portfolio_inventory_coverage = {}
+
+#     # ✅ Add selected-period current inventory and coverage ratio only
+#     if period == "monthly":
+#         sku_current = enrich_sku_current_with_selected_inventory(
+#             sku_current,
+#             user_id=user_id,
+#             year=year,
+#             month=int(timeline),
+#         )
+
+#         portfolio_inventory_coverage = build_portfolio_inventory_coverage_summary(
+#             user_id=user_id,
+#             country=country,
+#             year=year,
+#             month=int(timeline),
+#             df_current_total=df_current_total,
+#         )
+
+#     top_5_skus = select_focus_skus_by_sales_mix(sku_current)
+
+#     # ============================================================
+#     # SINGLE SKU MODE
+#     # ============================================================
+#     single_sku_mode = False
+#     scope = "portfolio"
+
+#     if target_sku:
+#         single_sku_mode = True
+#         scope = "sku"
+
+#         if isinstance(target_sku, list):
+#             target_sku = target_sku[0]
+
+#         target_sku = str(target_sku).strip()
+
+#         if target_sku in sku_current:
+#             top_5_skus = [target_sku]
+#             sku_current = {target_sku: sku_current[target_sku]}
+#         else:
+#             return {
+#                 "summary": f"I couldn’t find SKU '{target_sku}' in the selected period.",
+#                 "recommendations": {},
+#                 "inventory_lost": 0.0,
+#                 "inventory_alerts": {},
+#                 "sku_current": {},
+#                 "sku_mom": {},
+#                 "sku_yoy": None,
+#                 "objective": objective_v2,
+#                 "sku_actions": {},
+#                 "scope": "sku",
+#                 "source": "no_data",
+#             }
+
+#     # ============================================================
+#     # ROLLING CONTEXT (RUN FOR BOTH PORTFOLIO AND SINGLE SKU)
+#     # ============================================================
+#     movement_context = {}
+#     rolling_extremes = {}
+#     yearly_temporal_signals = None
+#     analysis_anchor_year = None
+#     analysis_anchor_month = None
+#     rolling_series = []
+
+#     if period == "yearly":
+#         anchor = resolve_yearly_analysis_anchor(user_id, country, year)
+#         if anchor:
+#             analysis_anchor_year, analysis_anchor_month = anchor
+#     else:
+#         analysis_anchor_year = year
+
+#         if period == "monthly":
+#             analysis_anchor_month = int(timeline)
+
+#         elif period == "quarterly":
+#             analysis_anchor_month = get_period_month_cap(
+#                 year=year,
+#                 period="quarterly",
+#                 timeline=timeline,
+#             )
+
+#             if analysis_anchor_month <= 0:
+#                 analysis_anchor_month = None
+
+#     if analysis_anchor_year and analysis_anchor_month:
+
+#         rolling_series = build_rolling_monthly_series(
+#             user_id=user_id,
+#             country=country,
+#             anchor_year=analysis_anchor_year,
+#             anchor_month=analysis_anchor_month
+#         )
+
+#         movement_context = build_movement_context(rolling_series)
+
+#         rolling_extremes = extract_rolling_extremes(rolling_series)
+
+#         if period == "yearly":
+#             yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
+
+
+                
+
+#     # ============================================================
+#     # INVENTORY
+#     # ============================================================
+
+#     lost_total_val = _total_value(df_current_total, "lost_total")
+#     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
+
+#     if single_sku_mode:
+#         inventory_lost = 0.0
+
+#     inventory_alerts = {}        # ✅ portfolio-level alerts
+#     sku_inventory_flags = {}     # ✅ SKU-level inventory recommendations
+
+#     if allow_inventory:
+
+#         inventory_aged_df = fetch_inventory_aged_by_user(user_id, country=country)
+
+#         if not inventory_aged_df.empty:
+
+#             # 🔵 PORTFOLIO ALERTS (KEEP SAME)
+#             inventory_alerts = build_inventory_alerts(
+#                 inventory_aged_df,
+#                 user_id=user_id,
+#                 country=country
+#             )
+
+#         # ✅ IMPORTANT:
+#         # Build SKU-level deterministic inventory recommendation
+#         # after selected-period inventory has already been added to sku_current.
+#         coverage_override_by_sku = {}
+
+#         for sku, row in (sku_current or {}).items():
+#             if not isinstance(row, dict):
+#                 continue
+
+#             sku_key = str(sku or "").strip().upper()
+#             if not sku_key:
+#                 continue
+
+#             cov = row.get("selected_period_coverage_ratio")
+
+#             if cov is None:
+#                 cov = row.get("inventory_coverage_ratio")
+
+#             if cov is None:
+#                 cov = row.get("coverage_ratio_months")
+
+#             if cov is not None:
+#                 coverage_override_by_sku[sku_key] = cov
+
+#         sku_inventory_flags = generate_sku_inventory_flags(
+#             user_id=user_id,
+#             country=country,
+#             focus_skus=top_5_skus if single_sku_mode else None,
+#             coverage_override_by_sku=coverage_override_by_sku,
+#         )   
+
+    
+
+#     # ============================================================
+#     # PREVIOUS PERIOD / YEARLY PARTIAL-YEAR COMPARISON
+#     # ============================================================
+#     period_absolute_changes = {}
+#     period_pct_changes = None
+#     comparison_months = []
+
+#     if period == "yearly":
+#         yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+#             user_id=user_id,
+#             year=year,
+#             country=country,
+#             apply_ads_final=True,
+#             max_month=get_period_month_cap(
+#                 year=year,
+#                 period="yearly",
+#                 timeline="ALL",
+#             ),
+#             fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
+#                 user_id=user_id,
+#                 country=country,
+#                 period="monthly",
+#                 timeline=timeline,
+#                 year=year,
+#             ),
+#         )
+
+#         comparison_months = yearly_compare["available_months"]
+
+#         df_current_total_for_comparison = yearly_compare["df_current_total"]
+#         df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+#         sku_current_for_comparison = yearly_compare["sku_current"]
+#         sku_prev = yearly_compare["sku_prev"]
+
+#     ###############################################
+#         # print("\n================ YEARLY COMPARE DEBUG ================")
+#         # print("period:", period, "timeline:", timeline, "year:", year)
+#         # print("comparison_months:", comparison_months)
+
+#         # print("CURRENT yearly comparison total row:")
+#         # print(
+#         #     df_current_total_for_comparison[
+#         #         [
+#         #             c for c in [
+#         #                 "advertising_total",
+#         #                 "advertising_total_final",
+#         #                 "net_sales",
+#         #                 "acos"
+#         #             ]
+#         #             if c in df_current_total_for_comparison.columns
+#         #         ]
+#         #     ].to_dict(orient="records")
+#         # )
+
+#         # print("PREVIOUS yearly comparison total row:")
+#         # print(
+#         #     df_prev_total_for_comparison[
+#         #         [
+#         #             c for c in [
+#         #                 "advertising_total",
+#         #                 "advertising_total_final",
+#         #                 "net_sales",
+#         #                 "acos"
+#         #             ]
+#         #             if c in df_prev_total_for_comparison.columns
+#         #         ]
+#         #     ].to_dict(orient="records")
+#         # )
+
+#         # print(
+#         #     "current ads final:",
+#         #     _advertising_total_final_value(df_current_total_for_comparison)
+#         # )
+#         # print(
+#         #     "previous ads final:",
+#         #     _advertising_total_final_value(df_prev_total_for_comparison)
+#         # )
+#         # print("======================================================\n")    
+# ############################################################################################################################
+#     else:
+#         (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
+
+#         df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+
+#         df_prev = apply_productwise_ads_cm2_from_adsmonthly(
+#             df_prev,
+#             user_id=user_id,
+#             country=country,
+#             period=p_period,
+#             timeline=p_timeline,
+#             year=p_year,
+#         )
+
+#         df_prev = apply_advertising_total_final_from_ads_table(
+#             df_prev,
+#             user_id=user_id,
+#             country=country,
+#             period=p_period,
+#             timeline=p_timeline,
+#             year=p_year,
+#         )
+
+#         df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#         df_current_total_for_comparison = df_current_total
+#         df_prev_total_for_comparison = df_prev_total
+
+#         sku_current_for_comparison = sku_current
+#         sku_prev = compute_sku_precalc(df_prev_detail)
+
+#     if (
+#         not df_current_total_for_comparison.empty
+#         and not df_prev_total_for_comparison.empty
+#     ):
+#         period_absolute_changes = compute_period_absolute_changes(
+#             df_current_total_for_comparison,
+#             df_prev_total_for_comparison,
+#         )
+
+#         period_pct_changes = compute_period_pct_changes(
+#             df_current_total_for_comparison,
+#             df_prev_total_for_comparison,
+#         )
+# #####################################################################################
+#         # print("\n================ PERIOD CHANGE DEBUG ================")
+#         # print("period_absolute_changes:", json.dumps(period_absolute_changes, indent=2))
+#         # print("period_pct_changes:", json.dumps(period_pct_changes, indent=2))
+#         # print(
+#         #     "manual ads pct from final values:",
+#         #     round(
+#         #         (
+#         #             _advertising_total_final_value(df_current_total_for_comparison)
+#         #             - _advertising_total_final_value(df_prev_total_for_comparison)
+#         #         )
+#         #         / abs(_advertising_total_final_value(df_prev_total_for_comparison))
+#         #         * 100,
+#         #         2
+#         #     )
+#         #     if _advertising_total_final_value(df_prev_total_for_comparison) not in (None, 0)
+#         #     else None
+#         # )
+#         # print("=====================================================\n")
+# #######################################################################################
+
+#         # -------------------------------------------------
+#         # -------------------------------------------------
+#         # Current / previous values for LLM context
+#         # -------------------------------------------------
+#         # For yearly:
+#         #   - comparison values still come from monthly partial-year aggregation
+#         #   - current display values should come from the selected yearly table
+#         #
+#         # This makes yearly current_values.advertising match the yearly table value
+#         # e.g. 8046 instead of Jan-May monthly aggregation 7838.93.
+#         # -------------------------------------------------
+
+#         current_values_source = (
+#             df_current_total
+#             if period == "yearly"
+#             else df_current_total_for_comparison
+#         )
+
+#         previous_values_source = df_prev_total_for_comparison
+
+#         period_absolute_changes["current_values"] = {
+#             "units": _total_value(current_values_source, "total_quantity"),
+#             "net_sales": _total_value(current_values_source, "net_sales"),
+#             "asp": _total_value(current_values_source, "asp"),
+#             "cm1_profit": _total_value(current_values_source, "profit"),
+#             "cm1_profit_per_unit": _total_value(
+#                 current_values_source,
+#                 "unit_wise_profitability"
+#             ),
+#             "cm2_profit": _total_value(current_values_source, "cm2_profit"),
+
+#             # Important: final ads value
+#             # For yearly this now comes from df_current_total, not monthly aggregation.
+#             "advertising": _advertising_total_final_value(current_values_source),
+
+#             "storage_fees": _total_value(
+#                 current_values_source,
+#                 "platform_fee_inventory_storage"
+#             ),
+#             "acos": _total_value(current_values_source, "acos"),
+#         }
+
+#         period_absolute_changes["previous_values"] = {
+#             "units": _total_value(previous_values_source, "total_quantity"),
+#             "net_sales": _total_value(previous_values_source, "net_sales"),
+#             "asp": _total_value(previous_values_source, "asp"),
+#             "cm1_profit": _total_value(previous_values_source, "profit"),
+#             "cm1_profit_per_unit": _total_value(
+#                 previous_values_source,
+#                 "unit_wise_profitability"
+#             ),
+#             "cm2_profit": _total_value(previous_values_source, "cm2_profit"),
+
+#             # Previous still comes from the comparison basis:
+#             # same available months of previous year.
+#             "advertising": _advertising_total_final_value(previous_values_source),
+
+#             "storage_fees": _total_value(
+#                 previous_values_source,
+#                 "platform_fee_inventory_storage"
+#             ),
+#             "acos": _total_value(previous_values_source, "acos"),
+#         }
+
+#     # -------------------------------------------------
+#     # Yearly advertising override
+#     # -------------------------------------------------
+#     # Because yearly current advertising should match the selected yearly table,
+#     # recompute advertising deltas using the same current source.
+#     # -------------------------------------------------
+
+#     if period == "yearly":
+#         current_ads = _advertising_total_final_value(current_values_source)
+#         previous_ads = _advertising_total_final_value(previous_values_source)
+
+#         if current_ads is not None and previous_ads is not None:
+#             period_absolute_changes["advertising"] = round(
+#                 current_ads - previous_ads,
+#                 2
+#             )
+
+#         if current_ads is not None and previous_ads not in (None, 0):
+#             period_pct_changes["advertising"] = round(
+#                 (current_ads - previous_ads) / abs(previous_ads) * 100,
+#                 2
+#             )    
+
+#     sku_mom = compare_sku_metrics(
+#     sku_current_for_comparison,
+#     sku_prev,
+#     )
+
+#     # ✅ Add current-only selected-period inventory fields into sku_mom
+#     # These are NOT previous/delta metrics.
+#     for sku, curr_data in (sku_current_for_comparison or {}).items():
+#         if sku not in sku_mom:
+#             continue
+
+#         if not isinstance(curr_data, dict):
+#             continue
+
+#         sku_mom[sku]["current_inventory"] = curr_data.get("current_inventory", 0)
+#         sku_mom[sku]["selected_period_coverage_ratio"] = curr_data.get(
+#             "selected_period_coverage_ratio",
+#             0
+#         )
+
+#     # ✅ NEW: keep full all-SKU metrics before any single-SKU filtering
+#     all_sku_mom = dict(sku_mom or {})
+
+#     # ✅ NEW: list of every real SKU for individual AI journeys/actions
+#     all_individual_skus = [
+#         str(sku)
+#         for sku in all_sku_mom.keys()
+#         if str(sku).strip().lower() not in TOTAL_LABELS
+#     ]
+
+#     remaining_agg = build_remaining_skus_aggregate(
+#         sku_current=sku_current_for_comparison,
+#         sku_prev=sku_prev,
+#         focus_skus=top_5_skus
+#     )
+
+#     # -------------------------------------------------
+#     # Remaining SKUs time series (for LLM journey)
+#     # -------------------------------------------------
+
+#     remaining_series = []
+
+#     if analysis_anchor_year and analysis_anchor_month:
+#         remaining_series = build_remaining_skus_time_series(
+#             user_id=user_id,
+#             country=country,
+#             focus_skus=top_5_skus,
+#             anchor_year=analysis_anchor_year,
+#             anchor_month=analysis_anchor_month,
+#             months=24
+#         )
+
+#     remaining_skus_context = {
+#         "aggregated_metrics": remaining_agg,
+#         "time_series": remaining_series
+#     }
+
+#     if single_sku_mode:
+#         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
+
+#         # ✅ Do not show all SKU section in single SKU mode
+#         all_sku_mom = {}
+#         all_individual_skus = []
+
+#     # ============================================================
+#     # EXCEL-BASED SKU RECOMMENDATIONS
+#     # ============================================================
+#     excel_sku_recommendations = build_excel_sku_recommendations(
+#         sku_mom=sku_mom,
+#         objective_v2=objective_v2
+#     )
+
+#     # ============================================================
+#     # ADS CONTEXT FOR PROMPT-2 ADS RECOMMENDATIONS
+#     # ============================================================
+#     sku_ads_context = []
+
+#     for sku, metrics in (sku_mom or {}).items():
+#         if not isinstance(metrics, dict):
+#             continue
+
+#         product_name = metrics.get("product_name") or sku
+
+#         ads_metric = (
+#             metrics.get("productwise_ads_spend")
+#             or metrics.get("advertising_total")
+#             or metrics.get("advertising")
+#             or {}
+#         )
+
+#         net_sales = metrics.get("net_sales") or {}
+#         cm2_profit = metrics.get("cm2_profit") or {}
+
+#         ads_prev = safe_float((ads_metric or {}).get("previous"))
+#         ads_curr = safe_float((ads_metric or {}).get("current"))
+
+#         net_sales_prev = safe_float((net_sales or {}).get("previous"))
+#         net_sales_curr = safe_float((net_sales or {}).get("current"))
+
+#         cm2_prev = safe_float((cm2_profit or {}).get("previous"))
+#         cm2_curr = safe_float((cm2_profit or {}).get("current"))
+
+#         sku_ads_context.append({
+#             "sku": sku,
+#             "product_name": product_name,
+
+#             "ads_spend_prev": round(ads_prev, 2),
+#             "ads_spend_curr": round(ads_curr, 2),
+#             "ads_spend_change_pct": (
+#                 round(((ads_curr - ads_prev) / abs(ads_prev)) * 100, 2)
+#                 if ads_prev
+#                 else None
+#             ),
+
+#             "net_sales_prev": round(net_sales_prev, 2),
+#             "net_sales_curr": round(net_sales_curr, 2),
+
+#             "tacos_prev": (
+#                 round((ads_prev / net_sales_prev) * 100, 2)
+#                 if net_sales_prev
+#                 else 0.0
+#             ),
+#             "tacos_curr": (
+#                 round((ads_curr / net_sales_curr) * 100, 2)
+#                 if net_sales_curr
+#                 else 0.0
+#             ),
+
+#             "cm2_profit_prev": round(cm2_prev, 2),
+#             "cm2_profit_curr": round(cm2_curr, 2),
+#         })
+
+#     ads_monthly = {
+#         "total_ads_spend": round(
+#             sum(float(x.get("ads_spend_curr") or 0) for x in sku_ads_context),
+#             2,
+#         ),
+#         "total_cm2_profit": round(
+#             sum(float(x.get("cm2_profit_curr") or 0) for x in sku_ads_context),
+#             2,
+#         ),
+#     }   
+
+#     # ============================================================
+#     # PROMPT 1 (ANALYSIS)
+#     # ============================================================
+#     analysis_insights = {}
+#     analysis_raw = ""
+
+#     if not single_sku_mode:
+#         ai_payload = {
+#             "period": f"{period} {timeline} {year}",
+#             "period_label": period_label(period, timeline, year),
+#             "country": str(country).lower(),
+#             "period_absolute_changes": period_absolute_changes,
+#             "period_pct_changes": period_pct_changes,
+#             "inventory_lost": inventory_lost,
+#             "inventory_alerts": inventory_alerts,
+#             "sku_mom": sku_mom,
+#             "focus_skus": top_5_skus,
+#             "movement_context": movement_context,
+#             "rolling_extremes": rolling_extremes,
+#             "yearly_temporal_signals": yearly_temporal_signals,
+#             "scope": scope,
+#              # ✅ ADD THIS LINE
+#             "portfolio_time_series": rolling_series,
+#             "yearly_comparison_months": comparison_months if period == "yearly" else None,
+#             "yearly_comparison_basis": (
+#                 f"Compared only months {comparison_months} of {year} "
+#                 f"vs same months of {year - 1}"
+#                 if period == "yearly"
+#                 else None
+#             ),
+#         }
+
+#         analysis_raw = run_prompt_1_analysis(ai_payload)
+
+#         try:
+#             analysis_insights = json.loads(analysis_raw)
+#         except Exception:
+#             print("\n❌ Prompt-1 JSON PARSE FAILED")
+#             analysis_insights = {}
+
+#         # print("\n================ AI PAYLOAD ADS DEBUG ================")
+#         # print("period_pct_changes sent to LLM:", json.dumps(period_pct_changes, indent=2))
+#         # print(
+#         #     "period_absolute_changes sent to LLM:",
+#         #     json.dumps(period_absolute_changes, indent=2)
+#         # )
+#         # print("======================================================\n")
+
+#         # analysis_raw = run_prompt_1_analysis(ai_payload)
+
+#         # print("\n================ PROMPT 1 RAW OUTPUT DEBUG ================")
+#         # print(analysis_raw)
+#         # print("===========================================================\n")
+
+#         # try:
+#         #     analysis_insights = json.loads(analysis_raw)
+
+#         #     print("\n================ PARSED ANALYSIS ADS DEBUG ================")
+#         #     print(
+#         #         "parsed advertising:",
+#         #         analysis_insights
+#         #         .get("executive_summary_signals", {})
+#         #         .get("cost_pressure", {})
+#         #         .get("advertising", {})
+#         #     )
+#         #     print("===========================================================\n")
+
+#         except Exception:
+#             print("\n❌ Prompt-1 JSON PARSE FAILED")
+#             analysis_insights = {}
+# #############################################################################################
+
+    
+#     # ============================================================
+#     portfolio_level_narrative = analysis_insights.get("executive_summary_signals", {})
+
+#     # ============================================================
+#     # PROMPT 2 (ALWAYS CALLED)
+#     # ============================================================
+#     portfolio_recommendation = ""
+#     sku_actions = {}
+#     strategy_raw = ""
+
+#     if analysis_insights or single_sku_mode:
+
+#         sku_time_series = {}
+
+#         # ✅ For normal portfolio mode, generate journeys for all SKUs.
+#         # ✅ For single SKU mode, keep only selected SKU.
+#         prompt_skus = top_5_skus if single_sku_mode else all_individual_skus
+
+#         if analysis_anchor_year and analysis_anchor_month:
+#             for sku in prompt_skus:
+#                 sku_time_series[sku] = build_rolling_sku_series(
+#                     user_id=user_id,
+#                     country=country,
+#                     sku=sku,
+#                     anchor_year=analysis_anchor_year,
+#                     anchor_month=analysis_anchor_month
+#                 )
+
+#         strategy_raw = run_prompt_2_strategy(
+#             analysis_insights=analysis_insights,
+#             sku_mom=sku_mom,
+#             objective_v2=objective_v2,
+
+#             # ✅ Send all SKUs for individual journey/recommendation generation
+#             focus_skus=prompt_skus,
+
+#             sku_time_series=sku_time_series,
+#             inventory_alerts=inventory_alerts,
+#             country=str(country).lower(),
+
+#             # ✅ NEW
+#             sku_inventory_flags=sku_inventory_flags,
+#             sku_ads_context=sku_ads_context,
+#             ads_monthly=ads_monthly,
+
+#             remaining_skus_context=remaining_skus_context
+#         )
+       
+
+#         try:
+#             parsed = json.loads(strategy_raw)
+
+#             portfolio_recommendation = parsed.get("portfolio_recommendation", "")
+
+#             ai_sku_actions = parsed.get("sku_actions") or {}
+#             sku_actions = {}
+
+
+#             # -------------------------------------------------
+#             # Merge AI outputs + Excel + Ads + Inventory recommendations
+#             # ✅ Now stores actions for all individual SKUs
+#             # -------------------------------------------------
+#             action_skus = top_5_skus if single_sku_mode else all_individual_skus
+
+#             for sku in action_skus:
+#                 sku_key = str(sku or "").strip()
+#                 sku_lookup_key = sku_key.upper()
+
+#                 ai_data = (
+#                     ai_sku_actions.get(sku_key)
+#                     or ai_sku_actions.get(sku_lookup_key)
+#                     or {}
+#                 )
+
+#                 inv_flag = sku_inventory_flags.get(sku_lookup_key) or sku_inventory_flags.get(sku_key) or {}
+
+#                 sku_actions[sku_key] = {
+#                     "journey_summary": ai_data.get("journey_summary", []),
+
+#                     # ✅ Excel-based deterministic recommendation
+#                     "recommendation": (
+#                         excel_sku_recommendations.get(sku_key)
+#                         or excel_sku_recommendations.get(sku_lookup_key)
+#                         or ""
+#                     ),
+
+#                     # ✅ AI-generated ads recommendation from Prompt-2
+#                     "ads_recommendation": ai_data.get("ads_recommendation", ""),
+
+#                     # ✅ Deterministic inventory recommendation from live-style logic
+#                     "inventory_recommendation": (
+#                         inv_flag.get("inventory_recommendation")
+#                         or ai_data.get("inventory_recommendation", "")
+#                     ),
+
+#                     # ✅ Useful for frontend badges/debug
+#                     "inventory_alert": inv_flag.get("inventory_alert"),
+#                     "inventory_alert_type": inv_flag.get("inventory_alert_type"),
+#                     "inventory_coverage_ratio": inv_flag.get("inventory_coverage_ratio"),
+#                     "coverage_ratio_months": inv_flag.get("coverage_ratio_months"),
+#                     "high_alert_threshold": inv_flag.get("high_alert_threshold"),
+#                     "long_term_aged_units": inv_flag.get("long_term_aged_units"),
+#                     "estimated_storage_cost": inv_flag.get("estimated_storage_cost"),
+#                 }
+#             # ✅ Capture consolidated recommendation for remaining SKUs
+#             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
+#             if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
+#                 sku_actions["remaining_skus_recommendation"] = remaining_skus_rec
+
+#             remaining_journey = parsed.get("remaining_skus_journey_summary")
+#             if isinstance(remaining_journey, list) and remaining_journey:
+#                 sku_actions["remaining_skus_journey_summary"] = remaining_journey
+
+#             remaining_ads_rec = parsed.get("remaining_skus_ads_recommendation")
+#             if isinstance(remaining_ads_rec, str) and remaining_ads_rec.strip():
+#                 sku_actions["remaining_skus_ads_recommendation"] = remaining_ads_rec
+
+#             remaining_inventory_rec = parsed.get("remaining_skus_inventory_recommendation")
+#             if isinstance(remaining_inventory_rec, str) and remaining_inventory_rec.strip():
+#                 sku_actions["remaining_skus_inventory_recommendation"] = remaining_inventory_rec
+
+#         except Exception:
+#             print("\n❌ Prompt-2 JSON PARSE FAILED")
+#             sku_actions = {}
+
+
+
+#     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
+#     if not allow_recommendations:
+
+#         # Remove portfolio-level recommendation
+#         portfolio_recommendation = ""
+
+#         # Remove SKU-level recommendations/actions
+#         for key, value in sku_actions.items():
+#             if isinstance(value, dict):
+#                 value["recommendation"] = ""
+#                 value["ads_recommendation"] = ""
+#                 value["inventory_recommendation"] = ""
+
+#         # Remove remaining SKUs recommendation text but keep card
+#         if "remaining_skus_recommendation" in sku_actions:
+#             sku_actions["remaining_skus_recommendation"] = ""
+
+#     # final_text = strategy_raw if strategy_raw else analysis_raw
+
+#     ######################################################################
+   
+# ##################################################################################
+#     final_text = render_month_end_summary(
+#     period=period,
+#     timeline=timeline,
+#     year=year,
+#     analysis_insights=analysis_insights,
+#     mom=None,
+#     sku_mom=sku_mom,
+#     focus_skus=top_5_skus,
+#     portfolio_recommendation=portfolio_recommendation,
+#     inventory_alerts=inventory_alerts if allow_inventory else {},
+#     inventory_lost=inventory_lost,
+#     currency_symbol="£" if country == "uk" else "$",
+#     strategy_actions=sku_actions,
+#     remaining_agg=remaining_agg,
+
+#     # ✅ NEW
+#     portfolio_inventory_coverage=portfolio_inventory_coverage,
+
+#     all_sku_mom=all_sku_mom,
+# )
+
+
+#     if not single_sku_mode:
+#         save_summary_to_db({
+#         "user_id": user_id,
+#         "country": country,
+#         "marketplace_id": marketplace_id,
+#         "period": period,
+#         "timeline": timeline,
+#         "year": year,
+#         "summary": final_text,
+#         "recommendations": sku_actions or {},
+#         "upsert": True
+#     })
+
+#     return {
+#         "summary": final_text,
+#         # "overall_month_summary": overall_month_summary,
+#         "portfolio_level_narrative": portfolio_level_narrative,
+#         "portfolio_recommendation": portfolio_recommendation,
+#         "recommendations": sku_actions if allow_recommendations else {},
+#         "inventory_lost": inventory_lost,
+#         "inventory_alerts": inventory_alerts if allow_inventory else {},
+#         "sku_current": sku_current,
+#         "sku_mom": sku_mom,
+#         "all_sku_mom": all_sku_mom,
+#         "remaining_agg": remaining_agg,
+#         "sku_yoy": None,
+#         "objective": objective_v2,
+#         "sku_actions": sku_actions,
+#         "scope": scope,
+#         "source": "ai",
+#     }
+
 def get_or_create_summary(
     user_id,
     country,
@@ -3298,8 +4463,6 @@ def get_or_create_summary(
     target_sku: str | list | None = None,
     force_regenerate=False
 ):
-
-    
 
     # ============================================================
     # LOAD OBJECTIVE FROM DB
@@ -3344,7 +4507,7 @@ def get_or_create_summary(
         country=country
     )
 
-    # 🔥 NEW CONTROL FLAGS
+    # 🔥 CONTROL FLAGS
     allow_inventory = False
     allow_recommendations = False
 
@@ -3355,8 +4518,6 @@ def get_or_create_summary(
     elif period == "yearly":
         allow_inventory = is_latest
         allow_recommendations = is_latest
-
-        
 
     # ============================================================
     # CACHE CHECK
@@ -3380,6 +4541,8 @@ def get_or_create_summary(
     # ============================================================
     # CURRENT DATA
     # ============================================================
+    quarterly_compare = None
+
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
 
     df_current = apply_productwise_ads_cm2_from_adsmonthly(
@@ -3404,11 +4567,52 @@ def get_or_create_summary(
 
     sku_current = compute_sku_precalc(df_current_detail)
 
-    # ✅ Portfolio-level inventory coverage for Performance Summary
+    # ============================================================
+    # QUARTERLY INCOMPLETE-PERIOD FIX
+    # ============================================================
+    # For incomplete current-year quarter, do not use the quarterly table,
+    # because it may contain current running month data.
+    # Example:
+    # If today is July 2026 and Q3 2026 is selected,
+    # July is still incomplete, so Q3 should not include July.
+    # ============================================================
+    if period == "quarterly":
+        quarterly_max_month = get_period_month_cap(
+            year=year,
+            period="quarterly",
+            timeline=timeline,
+        )
+
+        q = int(str(timeline).replace("Q", ""))
+        quarter_start_month = (q - 1) * 3 + 1
+        quarter_end_month = q * 3
+
+        if quarterly_max_month < quarter_end_month:
+            quarterly_compare = aggregate_monthly_tables_for_quarterly_comparison_generic(
+                user_id=user_id,
+                year=year,
+                timeline=timeline,
+                country=country,
+                apply_ads_final=True,
+                fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
+                    user_id=user_id,
+                    country=country,
+                    period="monthly",
+                    timeline=timeline,
+                    year=year,
+                ),
+            )
+
+            df_current_detail = quarterly_compare["df_current_detail"]
+            df_current_total = quarterly_compare["df_current_total"]
+            sku_current = quarterly_compare["sku_current"]
+
+    # ============================================================
+    # PORTFOLIO INVENTORY COVERAGE
     # Monthly only.
+    # ============================================================
     portfolio_inventory_coverage = {}
 
-    # ✅ Add selected-period current inventory and coverage ratio only
     if period == "monthly":
         sku_current = enrich_sku_current_with_selected_inventory(
             sku_current,
@@ -3461,7 +4665,7 @@ def get_or_create_summary(
             }
 
     # ============================================================
-    # ROLLING CONTEXT (RUN FOR BOTH PORTFOLIO AND SINGLE SKU)
+    # ROLLING CONTEXT
     # ============================================================
     movement_context = {}
     rolling_extremes = {}
@@ -3481,11 +4685,16 @@ def get_or_create_summary(
             analysis_anchor_month = int(timeline)
 
         elif period == "quarterly":
-            QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
-            analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
+            analysis_anchor_month = get_period_month_cap(
+                year=year,
+                period="quarterly",
+                timeline=timeline,
+            )
+
+            if analysis_anchor_month <= 0:
+                analysis_anchor_month = None
 
     if analysis_anchor_year and analysis_anchor_month:
-
         rolling_series = build_rolling_monthly_series(
             user_id=user_id,
             country=country,
@@ -3500,38 +4709,28 @@ def get_or_create_summary(
         if period == "yearly":
             yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
 
-
-                
-
     # ============================================================
     # INVENTORY
     # ============================================================
-
     lost_total_val = _total_value(df_current_total, "lost_total")
     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
 
     if single_sku_mode:
         inventory_lost = 0.0
 
-    inventory_alerts = {}        # ✅ portfolio-level alerts
-    sku_inventory_flags = {}     # ✅ SKU-level inventory recommendations
+    inventory_alerts = {}
+    sku_inventory_flags = {}
 
     if allow_inventory:
-
         inventory_aged_df = fetch_inventory_aged_by_user(user_id, country=country)
 
         if not inventory_aged_df.empty:
-
-            # 🔵 PORTFOLIO ALERTS (KEEP SAME)
             inventory_alerts = build_inventory_alerts(
                 inventory_aged_df,
                 user_id=user_id,
                 country=country
             )
 
-        # ✅ IMPORTANT:
-        # Build SKU-level deterministic inventory recommendation
-        # after selected-period inventory has already been added to sku_current.
         coverage_override_by_sku = {}
 
         for sku, row in (sku_current or {}).items():
@@ -3558,23 +4757,35 @@ def get_or_create_summary(
             country=country,
             focus_skus=top_5_skus if single_sku_mode else None,
             coverage_override_by_sku=coverage_override_by_sku,
-        )   
-
-    
+        )
 
     # ============================================================
-    # PREVIOUS PERIOD / YEARLY PARTIAL-YEAR COMPARISON
+    # PREVIOUS PERIOD / YEARLY + QUARTERLY PARTIAL COMPARISON
     # ============================================================
     period_absolute_changes = {}
     period_pct_changes = None
     comparison_months = []
 
-    if period == "yearly":
+    if period == "quarterly" and quarterly_compare is not None:
+        comparison_months = quarterly_compare["available_months"]
+
+        df_current_total_for_comparison = quarterly_compare["df_current_total"]
+        df_prev_total_for_comparison = quarterly_compare["df_prev_total"]
+
+        sku_current_for_comparison = quarterly_compare["sku_current"]
+        sku_prev = quarterly_compare["sku_prev"]
+
+    elif period == "yearly":
         yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
             user_id=user_id,
             year=year,
             country=country,
             apply_ads_final=True,
+            max_month=get_period_month_cap(
+                year=year,
+                period="yearly",
+                timeline="ALL",
+            ),
             fetch_monthly_func=lambda user_id, timeline, year: fetch_precalc_table(
                 user_id=user_id,
                 country=country,
@@ -3592,51 +4803,6 @@ def get_or_create_summary(
         sku_current_for_comparison = yearly_compare["sku_current"]
         sku_prev = yearly_compare["sku_prev"]
 
-    ###############################################
-        # print("\n================ YEARLY COMPARE DEBUG ================")
-        # print("period:", period, "timeline:", timeline, "year:", year)
-        # print("comparison_months:", comparison_months)
-
-        # print("CURRENT yearly comparison total row:")
-        # print(
-        #     df_current_total_for_comparison[
-        #         [
-        #             c for c in [
-        #                 "advertising_total",
-        #                 "advertising_total_final",
-        #                 "net_sales",
-        #                 "acos"
-        #             ]
-        #             if c in df_current_total_for_comparison.columns
-        #         ]
-        #     ].to_dict(orient="records")
-        # )
-
-        # print("PREVIOUS yearly comparison total row:")
-        # print(
-        #     df_prev_total_for_comparison[
-        #         [
-        #             c for c in [
-        #                 "advertising_total",
-        #                 "advertising_total_final",
-        #                 "net_sales",
-        #                 "acos"
-        #             ]
-        #             if c in df_prev_total_for_comparison.columns
-        #         ]
-        #     ].to_dict(orient="records")
-        # )
-
-        # print(
-        #     "current ads final:",
-        #     _advertising_total_final_value(df_current_total_for_comparison)
-        # )
-        # print(
-        #     "previous ads final:",
-        #     _advertising_total_final_value(df_prev_total_for_comparison)
-        # )
-        # print("======================================================\n")    
-############################################################################################################################
     else:
         (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
 
@@ -3681,38 +4847,6 @@ def get_or_create_summary(
             df_current_total_for_comparison,
             df_prev_total_for_comparison,
         )
-#####################################################################################
-        # print("\n================ PERIOD CHANGE DEBUG ================")
-        # print("period_absolute_changes:", json.dumps(period_absolute_changes, indent=2))
-        # print("period_pct_changes:", json.dumps(period_pct_changes, indent=2))
-        # print(
-        #     "manual ads pct from final values:",
-        #     round(
-        #         (
-        #             _advertising_total_final_value(df_current_total_for_comparison)
-        #             - _advertising_total_final_value(df_prev_total_for_comparison)
-        #         )
-        #         / abs(_advertising_total_final_value(df_prev_total_for_comparison))
-        #         * 100,
-        #         2
-        #     )
-        #     if _advertising_total_final_value(df_prev_total_for_comparison) not in (None, 0)
-        #     else None
-        # )
-        # print("=====================================================\n")
-#######################################################################################
-
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # Current / previous values for LLM context
-        # -------------------------------------------------
-        # For yearly:
-        #   - comparison values still come from monthly partial-year aggregation
-        #   - current display values should come from the selected yearly table
-        #
-        # This makes yearly current_values.advertising match the yearly table value
-        # e.g. 8046 instead of Jan-May monthly aggregation 7838.93.
-        # -------------------------------------------------
 
         current_values_source = (
             df_current_total
@@ -3732,11 +4866,7 @@ def get_or_create_summary(
                 "unit_wise_profitability"
             ),
             "cm2_profit": _total_value(current_values_source, "cm2_profit"),
-
-            # Important: final ads value
-            # For yearly this now comes from df_current_total, not monthly aggregation.
             "advertising": _advertising_total_final_value(current_values_source),
-
             "storage_fees": _total_value(
                 current_values_source,
                 "platform_fee_inventory_storage"
@@ -3754,11 +4884,7 @@ def get_or_create_summary(
                 "unit_wise_profitability"
             ),
             "cm2_profit": _total_value(previous_values_source, "cm2_profit"),
-
-            # Previous still comes from the comparison basis:
-            # same available months of previous year.
             "advertising": _advertising_total_final_value(previous_values_source),
-
             "storage_fees": _total_value(
                 previous_values_source,
                 "platform_fee_inventory_storage"
@@ -3766,14 +4892,15 @@ def get_or_create_summary(
             "acos": _total_value(previous_values_source, "acos"),
         }
 
-    # -------------------------------------------------
-    # Yearly advertising override
-    # -------------------------------------------------
-    # Because yearly current advertising should match the selected yearly table,
-    # recompute advertising deltas using the same current source.
-    # -------------------------------------------------
-
-    if period == "yearly":
+    # ============================================================
+    # YEARLY ADVERTISING OVERRIDE SAFETY FIX
+    # ============================================================
+    if (
+        period == "yearly"
+        and period_pct_changes is not None
+        and "current_values_source" in locals()
+        and "previous_values_source" in locals()
+    ):
         current_ads = _advertising_total_final_value(current_values_source)
         previous_ads = _advertising_total_final_value(previous_values_source)
 
@@ -3787,15 +4914,16 @@ def get_or_create_summary(
             period_pct_changes["advertising"] = round(
                 (current_ads - previous_ads) / abs(previous_ads) * 100,
                 2
-            )    
+            )
 
     sku_mom = compare_sku_metrics(
-    sku_current_for_comparison,
-    sku_prev,
+        sku_current_for_comparison,
+        sku_prev,
     )
 
-    # ✅ Add current-only selected-period inventory fields into sku_mom
-    # These are NOT previous/delta metrics.
+    # ============================================================
+    # ADD CURRENT-ONLY INVENTORY INTO SKU MOM
+    # ============================================================
     for sku, curr_data in (sku_current_for_comparison or {}).items():
         if sku not in sku_mom:
             continue
@@ -3809,10 +4937,8 @@ def get_or_create_summary(
             0
         )
 
-    # ✅ NEW: keep full all-SKU metrics before any single-SKU filtering
     all_sku_mom = dict(sku_mom or {})
 
-    # ✅ NEW: list of every real SKU for individual AI journeys/actions
     all_individual_skus = [
         str(sku)
         for sku in all_sku_mom.keys()
@@ -3825,10 +4951,9 @@ def get_or_create_summary(
         focus_skus=top_5_skus
     )
 
-    # -------------------------------------------------
-    # Remaining SKUs time series (for LLM journey)
-    # -------------------------------------------------
-
+    # ============================================================
+    # REMAINING SKUS TIME SERIES
+    # ============================================================
     remaining_series = []
 
     if analysis_anchor_year and analysis_anchor_month:
@@ -3848,8 +4973,6 @@ def get_or_create_summary(
 
     if single_sku_mode:
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
-
-        # ✅ Do not show all SKU section in single SKU mode
         all_sku_mom = {}
         all_individual_skus = []
 
@@ -3930,10 +5053,10 @@ def get_or_create_summary(
             sum(float(x.get("cm2_profit_curr") or 0) for x in sku_ads_context),
             2,
         ),
-    }   
+    }
 
     # ============================================================
-    # PROMPT 1 (ANALYSIS)
+    # PROMPT 1 ANALYSIS
     # ============================================================
     analysis_insights = {}
     analysis_raw = ""
@@ -3953,13 +5076,22 @@ def get_or_create_summary(
             "rolling_extremes": rolling_extremes,
             "yearly_temporal_signals": yearly_temporal_signals,
             "scope": scope,
-             # ✅ ADD THIS LINE
             "portfolio_time_series": rolling_series,
+
+            # yearly only
             "yearly_comparison_months": comparison_months if period == "yearly" else None,
             "yearly_comparison_basis": (
                 f"Compared only months {comparison_months} of {year} "
                 f"vs same months of {year - 1}"
                 if period == "yearly"
+                else None
+            ),
+
+            # quarterly partial only
+            "quarterly_comparison_months": comparison_months if period == "quarterly" else None,
+            "quarterly_comparison_basis": (
+                f"Compared only completed months {comparison_months} for {timeline} {year}"
+                if period == "quarterly" and quarterly_compare is not None
                 else None
             ),
         }
@@ -3972,55 +5104,21 @@ def get_or_create_summary(
             print("\n❌ Prompt-1 JSON PARSE FAILED")
             analysis_insights = {}
 
-        # print("\n================ AI PAYLOAD ADS DEBUG ================")
-        # print("period_pct_changes sent to LLM:", json.dumps(period_pct_changes, indent=2))
-        # print(
-        #     "period_absolute_changes sent to LLM:",
-        #     json.dumps(period_absolute_changes, indent=2)
-        # )
-        # print("======================================================\n")
-
-        # analysis_raw = run_prompt_1_analysis(ai_payload)
-
-        # print("\n================ PROMPT 1 RAW OUTPUT DEBUG ================")
-        # print(analysis_raw)
-        # print("===========================================================\n")
-
-        # try:
-        #     analysis_insights = json.loads(analysis_raw)
-
-        #     print("\n================ PARSED ANALYSIS ADS DEBUG ================")
-        #     print(
-        #         "parsed advertising:",
-        #         analysis_insights
-        #         .get("executive_summary_signals", {})
-        #         .get("cost_pressure", {})
-        #         .get("advertising", {})
-        #     )
-        #     print("===========================================================\n")
-
-        except Exception:
-            print("\n❌ Prompt-1 JSON PARSE FAILED")
-            analysis_insights = {}
-#############################################################################################
-
-    
+    # ============================================================
+    # PORTFOLIO NARRATIVE
     # ============================================================
     portfolio_level_narrative = analysis_insights.get("executive_summary_signals", {})
 
     # ============================================================
-    # PROMPT 2 (ALWAYS CALLED)
+    # PROMPT 2 STRATEGY
     # ============================================================
     portfolio_recommendation = ""
     sku_actions = {}
     strategy_raw = ""
 
     if analysis_insights or single_sku_mode:
-
         sku_time_series = {}
 
-        # ✅ For normal portfolio mode, generate journeys for all SKUs.
-        # ✅ For single SKU mode, keep only selected SKU.
         prompt_skus = top_5_skus if single_sku_mode else all_individual_skus
 
         if analysis_anchor_year and analysis_anchor_month:
@@ -4037,22 +5135,15 @@ def get_or_create_summary(
             analysis_insights=analysis_insights,
             sku_mom=sku_mom,
             objective_v2=objective_v2,
-
-            # ✅ Send all SKUs for individual journey/recommendation generation
             focus_skus=prompt_skus,
-
             sku_time_series=sku_time_series,
             inventory_alerts=inventory_alerts,
             country=str(country).lower(),
-
-            # ✅ NEW
             sku_inventory_flags=sku_inventory_flags,
             sku_ads_context=sku_ads_context,
             ads_monthly=ads_monthly,
-
             remaining_skus_context=remaining_skus_context
         )
-       
 
         try:
             parsed = json.loads(strategy_raw)
@@ -4062,11 +5153,6 @@ def get_or_create_summary(
             ai_sku_actions = parsed.get("sku_actions") or {}
             sku_actions = {}
 
-
-            # -------------------------------------------------
-            # Merge AI outputs + Excel + Ads + Inventory recommendations
-            # ✅ Now stores actions for all individual SKUs
-            # -------------------------------------------------
             action_skus = top_5_skus if single_sku_mode else all_individual_skus
 
             for sku in action_skus:
@@ -4079,28 +5165,28 @@ def get_or_create_summary(
                     or {}
                 )
 
-                inv_flag = sku_inventory_flags.get(sku_lookup_key) or sku_inventory_flags.get(sku_key) or {}
+                inv_flag = (
+                    sku_inventory_flags.get(sku_lookup_key)
+                    or sku_inventory_flags.get(sku_key)
+                    or {}
+                )
 
                 sku_actions[sku_key] = {
                     "journey_summary": ai_data.get("journey_summary", []),
 
-                    # ✅ Excel-based deterministic recommendation
                     "recommendation": (
                         excel_sku_recommendations.get(sku_key)
                         or excel_sku_recommendations.get(sku_lookup_key)
                         or ""
                     ),
 
-                    # ✅ AI-generated ads recommendation from Prompt-2
                     "ads_recommendation": ai_data.get("ads_recommendation", ""),
 
-                    # ✅ Deterministic inventory recommendation from live-style logic
                     "inventory_recommendation": (
                         inv_flag.get("inventory_recommendation")
                         or ai_data.get("inventory_recommendation", "")
                     ),
 
-                    # ✅ Useful for frontend badges/debug
                     "inventory_alert": inv_flag.get("inventory_alert"),
                     "inventory_alert_type": inv_flag.get("inventory_alert_type"),
                     "inventory_coverage_ratio": inv_flag.get("inventory_coverage_ratio"),
@@ -4109,7 +5195,7 @@ def get_or_create_summary(
                     "long_term_aged_units": inv_flag.get("long_term_aged_units"),
                     "estimated_storage_cost": inv_flag.get("estimated_storage_cost"),
                 }
-            # ✅ Capture consolidated recommendation for remaining SKUs
+
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
             if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
                 sku_actions["remaining_skus_recommendation"] = remaining_skus_rec
@@ -4130,68 +5216,57 @@ def get_or_create_summary(
             print("\n❌ Prompt-2 JSON PARSE FAILED")
             sku_actions = {}
 
-
-
-    # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
+    # ============================================================
+    # SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
+    # ============================================================
     if not allow_recommendations:
-
-        # Remove portfolio-level recommendation
         portfolio_recommendation = ""
 
-        # Remove SKU-level recommendations/actions
         for key, value in sku_actions.items():
             if isinstance(value, dict):
                 value["recommendation"] = ""
                 value["ads_recommendation"] = ""
                 value["inventory_recommendation"] = ""
 
-        # Remove remaining SKUs recommendation text but keep card
         if "remaining_skus_recommendation" in sku_actions:
             sku_actions["remaining_skus_recommendation"] = ""
 
-    # final_text = strategy_raw if strategy_raw else analysis_raw
-
-    ######################################################################
-   
-##################################################################################
+    # ============================================================
+    # FINAL RENDER
+    # ============================================================
     final_text = render_month_end_summary(
-    period=period,
-    timeline=timeline,
-    year=year,
-    analysis_insights=analysis_insights,
-    mom=None,
-    sku_mom=sku_mom,
-    focus_skus=top_5_skus,
-    portfolio_recommendation=portfolio_recommendation,
-    inventory_alerts=inventory_alerts if allow_inventory else {},
-    inventory_lost=inventory_lost,
-    currency_symbol="£" if country == "uk" else "$",
-    strategy_actions=sku_actions,
-    remaining_agg=remaining_agg,
-
-    # ✅ NEW
-    portfolio_inventory_coverage=portfolio_inventory_coverage,
-
-    all_sku_mom=all_sku_mom,
-)
-
+        period=period,
+        timeline=timeline,
+        year=year,
+        analysis_insights=analysis_insights,
+        mom=None,
+        sku_mom=sku_mom,
+        focus_skus=top_5_skus,
+        portfolio_recommendation=portfolio_recommendation,
+        inventory_alerts=inventory_alerts if allow_inventory else {},
+        inventory_lost=inventory_lost,
+        currency_symbol="£" if country == "uk" else "$",
+        strategy_actions=sku_actions,
+        remaining_agg=remaining_agg,
+        portfolio_inventory_coverage=portfolio_inventory_coverage,
+        all_sku_mom=all_sku_mom,
+    )
 
     if not single_sku_mode:
         save_summary_to_db({
-        "user_id": user_id,
-        "country": country,
-        "marketplace_id": marketplace_id,
-        "period": period,
-        "timeline": timeline,
-        "year": year,
-        "summary": final_text,
-        "recommendations": sku_actions or {},
-        "upsert": True
-    })
+            "user_id": user_id,
+            "country": country,
+            "marketplace_id": marketplace_id,
+            "period": period,
+            "timeline": timeline,
+            "year": year,
+            "summary": final_text,
+            "recommendations": sku_actions or {},
+            "upsert": True
+        })
 
     return {
         "summary": final_text,
-        # "overall_month_summary": overall_month_summary,
         "portfolio_level_narrative": portfolio_level_narrative,
         "portfolio_recommendation": portfolio_recommendation,
         "recommendations": sku_actions if allow_recommendations else {},
@@ -4390,6 +5465,212 @@ def build_mapped_product_journeys(
 
 
 
+# def build_global_numeric_metrics(
+#     *,
+#     user_id: int,
+#     period: str,
+#     timeline: str,
+#     year: int
+# ) -> dict:
+#     """
+#     Builds selected-period and previous-period GLOBAL metrics
+#     from the actual global table.
+
+#     For yearly:
+#     - Do NOT compare full yearly table vs previous full yearly table.
+#     - Compare available monthly tables in selected year vs same months previous year.
+#     """
+
+#     df_current = fetch_global_precalc_table(
+#         user_id=user_id,
+#         period=period,
+#         timeline=timeline,
+#         year=year,
+#     )
+
+#     df_current_detail, df_current_total = _split_total_row(df_current)
+
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(
+#         period,
+#         timeline,
+#         year,
+#     )
+
+#     df_prev = fetch_global_precalc_table(
+#         user_id=user_id,
+#         period=p_period,
+#         timeline=p_timeline,
+#         year=p_year,
+#     )
+
+#     df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#     if df_current.empty:
+#         return {
+#             "available": False,
+#             "source": "global_table",
+#             "reason": "No selected-period global table found",
+#             "selected_period": {
+#                 "period": period,
+#                 "timeline": timeline,
+#                 "year": year,
+#                 "period_label": period_label(period, timeline, year),
+#             },
+#             "previous_period": {
+#                 "period": p_period,
+#                 "timeline": p_timeline,
+#                 "year": p_year,
+#                 "period_label": period_label(p_period, p_timeline, p_year),
+#             },
+#             "portfolio": {},
+#             "sku_current": {},
+#             "sku_mom": {},
+#             "focus_skus": [],
+#             "remaining_agg": {},
+#             "products": {},
+#             "comparison_months": [],
+#         }
+
+#     # ============================================================
+#     # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
+#     # ============================================================
+#     comparison_months = []
+
+#     if period == "yearly":
+#         yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+#             user_id=user_id,
+#             year=year,
+#             fetch_monthly_func=lambda user_id, timeline, year: fetch_global_precalc_table(
+#                 user_id=user_id,
+#                 period="monthly",
+#                 timeline=timeline,
+#                 year=year,
+#             ),
+#         )
+
+#         comparison_months = yearly_compare["available_months"]
+
+#         df_current_total_for_comparison = yearly_compare["df_current_total"]
+#         df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+#         global_sku_current_for_comparison = yearly_compare["sku_current"]
+#         global_sku_prev = yearly_compare["sku_prev"]
+
+#     else:
+#         df_current_total_for_comparison = df_current_total
+#         df_prev_total_for_comparison = df_prev_total
+
+#         global_sku_current_for_comparison = compute_sku_precalc(df_current_detail)
+#         global_sku_prev = compute_sku_precalc(df_prev_detail)
+
+#     # ============================================================
+#     # CURRENT / PREVIOUS VALUES
+#     # For yearly, these now come from monthly partial-year aggregation.
+#     # ============================================================
+#     current_values = {
+#         "units": _total_value(df_current_total_for_comparison, "total_quantity"),
+#         "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
+#         "asp": _total_value(df_current_total_for_comparison, "asp"),
+#         "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
+#         "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
+#         "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
+#         "advertising": _advertising_total_final_value(df_current_total_for_comparison),
+#         "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
+#         "acos": _total_value(df_current_total_for_comparison, "acos"),
+#     }
+
+#     previous_values = {
+#         "units": _total_value(df_prev_total_for_comparison, "total_quantity"),
+#         "net_sales": _total_value(df_prev_total_for_comparison, "net_sales"),
+#         "asp": _total_value(df_prev_total_for_comparison, "asp"),
+#         "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
+#         "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
+#         "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
+#         "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
+#         "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
+#         "acos": _total_value(df_prev_total_for_comparison, "acos"),
+#     }
+
+#     absolute_changes = {}
+#     pct_changes = {}
+
+#     if (
+#         not df_current_total_for_comparison.empty
+#         and not df_prev_total_for_comparison.empty
+#     ):
+#         absolute_changes = compute_period_absolute_changes(
+#             df_current_total_for_comparison,
+#             df_prev_total_for_comparison,
+#         )
+
+#         pct_changes = compute_period_pct_changes(
+#             df_current_total_for_comparison,
+#             df_prev_total_for_comparison,
+#         )
+
+#     # ============================================================
+#     # SKU METRICS
+#     # For yearly, sku_mom is actually partial-year YoY:
+#     # available months current year vs same months previous year.
+#     # ============================================================
+#     global_sku_current = compute_sku_precalc(df_current_detail)
+
+#     global_sku_mom = compare_sku_metrics(
+#         global_sku_current_for_comparison,
+#         global_sku_prev,
+#     )
+
+#     # Keep focus SKUs based on selected-period global table
+#     global_focus_skus = select_focus_skus_by_sales_mix(global_sku_current)
+
+#     global_remaining_agg = build_remaining_skus_aggregate(
+#         sku_current=global_sku_current_for_comparison,
+#         sku_prev=global_sku_prev,
+#         focus_skus=global_focus_skus,
+#     )
+
+#     return {
+#         "available": True,
+#         "source": "global_table",
+#         "selected_period": {
+#             "period": period,
+#             "timeline": timeline,
+#             "year": year,
+#             "period_label": period_label(period, timeline, year),
+#         },
+#         "previous_period": {
+#             "period": p_period,
+#             "timeline": p_timeline,
+#             "year": p_year,
+#             "period_label": period_label(p_period, p_timeline, p_year),
+#         },
+#         "comparison_months": comparison_months,
+#         "comparison_basis": (
+#             f"Compared months {comparison_months} of {year} "
+#             f"vs same months of {year - 1}"
+#             if period == "yearly"
+#             else None
+#         ),
+#         "portfolio": {
+#             "current_values": current_values,
+#             "previous_values": previous_values,
+#             "absolute_changes": absolute_changes,
+#             "pct_changes": pct_changes,
+#         },
+
+#         # Frontend metrics from selected-period global table
+#         "sku_current": global_sku_current,
+
+#         # Comparison metrics
+#         "sku_mom": global_sku_mom,
+
+#         "focus_skus": global_focus_skus,
+#         "remaining_agg": global_remaining_agg,
+
+#         # Optional backwards compatibility
+#         "products": global_sku_mom,
+#     }
+
 def build_global_numeric_metrics(
     *,
     user_id: int,
@@ -4401,9 +5682,11 @@ def build_global_numeric_metrics(
     Builds selected-period and previous-period GLOBAL metrics
     from the actual global table.
 
-    For yearly:
-    - Do NOT compare full yearly table vs previous full yearly table.
-    - Compare available monthly tables in selected year vs same months previous year.
+    Yearly:
+    - Uses monthly aggregation capped to latest completed month.
+
+    Quarterly:
+    - If selected quarter is incomplete, uses completed monthly tables only.
     """
 
     df_current = fetch_global_precalc_table(
@@ -4430,7 +5713,38 @@ def build_global_numeric_metrics(
 
     df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
-    if df_current.empty:
+    # ============================================================
+    # QUARTERLY INCOMPLETE-PERIOD OVERRIDE
+    # ============================================================
+    quarterly_compare = None
+
+    if period == "quarterly":
+        quarterly_max_month = get_period_month_cap(
+            year=year,
+            period="quarterly",
+            timeline=timeline,
+        )
+
+        q = int(str(timeline).replace("Q", ""))
+        quarter_end_month = q * 3
+
+        if quarterly_max_month < quarter_end_month:
+            quarterly_compare = aggregate_monthly_tables_for_quarterly_comparison_generic(
+                user_id=user_id,
+                year=year,
+                timeline=timeline,
+                fetch_monthly_func=lambda user_id, timeline, year: fetch_global_precalc_table(
+                    user_id=user_id,
+                    period="monthly",
+                    timeline=timeline,
+                    year=year,
+                ),
+            )
+
+            df_current_detail = quarterly_compare["df_current_detail"]
+            df_current_total = quarterly_compare["df_current_total"]
+
+    if df_current.empty and quarterly_compare is None:
         return {
             "available": False,
             "source": "global_table",
@@ -4456,15 +5770,26 @@ def build_global_numeric_metrics(
             "comparison_months": [],
         }
 
-    # ============================================================
-    # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
-    # ============================================================
     comparison_months = []
 
-    if period == "yearly":
+    if period == "quarterly" and quarterly_compare is not None:
+        comparison_months = quarterly_compare["available_months"]
+
+        df_current_total_for_comparison = quarterly_compare["df_current_total"]
+        df_prev_total_for_comparison = quarterly_compare["df_prev_total"]
+
+        global_sku_current_for_comparison = quarterly_compare["sku_current"]
+        global_sku_prev = quarterly_compare["sku_prev"]
+
+    elif period == "yearly":
         yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
             user_id=user_id,
             year=year,
+            max_month=get_period_month_cap(
+                year=year,
+                period="yearly",
+                timeline="ALL",
+            ),
             fetch_monthly_func=lambda user_id, timeline, year: fetch_global_precalc_table(
                 user_id=user_id,
                 period="monthly",
@@ -4488,10 +5813,6 @@ def build_global_numeric_metrics(
         global_sku_current_for_comparison = compute_sku_precalc(df_current_detail)
         global_sku_prev = compute_sku_precalc(df_prev_detail)
 
-    # ============================================================
-    # CURRENT / PREVIOUS VALUES
-    # For yearly, these now come from monthly partial-year aggregation.
-    # ============================================================
     current_values = {
         "units": _total_value(df_current_total_for_comparison, "total_quantity"),
         "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
@@ -4533,11 +5854,6 @@ def build_global_numeric_metrics(
             df_prev_total_for_comparison,
         )
 
-    # ============================================================
-    # SKU METRICS
-    # For yearly, sku_mom is actually partial-year YoY:
-    # available months current year vs same months previous year.
-    # ============================================================
     global_sku_current = compute_sku_precalc(df_current_detail)
 
     global_sku_mom = compare_sku_metrics(
@@ -4545,7 +5861,6 @@ def build_global_numeric_metrics(
         global_sku_prev,
     )
 
-    # Keep focus SKUs based on selected-period global table
     global_focus_skus = select_focus_skus_by_sales_mix(global_sku_current)
 
     global_remaining_agg = build_remaining_skus_aggregate(
@@ -4574,7 +5889,11 @@ def build_global_numeric_metrics(
             f"Compared months {comparison_months} of {year} "
             f"vs same months of {year - 1}"
             if period == "yearly"
-            else None
+            else (
+                f"Compared only completed months {comparison_months} for {timeline} {year}"
+                if period == "quarterly" and quarterly_compare is not None
+                else None
+            )
         ),
         "portfolio": {
             "current_values": current_values,
@@ -4582,21 +5901,198 @@ def build_global_numeric_metrics(
             "absolute_changes": absolute_changes,
             "pct_changes": pct_changes,
         },
-
-        # Frontend metrics from selected-period global table
         "sku_current": global_sku_current,
-
-        # Comparison metrics
         "sku_mom": global_sku_mom,
-
         "focus_skus": global_focus_skus,
         "remaining_agg": global_remaining_agg,
-
-        # Optional backwards compatibility
         "products": global_sku_mom,
     }
 
+# def build_country_usd_numeric_metrics(
+#     *,
+#     user_id: int,
+#     period: str,
+#     timeline: str,
+#     year: int,
+#     available_countries: list[str] | None = None,
+# ) -> dict:
+#     """
+#     Builds USD-normalized US and UK selected-period vs previous-period metrics.
 
+#     Sources:
+#     skuwisemonthly_{user_id}_us_usd_{month}{year}
+#     skuwisemonthly_{user_id}_uk_usd_{month}{year}
+
+#     For yearly:
+#     - Do NOT compare full yearly USD table vs previous full yearly USD table.
+#     - Compare available monthly USD tables in selected year
+#       vs the same months from previous year.
+#     """
+
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(
+#         period,
+#         timeline,
+#         year,
+#     )
+
+#     def country_metrics(country: str) -> dict:
+#         df_current = fetch_country_usd_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period=period,
+#             timeline=timeline,
+#             year=year,
+#         )
+
+#         df_current_detail, df_current_total = _split_total_row(df_current)
+
+#         df_prev = fetch_country_usd_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period=p_period,
+#             timeline=p_timeline,
+#             year=p_year,
+#         )
+
+#         df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#         if df_current.empty:
+#             return {
+#                 "available": False,
+#                 "country": country,
+#                 "currency": "USD",
+#                 "reason": f"No selected-period USD table found for {country}",
+#                 "portfolio": {},
+#                 "products": {},
+#                 "comparison_months": [],
+#             }
+
+#         # ============================================================
+#         # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
+#         # ============================================================
+#         comparison_months = []
+
+#         if period == "yearly":
+#             yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
+#                 user_id=user_id,
+#                 year=year,
+#                 fetch_monthly_func=lambda user_id, timeline, year: fetch_country_usd_precalc_table(
+#                     user_id=user_id,
+#                     country=country,
+#                     period="monthly",
+#                     timeline=timeline,
+#                     year=year,
+#                 ),
+#             )
+
+#             comparison_months = yearly_compare["available_months"]
+
+#             df_current_total_for_comparison = yearly_compare["df_current_total"]
+#             df_prev_total_for_comparison = yearly_compare["df_prev_total"]
+
+#             sku_current_for_comparison = yearly_compare["sku_current"]
+#             sku_prev = yearly_compare["sku_prev"]
+
+#         else:
+#             df_current_total_for_comparison = df_current_total
+#             df_prev_total_for_comparison = df_prev_total
+
+#             sku_current_for_comparison = compute_sku_precalc(df_current_detail)
+#             sku_prev = compute_sku_precalc(df_prev_detail)
+
+#         # ============================================================
+#         # CURRENT / PREVIOUS VALUES
+#         # For yearly, these now use partial-year monthly aggregation.
+#         # ============================================================
+#         current_values = {
+#             "units": _total_value(df_current_total_for_comparison, "total_quantity"),
+#             "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
+#             "asp": _total_value(df_current_total_for_comparison, "asp"),
+#             "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
+#             "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
+#             "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
+#             "advertising": _advertising_total_final_value(df_current_total_for_comparison),
+#             "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
+#             "acos": _total_value(df_current_total_for_comparison, "acos"),
+#         }
+
+#         previous_values = {
+#             "units": _total_value(df_prev_total_for_comparison, "total_quantity"),
+#             "net_sales": _total_value(df_prev_total_for_comparison, "net_sales"),
+#             "asp": _total_value(df_prev_total_for_comparison, "asp"),
+#             "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
+#             "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
+#             "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
+#             "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
+#             "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
+#             "acos": _total_value(df_prev_total_for_comparison, "acos"),
+#         }
+
+#         absolute_changes = {}
+#         pct_changes = {}
+
+#         if (
+#             not df_current_total_for_comparison.empty
+#             and not df_prev_total_for_comparison.empty
+#         ):
+#             absolute_changes = compute_period_absolute_changes(
+#                 df_current_total_for_comparison,
+#                 df_prev_total_for_comparison,
+#             )
+
+#             pct_changes = compute_period_pct_changes(
+#                 df_current_total_for_comparison,
+#                 df_prev_total_for_comparison,
+#             )
+
+#         sku_mom = compare_sku_metrics(
+#             sku_current_for_comparison,
+#             sku_prev,
+#         )
+
+#         return {
+#             "available": True,
+#             "country": country,
+#             "currency": "USD",
+#             "comparison_months": comparison_months,
+#             "comparison_basis": (
+#                 f"Compared months {comparison_months} of {year} "
+#                 f"vs same months of {year - 1}"
+#                 if period == "yearly"
+#                 else None
+#             ),
+#             "portfolio": {
+#                 "current_values": current_values,
+#                 "previous_values": previous_values,
+#                 "absolute_changes": absolute_changes,
+#                 "pct_changes": pct_changes,
+#             },
+#             "products": sku_mom,
+#         }
+
+#     available_countries = available_countries or SUPPORTED_GLOBAL_COUNTRIES
+
+#     result = {
+#         "currency": "USD",
+#         "currency_note": "Country values are USD-normalized where available.",
+#         "selected_period": {
+#             "period": period,
+#             "timeline": timeline,
+#             "year": year,
+#             "period_label": period_label(period, timeline, year),
+#         },
+#         "previous_period": {
+#             "period": p_period,
+#             "timeline": p_timeline,
+#             "year": p_year,
+#             "period_label": period_label(p_period, p_timeline, p_year),
+#         },
+#     }
+
+#     for country in available_countries:
+#         result[country] = country_metrics(country)
+
+#     return result
 
 def build_country_usd_numeric_metrics(
     *,
@@ -4609,14 +6105,11 @@ def build_country_usd_numeric_metrics(
     """
     Builds USD-normalized US and UK selected-period vs previous-period metrics.
 
-    Sources:
-    skuwisemonthly_{user_id}_us_usd_{month}{year}
-    skuwisemonthly_{user_id}_uk_usd_{month}{year}
+    Yearly:
+    - Uses monthly aggregation capped to latest completed month.
 
-    For yearly:
-    - Do NOT compare full yearly USD table vs previous full yearly USD table.
-    - Compare available monthly USD tables in selected year
-      vs the same months from previous year.
+    Quarterly:
+    - If selected quarter is incomplete, uses completed monthly USD tables only.
     """
 
     (p_period, p_timeline, p_year), _ = resolve_comparison(
@@ -4646,7 +6139,36 @@ def build_country_usd_numeric_metrics(
 
         df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
-        if df_current.empty:
+        quarterly_compare = None
+
+        if period == "quarterly":
+            quarterly_max_month = get_period_month_cap(
+                year=year,
+                period="quarterly",
+                timeline=timeline,
+            )
+
+            q = int(str(timeline).replace("Q", ""))
+            quarter_end_month = q * 3
+
+            if quarterly_max_month < quarter_end_month:
+                quarterly_compare = aggregate_monthly_tables_for_quarterly_comparison_generic(
+                    user_id=user_id,
+                    year=year,
+                    timeline=timeline,
+                    fetch_monthly_func=lambda user_id, timeline, year: fetch_country_usd_precalc_table(
+                        user_id=user_id,
+                        country=country,
+                        period="monthly",
+                        timeline=timeline,
+                        year=year,
+                    ),
+                )
+
+                df_current_detail = quarterly_compare["df_current_detail"]
+                df_current_total = quarterly_compare["df_current_total"]
+
+        if df_current.empty and quarterly_compare is None:
             return {
                 "available": False,
                 "country": country,
@@ -4657,15 +6179,26 @@ def build_country_usd_numeric_metrics(
                 "comparison_months": [],
             }
 
-        # ============================================================
-        # YEARLY PARTIAL-YEAR COMPARISON OVERRIDE
-        # ============================================================
         comparison_months = []
 
-        if period == "yearly":
+        if period == "quarterly" and quarterly_compare is not None:
+            comparison_months = quarterly_compare["available_months"]
+
+            df_current_total_for_comparison = quarterly_compare["df_current_total"]
+            df_prev_total_for_comparison = quarterly_compare["df_prev_total"]
+
+            sku_current_for_comparison = quarterly_compare["sku_current"]
+            sku_prev = quarterly_compare["sku_prev"]
+
+        elif period == "yearly":
             yearly_compare = aggregate_monthly_tables_for_yearly_comparison_generic(
                 user_id=user_id,
                 year=year,
+                max_month=get_period_month_cap(
+                    year=year,
+                    period="yearly",
+                    timeline="ALL",
+                ),
                 fetch_monthly_func=lambda user_id, timeline, year: fetch_country_usd_precalc_table(
                     user_id=user_id,
                     country=country,
@@ -4690,10 +6223,6 @@ def build_country_usd_numeric_metrics(
             sku_current_for_comparison = compute_sku_precalc(df_current_detail)
             sku_prev = compute_sku_precalc(df_prev_detail)
 
-        # ============================================================
-        # CURRENT / PREVIOUS VALUES
-        # For yearly, these now use partial-year monthly aggregation.
-        # ============================================================
         current_values = {
             "units": _total_value(df_current_total_for_comparison, "total_quantity"),
             "net_sales": _total_value(df_current_total_for_comparison, "net_sales"),
@@ -4749,7 +6278,11 @@ def build_country_usd_numeric_metrics(
                 f"Compared months {comparison_months} of {year} "
                 f"vs same months of {year - 1}"
                 if period == "yearly"
-                else None
+                else (
+                    f"Compared only completed months {comparison_months} for {timeline} {year}"
+                    if period == "quarterly" and quarterly_compare is not None
+                    else None
+                )
             ),
             "portfolio": {
                 "current_values": current_values,
