@@ -1145,9 +1145,9 @@ export default function LiveBusinessClient({
     return {
       productName,
       metrics: sortMetricsByOrder([
-  ...hideGlobalInventoryMetric(buildMetricsForSku(item)),
-  buildAdsMetric(item),
-]),
+        ...hideGlobalInventoryMetric(buildMetricsForSku(item)),
+        buildAdsMetric(item),
+      ]),
 
       // ✅ Global product journey comparison
       journeyPoints: Array.isArray(journey?.journey_comparison)
@@ -3805,6 +3805,22 @@ export default function LiveBusinessClient({
               0
             );
 
+            acc.ads_spend_curr += Number(
+              row?.ads_spend_curr ??
+              row?.ads_spend_month2 ??
+              row?.ads_spend ??
+              row?.total_ads ??
+              row?.advertising_fees ??
+              0
+            );
+
+            acc.ads_spend_prev += Number(
+              row?.ads_spend_prev ??
+              row?.ads_spend_month1 ??
+              row?.ads_spend_previous ??
+              0
+            );
+
             const unitProfit = Number(
               row?.unit_wise_profitability_curr ??
               row?.unit_wise_profitability_month2 ??
@@ -3821,6 +3837,8 @@ export default function LiveBusinessClient({
             product_name: "Other Skus",
             quantity_curr: 0,
             net_sales_curr: 0,
+            ads_spend_curr: 0,
+            ads_spend_prev: 0,
             profit_curr: 0,
             _aspWeighted: 0,
             _unitProfitWeighted: 0,
@@ -3833,6 +3851,14 @@ export default function LiveBusinessClient({
         Number(otherCardRow.quantity_curr) > 0
           ? Number(otherCardRow.net_sales_curr || 0) /
           Number(otherCardRow.quantity_curr)
+          : 0;
+
+      otherCardRow.ads_spend_growth_pct =
+        Number(otherCardRow.ads_spend_prev || 0) > 0
+          ? ((Number(otherCardRow.ads_spend_curr || 0) -
+            Number(otherCardRow.ads_spend_prev || 0)) /
+            Math.abs(Number(otherCardRow.ads_spend_prev || 0))) *
+          100
           : 0;
 
       otherCardRow.unit_wise_profitability_curr =
@@ -3873,7 +3899,7 @@ export default function LiveBusinessClient({
         0
       );
 
-      const metrics = [
+      const metrics = sortMetricsByOrder([
         {
           label: "Units",
           value: formatGlobalMetricValue(
@@ -3898,6 +3924,10 @@ export default function LiveBusinessClient({
             getGrowthValue(row, "ASP Growth (%)")
           ),
         },
+
+        // ✅ Drawer me Ads dikhane ke liye
+        buildAdsMetric(row),
+
         ...(hasCm2ProfitData(row)
           ? [
             {
@@ -3943,7 +3973,7 @@ export default function LiveBusinessClient({
               ),
             },
           ]),
-      ];
+      ]);
 
       const recommendationPoints = isOthersCardName(productName)
         ? [
