@@ -409,12 +409,17 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const canCollapse = data.length > defaultVisibleRows;
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
-        const sortedData = [...data].sort((a, b) => {
+        const backendPercentageRow = data.find((row) => row.isPercentageRow);
+
+        const productRows = data.filter((row) => !row.isPercentageRow);
+
+        const sortedData = [...productRows].sort((a, b) => {
             const aUnitsSold = Number(a.unitsSold || 0);
             const bUnitsSold = Number(b.unitsSold || 0);
 
-            return bUnitsSold - aUnitsSold; // descending by Units Sold
+            return bUnitsSold - aUnitsSold;
         });
+
         const totalRow = buildAggregateRow("Total", sortedData, buckets, {
             isTotalRow: true,
         });
@@ -443,11 +448,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
         }
 
-        const percentageRow = buildPercentageRow(
-            totalRow,
-            buckets,
-            inventoryAgeSummary
-        );
+        const percentageRow =
+            backendPercentageRow ||
+            ({
+                productName: "% of Total",
+                sku: "-",
+                isPercentageRow: true,
+            } as HeatmapTableRow);
 
         if (!canCollapse || isExpanded) {
             return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
@@ -466,7 +473,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
     }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary]);
-
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};
@@ -1435,7 +1441,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: data,
+            dataRows: displayRows,
             showInventoryAlerts,
         });
     };
