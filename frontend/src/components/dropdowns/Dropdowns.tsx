@@ -1684,18 +1684,24 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
   const sortedMetrics = [
-    ...(block?.metrics || []),
-    ...(block?.drawerOnlyMetrics || []),
-  ]
-    .filter((m) => {
-  const lower = m.label.trim().toLowerCase();
+  ...(block?.metrics || []),
+  ...(block?.drawerOnlyMetrics || []),
+]
+  .filter((m) => {
+    const lower = m.label.trim().toLowerCase();
 
-  if (!isMonthlyRange(range)) {
-    return lower !== "stock cover" && lower !== "current inventory";
-  }
+    // ✅ Quarterly / Yearly me drawer metric cards se ye teeno hide
+    if (!isMonthlyRange(range)) {
+      return ![
+        "ads",
+        "productwise ads spend",
+        "stock cover",
+        "current inventory",
+      ].includes(lower);
+    }
 
-  return true;
-})
+    return true;
+  })
     .sort((a, b) => {
       const aIndex = metricOrder.indexOf(a.label.toLowerCase());
       const bIndex = metricOrder.indexOf(b.label.toLowerCase());
