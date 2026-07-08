@@ -1307,7 +1307,7 @@ if (!overviewText && !parsedSummary.sections.length) return null;
           </div>
 
           <div className="p-4">
-  <div className="space-y-4 text-xs leading-6 text-charcoal-500 sm:text-sm">
+  <div className="space-y-4 text-xs leading-6 text-charcoal-500 2xl:text-sm">
     {overviewText ? (
       <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
         <p className="leading-6">
@@ -1318,7 +1318,7 @@ if (!overviewText && !parsedSummary.sections.length) return null;
 
     {parsedSummary.sections.map((section) => (
       <div key={section.id} className="space-y-2">
-        <div className="text-sm font-semibold text-charcoal-500 sm:text-base">
+        <div className="2xl:text-sm text-xs font-semibold text-charcoal-500 ">
           {section.title}
         </div>
 
@@ -1555,7 +1555,7 @@ if (!overviewText && !parsedSummary.sections.length) return null;
           />
 
           {filteredJourneyBullets.length > 0 ? (
-            <ol className="list-decimal space-y-1 pl-4 text-xs leading-6 text-charcoal-500 sm:text-sm marker:font-semibold marker:text-charcoal-400">
+            <ol className="list-decimal space-y-1 pl-4 text-xs leading-6 text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
               {filteredJourneyBullets.map((item, index) => (
                 <li key={index}>{item}</li>
               ))}
