@@ -1020,7 +1020,7 @@ const parseProductInsightsBlocks = (
             ...(current.drawerOnlyMetrics || []),
             {
               label: "Ads",
-              value,
+              value: formatMoneyStringNoDecimal(value),
               color: "#414042",
             },
           ];
@@ -1169,6 +1169,18 @@ const formatMoneyNoDecimal = (v: any, symbol = "$") => {
   })}`;
 };
 
+const formatMoneyStringNoDecimal = (value: string, symbol = "$") => {
+  const main = String(value || "").split("(")[0] || "";
+  const deltaMatch = String(value || "").match(/\([^)]*\)/)?.[0] || "";
+
+  const numberValue = Number(main.replace(/[^0-9.-]/g, ""));
+
+  if (!Number.isFinite(numberValue)) return value;
+
+  return `${formatMoneyNoDecimal(numberValue, symbol)}${deltaMatch ? ` ${deltaMatch}` : ""
+    }`;
+};
+
 const formatBestPerformancePeriod = (month?: string, year?: string | number) => {
   if (!month) return "-";
 
@@ -1286,11 +1298,10 @@ const buildOtherSkusInsightLines = (
 
     ...(isMonthlyRange(range)
       ? [
-        `Productwise ads spend: ${formatMetricObjectWithDelta(
-          remainingAgg?.productwise_ads_spend,
-          "money",
+        `Productwise ads spend: ${formatMoneyNoDecimal(
+          getMetricCurrent(remainingAgg?.productwise_ads_spend),
           currencySymbol
-        )}`,
+        )}${formatPct(getMetricDeltaPct(remainingAgg?.productwise_ads_spend))}`,
       ]
       : []),
 
@@ -1527,11 +1538,10 @@ const buildDrawerBlockFromSkuRow = (
           },
           {
             label: "Ads",
-            value: formatMetricObjectWithDelta(
-              row?.productwise_ads_spend,
-              "money",
+            value: `${formatMoneyNoDecimal(
+              getMetricCurrent(row?.productwise_ads_spend),
               currencySymbol
-            ),
+            )}${formatPct(getMetricDeltaPct(row?.productwise_ads_spend))}`,
             color: "#414042",
           },
         ]
@@ -1731,6 +1741,10 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       return safeAIndex - safeBIndex;
     });
 
+  const metricsGridClass = isMonthlyRange(range)
+    ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 min-[1700px]:grid-cols-4"
+    : "grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1700px]:grid-cols-5";
+
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
     const metricIndex = metricOrder.indexOf(normalizedLabel);
@@ -1863,14 +1877,14 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     className="mb-2"
                   />
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                  <div className={metricsGridClass}>
                     {sortedMetrics.map((m, i) => {
                       const { main, delta, deltaColor } = splitMetricValue(m.value);
 
-                      const displayMain = formatRecommendationCardMainValue(
-                        m.label,
-                        main
-                      );
+                      const displayMain =
+                        m.label.trim().toLowerCase() === "ads"
+                          ? formatMoneyStringNoDecimal(main, drawerCurrencySymbol)
+                          : formatRecommendationCardMainValue(m.label, main);
 
                       const isAdsMetric = m.label.trim().toLowerCase() === "ads";
 
@@ -4025,6 +4039,17 @@ const isInventoryPercentageRow = (row: InventoryCurrentRow) => {
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
+const hasAnyAgeingBucketValue = (row: InventoryCurrentRow) => {
+  return (
+    getInventoryAgeValue(row, "inv-age-0-to-90-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-91-to-180-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-0-to-180-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-181-to-270-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-271-to-365-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-365-plus-days") > 0
+  );
+};
+
 const getEstimatedStorageCostTotal = (
   latestResponse?: InventoryCurrentApiResponse
 ) => {
@@ -4581,7 +4606,8 @@ const buildInventoryInsightsFromResponses = (
   const latestRows = rawRows.filter(
     (row) =>
       !isInventoryTotalRow(row) &&
-      !isInventoryPercentageRow(row)
+      !isInventoryPercentageRow(row) &&
+      hasAnyAgeingBucketValue(row)
   );
 
   const dynamicHeatmapBuckets = getDynamicInventoryBuckets(latestRows);

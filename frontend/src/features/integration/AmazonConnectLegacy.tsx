@@ -16,7 +16,8 @@ const getAuthToken = () =>
 
 const isAmazonConnected = (region?: string) =>
   typeof window !== "undefined"
-    ? localStorage.getItem(region ? `amazonConnected_${region}` : "amazonConnected") === "true"
+    ? localStorage.getItem(region ? `amazonConnected_${region}` : "amazonConnected") ===
+      "true"
     : false;
 
 const getMarketplaceId = (region?: string) =>
@@ -25,6 +26,24 @@ const getMarketplaceId = (region?: string) =>
       ? localStorage.getItem(`amazonMarketplaceId_${region}`)
       : localStorage.getItem("amazonMarketplaceId")
     : null;
+
+const REGION_LABELS: Record<string, string> = {
+  "us-east-1": "US",
+  "eu-west-1": "UK",
+  "ap-southeast-1": "Canada",
+};
+
+const REGION_TO_COUNTRY_NAME: Record<string, string> = {
+  "us-east-1": "us",
+  "eu-west-1": "uk",
+  "ap-southeast-1": "canada",
+};
+
+const REGION_TO_MARKETPLACE_ID: Record<string, string> = {
+  "us-east-1": "ATVPDKIKX0DER",
+  "eu-west-1": "A1F83G8C2ARO7P",
+  "ap-southeast-1": "A2EUQ1WTGCTBG2",
+};
 
 function saveAmazonConnectionLocal(region: string, marketplaceId?: string) {
   if (typeof window === "undefined") return;
@@ -51,6 +70,7 @@ function saveAmazonConnectionLocal(region: string, marketplaceId?: string) {
     localStorage.setItem("amazonMarketplaceId", marketplaceId);
   }
 }
+
 function getOrigin(url: string) {
   try {
     const u = new URL(url);
@@ -80,63 +100,21 @@ async function api(path: string, options: RequestInit = {}) {
   if (!res.ok) {
     throw new Error(
       (data as any)?.error ||
-      (data as any)?.message ||
-      `HTTP ${res.status}`
+        (data as any)?.message ||
+        (data as any)?.detail ||
+        `HTTP ${res.status}`
     );
   }
 
   return data;
 }
 
-const REGION_LABELS: Record<string, string> = {
-  "us-east-1": "US",
-  "eu-west-1": "UK",
-  "ap-southeast-1": "Canada",
-};
-
-// const REGION_TO_COUNTRY_CODE: Record<string, string> = {
-//   "us-east-1": "US",
-//   "eu-west-1": "GB",
-//   "ap-southeast-1": "CA",
-// };
-
-const REGION_TO_COUNTRY_NAME: Record<string, string> = {
-  "us-east-1": "us",
-  "eu-west-1": "uk",
-  "ap-southeast-1": "canada",
-};
-
-const REGION_TO_MARKETPLACE_ID: Record<string, string> = {
-  "us-east-1": "ATVPDKIKX0DER",
-  "eu-west-1": "A1F83G8C2ARO7P",
-  "ap-southeast-1": "A2EUQ1WTGCTBG2",
-};
-
 type Props = {
   onClose?: () => void;
   onConnected?: () => void;
 };
 
-// type AmazonParticipation = {
-//   marketplace?: {
-//     countryCode?: string;
-//     id?: string;
-//     name?: string;
-//     defaultCurrencyCode?: string;
-//     defaultLanguageCode?: string;
-//     domainName?: string;
-//   };
-//   participation?: {
-//     hasSuspendedListings?: boolean;
-//     isParticipating?: boolean;
-//   };
-//   storeName?: string;
-// };
-
-export default function AmazonConnectLegacy({
-  onClose,
-  onConnected,
-}: Props) {
+export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
   const [region, setRegion] = useState("eu-west-1");
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -156,12 +134,10 @@ export default function AmazonConnectLegacy({
     isAmazonConnected(region)
   );
 
-  // const [amazonParticipations, setAmazonParticipations] = useState<
-  //   AmazonParticipation[]
-  // >([]);
   const [resolvedMarketplaceId, setResolvedMarketplaceId] = useState(
-    getMarketplaceId(region) || ""
+    getMarketplaceId(region) || REGION_TO_MARKETPLACE_ID[region] || ""
   );
+
   const [showProfileFields, setShowProfileFields] = useState(false);
 
   const popupRef = useRef<Window | null>(null);
@@ -169,16 +145,6 @@ export default function AmazonConnectLegacy({
   const loginStateRef = useRef<string | null>(null);
 
   const [submitSelectForm] = useSubmitSelectFormMutation();
-
-  // const selectedCountryCode = useMemo(
-  //   () => REGION_TO_COUNTRY_CODE[region] || "",
-  //   [region]
-  // );
-
-  // const country = useMemo(
-  //   () => REGION_TO_COUNTRY_NAME[region] || "",
-  //   [region]
-  // );
 
   const country = REGION_TO_COUNTRY_NAME[region] || "";
 
@@ -197,48 +163,24 @@ export default function AmazonConnectLegacy({
     } catch {
       // ignore
     }
+
     popupRef.current = null;
   };
 
-  const resetProfileStateForRegionChange = () => {
+  const resetProfileStateForRegionChange = (nextRegion: string) => {
     setShowProfileFields(false);
-    // setAmazonParticipations([]);
     setStockUnit("");
     setTransitTime("");
     setFieldErrors({});
     setMessage("");
     setError("");
     setSelectedMarketplaceId("");
-    setResolvedMarketplaceId(getMarketplaceId(region) || "");
+
+    const nextMarketplaceId =
+      getMarketplaceId(nextRegion) || REGION_TO_MARKETPLACE_ID[nextRegion] || "";
+
+    setResolvedMarketplaceId(nextMarketplaceId);
   };
-
-  // const getMarketplaceIdFromPayload = (
-  //   payload: AmazonParticipation[],
-  //   countryCode: string
-  // ) => {
-  //   if (!Array.isArray(payload) || !countryCode) return "";
-
-  //   const exactAmazon = payload.find((item) => {
-  //     const itemCountryCode = item?.marketplace?.countryCode;
-  //     const itemName = item?.marketplace?.name?.toLowerCase() || "";
-
-  //     return (
-  //       itemCountryCode === countryCode &&
-  //       itemName.includes("amazon") &&
-  //       !itemName.includes("non-amazon")
-  //     );
-  //   });
-
-  //   if (exactAmazon?.marketplace?.id) {
-  //     return exactAmazon.marketplace.id;
-  //   }
-
-  //   const fallback = payload.find(
-  //     (item) => item?.marketplace?.countryCode === countryCode
-  //   );
-
-  //   return fallback?.marketplace?.id || "";
-  // };
 
   const saveMarketplaceSelection = async (
     selectedCountry: string,
@@ -250,10 +192,10 @@ export default function AmazonConnectLegacy({
     if (!selectedCountry || !canonicalMarketplaceId) return;
 
     try {
-    await submitSelectForm({
-  country: selectedCountry,
-  marketplace_id: canonicalMarketplaceId,
-}).unwrap();
+      await submitSelectForm({
+        country: selectedCountry,
+        marketplace_id: canonicalMarketplaceId,
+      }).unwrap();
 
       const finalMarketplaceId =
         REGION_TO_MARKETPLACE_ID[region] ||
@@ -267,7 +209,6 @@ export default function AmazonConnectLegacy({
 
       localStorage.setItem(`amazonMarketplaceId_${region}`, finalMarketplaceId);
       localStorage.setItem("amazonMarketplaceId", finalMarketplaceId);
-
     } catch (err) {
       console.error("submitSelectForm marketplace save error:", err);
     }
@@ -326,6 +267,34 @@ export default function AmazonConnectLegacy({
     };
   };
 
+  const loadCountryProfile = async (
+    selectedCountry: string,
+    marketplaceId: string
+  ) => {
+    if (!selectedCountry || !marketplaceId) return;
+
+    try {
+      const qs = new URLSearchParams({
+        country: selectedCountry,
+        marketplace: marketplaceId,
+      }).toString();
+
+      const data = (await api(`/country-profile?${qs}`)) as any;
+
+      if (data?.exists && data?.profile) {
+        setStockUnit(String(data.profile.stock_unit ?? ""));
+        setTransitTime(String(data.profile.transit_time ?? ""));
+      } else {
+        setStockUnit("");
+        setTransitTime("");
+      }
+    } catch (err) {
+      console.error("Failed to load country profile:", err);
+      setStockUnit("");
+      setTransitTime("");
+    }
+  };
+
   const handleStatusPollWinAndRoute = async () => {
     try {
       const qs = new URLSearchParams({ region }).toString();
@@ -336,31 +305,33 @@ export default function AmazonConnectLegacy({
       if (s?.success && hasRefreshToken) {
         const payload = Array.isArray(s?.payload) ? s.payload : [];
 
-        const marketplaceIdFromStatus =
-          REGION_TO_MARKETPLACE_ID[region] || "";
+        const marketplaceIdFromStatus = REGION_TO_MARKETPLACE_ID[region] || "";
 
         stopPolling();
         closePopup();
 
-        localStorage.setItem("amazonConnected", "true");
         localStorage.setItem(
           "amazonParticipations",
           JSON.stringify(payload, null, 2)
         );
 
-        // setAmazonParticipations(payload);
         setResolvedMarketplaceId(marketplaceIdFromStatus);
         setSelectedMarketplaceId(marketplaceIdFromStatus);
         setShowProfileFields(true);
-        setMessage("Connected to Amazon ✅");
+        setMessage("Connected to Amazon ✅. Please enter stock unit and transit time.");
 
-        if (marketplaceIdFromStatus) {
-          saveAmazonConnectionLocal(region, marketplaceIdFromStatus);
-        } else {
+        if (!marketplaceIdFromStatus) {
           setError(
             "Amazon connected, but marketplace ID could not be resolved for the selected country."
           );
+          return;
         }
+
+        localStorage.setItem(`amazonOAuthConnected_${region}`, "true");
+        localStorage.setItem(`amazonMarketplaceId_${region}`, marketplaceIdFromStatus);
+        localStorage.setItem("amazonMarketplaceId", marketplaceIdFromStatus);
+
+        await loadCountryProfile(country, marketplaceIdFromStatus);
 
         return;
       }
@@ -382,6 +353,7 @@ export default function AmazonConnectLegacy({
       loginStateRef.current = (data as any)?.state || null;
 
       const msg = String((data as any)?.message || "").toLowerCase();
+
       if (
         (data as any)?.success &&
         (msg.includes("refresh token saved") || msg.includes("refresh"))
@@ -391,15 +363,17 @@ export default function AmazonConnectLegacy({
       }
 
       const authUrl = (data as any)?.auth_url;
+
       if (!authUrl) {
         throw new Error(
           (data as any)?.error ||
-          (data as any)?.message ||
-          "Failed to get Amazon login URL"
+            (data as any)?.message ||
+            "Failed to get Amazon login URL"
         );
       }
 
       const w = window.open(authUrl, "amazon_oauth", "width=720,height=800");
+
       if (!w) {
         throw new Error("Popup blocked. Please allow popups for this site.");
       }
@@ -407,6 +381,7 @@ export default function AmazonConnectLegacy({
       popupRef.current = w;
 
       stopPolling();
+
       pollingRef.current = window.setInterval(
         handleStatusPollWinAndRoute,
         2000
@@ -433,6 +408,7 @@ export default function AmazonConnectLegacy({
       selectedMarketplaceId ||
       resolvedMarketplaceId ||
       getMarketplaceId(region) ||
+      REGION_TO_MARKETPLACE_ID[region] ||
       "";
 
     if (!finalMarketplaceId) {
@@ -475,6 +451,7 @@ export default function AmazonConnectLegacy({
   useEffect(() => {
     const onMessage = async (event: MessageEvent) => {
       const { data } = event || {};
+
       if (!data || typeof data !== "object") return;
 
       const allowed = new Set(
@@ -499,8 +476,6 @@ export default function AmazonConnectLegacy({
             return;
           }
 
-          saveAmazonConnectionLocal(region);
-
           await handleStatusPollWinAndRoute();
         } catch (e: any) {
           setError(e.message || "Post-auth follow-up failed.");
@@ -521,10 +496,10 @@ export default function AmazonConnectLegacy({
       stopPolling();
       closePopup();
     };
-  }, [region]);
+  }, [region, country]);
 
   useEffect(() => {
-    resetProfileStateForRegionChange();
+    resetProfileStateForRegionChange(region);
     setIsStep3Unlocked(isAmazonConnected(region));
   }, [region]);
 
@@ -583,11 +558,11 @@ export default function AmazonConnectLegacy({
             </div>
           )}
 
-          {/* {message && (
+          {message && (
             <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-green-700">
               {message}
             </div>
-          )} */}
+          )}
 
           <div className="mb-5 rounded-md border border-[#5EA68E] border-l-[5px] bg-[#D9D9D94D] px-3 py-3 sm:py-4">
             <div className="flex items-center gap-2">
@@ -618,7 +593,9 @@ export default function AmazonConnectLegacy({
                 setRegion(nextRegion);
 
                 const nextMarketplaceId =
-                  REGION_TO_MARKETPLACE_ID[nextRegion] || getMarketplaceId(nextRegion) || "";
+                  REGION_TO_MARKETPLACE_ID[nextRegion] ||
+                  getMarketplaceId(nextRegion) ||
+                  "";
 
                 setResolvedMarketplaceId(nextMarketplaceId);
                 setSelectedMarketplaceId(nextMarketplaceId);
@@ -640,8 +617,9 @@ export default function AmazonConnectLegacy({
                 size="sm"
                 onClick={handleAmazonLogin}
                 disabled={isConnecting}
-                className={`w-full ${isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
-                  }`}
+                className={`w-full ${
+                  isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
+                }`}
               >
                 <FaLink className="h-4 w-4 opacity-90" />
                 {isConnecting ? "Working..." : "Connect"}
@@ -654,8 +632,10 @@ export default function AmazonConnectLegacy({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Stock Unit (in months)<span className="text-rose-500">*</span>
+                    Stock Unit (in months)
+                    <span className="text-rose-500">*</span>
                   </label>
+
                   <input
                     type="number"
                     min="0"
@@ -665,6 +645,7 @@ export default function AmazonConnectLegacy({
                     className="mb-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
                     placeholder="Enter stock unit"
                   />
+
                   {fieldErrors.stockUnit && (
                     <p className="text-xs text-red-600">
                       {fieldErrors.stockUnit}
@@ -674,8 +655,10 @@ export default function AmazonConnectLegacy({
 
                 <div>
                   <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Transit Time (in months)<span className="text-rose-500">*</span>
+                    Transit Time (in months)
+                    <span className="text-rose-500">*</span>
                   </label>
+
                   <input
                     type="number"
                     min="1"
@@ -685,6 +668,7 @@ export default function AmazonConnectLegacy({
                     className="mb-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
                     placeholder="Enter transit time"
                   />
+
                   {fieldErrors.transitTime && (
                     <p className="text-xs text-red-600">
                       {fieldErrors.transitTime}
@@ -699,10 +683,11 @@ export default function AmazonConnectLegacy({
                   size="sm"
                   onClick={handleSaveCountryProfile}
                   disabled={isSavingProfile}
-                  className={`w-full ${isSavingProfile
-                    ? "bg-blue-700 cursor-not-allowed"
-                    : "bg-blue-700"
-                    }`}
+                  className={`w-full ${
+                    isSavingProfile
+                      ? "bg-blue-700 cursor-not-allowed"
+                      : "bg-blue-700"
+                  }`}
                 >
                   {isSavingProfile ? "Saving..." : "Submit"}
                 </Button>

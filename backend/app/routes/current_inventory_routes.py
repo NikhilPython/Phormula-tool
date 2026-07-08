@@ -341,7 +341,7 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         try:
             skuwise_monthly_table = (
-                f"skuwisemonthly_{user_id}_{country_key}_{month_name.lower()}_{year}"
+                f"skuwisemonthly_{user_id}_{country_key}_{month_name.lower()}{year}"
             )
 
             if table_exists(primary_engine, skuwise_monthly_table):
@@ -654,13 +654,17 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         # Current Inventory = Amazon available + fc-transfer.
         # If aged available is missing/zero, fallback to inventory summary available_quantity.
-        final_df["available"] = (
-            aged_available.where(aged_available > 0, summary_available)
-            + fc_transfer
+        final_df["available"] = aged_available.where(
+            aged_available > 0,
+            summary_available
         )
 
         final_df["Inventory Inwarded"] = final_df["inbound_quantity"]
-        final_df["Inventory at the end of the month"] = final_df["available"]
+
+        final_df["Inventory at the end of the month"] = (
+            safe_numeric(final_df.get("available"), 0)
+            + safe_numeric(final_df.get("fc-transfer"), 0)
+        )
 
         if month_number == 1:
             prev_month_number = 12
@@ -807,8 +811,11 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             ).reset_index(drop=True)
 
         # Use the same value that is displayed as "Current Inventory"
-        current_inventory_for_coverage = safe_numeric(final_df["available"], 0)
+        available_for_coverage = safe_numeric(final_df.get("available"), 0)
+        fc_transfer_for_coverage = safe_numeric(final_df.get("fc-transfer"), 0)
         sales_last_30_days = safe_numeric(final_df["Sales Last 30 Days"], 0)
+
+        current_inventory_for_coverage = available_for_coverage + fc_transfer_for_coverage
 
         final_df["Coverage Ratio (In Months)"] = (
             current_inventory_for_coverage
@@ -866,7 +873,13 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         total_row["Product Name"] = "Total"
 
-        total_current_inventory = float(safe_numeric(final_df["available"], 0).sum())
+        total_current_inventory = float(
+            (
+                safe_numeric(final_df.get("available"), 0)
+                + safe_numeric(final_df.get("fc-transfer"), 0)
+            ).sum()
+        )
+
         total_sales_30 = float(safe_numeric(final_df["Sales Last 30 Days"], 0).sum())
 
         total_row["Coverage Ratio (In Months)"] = (

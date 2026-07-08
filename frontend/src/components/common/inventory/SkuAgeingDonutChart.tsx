@@ -106,12 +106,12 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                                             className="h-2.5 w-2.5 rounded-full"
                                                             style={{ backgroundColor: payload.color }}
                                                         />
-                                                        <span className="font-medium text-slate-800">
+                                                        <span className="font-medium text-charcoal-500">
                                                             {payload.bucket}
                                                         </span>
                                                     </div>
 
-                                                    <span className="font-semibold text-slate-900">
+                                                    <span className="font-semibold text-charcoal-500">
                                                         {Number(displayValue ?? 0).toLocaleString()} (
                                                         {payload.percentage.toFixed(2)}%)
                                                     </span>
@@ -172,7 +172,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                 <div className="w-full min-w-0 rounded-lg min-[1700px]:flex-1">
                     <table className="w-full table-fixed border-separate border-spacing-0 text-[11px] xl:text-xs">
                         <thead>
-                            <tr className="text-slate-600">
+                            <tr className="text-charcoal-500">
                                 <th className="w-[48%] px-2 py-1.5 text-left font-semibold">
                                     Ageing Bucket
                                 </th>
@@ -191,7 +191,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                     key={item.bucket}
                                     className="border-t border-slate-200 transition-colors hover:bg-white"
                                 >
-                                    <td className="border-t border-slate-200 px-2 py-1.5 text-slate-800">
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-charcoal-500">
                                         <span
                                             className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
                                             style={{ backgroundColor: item.color }}
@@ -199,17 +199,17 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                         {item.bucket}
                                     </td>
 
-                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-slate-700">
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-charcoal-500">
                                         {item.units.toLocaleString()}
                                     </td>
 
-                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-slate-700">
+                                    <td className="border-t border-slate-200 px-2 py-1.5 text-center text-charcoal-500">
                                         {item.percentage.toFixed(2)}%
                                     </td>
                                 </tr>
                             ))}
 
-                            <tr className="font-bold text-slate-900">
+                            <tr className="font-bold text-charcoal-500">
                                 <td className="border-t border-slate-300 px-2 py-1.5">
                                     Total
                                 </td>

@@ -401,17 +401,53 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const showSellableBreakdown = useMemo(
-        () => hasSellableBreakdown(data),
-        [data]
-    );
+const showSellableBreakdown = useMemo(() => {
+    return data.some((row) => {
+        if (row.isPercentageRow) return false;
+
+        const available = Number(row.available || 0);
+        const fcTransfer = Number(row.fcTransfer || 0);
+
+        return available > 0 || fcTransfer > 0;
+    });
+}, [data]);
 
     const canCollapse = data.length > defaultVisibleRows;
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
         const backendPercentageRow = data.find((row) => row.isPercentageRow);
 
-        const productRows = data.filter((row) => !row.isPercentageRow);
+        const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
+            return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
+        };
+
+       const backendTotalRow = data.find((row) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        row.isTotalRow === true ||
+        productName === "total" ||
+        productName === "grand total" ||
+        sku === "total" ||
+        sku === "grand total"
+    );
+});
+
+const productRows = data.filter((row) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        !row.isPercentageRow &&
+        !row.isTotalRow &&
+        productName !== "total" &&
+        productName !== "grand total" &&
+        sku !== "total" &&
+        sku !== "grand total" &&
+        hasAnyDisplayBucketValue(row)
+    );
+});
 
         const sortedData = [...productRows].sort((a, b) => {
             const aUnitsSold = Number(a.unitsSold || 0);
@@ -434,9 +470,30 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 }
             });
 
-            if (typeof inventoryAgeSummary.sellable_total === "number") {
-                totalRow.available = inventoryAgeSummary.sellable_total;
-                totalRow.totalUnits = inventoryAgeSummary.sellable_total;
+            // ✅ Do NOT use inventoryAgeSummary.sellable_total for Available.
+            // Backend "Total" row already has separate available / fc-transfer / Sellable Units.
+            // inventoryAgeSummary.sellable_total can include different sellable base and causes wrong UI total.
+
+            const backendTotalRow = data.find((row) => {
+                const productName = String(row.productName || "").trim().toLowerCase();
+                const sku = String(row.sku || "").trim().toLowerCase();
+
+                return (
+                    row.isTotalRow === true ||
+                    productName === "total" ||
+                    productName === "grand total" ||
+                    sku === "total" ||
+                    sku === "grand total"
+                );
+            });
+
+            if (backendTotalRow) {
+                totalRow.available = Number(backendTotalRow.available || 0);
+                totalRow.fcTransfer = Number(backendTotalRow.fcTransfer || 0);
+                totalRow.totalUnits = Number(
+                    backendTotalRow.totalUnits ??
+                    Number(backendTotalRow.available || 0) + Number(backendTotalRow.fcTransfer || 0)
+                );
             }
 
             if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
@@ -500,438 +557,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
     }, [displayRows]);
 
-    // const columns = useMemo<ColumnDef<HeatmapTableRow>[]>(() => {
-    //     const heatmapHeaderClassName =
-    //         "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
-
-    //     const percentageRowTextClassName =
-    //         "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
-
-    //     const bucketColumns: ColumnDef<HeatmapTableRow>[] = buckets.map((bucket) => ({
-    //         key: bucket.key,
-    //         width: "72px",
-    //         header: bucket.label,
-    //         headerClassName: heatmapHeaderClassName,
-    //         cellClassName:
-    //             "relative !p-0 overflow-hidden text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //         render: (row) => {
-    //             const value = Number(row[bucket.key] || 0);
-
-    //             const colorBaseTotal =
-    //                 row.isTotalRow
-    //                     ? getHeatmapColorBaseTotal(row, buckets)
-    //                     : bucketMaxValues[bucket.key] || value;
-
-    //             if (row.isPercentageRow) {
-    //                 const displayValue =
-    //                     value > 0
-    //                         ? `${value.toLocaleString(undefined, {
-    //                             minimumFractionDigits: 2,
-    //                             maximumFractionDigits: 2,
-    //                         })}%`
-    //                         : "-";
-
-    //                 return (
-    //                     <div
-    //                         title={
-    //                             value > 0
-    //                                 ? `${bucket.label}: ${displayValue} of total`
-    //                                 : `${bucket.label}: 0% of total`
-    //                         }
-    //                         className={[
-    //                             "absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-xs font-semibold",
-    //                             percentageRowTextClassName,
-    //                             value > 0 ? "text-charcoal-500" : "text-charcoal-400",
-    //                         ].join(" ")}
-    //                         style={{
-    //                             backgroundColor: "#F8F8F8",
-    //                         }}
-    //                     >
-    //                         {displayValue}
-    //                     </div>
-    //                 );
-    //             }
-
-    //             const percentage = colorBaseTotal ? (value / colorBaseTotal) * 100 : 0;
-
-    //             return (
-    //                 <div
-    //                     title={`${row.productName} - ${bucket.label}: ${value.toLocaleString()} units (${percentage.toFixed(
-    //                         1
-    //                     )}%)`}
-    //                     className="absolute inset-0 flex h-full w-full items-center justify-center px-1 text-center text-charcoal-500"
-    //                     style={{
-    //                         backgroundColor:
-    //                             row.isTotalRow && value === 0
-    //                                 ? "#EFEFEF"
-    //                                 : getHeatColor(bucket.color, value, colorBaseTotal),
-    //                     }}
-    //                 >
-    //                     {value === 0 ? "-" : value.toLocaleString()}
-    //                 </div>
-    //             );
-    //         },
-    //     }));
-
-    //     const baseColumns: ColumnDef<HeatmapTableRow>[] = [
-    //         {
-    //             key: "sno",
-    //             header: "S.No.",
-    //             width: "48px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             render: (row, _value, rowIndex) => {
-    //                 if (row.isTotalRow || row.isPercentageRow) return "";
-    //                 return <span>{rowIndex + 1}</span>;
-    //             },
-    //         },
-    //         {
-    //             key: "productName",
-    //             header: "Product Name",
-    //             width: "135px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-left text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 overflow-hidden",
-    //             render: (row) => {
-    //                 const canClick =
-    //                     !!onProductClick &&
-    //                     !row.isTotalRow &&
-    //                     !row.isPercentageRow &&
-    //                     !row.isOthersRow &&
-    //                     !!row.productName;
-
-    //                 if (!canClick) {
-    //                     return (
-    //                         <span
-    //                             className={[
-    //                                 "block max-w-full truncate",
-    //                                 row.isOthersRow ? "text-green-500" : "",
-    //                                 row.isPercentageRow ? percentageRowTextClassName : "",
-    //                             ].join(" ")}
-    //                             title={row.productName}
-    //                         >
-    //                             {row.productName}
-    //                         </span>
-    //                     );
-    //                 }
-
-    //                 return (
-    //                     <button
-    //                         type="button"
-    //                         onClick={() => onProductClick(row)}
-    //                         title={row.productName}
-    //                         className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px]  truncate text-left text-green-500 underline-offset-2"
-    //                     >
-    //                         {row.productName}
-    //                     </button>
-    //                 );
-    //             },
-    //         },
-    //         {
-    //             key: "sku",
-    //             header: "SKU",
-    //             width: "95px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 !px-1 overflow-hidden",
-    //             render: (row) => {
-    //                 if (row.isTotalRow || row.isPercentageRow) return "";
-
-    //                 const sku = String(row.sku || "-").trim();
-
-    //                 return (
-    //                     <span
-    //                         title={sku}
-    //                         className="mx-auto block max-w-full truncate whitespace-nowrap text-center tabular-nums"
-    //                     >
-    //                         {sku}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-    //         {
-    //             key: "salesRank",
-    //             header: "Sales Rank",
-    //             width: hasAnySalesRankDelta ? "140px" : "90px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
-    //                     return <span></span>;
-    //                 }
-
-    //                 const rankNumber = parseSalesRankNumber(row.salesRank);
-
-    //                 if (!rankNumber) {
-    //                     return <span>-</span>;
-    //                 }
-
-    //                 const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
-
-    //                 if (!delta) {
-    //                     return (
-    //                         <div className="flex w-full items-center justify-center whitespace-nowrap tabular-nums">
-    //                             {rankNumber.toLocaleString()}
-    //                         </div>
-    //                     );
-    //                 }
-
-    //                 return (
-    //                     <div className="flex w-full items-center justify-between gap-2 whitespace-nowrap px-2">
-    //                         <span className="tabular-nums">
-    //                             {rankNumber.toLocaleString()}
-    //                         </span>
-
-    //                         <span
-    //                             className={[
-    //                                 "inline-flex min-w-[52px] items-center justify-end text-right text-xs font-semibold tabular-nums",
-    //                                 delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
-    //                             ].join(" ")}
-    //                             title="Compared with previous month sales rank"
-    //                         >
-    //                             <span className="w-3 shrink-0 text-center">
-    //                                 {delta.isGood ? "▲" : "▼"}
-    //                             </span>
-    //                             <span>{Math.abs(delta.value).toFixed(2)}%</span>
-    //                         </span>
-    //                     </div>
-    //                 );
-    //             },
-    //         },
-    //         ...bucketColumns,
-    //         {
-    //             key: "available",
-    //             header: "Sellable Units",
-    //             width: "85px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 if (row.isPercentageRow) {
-    //                     const value = Number(row.available ?? row.totalUnits ?? 0);
-
-    //                     return (
-    //                         <span className={percentageRowTextClassName}>
-    //                             {value > 0
-    //                                 ? `${value.toLocaleString(undefined, {
-    //                                     minimumFractionDigits: 2,
-    //                                     maximumFractionDigits: 2,
-    //                                 })}%`
-    //                                 : "-"}
-    //                         </span>
-    //                     );
-    //                 }
-
-    //                 const availableUnits = Number(row.available ?? row.totalUnits ?? 0);
-
-    //                 return (
-    //                     <span>
-    //                         {availableUnits > 0 ? availableUnits.toLocaleString() : "0"}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-    //         {
-    //             key: "inboundUnits",
-    //             header: "Inbound Units",
-    //             width: "85px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 // hide Inbound Units value in "% of Total" row
-    //                 if (row.isPercentageRow) {
-    //                     return <span></span>;
-    //                 }
-
-    //                 const inboundUnits = Number(row.inboundUnits || 0);
-
-    //                 return (
-    //                     <span>
-    //                         {Number.isFinite(inboundUnits) && inboundUnits !== 0
-    //                             ? inboundUnits.toLocaleString()
-    //                             : "-"}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-
-    //         {
-    //             key: "unsellableUnits",
-    //             header: "Unfulfillable Units",
-    //             width: "95px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 if (row.isPercentageRow) {
-    //                     const value = Number(row.unsellableUnits || 0);
-
-    //                     return (
-    //                         <span className={percentageRowTextClassName}>
-    //                             {value > 0
-    //                                 ? `${value.toLocaleString(undefined, {
-    //                                     minimumFractionDigits: 2,
-    //                                     maximumFractionDigits: 2,
-    //                                 })}%`
-    //                                 : "-"}
-    //                         </span>
-    //                     );
-    //                 }
-
-    //                 const unsellableUnits = Number(row.unsellableUnits || 0);
-
-    //                 return (
-    //                     <span>
-    //                         {unsellableUnits > 0
-    //                             ? unsellableUnits.toLocaleString()
-    //                             : "-"}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-    //         {
-    //             key: "unitsSold",
-    //             header: "Units Sold",
-    //             width: "85px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 const unitsSold = Number(row.unitsSold || 0);
-
-    //                 // ✅ % of Total row should be blank for Units Sold
-    //                 if (row.isPercentageRow) {
-    //                     return <span></span>;
-    //                 }
-
-    //                 return (
-    //                     <span>
-    //                         {unitsSold > 0 ? unitsSold.toLocaleString() : "-"}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-    //         {
-    //             key: "coverageRatio",
-    //             header: "Coverage Ratio (in Months)",
-    //             width: "110px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName: "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //             render: (row) => {
-    //                 if (row.isTotalRow || row.isPercentageRow) {
-    //                     return <span></span>;
-    //                 }
-
-    //                 const coverageRatio = Number(row.coverageRatio ?? 0);
-
-    //                 return (
-    //                     <span>
-    //                         {Number.isFinite(coverageRatio) && coverageRatio > 0
-    //                             ? coverageRatio.toFixed(2)
-    //                             : "-"}
-    //                     </span>
-    //                 );
-    //             },
-    //         },
-    //         // {
-    //         //     key: "inventoryAlert",
-    //         //     header: "Inventory Alerts",
-    //         //     width: "145px",
-    //         //     headerClassName: heatmapHeaderClassName,
-    //         //     cellClassName:
-    //         //         "text-center text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words",
-    //         //     render: (row) => {
-    //         //         // ✅ Do not show Inventory Alerts for Others, Total, or % of Total
-    //         //         if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
-    //         //             return <span></span>;
-    //         //         }
-
-    //         //         const alert = String(row.inventoryAlert || "").trim();
-
-    //         //         if (!alert) {
-    //         //             return <span>-</span>;
-    //         //         }
-
-    //         //         const normalized = alert.toLowerCase();
-
-    //         //         const badgeClassName = normalized.includes("high alert")
-    //         //             ? "bg-red-50 text-red-700 border-red-200"
-    //         //             : normalized.includes("high inventory coverage")
-    //         //                 ? "bg-orange-50 text-orange-700 border-orange-200"
-    //         //                 : normalized.includes("ageing")
-    //         //                     ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-    //         //                     : "bg-slate-50 text-slate-700 border-slate-200";
-
-    //         //         return (
-    //         //             <span
-    //         //                 title={alert}
-    //         //                 className={[
-    //         //                     "inline-flex max-w-full items-center justify-center rounded-md border px-2 py-1 text-[11px] font-medium leading-tight",
-    //         //                     badgeClassName,
-    //         //                 ].join(" ")}
-    //         //             >
-    //         //                 {alert}
-    //         //             </span>
-    //         //         );
-    //         //     },
-    //         // },
-    //     ];
-    //     if (showInventoryAlerts) {
-    //         baseColumns.push({
-    //             key: "inventoryAlert",
-    //             header: "Inventory Alerts",
-    //             width: "175px",
-    //             headerClassName: heatmapHeaderClassName,
-    //             cellClassName:
-    //                 "text-center align-middle text-[14px] lg:text-[12px] min-[1700px]:text-[14px] text-charcoal-500 whitespace-normal break-words !px-2",
-    //             render: (row) => {
-    //                 if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) {
-    //                     return <span></span>;
-    //                 }
-
-    //                 const alert = String(row.inventoryAlert || "").trim();
-
-    //                 if (!alert) {
-    //                     return <span>-</span>;
-    //                 }
-
-    //                 const normalized = alert.toLowerCase();
-
-    //                 const badgeClassName = normalized.includes("high alert")
-    //                     ? "bg-red-50 text-red-700 border-red-200"
-    //                     : normalized.includes("high inventory coverage")
-    //                         ? "bg-orange-50 text-orange-700 border-orange-200"
-    //                         : normalized.includes("ageing")
-    //                             ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-    //                             : "bg-slate-50 text-slate-700 border-slate-200";
-
-    //                 return (
-    //                     <span
-    //                         title={alert}
-    //                         className={[
-    //                             "inline-flex max-w-full whitespace-normal break-words text-center items-center justify-center rounded-md border px-2 py-1 text-xs leading-tight",
-    //                             badgeClassName,
-    //                         ].join(" ")}
-    //                         style={{
-    //                             overflowWrap: "anywhere",
-    //                             wordBreak: "break-word",
-    //                         }}
-    //                     >
-    //                         {alert}
-    //                     </span>
-    //                 );
-    //             },
-    //         });
-    //     }
-
-    //     return baseColumns;
-    // }, [buckets, onProductClick, showInventoryAlerts, hasAnySalesRankDelta, bucketMaxValues]);
-
     const tableConfig = useMemo(() => {
         const heatmapHeaderClassName =
             "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
         const defaultTdClassName =
-            "text-charcoal-500 text-[14px] lg:text-[12px] min-[1700px]:text-[14px] whitespace-nowrap overflow-hidden truncate";
+            "!text-[12px] min-[1700px]:!text-[14px] text-charcoal-500 whitespace-nowrap overflow-hidden truncate";
 
         const percentageRowTextClassName =
             "min-[1700px]:!text-[14px] min-[1700px]:!font-semibold";
@@ -974,6 +604,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: "95px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
 
             },
             {
@@ -982,6 +613,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 width: hasAnySalesRankDelta ? "140px" : "90px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
+                tdClassName: defaultTdClassName,
             },
         ];
 
@@ -992,7 +624,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             align: "center",
             thClassName: heatmapHeaderClassName,
             tdClassName:
-                "relative !p-0 overflow-hidden text-center text-charcoal-500 text-[14px] lg:text-[12px] min-[1700px]:text-[14px] whitespace-normal break-words",
+                "relative !p-0 overflow-hidden text-center text-charcoal-500 text-[12px] min-[1700px]:text-[14px] whitespace-normal break-words",
         }));
 
         const sellableGroup: ColGroup<HeatmapTableRow> = {
@@ -1172,7 +804,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         type="button"
                         onClick={() => onProductClick(row)}
                         title={row.productName}
-                        className="block text-[14px] lg:text-[12px] min-[1700px]:text-[14px] truncate text-left text-green-500 underline-offset-2"
+                        className="block text-[12px] min-[1700px]:text-[14px] truncate text-left text-green-500 underline-offset-2"
                     >
                         {row.productName}
                     </button>
@@ -1215,7 +847,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                         <span
                             className={[
-                                "inline-flex min-w-[52px] items-center justify-end text-right text-xs font-semibold tabular-nums",
+                                "inline-flex min-w-[52px] items-center justify-end text-right text-[10px] min-[1700px]:text-xs font-semibold tabular-nums",
                                 delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
                             ].join(" ")}
                             title="Compared with previous month sales rank"
@@ -1276,13 +908,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "available") {
-                if (row.isPercentageRow) {
-                    return (
-                        <span className={percentageRowTextClassName}>
-                            {percentDisplay(row.available)}
-                        </span>
-                    );
-                }
+                if (row.isPercentageRow) return "";
 
                 return (
                     <span className="text-charcoal-500">
@@ -1292,13 +918,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "fcTransfer") {
-                if (row.isPercentageRow) {
-                    return (
-                        <span className={percentageRowTextClassName}>
-                            {percentDisplay(row.fcTransfer)}
-                        </span>
-                    );
-                }
+                if (row.isPercentageRow) return "";
 
                 return (
                     <span className="text-charcoal-500">
@@ -1441,7 +1061,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: data,
+            dataRows: data.filter(
+                (row) =>
+                    row.isPercentageRow ||
+                    row.isTotalRow ||
+                    buckets.some((bucket) => Number(row[bucket.key] || 0) > 0)
+            ),
             showInventoryAlerts,
         });
     };

@@ -1958,6 +1958,17 @@ const isInventoryInsightsPercentageRow = (row: InventoryCurrentRow) => {
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
     inventoryToNum(row?.[key]);
 
+const hasAnyAgeingBucketValue = (row: InventoryCurrentRow) => {
+    return (
+        getInventoryAgeValue(row, "inv-age-0-to-90-days") > 0 ||
+        getInventoryAgeValue(row, "inv-age-91-to-180-days") > 0 ||
+        getInventoryAgeValue(row, "inv-age-0-to-180-days") > 0 ||
+        getInventoryAgeValue(row, "inv-age-181-to-270-days") > 0 ||
+        getInventoryAgeValue(row, "inv-age-271-to-365-days") > 0 ||
+        getInventoryAgeValue(row, "inv-age-365-plus-days") > 0
+    );
+};
+
 const getCurrentMonthUnitsSold = (row: InventoryCurrentRow) => {
     const directKey = Object.keys(row || {}).find((key) =>
         key.toLowerCase().startsWith("current month units sold")
@@ -2355,7 +2366,8 @@ const buildInventoryInsightsFromResponses = (
     const latestRows = rawRows.filter(
         (row) =>
             !isInventoryInsightsTotalRow(row) &&
-            !isInventoryInsightsPercentageRow(row)
+            !isInventoryInsightsPercentageRow(row) &&
+            hasAnyAgeingBucketValue(row)
     );
 
     const dynamicHeatmapBuckets = getDynamicInventoryBuckets(latestRows);
@@ -2955,8 +2967,15 @@ const buildInventoryInsightsExcelRows = (
     inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
 ) => {
     const percentageRow = rows.find((row) => row.isPercentageRow);
+    const hasAnyExcelBucketValue = (row: AgeingRiskHeatmapRow) => {
+        return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
+    };
+
     const productRows = rows.filter(
-        (row) => !row.isPercentageRow && !row.isTotalRow
+        (row) =>
+            !row.isPercentageRow &&
+            !row.isTotalRow &&
+            hasAnyExcelBucketValue(row)
     );
 
     const sortedRows = [...productRows].sort((a, b) => {
