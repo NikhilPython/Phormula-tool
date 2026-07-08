@@ -4145,14 +4145,14 @@ const bodyRows = exportRows.map((row, index) => {
 
 // ✅ Sellable Units > Available
 isPercentageRow
-  ? formatPercentValue(row.available ?? row["Available"])
+  ? ""
   : toNum(row.available) > 0
     ? toNum(row.available)
     : "",
 
 // ✅ Sellable Units > FC Transfer
 isPercentageRow
-  ? formatPercentValue(row.fcTransfer ?? row["FC Transfer"])
+  ? ""
   : toNum(row.fcTransfer) > 0
     ? toNum(row.fcTransfer)
     : "",
