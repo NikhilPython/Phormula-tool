@@ -415,12 +415,33 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
         };
 
-        const productRows = data.filter(
-            (row) =>
-                !row.isPercentageRow &&
-                !row.isTotalRow &&
-                hasAnyDisplayBucketValue(row)
-        );
+       const backendTotalRow = data.find((row) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        row.isTotalRow === true ||
+        productName === "total" ||
+        productName === "grand total" ||
+        sku === "total" ||
+        sku === "grand total"
+    );
+});
+
+const productRows = data.filter((row) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        !row.isPercentageRow &&
+        !row.isTotalRow &&
+        productName !== "total" &&
+        productName !== "grand total" &&
+        sku !== "total" &&
+        sku !== "grand total" &&
+        hasAnyDisplayBucketValue(row)
+    );
+});
 
         const sortedData = [...productRows].sort((a, b) => {
             const aUnitsSold = Number(a.unitsSold || 0);
@@ -443,9 +464,30 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 }
             });
 
-            if (typeof inventoryAgeSummary.sellable_total === "number") {
-                totalRow.available = inventoryAgeSummary.sellable_total;
-                totalRow.totalUnits = inventoryAgeSummary.sellable_total;
+            // ✅ Do NOT use inventoryAgeSummary.sellable_total for Available.
+            // Backend "Total" row already has separate available / fc-transfer / Sellable Units.
+            // inventoryAgeSummary.sellable_total can include different sellable base and causes wrong UI total.
+
+            const backendTotalRow = data.find((row) => {
+                const productName = String(row.productName || "").trim().toLowerCase();
+                const sku = String(row.sku || "").trim().toLowerCase();
+
+                return (
+                    row.isTotalRow === true ||
+                    productName === "total" ||
+                    productName === "grand total" ||
+                    sku === "total" ||
+                    sku === "grand total"
+                );
+            });
+
+            if (backendTotalRow) {
+                totalRow.available = Number(backendTotalRow.available || 0);
+                totalRow.fcTransfer = Number(backendTotalRow.fcTransfer || 0);
+                totalRow.totalUnits = Number(
+                    backendTotalRow.totalUnits ??
+                    Number(backendTotalRow.available || 0) + Number(backendTotalRow.fcTransfer || 0)
+                );
             }
 
             if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
@@ -870,14 +912,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "fcTransfer") {
-    if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return "";
 
-    return (
-        <span className="text-charcoal-500">
-            {numberDisplay(row.fcTransfer)}
-        </span>
-    );
-}
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.fcTransfer)}
+                    </span>
+                );
+            }
 
             if (colKey === "totalUnits") {
                 if (row.isPercentageRow) {
