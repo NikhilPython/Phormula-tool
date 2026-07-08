@@ -1647,6 +1647,20 @@ def get_current_global_data_for_live_bi(user_id: int):
         gt_money_total(uk_gt, "platform_fee_inventory_storage", uk_to_usd_rate)
         + gt_money_total(us_gt, "platform_fee_inventory_storage", 1)
     )
+    global_short_term_storage_fee = (
+        gt_money_total(uk_gt, "short_term_storage_fee", uk_to_usd_rate)
+        + gt_money_total(us_gt, "short_term_storage_fee", 1)
+    )
+
+    global_long_term_storage_fee = (
+        gt_money_total(uk_gt, "long_term_storage_fee", uk_to_usd_rate)
+        + gt_money_total(us_gt, "long_term_storage_fee", 1)
+    )
+
+    global_fba_disposal = (
+        gt_money_total(uk_gt, "fba_disposal", uk_to_usd_rate)
+        + gt_money_total(us_gt, "fba_disposal", 1)
+    )
 
     global_platformfeenew = (
         gt_money_total(uk_gt, "platformfeenew", uk_to_usd_rate)
@@ -1681,6 +1695,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "other", "gross_sales", "cogs", "profit", "net_sales","asp", 
         "ads_spend", "product_spend", "display_spend", "brand_spend",
         "platform_fee", "platform_fee_inventory_storage",
+        "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
         "platformfeenew", "dealsvouchar_ads", "shipment_fees",
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
@@ -2163,6 +2178,9 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     total_row["brand_spend"] = round(global_brand_spend, 2)
     total_row["platform_fee_inventory_storage"] = round(global_platform_fee_inventory_storage, 2)
+    total_row["short_term_storage_fee"] = round(global_short_term_storage_fee, 2)
+    total_row["long_term_storage_fee"] = round(global_long_term_storage_fee, 2)
+    total_row["fba_disposal"] = round(global_fba_disposal, 2)
     total_row["platformfeenew"] = round(global_platformfeenew, 2)
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
     total_row["misc_transaction"] = round(global_misc_transaction, 2)
@@ -2274,6 +2292,10 @@ def get_current_global_data_for_live_bi(user_id: int):
     derived_totals_global = {
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(float(total_row.get("platform_fee", 0.0) or 0.0), 2),
+        "platform_fee_inventory_storage": round(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0), 2),
+        "short_term_storage_fee": round(float(total_row.get("short_term_storage_fee", 0.0) or 0.0), 2),
+        "long_term_storage_fee": round(float(total_row.get("long_term_storage_fee", 0.0) or 0.0), 2),
+        "fba_disposal": round(float(total_row.get("fba_disposal", 0.0) or 0.0), 2),
         "advertising_fees": round(total_ads, 2),
         "ads_spend": round(float(total_row.get("ads_spend", 0.0) or 0.0), 2),
         "misc_transaction": round(float(total_row.get("misc_transaction", 0.0) or 0.0), 2),
