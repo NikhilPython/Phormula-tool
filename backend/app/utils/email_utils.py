@@ -1439,70 +1439,177 @@ def send_live_bi_email(
     
     def render_weekly_email_action_card(item: dict) -> str:
       product_name = html.escape(str(item.get("product_name") or item.get("sku") or "Unknown"))
-      severity = html.escape(str(item.get("severity") or "medium").upper())
-      problem = html.escape(str(item.get("problem") or ""))
-      likely_driver = html.escape(str(item.get("likely_driver") or ""))
+      metric_cards = item.get("metric_cards") or []
       action = html.escape(str(item.get("action") or ""))
 
-      metrics = item.get("metrics") or {}
+      border_map = {
+          "Units": "#E9B949",
+          "Net Sales": "#73B8D8",
+          "ASP": "#C65B5B",
+          "Ads": "#C78B52",
+          "CM2 Profit": "#7BA05B",
+          "CM2 Profit Per Unit": "#C78B52",
+          "Current Inventory": "#7BA05B",
+          "Stock Cover (Months)": "#C78B52",
+      }
 
-      metric_line = ""
+      def _change_html(change):
+          if change in (None, "", "None"):
+              return ""
 
-      if metrics:
-          units_change = (metrics.get("units") or {}).get("change")
-          sales_change = (metrics.get("net_sales") or {}).get("change")
-          profit_change = (metrics.get("cm1_profit") or {}).get("change")
+          change_text = str(change).strip()
 
-          metric_parts = []
+          if change_text.startswith("-"):
+              change_color = "#F04438"
+              arrow = "▼"
+          elif change_text.startswith("+"):
+              change_color = "#12B76A"
+              arrow = "▲"
+          else:
+              change_color = "#475467"
+              arrow = ""
 
-          if units_change:
-              metric_parts.append(f"Units {html.escape(str(units_change))}")
+          return f"""
+          <div class="weekly-metric-delta" style="
+              font-size:10px;
+              line-height:1.15;
+              font-weight:700;
+              color:{change_color};
+              margin-top:3px;
+              text-align:left;
+              white-space:nowrap;
+              overflow:hidden;
+              text-overflow:ellipsis;
+          ">
+              {arrow} {html.escape(change_text)}
+          </div>
+          """
 
-          if sales_change:
-              metric_parts.append(f"Net Sales {html.escape(str(sales_change))}")
+      def _render_metric_box(metric: dict) -> str:
+          label = str(metric.get("label") or "").strip()
+          value = str(metric.get("value") or "").strip()
+          change = metric.get("change")
 
-          if profit_change:
-              metric_parts.append(f"CM1 Profit {html.escape(str(profit_change))}")
+          if not label and not value:
+              return ""
 
-          if metric_parts:
-              metric_line = f"""
-              <div style="font-size:13px; color:#667085; line-height:1.6; margin-bottom:8px;">
-                  {' | '.join(metric_parts)}
+          border_color = border_map.get(label, "#D0D5DD")
+
+          return f"""
+          <div class="weekly-metric-box" style="
+              display:inline-block;
+              width:12.5%;
+              max-width:12.5%;
+              padding:4px;
+              vertical-align:top;
+              box-sizing:border-box;
+              font-size:14px;
+          ">
+              <div style="
+                  width:100%;
+                  min-height:64px;
+                  height:64px;
+                  border:1px solid {border_color};
+                  border-top:3px solid {border_color};
+                  border-radius:8px;
+                  background:#FFFFFF;
+                  padding:6px 6px 5px 6px;
+                  box-sizing:border-box;
+                  overflow:hidden;
+              ">
+                  <div class="weekly-metric-label" style="
+                      font-size:10px;
+                      line-height:1.15;
+                      color:#475467;
+                      font-weight:500;
+                      margin:0 0 5px 0;
+                      text-align:left;
+                      white-space:nowrap;
+                      overflow:hidden;
+                      text-overflow:ellipsis;
+                  ">
+                      {html.escape(label)}
+                  </div>
+
+                  <div class="weekly-metric-value" style="
+                      font-size:12px;
+                      line-height:1.15;
+                      font-weight:700;
+                      color:#344054;
+                      margin:0;
+                      text-align:left;
+                      white-space:nowrap;
+                      overflow:hidden;
+                      text-overflow:ellipsis;
+                  ">
+                      {html.escape(value)}
+                  </div>
+
+                  {_change_html(change)}
               </div>
-              """
+          </div>
+          """
+
+      metric_boxes_html = "".join(
+          _render_metric_box(metric)
+          for metric in metric_cards[:8]
+      )
+
+      if not metric_boxes_html:
+          metric_boxes_html = """
+          <div style="
+              font-size:13px;
+              color:#667085;
+              line-height:1.7;
+              margin:8px 0 14px 0;
+          ">
+              Metrics are not available for this email card.
+          </div>
+          """
 
       return f"""
       <div style="
-          margin:0 0 14px 0;
+          width:100%;
+          margin:0 0 18px 0;
           background:#FFFFFF;
           border:1px solid #E4E7EC;
-          border-radius:12px;
-          padding:14px 16px;
+          border-radius:14px;
+          box-sizing:border-box;
       ">
-          <div style="font-size:16px; font-weight:700; color:#37455F; margin-bottom:4px;">
-              {product_name}
-          </div>
+          <div style="padding:16px 16px 14px 16px; box-sizing:border-box;">
 
-          <div style="font-size:12px; color:#B42318; font-weight:700; margin-bottom:8px;">
-              {severity} PRIORITY
-          </div>
+              <div style="
+                  font-size:18px;
+                  font-weight:700;
+                  color:#344054;
+                  margin-bottom:10px;
+                  line-height:1.25;
+              ">
+                  {product_name}
+              </div>
 
-          {metric_line}
+              <div class="weekly-metrics-grid" style="
+                  width:100%;
+                  margin:0 0 12px 0;
+                  font-size:0;
+                  line-height:0;
+                  box-sizing:border-box;
+              ">
+                  {metric_boxes_html}
+              </div>
 
-          <div style="font-size:14px; color:#475467; line-height:1.6; margin-bottom:8px;">
-              <strong>Problem:</strong> {problem}
-          </div>
+              <div style="
+                  font-size:14px;
+                  color:#475467;
+                  line-height:1.7;
+                  margin-top:10px;
+              ">
+                  <strong style="color:#344054;">This week’s action:</strong> {action}
+              </div>
 
-          <div style="font-size:14px; color:#475467; line-height:1.6; margin-bottom:8px;">
-              <strong>Likely driver:</strong> {likely_driver}
-          </div>
-
-          <div style="font-size:14px; color:#475467; line-height:1.6;">
-              <strong>This week’s action:</strong> {action}
           </div>
       </div>
       """
-
 
     # ---------------------------
     # SKU ACTIONS SECTION
@@ -1800,6 +1907,58 @@ def send_live_bi_email(
 .sku-product-title {{
   text-align: center !important;
 }}
+
+.weekly-metrics-grid {{
+  width: 100% !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}}
+
+.weekly-metric-box {{
+  display: inline-block !important;
+  width: 12.5% !important;
+  max-width: 12.5% !important;
+  padding: 4px !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+}}
+
+.weekly-metric-label {{
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}}
+
+.weekly-metric-value {{
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}}
+
+.weekly-metric-delta {{
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}}
+
+@media only screen and (max-width: 767px) {{
+  .weekly-metric-box {{
+    width: 25% !important;
+    max-width: 25% !important;
+    padding: 4px !important;
+  }}
+
+  .weekly-metric-label {{
+    font-size: 10px !important;
+  }}
+
+  .weekly-metric-value {{
+    font-size: 12px !important;
+  }}
+
+  .weekly-metric-delta {{
+    font-size: 10px !important;
+  }}
+}}
+
+  
 
         /* Desktop/laptop */
         @media only screen and (min-width: 768px) {{

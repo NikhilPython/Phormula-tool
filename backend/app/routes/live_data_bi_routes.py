@@ -1472,6 +1472,52 @@ def _email_num(value):
         return f"{float(value):,.0f}"
     except Exception:
         return "0"
+    
+def _email_money_no_decimals(value, symbol="$"):
+    try:
+        return f"{symbol}{float(value):,.0f}"
+    except Exception:
+        return f"{symbol}0"
+
+
+def _email_plain_2(value):
+    try:
+        return f"{float(value):,.2f}"
+    except Exception:
+        return "0.00"
+
+
+def _email_metric_item(label, value, change=None):
+    return {
+        "label": label,
+        "value": value,
+        "change": change,
+    }
+
+
+def _email_pct_from_values(curr, prev):
+    try:
+        curr = float(curr or 0.0)
+        prev = float(prev or 0.0)
+
+        if prev == 0:
+            return "0.00%"
+
+        value = ((curr - prev) / abs(prev)) * 100.0
+        sign = "+" if value > 0 else ""
+        return f"{sign}{value:.2f}%"
+    except Exception:
+        return "0.00%"
+
+
+def _email_pct_2(value):
+    try:
+        value = float(value or 0.0)
+        sign = "+" if value > 0 else ""
+        return f"{sign}{value:.2f}%"
+    except Exception:
+        return "0.00%"
+
 
 
 def _pick_metric_change(row, keys):
@@ -1637,39 +1683,89 @@ def build_weekly_email_summary_json(
         profit_pct = _pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"])
         asp_pct = _pick_metric_change(row, ["ASP Growth (%)"])
 
+        ads_curr = row.get("ads_spend_curr", row.get("ads_spend", 0.0))
+        ads_prev = row.get("ads_spend_prev", 0.0)
+
+        cm2_profit_curr = row.get("cm2_profit_curr", row.get("cm2_profit", 0.0))
+        cm2_profit_prev = row.get("cm2_profit_prev", 0.0)
+
+        cm2_profit_growth_pct = (
+            row.get("cm2_profit_growth_pct")
+            or (row.get("CM2 Profit Growth (%)") or {}).get("value")
+            or 0.0
+        )
+
+        cm2_profit_per_unit_curr = row.get("cm2_profit_per_unit_curr", 0.0)
+        cm2_profit_per_unit_prev = row.get("cm2_profit_per_unit_prev", 0.0)
+
+        current_inventory = (
+            row.get("current_inventory")
+            or row.get("available_inventory")
+            or row.get("available_total")
+            or row.get("available")
+            or 0.0
+        )
+
+        stock_cover_months = (
+            row.get("coverage_ratio_months")
+            or row.get("stock_cover_months")
+            or row.get("coverage_months")
+            or row.get("inventory_coverage_ratio")
+            or 0.0
+        )
+
         priority_skus.append({
             "sku": sku,
             "product_name": product_name,
             "severity": "high" if sales_pct <= -20 or profit_pct <= -20 or units_pct <= -20 else "medium",
-            "problem": _build_weekly_problem_from_growth(row, currency_symbol),
-            "likely_driver": (
-                "Demand/volume pressure"
-                if units_pct <= -10
-                else "Margin or mix movement"
-            ),
+
+            # ✅ Only final action will be shown in email.
+            # Problem and likely_driver are removed from email JSON.
             "action": action,
-            "metrics": {
-                "units": {
-                    "previous": row.get("quantity_prev"),
-                    "current": row.get("quantity_curr"),
-                    "change": _email_pct_text(units_pct),
-                },
-                "net_sales": {
-                    "previous": _email_money(row.get("net_sales_prev"), currency_symbol),
-                    "current": _email_money(row.get("net_sales_curr"), currency_symbol),
-                    "change": _email_pct_text(sales_pct),
-                },
-                "cm1_profit": {
-                    "previous": _email_money(row.get("profit_prev"), currency_symbol),
-                    "current": _email_money(row.get("profit_curr"), currency_symbol),
-                    "change": _email_pct_text(profit_pct),
-                },
-                "asp": {
-                    "previous": _email_money(row.get("asp_prev"), currency_symbol),
-                    "current": _email_money(row.get("asp_curr"), currency_symbol),
-                    "change": _email_pct_text(asp_pct),
-                },
-            },
+
+            # ✅ New email metric-card grid
+            "metric_cards": [
+                _email_metric_item(
+                    "Units",
+                    _email_num(row.get("quantity_curr")),
+                    _email_pct_2(units_pct),
+                ),
+                _email_metric_item(
+                    "Net Sales",
+                    _email_money_no_decimals(row.get("net_sales_curr"), currency_symbol),
+                    _email_pct_2(sales_pct),
+                ),
+                _email_metric_item(
+                    "ASP",
+                    _email_money(row.get("asp_curr"), currency_symbol),
+                    _email_pct_2(asp_pct),
+                ),
+                _email_metric_item(
+                    "Ads",
+                    _email_money(ads_curr, currency_symbol),
+                    _email_pct_from_values(ads_curr, ads_prev),
+                ),
+                _email_metric_item(
+                    "CM2 Profit",
+                    _email_money_no_decimals(cm2_profit_curr, currency_symbol),
+                    _email_pct_2(cm2_profit_growth_pct),
+                ),
+                _email_metric_item(
+                    "CM2 Profit Per Unit",
+                    _email_money(cm2_profit_per_unit_curr, currency_symbol),
+                    _email_pct_from_values(cm2_profit_per_unit_curr, cm2_profit_per_unit_prev),
+                ),
+                _email_metric_item(
+                    "Current Inventory",
+                    f"{_email_num(current_inventory)} units",
+                    None,
+                ),
+                _email_metric_item(
+                    "Stock Cover (Months)",
+                    _email_plain_2(stock_cover_months),
+                    None,
+                ),
+            ],
         })
 
     return {
