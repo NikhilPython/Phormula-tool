@@ -1733,7 +1733,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
     const metricsGridClass = isMonthlyRange(range)
   ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 min-[1700px]:grid-cols-4"
-  : "grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5";
+  : "grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1700px]:grid-cols-5";
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
