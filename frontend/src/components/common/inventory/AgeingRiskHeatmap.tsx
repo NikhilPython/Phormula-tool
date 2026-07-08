@@ -411,7 +411,16 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
         const backendPercentageRow = data.find((row) => row.isPercentageRow);
 
-        const productRows = data.filter((row) => !row.isPercentageRow);
+        const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
+            return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
+        };
+
+        const productRows = data.filter(
+            (row) =>
+                !row.isPercentageRow &&
+                !row.isTotalRow &&
+                hasAnyDisplayBucketValue(row)
+        );
 
         const sortedData = [...productRows].sort((a, b) => {
             const aUnitsSold = Number(a.unitsSold || 0);
@@ -1441,7 +1450,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: data,
+            dataRows: data.filter(
+                (row) =>
+                    row.isPercentageRow ||
+                    row.isTotalRow ||
+                    buckets.some((bucket) => Number(row[bucket.key] || 0) > 0)
+            ),
             showInventoryAlerts,
         });
     };

@@ -4025,6 +4025,17 @@ const isInventoryPercentageRow = (row: InventoryCurrentRow) => {
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
+const hasAnyAgeingBucketValue = (row: InventoryCurrentRow) => {
+  return (
+    getInventoryAgeValue(row, "inv-age-0-to-90-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-91-to-180-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-0-to-180-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-181-to-270-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-271-to-365-days") > 0 ||
+    getInventoryAgeValue(row, "inv-age-365-plus-days") > 0
+  );
+};
+
 const getEstimatedStorageCostTotal = (
   latestResponse?: InventoryCurrentApiResponse
 ) => {
@@ -4581,7 +4592,8 @@ const buildInventoryInsightsFromResponses = (
   const latestRows = rawRows.filter(
     (row) =>
       !isInventoryTotalRow(row) &&
-      !isInventoryPercentageRow(row)
+      !isInventoryPercentageRow(row) &&
+      hasAnyAgeingBucketValue(row)
   );
 
   const dynamicHeatmapBuckets = getDynamicInventoryBuckets(latestRows);
