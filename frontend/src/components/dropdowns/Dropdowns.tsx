@@ -1731,6 +1731,10 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       return safeAIndex - safeBIndex;
     });
 
+    const metricsGridClass = isMonthlyRange(range)
+  ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 min-[1700px]:grid-cols-4"
+  : "grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5";
+
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
     const metricIndex = metricOrder.indexOf(normalizedLabel);
@@ -1863,7 +1867,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     className="mb-2"
                   />
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+                  <div className={metricsGridClass}>
                     {sortedMetrics.map((m, i) => {
                       const { main, delta, deltaColor } = splitMetricValue(m.value);
 
