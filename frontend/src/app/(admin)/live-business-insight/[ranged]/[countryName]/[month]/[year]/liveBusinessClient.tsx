@@ -4297,7 +4297,7 @@ export default function LiveBusinessClient({
     const { main, sub } = splitInventoryValue(label, value);
 
     return (
-      <div className="min-h-[72px] rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+      <div className="min-h-[60px] min-[1700px]:min-h-[72px] rounded-lg border border-slate-200 bg-slate-50/70 p-3">
         <div className="text-xs font-medium text-slate-500">
           {label}
         </div>
