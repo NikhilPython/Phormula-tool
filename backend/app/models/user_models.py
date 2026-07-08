@@ -465,6 +465,9 @@ class LiveAISummary(db.Model):
     summary = Column(Text, nullable=True)
     strategy = Column(Text, nullable=True)
 
+    # ✅ Weekly email-only short JSON
+    weekly_email_summary_json = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):

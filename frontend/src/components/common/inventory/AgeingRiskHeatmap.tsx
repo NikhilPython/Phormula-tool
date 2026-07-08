@@ -401,10 +401,16 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const showSellableBreakdown = useMemo(
-        () => hasSellableBreakdown(data),
-        [data]
-    );
+    const showSellableBreakdown = useMemo(() => {
+        return data.some((row) => {
+            if (row.isPercentageRow) return false;
+
+            const available = Number(row.available || 0);
+            const fcTransfer = Number(row.fcTransfer || 0);
+
+            return available > 0 || fcTransfer > 0;
+        });
+    }, [data]);
 
     const canCollapse = data.length > defaultVisibleRows;
 
@@ -415,12 +421,33 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
         };
 
-        const productRows = data.filter(
-            (row) =>
+        const backendTotalRow = data.find((row) => {
+            const productName = String(row.productName || "").trim().toLowerCase();
+            const sku = String(row.sku || "").trim().toLowerCase();
+
+            return (
+                row.isTotalRow === true ||
+                productName === "total" ||
+                productName === "grand total" ||
+                sku === "total" ||
+                sku === "grand total"
+            );
+        });
+
+        const productRows = data.filter((row) => {
+            const productName = String(row.productName || "").trim().toLowerCase();
+            const sku = String(row.sku || "").trim().toLowerCase();
+
+            return (
                 !row.isPercentageRow &&
                 !row.isTotalRow &&
+                productName !== "total" &&
+                productName !== "grand total" &&
+                sku !== "total" &&
+                sku !== "grand total" &&
                 hasAnyDisplayBucketValue(row)
-        );
+            );
+        });
 
         const sortedData = [...productRows].sort((a, b) => {
             const aUnitsSold = Number(a.unitsSold || 0);
@@ -443,9 +470,30 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 }
             });
 
-            if (typeof inventoryAgeSummary.sellable_total === "number") {
-                totalRow.available = inventoryAgeSummary.sellable_total;
-                totalRow.totalUnits = inventoryAgeSummary.sellable_total;
+            // ✅ Do NOT use inventoryAgeSummary.sellable_total for Available.
+            // Backend "Total" row already has separate available / fc-transfer / Sellable Units.
+            // inventoryAgeSummary.sellable_total can include different sellable base and causes wrong UI total.
+
+            const backendTotalRow = data.find((row) => {
+                const productName = String(row.productName || "").trim().toLowerCase();
+                const sku = String(row.sku || "").trim().toLowerCase();
+
+                return (
+                    row.isTotalRow === true ||
+                    productName === "total" ||
+                    productName === "grand total" ||
+                    sku === "total" ||
+                    sku === "grand total"
+                );
+            });
+
+            if (backendTotalRow) {
+                totalRow.available = Number(backendTotalRow.available || 0);
+                totalRow.fcTransfer = Number(backendTotalRow.fcTransfer || 0);
+                totalRow.totalUnits = Number(
+                    backendTotalRow.totalUnits ??
+                    Number(backendTotalRow.available || 0) + Number(backendTotalRow.fcTransfer || 0)
+                );
             }
 
             if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
@@ -511,7 +559,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const tableConfig = useMemo(() => {
         const heatmapHeaderClassName =
-            "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible";
+            "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible !text-[12px] min-[1700px]:!text-[14px]";
         const defaultTdClassName =
             "!text-[12px] min-[1700px]:!text-[14px] text-charcoal-500 whitespace-nowrap overflow-hidden truncate";
 
@@ -870,14 +918,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "fcTransfer") {
-    if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return "";
 
-    return (
-        <span className="text-charcoal-500">
-            {numberDisplay(row.fcTransfer)}
-        </span>
-    );
-}
+                return (
+                    <span className="text-charcoal-500">
+                        {numberDisplay(row.fcTransfer)}
+                    </span>
+                );
+            }
 
             if (colKey === "totalUnits") {
                 if (row.isPercentageRow) {
@@ -1072,25 +1120,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 </div>
             </div>
 
-            {/* <DataTable<HeatmapTableRow>
-                columns={columns}
-                data={displayRows}
-                paginate={false}
-                scrollY={false}
-                stickyHeader
-                zebra={false}
-                showCellTitle={false}
-                tableClassName="ageing-risk-heatmap-table w-full table-fixed text-sm"
-                rowClassName={(row) =>
-                    row.isTotalRow
-                        ? "bg-[#EFEFEF] font-semibold"
-                        : row.isPercentageRow
-                            ? "bg-[#F8F8F8] font-semibold"
-                            : row.isOthersRow
-                                ? ""
-                                : ""
-                }
-            /> */}
             <div className="rounded-xl w-full overflow-x-auto">
                 <GroupedCollapsibleTable<HeatmapTableRow>
                     rows={displayRows}
@@ -1106,8 +1135,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         `${row.sku || row.productName || "row"}-${index}`
                     }
                     tableClassName="ageing-risk-heatmap-table w-full table-fixed border-collapse bg-white text-sm text-charcoal-500"
-                    headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                    headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                    headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
+                    headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
                     getRowClassName={(row) =>
                         row.isTotalRow
                             ? "bg-[#EFEFEF] font-semibold"

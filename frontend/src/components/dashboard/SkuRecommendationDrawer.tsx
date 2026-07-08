@@ -524,7 +524,7 @@ export default function SkuRecommendationDrawer({
                           key={`${m.label}-${i}`}
                           className={[
                             "w-full rounded-xl bg-white shadow-sm p-1.5 2xl:p-2",
-                            "flex flex-col justify-between min-h-[72px]",
+                            "flex flex-col justify-between min-h-[60px] min-[1700px]:min-h-[72px]",
                             getMetricBorderColorByLabel(m.label, i),
                           ].join(" ")}
                         >

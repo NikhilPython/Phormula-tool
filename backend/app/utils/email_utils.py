@@ -897,11 +897,12 @@ def parse_actions_to_cards(actions: list) -> list:
 
 def send_live_bi_email(
     to_email,
-    overall_summary,
     country,
     prev_label,
     curr_label,
     deep_link_token=None,
+    weekly_email_summary_json=None,
+    overall_summary=None,
     overall_actions=None,
     sku_actions=None,
     sku_to_product=None,
@@ -915,12 +916,29 @@ def send_live_bi_email(
         print("[WARN] No email provided.")
         return False
 
-    subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
+    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+        subject = (
+            weekly_email_summary_json.get("subject_line")
+            or f"[Phormula] Weekly Live BI Insights - {str(country).upper()} ({curr_label})"
+        )
+    else:
+        subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
 
     # ---------------------------
     # Overall summary
     # ---------------------------
-    summary_text = (overall_summary or {}).get("summary_text", "") or ""
+    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+        summary_text = (
+            weekly_email_summary_json.get("portfolio_summary", {}).get("what_changed")
+            or weekly_email_summary_json.get("headline")
+            or ""
+        )
+        portfolio_recommendation = (
+            weekly_email_summary_json.get("portfolio_summary", {}).get("weekly_action")
+            or portfolio_recommendation
+        )
+    else:
+        summary_text = (overall_summary or {}).get("summary_text", "") or ""
 
     summary_html = f"""
 <p style="
@@ -1418,6 +1436,180 @@ def send_live_bi_email(
           </div>
         </div>
         """
+    
+    def render_weekly_email_action_card(item: dict) -> str:
+      product_name = html.escape(str(item.get("product_name") or item.get("sku") or "Unknown"))
+      metric_cards = item.get("metric_cards") or []
+      action = html.escape(str(item.get("action") or ""))
+
+      border_map = {
+          "Units": "#E9B949",
+          "Net Sales": "#73B8D8",
+          "ASP": "#C65B5B",
+          "Ads": "#C78B52",
+          "CM2 Profit": "#7BA05B",
+          "CM2 Profit Per Unit": "#C78B52",
+          "Current Inventory": "#7BA05B",
+          "Stock Cover (Months)": "#C78B52",
+      }
+
+      def _change_html(change):
+          if change in (None, "", "None"):
+              return ""
+
+          change_text = str(change).strip()
+
+          if change_text.startswith("-"):
+              change_color = "#F04438"
+              arrow = "▼"
+          elif change_text.startswith("+"):
+              change_color = "#12B76A"
+              arrow = "▲"
+          else:
+              change_color = "#475467"
+              arrow = ""
+
+          return f"""
+          <div class="weekly-metric-delta" style="
+              font-size:10px;
+              line-height:1.15;
+              font-weight:700;
+              color:{change_color};
+              margin-top:3px;
+              text-align:left;
+              white-space:nowrap;
+              overflow:hidden;
+              text-overflow:ellipsis;
+          ">
+              {arrow} {html.escape(change_text)}
+          </div>
+          """
+
+      def _render_metric_box(metric: dict) -> str:
+          label = str(metric.get("label") or "").strip()
+          value = str(metric.get("value") or "").strip()
+          change = metric.get("change")
+
+          if not label and not value:
+              return ""
+
+          border_color = border_map.get(label, "#D0D5DD")
+
+          return f"""
+          <div class="weekly-metric-box" style="
+              display:inline-block;
+              width:12.5%;
+              max-width:12.5%;
+              padding:4px;
+              vertical-align:top;
+              box-sizing:border-box;
+              font-size:14px;
+          ">
+              <div style="
+                  width:100%;
+                  min-height:64px;
+                  height:64px;
+                  border:1px solid {border_color};
+                  border-top:3px solid {border_color};
+                  border-radius:8px;
+                  background:#FFFFFF;
+                  padding:6px 6px 5px 6px;
+                  box-sizing:border-box;
+                  overflow:hidden;
+              ">
+                  <div class="weekly-metric-label" style="
+                      font-size:10px;
+                      line-height:1.15;
+                      color:#475467;
+                      font-weight:500;
+                      margin:0 0 5px 0;
+                      text-align:left;
+                      white-space:nowrap;
+                      overflow:hidden;
+                      text-overflow:ellipsis;
+                  ">
+                      {html.escape(label)}
+                  </div>
+
+                  <div class="weekly-metric-value" style="
+                      font-size:12px;
+                      line-height:1.15;
+                      font-weight:700;
+                      color:#344054;
+                      margin:0;
+                      text-align:left;
+                      white-space:nowrap;
+                      overflow:hidden;
+                      text-overflow:ellipsis;
+                  ">
+                      {html.escape(value)}
+                  </div>
+
+                  {_change_html(change)}
+              </div>
+          </div>
+          """
+
+      metric_boxes_html = "".join(
+          _render_metric_box(metric)
+          for metric in metric_cards[:8]
+      )
+
+      if not metric_boxes_html:
+          metric_boxes_html = """
+          <div style="
+              font-size:13px;
+              color:#667085;
+              line-height:1.7;
+              margin:8px 0 14px 0;
+          ">
+              Metrics are not available for this email card.
+          </div>
+          """
+
+      return f"""
+      <div style="
+          width:100%;
+          margin:0 0 18px 0;
+          background:#FFFFFF;
+          border:1px solid #E4E7EC;
+          border-radius:14px;
+          box-sizing:border-box;
+      ">
+          <div style="padding:16px 16px 14px 16px; box-sizing:border-box;">
+
+              <div style="
+                  font-size:18px;
+                  font-weight:700;
+                  color:#344054;
+                  margin-bottom:10px;
+                  line-height:1.25;
+              ">
+                  {product_name}
+              </div>
+
+              <div class="weekly-metrics-grid" style="
+                  width:100%;
+                  margin:0 0 12px 0;
+                  font-size:0;
+                  line-height:0;
+                  box-sizing:border-box;
+              ">
+                  {metric_boxes_html}
+              </div>
+
+              <div style="
+                  font-size:14px;
+                  color:#475467;
+                  line-height:1.7;
+                  margin-top:10px;
+              ">
+                  <strong style="color:#344054;">This week’s action:</strong> {action}
+              </div>
+
+          </div>
+      </div>
+      """
 
     # ---------------------------
     # SKU ACTIONS SECTION
@@ -1425,7 +1617,18 @@ def send_live_bi_email(
     sku_section_html = ""
 
     try:
-        if sku_actions and isinstance(sku_actions, dict):
+        if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+            priority_skus = weekly_email_summary_json.get("priority_skus") or []
+
+            if priority_skus:
+                sku_section_html = "".join(
+                    render_weekly_email_action_card(item)
+                    for item in priority_skus[:3]
+                )
+            else:
+                sku_section_html = _fallback_section_html()
+
+        elif sku_actions and isinstance(sku_actions, dict):
             cards = []
             for sku_key, action_text in sku_actions.items():
                 if not sku_key or not action_text:
@@ -1704,6 +1907,58 @@ def send_live_bi_email(
 .sku-product-title {{
   text-align: center !important;
 }}
+
+.weekly-metrics-grid {{
+  width: 100% !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}}
+
+.weekly-metric-box {{
+  display: inline-block !important;
+  width: 12.5% !important;
+  max-width: 12.5% !important;
+  padding: 4px !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+}}
+
+.weekly-metric-label {{
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}}
+
+.weekly-metric-value {{
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}}
+
+.weekly-metric-delta {{
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}}
+
+@media only screen and (max-width: 767px) {{
+  .weekly-metric-box {{
+    width: 25% !important;
+    max-width: 25% !important;
+    padding: 4px !important;
+  }}
+
+  .weekly-metric-label {{
+    font-size: 10px !important;
+  }}
+
+  .weekly-metric-value {{
+    font-size: 12px !important;
+  }}
+
+  .weekly-metric-delta {{
+    font-size: 10px !important;
+  }}
+}}
+
+  
 
         /* Desktop/laptop */
         @media only screen and (min-width: 768px) {{
@@ -2082,6 +2337,8 @@ def get_user_email_and_name_by_id(user_id: int):
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email/name for id={user_id}: {e}")
         return None, None
+
+
 def send_email_with_attachment(
     *,
     to_email: str,
