@@ -182,6 +182,10 @@ export type TableRow = {
   profit_mix?: number;
   sales_mix?: number;
 
+  short_term_storage_fee?: number;
+  long_term_storage_fee?: number;
+  fba_disposal?: number;
+
   // backend might send this as well
   return_quantity?: number;
 
@@ -217,6 +221,9 @@ type Totals = {
   product_spend: number;
   display_spend: number;
   brand_spend: number;
+  short_term_storage_fee: number;
+  long_term_storage_fee: number;
+  fba_disposal: number;
 };
 
 /* ---------- Helpers ---------- */
@@ -429,6 +436,11 @@ function normalizeRows(data: any[]): TableRow[] {
       unit_wise_cm2_profitability: toNumber(
         row.cm2_profit_per_unit ?? row.unit_wise_cm2_profitability
       ),
+
+      // ✅ Inventory Storage Fees breakdown
+      short_term_storage_fee: toNumber(row.short_term_storage_fee),
+      long_term_storage_fee: toNumber(row.long_term_storage_fee),
+      fba_disposal: toNumber(row.fba_disposal),
     } as TableRow;
 
   });
@@ -494,7 +506,12 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     ),
     other_transactions: toNumber(totalRow.platform_fee),
     platform_fee: platformFees,
+
     inventory_storage_fees: inventoryStorageFees,
+    short_term_storage_fee: toNumber(totalRow.short_term_storage_fee),
+    long_term_storage_fee: toNumber(totalRow.long_term_storage_fee),
+    fba_disposal: toNumber(totalRow.fba_disposal),
+
     misc_transaction: toNumber(totalRow.misc_transaction),
     reimbursement_lost_inventory_amount:
       toNumber(totalRow.reimbursement_lost_inventory_amount) || 0,
@@ -1357,6 +1374,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "visible_ads",
         "dealsvouchar_ads",
         "inventory_storage_fees",
+        "short_term_storage_fee",
+        "long_term_storage_fee",
+        "fba_disposal",
         "misc_transaction",
         "shipment_charges",
         "net_reimbursement",
@@ -1429,6 +1449,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "promotional_rebates", // Promotions (-)
         "platformfeenew",
         "platform_fee_inventory_storage",
+        "short_term_storage_fee",
+        "long_term_storage_fee",
+        "fba_disposal",
         "net_taxes",
         "lost_total",
         "advertising_total",
@@ -1603,16 +1626,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
           __bold: 1,
         },
         {
-          product_name: "Platform Fees (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.platform_fee || 0)),
+          product_name: "Short Term Storage Fee (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.short_term_storage_fee || 0)),
         },
         {
-          product_name: "Inventory Storage Fees (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.inventory_storage_fees || 0)),
+          product_name: "Long Term Storage Fee (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.long_term_storage_fee || 0)),
         },
         {
-          product_name: "Reimbursement for lost Inventory",
+          product_name: "FBA Disposal (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.fba_disposal || 0)),
+        },
+        {
+          product_name: "Reimbursement for lost Inventory (+)",
           [summaryValueColumnKey]: Math.abs(Number(totals.lost_total || 0)),
+        },
+        {
+          product_name: "Misc. Transactions (+)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.misc_transaction || 0)),
+        },
+        {
+          product_name: "Other Platform Fees (-)",
+          [summaryValueColumnKey]: Math.abs(Number(totals.platform_fee || 0)),
         },
 
         {
@@ -1944,11 +1979,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const TOTAL_ROW_HEIGHT = 52;
   const SUMMARY_ROW_HEIGHT = 48;
 
+  // const COLLAPSED_SUMMARY_ROW_COUNT =
+  //   (countryName || "").toLowerCase() === "us" ||
+  //     (countryName || "").toLowerCase() === "global"
+  //     ? 9
+  //     : 8;
+
   const COLLAPSED_SUMMARY_ROW_COUNT =
     (countryName || "").toLowerCase() === "us" ||
       (countryName || "").toLowerCase() === "global"
-      ? 9
-      : 8;
+      ? 12
+      : 11;
 
   const shouldScrollTable =
     productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
@@ -2237,21 +2278,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       endValue: formatValue(totals.other_transactions, "other_transactions"),
                       defaultCollapsed: true,
                       children: [
+
+                        // {
+                        //   id: "other_2",
+                        //   label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        //   midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                        // },
                         {
-                          id: "other_1",
-                          label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.platform_fee, "platform_fee"),
+                          id: "short_term_storage_fee",
+                          label: <span className="pl-6">Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+                          midValue: formatValue(totals.short_term_storage_fee, "short_term_storage_fee"),
                         },
                         {
-                          id: "other_2",
-                          label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                          id: "long_term_storage_fee",
+                          label: <span className="pl-6">Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+                          midValue: formatValue(totals.long_term_storage_fee, "long_term_storage_fee"),
                         },
                         {
-                          id: "other_misc",
-                          label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-                          midValue: formatValue(totals.misc_transaction, "misc_transaction"),
+                          id: "fba_disposal",
+                          label: <span className="pl-6">FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></span>,
+                          midValue: formatValue(totals.fba_disposal, "fba_disposal"),
                         },
+
                         {
                           id: "other_3",
                           label: (
@@ -2264,6 +2312,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
                             </>
                           ),
                           midValue: formatValue(totals.lost_total, "lost_total"),
+                        },
+                        {
+                          id: "other_misc",
+                          label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                          midValue: formatValue(totals.misc_transaction, "misc_transaction"),
+                        },
+                        {
+                          id: "other_1",
+                          label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.platform_fee, "platform_fee"),
                         },
                       ],
                     },

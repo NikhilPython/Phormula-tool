@@ -1500,7 +1500,7 @@ def send_live_bi_email(
               display:inline-block;
               width:12.5%;
               max-width:12.5%;
-              padding:4px;
+              padding:3px;
               vertical-align:top;
               box-sizing:border-box;
               font-size:14px;
@@ -1939,22 +1939,35 @@ def send_live_bi_email(
 }}
 
 @media only screen and (max-width: 767px) {{
+  .weekly-metrics-grid {{
+    width: 100% !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    white-space: normal !important;
+  }}
+
   .weekly-metric-box {{
-    width: 25% !important;
-    max-width: 25% !important;
-    padding: 4px !important;
+    display: inline-block !important;
+    width: 24.5% !important;
+    max-width: 24.5% !important;
+    padding: 3px !important;
+    vertical-align: top !important;
+    box-sizing: border-box !important;
   }}
 
   .weekly-metric-label {{
-    font-size: 10px !important;
+    font-size: 9px !important;
+    line-height: 1.15 !important;
   }}
 
   .weekly-metric-value {{
-    font-size: 12px !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
   }}
 
   .weekly-metric-delta {{
-    font-size: 10px !important;
+    font-size: 9px !important;
+    line-height: 1.15 !important;
   }}
 }}
 
