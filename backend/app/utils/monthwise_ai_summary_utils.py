@@ -1104,7 +1104,17 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
         "asp": pct("asp"),
         "cm1_profit": pct("profit"),
         "cm1_profit_per_unit": pct("unit_wise_profitability"),
-        "cm2_profit": pct("cm2_profit"),
+        "cm2_profit": (
+            round(
+                (_total_cm2_value(df_current_total) - _total_cm2_value(df_prev_total))
+                /(_total_cm2_value(df_prev_total))
+                * 100,
+                2
+            )
+            if _total_cm2_value(df_current_total) is not None
+            and _total_cm2_value(df_prev_total) not in (None, 0)
+            else None
+        ),
         "advertising": pct("advertising_total"),
 
         # ✅ FIXED storage calculation
@@ -1165,6 +1175,22 @@ def _total_value(df_total: pd.DataFrame, col: str):
     if df_total.empty or col not in df_total.columns:
         return None
     return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
+
+def _total_cm2_value(df_total: pd.DataFrame):
+    """
+    AI portfolio/overall CM2 source.
+
+    Priority:
+    1. total_cm2_profit
+    2. cm2_profit
+    """
+    val = _total_value(df_total, "total_cm2_profit")
+
+    if val is not None:
+        return val
+
+    return _total_value(df_total, "cm2_profit")
+
 
 def safe_float(v):
     try:
@@ -1405,7 +1431,12 @@ def compute_period_absolute_changes(df_current_total, df_prev_total):
 
         "cm1_profit": diff("profit"),
         "cm1_profit_per_unit": diff("unit_wise_profitability"),
-        "cm2_profit": diff("cm2_profit"),
+        "cm2_profit": (
+            round(_total_cm2_value(df_current_total) - _total_cm2_value(df_prev_total), 2)
+            if _total_cm2_value(df_current_total) is not None
+            and _total_cm2_value(df_prev_total) is not None
+            else None
+        ),
 
         "advertising": diff("advertising_total"),
         "storage_fees": diff("platform_fee_inventory_storage"),
@@ -1478,7 +1509,7 @@ METRIC_COLUMNS = {
 
     "profit",
     "cm2_profit",
-
+    "total_cm2_profit",
     "productwise_ads_spend",
  
     
@@ -1736,7 +1767,7 @@ def aggregate_total_rows_for_partial_year(df_total_rows: pd.DataFrame) -> pd.Dat
     total_units = row.get("total_quantity", 0)
     net_sales = row.get("net_sales", 0)
     cm1_profit = row.get("profit", 0)
-    cm2_profit = row.get("cm2_profit", 0)
+    cm2_profit = row.get("total_cm2_profit", row.get("cm2_profit", 0))
 
     # Recalculate non-additive metrics
     row["asp"] = round(net_sales / total_units, 2) if total_units else None
@@ -4865,7 +4896,7 @@ def get_or_create_summary(
                 current_values_source,
                 "unit_wise_profitability"
             ),
-            "cm2_profit": _total_value(current_values_source, "cm2_profit"),
+            "cm2_profit": _total_cm2_value(current_values_source),
             "advertising": _advertising_total_final_value(current_values_source),
             "storage_fees": _total_value(
                 current_values_source,
@@ -4883,7 +4914,7 @@ def get_or_create_summary(
                 previous_values_source,
                 "unit_wise_profitability"
             ),
-            "cm2_profit": _total_value(previous_values_source, "cm2_profit"),
+            "cm2_profit": _total_cm2_value(previous_values_source),
             "advertising": _advertising_total_final_value(previous_values_source),
             "storage_fees": _total_value(
                 previous_values_source,
@@ -4891,6 +4922,30 @@ def get_or_create_summary(
             ),
             "acos": _total_value(previous_values_source, "acos"),
         }
+
+        print("\n================ OVERALL SUMMARY AI TOTAL VALUES DEBUG ================")
+        print("user_id:", user_id)
+        print("country:", country)
+        print("period:", period)
+        print("timeline:", timeline)
+        print("year:", year)
+
+        print("\nCURRENT VALUES SENT TO AI:")
+        print(json.dumps(period_absolute_changes.get("current_values", {}), indent=2, default=str))
+
+        print("\nPREVIOUS VALUES SENT TO AI:")
+        print(json.dumps(period_absolute_changes.get("previous_values", {}), indent=2, default=str))
+
+        print("\nABSOLUTE CHANGES SENT TO AI:")
+        print(json.dumps({
+            k: v for k, v in period_absolute_changes.items()
+            if k not in ("current_values", "previous_values")
+        }, indent=2, default=str))
+
+        print("\nPERCENTAGE CHANGES SENT TO AI:")
+        print(json.dumps(period_pct_changes or {}, indent=2, default=str))
+
+        print("=======================================================================\n")
 
     # ============================================================
     # YEARLY ADVERTISING OVERRIDE SAFETY FIX

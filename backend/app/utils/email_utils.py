@@ -897,11 +897,12 @@ def parse_actions_to_cards(actions: list) -> list:
 
 def send_live_bi_email(
     to_email,
-    overall_summary,
     country,
     prev_label,
     curr_label,
     deep_link_token=None,
+    weekly_email_summary_json=None,
+    overall_summary=None,
     overall_actions=None,
     sku_actions=None,
     sku_to_product=None,
@@ -915,12 +916,29 @@ def send_live_bi_email(
         print("[WARN] No email provided.")
         return False
 
-    subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
+    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+        subject = (
+            weekly_email_summary_json.get("subject_line")
+            or f"[Phormula] Weekly Live BI Insights - {str(country).upper()} ({curr_label})"
+        )
+    else:
+        subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
 
     # ---------------------------
     # Overall summary
     # ---------------------------
-    summary_text = (overall_summary or {}).get("summary_text", "") or ""
+    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+        summary_text = (
+            weekly_email_summary_json.get("portfolio_summary", {}).get("what_changed")
+            or weekly_email_summary_json.get("headline")
+            or ""
+        )
+        portfolio_recommendation = (
+            weekly_email_summary_json.get("portfolio_summary", {}).get("weekly_action")
+            or portfolio_recommendation
+        )
+    else:
+        summary_text = (overall_summary or {}).get("summary_text", "") or ""
 
     summary_html = f"""
 <p style="
@@ -1418,6 +1436,73 @@ def send_live_bi_email(
           </div>
         </div>
         """
+    
+    def render_weekly_email_action_card(item: dict) -> str:
+      product_name = html.escape(str(item.get("product_name") or item.get("sku") or "Unknown"))
+      severity = html.escape(str(item.get("severity") or "medium").upper())
+      problem = html.escape(str(item.get("problem") or ""))
+      likely_driver = html.escape(str(item.get("likely_driver") or ""))
+      action = html.escape(str(item.get("action") or ""))
+
+      metrics = item.get("metrics") or {}
+
+      metric_line = ""
+
+      if metrics:
+          units_change = (metrics.get("units") or {}).get("change")
+          sales_change = (metrics.get("net_sales") or {}).get("change")
+          profit_change = (metrics.get("cm1_profit") or {}).get("change")
+
+          metric_parts = []
+
+          if units_change:
+              metric_parts.append(f"Units {html.escape(str(units_change))}")
+
+          if sales_change:
+              metric_parts.append(f"Net Sales {html.escape(str(sales_change))}")
+
+          if profit_change:
+              metric_parts.append(f"CM1 Profit {html.escape(str(profit_change))}")
+
+          if metric_parts:
+              metric_line = f"""
+              <div style="font-size:13px; color:#667085; line-height:1.6; margin-bottom:8px;">
+                  {' | '.join(metric_parts)}
+              </div>
+              """
+
+      return f"""
+      <div style="
+          margin:0 0 14px 0;
+          background:#FFFFFF;
+          border:1px solid #E4E7EC;
+          border-radius:12px;
+          padding:14px 16px;
+      ">
+          <div style="font-size:16px; font-weight:700; color:#37455F; margin-bottom:4px;">
+              {product_name}
+          </div>
+
+          <div style="font-size:12px; color:#B42318; font-weight:700; margin-bottom:8px;">
+              {severity} PRIORITY
+          </div>
+
+          {metric_line}
+
+          <div style="font-size:14px; color:#475467; line-height:1.6; margin-bottom:8px;">
+              <strong>Problem:</strong> {problem}
+          </div>
+
+          <div style="font-size:14px; color:#475467; line-height:1.6; margin-bottom:8px;">
+              <strong>Likely driver:</strong> {likely_driver}
+          </div>
+
+          <div style="font-size:14px; color:#475467; line-height:1.6;">
+              <strong>This week’s action:</strong> {action}
+          </div>
+      </div>
+      """
+
 
     # ---------------------------
     # SKU ACTIONS SECTION
@@ -1425,7 +1510,18 @@ def send_live_bi_email(
     sku_section_html = ""
 
     try:
-        if sku_actions and isinstance(sku_actions, dict):
+        if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+            priority_skus = weekly_email_summary_json.get("priority_skus") or []
+
+            if priority_skus:
+                sku_section_html = "".join(
+                    render_weekly_email_action_card(item)
+                    for item in priority_skus[:3]
+                )
+            else:
+                sku_section_html = _fallback_section_html()
+
+        elif sku_actions and isinstance(sku_actions, dict):
             cards = []
             for sku_key, action_text in sku_actions.items():
                 if not sku_key or not action_text:
@@ -2082,6 +2178,8 @@ def get_user_email_and_name_by_id(user_id: int):
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email/name for id={user_id}: {e}")
         return None, None
+
+
 def send_email_with_attachment(
     *,
     to_email: str,
