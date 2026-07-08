@@ -401,10 +401,16 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const showSellableBreakdown = useMemo(
-        () => hasSellableBreakdown(data),
-        [data]
-    );
+const showSellableBreakdown = useMemo(() => {
+    return data.some((row) => {
+        if (row.isPercentageRow) return false;
+
+        const available = Number(row.available || 0);
+        const fcTransfer = Number(row.fcTransfer || 0);
+
+        return available > 0 || fcTransfer > 0;
+    });
+}, [data]);
 
     const canCollapse = data.length > defaultVisibleRows;
 
