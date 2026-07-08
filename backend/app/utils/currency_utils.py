@@ -69,6 +69,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_fee",
         "platform_fee_inventory_storage", "shipment_fees", "cm2_profit",
+        "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
         "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
@@ -83,7 +84,8 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "profit", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_fee",
-        "platform_fee_inventory_storage", "cm2_profit", "debt_payment", "disbursement","rembursement_fee"
+        "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
+        "cm2_profit", "debt_payment", "disbursement","rembursement_fee"
     ]
 
     # US-only column, do NOT currency convert
@@ -122,6 +124,9 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 "platform_fee_new": "platformfeenew",
                 "platform_fee_new_total": "platformfeenew",
                 "platform_storage_fee": "platform_fee_inventory_storage",
+                "short_term_storage_fee": "short_term_storage_fee",
+                "long_term_storage_fee": "long_term_storage_fee",
+                "fba_disposal": "fba_disposal",
                 "storage_fee": "platform_fee_inventory_storage",
                 "shipment_fee": "shipment_fees",
             }, inplace=True)
@@ -305,6 +310,9 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             platformfeenew DOUBLE PRECISION,
             platform_fee DOUBLE PRECISION,
             platform_fee_inventory_storage DOUBLE PRECISION,
+            short_term_storage_fee DOUBLE PRECISION,
+            long_term_storage_fee DOUBLE PRECISION,
+            fba_disposal DOUBLE PRECISION,
             shipment_fees DOUBLE PRECISION,
             cm2_profit DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,

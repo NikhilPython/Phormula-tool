@@ -713,14 +713,34 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped = sku_grouped.merge(lost_total_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(misc_transaction_df, on="sku", how="left")
         sku_grouped["refund_selling_fees"] = pd.to_numeric(sku_grouped.get("refund_selling_fees", 0), errors="coerce").fillna(0)
-        sku_grouped["quantity"] = pd.to_numeric(sku_grouped.get("quantity", 0), errors="coerce").fillna(0)
-        sku_grouped["return_quantity"] = pd.to_numeric(sku_grouped.get("return_quantity", 0), errors="coerce").fillna(0).astype(int)
-        sku_grouped["lost_total"] = pd.to_numeric(sku_grouped.get("lost_total", 0), errors="coerce").fillna(0)
-        sku_grouped["misc_transaction"] = pd.to_numeric(sku_grouped.get("misc_transaction", 0), errors="coerce").fillna(0)
+        sku_grouped["quantity"] = pd.to_numeric(
+            sku_grouped.get("quantity", 0),
+            errors="coerce"
+        ).fillna(0).abs()
 
+        sku_grouped["return_quantity"] = pd.to_numeric(
+            sku_grouped.get("return_quantity", 0),
+            errors="coerce"
+        ).fillna(0).abs().astype(int)
+
+        sku_grouped["lost_total"] = pd.to_numeric(
+            sku_grouped.get("lost_total", 0),
+            errors="coerce"
+        ).fillna(0)
+
+        sku_grouped["misc_transaction"] = pd.to_numeric(
+            sku_grouped.get("misc_transaction", 0),
+            errors="coerce"
+        ).fillna(0)
+
+        # ✅ quantity = shipment/order quantity + refund quantity
+        sku_grouped["quantity"] = (
+            sku_grouped["quantity"] + sku_grouped["return_quantity"]
+        ).astype(int)
+
+        # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (
-            pd.to_numeric(sku_grouped["quantity"], errors="coerce").fillna(0).astype(int)
-            - sku_grouped["return_quantity"]
+            sku_grouped["quantity"] - sku_grouped["return_quantity"]
         ).astype(int)
 
         sku_grouped["selling_fees"] = pd.to_numeric(
@@ -1899,14 +1919,23 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped = sku_grouped.merge(misc_transaction_df, on="sku", how="left")
 
         sku_grouped["refund_selling_fees"] = safe_series(sku_grouped, "refund_selling_fees")
-        sku_grouped["quantity"] = safe_series(sku_grouped, "quantity")
-        sku_grouped["return_quantity"] = safe_series(sku_grouped, "return_quantity").abs().astype(int)
+        sku_grouped["quantity"] = safe_series(sku_grouped, "quantity").abs()
+        sku_grouped["return_quantity"] = safe_series(
+            sku_grouped,
+            "return_quantity"
+        ).abs().astype(int)
+
         sku_grouped["lost_total"] = safe_series(sku_grouped, "lost_total")
         sku_grouped["misc_transaction"] = safe_series(sku_grouped, "misc_transaction")
 
+        # ✅ quantity = shipment/order quantity + refund quantity
+        sku_grouped["quantity"] = (
+            sku_grouped["quantity"] + sku_grouped["return_quantity"]
+        ).astype(int)
+
+        # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (
-            sku_grouped["quantity"].fillna(0).astype(int)
-            - sku_grouped["return_quantity"]
+            sku_grouped["quantity"] - sku_grouped["return_quantity"]
         ).astype(int)
 
         sku_grouped["selling_fees"] = safe_series(sku_grouped, "selling_fees")
@@ -2594,14 +2623,23 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped = sku_grouped.merge(misc_transaction_df, on="sku", how="left")
 
         sku_grouped["refund_selling_fees"] = safe_series(sku_grouped, "refund_selling_fees")
-        sku_grouped["quantity"] = safe_series(sku_grouped, "quantity")
-        sku_grouped["return_quantity"] = safe_series(sku_grouped, "return_quantity").abs().astype(int)
+        sku_grouped["quantity"] = safe_series(sku_grouped, "quantity").abs()
+        sku_grouped["return_quantity"] = safe_series(
+            sku_grouped,
+            "return_quantity"
+        ).abs().astype(int)
+
         sku_grouped["lost_total"] = safe_series(sku_grouped, "lost_total")
         sku_grouped["misc_transaction"] = safe_series(sku_grouped, "misc_transaction")
 
+        # ✅ quantity = shipment/order quantity + refund quantity
+        sku_grouped["quantity"] = (
+            sku_grouped["quantity"] + sku_grouped["return_quantity"]
+        ).astype(int)
+
+        # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (
-            sku_grouped["quantity"].fillna(0).astype(int)
-            - sku_grouped["return_quantity"]
+            sku_grouped["quantity"] - sku_grouped["return_quantity"]
         ).astype(int)
 
         sku_grouped["selling_fees"] = -(

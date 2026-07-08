@@ -162,6 +162,27 @@ def ensure_payment_columns(conn, table_name: str):
 
     _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
 
+def ensure_storage_fee_columns(conn, table_name: str):
+    if not table_exists_conn(conn, table_name):
+        return
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS short_term_storage_fee DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS long_term_storage_fee DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS fba_disposal DOUBLE PRECISION DEFAULT 0
+    '''))
+
+    _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
+
 def process_skuwise_data(user_id, country, month, year):
     engine = create_engine(db_url)
     engine1 = create_engine(db_url1)
@@ -367,6 +388,30 @@ def process_skuwise_data(user_id, country, month, year):
             mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
             return float(pd.to_numeric(df.loc[mask, "total"], errors="coerce").fillna(0).sum())
 
+        def sku_total_where_desc_contains(keywords, out_col):
+            if "total" not in df.columns:
+                return pd.DataFrame(columns=["sku", out_col])
+
+            pattern = "|".join([re.escape(k) for k in keywords])
+            mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+
+            out = (
+                df.loc[
+                    mask
+                    & df["sku"].notna()
+                    & (df["sku"].astype(str).str.strip() != "")
+                    & (df["sku"].astype(str).str.strip() != "0")
+                ]
+                .groupby("sku", as_index=False)["total"]
+                .sum()
+                .rename(columns={"total": out_col})
+            )
+
+            out[out_col] = pd.to_numeric(out[out_col], errors="coerce").fillna(0).abs()
+            out["sku"] = out["sku"].astype(str).str.strip()
+            return out
+
+
         # visible_ads = sum(total) where description contains "ProductAdsPayment"
         visible_ads_total = sum_total_where_desc_contains(["ProductAdsPayment"])
 
@@ -400,6 +445,33 @@ def process_skuwise_data(user_id, country, month, year):
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
         ])
+        
+        short_term_storage_fee_total = abs(sum_total_where_desc_contains([
+            "FBAStorageBilling"
+        ]))
+
+        long_term_storage_fee_total = abs(sum_total_where_desc_contains([
+            "FBALongTermStorageBilling"
+        ]))
+
+        fba_disposal_total = abs(sum_total_where_desc_contains([
+            "FBADisposal"
+        ]))
+        short_term_storage_fee_df = sku_total_where_desc_contains(
+            ["FBAStorageBilling"],
+            "short_term_storage_fee"
+        )
+
+        long_term_storage_fee_df = sku_total_where_desc_contains(
+            ["FBALongTermStorageBilling"],
+            "long_term_storage_fee"
+        )
+
+        fba_disposal_df = sku_total_where_desc_contains(
+            ["FBADisposal"],
+            "fba_disposal"
+        )
+        
         # ================== END NEW: TOTAL-ONLY BREAKUP COLUMNS ==================
 
 
@@ -685,15 +757,17 @@ def process_skuwise_data(user_id, country, month, year):
             .abs()
         )
 
-        # ✅ FINAL: quantity = total - lost - refund
+        # ✅ FINAL:
+        # quantity = shipment/order quantity + refund quantity
+        # total_quantity will subtract return_quantity later
         quantity_df["quantity"] = (
             pd.to_numeric(quantity_df["quantity"], errors="coerce").fillna(0)
             - quantity_df["lost_quantity"]
-            - quantity_df["return_quantity"]
         )
 
         # optional: drop helper cols if you don't want them here
         quantity_df.drop(columns=["lost_quantity"], inplace=True)
+
         # quantity_df already contains return_quantity; avoid duplicate merge collisions
         quantity_df = quantity_df.drop(columns=["return_quantity"], errors="ignore")
 
@@ -802,6 +876,16 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped = sku_grouped.merge(df_prev, on="sku", how="left").fillna(0)
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
+
+        sku_grouped = sku_grouped.merge(short_term_storage_fee_df, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(long_term_storage_fee_df, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(fba_disposal_df, on="sku", how="left")
+
+        for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
+            sku_grouped[col] = pd.to_numeric(
+                sku_grouped.get(col, 0),
+                errors="coerce"
+            ).fillna(0.0).abs()
 
         # Merge the filtered quantity data
         sku_grouped = sku_grouped.merge(quantity_df, on="sku", how="left")
@@ -1024,6 +1108,10 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["dealsvouchar_ads"] = 0.0
         sku_grouped["platformfeenew"] = 0.0
         sku_grouped["platform_fee_inventory_storage"] = 0.0
+        for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = 0.0
+            sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0).abs()
 
         # Ensure the two columns exist even if missing in source
         for _col in ("shipping_credits", "shipment_charges"):
@@ -1195,6 +1283,9 @@ def process_skuwise_data(user_id, country, month, year):
             "dealsvouchar_ads",
             "platformfeenew",
             "platform_fee_inventory_storage",
+            "short_term_storage_fee",
+            "long_term_storage_fee",
+            "fba_disposal",
             "tex_and_credits",
             "cm2_profit_percentage",
         ]
@@ -1345,6 +1436,9 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["dealsvouchar_ads"] = abs(float(dealsvouchar_ads_total))
         sum_row["platformfeenew"] = abs(float(platformfeenew_total))
         sum_row["platform_fee_inventory_storage"] = abs(float(platform_fee_inventory_storage_total))
+        sum_row["short_term_storage_fee"] = abs(float(short_term_storage_fee_total))
+        sum_row["long_term_storage_fee"] = abs(float(long_term_storage_fee_total))
+        sum_row["fba_disposal"] = abs(float(fba_disposal_total))
         sum_row["platform_fee"] = abs(float(sum_row.get("platform_fee", 0)))
         # -------------------------------------------------------------
 
@@ -1423,6 +1517,7 @@ def process_skuwise_data(user_id, country, month, year):
         conn.execute(text(f"DROP TABLE IF EXISTS {target_table_nse}"))
 
         for tbl in (target_table, target_table_usd_month):
+            ensure_storage_fee_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {tbl} (
                     id SERIAL PRIMARY KEY,
@@ -1462,6 +1557,9 @@ def process_skuwise_data(user_id, country, month, year):
                     advertising_total REAL,
                     platformfeenew REAL,
                     platform_fee_inventory_storage REAL,
+                    short_term_storage_fee REAL,
+                    long_term_storage_fee REAL,
+                    fba_disposal REAL,
                     platform_fee REAL,
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
@@ -1495,6 +1593,7 @@ def process_skuwise_data(user_id, country, month, year):
                 )
             """))
         for tbl in (target_table_nse,):
+            ensure_storage_fee_columns(conn, tbl)
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {target_table_nse} (
                     id SERIAL PRIMARY KEY,
@@ -1528,6 +1627,9 @@ def process_skuwise_data(user_id, country, month, year):
                     platformfeenew REAL,
                     platform_fee REAL,
                     platform_fee_inventory_storage REAL,
+                    short_term_storage_fee REAL,
+                    long_term_storage_fee REAL,
+                    fba_disposal REAL,
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
                     acos REAL,
@@ -1584,6 +1686,9 @@ def process_skuwise_data(user_id, country, month, year):
                     advertising_total REAL,
                     platformfeenew REAL,
                     platform_fee_inventory_storage REAL,
+                    short_term_storage_fee REAL,
+                    long_term_storage_fee REAL,
+                    fba_disposal REAL,
                     platform_fee REAL,
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
@@ -1617,6 +1722,7 @@ def process_skuwise_data(user_id, country, month, year):
             """))
 
             ensure_payment_columns(conn, tbl)
+            ensure_storage_fee_columns(conn, tbl)
 
         currency1 = 'gbp'  # fallback/default
         def get_conversion_rate(dest_country: str):
@@ -1660,7 +1766,7 @@ def process_skuwise_data(user_id, country, month, year):
             'total_analysis', 'cross_check_analysis', 'cross_check_analysis_backup', 'text_credit_increase', 
             'final_total_analysis', 'postage_credits', 'refund_sales', 'gross_sales', 'sales_tax_refund', 
             'sales_credit_refund', 'refund_rebate', 'lost_total', 'misc_transaction', 'promotional_rebates_percentage',
-            'visible_ads' ,'dealsvouchar_ads', 'platform_fee_inventory_storage','tex_and_credits', 'cm2_profit_percentage',  
+            'visible_ads' ,'dealsvouchar_ads', 'platform_fee_inventory_storage','short_term_storage_fee', 'long_term_storage_fee','fba_disposal','tex_and_credits', 'cm2_profit_percentage',  
 
         ]
 
@@ -1741,6 +1847,9 @@ def process_skuwise_data(user_id, country, month, year):
                     advertising_total REAL,
                     platformfeenew REAL,
                     platform_fee_inventory_storage REAL,
+                    short_term_storage_fee REAL,
+                    long_term_storage_fee REAL,
+                    fba_disposal REAL,
                     platform_fee REAL,
                     cm2_profit REAL,
                     cm2_profit_percentage REAL,
@@ -1774,6 +1883,7 @@ def process_skuwise_data(user_id, country, month, year):
                     user_id INTEGER
                 )
             """))
+            ensure_storage_fee_columns(conn, tbl)
 
         # Replace month table; append to rolling tables
         conn.execute(
@@ -1858,7 +1968,7 @@ def process_skuwise_data(user_id, country, month, year):
             "promotional_rebates_percentage","cost_of_unit_sold","selling_fees","fba_fees","amazon_fee",
             "net_taxes","net_credits","misc_transaction","other_transaction_fees","profit","unit_wise_profitability",
             "profit_percentage","visible_ads","dealsvouchar_ads","advertising_total","platformfeenew",
-            "platform_fee", "platform_fee_inventory_storage","cm2_profit","cm2_profit_percentage",
+            "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "cm2_profit","cm2_profit_percentage",
             "acos","debt_payment","disbursement","rembursement_fee","rembursment_vs_cm2_margins","reimbursement_vs_sales","lost_total",
             "sales_mix","profit_mix","user_id"
         ]
@@ -2122,6 +2232,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
 
         for source_table, logical_country in config_list:
             ensure_payment_columns(conn, source_table)
+            ensure_storage_fee_columns(conn, source_table)
             conn.commit()
 
             quarter_table = f"{quarter_key}_{user_id}_{logical_country}_{year}_table"
@@ -2172,6 +2283,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                        "platformfeenew",
                        "platform_fee",
                        "platform_fee_inventory_storage",
+                       "short_term_storage_fee",
+                       "long_term_storage_fee",
+                       "fba_disposal",
                        "cm2_profit",
                        "cm2_profit_percentage",
                        "acos",
@@ -2222,6 +2336,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 "platformfeenew": "sum",
                 "platform_fee": "sum",
                 "platform_fee_inventory_storage": "sum",
+                "short_term_storage_fee": "sum",
+                "long_term_storage_fee": "sum", 
+                "fba_disposal": "sum",
                 "cm2_profit": "sum",
                 "cm2_profit_percentage": "mean",
                 "acos": "mean",
@@ -2334,6 +2451,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                         platformfeenew DOUBLE PRECISION,
                         platform_fee DOUBLE PRECISION,
                         platform_fee_inventory_storage DOUBLE PRECISION,
+                        short_term_storage_fee DOUBLE PRECISION,
+                        long_term_storage_fee DOUBLE PRECISION,
+                        fba_disposal DOUBLE PRECISION,
                         cm2_profit DOUBLE PRECISION,
                         cm2_profit_percentage DOUBLE PRECISION,
                         cm2_margins DOUBLE PRECISION,
@@ -2356,6 +2476,9 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                     "dealsvouchar_ads",
                     "platformfeenew",
                     "platform_fee_inventory_storage",
+                    "short_term_storage_fee",
+                    "long_term_storage_fee",
+                    "fba_disposal",
                     "platform_fee",
                 ]
 
@@ -2397,6 +2520,7 @@ def process_yearly_skuwise_data(user_id, country, year):
     try:
         for source_table, logical_country in config_list:
             ensure_payment_columns(conn, source_table)
+            ensure_storage_fee_columns(conn, source_table)
             conn.commit()
 
             quarter_table = f"skuwiseyearly_{user_id}_{logical_country}_{year}_table"
@@ -2431,6 +2555,9 @@ def process_yearly_skuwise_data(user_id, country, year):
                        "platformfeenew",
                        "platform_fee",
                        "platform_fee_inventory_storage",
+                       "short_term_storage_fee",
+                       "long_term_storage_fee",
+                       "fba_disposal",
                        "cm2_profit",
                        "cm2_profit_percentage",
                        "acos",
@@ -2486,6 +2613,9 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "platformfeenew": "sum",
                 "platform_fee": "sum",
                 "platform_fee_inventory_storage": "sum",
+                "short_term_storage_fee": "sum",
+                "long_term_storage_fee": "sum",
+                "fba_disposal": "sum",
                 "cm2_profit": "sum",
                 "cm2_profit_percentage": "mean",
                 "acos": "mean",
@@ -2597,6 +2727,9 @@ def process_yearly_skuwise_data(user_id, country, year):
                     platformfeenew DOUBLE PRECISION,
                     platform_fee DOUBLE PRECISION,
                     platform_fee_inventory_storage DOUBLE PRECISION,
+                    short_term_storage_fee DOUBLE PRECISION,
+                    long_term_storage_fee DOUBLE PRECISION,
+                    fba_disposal DOUBLE PRECISION,
                     cm2_profit DOUBLE PRECISION,
                     cm2_profit_percentage DOUBLE PRECISION,
                     cm2_margins DOUBLE PRECISION,
@@ -2620,6 +2753,9 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "dealsvouchar_ads",
                 "platformfeenew",
                 "platform_fee_inventory_storage",
+                "short_term_storage_fee",
+                "long_term_storage_fee",
+                "fba_disposal",
                 "platform_fee",
             ]
 
