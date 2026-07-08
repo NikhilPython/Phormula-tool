@@ -14904,7 +14904,7 @@ ${pageLoading
                                                     if (row.isOthers) {
                                                         return (
                                                             <span
-                                                                className="inline-block w-full truncate text-[#60a68e]"
+                                                                className="inline-block w-full truncate text-green-500"
                                                                 title="Aggregated remaining products"
                                                             >
                                                                 Others
@@ -14924,7 +14924,7 @@ ${pageLoading
                                                                     product_name: displayName,
                                                                 })
                                                             }
-                                                            className="flex w-full items-center justify-between gap-3 text-left text-[#60a68e]"
+                                                            className="flex w-full items-center justify-between gap-3 text-left text-green-500"
                                                             title={String(displayName || "")}
                                                         >
                                                             <span className="min-w-0 truncate">

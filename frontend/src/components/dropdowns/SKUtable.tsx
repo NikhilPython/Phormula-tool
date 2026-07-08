@@ -2144,7 +2144,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     // ✅ ONLY "Others" in green
                     if (isOthers) {
                       return (
-                        <span className="inline-block max-w-[220px] truncate text-[#60a68e]">
+                        <span className="inline-block max-w-[220px] truncate text-green-500">
                           {displayName}
                         </span>
                       );
@@ -2155,7 +2155,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       return (
                         <div
                           onClick={() => handleProductClick(row)}
-                          className="flex w-full cursor-pointer items-center justify-between gap-3 text-[#60a68e]"
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 text-green-500"
                           title={String(displayName || "")}
                         >
                           <span className="min-w-0 truncate">

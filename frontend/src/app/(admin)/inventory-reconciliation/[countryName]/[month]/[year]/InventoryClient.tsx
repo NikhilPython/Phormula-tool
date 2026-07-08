@@ -2309,7 +2309,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
                     <span className="text-[#414042] font-bold">
                       Inventory Reconciliation - Amazon
                     </span>
-                    <span className="text-[#60a68e] font-bold">
+                    <span className="text-green-500 font-bold">
                       {countryName?.toUpperCase()}
                     </span>
                   </div>
