@@ -283,7 +283,7 @@ export default function DataTable<T extends Row>({
           <table
             className={clsx(
               "border-separate border-spacing-0",
-              "text-xs 2xl:text-sm text-slate-700",
+              "text-xs 2xl:text-sm text-charcoal-500",
               "min-w-max w-max lg:w-full",
               "table-fixed",
               tableClassName
@@ -338,7 +338,7 @@ export default function DataTable<T extends Row>({
           <table
             className={clsx(
               "border-separate border-spacing-0",
-              "text-xs 2xl:text-sm text-slate-700",
+              "text-xs 2xl:text-sm text-charcoal-500",
               "min-w-max w-max lg:w-full",
               "table-fixed",
               tableClassName
@@ -350,7 +350,7 @@ export default function DataTable<T extends Row>({
               {!hasData && (
                 <tr>
                   <td
-                    className="px-3 py-8 text-center text-slate-400"
+                    className="px-3 py-8 text-center text-charcoal-500"
                     colSpan={columns.length}
                   >
                     {emptyMessage}
@@ -429,7 +429,7 @@ export default function DataTable<T extends Row>({
             <table
               className={clsx(
                 "border-separate border-spacing-0",
-                "text-xs 2xl:text-sm text-slate-700",
+                "text-xs 2xl:text-sm text-charcoal-500",
                 "min-w-max w-max lg:w-full",
                 "table-fixed",
                 tableClassName
@@ -519,7 +519,7 @@ export default function DataTable<T extends Row>({
               onClick={onPrev}
               disabled={page <= 1}
               className={clsx(
-                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-charcoal-500 shadow-sm hover:bg-slate-100",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
             >
@@ -531,7 +531,7 @@ export default function DataTable<T extends Row>({
                 item === "dots" ? (
                   <span
                     key={`dots-${idx}`}
-                    className="px-1 text-slate-400 select-none"
+                    className="px-1 text-charcoal-500 select-none"
                   >
                     …
                   </span>
@@ -543,8 +543,8 @@ export default function DataTable<T extends Row>({
                       "h-7 w-7 sm:h-8 sm:w-8 rounded-full",
                       "flex items-center justify-center transition-colors",
                       item === page
-                        ? "bg-slate-200 text-slate-900 font-semibold"
-                        : "text-slate-700 hover:bg-slate-100"
+                        ? "bg-slate-200 text-charcoal-500 font-semibold"
+                        : "text-charcoal-500 hover:bg-slate-100"
                     )}
                   >
                     {item}
@@ -557,7 +557,7 @@ export default function DataTable<T extends Row>({
               onClick={onNext}
               disabled={page >= totalPages}
               className={clsx(
-                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+                "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-charcoal-500 shadow-sm hover:bg-slate-100",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
             >

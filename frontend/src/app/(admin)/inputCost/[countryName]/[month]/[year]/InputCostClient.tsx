@@ -1105,7 +1105,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
                 <button
                   onClick={onClose}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-charcoal-500 hover:bg-slate-50"
                 >
                   ✕
                 </button>
@@ -6169,8 +6169,8 @@ export default function InputCostPage({ params }: Params) {
       <div ref={tabTopRef} />
       <style>{`
         div { font-family: 'Lato', sans-serif; }
-        .gross-margin-positive { color: #28a745; font-weight: bold; }
-        .gross-margin-negative { color: #dc3545; font-weight: bold; }
+        .gross-margin-positive { color: #5EA68E; font-weight: bold; }
+        .gross-margin-negative { color: #E7000B; font-weight: bold; }
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
@@ -6405,7 +6405,7 @@ export default function InputCostPage({ params }: Params) {
                   />
                 </>
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
                   No inventory insights found for the selected period.
                 </div>
               )}
@@ -6470,7 +6470,7 @@ export default function InputCostPage({ params }: Params) {
                   className="rounded-xl"
                 />
               ) : (
-                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
                   Upload a warehouse file to view data here.
                 </div>
               )}
