@@ -1020,7 +1020,7 @@ const parseProductInsightsBlocks = (
             ...(current.drawerOnlyMetrics || []),
             {
               label: "Ads",
-              value,
+              value: formatMoneyStringNoDecimal(value),
               color: "#414042",
             },
           ];
@@ -1169,6 +1169,18 @@ const formatMoneyNoDecimal = (v: any, symbol = "$") => {
   })}`;
 };
 
+const formatMoneyStringNoDecimal = (value: string, symbol = "$") => {
+  const main = String(value || "").split("(")[0] || "";
+  const deltaMatch = String(value || "").match(/\([^)]*\)/)?.[0] || "";
+
+  const numberValue = Number(main.replace(/[^0-9.-]/g, ""));
+
+  if (!Number.isFinite(numberValue)) return value;
+
+  return `${formatMoneyNoDecimal(numberValue, symbol)}${deltaMatch ? ` ${deltaMatch}` : ""
+    }`;
+};
+
 const formatBestPerformancePeriod = (month?: string, year?: string | number) => {
   if (!month) return "-";
 
@@ -1286,11 +1298,10 @@ const buildOtherSkusInsightLines = (
 
     ...(isMonthlyRange(range)
       ? [
-        `Productwise ads spend: ${formatMetricObjectWithDelta(
-          remainingAgg?.productwise_ads_spend,
-          "money",
+        `Productwise ads spend: ${formatMoneyNoDecimal(
+          getMetricCurrent(remainingAgg?.productwise_ads_spend),
           currencySymbol
-        )}`,
+        )}${formatPct(getMetricDeltaPct(remainingAgg?.productwise_ads_spend))}`,
       ]
       : []),
 
@@ -1527,11 +1538,10 @@ const buildDrawerBlockFromSkuRow = (
           },
           {
             label: "Ads",
-            value: formatMetricObjectWithDelta(
-              row?.productwise_ads_spend,
-              "money",
+            value: `${formatMoneyNoDecimal(
+              getMetricCurrent(row?.productwise_ads_spend),
               currencySymbol
-            ),
+            )}${formatPct(getMetricDeltaPct(row?.productwise_ads_spend))}`,
             color: "#414042",
           },
         ]
@@ -1731,9 +1741,9 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       return safeAIndex - safeBIndex;
     });
 
-    const metricsGridClass = isMonthlyRange(range)
-  ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 min-[1700px]:grid-cols-4"
-  : "grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1700px]:grid-cols-5";
+  const metricsGridClass = isMonthlyRange(range)
+    ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 min-[1700px]:grid-cols-4"
+    : "grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1700px]:grid-cols-5";
 
   const getMetricBorderColorByLabel = (label: string, fallbackIndex = 0) => {
     const normalizedLabel = label.trim().toLowerCase();
@@ -1871,10 +1881,10 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     {sortedMetrics.map((m, i) => {
                       const { main, delta, deltaColor } = splitMetricValue(m.value);
 
-                      const displayMain = formatRecommendationCardMainValue(
-                        m.label,
-                        main
-                      );
+                      const displayMain =
+                        m.label.trim().toLowerCase() === "ads"
+                          ? formatMoneyStringNoDecimal(main, drawerCurrencySymbol)
+                          : formatRecommendationCardMainValue(m.label, main);
 
                       const isAdsMetric = m.label.trim().toLowerCase() === "ads";
 

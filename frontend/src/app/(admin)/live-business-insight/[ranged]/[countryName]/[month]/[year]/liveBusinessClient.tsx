@@ -708,7 +708,7 @@ export default function LiveBusinessClient({
 
     return {
       label: "Ads",
-      value: `${formatDisplayAmount(
+      value: `${formatDisplayAmountNoDecimals(
         convertToDisplayCurrency(adsSpendCurr, sourceCurrency)
       )} (${growthText})`,
       color: "#414042", // growth black
@@ -775,7 +775,8 @@ export default function LiveBusinessClient({
       const formatted =
         normalizedLabel === "net sales" ||
           normalizedLabel === "cm1 profit" ||
-          normalizedLabel === "cm2 profit"
+          normalizedLabel === "cm2 profit" ||
+          normalizedLabel === "ads"
           ? formatDisplayAmountNoDecimals(converted)
           : formatDisplayAmount(converted);
 
@@ -3612,29 +3613,30 @@ export default function LiveBusinessClient({
   };
 
   const formatRecommendationCardMainValue = (
-  label: string,
-  main: string
-) => {
-  const normalizedLabel = String(label || "").trim().toLowerCase();
+    label: string,
+    main: string
+  ) => {
+    const normalizedLabel = String(label || "").trim().toLowerCase();
 
-  if (
-    normalizedLabel !== "net sales" &&
-    normalizedLabel !== "cm1 profit" &&
-    normalizedLabel !== "cm2 profit"
-  ) {
-    return main;
-  }
+    if (
+      normalizedLabel !== "net sales" &&
+      normalizedLabel !== "cm1 profit" &&
+      normalizedLabel !== "cm2 profit" &&
+      normalizedLabel !== "ads"
+    ) {
+      return main;
+    }
 
-  const numberPart = String(main || "").replace(/[^0-9.-]/g, "");
-  const numberValue = Number(numberPart);
+    const numberPart = String(main || "").replace(/[^0-9.-]/g, "");
+    const numberValue = Number(numberPart);
 
-  if (!Number.isFinite(numberValue)) return main;
+    if (!Number.isFinite(numberValue)) return main;
 
-  const currencySymbol = currencyCodeToSymbol(displayCurrency);
-  const roundedAbsValue = Math.abs(Math.round(numberValue)).toLocaleString();
+    const currencySymbol = currencyCodeToSymbol(displayCurrency);
+    const roundedAbsValue = Math.abs(Math.round(numberValue)).toLocaleString();
 
-  return `${numberValue < 0 ? "-" : ""}${currencySymbol}${roundedAbsValue}`;
-};
+    return `${numberValue < 0 ? "-" : ""}${currencySymbol}${roundedAbsValue}`;
+  };
 
   const formatMetricDelta = (delta: string) => {
     const cleanDelta = String(delta || "")
