@@ -1441,6 +1441,284 @@ def safe_json_load(val):
     except Exception:
         return {}
 
+def _email_safe_float(value, default=0.0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _email_pct_text(value):
+    if value is None:
+        return "0.0%"
+    try:
+        value = float(value)
+        return f"{value:+.1f}%"
+    except Exception:
+        return "0.0%"
+
+
+def _email_money(value, symbol="$"):
+    try:
+        return f"{symbol}{float(value):,.2f}"
+    except Exception:
+        return f"{symbol}0.00"
+
+
+def _email_num(value):
+    try:
+        return f"{float(value):,.0f}"
+    except Exception:
+        return "0"
+
+
+def _pick_metric_change(row, keys):
+    for key in keys:
+        obj = row.get(key) or {}
+        if isinstance(obj, dict) and obj.get("value") is not None:
+            return obj.get("value")
+    return 0.0
+
+
+def _clean_email_action_text(value, fallback="Review this SKU in the dashboard."):
+    value = str(value or "").strip()
+
+    if not value:
+        return fallback
+
+    bad_values = {
+        "not coming",
+        "not coming.",
+        "none",
+        "null",
+        "nan",
+        "0",
+        "0.0",
+        "monitor current advertising",
+        "monitor current advertising.",
+        "inventory position is stable",
+        "inventory position is stable.",
+    }
+
+    if value.lower().strip() in bad_values:
+        return fallback
+
+    value = value.replace("•", "").strip()
+    value = " ".join(value.split())
+
+    if len(value) > 220:
+        value = value[:220].rsplit(" ", 1)[0] + "."
+
+    return value
+
+
+def _build_weekly_problem_from_growth(row, currency_symbol="$"):
+    product_name = row.get("product_name") or row.get("sku") or "SKU"
+
+    units_pct = _pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"])
+    sales_pct = _pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"])
+    profit_pct = _pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"])
+    asp_pct = _pick_metric_change(row, ["ASP Growth (%)"])
+
+    parts = []
+
+    if units_pct <= -10:
+        parts.append(f"Units dropped {_email_pct_text(units_pct)}")
+
+    if sales_pct <= -10:
+        parts.append(f"Net Sales dropped {_email_pct_text(sales_pct)}")
+
+    if profit_pct <= -10:
+        parts.append(f"CM1 Profit dropped {_email_pct_text(profit_pct)}")
+
+    if not parts:
+        parts.append(
+            f"Performance changed this week: Units {_email_pct_text(units_pct)}, "
+            f"Net Sales {_email_pct_text(sales_pct)}, CM1 Profit {_email_pct_text(profit_pct)}"
+        )
+
+    if asp_pct >= 5 and units_pct <= -10:
+        parts.append(f"ASP increased {_email_pct_text(asp_pct)}, indicating possible price sensitivity")
+    elif asp_pct <= -5 and units_pct <= -10:
+        parts.append(f"ASP decreased {_email_pct_text(asp_pct)}, but demand still weakened")
+
+    return ". ".join(parts) + "."
+
+
+def build_weekly_email_summary_json(
+    *,
+    country,
+    prev_label,
+    curr_label,
+    currency,
+    overall_summary,
+    portfolio_recommendation,
+    recommended_actions_mtd,
+    sku_strategy_actions,
+    all_action_rows,
+    max_skus=3,
+):
+    """
+    Weekly email-only JSON.
+    Keeps dashboard detailed but email short, precise, and actionable.
+    """
+
+    currency_symbol = (currency or {}).get("symbol") or "$"
+
+    summary_text = ""
+    if isinstance(overall_summary, dict):
+        summary_text = str(overall_summary.get("summary_text") or "").strip()
+
+    if len(summary_text) > 260:
+        summary_text = summary_text[:260].rsplit(" ", 1)[0] + "."
+
+    portfolio_action = _clean_email_action_text(
+        portfolio_recommendation,
+        fallback="Focus on the priority SKUs below and open the dashboard for the full journey.",
+    )
+
+    rows = all_action_rows or []
+
+    def priority_score(row):
+        units_pct = abs(_pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"]))
+        sales_pct = abs(_pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"]))
+        profit_pct = abs(_pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"]))
+        mix = _email_safe_float(row.get("Sales Mix (Current)"))
+        return (sales_pct * 1.5) + profit_pct + units_pct + mix
+
+    priority_rows = sorted(rows, key=priority_score, reverse=True)[:max_skus]
+
+    priority_skus = []
+
+    for row in priority_rows:
+        sku = str(row.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        strategy = (sku_strategy_actions or {}).get(sku, {}) or {}
+
+        product_name = (
+            row.get("product_name")
+            or strategy.get("product_name")
+            or sku
+        )
+
+        recommendation = strategy.get("recommendation")
+        ads_recommendation = strategy.get("ads_recommendation")
+        inventory_recommendation = strategy.get("inventory_recommendation")
+
+        action_parts = []
+
+        rec_text = _clean_email_action_text(recommendation, fallback="")
+        ads_text = _clean_email_action_text(ads_recommendation, fallback="")
+        inv_text = _clean_email_action_text(inventory_recommendation, fallback="")
+
+        if rec_text:
+            action_parts.append(rec_text)
+
+        if ads_text:
+            action_parts.append(ads_text)
+
+        if inv_text:
+            action_parts.append(inv_text)
+
+        if action_parts:
+            action = " ".join(action_parts)
+        else:
+            action = "Review traffic, conversion, ads visibility, and inventory before taking action."
+
+        if len(action) > 260:
+            action = action[:260].rsplit(" ", 1)[0] + "."
+
+        units_pct = _pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"])
+        sales_pct = _pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"])
+        profit_pct = _pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"])
+        asp_pct = _pick_metric_change(row, ["ASP Growth (%)"])
+
+        priority_skus.append({
+            "sku": sku,
+            "product_name": product_name,
+            "severity": "high" if sales_pct <= -20 or profit_pct <= -20 or units_pct <= -20 else "medium",
+            "problem": _build_weekly_problem_from_growth(row, currency_symbol),
+            "likely_driver": (
+                "Demand/volume pressure"
+                if units_pct <= -10
+                else "Margin or mix movement"
+            ),
+            "action": action,
+            "metrics": {
+                "units": {
+                    "previous": row.get("quantity_prev"),
+                    "current": row.get("quantity_curr"),
+                    "change": _email_pct_text(units_pct),
+                },
+                "net_sales": {
+                    "previous": _email_money(row.get("net_sales_prev"), currency_symbol),
+                    "current": _email_money(row.get("net_sales_curr"), currency_symbol),
+                    "change": _email_pct_text(sales_pct),
+                },
+                "cm1_profit": {
+                    "previous": _email_money(row.get("profit_prev"), currency_symbol),
+                    "current": _email_money(row.get("profit_curr"), currency_symbol),
+                    "change": _email_pct_text(profit_pct),
+                },
+                "asp": {
+                    "previous": _email_money(row.get("asp_prev"), currency_symbol),
+                    "current": _email_money(row.get("asp_curr"), currency_symbol),
+                    "change": _email_pct_text(asp_pct),
+                },
+            },
+        })
+
+    return {
+        "email_type": "weekly_live_bi",
+        "country": country,
+        "period": {
+            "previous": prev_label,
+            "current": curr_label,
+        },
+        "subject_line": f"[Phormula] Weekly Live BI Digest - {str(country).upper()} ({curr_label})",
+        "headline": summary_text or "Weekly Live BI summary is ready.",
+        "portfolio_summary": {
+            "what_changed": summary_text or "Open the dashboard to review the latest weekly movement.",
+            "weekly_action": portfolio_action,
+        },
+        "priority_skus": priority_skus,
+        "dashboard_cta": "Open dashboard for full SKU journey and detailed recommendations.",
+    }
+
+
+def save_weekly_email_summary_json(user_id, country, weekly_email_summary_json):
+    """
+    Saves compact weekly email JSON into LiveAISummary without changing dashboard JSON.
+    """
+
+    try:
+        record = LiveAISummary.query.filter_by(
+            user_id=user_id,
+            country=country,
+        ).first()
+
+        if not record:
+            return None
+
+        record.weekly_email_summary_json = json.dumps(
+            weekly_email_summary_json,
+            default=str,
+        )
+        db.session.commit()
+        return record
+
+    except Exception as e:
+        print("[WARN] Failed to save weekly_email_summary_json:", e)
+        db.session.rollback()
+        return None
+
+
+
+
 def format_ai_last_refreshed_at(dt, country: str) -> dict:
     """
     Returns AI refresh timestamp for frontend display.
@@ -1496,18 +1774,14 @@ def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
     if record.objective_hash != objective_hash:
         return None
 
-    # IMPORTANT:
-    # Do not expire cache daily.
-    # The route controls refresh by using ai_refresh_slot as end_date.
-    # Example:
-    # 1st-7th  -> end_date = 1st
-    # 8th-14th -> end_date = 8th
-    # etc.
 
     return {
     "analysis": safe_json_load(record.analysis),
     "summary": safe_json_load(record.summary),
     "strategy": safe_json_load(record.strategy),
+    "weekly_email_summary_json": safe_json_load(
+        getattr(record, "weekly_email_summary_json", None)
+    ),
     "created_at": record.created_at,
 }
 
@@ -3200,10 +3474,34 @@ def live_mtd_vs_previous():
             other_total_row = other_products_total_row
 
 
+            # ✅ Weekly email-only short JSON for GLOBAL
+            global_weekly_email_summary_json = build_weekly_email_summary_json(
+                country="global",
+                prev_label=prev_label,
+                curr_label=curr_label,
+                currency=currency,
+                overall_summary={
+                    "summary_text": summary_out.get("summary_text", ""),
+                    "metric_bullets": summary_out.get("metric_bullets", []),
+                },
+                portfolio_recommendation=portfolio_recommendation,
+                recommended_actions_mtd={},
+                sku_strategy_actions=global_strategy_parsed.get("sku_actions", {}) or {},
+                all_action_rows=top_80_skus,
+                max_skus=3,
+            )
+
+            save_weekly_email_summary_json(
+                user_id=user_id,
+                country="global",
+                weekly_email_summary_json=global_weekly_email_summary_json,
+            )
+
             response_payload = {
                 "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
                 "country": "global",
                 "currency": currency,
+                "weekly_email_summary_json": global_weekly_email_summary_json,
                 "ai_last_refreshed_at": ai_last_refreshed_at,
 
             "portfolio_inventory_block": {
@@ -3389,38 +3687,7 @@ def live_mtd_vs_previous():
 
             curr_daily = []
 
-        # # -------------------------------------------------
-        # # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
-        # # -------------------------------------------------
-        # ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
-        #     user_id=user_id,
-        #     country=country,
-        #     year=curr_start.year,
-        #     month=curr_start.month,
-        # )
-
-        # ads_sku_map = {str(k).strip(): v for k, v in (ads_sku_map or {}).items()}
-
-        # for row in (curr_ai_data or []):
-        #     sku = str(row.get("sku") or "").strip()
-        #     if not sku:
-        #         continue
-
-        #     ads_info = ads_sku_map.get(sku, {})
-        #     ads_spend = float(ads_info.get("ads_spend", 0.0) or 0.0)
-        #     cm2_profit = float(ads_info.get("cm2_profit", 0.0) or 0.0)
-
-        #     net_sales = float(row.get("net_sales", 0.0) or 0.0)
-
-        #     row["ads_spend_curr"] = ads_spend
-        #     row["cm2_profit_curr"] = cm2_profit
-
-        #     if net_sales > 0:
-        #         row["acos_curr"] = round((ads_spend / net_sales) * 100.0, 2)
-        #         row["cm2_margin_curr"] = round((cm2_profit / net_sales) * 100.0, 2)
-        #     else:
-        #         row["acos_curr"] = 0.0
-        #         row["cm2_margin_curr"] = 0.0
+      
 
 
         # ---------------------------
@@ -5275,6 +5542,26 @@ def live_mtd_vs_previous():
             for row in (other_skus or [])
         ]
 
+        # ✅ Weekly email-only short JSON for UK/US
+        weekly_email_summary_json = build_weekly_email_summary_json(
+            country=country,
+            prev_label=prev_label,
+            curr_label=curr_label,
+            currency=currency,
+            overall_summary=overall_summary,
+            portfolio_recommendation=portfolio_recommendation,
+            recommended_actions_mtd=recommended_actions_mtd,
+            sku_strategy_actions=sku_strategy_actions,
+            all_action_rows=frontend_all_action_rows or all_action_rows,
+            max_skus=3,
+        )
+
+        save_weekly_email_summary_json(
+            user_id=user_id,
+            country=country,
+            weekly_email_summary_json=weekly_email_summary_json,
+        )
+
         # ---------------------------
         # FINAL RESPONSE PAYLOAD
         # ---------------------------
@@ -5283,6 +5570,7 @@ def live_mtd_vs_previous():
             "message": "Live MTD vs previous-month-same-period comparison",
             "country": country,
             "currency": currency,
+            "weekly_email_summary_json": weekly_email_summary_json,
             "ai_last_refreshed_at": ai_last_refreshed_at,
             "ads_monthly": payload_ai.get("ads_monthly", {}),
             "ads_mtd": payload_ai.get("ads_mtd", {}),
@@ -5385,64 +5673,85 @@ def live_mtd_vs_previous():
             "remaining_skus_block": remaining_skus_block,
         }
 
-        # # ---------------------------
-        # # SEND EMAIL
-        # # ---------------------------
-        # user_email = payload.get("email") or request.args.get("email")
-        # user_name = None
+        # ---------------------------
+        # SEND EMAIL
+        # ---------------------------
+        user_email = payload.get("email") or request.args.get("email")
+        user_name = None
 
-        # if not user_email:
-        #     user_email, user_name = get_user_email_and_name_by_id(user_id)
+        if not user_email:
+            user_email, user_name = get_user_email_and_name_by_id(user_id)
 
-        # if isinstance(user_email, tuple):
-        #     user_email = user_email[0]
+        if isinstance(user_email, tuple):
+            user_email = user_email[0]
 
-        # user_email = str(user_email).strip() if user_email else None
+        user_email = str(user_email).strip() if user_email else None
+
+        if user_email:
+            cache_key = (user_id, country)
+
+            manual_email_trigger = (
+                request.args.get("send_email", "false").lower()
+                in ("true", "1", "yes")
+            )
+
+            already_in_cache = cache_key in _SENT_EMAIL_CACHE
+
+            recently_sent = (
+                False
+                if manual_email_trigger
+                else has_recent_bi_email(user_id, country, hours=24 * 6)
+            )
+
+            if manual_email_trigger or (not already_in_cache and not recently_sent):
+                try:
+                    email_token_payload = {
+                        "user_id": user_id,
+                        "email": user_email,
+                        "scope": "live_mtd_bi",
+                        "exp": datetime.utcnow() + timedelta(hours=24),
+                    }
+
+                    email_token = jwt.encode(
+                        email_token_payload,
+                        SECRET_KEY,
+                        algorithm="HS256",
+                    )
+
+                    weekly_email_summary_json = response_payload.get("weekly_email_summary_json")
+
+                    print("[EMAIL DEBUG] weekly_email_summary_json exists:", bool(weekly_email_summary_json))
+                    print("[EMAIL DEBUG] weekly_email_summary_json keys:", list((weekly_email_summary_json or {}).keys()))
+                    print("[EMAIL DEBUG] priority_skus count:", len((weekly_email_summary_json or {}).get("priority_skus", [])))
 
 
-        # if user_email:
-        #     cache_key = (user_id, country)
+                    if not weekly_email_summary_json:
+                        print("[WARN] weekly_email_summary_json missing. Email may fall back to old format.")
 
-        #     already_in_cache = cache_key in _SENT_EMAIL_CACHE
-        #     recently_sent = has_recent_bi_email(user_id, country, hours=24)
+                    sent = send_live_bi_email(
+                        to_email=user_email,
+                        country=country,
+                        prev_label=prev_label,
+                        curr_label=curr_label,
+                        deep_link_token=email_token,
+                        weekly_email_summary_json=weekly_email_summary_json,
+                    )
 
-        #     if not already_in_cache and not recently_sent:
-        #         try:
-        #             email_token_payload = {
-        #                 "user_id": user_id,
-        #                 "email": user_email,
-        #                 "scope": "live_mtd_bi",
-        #                 "exp": datetime.utcnow() + timedelta(hours=24),
-        #             }
+                    if sent:
+                        if not manual_email_trigger:
+                            mark_bi_email_sent(user_id, country)
+                            _SENT_EMAIL_CACHE.add(cache_key)
 
-        #             email_token = jwt.encode(
-        #                 email_token_payload,
-        #                 SECRET_KEY,
-        #                 algorithm="HS256",
-        #             )
+                        print("[INFO] Weekly Live BI email sent.")
+                    else:
+                        print("[WARN] Live BI email was not sent, so not marking as sent.")
 
-        #             sent = send_live_bi_email(
-        #                 to_email=user_email,
-        #                 overall_summary=response_payload["overall_summary"],
-        #                 overall_actions=response_payload["overall_actions"],
-        #                 sku_actions=recommended_actions_mtd,
-        #                 country=country,
-        #                 prev_label=prev_label,
-        #                 curr_label=curr_label,
-        #                 deep_link_token=email_token,
-        #                 portfolio_recommendation=response_payload.get("portfolio_recommendation"),
-        #             )
-
-        #             if sent:
-        #                 mark_bi_email_sent(user_id, country)
-        #                 _SENT_EMAIL_CACHE.add(cache_key)
-        #             else:
-        #                 print("[WARN] Live BI email was not sent, so not marking as sent.")
-
-        #         except Exception as e:
-        #             print("[WARN] Error sending live BI email:", e)
-        # else:
-        #     print("[WARN] No user email found, skipping Live BI email.")
+                except Exception as e:
+                    print("[WARN] Error sending live BI email:", e)
+            else:
+                print("[INFO] Email skipped because it was already sent recently.")
+        else:
+            print("[WARN] No user email found, skipping Live BI email.")
 
         try:
             response_payload = round_numeric_values(response_payload, ndigits=2)

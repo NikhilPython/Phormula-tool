@@ -19,6 +19,7 @@ from app.services.amazon_monthly_sync_service import sync_monthly_transactions_f
 from app.utils.email_utils import get_user_email_and_name_by_id, send_email_with_attachment
 from app.services.forecast_service import generate_forecast_for_user
 from app.routes.forecast_routes import generate_forecast_core
+from app.routes.live_data_bi_routes import build_weekly_email_summary_json
 SECRET_KEY = Config.SECRET_KEY
 flask_app = create_app()
 celery_app = flask_app.extensions["celery"]
@@ -174,17 +175,33 @@ def send_live_bi_email_daily(country_filter=None):
                         algorithm="HS256",
                     )
 
+                    weekly_email_summary_json = result.get("weekly_email_summary_json")
+
+                    if not weekly_email_summary_json:
+                        weekly_email_summary_json = build_weekly_email_summary_json(
+                            country=result["country"],
+                            prev_label=result["prev_label"],
+                            curr_label=result["curr_label"],
+                            currency=result.get("currency") or {},
+                            overall_summary=result.get("overall_summary") or {},
+                            portfolio_recommendation=result.get("portfolio_recommendation"),
+                            recommended_actions_mtd=result.get("recommended_actions_mtd") or {},
+                            sku_strategy_actions=result.get("sku_strategy_actions") or {},
+                            all_action_rows=(
+                                result.get("all_action_rows")
+                                or result.get("focus_sku_rows")
+                                or []
+                            ),
+                            max_skus=3,
+                        )
+
                     send_live_bi_email(
                         to_email=user_email,
-                        overall_summary=result["overall_summary"],
-                        overall_actions=result["overall_actions"],
-                        sku_actions=result["recommended_actions_mtd"],
-                        sku_to_product=result.get("sku_to_product"),
-                        portfolio_recommendation=result.get("portfolio_recommendation"),
                         country=result["country"],
                         prev_label=result["prev_label"],
                         curr_label=result["curr_label"],
                         deep_link_token=email_token,
+                        weekly_email_summary_json=weekly_email_summary_json,
                     )
 
                     mark_bi_email_sent(user_id, country)
