@@ -437,8 +437,9 @@ def apply_productwise_ads_cm2_from_adsmonthly(
 
     Important:
     - This does NOT touch total ads logic.
+    - This does NOT overwrite TOTAL row CM2.
+    - TOTAL row CM2 should come from total_cm2_profit / cm2_profit in the main table.
     - If adsmonthly table is missing, no error is thrown.
-    - If adsmonthly table is missing, productwise cm2_profit is passed as 0.
     """
 
     if df_main.empty:
@@ -448,6 +449,9 @@ def apply_productwise_ads_cm2_from_adsmonthly(
 
     if "sku" not in df.columns:
         return df
+
+    # Identify total row early so portfolio/overall CM2 is never overwritten
+    total_mask = df["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
 
     # Productwise adsmonthly table is monthly only.
     if period != "monthly":
@@ -468,10 +472,21 @@ def apply_productwise_ads_cm2_from_adsmonthly(
     df["profit"] = pd.to_numeric(df["profit"], errors="coerce").fillna(0)
     df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0)
 
-    # Default requested fallback
-    df["productwise_ads_spend"] = 0.0
-    df["cm2_profit"] = 0.0
-    df["cm2_profit_per_unit"] = 0.0
+    # Create columns if missing, but do not wipe TOTAL row values
+    if "productwise_ads_spend" not in df.columns:
+        df["productwise_ads_spend"] = 0.0
+
+    if "cm2_profit" not in df.columns:
+        df["cm2_profit"] = 0.0
+
+    if "cm2_profit_per_unit" not in df.columns:
+        df["cm2_profit_per_unit"] = 0.0
+
+    # Reset only SKU/detail rows.
+    # Keep TOTAL row cm2_profit from the main monthly table.
+    df.loc[~total_mask, "productwise_ads_spend"] = 0.0
+    df.loc[~total_mask, "cm2_profit"] = 0.0
+    df.loc[~total_mask, "cm2_profit_per_unit"] = 0.0
 
     df_ads = fetch_productwise_adsmonthly_table(
         user_id=user_id,
@@ -480,8 +495,8 @@ def apply_productwise_ads_cm2_from_adsmonthly(
         year=year,
     )
 
-    # If productwise ads table missing, do not throw error.
-    # Keep CM2 as 0 as requested.
+    # If productwise ads table is missing, keep TOTAL row CM2 untouched.
+    # SKU rows stay 0 as per your earlier requested fallback.
     if df_ads.empty:
         return df
 
@@ -516,11 +531,19 @@ def apply_productwise_ads_cm2_from_adsmonthly(
         .fillna(0)
     )
 
-    df["cm2_profit"] = (df["profit"] - df["productwise_ads_spend"]).round(2)
+    # Recalculate CM2 only for SKU/detail rows.
+    # Do not touch TOTAL row because overall summary AI payload should use table total.
+    df.loc[~total_mask, "cm2_profit"] = (
+        df.loc[~total_mask, "profit"]
+        - df.loc[~total_mask, "productwise_ads_spend"]
+    ).round(2)
 
-    df["cm2_profit_per_unit"] = np.where(
-        df["total_quantity"] != 0,
-        (df["cm2_profit"] / df["total_quantity"]).round(2),
+    df.loc[~total_mask, "cm2_profit_per_unit"] = np.where(
+        df.loc[~total_mask, "total_quantity"] != 0,
+        (
+            df.loc[~total_mask, "cm2_profit"]
+            / df.loc[~total_mask, "total_quantity"]
+        ).round(2),
         0.0
     )
 
@@ -1115,7 +1138,20 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
             and _total_cm2_value(df_prev_total) not in (None, 0)
             else None
         ),
-        "advertising": pct("advertising_total"),
+        "advertising": (
+            round(
+                (
+                    _advertising_total_value(df_current_total)
+                    - _advertising_total_value(df_prev_total)
+                )
+                / abs(_advertising_total_value(df_prev_total))
+                * 100,
+                2
+            )
+            if _advertising_total_value(df_current_total) is not None
+            and _advertising_total_value(df_prev_total) not in (None, 0)
+            else None
+        ),
 
         # ✅ FIXED storage calculation
         "storage_fees": pct_storage("platform_fee_inventory_storage"),
@@ -1228,15 +1264,18 @@ def _get_dealsvouchar_ads_from_row(row: dict) -> float:
     return 0.0
 
 
-def _advertising_total_final_value(df_total: pd.DataFrame):
+def _advertising_total_value(df_total: pd.DataFrame):
     """
-    Reads advertising_total_final if present.
-    Falls back to advertising_total for old tables.
-    """
-    final_val = _total_value(df_total, "advertising_total_final")
+    AI portfolio/overall advertising source.
 
-    if final_val is not None:
-        return final_val
+    Priority:
+    1. total_ads
+    2. advertising_total
+    """
+    total_ads_val = _total_value(df_total, "total_ads")
+
+    if total_ads_val is not None:
+        return total_ads_val
 
     return _total_value(df_total, "advertising_total")
 
@@ -1270,6 +1309,7 @@ def get_ads_total_row(df_ads: pd.DataFrame) -> dict:
 
     return df.iloc[-1].to_dict()
 
+
 def apply_advertising_total_final_from_ads_table(
     df_main: pd.DataFrame,
     *,
@@ -1280,20 +1320,18 @@ def apply_advertising_total_final_from_ads_table(
     year: int,
 ) -> pd.DataFrame:
     """
-    Replicates skutableprofit advertising_total_final logic for AI summary.
+    Replicates skutableprofit advertising_total_final logic for reference/debug.
 
-    If ads table exists:
-        advertising_total = brand_spend + dealsvouchar_ads
-        advertising_total_final = advertising_total + total_ads_spend
-
-    If ads table does not exist:
-        advertising_total_final = main advertising_total
-        fallback = visible_ads + dealsvouchar_ads + brand_spend
+    New AI advertising rule:
+        1. Use total_ads if present
+        2. Else use advertising_total
 
     Important:
-    For AI/comparison compatibility, this also overwrites advertising_total
-    inside the copied dataframe with advertising_total_final.
+    - This function should NOT overwrite advertising_total.
+    - This function should NOT overwrite total_ads.
+    - It only fills advertising_total_final separately.
     """
+
     if df_main.empty:
         return df_main
 
@@ -1305,12 +1343,15 @@ def apply_advertising_total_final_from_ads_table(
     if "advertising_total" not in df.columns:
         df["advertising_total"] = 0.0
 
-    # Ads table exists only for monthly data.
+    # --------------------------------------------------
+    # Non-monthly data:
+    # Keep advertising_total untouched.
+    # Only fill advertising_total_final if missing.
+    # --------------------------------------------------
     if period != "monthly":
         df["advertising_total_final"] = df["advertising_total_final"].fillna(
             df["advertising_total"]
         )
-        df["advertising_total"] = df["advertising_total_final"]
         return df
 
     df = _normalize_sku_col(df)
@@ -1338,7 +1379,9 @@ def apply_advertising_total_final_from_ads_table(
     if df_ads.empty:
         main_total = df.loc[total_idx].to_dict()
 
-        advertising_total_from_main = safe_float(main_total.get("advertising_total"))
+        advertising_total_from_main = safe_float(
+            main_total.get("advertising_total")
+        )
 
         if advertising_total_from_main == 0:
             visible_ads = abs(safe_float(main_total.get("visible_ads")))
@@ -1353,10 +1396,10 @@ def apply_advertising_total_final_from_ads_table(
 
         advertising_total_from_main = round(advertising_total_from_main, 2)
 
+        # Keep separate reference value only.
+        # Do NOT overwrite advertising_total.
+        # Do NOT overwrite total_ads.
         df.loc[total_idx, "advertising_total_final"] = advertising_total_from_main
-
-        # Important: AI currently reads advertising_total in many places.
-        df.loc[total_idx, "advertising_total"] = advertising_total_from_main
 
         return df
 
@@ -1375,38 +1418,52 @@ def apply_advertising_total_final_from_ads_table(
 
         if "sku" in ads_detail.columns:
             ads_detail = ads_detail[
-                ~ads_detail["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+                ~ads_detail["sku"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .isin(TOTAL_LABELS)
             ]
 
         if "product_name" in ads_detail.columns:
             ads_detail = ads_detail[
-                ~ads_detail["product_name"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
+                ~ads_detail["product_name"]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .isin(TOTAL_LABELS)
             ]
 
-        total_ads_spend = pd.to_numeric(
-            ads_detail["ads_spend"],
-            errors="coerce"
-        ).fillna(0).abs().sum()
+        total_ads_spend = (
+            pd.to_numeric(
+                ads_detail["ads_spend"],
+                errors="coerce",
+            )
+            .fillna(0)
+            .abs()
+            .sum()
+        )
 
-    advertising_total = brand_spend_total + dealsvouchar_ads_total
-    advertising_total_final = advertising_total + total_ads_spend
+    advertising_total_original = brand_spend_total + dealsvouchar_ads_total
+    advertising_total_final = advertising_total_original + total_ads_spend
 
-    advertising_total = round(advertising_total, 2)
+    advertising_total_original = round(advertising_total_original, 2)
     advertising_total_final = round(advertising_total_final, 2)
 
     df.loc[total_idx, "brand_spend"] = round(brand_spend_total, 2)
     df.loc[total_idx, "dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
 
-    # Keep original meaning available if needed:
-    # advertising_total = brand_spend + dealsvouchar_ads
-    df.loc[total_idx, "advertising_total_original"] = advertising_total
-
-    # Important: AI should receive the final advertising value.
-    df.loc[total_idx, "advertising_total"] = advertising_total_final
+    # Keep reference values only.
+    df.loc[total_idx, "advertising_total_original"] = advertising_total_original
     df.loc[total_idx, "advertising_total_final"] = advertising_total_final
 
-    return df
+    # Very important:
+    # Do NOT overwrite advertising_total.
+    # Do NOT overwrite total_ads.
+    # AI payload should now use _advertising_total_value():
+    # total_ads first, then advertising_total.
 
+    return df
 
 
 def compute_period_absolute_changes(df_current_total, df_prev_total):
@@ -1438,7 +1495,16 @@ def compute_period_absolute_changes(df_current_total, df_prev_total):
             else None
         ),
 
-        "advertising": diff("advertising_total"),
+        "advertising": (
+            round(
+                _advertising_total_value(df_current_total)
+                - _advertising_total_value(df_prev_total),
+                2
+            )
+            if _advertising_total_value(df_current_total) is not None
+            and _advertising_total_value(df_prev_total) is not None
+            else None
+        ),
         "storage_fees": diff("platform_fee_inventory_storage"),
 
         
@@ -1473,10 +1539,9 @@ def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
             if val is not None:
                 snapshot[col] = float(val)
 
-    advertising_final = _advertising_total_final_value(df_total)
-    if advertising_final is not None:
-        snapshot["advertising_total"] = float(advertising_final)
-        snapshot["advertising_total_final"] = float(advertising_final)
+    advertising_value = _advertising_total_value(df_total)
+    if advertising_value is not None:
+        snapshot["advertising_total"] = float(advertising_value)
 
     return snapshot
 
@@ -1500,7 +1565,7 @@ METRIC_COLUMNS = {
     "net_taxes",
     "net_credits",
 
-
+    "total_ads",
     "advertising_total",
     "advertising_total_final",
 
@@ -4897,7 +4962,7 @@ def get_or_create_summary(
                 "unit_wise_profitability"
             ),
             "cm2_profit": _total_cm2_value(current_values_source),
-            "advertising": _advertising_total_final_value(current_values_source),
+            "advertising": _advertising_total_value(current_values_source),
             "storage_fees": _total_value(
                 current_values_source,
                 "platform_fee_inventory_storage"
@@ -4915,7 +4980,7 @@ def get_or_create_summary(
                 "unit_wise_profitability"
             ),
             "cm2_profit": _total_cm2_value(previous_values_source),
-            "advertising": _advertising_total_final_value(previous_values_source),
+            "advertising": _advertising_total_value(previous_values_source),
             "storage_fees": _total_value(
                 previous_values_source,
                 "platform_fee_inventory_storage"
@@ -4956,8 +5021,8 @@ def get_or_create_summary(
         and "current_values_source" in locals()
         and "previous_values_source" in locals()
     ):
-        current_ads = _advertising_total_final_value(current_values_source)
-        previous_ads = _advertising_total_final_value(previous_values_source)
+        current_ads = _advertising_total_value(current_values_source)
+        previous_ads = _advertising_total_value(previous_values_source)
 
         if current_ads is not None and previous_ads is not None:
             period_absolute_changes["advertising"] = round(
@@ -5875,7 +5940,7 @@ def build_global_numeric_metrics(
         "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
         "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
         "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
-        "advertising": _advertising_total_final_value(df_current_total_for_comparison),
+        "advertising": _advertising_total_value(df_current_total_for_comparison),
         "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
         "acos": _total_value(df_current_total_for_comparison, "acos"),
     }
@@ -5887,7 +5952,7 @@ def build_global_numeric_metrics(
         "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
         "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
         "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
-        "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
+        "advertising": _advertising_total_value(df_prev_total_for_comparison),
         "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
         "acos": _total_value(df_prev_total_for_comparison, "acos"),
     }
@@ -6285,7 +6350,7 @@ def build_country_usd_numeric_metrics(
             "cm1_profit": _total_value(df_current_total_for_comparison, "profit"),
             "cm1_profit_per_unit": _total_value(df_current_total_for_comparison, "unit_wise_profitability"),
             "cm2_profit": _total_value(df_current_total_for_comparison, "cm2_profit"),
-            "advertising": _advertising_total_final_value(df_current_total_for_comparison),
+            "advertising": _advertising_total_value(df_current_total_for_comparison),
             "storage_fees": _total_value(df_current_total_for_comparison, "platform_fee_inventory_storage"),
             "acos": _total_value(df_current_total_for_comparison, "acos"),
         }
@@ -6297,7 +6362,7 @@ def build_country_usd_numeric_metrics(
             "cm1_profit": _total_value(df_prev_total_for_comparison, "profit"),
             "cm1_profit_per_unit": _total_value(df_prev_total_for_comparison, "unit_wise_profitability"),
             "cm2_profit": _total_value(df_prev_total_for_comparison, "cm2_profit"),
-            "advertising": _advertising_total_final_value(df_prev_total_for_comparison),
+            "advertising": _advertising_total_value(df_prev_total_for_comparison),
             "storage_fees": _total_value(df_prev_total_for_comparison, "platform_fee_inventory_storage"),
             "acos": _total_value(df_prev_total_for_comparison, "acos"),
         }
