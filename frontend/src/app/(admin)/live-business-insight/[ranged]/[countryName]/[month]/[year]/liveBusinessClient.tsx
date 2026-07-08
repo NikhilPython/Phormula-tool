@@ -2070,7 +2070,7 @@ export default function LiveBusinessClient({
 
     return {
       label: "Stock Cover (Months)",
-      value: `${coverageRatio.toFixed(1)}`,
+      value: `${coverageRatio.toFixed(2)}`,
     };
   };
 
