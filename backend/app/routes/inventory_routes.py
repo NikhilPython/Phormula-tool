@@ -1397,6 +1397,55 @@ def upsert_country_profile():
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({"error": "Database error", "detail": str(e)}), 500
+
+@inventory_bp.route("/country-profile", methods=["GET"])
+def get_country_profile():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    country = (request.args.get("country") or "").strip()
+    marketplace = (request.args.get("marketplace") or "").strip()
+
+    if not country or not marketplace:
+        return jsonify({
+            "error": "country and marketplace are required"
+        }), 400
+
+    profile = CountryProfile.query.filter_by(
+        user_id=user_id,
+        country=country,
+        marketplace=marketplace
+    ).first()
+
+    if not profile:
+        return jsonify({
+            "exists": False,
+            "profile": None
+        }), 200
+
+    return jsonify({
+        "exists": True,
+        "profile": {
+            "id": profile.id,
+            "user_id": profile.user_id,
+            "country": profile.country,
+            "marketplace": profile.marketplace,
+            "transit_time": profile.transit_time,
+            "stock_unit": profile.stock_unit
+        }
+    }), 200
+
+ 
     
 #------------------------------------------------------------------------------ MonthwiseInventory upsert logic --------------------------------------
 def _safe_int(v):
