@@ -191,6 +191,9 @@ type MonthlySkuwiseRow = {
     brand_spend?: number;
     dealsvouchar_ads?: number;
     platformfeenew?: number;
+    short_term_storage_fee?: number;
+    long_term_storage_fee?: number;
+    fba_disposal?: number;
 
     previous_net_sales?: number;
     net_sales_delta?: number;
@@ -764,6 +767,12 @@ type PlSummaryTotals = {
     platform_fee: number;
     inventory_storage_fees: number;
     platform_fee_inventory_storage: number;
+
+    // Inventory Storage Fees breakup
+    short_term_storage_fee: number;
+    long_term_storage_fee: number;
+    fba_disposal: number;
+
     misc_transaction: number;
 
     reimbursement_lost_inventory_amount: number;
@@ -815,6 +824,10 @@ const ROUNDED_SUMMARY_KEYS = new Set<string>([
     "net_reimbursement",
     "debt_payment",
     "disbursement",
+
+    "short_term_storage_fee",
+    "long_term_storage_fee",
+    "fba_disposal",
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
@@ -867,8 +880,12 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         platform_fee: platformFees,
         inventory_storage_fees: inventoryStorageFees,
         platform_fee_inventory_storage: inventoryStorageFees,
-        misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
 
+        short_term_storage_fee: toNumber(source?.short_term_storage_fee),
+        long_term_storage_fee: toNumber(source?.long_term_storage_fee),
+        fba_disposal: toNumber(source?.fba_disposal),
+
+        misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
         reimbursement_lost_inventory_amount: toNumber(
             source?.reimbursement_lost_inventory_amount ?? source?.lost_inventory_amount
         ),
@@ -936,8 +953,12 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
         platform_fee: toNumber(grand?.platformfeenew ?? grand?.platform_fee),
         inventory_storage_fees: toNumber(grand?.platform_fee_inventory_storage),
         platform_fee_inventory_storage: toNumber(grand?.platform_fee_inventory_storage),
-        misc_transaction: toNumber(grand?.misc_transaction) || sumMiscTransaction,
 
+        short_term_storage_fee: toNumber(grand?.short_term_storage_fee),
+        long_term_storage_fee: toNumber(grand?.long_term_storage_fee),
+        fba_disposal: toNumber(grand?.fba_disposal),
+
+        misc_transaction: toNumber(grand?.misc_transaction) || sumMiscTransaction,
         reimbursement_lost_inventory_amount: toNumber(grand?.lost_total),
         reimbursement_lost_inventory_units: 0,
         lost_total: toNumber(grand?.lost_total),
@@ -11859,9 +11880,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
             const dataRows = rowsToExport.map((r: any) => ({
                 "S.No": r.isTotal ? "" : r.sno ?? "",
-                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
                 "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                // "Ad Type": r.isOthers || r.isTotal ? "-" : formatAdType(r.ad_type || "-"),
+                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
 
                 "Units Sold": n(r.quantity),
                 "Return": n(r.return_quantity),
@@ -11940,20 +11960,40 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 n(grandTotalRowRaw?.cm2_profit) ||
                 n(grandTotalRowDisplay?.cm2_profit);
 
+            const shortTermStorageFee =
+                n(totalRow?.short_term_storage_fee) ||
+                n(grandTotalRowRaw?.short_term_storage_fee) ||
+                n(grandTotalRowDisplay?.short_term_storage_fee) ||
+                n((plSummaryTotals as any)?.short_term_storage_fee);
+
+            const longTermStorageFee =
+                n(totalRow?.long_term_storage_fee) ||
+                n(grandTotalRowRaw?.long_term_storage_fee) ||
+                n(grandTotalRowDisplay?.long_term_storage_fee) ||
+                n((plSummaryTotals as any)?.long_term_storage_fee);
+
+            const fbaDisposal =
+                n(totalRow?.fba_disposal) ||
+                n(grandTotalRowRaw?.fba_disposal) ||
+                n(grandTotalRowDisplay?.fba_disposal) ||
+                n((plSummaryTotals as any)?.fba_disposal);
+
             const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 { label: "Cost of Advertisement", value: "", bold: true },
                 { label: "Visibility - Ads (-)", value: visibilityAds, indent: 1 },
                 { label: "Visibility - Deals, Vouchers and Reviews (-)", value: dealsVouchers, indent: 1 },
 
                 { label: "Other Transactions", value: "", bold: true },
-                { label: "Other Platform Fees (-)", value: otherPlatformFees, indent: 1 },
-                { label: "Inventory Storage Fees (-)", value: inventoryStorageFees, indent: 1 },
+                { label: "Short Term Storage Fee (-)", value: shortTermStorageFee, indent: 1 },
+                { label: "Long Term Storage Fee (-)", value: longTermStorageFee, indent: 1 },
+                { label: "FBA Disposal (-)", value: fbaDisposal, indent: 1 },
+                { label: "Reimbursement for lost Inventory (+)", value: lostInventory, indent: 1 },
                 {
                     label: "Misc. Transactions (+)",
                     value: formatSummaryValue(plSummaryTotals.misc_transaction, "misc_transaction"),
                     indent: 1
                 },
-                { label: "Reimbursement for lost Inventory (+)", value: lostInventory, indent: 1 },
+                { label: "Other Platform Fees (-)", value: otherPlatformFees, indent: 1 },
 
                 ...(countryName === "us" || countryName === "global"
                     ? [
@@ -15102,21 +15142,27 @@ ${pageLoading
                                                         defaultCollapsed: true,
                                                         children: [
                                                             {
-                                                                id: "other_1",
-                                                                label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
-                                                            },
-                                                            {
-                                                                id: "other_2",
-                                                                label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryRounded(inventoryStorageFees),
-                                                            },
-                                                            {
-                                                                id: "other_misc",
-                                                                label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                                                                id: "short_term_storage_fee",
+                                                                label: <>Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                                 midValue: formatSummaryValue(
-                                                                    plSummaryTotals.misc_transaction,
-                                                                    "misc_transaction"
+                                                                    plSummaryTotals.short_term_storage_fee,
+                                                                    "short_term_storage_fee"
+                                                                ),
+                                                            },
+                                                            {
+                                                                id: "long_term_storage_fee",
+                                                                label: <>Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.long_term_storage_fee,
+                                                                    "long_term_storage_fee"
+                                                                ),
+                                                            },
+                                                            {
+                                                                id: "fba_disposal",
+                                                                label: <>FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.fba_disposal,
+                                                                    "fba_disposal"
                                                                 ),
                                                             },
                                                             {
@@ -15128,6 +15174,19 @@ ${pageLoading
                                                                     </>
                                                                 ),
                                                                 midValue: formatSummaryValue(lost_inventory_total, "lost_total"),
+                                                            },
+                                                            {
+                                                                id: "other_misc",
+                                                                label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                                                                midValue: formatSummaryValue(
+                                                                    plSummaryTotals.misc_transaction,
+                                                                    "misc_transaction"
+                                                                ),
+                                                            },
+                                                            {
+                                                                id: "other_1",
+                                                                label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                                midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
                                                             },
                                                         ],
                                                     },
