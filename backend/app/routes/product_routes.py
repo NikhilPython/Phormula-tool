@@ -18,6 +18,7 @@ from app.utils.token_utils import get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
 from decimal import Decimal
+from datetime import date
 
 
 
@@ -324,8 +325,15 @@ def aggregate_monthly_sku_rows(rows):
 
     return list(grouped.values())
 
-
-def get_previous_year_monthly_aggregated_data(conn, engine, metadata, user_id, country, year):
+def get_previous_year_monthly_aggregated_data(
+    conn,
+    engine,
+    metadata,
+    user_id,
+    country,
+    year,
+    month_limit=None
+):
     previous_year = get_previous_year(year)
 
     current_year_month_tokens = get_month_tokens_present_for_year(
@@ -335,10 +343,47 @@ def get_previous_year_monthly_aggregated_data(conn, engine, metadata, user_id, c
         year=year
     )
 
+    month_token_to_num = {
+        "jan": 1,
+        "january": 1,
+        "feb": 2,
+        "february": 2,
+        "mar": 3,
+        "march": 3,
+        "apr": 4,
+        "april": 4,
+        "may": 5,
+        "jun": 6,
+        "june": 6,
+        "jul": 7,
+        "july": 7,
+        "aug": 8,
+        "august": 8,
+        "sep": 9,
+        "sept": 9,
+        "september": 9,
+        "oct": 10,
+        "october": 10,
+        "nov": 11,
+        "november": 11,
+        "dec": 12,
+        "december": 12,
+    }
+
+    if month_limit is not None:
+        month_limit = max(0, min(int(month_limit), 12))
+
     all_previous_month_rows = []
     used_previous_tables = []
 
     for month_token in current_year_month_tokens:
+        month_num = month_token_to_num.get(str(month_token).lower())
+
+        # Example:
+        # if today is July, month_limit = 6
+        # so July and later months will be skipped
+        if month_limit is not None and month_num and month_num > month_limit:
+            continue
 
         if country == "global":
             previous_monthly_table_name = (
@@ -420,6 +465,8 @@ def YearlySKU():
         previous_data = []
 
         try:
+            previous_year_month_limit = max(date.today().month - 1, 0)
+
             with engine.connect() as conn:
                 previous_data, used_previous_tables = get_previous_year_monthly_aggregated_data(
                     conn=conn,
@@ -427,12 +474,14 @@ def YearlySKU():
                     metadata=metadata,
                     user_id=user_id,
                     country=country,
-                    year=year
+                    year=year,
+                    month_limit=previous_year_month_limit
                 )
 
         except Exception:
             previous_data = []
             used_previous_tables = []
+            previous_year_month_limit = 0
 
         return jsonify({
             "current_table_name": table_name,
