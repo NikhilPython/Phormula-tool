@@ -198,9 +198,9 @@ function renderSkuCell(value: unknown) {
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         gap: '4px 8px',
-        textAlign: 'center',
+        textAlign: 'left',
         lineHeight: 1.35,
         whiteSpace: 'normal',
         overflowWrap: 'anywhere',
@@ -213,7 +213,7 @@ function renderSkuCell(value: unknown) {
           style={{
             display: 'inline-block',
             maxWidth: '100%',
-            textAlign: 'center',
+            textAlign: 'left',
             whiteSpace: 'normal',
             overflowWrap: 'anywhere',
             wordBreak: 'break-word',
@@ -724,8 +724,8 @@ export default function DispatchPage({
     table-layout: fixed;
   }
 
- .dispatch-sku-cell {
-  text-align: center !important;
+.dispatch-sku-cell {
+  text-align: left !important;
   white-space: normal !important;
   overflow: visible !important;
   vertical-align: middle !important;
@@ -734,8 +734,10 @@ export default function DispatchPage({
 }
 
 .dispatch-sku-cell > * {
-  margin-left: auto;
-  margin-right: auto;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
 }
 
 .forecast-data {
@@ -889,7 +891,7 @@ export default function DispatchPage({
                 }
                 rowClassName={(row: any) =>
                   row.__isTotal
-                     ? "bg-[#EFEFEF] font-semibold"
+                    ? "bg-[#EFEFEF] font-semibold"
                     : row.__isOthers
                       ? ""
                       : ""

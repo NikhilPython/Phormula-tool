@@ -840,7 +840,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 return (
                     <span
                         title={String(row.sku || "-")}
-                        className="mx-auto block max-w-full truncate whitespace-nowrap text-center tabular-nums text-charcoal-500"
+                        className="block w-full max-w-full truncate whitespace-nowrap text-left tabular-nums text-charcoal-500"
                     >
                         {row.sku || "-"}
                     </span>

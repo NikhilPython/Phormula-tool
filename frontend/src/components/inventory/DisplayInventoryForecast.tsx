@@ -742,7 +742,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-center min-w-0 whitespace-nowrap";
 
   const tableSkuCell =
-    "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-center min-w-0 whitespace-normal break-words";
+    "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-left min-w-0 whitespace-normal break-words";
 
   const tableBodyTextCell =
     "h-[40px] border-b border-r border-[#e1e5ea] px-3 py-2 align-middle text-left min-w-0 whitespace-normal break-words";
@@ -936,7 +936,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[220px] ${tableHeaderCell}`}
+                        className={`sticky top-0 z-30 w-[220px] ${tableHeaderCell} text-left`}
                       >
                         SKU
                       </th>
@@ -995,7 +995,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                         </td>
 
                         <td className={tableSkuCell}>
-                          <div className="max-w-[150px] whitespace-normal break-words leading-snug mx-auto">
+                          <div className="max-w-full whitespace-normal break-words leading-snug text-left">
                             {String(row.sku)
                               .split(",")
                               .map((sku, index, arr) => (
