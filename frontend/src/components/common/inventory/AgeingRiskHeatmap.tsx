@@ -1095,6 +1095,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     buckets.some((bucket) => Number(row[bucket.key] || 0) > 0)
             ),
             showInventoryAlerts,
+            salesLast30DaysLabel,
         });
     };
 

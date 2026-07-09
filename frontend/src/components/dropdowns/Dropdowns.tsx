@@ -4518,6 +4518,28 @@ const getCurrentMonthUnitsSoldKeyForResponse = (
   );
 };
 
+const getSalesLast30DaysValue = (row: InventoryCurrentRow) => {
+  const keys = Object.keys(row || {});
+
+  const salesLast30DaysKey = keys.find((key) => {
+    const normalized = String(key).toLowerCase().trim();
+
+    return (
+      normalized === "sales last 30 days" ||
+      normalized.includes("sales last 30 days")
+    );
+  });
+
+  return toNum(
+    salesLast30DaysKey
+      ? row?.[salesLast30DaysKey]
+      : row?.salesLast30Days ??
+      row?.sales_last_30_days ??
+      row?.last_30_days_sales ??
+      0
+  );
+};
+
 const SPLIT_FIRST_180_INVENTORY_BUCKETS: AgeingBucket[] = [
   { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
   { key: "ninetyOneToOneEighty", label: "91–180 Days", color: "#FDD36F" },
@@ -4825,7 +4847,7 @@ const buildInventoryInsightsFromResponses = (
           )
           : "",
 
-      salesLast30Days: toNum(row?.["Sales Last 30 Days"]),
+      salesLast30Days: getSalesLast30DaysValue(row),
       coverageRatio: toNum(row?.["Coverage Ratio (In Months)"]),
       inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
     };
@@ -4865,7 +4887,7 @@ const buildInventoryInsightsFromResponses = (
           : 0
       ),
 
-      salesLast30Days: toNum(backendTotalRawRow?.["Sales Last 30 Days"]),
+      salesLast30Days: getSalesLast30DaysValue(backendTotalRawRow),
 
       coverageRatio: toNum(
         backendTotalRawRow?.["Coverage Ratio (In Months)"] ??
