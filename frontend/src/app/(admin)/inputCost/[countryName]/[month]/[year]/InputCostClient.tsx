@@ -1728,6 +1728,23 @@ const isInventoryPercentageRow = (row: InventoryCurrentRow) => {
   );
 };
 
+const isInventoryTotalRow = (row: InventoryCurrentRow) => {
+  const productName = getInventoryRowProductName(row).trim().toLowerCase();
+  const sku = getInventoryRowSku(row).trim().toLowerCase();
+  const rowType = String(row?.row_type || "").trim().toLowerCase();
+
+  return (
+    row?.is_total_row === true ||
+    row?.is_total === true ||
+    row?.__isTotal === true ||
+    rowType === "total" ||
+    productName === "total" ||
+    productName === "grand total" ||
+    sku === "total" ||
+    sku === "grand total"
+  );
+};
+
 const getInventoryAgeValue = (row: InventoryCurrentRow, key: string) =>
   toNum(row?.[key]);
 
@@ -2234,6 +2251,10 @@ const buildInventoryInsightsFromResponses = (
     .flatMap((res) => (Array.isArray(res?.rows) ? res.rows : []))
     .find((row) => isInventoryPercentageRow(row));
 
+  const backendTotalRawRow = selectedInventoryResponses
+    .flatMap((res) => (Array.isArray(res?.rows) ? res.rows : []))
+    .find((row) => isInventoryTotalRow(row));
+
   const rows = selectedInventoryResponses.flatMap((res) => {
     const categoryRows = res?.categories
       ? Object.values(res.categories).flatMap((category) =>
@@ -2414,12 +2435,57 @@ const buildInventoryInsightsFromResponses = (
         String((row as any).salesRank || '').trim() !== ''
     );
 
+  const backendTotalHeatmapRow: AgeingRiskHeatmapRow | null = backendTotalRawRow
+    ? {
+      productName: "Total",
+      sku: "-",
+
+      zeroToNinety: toNum(backendTotalRawRow?.["inv-age-0-to-90-days"]),
+      ninetyOneToOneEighty: toNum(backendTotalRawRow?.["inv-age-91-to-180-days"]),
+      zeroToOneEighty: toNum(backendTotalRawRow?.["inv-age-0-to-180-days"]),
+
+      oneEightyOneToTwoSeventy: toNum(
+        backendTotalRawRow?.["inv-age-181-to-270-days"]
+      ),
+      twoSeventyOneToThreeSixtyFive: toNum(
+        backendTotalRawRow?.["inv-age-271-to-365-days"]
+      ),
+      threeSixtyFivePlus: toNum(
+        backendTotalRawRow?.["inv-age-365-plus-days"]
+      ),
+
+      available: getInventoryRowAvailableUnits(backendTotalRawRow),
+      fcTransfer: getInventoryRowFcTransferUnits(backendTotalRawRow),
+      totalUnits: getInventoryRowTotalUnits(backendTotalRawRow),
+      inboundUnits: getInventoryRowInboundUnits(backendTotalRawRow),
+      unsellableUnits: getInventoryRowUnfulfillableUnits(backendTotalRawRow),
+
+      unitsSold: currentMonthUnitsSoldKey
+        ? toNum(backendTotalRawRow?.[currentMonthUnitsSoldKey])
+        : 0,
+
+      // ✅ backend total Sales Last 30 Days
+      salesLast30Days: getInventoryRowSalesLast30Days(backendTotalRawRow),
+
+      // ✅ backend total Coverage Ratio only
+      coverageRatio: getInventoryRowCoverageRatio(backendTotalRawRow),
+
+      inventoryAlert: "",
+      salesRank: "",
+      previousSalesRank: "",
+
+      isTotalRow: true,
+    }
+    : null;
+
   const backendPercentageHeatmapRow =
     buildBackendPercentageHeatmapRow(backendPercentageRawRow);
 
-  const finalHeatmapData = backendPercentageHeatmapRow
-    ? [...heatmapData, backendPercentageHeatmapRow]
-    : heatmapData;
+  const finalHeatmapData = [
+    ...heatmapData,
+    ...(backendTotalHeatmapRow ? [backendTotalHeatmapRow] : []),
+    ...(backendPercentageHeatmapRow ? [backendPercentageHeatmapRow] : []),
+  ];
 
   const overallAgeing = heatmapData.reduce(
     (acc, row) => {
@@ -2854,30 +2920,30 @@ const buildInventoryInsightsFromResponses = (
     },
   ];
 
-return {
-  heatmapBuckets: dynamicHeatmapBuckets,
+  return {
+    heatmapBuckets: dynamicHeatmapBuckets,
 
-  // ✅ use backend percentage row only for display
-  heatmapData: finalHeatmapData,
+    // ✅ use backend percentage row only for display
+    heatmapData: finalHeatmapData,
 
-  donutSku: '',
-  donutData,
-  donutTotalUnits,
-  trendSelectedBucket: selectedTrendOption.value,
-  trendData,
-  trendLineColor: selectedTrendOption.color,
-  trendAllSeriesData,
-  trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
-    label: bucket.label,
-    value: bucket.value,
-    color: bucket.color,
-  })),
-  actions,
-  actionLogic: INVENTORY_ACTION_LOGIC,
+    donutSku: '',
+    donutData,
+    donutTotalUnits,
+    trendSelectedBucket: selectedTrendOption.value,
+    trendData,
+    trendLineColor: selectedTrendOption.color,
+    trendAllSeriesData,
+    trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+      label: bucket.label,
+      value: bucket.value,
+      color: bucket.color,
+    })),
+    actions,
+    actionLogic: INVENTORY_ACTION_LOGIC,
 
-  // ✅ pass backend summary to AgeingRiskHeatmap for total row
-  inventoryAgeSummary: selectedInventoryResponseForDonut?.inventory_age_summary,
-};
+    // ✅ pass backend summary to AgeingRiskHeatmap for total row
+    inventoryAgeSummary: selectedInventoryResponseForDonut?.inventory_age_summary,
+  };
 };
 
 const getCurrencySymbol = (country: string | undefined): string => {

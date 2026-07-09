@@ -4572,8 +4572,6 @@ const buildBackendPercentageHeatmapRow = (
   };
 };
 
-
-
 const buildInventoryInsightsFromResponses = (
   responses: InventoryCurrentApiResponse[],
   ageSummaryResponses: InventoryAgeSummaryApiResponse[] = [],
@@ -4601,6 +4599,10 @@ const buildInventoryInsightsFromResponses = (
 
   const backendPercentageRawRow = rawRows.find((row) =>
     isInventoryPercentageRow(row)
+  );
+
+  const backendTotalRawRow = rawRows.find((row) =>
+    isInventoryTotalRow(row)
   );
 
   const latestRows = rawRows.filter(
@@ -4742,12 +4744,63 @@ const buildInventoryInsightsFromResponses = (
     };
   });
 
+  const backendTotalHeatmapRow: AgeingRiskHeatmapRow | null = backendTotalRawRow
+    ? {
+      productName: "Total",
+      sku: "-",
+
+      zeroToNinety: toNum(backendTotalRawRow?.["inv-age-0-to-90-days"]),
+      ninetyOneToOneEighty: toNum(backendTotalRawRow?.["inv-age-91-to-180-days"]),
+      zeroToOneEighty: toNum(backendTotalRawRow?.["inv-age-0-to-180-days"]),
+
+      oneEightyOneToTwoSeventy: toNum(backendTotalRawRow?.["inv-age-181-to-270-days"]),
+      twoSeventyOneToThreeSixtyFive: toNum(backendTotalRawRow?.["inv-age-271-to-365-days"]),
+      threeSixtyFivePlus: toNum(backendTotalRawRow?.["inv-age-365-plus-days"]),
+
+      available: getInventoryRowAvailableUnits(backendTotalRawRow),
+      fcTransfer: getInventoryRowFcTransferUnits(backendTotalRawRow),
+      totalUnits: getInventoryRowSellableUnits(backendTotalRawRow),
+
+      inboundUnits: toNum(
+        backendTotalRawRow?.["Inbound Units"] ??
+        backendTotalRawRow?.inbound_units ??
+        backendTotalRawRow?.inboundUnits ??
+        backendTotalRawRow?.inbound_quantity ??
+        backendTotalRawRow?.["inbound_quantity"] ??
+        backendTotalRawRow?.["inbound-quantity"]
+      ),
+
+      unsellableUnits: toNum(backendTotalRawRow?.["unfulfillable-quantity"]),
+
+      unitsSold: toNum(
+        currentMonthUnitsSoldKey
+          ? backendTotalRawRow?.[currentMonthUnitsSoldKey]
+          : 0
+      ),
+
+      salesLast30Days: toNum(backendTotalRawRow?.["Sales Last 30 Days"]),
+
+      coverageRatio: toNum(
+        backendTotalRawRow?.["Coverage Ratio (In Months)"] ??
+        backendTotalRawRow?.inventory_coverage_ratio
+      ),
+      
+      inventoryAlert: "",
+      salesRank: "",
+      previousSalesRank: "",
+
+      isTotalRow: true,
+    }
+    : null;
+
   const backendPercentageHeatmapRow =
     buildBackendPercentageHeatmapRow(backendPercentageRawRow);
 
-  const finalHeatmapData = backendPercentageHeatmapRow
-    ? [...heatmapData, backendPercentageHeatmapRow]
-    : heatmapData;
+  const finalHeatmapData = [
+    ...heatmapData,
+    ...(backendTotalHeatmapRow ? [backendTotalHeatmapRow] : []),
+    ...(backendPercentageHeatmapRow ? [backendPercentageHeatmapRow] : []),
+  ];
 
   const overallAgeing = latestRows.reduce(
     (acc, row) => {

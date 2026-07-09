@@ -724,7 +724,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             // },
             {
                 key: "salesLast30Days",
-                label: "Sales Last 30 Days",
+                label: "Sales Last 30 Days (in Units)",
                 width: "105px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
