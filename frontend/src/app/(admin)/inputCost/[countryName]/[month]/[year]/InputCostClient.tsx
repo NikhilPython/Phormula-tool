@@ -735,6 +735,93 @@ const formatMoneyNoDecimal = (value: any, symbol = "$") => {
   })}`;
 };
 
+const formatSalesLast30DaysMonthLabel = (
+  range: RangeType,
+  selectedMonth: string,
+  selectedQuarter: Quarter | "",
+  selectedYear: string
+) => {
+  const yearNumber = Number(selectedYear);
+  const currentYear = new Date().getFullYear();
+
+  const monthFullNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const quarterEndMonthMap: Record<Quarter, string> = {
+    Q1: "March",
+    Q2: "June",
+    Q3: "September",
+    Q4: "December",
+  };
+
+  if (range === "monthly") {
+    const monthName = String(selectedMonth || "").trim();
+
+    return monthName
+      ? monthName.charAt(0).toUpperCase() + monthName.slice(1).toLowerCase()
+      : "";
+  }
+
+  if (range === "quarterly") {
+    return selectedQuarter ? quarterEndMonthMap[selectedQuarter] : "";
+  }
+
+  if (range === "yearly") {
+    if (yearNumber === currentYear) {
+      const previousCompletedMonth = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth() - 1,
+        1
+      );
+
+      return monthFullNames[previousCompletedMonth.getMonth()];
+    }
+
+    return "December";
+  }
+
+  return "";
+};
+
+const buildSalesLast30DaysLabel = (
+  range: RangeType,
+  selectedMonth: string,
+  selectedQuarter: Quarter | "",
+  selectedYear: string
+) => {
+  const monthLabel = formatSalesLast30DaysMonthLabel(
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear
+  );
+
+  if (!monthLabel) {
+    return "Unit Sales";
+  }
+
+  const shortMonth = monthLabel.slice(0, 3);
+  const shortYear = String(selectedYear || "").slice(-2);
+
+  if (!shortYear) {
+    return `${shortMonth} Unit Sales`;
+  }
+
+  return `${shortMonth}'${shortYear} Unit Sales`;
+};
+
 const formatBestPerformancePeriod = (
   month?: string,
   year?: string | number
@@ -3508,8 +3595,15 @@ export default function InputCostPage({ params }: Params) {
   const [selectedYear, setSelectedYear] = useState<string>(getDefaultYear());
   const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
     useState<string>('365+ days');
+  const salesLast30DaysLabel = buildSalesLast30DaysLabel(
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear
+  );
   const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
     useState<"uk" | "us">("uk");
+
 
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(null);
@@ -6067,12 +6161,12 @@ export default function InputCostPage({ params }: Params) {
                   ? '110px'
                   : '140px',
       cellClassName:
-  col === 'product_name' ||
-  col === 'sku_us' ||
-  col === 'sku_uk' ||
-  col === 'sku_canada'
-    ? 'text-left'
-    : 'text-center',
+        col === 'product_name' ||
+          col === 'sku_us' ||
+          col === 'sku_uk' ||
+          col === 'sku_canada'
+          ? 'text-left'
+          : 'text-center',
       render: (row) => {
         const value = row[col];
 
@@ -6477,6 +6571,7 @@ export default function InputCostPage({ params }: Params) {
                     heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
                     heatmapExcelCompanyName={userData?.company_name || ""}
                     heatmapExcelBrandName={userData?.brand_name || ""}
+                    salesLast30DaysLabel={salesLast30DaysLabel}
                   />
                 </>
               ) : (

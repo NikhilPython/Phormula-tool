@@ -478,6 +478,93 @@ const getPreviousMonthName = (monthName?: string, year?: string | number) => {
   };
 };
 
+const formatSalesLast30DaysMonthLabel = (
+  range: RangeType,
+  selectedMonth: string,
+  selectedQuarter: Quarter | "",
+  selectedYear: string
+) => {
+  const yearNumber = Number(selectedYear);
+  const currentYear = new Date().getFullYear();
+
+  const monthFullNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const quarterEndMonthMap: Record<Quarter, string> = {
+    Q1: "March",
+    Q2: "June",
+    Q3: "September",
+    Q4: "December",
+  };
+
+  if (range === "monthly") {
+    const monthName = String(selectedMonth || "").trim();
+
+    return monthName
+      ? monthName.charAt(0).toUpperCase() + monthName.slice(1).toLowerCase()
+      : "";
+  }
+
+  if (range === "quarterly") {
+    return selectedQuarter ? quarterEndMonthMap[selectedQuarter] : "";
+  }
+
+  if (range === "yearly") {
+    if (yearNumber === currentYear) {
+      const previousCompletedMonth = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth() - 1,
+        1
+      );
+
+      return monthFullNames[previousCompletedMonth.getMonth()];
+    }
+
+    return "December";
+  }
+
+  return "";
+};
+
+const buildSalesLast30DaysLabel = (
+  range: RangeType,
+  selectedMonth: string,
+  selectedQuarter: Quarter | "",
+  selectedYear: string
+) => {
+  const monthLabel = formatSalesLast30DaysMonthLabel(
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear
+  );
+
+  if (!monthLabel) {
+    return "Unit Sales";
+  }
+
+  const shortMonth = monthLabel.slice(0, 3);
+  const shortYear = String(selectedYear || "").slice(-2);
+
+  if (!shortYear) {
+    return `${shortMonth} Unit Sales`;
+  }
+
+  return `${shortMonth}'${shortYear} Unit Sales`;
+};
+
 const getPreviousSalesRankForSelectedMonth = (
   row: InventoryCurrentRow,
   selectedMonth?: string,
@@ -4784,7 +4871,7 @@ const buildInventoryInsightsFromResponses = (
         backendTotalRawRow?.["Coverage Ratio (In Months)"] ??
         backendTotalRawRow?.inventory_coverage_ratio
       ),
-      
+
       inventoryAlert: "",
       salesRank: "",
       previousSalesRank: "",
@@ -5552,6 +5639,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   });
 
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
+
+  const salesLast30DaysLabel = buildSalesLast30DaysLabel(
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear
+  );
 
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
@@ -10303,14 +10397,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     onHeatmapProductClick={handleHeatmapProductClick}
                     showInventoryAlerts={false}
                     inventoryAgeSummary={inventoryInsightsData.inventoryAgeSummary}
-
-                    // ✅ Excel filename/title/meta
                     heatmapExcelFilename={getInventoryInsightsFileName()}
                     heatmapExcelTitleLine="Inventory Insights Report"
                     heatmapExcelCountryLabel={formatInventoryExcelCountryLabel(
                       getInventoryInsightsReportCountry()
                     )}
                     heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
+                    salesLast30DaysLabel={salesLast30DaysLabel}
                   />
                 </>
               ) : (

@@ -47,6 +47,7 @@ type InventoryInsightsSectionProps = {
     heatmapExcelPeriodLabel?: string;
     heatmapExcelCompanyName?: string;
     heatmapExcelBrandName?: string;
+     salesLast30DaysLabel?: string;
     inventoryAgeSummary?: {
         total?: number;
         current_month_units_sold_total?: number;
@@ -94,6 +95,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     onHeatmapProductClick,
+    salesLast30DaysLabel,
     showInventoryAlerts = true,
     showHeatmapExcelDownload = true,
     heatmapExcelFilename = "ageing-risk-heatmap.xlsx",
@@ -148,6 +150,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         excelCompanyName={heatmapExcelCompanyName}
                         excelBrandName={heatmapExcelBrandName}
                         inventoryAgeSummary={inventoryAgeSummary}
+                        salesLast30DaysLabel={salesLast30DaysLabel}
                     />
                 )}
 

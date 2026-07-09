@@ -53,7 +53,7 @@ type AgeingRiskHeatmapProps = {
     data: AgeingRiskHeatmapRow[];
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
-
+    salesLast30DaysLabel?: string;
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
 
     onDownloadInventoryExcel?: () => void;
@@ -383,12 +383,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     data,
     buckets,
     defaultVisibleRows = 9,
+    salesLast30DaysLabel = "Unit Sales in Last 30 Days",
     onProductClick,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     showInventoryAlerts = true,
-
-    // ✅ ADD THESE
     showExcelDownload = true,
     excelFilename = "ageing-risk-heatmap.xlsx",
     excelTitleLine,
@@ -724,8 +723,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             // },
             {
                 key: "salesLast30Days",
-                label: "Sales Last 30 Days (in Units)",
-                width: "105px",
+                label: salesLast30DaysLabel,
+                width: "115px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
@@ -1071,6 +1070,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         hasAnySalesRankDelta,
         bucketMaxValues,
         showSellableBreakdown,
+        salesLast30DaysLabel,
     ]);
 
     const handleDownloadExcel = () => {
