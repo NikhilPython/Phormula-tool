@@ -2384,6 +2384,10 @@ const buildInventoryInsightsFromResponses = (
         isInventoryInsightsPercentageRow(row)
     );
 
+    const backendTotalRawRow = rawRows.find((row) =>
+        isInventoryInsightsTotalRow(row)
+    );
+
     const latestRows = rawRows.filter(
         (row) =>
             !isInventoryInsightsTotalRow(row) &&
@@ -2544,14 +2548,51 @@ const buildInventoryInsightsFromResponses = (
         };
     });
 
+    const backendTotalHeatmapRow: AgeingRiskHeatmapRow | null = backendTotalRawRow
+        ? {
+            productName: "Total",
+            sku: "-",
+
+            zeroToNinety: inventoryToNum(backendTotalRawRow?.["inv-age-0-to-90-days"]),
+            ninetyOneToOneEighty: inventoryToNum(backendTotalRawRow?.["inv-age-91-to-180-days"]),
+            zeroToOneEighty: inventoryToNum(backendTotalRawRow?.["inv-age-0-to-180-days"]),
+
+            oneEightyOneToTwoSeventy: inventoryToNum(backendTotalRawRow?.["inv-age-181-to-270-days"]),
+            twoSeventyOneToThreeSixtyFive: inventoryToNum(backendTotalRawRow?.["inv-age-271-to-365-days"]),
+            threeSixtyFivePlus: inventoryToNum(backendTotalRawRow?.["inv-age-365-plus-days"]),
+
+            available: inventoryToNum(backendTotalRawRow?.available),
+            fcTransfer: inventoryToNum(backendTotalRawRow?.["fc-transfer"]),
+            totalUnits: inventoryToNum(backendTotalRawRow?.["Sellable Units"]),
+            inboundUnits: inventoryToNum(backendTotalRawRow?.["Inbound Units"]),
+            unsellableUnits: inventoryToNum(backendTotalRawRow?.["unfulfillable-quantity"]),
+
+            unitsSold: getCurrentMonthUnitsSold(backendTotalRawRow),
+
+            // ✅ backend value only
+            coverageRatio: inventoryToNum(
+                backendTotalRawRow?.["Coverage Ratio (In Months)"] ??
+                backendTotalRawRow?.inventory_coverage_ratio
+            ),
+
+            inventoryAlert: "",
+            salesRank: "",
+            previousSalesRank: "",
+
+            isTotalRow: true,
+        }
+        : null;
+
     const backendPercentageHeatmapRow = buildBackendPercentageHeatmapRow(
         backendPercentageRawRow,
         isUsingSplitFirst180
     );
 
-    const finalHeatmapData = backendPercentageHeatmapRow
-        ? [...heatmapData, backendPercentageHeatmapRow]
-        : heatmapData;
+    const finalHeatmapData = [
+        ...heatmapData,
+        ...(backendTotalHeatmapRow ? [backendTotalHeatmapRow] : []),
+        ...(backendPercentageHeatmapRow ? [backendPercentageHeatmapRow] : []),
+    ];
 
     const overallAgeing = latestRows.reduce(
         (acc, row) => {
@@ -9184,7 +9225,7 @@ export default function DashboardPage() {
                 {
                     key: "sku",
                     label: "SKU",
-                    align: "center" as const,
+                    align: "left" as const,
                     width: "7%",
                 },
                 {
@@ -9472,14 +9513,6 @@ export default function DashboardPage() {
             align: "center" as const,
             width: "7%",
         },
-        // {
-        //     key: "net_sales",
-        //     label: "Net Sales",
-        //     sortable: true,
-        //     info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
-        //     align: "center" as const,
-        //     width: "7%",
-        // },
         { key: "cogs", label: "COGS", align: "center" as const, },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const, },

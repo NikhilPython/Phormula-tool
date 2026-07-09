@@ -456,9 +456,22 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return bUnitsSold - aUnitsSold;
         });
 
-        const totalRow = buildAggregateRow("Total", sortedData, buckets, {
+        const calculatedTotalRow = buildAggregateRow("Total", sortedData, buckets, {
             isTotalRow: true,
         });
+
+        const totalRow = backendTotalRow
+            ? {
+                ...calculatedTotalRow,
+                ...backendTotalRow,
+
+                // ✅ keep backend coverage ratio only
+                coverageRatio: Number(backendTotalRow.coverageRatio ?? 0),
+                isTotalRow: true,
+                productName: "Total",
+                sku: "-",
+            }
+            : calculatedTotalRow;
 
         if (inventoryAgeSummary) {
             buckets.forEach((bucket) => {
@@ -602,7 +615,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 key: "sku",
                 label: "SKU",
                 width: "95px",
-                align: "center",
+                align: "left",
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
 
@@ -984,7 +997,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "coverageRatio") {
-                if (row.isTotalRow || row.isPercentageRow) return "";
+                if (row.isPercentageRow) return "";
 
                 const coverageRatio = Number(row.coverageRatio ?? 0);
 
