@@ -825,7 +825,7 @@ export default function GroupedCollapsibleTable<RowT>({
               className={[
                 "border",
                 cellPadding,
-                alignClass(c.align),
+                c.key === "sku" ? "text-left" : alignClass(c.align),
                 "overflow-hidden truncate",
                 c.tdClassName || "",
               ].join(" ")}
