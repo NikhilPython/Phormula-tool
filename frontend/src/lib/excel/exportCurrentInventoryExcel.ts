@@ -3877,6 +3877,7 @@ export function exportAgeingRiskHeatmapExcel(params: {
 
   dataRows: Record<string, any>[];
   showInventoryAlerts?: boolean;
+   salesLast30DaysLabel?: string;
 }) {
   const {
     filename,
@@ -3896,6 +3897,7 @@ export function exportAgeingRiskHeatmapExcel(params: {
     buckets,
     dataRows,
     showInventoryAlerts = true,
+    salesLast30DaysLabel = "Unit Sales in Last 30 Days",
   } = params;
 
   if (!dataRows?.length) return;
@@ -3933,7 +3935,7 @@ const sellableHeaders = [
 const rightHeaders = [
   "Inbound Units",
   "Unfulfillable Units",
-  "Units Sold",
+  salesLast30DaysLabel,
   "Coverage Ratio (in Months)",
   ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
 ];
@@ -4065,8 +4067,8 @@ totalRow.unsellableUnits = realRows.reduce(
   0
 );
 
-totalRow.unitsSold = realRows.reduce(
-  (sum, row) => sum + toNum(row.unitsSold),
+totalRow.salesLast30Days = realRows.reduce(
+  (sum, row) => sum + toNum(row.salesLast30Days),
   0
 );
 
@@ -4186,11 +4188,11 @@ isPercentageRow
         ? toNum(row.unsellableUnits)
         : "",
 
-    isPercentageRow
-      ? ""
-      : toNum(row.unitsSold) > 0
-        ? toNum(row.unitsSold)
-        : "",
+   isPercentageRow
+  ? ""
+  : toNum(row.salesLast30Days) > 0
+    ? toNum(row.salesLast30Days)
+    : "",
 
     isTotalRow || isPercentageRow
       ? ""
@@ -4245,7 +4247,7 @@ if (header === "Total") return { wch: 14 };
     if (header === "Inbound Units") return { wch: 16 };
     if (header === "Sales Rank") return { wch: 14 };
     if (header === "Unfulfillable Units") return { wch: 20 };
-    if (header === "Units Sold") return { wch: 14 };
+  if (header === salesLast30DaysLabel) return { wch: 22 };
     if (header === "Coverage Ratio (in Months)") return { wch: 24 };
     if (header === "Inventory Alerts") return { wch: 32 };
 

@@ -3053,12 +3053,24 @@ const buildInventoryInsightsExcelRows = (
         productName: "Total",
         sku: "-",
         isTotalRow: true,
-
+        zeroToNinety: 0,
+        ninetyOneToOneEighty: 0,
+        zeroToOneEighty: 0,
+        oneEightyOneToTwoSeventy: 0,
+        twoSeventyOneToThreeSixtyFive: 0,
+        threeSixtyFivePlus: 0,
         available: 0,
+        fcTransfer: 0,
         totalUnits: 0,
         inboundUnits: 0,
         unsellableUnits: 0,
+
+        // keep current month sold separately
         unitsSold: 0,
+
+        // ✅ ADD this for Excel Unit Sales in Last 30 Days column
+        salesLast30Days: 0,
+
         salesRank: "",
         coverageRatio: undefined,
         inventoryAlert: "",
@@ -3093,9 +3105,14 @@ const buildInventoryInsightsExcelRows = (
             0
         );
 
+    // ✅ Current month units sold stays separate
     totalRow.unitsSold =
         inventoryAgeSummary?.current_month_units_sold_total ??
         sortedRows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0);
+
+    // ✅ Excel "Unit Sales in Last 30 Days" should use Sales Last 30 Days, not Current Month Units Sold
+    totalRow.salesLast30Days =
+        sortedRows.reduce((sum, row) => sum + Number(row.salesLast30Days || 0), 0);
 
     return percentageRow
         ? [...sortedRows, totalRow, percentageRow]
@@ -13351,6 +13368,9 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 inventoryInsightsData?.inventoryAgeSummary
             ),
             showInventoryAlerts: true,
+
+            // ✅ ADD same label as UI
+            salesLast30DaysLabel: "Unit Sales in Last 30 Days",
         });
     }, [
         platform,
