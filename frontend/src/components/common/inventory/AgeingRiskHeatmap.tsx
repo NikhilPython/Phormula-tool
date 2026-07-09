@@ -377,6 +377,10 @@ const buildPercentageRow = (
     return percentageRow;
 };
 
+const getUnitSalesSortValue = (row: AgeingRiskHeatmapRow) => {
+    return Number(row.salesLast30Days ?? row.unitsSold ?? 0);
+};
+
 const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     title = "Ageing Risk Heatmap",
     subtitle = "Quickly identify products with old inventory",
@@ -449,10 +453,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
 
         const sortedData = [...productRows].sort((a, b) => {
-            const aUnitsSold = Number(a.unitsSold || 0);
-            const bUnitsSold = Number(b.unitsSold || 0);
+            const aUnitSales = getUnitSalesSortValue(a);
+            const bUnitSales = getUnitSalesSortValue(b);
 
-            return bUnitsSold - aUnitsSold;
+            return bUnitSales - aUnitSales;
         });
 
         const calculatedTotalRow = buildAggregateRow("Total", sortedData, buckets, {
@@ -1088,12 +1092,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: data.filter(
-                (row) =>
-                    row.isPercentageRow ||
-                    row.isTotalRow ||
-                    buckets.some((bucket) => Number(row[bucket.key] || 0) > 0)
-            ),
+            dataRows: displayRows,
             showInventoryAlerts,
             salesLast30DaysLabel,
         });

@@ -3910,6 +3910,16 @@ export function exportAgeingRiskHeatmapExcel(params: {
     return Number.isFinite(n) ? n : 0;
   };
 
+  const getUnitSalesSortValue = (row: Record<string, any>) => {
+  return toNum(
+    row.salesLast30Days ??
+      row["Sales Last 30 Days"] ??
+      row["Unit Sales in Last 30 Days"] ??
+      row.unitsSold ??
+      row["Units Sold"]
+  );
+};
+
   const displayCountry = titleCountry || countryLabel || countryName || "";
 
   const currencySymbol = getCurrencySymbol({
@@ -4022,7 +4032,7 @@ const realRows = [...dataRows]
       sku !== "percentage"
     );
   })
-  .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
+  .sort((a, b) => getUnitSalesSortValue(b) - getUnitSalesSortValue(a));
 
 const totalRow: Record<string, any> = {
   productName: "Total",
@@ -4414,6 +4424,16 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
       return Number.isFinite(n) ? n : 0;
     };
 
+    const getUnitSalesSortValue = (row: Record<string, any>) => {
+  return toNum(
+    row.salesLast30Days ??
+      row["Sales Last 30 Days"] ??
+      row["Unit Sales in Last 30 Days"] ??
+      row.unitsSold ??
+      row["Units Sold"]
+  );
+};
+
     const currencySymbol = getCurrencySymbol({
       countryName: "global",
       homeCurrencyCode,
@@ -4484,7 +4504,7 @@ const backendPercentageRow = dataRows.find((row) => {
   sku !== "percentage"
 );
       })
-      .sort((a, b) => toNum(b.unitsSold) - toNum(a.unitsSold));
+      .sort((a, b) => getUnitSalesSortValue(b) - getUnitSalesSortValue(a));
 
     const totalRow: Record<string, any> = {
       productName: "Total",

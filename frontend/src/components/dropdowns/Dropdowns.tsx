@@ -4905,8 +4905,12 @@ const buildInventoryInsightsFromResponses = (
   const backendPercentageHeatmapRow =
     buildBackendPercentageHeatmapRow(backendPercentageRawRow);
 
+  const sortedHeatmapData = [...heatmapData].sort(
+    (a, b) => toNum((b as any).salesLast30Days) - toNum((a as any).salesLast30Days)
+  );
+
   const finalHeatmapData = [
-    ...heatmapData,
+    ...sortedHeatmapData,
     ...(backendTotalHeatmapRow ? [backendTotalHeatmapRow] : []),
     ...(backendPercentageHeatmapRow ? [backendPercentageHeatmapRow] : []),
   ];
