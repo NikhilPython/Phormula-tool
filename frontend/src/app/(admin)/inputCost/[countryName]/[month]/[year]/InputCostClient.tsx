@@ -2854,30 +2854,30 @@ const buildInventoryInsightsFromResponses = (
     },
   ];
 
-return {
-  heatmapBuckets: dynamicHeatmapBuckets,
+  return {
+    heatmapBuckets: dynamicHeatmapBuckets,
 
-  // ✅ use backend percentage row only for display
-  heatmapData: finalHeatmapData,
+    // ✅ use backend percentage row only for display
+    heatmapData: finalHeatmapData,
 
-  donutSku: '',
-  donutData,
-  donutTotalUnits,
-  trendSelectedBucket: selectedTrendOption.value,
-  trendData,
-  trendLineColor: selectedTrendOption.color,
-  trendAllSeriesData,
-  trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
-    label: bucket.label,
-    value: bucket.value,
-    color: bucket.color,
-  })),
-  actions,
-  actionLogic: INVENTORY_ACTION_LOGIC,
+    donutSku: '',
+    donutData,
+    donutTotalUnits,
+    trendSelectedBucket: selectedTrendOption.value,
+    trendData,
+    trendLineColor: selectedTrendOption.color,
+    trendAllSeriesData,
+    trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
+      label: bucket.label,
+      value: bucket.value,
+      color: bucket.color,
+    })),
+    actions,
+    actionLogic: INVENTORY_ACTION_LOGIC,
 
-  // ✅ pass backend summary to AgeingRiskHeatmap for total row
-  inventoryAgeSummary: selectedInventoryResponseForDonut?.inventory_age_summary,
-};
+    // ✅ pass backend summary to AgeingRiskHeatmap for total row
+    inventoryAgeSummary: selectedInventoryResponseForDonut?.inventory_age_summary,
+  };
 };
 
 const getCurrencySymbol = (country: string | undefined): string => {
@@ -5343,6 +5343,8 @@ export default function InputCostPage({ params }: Params) {
 
       if (column === 'sku_uk' || column === 'sku_us' || column === 'sku_canada') {
         col.width = '130px';
+        col.cellClassName = 'text-left';
+        col.headerClassName = 'text-center';
       }
 
       if (column === 'asin') col.width = '140px';
@@ -5417,7 +5419,7 @@ export default function InputCostPage({ params }: Params) {
   const leftCols: LeafCol<AnyRow>[] = [
     { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
     { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
-    { key: 'msku', label: 'SKU', width: 110, align: 'center' },
+    { key: 'msku', label: 'SKU', width: 110, align: 'left' },
   ];
 
   const groups: ColGroup<AnyRow>[] = useMemo(
@@ -5875,7 +5877,8 @@ export default function InputCostPage({ params }: Params) {
         key: "msku",
         header: "SKU",
         width: "w-[120px]",
-        cellClassName: "text-center",
+        cellClassName: "text-left",
+        headerClassName: "text-center",
       },
       {
         key: "lost_units",
@@ -5997,7 +6000,13 @@ export default function InputCostPage({ params }: Params) {
                 : col === 'month' || col === 'year'
                   ? '110px'
                   : '140px',
-      cellClassName: col === 'product_name' ? 'text-left' : 'text-center',
+      cellClassName:
+  col === 'product_name' ||
+  col === 'sku_us' ||
+  col === 'sku_uk' ||
+  col === 'sku_canada'
+    ? 'text-left'
+    : 'text-center',
       render: (row) => {
         const value = row[col];
 

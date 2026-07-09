@@ -894,7 +894,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         {
           key: "sku",
           label: "SKU",
-          align: "center",
+          align: "left",
           width: "11%",
         },
         {
@@ -1230,7 +1230,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         label: "ASP",
         info: <InfoTip text={TERM_DEFINITIONS.asp} />,
         align: "center",
-        width: "6%",
+        width: "7%",
       },
       {
         key: "cost_of_unit_sold",
@@ -1250,7 +1250,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
             key: "acos",
             label: "ACoS %",
             align: "center" as const,
-            width: "6%",
+            width: "8%",
           },
         ]
         : []),
@@ -1264,7 +1264,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "sno", label: "S. no", align: "center" as const },
 
       { key: "product_name", label: "Product Name", align: "left" as const },
-      { key: "sku", label: "SKU", align: "center" as const },
+      { key: "sku", label: "SKU", align: "left" as const },
 
       { key: "units_sold", label: "Units Sold", align: "center" as const },
       { key: "return_units", label: "Return", align: "center" as const },
