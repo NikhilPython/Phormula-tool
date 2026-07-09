@@ -115,7 +115,7 @@ The executive_takeaway MUST:
 - Storage fees percentage change MUST be explicitly mentioned in executive_takeaway whenever storage fees are materially up or down.
 
 - Be minimum 2 sentences and maximum 5 sentences.
-- Include percentage change
+- Include percentage change and absolute values
   for all material metrics (units, net sales, CM1 profit,
   CM2 profit, advertising, ASP when relevant).
 
@@ -571,7 +571,7 @@ Return a single JSON object with the following structure (STRICT JSON):
     "cost_pressure",
     "cm2_profit_decline"
   ],
-  "executive_takeaway": "string (2-5 sentences, derived ONLY from primary_causal_chain, must include percentage for material metrics, integrate rolling context, no actions)",
+  "executive_takeaway": "string (2-5 sentences, derived ONLY from primary_causal_chain, must include previous value, current value, and percentage change for material metrics, integrate rolling context, no actions)",
   "product_insights": {
     "<sku>": {
       "diagnosis_codes": [

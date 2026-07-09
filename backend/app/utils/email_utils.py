@@ -987,6 +987,34 @@ def send_live_bi_email(
         </div>
         """
 
+    high_alert_html = ""
+
+    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
+        high_alert = weekly_email_summary_json.get("high_alert") or {}
+
+        if high_alert.get("available"):
+            high_alert_message = high_alert.get("message") or ""
+
+            high_alert_html = f"""
+            <div style="
+                margin-top:14px;
+                background:#FFF8E7;
+                border:1px solid #F5D48A;
+                border-left:4px solid #F04438;
+                border-radius:10px;
+                padding:12px 16px;
+            ">
+              <div style="
+                  font-size:14px;
+                  color:#B42318;
+                  line-height:1.7;
+                  font-weight:700;
+              ">
+                {html.escape(str(high_alert_message))}
+              </div>
+            </div>
+            """
+
     # ---------------------------
     # Helpers
     # ---------------------------
@@ -2203,6 +2231,7 @@ def send_live_bi_email(
               ">
                 {summary_html}
                 {portfolio_html}
+                {high_alert_html}
               </div>
             </div>
 

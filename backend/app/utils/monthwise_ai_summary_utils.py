@@ -1095,12 +1095,14 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
             return None
         return round((cur - prev) / abs(prev) * 100, 2)
 
-    def pct_point(col):  # ← NEW
+    def pct_growth(col):
         cur = _total_value(df_current_total, col)
         prev = _total_value(df_prev_total, col)
-        if cur is None or prev is None:
+
+        if cur is None or prev in (None, 0):
             return None
-        return round(cur - prev, 2)
+
+        return round((cur - prev) / abs(prev) * 100, 2)
 
     # ✅ helper only for storage cost (because DB stores it negative)
     def pct_storage(col):
@@ -1156,7 +1158,7 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
         # ✅ FIXED storage calculation
         "storage_fees": pct_storage("platform_fee_inventory_storage"),
 
-        "acos": pct_point("acos"),
+        "acos": pct_growth("acos"),
     }
 
 
@@ -4988,29 +4990,29 @@ def get_or_create_summary(
             "acos": _total_value(previous_values_source, "acos"),
         }
 
-        print("\n================ OVERALL SUMMARY AI TOTAL VALUES DEBUG ================")
-        print("user_id:", user_id)
-        print("country:", country)
-        print("period:", period)
-        print("timeline:", timeline)
-        print("year:", year)
+        # print("\n================ OVERALL SUMMARY AI TOTAL VALUES DEBUG ================")
+        # print("user_id:", user_id)
+        # print("country:", country)
+        # print("period:", period)
+        # print("timeline:", timeline)
+        # print("year:", year)
 
-        print("\nCURRENT VALUES SENT TO AI:")
-        print(json.dumps(period_absolute_changes.get("current_values", {}), indent=2, default=str))
+        # print("\nCURRENT VALUES SENT TO AI:")
+        # print(json.dumps(period_absolute_changes.get("current_values", {}), indent=2, default=str))
 
-        print("\nPREVIOUS VALUES SENT TO AI:")
-        print(json.dumps(period_absolute_changes.get("previous_values", {}), indent=2, default=str))
+        # print("\nPREVIOUS VALUES SENT TO AI:")
+        # print(json.dumps(period_absolute_changes.get("previous_values", {}), indent=2, default=str))
 
-        print("\nABSOLUTE CHANGES SENT TO AI:")
-        print(json.dumps({
-            k: v for k, v in period_absolute_changes.items()
-            if k not in ("current_values", "previous_values")
-        }, indent=2, default=str))
+        # print("\nABSOLUTE CHANGES SENT TO AI:")
+        # print(json.dumps({
+        #     k: v for k, v in period_absolute_changes.items()
+        #     if k not in ("current_values", "previous_values")
+        # }, indent=2, default=str))
 
-        print("\nPERCENTAGE CHANGES SENT TO AI:")
-        print(json.dumps(period_pct_changes or {}, indent=2, default=str))
+        # print("\nPERCENTAGE CHANGES SENT TO AI:")
+        # print(json.dumps(period_pct_changes or {}, indent=2, default=str))
 
-        print("=======================================================================\n")
+        # print("=======================================================================\n")
 
     # ============================================================
     # YEARLY ADVERTISING OVERRIDE SAFETY FIX

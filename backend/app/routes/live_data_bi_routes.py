@@ -1518,7 +1518,103 @@ def _email_pct_2(value):
     except Exception:
         return "0.00%"
 
+def build_live_email_high_alert_summary_from_inventory_current(
+    *,
+    user_id,
+    country,
+    current_month,
+    current_year,
+):
+    """
+    Uses the same high-alert logic from inventory_current route.
 
+    Source logic:
+      High Alert = coverage_ratio > 0
+      and coverage_ratio <= transit_time + stock_unit
+
+    Fallback threshold inside inventory_current:
+      2.0 months
+    """
+
+    try:
+        from app.routes.inventory_current_routes import (
+            resolve_inventory_current_source,
+            attach_current_month_units_sold,
+            attach_inventory_monthly_qty,
+            attach_zero_to_180_days,
+            build_high_alert_coverage_summary,
+        )
+    except Exception as e:
+        print("[WARN] Failed importing inventory current high-alert helpers:", e)
+        return {
+            "high_alert_sku_count": 0,
+            "average_coverage_ratio": 0,
+            "high_alert_threshold": 0,
+            "items": [],
+        }
+
+    month_text = month_name[int(current_month)].lower()
+
+    source_result = resolve_inventory_current_source(
+        user_id=user_id,
+        country_key=country,
+        range_type="monthly",
+        month_name=month_text,
+        year=current_year,
+        quarter=None,
+    )
+
+    if not source_result.get("found"):
+        return {
+            "high_alert_sku_count": 0,
+            "average_coverage_ratio": 0,
+            "high_alert_threshold": 0,
+            "items": [],
+        }
+
+    rows = source_result.get("rows") or []
+    columns = source_result.get("columns") or []
+    selected_month_for_units = source_result.get("selected_month")
+
+    if selected_month_for_units:
+        units_sold_result = attach_current_month_units_sold(
+            rows=rows,
+            columns=columns,
+            user_id=user_id,
+            country_key=country,
+            month_name=selected_month_for_units,
+            year=current_year,
+        )
+
+        rows = units_sold_result["rows"]
+        columns = units_sold_result["columns"]
+
+        monthly_attach_after_units = attach_inventory_monthly_qty(
+            rows=rows,
+            columns=columns,
+            user_id=user_id,
+            country_key=country,
+            month_name=selected_month_for_units,
+            year=current_year,
+            use_currentinventory_sellable=source_result["source_type"] == "currentinventory_table",
+        )
+
+        rows = monthly_attach_after_units["rows"]
+        columns = monthly_attach_after_units["columns"]
+
+        zero_to_180_attach = attach_zero_to_180_days(
+            rows=rows,
+            columns=columns,
+            use_currentinventory_split=source_result["source_type"] == "currentinventory_table",
+        )
+
+        rows = zero_to_180_attach["rows"]
+
+    return build_high_alert_coverage_summary(
+        rows=rows,
+        user_id=user_id,
+        country_key=country,
+    )
 
 def _pick_metric_change(row, keys):
     for key in keys:
@@ -1593,6 +1689,198 @@ def _build_weekly_problem_from_growth(row, currency_symbol="$"):
     return ". ".join(parts) + "."
 
 
+# def build_weekly_email_summary_json(
+#     *,
+#     country,
+#     prev_label,
+#     curr_label,
+#     currency,
+#     overall_summary,
+#     portfolio_recommendation,
+#     recommended_actions_mtd,
+#     sku_strategy_actions,
+#     all_action_rows,
+#     max_skus=3,
+# ):
+#     """
+#     Weekly email-only JSON.
+#     Keeps dashboard detailed but email short, precise, and actionable.
+#     """
+
+#     currency_symbol = (currency or {}).get("symbol") or "$"
+
+#     summary_text = ""
+#     if isinstance(overall_summary, dict):
+#         summary_text = str(overall_summary.get("summary_text") or "").strip()
+
+#     if len(summary_text) > 260:
+#         summary_text = summary_text[:260].rsplit(" ", 1)[0] + "."
+
+#     portfolio_action = _clean_email_action_text(
+#         portfolio_recommendation,
+#         fallback="Focus on the priority SKUs below and open the dashboard for the full journey.",
+#     )
+
+#     rows = all_action_rows or []
+
+#     def priority_score(row):
+#         units_pct = abs(_pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"]))
+#         sales_pct = abs(_pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"]))
+#         profit_pct = abs(_pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"]))
+#         mix = _email_safe_float(row.get("Sales Mix (Current)"))
+#         return (sales_pct * 1.5) + profit_pct + units_pct + mix
+
+#     priority_rows = sorted(rows, key=priority_score, reverse=True)[:max_skus]
+
+#     priority_skus = []
+
+#     for row in priority_rows:
+#         sku = str(row.get("sku") or "").strip()
+#         if not sku:
+#             continue
+
+#         strategy = (sku_strategy_actions or {}).get(sku, {}) or {}
+
+#         product_name = (
+#             row.get("product_name")
+#             or strategy.get("product_name")
+#             or sku
+#         )
+
+#         recommendation = strategy.get("recommendation")
+#         ads_recommendation = strategy.get("ads_recommendation")
+#         inventory_recommendation = strategy.get("inventory_recommendation")
+
+#         action_parts = []
+
+#         rec_text = _clean_email_action_text(recommendation, fallback="")
+#         ads_text = _clean_email_action_text(ads_recommendation, fallback="")
+#         inv_text = _clean_email_action_text(inventory_recommendation, fallback="")
+
+#         if rec_text:
+#             action_parts.append(rec_text)
+
+#         if ads_text:
+#             action_parts.append(ads_text)
+
+#         if inv_text:
+#             action_parts.append(inv_text)
+
+#         if action_parts:
+#             action = " ".join(action_parts)
+#         else:
+#             action = "Review traffic, conversion, ads visibility, and inventory before taking action."
+
+#         if len(action) > 260:
+#             action = action[:260].rsplit(" ", 1)[0] + "."
+
+#         units_pct = _pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"])
+#         sales_pct = _pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"])
+#         profit_pct = _pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"])
+#         asp_pct = _pick_metric_change(row, ["ASP Growth (%)"])
+
+#         ads_curr = row.get("ads_spend_curr", row.get("ads_spend", 0.0))
+#         ads_prev = row.get("ads_spend_prev", 0.0)
+
+#         cm2_profit_curr = row.get("cm2_profit_curr", row.get("cm2_profit", 0.0))
+#         cm2_profit_prev = row.get("cm2_profit_prev", 0.0)
+
+#         cm2_profit_growth_pct = (
+#             row.get("cm2_profit_growth_pct")
+#             or (row.get("CM2 Profit Growth (%)") or {}).get("value")
+#             or 0.0
+#         )
+
+#         cm2_profit_per_unit_curr = row.get("cm2_profit_per_unit_curr", 0.0)
+#         cm2_profit_per_unit_prev = row.get("cm2_profit_per_unit_prev", 0.0)
+
+#         current_inventory = (
+#             row.get("current_inventory")
+#             or row.get("available_inventory")
+#             or row.get("available_total")
+#             or row.get("available")
+#             or 0.0
+#         )
+
+#         stock_cover_months = (
+#             row.get("coverage_ratio_months")
+#             or row.get("stock_cover_months")
+#             or row.get("coverage_months")
+#             or row.get("inventory_coverage_ratio")
+#             or 0.0
+#         )
+
+#         priority_skus.append({
+#             "sku": sku,
+#             "product_name": product_name,
+#             "severity": "high" if sales_pct <= -20 or profit_pct <= -20 or units_pct <= -20 else "medium",
+
+#             # ✅ Only final action will be shown in email.
+#             # Problem and likely_driver are removed from email JSON.
+#             "action": action,
+
+#             # ✅ New email metric-card grid
+#             "metric_cards": [
+#                 _email_metric_item(
+#                     "Units",
+#                     _email_num(row.get("quantity_curr")),
+#                     _email_pct_2(units_pct),
+#                 ),
+#                 _email_metric_item(
+#                     "Net Sales",
+#                     _email_money_no_decimals(row.get("net_sales_curr"), currency_symbol),
+#                     _email_pct_2(sales_pct),
+#                 ),
+#                 _email_metric_item(
+#                     "ASP",
+#                     _email_money(row.get("asp_curr"), currency_symbol),
+#                     _email_pct_2(asp_pct),
+#                 ),
+#                 _email_metric_item(
+#                     "Ads",
+#                     _email_money(ads_curr, currency_symbol),
+#                     _email_pct_from_values(ads_curr, ads_prev),
+#                 ),
+#                 _email_metric_item(
+#                     "CM2 Profit",
+#                     _email_money_no_decimals(cm2_profit_curr, currency_symbol),
+#                     _email_pct_2(cm2_profit_growth_pct),
+#                 ),
+#                 _email_metric_item(
+#                     "CM2 Profit Per Unit",
+#                     _email_money(cm2_profit_per_unit_curr, currency_symbol),
+#                     _email_pct_from_values(cm2_profit_per_unit_curr, cm2_profit_per_unit_prev),
+#                 ),
+#                 _email_metric_item(
+#                     "Current Inventory",
+#                     f"{_email_num(current_inventory)} units",
+#                     None,
+#                 ),
+#                 _email_metric_item(
+#                     "Stock Cover (Months)",
+#                     _email_plain_2(stock_cover_months),
+#                     None,
+#                 ),
+#             ],
+#         })
+
+#     return {
+#         "email_type": "weekly_live_bi",
+#         "country": country,
+#         "period": {
+#             "previous": prev_label,
+#             "current": curr_label,
+#         },
+#         "subject_line": f"[Phormula] Weekly Live BI Digest - {str(country).upper()} ({curr_label})",
+#         "headline": summary_text or "Weekly Live BI summary is ready.",
+#         "portfolio_summary": {
+#             "what_changed": summary_text or "Open the dashboard to review the latest weekly movement.",
+#             "weekly_action": portfolio_action,
+#         },
+#         "priority_skus": priority_skus,
+#         "dashboard_cta": "Open dashboard for full SKU journey and detailed recommendations.",
+#     }
+
 def build_weekly_email_summary_json(
     *,
     country,
@@ -1604,6 +1892,7 @@ def build_weekly_email_summary_json(
     recommended_actions_mtd,
     sku_strategy_actions,
     all_action_rows,
+    high_alert_coverage_summary=None,
     max_skus=3,
 ):
     """
@@ -1613,13 +1902,28 @@ def build_weekly_email_summary_json(
 
     currency_symbol = (currency or {}).get("symbol") or "$"
 
+    # ---------------------------
+    # Overall summary
+    # ---------------------------
     summary_text = ""
     if isinstance(overall_summary, dict):
         summary_text = str(overall_summary.get("summary_text") or "").strip()
 
-    if len(summary_text) > 260:
-        summary_text = summary_text[:260].rsplit(" ", 1)[0] + "."
+    # IMPORTANT:
+    # Do NOT slice summary_text.
+    # Earlier this was cutting sentences like:
+    # "ASP increased from."
+    # Email should show the complete overall summary.
 
+    fallback_summary = (
+        f"Weekly performance for {str(country).upper()} has been updated for {curr_label}. "
+        f"Review the priority SKUs below for key movement, CM2 impact, inventory position, "
+        f"and this week’s recommended action."
+    )
+
+    # ---------------------------
+    # Portfolio action
+    # ---------------------------
     portfolio_action = _clean_email_action_text(
         portfolio_recommendation,
         fallback="Focus on the priority SKUs below and open the dashboard for the full journey.",
@@ -1627,11 +1931,15 @@ def build_weekly_email_summary_json(
 
     rows = all_action_rows or []
 
+    # ---------------------------
+    # Priority SKU sorting
+    # ---------------------------
     def priority_score(row):
         units_pct = abs(_pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"]))
         sales_pct = abs(_pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"]))
         profit_pct = abs(_pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"]))
         mix = _email_safe_float(row.get("Sales Mix (Current)"))
+
         return (sales_pct * 1.5) + profit_pct + units_pct + mix
 
     priority_rows = sorted(rows, key=priority_score, reverse=True)[:max_skus]
@@ -1655,6 +1963,9 @@ def build_weekly_email_summary_json(
         ads_recommendation = strategy.get("ads_recommendation")
         inventory_recommendation = strategy.get("inventory_recommendation")
 
+        # ---------------------------
+        # Build action text
+        # ---------------------------
         action_parts = []
 
         rec_text = _clean_email_action_text(recommendation, fallback="")
@@ -1675,9 +1986,14 @@ def build_weekly_email_summary_json(
         else:
             action = "Review traffic, conversion, ads visibility, and inventory before taking action."
 
+        # Keep action short only.
+        # Summary should remain full, but action can stay concise.
         if len(action) > 260:
             action = action[:260].rsplit(" ", 1)[0] + "."
 
+        # ---------------------------
+        # Metric movement values
+        # ---------------------------
         units_pct = _pick_metric_change(row, ["Unit Growth (%)", "Quantity Growth (%)"])
         sales_pct = _pick_metric_change(row, ["Net Sales Growth (%)", "Sales Growth (%)"])
         profit_pct = _pick_metric_change(row, ["CM1 Profit Impact (%)", "Profit Growth (%)"])
@@ -1714,16 +2030,19 @@ def build_weekly_email_summary_json(
             or 0.0
         )
 
+        # ---------------------------
+        # Build priority SKU card
+        # ---------------------------
         priority_skus.append({
             "sku": sku,
             "product_name": product_name,
             "severity": "high" if sales_pct <= -20 or profit_pct <= -20 or units_pct <= -20 else "medium",
 
-            # ✅ Only final action will be shown in email.
-            # Problem and likely_driver are removed from email JSON.
+            # Only final action will be shown in email.
+            # Problem and likely_driver are intentionally removed.
             "action": action,
 
-            # ✅ New email metric-card grid
+            # Email metric-card grid
             "metric_cards": [
                 _email_metric_item(
                     "Units",
@@ -1768,6 +2087,30 @@ def build_weekly_email_summary_json(
             ],
         })
 
+
+    # ---------------------------
+    # Final weekly email JSON
+    # ---------------------------
+    final_summary = summary_text or fallback_summary
+
+    high_alert_coverage_summary = high_alert_coverage_summary or {}
+
+    high_alert_sku_count = int(
+        high_alert_coverage_summary.get("high_alert_sku_count") or 0
+    )
+
+    high_alert_avg_coverage = _email_safe_float(
+        high_alert_coverage_summary.get("average_coverage_ratio")
+    )
+
+    high_alert_message = ""
+
+    if high_alert_sku_count > 0:
+        high_alert_message = (
+            f"High Alert -> Shipment is Required across {high_alert_sku_count} SKUs "
+            f"and the Avg Coverage Ratio is {high_alert_avg_coverage:.2f}."
+        )
+
     return {
         "email_type": "weekly_live_bi",
         "country": country,
@@ -1776,10 +2119,16 @@ def build_weekly_email_summary_json(
             "current": curr_label,
         },
         "subject_line": f"[Phormula] Weekly Live BI Digest - {str(country).upper()} ({curr_label})",
-        "headline": summary_text or "Weekly Live BI summary is ready.",
+        "headline": final_summary,
         "portfolio_summary": {
-            "what_changed": summary_text or "Open the dashboard to review the latest weekly movement.",
+            "what_changed": final_summary,
             "weekly_action": portfolio_action,
+        },
+        "high_alert": {
+            "available": high_alert_sku_count > 0,
+            "sku_count": high_alert_sku_count,
+            "avg_coverage_ratio": round(high_alert_avg_coverage, 2),
+            "message": high_alert_message,
         },
         "priority_skus": priority_skus,
         "dashboard_cta": "Open dashboard for full SKU journey and detailed recommendations.",
@@ -2161,12 +2510,12 @@ def live_mtd_vs_previous():
                 curr_global_ads_cm2_totals.get("cm2_profit_source_column")
             )
 
-            print("[GLOBAL CURRENT CM2 SOURCE FIX]", {
-                "correct_cm2": correct_global_current_cm2,
-                "correct_cm2_per_unit": correct_global_current_cm2_per_unit,
-                "source_table": curr_global_ads_cm2_totals.get("source_table"),
-                "source_column": curr_global_ads_cm2_totals.get("cm2_profit_source_column"),
-            })
+            # print("[GLOBAL CURRENT CM2 SOURCE FIX]", {
+            #     "correct_cm2": correct_global_current_cm2,
+            #     "correct_cm2_per_unit": correct_global_current_cm2_per_unit,
+            #     "source_table": curr_global_ads_cm2_totals.get("source_table"),
+            #     "source_column": curr_global_ads_cm2_totals.get("cm2_profit_source_column"),
+            # })
 
             curr_global_items = attach_current_global_ads_cm2_to_rows(
                 curr_global_items,
@@ -5638,6 +5987,17 @@ def live_mtd_vs_previous():
             for row in (other_skus or [])
         ]
 
+        # ✅ High alert summary for weekly email
+        # Source: same inventory_current high-alert logic
+        high_alert_coverage_summary = build_live_email_high_alert_summary_from_inventory_current(
+            user_id=user_id,
+            country=country,
+            current_month=ranges["meta"]["current_month"],
+            current_year=ranges["meta"]["current_year"],
+        )
+
+        # print("[EMAIL DEBUG] high_alert_coverage_summary:", high_alert_coverage_summary)
+
         # ✅ Weekly email-only short JSON for UK/US
         weekly_email_summary_json = build_weekly_email_summary_json(
             country=country,
@@ -5648,7 +6008,8 @@ def live_mtd_vs_previous():
             portfolio_recommendation=portfolio_recommendation,
             recommended_actions_mtd=recommended_actions_mtd,
             sku_strategy_actions=sku_strategy_actions,
-            all_action_rows=frontend_all_action_rows or all_action_rows,
+            all_action_rows=frontend_all_action_rows,
+            high_alert_coverage_summary=high_alert_coverage_summary,
             max_skus=3,
         )
 
@@ -5667,6 +6028,7 @@ def live_mtd_vs_previous():
             "country": country,
             "currency": currency,
             "weekly_email_summary_json": weekly_email_summary_json,
+            "high_alert_coverage_summary": high_alert_coverage_summary,
             "ai_last_refreshed_at": ai_last_refreshed_at,
             "ads_monthly": payload_ai.get("ads_monthly", {}),
             "ads_mtd": payload_ai.get("ads_mtd", {}),
@@ -5769,85 +6131,83 @@ def live_mtd_vs_previous():
             "remaining_skus_block": remaining_skus_block,
         }
 
-        # ---------------------------
-        # SEND EMAIL
-        # ---------------------------
-        user_email = payload.get("email") or request.args.get("email")
-        user_name = None
+        # # ---------------------------
+        # # SEND EMAIL
+        # # ---------------------------
+        # user_email = payload.get("email") or request.args.get("email")
+        # user_name = None
 
-        if not user_email:
-            user_email, user_name = get_user_email_and_name_by_id(user_id)
+        # if not user_email:
+        #     user_email, user_name = get_user_email_and_name_by_id(user_id)
 
-        if isinstance(user_email, tuple):
-            user_email = user_email[0]
+        # if isinstance(user_email, tuple):
+        #     user_email = user_email[0]
 
-        user_email = str(user_email).strip() if user_email else None
+        # user_email = str(user_email).strip() if user_email else None
 
-        if user_email:
-            cache_key = (user_id, country)
+        # if user_email:
+        #     cache_key = (user_id, country)
 
-            manual_email_trigger = (
-                request.args.get("send_email", "false").lower()
-                in ("true", "1", "yes")
-            )
+        #     manual_email_trigger = (
+        #         request.args.get("send_email", "false").lower()
+        #         in ("true", "1", "yes")
+        #     )
 
-            already_in_cache = cache_key in _SENT_EMAIL_CACHE
+        #     already_in_cache = cache_key in _SENT_EMAIL_CACHE
 
-            recently_sent = (
-                False
-                if manual_email_trigger
-                else has_recent_bi_email(user_id, country, hours=24 * 6)
-            )
+        #     recently_sent = (
+        #         False
+        #         if manual_email_trigger
+        #         else has_recent_bi_email(user_id, country, hours=24 * 6)
+        #     )
 
-            if manual_email_trigger or (not already_in_cache and not recently_sent):
-                try:
-                    email_token_payload = {
-                        "user_id": user_id,
-                        "email": user_email,
-                        "scope": "live_mtd_bi",
-                        "exp": datetime.utcnow() + timedelta(hours=24),
-                    }
+        #     if manual_email_trigger or (not already_in_cache and not recently_sent):
+        #         try:
+        #             email_token_payload = {
+        #                 "user_id": user_id,
+        #                 "email": user_email,
+        #                 "scope": "live_mtd_bi",
+        #                 "exp": datetime.utcnow() + timedelta(hours=24),
+        #             }
 
-                    email_token = jwt.encode(
-                        email_token_payload,
-                        SECRET_KEY,
-                        algorithm="HS256",
-                    )
+        #             email_token = jwt.encode(
+        #                 email_token_payload,
+        #                 SECRET_KEY,
+        #                 algorithm="HS256",
+        #             )
 
-                    weekly_email_summary_json = response_payload.get("weekly_email_summary_json")
+        #             weekly_email_summary_json = response_payload.get("weekly_email_summary_json")
 
-                    print("[EMAIL DEBUG] weekly_email_summary_json exists:", bool(weekly_email_summary_json))
-                    print("[EMAIL DEBUG] weekly_email_summary_json keys:", list((weekly_email_summary_json or {}).keys()))
-                    print("[EMAIL DEBUG] priority_skus count:", len((weekly_email_summary_json or {}).get("priority_skus", [])))
+                    
 
 
-                    if not weekly_email_summary_json:
-                        print("[WARN] weekly_email_summary_json missing. Email may fall back to old format.")
+        #             if not weekly_email_summary_json:
+        #                 print("[WARN] weekly_email_summary_json missing. Email may fall back to old format.")
 
-                    sent = send_live_bi_email(
-                        to_email=user_email,
-                        country=country,
-                        prev_label=prev_label,
-                        curr_label=curr_label,
-                        deep_link_token=email_token,
-                        weekly_email_summary_json=weekly_email_summary_json,
-                    )
+        #             sent = send_live_bi_email(
+        #                 to_email=user_email,
+        #                 country=country,
+        #                 prev_label=prev_label,
+        #                 curr_label=curr_label,
+        #                 deep_link_token=email_token,
+        #                 weekly_email_summary_json=weekly_email_summary_json,
+        #             )
 
-                    if sent:
-                        if not manual_email_trigger:
-                            mark_bi_email_sent(user_id, country)
-                            _SENT_EMAIL_CACHE.add(cache_key)
+        #             if sent:
+        #                 if not manual_email_trigger:
+        #                     mark_bi_email_sent(user_id, country)
+        #                     _SENT_EMAIL_CACHE.add(cache_key)
 
-                        print("[INFO] Weekly Live BI email sent.")
-                    else:
-                        print("[WARN] Live BI email was not sent, so not marking as sent.")
+        #                 print("[INFO] Weekly Live BI email sent.")
+        #             else:
+        #                 print("[WARN] Live BI email was not sent, so not marking as sent.")
 
-                except Exception as e:
-                    print("[WARN] Error sending live BI email:", e)
-            else:
-                print("[INFO] Email skipped because it was already sent recently.")
-        else:
-            print("[WARN] No user email found, skipping Live BI email.")
+        #         except Exception as e:
+        #             print("[WARN] Error sending live BI email:", e)
+        #     else:
+        #         print("[INFO] Email skipped because it was already sent recently.")
+        # else:
+        #     print("[WARN] No user email found, skipping Live BI email.")
 
         try:
             response_payload = round_numeric_values(response_payload, ndigits=2)
