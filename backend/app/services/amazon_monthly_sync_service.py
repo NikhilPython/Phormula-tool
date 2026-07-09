@@ -9,6 +9,7 @@ from app.utils.amazon_utils import (
     _month_date_range_us_pacific_utc,
     _flatten_transaction_to_row,
     run_upload_pipeline_from_df,
+    dedupe_rows_by_order_id,
     amazon_client,
 )
 from zoneinfo import ZoneInfo
@@ -169,6 +170,13 @@ def sync_monthly_transactions_for_user(
 
             params = {"nextToken": next_token}
 
+    before_dedupe_count = len(all_rows)
+
+    all_rows = dedupe_rows_by_order_id(all_rows)
+
+    after_dedupe_count = len(all_rows)
+    dedupe_count_removed = before_dedupe_count - after_dedupe_count
+
     if is_us_marketplace:
         all_rows = _convert_us_date_time_to_pacific_display(all_rows)
 
@@ -207,6 +215,9 @@ def sync_monthly_transactions_for_user(
         "year": year,
         "month": month,
         "count": len(all_rows),
+        "count_before_dedupe": before_dedupe_count,
+        "count_after_dedupe": after_dedupe_count,
+        "dedupe_count_removed": dedupe_count_removed,
         "transactions": all_rows,
         "store_in_db": store_in_db,
         "run_upload_pipeline": run_upload,

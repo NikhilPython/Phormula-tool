@@ -732,44 +732,10 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
         ).fillna(0).clip(lower=0)
 
         # ------------------------------------------------------------
-        # Remove duplicate product rows BEFORE total row calculation.
-        # Case: same ASIN / same product appears with 2 SKUs in same country
-        # Example: SEWIPESLIDCO and SEWIPESLIDS both mapped to Wipes + Wipes.
-        # We keep only one row so totals are not counted twice.
+        # Keep each SKU as a separate row.
+        # Do NOT dedupe by ASIN or product_name, because same product can have
+        # multiple valid SKUs and each SKU must be visible separately.
         # ------------------------------------------------------------
-        if "asin" in final_df.columns:
-            final_df["_asin_clean"] = (
-                final_df["asin"]
-                .fillna("")
-                .astype(str)
-                .str.strip()
-                .str.upper()
-            )
-        else:
-            final_df["_asin_clean"] = ""
-
-        final_df["_product_clean"] = (
-            final_df["product_name"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .str.lower()
-        )
-
-        final_df["_sku_clean"] = final_df["sku"].fillna("").astype(str).str.strip().str.upper()
-
-        # Prefer ASIN for dedupe. If ASIN is missing, fallback to product_name.
-        final_df["_dedupe_key"] = np.where(
-            final_df["_asin_clean"] != "",
-            "ASIN::" + final_df["_asin_clean"],
-            np.where(
-                final_df["_product_clean"] != "",
-                "PRODUCT::" + final_df["_product_clean"],
-                "SKU::" + final_df["_sku_clean"]
-            )
-        )
-
-        # Prefer master SKU rows first, then row with higher available inventory.
         sort_cols = []
         ascending = []
 
@@ -777,25 +743,71 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             sort_cols.append("row_order")
             ascending.append(True)
 
-        if "available" in final_df.columns:
-            sort_cols.append("available")
-            ascending.append(False)
-
-        sort_cols.append("_sku_clean")
+        sort_cols.append("sku")
         ascending.append(True)
 
         final_df = (
             final_df
             .sort_values(by=sort_cols, ascending=ascending)
-            .drop_duplicates(subset=["_dedupe_key"], keep="first")
-            .drop(columns=[
-                "_asin_clean",
-                "_product_clean",
-                "_sku_clean",
-                "_dedupe_key",
-            ], errors="ignore")
             .reset_index(drop=True)
         )
+
+        if "asin" in final_df.columns:
+            final_df["_asin_clean_for_inventory"] = (
+                final_df["asin"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+            duplicate_asin_inventory_mask = (
+                final_df["_asin_clean_for_inventory"] != ""
+            ) & final_df.duplicated(subset=["_asin_clean_for_inventory"], keep="first")
+
+            asin_inventory_columns_to_zero = [
+                "inbound_quantity",
+                "inbound-working",
+                "inbound-shipped",
+                "inbound-received",
+                "available",
+                "fc-transfer",
+                "unfulfillable-quantity",
+                "inv-age-0-to-90-days",
+                "inv-age-91-to-180-days",
+                "inv-age-181-to-270-days",
+                "inv-age-271-to-365-days",
+                "inv-age-365-plus-days",
+                "estimated-storage-cost-next-month",
+                "total_quantity",
+                "available_quantity",
+                "reserved_quantity",
+                "fulfillable_quantity",
+            ]
+
+            for col in asin_inventory_columns_to_zero:
+                if col in final_df.columns:
+                    final_df.loc[duplicate_asin_inventory_mask, col] = 0
+
+            final_df["Inventory Inwarded"] = safe_numeric(
+                final_df.get("inbound_quantity"), 0
+            )
+
+            final_df["Inventory at the end of the month"] = (
+                safe_numeric(final_df.get("available"), 0)
+                + safe_numeric(final_df.get("fc-transfer"), 0)
+            )
+
+            final_df["Inventory at the beginning of the month"] = (
+                final_df["Inventory at the end of the month"]
+                - final_df["Inventory Inwarded"]
+                + safe_numeric(final_df.get(current_month_col), 0)
+                - safe_numeric(final_df.get("Others"), 0)
+            ).fillna(0).clip(lower=0)
+
+            final_df.drop(columns=["_asin_clean_for_inventory"], inplace=True, errors="ignore")
+
+        
 
         final_df.rename(columns={"sku": "SKU", "product_name": "Product Name"}, inplace=True)
 

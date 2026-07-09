@@ -414,6 +414,75 @@ MTD_COLUMNS = [
     "account_type", "regulatory_fee", "tax_on_regulatory_fee", "bucket",
 ]
 
+def dedupe_rows_by_order_id(rows: list[dict]) -> list[dict]:
+    """
+    Remove duplicate same financial rows between DEFERRED and DEFERRED_RELEASED.
+
+    Priority:
+      DEFERRED_RELEASED > DEFERRED
+
+    RELEASED is not used in priority.
+    """
+    if not rows:
+        return rows
+
+    status_priority = {
+        "DEFERRED_RELEASED": 2,
+        "DEFERRED": 1,
+    }
+
+    best_by_key: dict[tuple, dict] = {}
+
+    for row in rows:
+        order_id = str(row.get("order_id") or "").strip()
+        sku = str(row.get("sku") or "").strip()
+        row_type = str(row.get("type") or "").strip().lower()
+        description = str(row.get("description") or "").strip().lower()
+        quantity = str(row.get("quantity") or "").strip()
+
+        key = (
+            order_id,
+            sku,
+            row_type,
+            description,
+            quantity,
+            str(row.get("product_sales") or 0),
+            str(row.get("product_sales_tax") or 0),
+            str(row.get("selling_fees") or 0),
+            str(row.get("fba_fees") or 0),
+            str(row.get("other_transaction_fees") or 0),
+            str(row.get("other") or 0),
+            str(row.get("total") or 0),
+        )
+
+        current_status = str(
+            row.get("transaction_status")
+            or row.get("status")
+            or row.get("bucket")
+            or ""
+        ).strip().upper()
+
+        current_priority = status_priority.get(current_status, 0)
+
+        old_row = best_by_key.get(key)
+
+        if old_row is None:
+            best_by_key[key] = row
+            continue
+
+        old_status = str(
+            old_row.get("transaction_status")
+            or old_row.get("status")
+            or old_row.get("bucket")
+            or ""
+        ).strip().upper()
+
+        old_priority = status_priority.get(old_status, 0)
+
+        if current_priority > old_priority:
+            best_by_key[key] = row
+
+    return list(best_by_key.values())
 
 
 def get_next_month_year(month, year):
