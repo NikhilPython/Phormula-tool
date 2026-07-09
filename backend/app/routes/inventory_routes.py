@@ -1349,10 +1349,10 @@ def upsert_country_profile():
 
     try:
         stock_unit = int(stock_unit)
-        if stock_unit < 0:
+        if stock_unit <= 0:
             raise ValueError
     except Exception:
-        errors["stock_unit"] = "stock_unit must be a non-negative integer"
+        errors["stock_unit"] = "stock_unit must be a positive integer"
 
     if errors:
         return jsonify({"errors": errors}), 400
@@ -1377,6 +1377,13 @@ def upsert_country_profile():
             db.session.add(profile)
             created = True
         else:
+            if transit_time <= 0 or stock_unit <= 0:
+                return jsonify({
+                    "error": "Invalid country profile values. Existing values were not overwritten.",
+                    "transit_time": transit_time,
+                    "stock_unit": stock_unit
+                }), 400
+
             profile.transit_time = transit_time
             profile.stock_unit = stock_unit
 
