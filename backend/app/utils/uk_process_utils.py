@@ -580,8 +580,11 @@ def process_skuwise_data(user_id, country, month, year):
         is_lost = desc_str_main.isin(LOST_DESCRIPTIONS)
         is_debt_recovery = type_str_main.str.strip().eq("DebtRecovery")
 
-        # ✅ CLEAN FIRST (VERY IMPORTANT)
         df["sku"] = df["sku"].astype(str).str.strip()
+
+        # Keep full data for TOTAL-only calculations like EPRFeeChargeback
+        # because EPRFeeChargeback can come with sku = 0
+        df_misc_source = df.copy()
 
         df = df[
             (df["sku"] != "0") &
@@ -637,15 +640,78 @@ def process_skuwise_data(user_id, country, month, year):
             
         }
 
-        EXCLUDE_TYPES = {"Transfer", "Refund"}
+        # ---------- misc transaction: SKU-wise + blank-SKU/0-SKU total ----------
 
-        leftout_mask = (~desc_str.isin(EXCLUDE_DESCRIPTIONS)) & (~type_str2.isin(EXCLUDE_TYPES))
+        def _norm_misc_key(x):
+            return re.sub(r"\s+", " ", str(x or "").strip()).casefold()
 
-        misc_transaction_total = (
-            pd.to_numeric(df.loc[leftout_mask, "total"], errors="coerce")
-            .fillna(0)
+        misc_df = df_misc_source.copy()
+
+        misc_df["sku"] = misc_df["sku"].fillna("").astype(str).str.strip()
+
+        misc_df["desc_norm"] = misc_df.get(
+            "description",
+            pd.Series("", index=misc_df.index)
+        ).fillna("").astype(str).str.strip()
+
+        misc_df["type_norm"] = (
+            misc_df.get("type", pd.Series("", index=misc_df.index))
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
+
+        misc_df["desc_key"] = misc_df["desc_norm"].map(_norm_misc_key)
+        misc_df["type_key"] = misc_df["type_norm"].map(_norm_misc_key)
+
+        misc_df["total"] = pd.to_numeric(
+            misc_df.get("total", 0),
+            errors="coerce"
+        ).fillna(0.0)
+
+        EXCLUDE_TYPES = {
+            "Transfer",
+            "Refund",
+        }
+
+        exclude_desc_keys = {_norm_misc_key(x) for x in EXCLUDE_DESCRIPTIONS}
+        exclude_type_keys = {_norm_misc_key(x) for x in EXCLUDE_TYPES}
+
+        leftout_mask = (
+            ~misc_df["desc_key"].isin(exclude_desc_keys)
+            & ~misc_df["type_key"].isin(exclude_type_keys)
+        )
+
+        # Logic 1: TOTAL misc_transaction
+        # Includes rows with SKU and rows without SKU.
+        misc_transaction_total = abs(
+            pd.to_numeric(misc_df.loc[leftout_mask, "total"], errors="coerce")
+            .fillna(0.0)
             .sum()
         )
+
+        # Logic 2: SKU-wise misc_transaction
+        # Only rows with SKU can merge into SKU table.
+        tmp_misc = misc_df.loc[
+            leftout_mask
+            & misc_df["sku"].notna()
+            & (misc_df["sku"] != "")
+            & (misc_df["sku"] != "0")
+            & (misc_df["sku"].str.lower() != "none"),
+            ["sku", "total"]
+        ].copy()
+
+        misc_transaction_df = (
+            tmp_misc.groupby("sku", as_index=False)["total"]
+            .sum()
+            .rename(columns={"total": "misc_transaction"})
+        )
+
+        misc_transaction_df["misc_transaction"] = pd.to_numeric(
+            misc_transaction_df["misc_transaction"],
+            errors="coerce"
+        ).fillna(0.0).abs()
 
         # ---------------------------------------------------------------------
         # Centralized platform fee & advertising using helpers
@@ -876,6 +942,12 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped = sku_grouped.merge(df_prev, on="sku", how="left").fillna(0)
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(misc_transaction_df, on="sku", how="left")
+
+        sku_grouped["misc_transaction"] = pd.to_numeric(
+            sku_grouped.get("misc_transaction", 0),
+            errors="coerce"
+        ).fillna(0.0).abs()
 
         sku_grouped = sku_grouped.merge(short_term_storage_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(long_term_storage_fee_df, on="sku", how="left")
@@ -1087,8 +1159,14 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["month"] = month
         sku_grouped["year"] = year
         sku_grouped["country"] = country
-        # misc_transaction is ONLY for TOTAL row
-        sku_grouped["misc_transaction"] = 0.0
+        # misc_transaction can be SKU-wise if SKU exists; blank-SKU values stay only in TOTAL
+        if "misc_transaction" not in sku_grouped.columns:
+            sku_grouped["misc_transaction"] = 0.0
+
+        sku_grouped["misc_transaction"] = pd.to_numeric(
+            sku_grouped["misc_transaction"],
+            errors="coerce"
+        ).fillna(0.0).abs()
         # these will already be merged; keep initialization for schema safety (won't hurt)
         sku_grouped["platform_fee"] = sku_grouped.get("platform_fee", 0).fillna(0)
         sku_grouped["rembursement_fee"] = 0

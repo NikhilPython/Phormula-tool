@@ -1647,6 +1647,20 @@ def get_current_global_data_for_live_bi(user_id: int):
         gt_money_total(uk_gt, "platform_fee_inventory_storage", uk_to_usd_rate)
         + gt_money_total(us_gt, "platform_fee_inventory_storage", 1)
     )
+    global_short_term_storage_fee = (
+        gt_money_total(uk_gt, "short_term_storage_fee", uk_to_usd_rate)
+        + gt_money_total(us_gt, "short_term_storage_fee", 1)
+    )
+
+    global_long_term_storage_fee = (
+        gt_money_total(uk_gt, "long_term_storage_fee", uk_to_usd_rate)
+        + gt_money_total(us_gt, "long_term_storage_fee", 1)
+    )
+
+    global_fba_disposal = (
+        gt_money_total(uk_gt, "fba_disposal", uk_to_usd_rate)
+        + gt_money_total(us_gt, "fba_disposal", 1)
+    )
 
     global_platformfeenew = (
         gt_money_total(uk_gt, "platformfeenew", uk_to_usd_rate)
@@ -1681,6 +1695,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "other", "gross_sales", "cogs", "profit", "net_sales","asp", 
         "ads_spend", "product_spend", "display_spend", "brand_spend",
         "platform_fee", "platform_fee_inventory_storage",
+        "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
         "platformfeenew", "dealsvouchar_ads", "shipment_fees",
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
@@ -2163,6 +2178,9 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     total_row["brand_spend"] = round(global_brand_spend, 2)
     total_row["platform_fee_inventory_storage"] = round(global_platform_fee_inventory_storage, 2)
+    total_row["short_term_storage_fee"] = round(global_short_term_storage_fee, 2)
+    total_row["long_term_storage_fee"] = round(global_long_term_storage_fee, 2)
+    total_row["fba_disposal"] = round(global_fba_disposal, 2)
     total_row["platformfeenew"] = round(global_platformfeenew, 2)
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
     total_row["misc_transaction"] = round(global_misc_transaction, 2)
@@ -2274,6 +2292,10 @@ def get_current_global_data_for_live_bi(user_id: int):
     derived_totals_global = {
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(float(total_row.get("platform_fee", 0.0) or 0.0), 2),
+        "platform_fee_inventory_storage": round(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0), 2),
+        "short_term_storage_fee": round(float(total_row.get("short_term_storage_fee", 0.0) or 0.0), 2),
+        "long_term_storage_fee": round(float(total_row.get("long_term_storage_fee", 0.0) or 0.0), 2),
+        "fba_disposal": round(float(total_row.get("fba_disposal", 0.0) or 0.0), 2),
         "advertising_fees": round(total_ads, 2),
         "ads_spend": round(float(total_row.get("ads_spend", 0.0) or 0.0), 2),
         "misc_transaction": round(float(total_row.get("misc_transaction", 0.0) or 0.0), 2),
@@ -2669,7 +2691,13 @@ def finances_mtd_transactions():
     # totals stored in SKU-wise table
     platformfeenew_total = 0.0
     platform_fee_inventory_storage_total = 0.0
+    short_term_storage_fee_total = 0.0
+    long_term_storage_fee_total = 0.0
+    fba_disposal_total = 0.0
     dealsvouchar_ads_total = 0.0
+    short_term_storage_fee_df = pd.DataFrame(columns=["sku", "short_term_storage_fee"])
+    long_term_storage_fee_df = pd.DataFrame(columns=["sku", "long_term_storage_fee"])
+    fba_disposal_df = pd.DataFrame(columns=["sku", "fba_disposal"])
     lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
     misc_transaction_df = pd.DataFrame(columns=["sku", "misc_transaction"])
     misc_transaction_total = 0.0
@@ -2698,6 +2726,32 @@ def finances_mtd_transactions():
             mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
             return float(pd.to_numeric(df_all.loc[mask, "total"], errors="coerce").fillna(0.0).sum())
         
+        def sku_sum_total_where_desc_contains(keywords, out_col):
+            if "total" not in df_all.columns:
+                return pd.DataFrame(columns=["sku", out_col])
+
+            pattern = "|".join([re.escape(k) for k in keywords])
+            mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+
+            tmp = df_all.loc[
+                mask
+                & df_all["sku"].notna()
+                & (df_all["sku"].astype(str).str.strip() != "")
+                & (df_all["sku"].astype(str).str.strip() != "0"),
+                ["sku", "total"]
+            ].copy()
+
+            tmp["sku"] = tmp["sku"].astype(str).str.strip()
+            tmp["total"] = pd.to_numeric(tmp["total"], errors="coerce").fillna(0.0)
+
+            out = (
+                tmp.groupby("sku", as_index=False)["total"]
+                .sum()
+                .rename(columns={"total": out_col})
+            )
+
+            out[out_col] = pd.to_numeric(out[out_col], errors="coerce").fillna(0.0).abs()
+            return out
         # ---------------- SHIPMENT FEES ----------------
         shipment_keywords = [
             "FBA international shipping charge",
@@ -2723,6 +2777,32 @@ def finances_mtd_transactions():
                 "INCORRECT_FEES_NON_ITEMIZED",
                 "StorageReservationBilling",
             ]
+        )
+        short_term_storage_fee_total = abs(sum_total_where_desc_contains([
+            "FBAStorageBilling"
+        ]))
+
+        long_term_storage_fee_total = abs(sum_total_where_desc_contains([
+            "FBALongTermStorageBilling"
+        ]))
+
+        fba_disposal_total = abs(sum_total_where_desc_contains([
+            "FBADisposal"
+        ]))
+
+        short_term_storage_fee_df = sku_sum_total_where_desc_contains(
+            ["FBAStorageBilling"],
+            "short_term_storage_fee"
+        )
+
+        long_term_storage_fee_df = sku_sum_total_where_desc_contains(
+            ["FBALongTermStorageBilling"],
+            "long_term_storage_fee"
+        )
+
+        fba_disposal_df = sku_sum_total_where_desc_contains(
+            ["FBADisposal"],
+            "fba_disposal"
         )
 
         dealsvouchar_ads_total = sum_total_where_desc_contains(
@@ -2917,6 +2997,10 @@ def finances_mtd_transactions():
     derived_totals = {
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(platform_fee_total, 2),
+        "platform_fee_inventory_storage": round(float(platform_fee_inventory_storage_total or 0.0), 2),
+        "short_term_storage_fee": round(float(short_term_storage_fee_total or 0.0), 2),
+        "long_term_storage_fee": round(float(long_term_storage_fee_total or 0.0), 2),
+        "fba_disposal": round(float(fba_disposal_total or 0.0), 2),
         "advertising_fees": round(advertising_fee_total, 2),
         "shipment_fees": round(float(shipment_fees or 0.0), 2),
         "net_sales": round(net_sales, 2),
@@ -3074,6 +3158,24 @@ def finances_mtd_transactions():
             df_sku["misc_transaction"],
             errors="coerce"
         ).fillna(0.0)
+
+        # merge storage fee breakup columns
+        for fee_df in [
+            short_term_storage_fee_df,
+            long_term_storage_fee_df,
+            fba_disposal_df,
+        ]:
+            if fee_df is not None and not fee_df.empty:
+                df_sku = df_sku.merge(fee_df, on="sku", how="left")
+
+        for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+
+            df_sku[col] = pd.to_numeric(
+                df_sku[col],
+                errors="coerce"
+            ).fillna(0.0).abs()
 
         # finance derived
         if "product_sales" not in df_sku.columns:
@@ -3320,11 +3422,14 @@ def finances_mtd_transactions():
             + df_sku["sb_ads_sales"]
         )
 
-        # total-only breakup columns
-        # total-only breakup columns
         df_sku["platform_fee_inventory_storage"] = 0.0
         df_sku["platformfeenew"] = 0.0
         df_sku["dealsvouchar_ads"] = 0.0
+
+        for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+            df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0).abs()
 
         # platform_fee per SKU row
         df_sku["platform_fee"] = (
@@ -3539,6 +3644,9 @@ def finances_mtd_transactions():
 
         # store totals
         total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
+        total_row["short_term_storage_fee"] = round(float(short_term_storage_fee_total or 0.0), 2)
+        total_row["long_term_storage_fee"] = round(float(long_term_storage_fee_total or 0.0), 2)
+        total_row["fba_disposal"] = round(float(fba_disposal_total or 0.0), 2)
         total_row["shipment_fees"] = round(float(shipment_fees or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
@@ -3818,6 +3926,9 @@ def finances_mtd_transactions():
             "cm2_profit",
             "amazon_fees",
             "platform_fee",
+            "short_term_storage_fee",
+            "long_term_storage_fee",
+            "fba_disposal",
             "advertising_fees",
             "shipment_fees",
             "profit_percentage",
