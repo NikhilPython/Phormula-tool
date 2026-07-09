@@ -2569,6 +2569,9 @@ const buildInventoryInsightsFromResponses = (
 
             unitsSold: getCurrentMonthUnitsSold(backendTotalRawRow),
 
+            // ✅ Add this
+            salesLast30Days: inventoryToNum(backendTotalRawRow?.["Sales Last 30 Days"]),
+
             // ✅ backend value only
             coverageRatio: inventoryToNum(
                 backendTotalRawRow?.["Coverage Ratio (In Months)"] ??

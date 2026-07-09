@@ -714,10 +714,18 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
             },
+            // {
+            //     key: "unitsSold",
+            //     label: "Units Sold",
+            //     width: "85px",
+            //     align: "center",
+            //     thClassName: heatmapHeaderClassName,
+            //     tdClassName: defaultTdClassName,
+            // },
             {
-                key: "unitsSold",
-                label: "Units Sold",
-                width: "85px",
+                key: "salesLast30Days",
+                label: "Sales Last 30 Days",
+                width: "105px",
                 align: "center",
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
@@ -762,7 +770,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             },
             {
                 type: "single" as const,
-                key: "unitsSold",
+                key: "salesLast30Days",
             },
             {
                 type: "single" as const,
@@ -994,6 +1002,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         {numberDisplay(row.unitsSold)}
                     </span>
                 );
+            }
+
+            if (colKey === "salesLast30Days") {
+                if (row.isPercentageRow) return "";
+
+                return numberDisplay(row.salesLast30Days);
             }
 
             if (colKey === "coverageRatio") {
