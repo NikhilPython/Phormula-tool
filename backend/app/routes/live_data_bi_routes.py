@@ -3439,6 +3439,13 @@ def live_mtd_vs_previous():
                 analysis = cached_ai["analysis"]
                 summary_out = cached_ai["summary"]
                 global_strategy_parsed = cached_ai.get("strategy", {}) or {}
+            elif data_only_refresh:
+                analysis = {}
+                summary_out = {
+                    "summary_text": "",
+                    "metric_bullets": [],
+                }
+                global_strategy_parsed = {}
             else:
                 try:
                     analysis = run_live_prompt_1_analysis(payload_ai)
@@ -3509,7 +3516,7 @@ def live_mtd_vs_previous():
             # -------------------------------------------------
             # GLOBAL: Prompt-2 portfolio strategy
             # -------------------------------------------------
-            if not global_strategy_parsed:
+            if not global_strategy_parsed and not data_only_refresh:
                 try:
                     global_live_context = []
 

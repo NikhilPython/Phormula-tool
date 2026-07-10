@@ -5975,7 +5975,7 @@ export default function DashboardPage() {
         ]
     );
 
-    const runDashboardLoadWithSteps = useCallback(async () => {
+    const runDashboardLoadWithSteps = useCallback(async ({ dataOnlyRefresh = false }: { dataOnlyRefresh?: boolean } = {}) => {
         if (isMonthYearNA) {
             resetStepState();
             return;
@@ -6063,7 +6063,7 @@ export default function DashboardPage() {
 
                     // ✅ Browser/page reload must fetch backend cached AI summary.
                     // Do not preserve stale parent AI summary here.
-                    dataOnlyRefresh: false,
+                    dataOnlyRefresh,
                 });
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
@@ -6798,7 +6798,7 @@ export default function DashboardPage() {
 
             await fetchCountryTime();
 
-            await runDashboardLoadWithSteps();
+            await runDashboardLoadWithSteps({ dataOnlyRefresh: true });
 
             const refreshedAt = Date.now();
             setLastRefreshAt(refreshedAt);
