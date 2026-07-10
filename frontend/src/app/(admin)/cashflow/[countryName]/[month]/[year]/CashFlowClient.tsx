@@ -533,17 +533,17 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   };
 
 
-  const fetchAllYearlyData = async () => {
+  const fetchYearlyMonthlyData = async (
+    targetYear: string,
+    monthsToFetch: string[]
+  ) => {
     const yearlyData: Record<string, Partial<SummaryShape>> = {};
-
-    // Only completed/historic months
-    const monthsToFetch = getCompletedMonthsForYear(year);
 
     for (const mName of monthsToFetch) {
       try {
         const result = await fetchSpecificPeriodData(
           mName.toLowerCase(),
-          year,
+          targetYear,
           "monthly"
         );
 
@@ -551,11 +551,10 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           yearlyData[mName] = result.summary;
         }
       } catch {
-        // Continue fetching remaining completed months
+        // Continue fetching the remaining months
       }
     }
 
-    setAllYearlyData(yearlyData);
     return yearlyData;
   };
 
@@ -631,14 +630,38 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         setQuarterlyMonthlyData(monthlyData);
       }
       else if (periodType === "yearly") {
-        const yearlyData = await fetchAllYearlyData();
+        const selectedYearNumber = Number(year);
+        const previousYear = String(selectedYearNumber - 1);
 
-        const completedMonthsSummary =
-          buildYearlySummaryFromMonths(yearlyData);
+        // Current selected year:
+        // If current year is selected, exclude the ongoing month.
+        // For an old year, use all 12 months.
+        const currentYearMonths = getCompletedMonthsForYear(year);
+
+        const currentYearData = await fetchYearlyMonthlyData(
+          year,
+          currentYearMonths
+        );
+
+        // Use the same months for previous year comparison.
+        // Example: Jan-Jun 2026 compared with Jan-Jun 2025.
+        const previousYearData = await fetchYearlyMonthlyData(
+          previousYear,
+          currentYearMonths
+        );
+
+        const currentSummary =
+          buildYearlySummaryFromMonths(currentYearData);
+
+        const previousSummary =
+          buildYearlySummaryFromMonths(previousYearData);
+
+        // Used by the yearly line graph
+        setAllYearlyData(currentYearData);
 
         setData({
-          summary: completedMonthsSummary,
-          previous_summary: undefined,
+          summary: currentSummary,
+          previous_summary: previousSummary,
         });
       } else {
         const resp = await fetchSpecificPeriodData(
