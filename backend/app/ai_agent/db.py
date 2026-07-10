@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, List
+from io import BytesIO
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -98,18 +99,36 @@ MONEY_METRICS = {
     "asp",
 }
 
+def _currency_symbol_for_country(country: str) -> str:
+    country_key = (country or "").strip().lower()
+    country_aliases = {
+        "uk": "\u00a3",
+        "gb": "\u00a3",
+        "gbr": "\u00a3",
+        "amazon uk": "\u00a3",
+        "united kingdom": "\u00a3",
+        "us": "$",
+        "usa": "$",
+        "amazon us": "$",
+        "united states": "$",
+        "united states of america": "$",
+    }
+    return country_aliases.get(country_key, "")
+
+
 def _format_value(value: float, metric_name: str, country: str) -> str:
-    # 🔥 FIX: already % values — DO NOT use .2%
-    if metric_name in {"sales_mix", "profit_mix", "acos"}:
+    metric_key = (metric_name or "").strip().lower()
+
+    # These values are already stored as percentages.
+    if metric_key in {"sales_mix", "profit_mix", "acos"}:
         return f"{value:.2f}%"
 
-    if metric_name == "total_quantity":
+    if metric_key == "total_quantity":
         return f"{value:,.0f}"
 
-    if metric_name in MONEY_METRICS:
-        if country and country.lower() == "uk":
-            return f"£{value:,.2f}"
-        return f"{value:,.2f}"
+    if metric_key in MONEY_METRICS:
+        symbol = _currency_symbol_for_country(country)
+        return f"{symbol}{value:,.2f}" if symbol else f"{value:,.2f}"
 
     return f"{value:,.2f}"
 
@@ -1119,6 +1138,353 @@ def get_inventory_snapshot(
         "snapshot_date": snapshot_date.isoformat() if snapshot_date else None,
         "country": country,
     }
+
+
+FORECAST_FILE_KINDS = {
+    "inventory": "inventory_forecast",
+    "demand": "forecasts_for",
+    "pnl": "pnl_forecast",
+}
+
+
+def _stored_file_month_name(month: Optional[int]) -> Optional[str]:
+    if not month:
+        return None
+    try:
+        return MONTH_NUM_TO_NAME[int(month)]
+    except Exception:
+        return None
+
+
+def _load_latest_forecast_file(
+    user_id: int,
+    country: str,
+    kind: str,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    validate_user_id(user_id)
+    country = normalize_country(country)
+    month_name = _stored_file_month_name(month)
+    year_text = str(year) if year else None
+
+    engine = get_engine()
+    params: Dict[str, Any] = {
+        "user_id": int(user_id),
+        "country": country,
+        "kind": kind,
+        "month": month_name,
+        "year": year_text,
+    }
+
+    query = text("""
+        SELECT filename, kind, month, year, country, data, created_at
+        FROM stored_files
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+          AND kind = :kind
+        ORDER BY
+          CASE
+            WHEN (:month IS NOT NULL AND :year IS NOT NULL AND LOWER(month) = :month AND year = :year) THEN 0
+            ELSE 1
+          END,
+          created_at DESC,
+          id DESC
+        LIMIT 1
+    """)
+
+    with engine.connect() as conn:
+        row = conn.execute(query, params).mappings().first()
+
+    if not row:
+        return None
+
+    data = row.get("data")
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+
+    exact_period_match = True
+    if month_name and year_text:
+        exact_period_match = (
+            str(row.get("month") or "").strip().lower() == month_name
+            and str(row.get("year") or "").strip() == year_text
+        )
+
+    return {
+        "filename": row.get("filename"),
+        "kind": row.get("kind"),
+        "month": row.get("month"),
+        "year": row.get("year"),
+        "country": row.get("country"),
+        "data": bytes(data or b""),
+        "created_at": row.get("created_at"),
+        "exact_period_match": exact_period_match,
+    }
+
+
+_FORECAST_MONTH_RE = re.compile(r"^[A-Za-z]{3}'\d{2}(?:\s+Sold)?$")
+
+
+def _parse_forecast_month_label(label: str) -> Optional[datetime]:
+    clean = str(label or "").strip().replace(" Sold", "").replace("'", "")
+    try:
+        return datetime.strptime(clean, "%b%y")
+    except Exception:
+        return None
+
+
+def _forecast_month_columns(df: pd.DataFrame) -> List[str]:
+    columns = [str(c).strip() for c in df.columns]
+    month_cols = [col for col in columns if _FORECAST_MONTH_RE.match(col)]
+    return sorted(
+        month_cols,
+        key=lambda col: _parse_forecast_month_label(col) or datetime.max,
+    )
+
+
+def _forecast_columns_from_month(
+    columns: List[str],
+    month: Optional[int],
+    year: Optional[int],
+) -> List[str]:
+    forecast_cols = [col for col in columns if not str(col).endswith(" Sold")]
+    if not month or not year:
+        return forecast_cols
+
+    selected = datetime(int(year), int(month), 1)
+    out = []
+    for col in forecast_cols:
+        parsed = _parse_forecast_month_label(col)
+        if parsed and parsed >= selected:
+            out.append(col)
+    return out
+
+
+def _forecast_float(value: Any) -> float:
+    try:
+        numeric = pd.to_numeric(value, errors="coerce")
+        if pd.isna(numeric):
+            return 0.0
+        return float(numeric)
+    except Exception:
+        return 0.0
+
+
+def _read_inventory_forecast_df(file_row: Dict[str, Any], country: str) -> pd.DataFrame:
+    raw = BytesIO(file_row["data"])
+    headers = [0] if country == "global" else [6, 0]
+    last_error: Optional[Exception] = None
+
+    for header in headers:
+        try:
+            raw.seek(0)
+            df = pd.read_excel(raw, header=header, engine="openpyxl")
+            df.columns = [str(c).strip() for c in df.columns]
+            if "sku" in df.columns or "Product Name" in df.columns:
+                return df
+        except Exception as exc:
+            last_error = exc
+
+    if last_error:
+        raise last_error
+    raise ValueError("Inventory forecast workbook has no usable header row")
+
+
+def get_inventory_forecast_snapshot(
+    user_id: int,
+    country: str,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    product_query: Optional[str] = None,
+) -> Dict[str, Any]:
+    country = normalize_country(country)
+    file_row = _load_latest_forecast_file(
+        user_id=user_id,
+        country=country,
+        kind=FORECAST_FILE_KINDS["inventory"],
+        month=month,
+        year=year,
+    )
+    if not file_row:
+        return {
+            "available": False,
+            "kind": "inventory_forecast",
+            "country": country,
+            "rows": [],
+            "totals": {},
+            "note": "No inventory forecast file found",
+        }
+
+    df = _read_inventory_forecast_df(file_row, country)
+    df = df.where(pd.notnull(df), None)
+    month_cols = _forecast_month_columns(df)
+    sold_cols = [col for col in month_cols if str(col).endswith(" Sold")]
+    forecast_cols = _forecast_columns_from_month(month_cols, month, year)
+    forecast_cols_3 = forecast_cols[:3]
+
+    product_col = "Product Name" if "Product Name" in df.columns else "product_name"
+    sku_col = "sku" if "sku" in df.columns else "SKU" if "SKU" in df.columns else None
+
+    working = df.copy()
+    if sku_col and sku_col in working.columns:
+        working = working[working[sku_col].astype(str).str.lower() != "total"]
+
+    if product_query:
+        pq = str(product_query).strip().lower()
+        mask = pd.Series(False, index=working.index)
+        if product_col in working.columns:
+            mask = mask | working[product_col].astype(str).str.lower().str.contains(re.escape(pq), na=False)
+        if sku_col:
+            mask = mask | working[sku_col].astype(str).str.lower().str.contains(re.escape(pq), na=False)
+        working = working[mask]
+
+    rows: List[Dict[str, Any]] = []
+    for _, row in working.iterrows():
+        forecast_values = {
+            col: _forecast_float(row.get(col))
+            for col in forecast_cols_3
+        }
+        sold_values = {
+            col: _forecast_float(row.get(col))
+            for col in sold_cols[-3:]
+        }
+        projected_total = _forecast_float(row.get("Projected Sales Total")) or sum(forecast_values.values())
+        inventory_at_month_end = _forecast_float(row.get("Inventory at Month End"))
+        dispatch = _forecast_float(row.get("Dispatch"))
+
+        rows.append({
+            "sku": str(row.get(sku_col) or "").strip() if sku_col else "",
+            "product_name": str(row.get(product_col) or "").strip() if product_col in working.columns else "",
+            "sold": sold_values,
+            "forecast": forecast_values,
+            "projected_sales_total": projected_total,
+            "inventory_at_month_end": inventory_at_month_end,
+            "dispatch": dispatch,
+        })
+
+    totals = {
+        "forecast_units": {
+            col: sum(float(r["forecast"].get(col, 0.0) or 0.0) for r in rows)
+            for col in forecast_cols_3
+        },
+        "projected_sales_total": sum(float(r.get("projected_sales_total", 0.0) or 0.0) for r in rows),
+        "inventory_at_month_end": sum(float(r.get("inventory_at_month_end", 0.0) or 0.0) for r in rows),
+        "dispatch": sum(float(r.get("dispatch", 0.0) or 0.0) for r in rows),
+    }
+
+    rows = sorted(rows, key=lambda r: float(r.get("projected_sales_total", 0.0) or 0.0), reverse=True)
+
+    return {
+        "available": True,
+        "kind": "inventory_forecast",
+        "country": country,
+        "filename": file_row.get("filename"),
+        "stored_month": file_row.get("month"),
+        "stored_year": file_row.get("year"),
+        "exact_period_match": file_row.get("exact_period_match", True),
+        "month_columns": month_cols,
+        "sold_columns": sold_cols[-3:],
+        "forecast_columns": forecast_cols_3,
+        "rows": rows,
+        "totals": totals,
+        "row_count": len(rows),
+    }
+
+
+def get_pnl_forecast_snapshot(
+    user_id: int,
+    country: str,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    product_query: Optional[str] = None,
+) -> Dict[str, Any]:
+    country = normalize_country(country)
+    file_row = _load_latest_forecast_file(
+        user_id=user_id,
+        country=country,
+        kind=FORECAST_FILE_KINDS["pnl"],
+        month=month,
+        year=year,
+    )
+    if not file_row:
+        return {
+            "available": False,
+            "kind": "pnl_forecast",
+            "country": country,
+            "rows": [],
+            "totals": {},
+            "note": "No P&L forecast file found",
+        }
+
+    df = pd.read_excel(BytesIO(file_row["data"]), engine="openpyxl")
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.where(pd.notnull(df), None)
+
+    sku_col = "sku"
+    product_col = "product_name" if "product_name" in df.columns else "Product Name"
+    rows_df = df.copy()
+    if product_query:
+        pq = str(product_query).strip().lower()
+        mask = rows_df[sku_col].astype(str).str.lower().str.contains(re.escape(pq), na=False)
+        if product_col in rows_df.columns:
+            mask = mask | rows_df[product_col].astype(str).str.lower().str.contains(re.escape(pq), na=False)
+        rows_df = rows_df[mask]
+
+    total_row = df[df[sku_col].astype(str).str.lower() == "total"].head(1)
+    total_source = rows_df if product_query else total_row
+
+    def sum_col(col: str) -> float:
+        if col not in total_source.columns or total_source.empty:
+            return 0.0
+        return float(pd.to_numeric(total_source[col], errors="coerce").fillna(0).sum())
+
+    def row_value(name: str) -> float:
+        matched = df[df[sku_col].astype(str).str.lower() == name.lower()]
+        if matched.empty or "value" not in matched.columns:
+            return 0.0
+        return float(pd.to_numeric(matched["value"], errors="coerce").fillna(0).sum())
+
+    rows: List[Dict[str, Any]] = []
+    product_rows = rows_df[~rows_df[sku_col].astype(str).str.lower().isin({
+        "total",
+        "platform_fees_total",
+        "advertising_total",
+        "cm2profit_total",
+        "cm2margin_total",
+        "acos_total",
+    })]
+    for _, row in product_rows.iterrows():
+        rows.append({
+            "sku": str(row.get(sku_col) or "").strip(),
+            "product_name": str(row.get(product_col) or "").strip() if product_col in product_rows.columns else "",
+            "forecast_units": _forecast_float(row.get("forecast_sum")),
+            "forecast_sales": _forecast_float(row.get("Total_Sales_sum")),
+            "forecast_profit": _forecast_float(row.get("profit_sum")),
+        })
+
+    rows = sorted(rows, key=lambda r: float(r.get("forecast_sales", 0.0) or 0.0), reverse=True)
+
+    return {
+        "available": True,
+        "kind": "pnl_forecast",
+        "country": country,
+        "filename": file_row.get("filename"),
+        "stored_month": file_row.get("month"),
+        "stored_year": file_row.get("year"),
+        "exact_period_match": file_row.get("exact_period_match", True),
+        "totals": {
+            "forecast_units": sum_col("forecast_sum"),
+            "forecast_sales": sum_col("Total_Sales_sum"),
+            "forecast_profit": sum_col("profit_sum"),
+            "forecast_cm2_profit": row_value("cm2profit_total"),
+            "forecast_ad_spend": row_value("advertising_total"),
+            "forecast_acos": row_value("acos_total"),
+            "forecast_cm2_margin": row_value("cm2margin_total"),
+        },
+        "rows": rows,
+        "row_count": len(rows),
+    }
+
 
 INVENTORY_METRICS = {
     "available",

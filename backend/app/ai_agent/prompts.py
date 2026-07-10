@@ -89,6 +89,7 @@ Return ONLY valid JSON with the following keys:
 - metric_name: one of ["net_sales","gross_sales","profit","cm2_profit","advertising_total","platform_fee","amazon_fee","fba_fees","selling_fees","refund_sales","total_quantity","profit_percentage","acos","asp","sales_mix","profit_mix", null]
 - product_query: string or null
 - needs_advice: boolean
+- needs_forecast_data: boolean
 - response_mode: "short" or "detailed"
 - clarification_question: string or null
 - metric_names: list of metrics or null
@@ -197,6 +198,30 @@ ranking:
 
 summary:
 - overall business view
+
+---------------------------------------
+FORECAST DATA ROUTING RULES
+---------------------------------------
+
+Set needs_forecast_data = true when the user is asking about future expected demand,
+projected units, expected sales/profit, dispatch planning, purchase-order planning,
+future stock needs, upcoming months, or what quantity to prepare/order/send.
+
+Do this even if the user does not use the exact word "forecast".
+
+Examples:
+- "what demand should I prepare for refill pack next month"
+- "how many units will classic need in august"
+- "which product is expected to sell most"
+- "how much stock should I send"
+- "show future sales and profit"
+- "what should my PO be"
+- "expected sales for next 3 months"
+
+Keep needs_forecast_data = false for historical-only questions like:
+- "what were my sales in March"
+- "which SKU had highest profit last 6 months"
+- "why did sales drop in July"
 
 ---------------------------------------
 ANALYSIS TYPE RULES 

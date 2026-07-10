@@ -63,6 +63,7 @@ class AgentState(TypedDict, total=False):
 
     response_mode: str
     needs_advice: bool
+    needs_forecast_data: bool
     email_requested: bool
     restored_from_memory: bool
     clarification_question: Optional[str]

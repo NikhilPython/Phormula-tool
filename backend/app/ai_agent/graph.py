@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from app.utils.live_bi_utils import generate_sku_inventory_flags
-from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine
+from app.ai_agent.db import _format_value, fetch_period_dfs, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine, get_inventory_forecast_snapshot, get_pnl_forecast_snapshot
 from app.ai_agent.email_service import send_agent_email, build_email_html, build_excel_attachment
 from app.ai_agent.formula_engine import (
     OVERALL_MONTH_METRICS,
@@ -252,6 +252,7 @@ class RequestPlanModel(BaseModel):
     metric_names: Optional[List[str]] = None
     product_queries: Optional[List[str]] = None
     needs_advice: bool = False
+    needs_forecast_data: bool = False
     response_mode: str = "short"
     clarification_question: Optional[str] = None
     top_n: Optional[int] = None
@@ -296,6 +297,7 @@ class RequestPlan:
     task_type: str
     needs_advice: bool
     response_mode: str
+    needs_forecast_data: bool = False
     metric_name: Optional[str] = None
     dimension: Optional[str] = None
     product_query: Optional[str] = None
@@ -770,6 +772,7 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
             reasoning_mode=reasoning_mode,
             task_type=task_type,
             needs_advice=bool(result.needs_advice or reasoning_mode in {"analysis", "decision"}),
+            needs_forecast_data=bool(result.needs_forecast_data or fallback.needs_forecast_data),
             response_mode=response_mode,
             metric_name=metric_name,
             dimension=dimension,
@@ -795,6 +798,10 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
 
 
 def _build_tool_plan(state: AgentState) -> List[str]:
+
+    if _is_forecast_request(state):
+        logger.info("[ROUTE_FIX] forecast request -> forecast_analysis")
+        return ["forecast_analysis"]
 
     if state.get("target_countries") and len(state.get("target_countries") or []) > 1:
         return ["multi_country"]
@@ -1030,10 +1037,10 @@ def _generate_business_insights(state: AgentState) -> str:
         period = state.get("current_metrics", {}).get("period_label")
 
         # -------- CURRENCY HANDLING --------
-        country = (state.get("country") or "").lower()
+        country = (state.get("country") or "").strip().lower()
 
-        if country == "uk":
-            currency_symbol = "£"
+        if country in {"uk", "gb", "gbr", "amazon uk", "united kingdom"}:
+            currency_symbol = "\u00a3"
             currency_code = "GBP"
         else:
             currency_symbol = "$"
@@ -1105,92 +1112,27 @@ Keep it concise, business-focused, and actionable.
 
 def _compute_summary(state: AgentState) -> AgentState:
     engine = state["engine"]
+    metric_names = _summary_metric_names_for_state(state)
+    row = _build_country_summary_row(engine, state, state["country"], metric_names)
+    primary_metric = metric_names[0] if metric_names else "summary"
 
-    # -------- USE REQUESTED PERIOD --------
-    period = state.get("period_parsed") or {}
-
-    if period.get("type") == "single":
-        month = period.get("month")
-        year = period.get("year")
-        label = f"{month:02d}/{year}"
-    else:
-        latest = latest_available_month(engine, state["user_id"], state["country"])
-        month = latest.month
-        year = latest.year
-        label = latest.label
-
-    # -------- BUSINESS METRICS --------
-    BUSINESS_REPORT_METRICS = [
-        "net_sales",
-        "profit",
-        "total_cm2_profit",
-        "total_quantity",
-        "asp",
-        "acos",
-        "total_ads",
-        "platform_fee",
-        "rembursement_fee",
-    ]
-
-    metrics: Dict[str, float] = {}
-
-    for metric in BUSINESS_REPORT_METRICS:
-        try:
-            metrics[metric] = float(
-                get_metric_for_month(
-                    engine,
-                    state["user_id"],
-                    state["country"],
-                    metric,
-                    month,
-                    year
-                ).get("total", 0.0)
-            )
-        except Exception:
-            logger.debug("Skipping summary metric %s", metric, exc_info=True)
-
-    # -------- GROWTH DRIVER --------
-    growth_driver = None
-    try:
-        growth_driver = get_growth_driver_insights(
-            engine,
-            state["user_id"],
-            state["country"],
-            "net_sales",
-            month,
-            year
-        )
-    except Exception:
-        logger.debug("Summary growth drivers unavailable", exc_info=True)
-
-    # -------- TOP PRODUCTS --------
-    top_products = []
-    try:
-        latest_sales = get_metric_for_month(
-            engine,
-            state["user_id"],
-            state["country"],
-            "net_sales",
-            month,
-            year
-        )
-        top_products = latest_sales.get("per_sku", [])[:5]
-    except Exception:
-        logger.debug("Summary top products unavailable", exc_info=True)
-
-    # -------- FINAL STATE --------
     state["current_metrics"] = {
-        "metric": "summary",
-        "period_label": label,
-        "metrics": metrics,
-        "total": metrics.get("profit"),
+        "metric": primary_metric,
+        "period_label": row.get("period_label"),
+        "metrics": row.get("metrics", {}),
+        "total": (row.get("metrics") or {}).get(primary_metric),
     }
 
     state["analysis_result"] = {
         "type": "summary",
-        "metrics": metrics,
-        "growth_driver": growth_driver,
-        "top_products": top_products,
+        "metrics": row.get("metrics", {}),
+        "formatted_metrics": row.get("formatted_metrics", {}),
+        "country": state.get("country"),
+        "country_label": row.get("country_label"),
+        "period_label": row.get("period_label"),
+        "product": row.get("product"),
+        "top_product": row.get("top_product"),
+        "rows": [row],
     }
 
     return state
@@ -2670,6 +2612,9 @@ def _unique_metrics_from_state(state: AgentState) -> List[str]:
 
 
 def _is_multi_country_time_query(state: AgentState) -> bool:
+    if _is_summary_request(state):
+        return False
+
     query = (state.get("user_query") or "").lower()
     payload_type = (state.get("period_payload") or {}).get("type")
     time_movement_phrases = [
@@ -2873,6 +2818,427 @@ def _metric_performance_score(metric_name: str, latest_change: Optional[Dict[str
     return -delta if metric_name in LOWER_IS_BETTER_METRICS else delta
 
 
+FORECAST_QUERY_TERMS = [
+    "forecast",
+    "forecasted",
+    "forecasting",
+    "projected",
+    "projection",
+    "predict",
+    "predicted",
+    "future demand",
+    "future sales",
+    "dispatch",
+    "purchase order",
+    "po planning",
+]
+
+
+def _is_forecast_request(state: AgentState) -> bool:
+    if state.get("needs_forecast_data"):
+        return True
+
+    query = (state.get("user_query") or "").lower()
+    return any(term in query for term in FORECAST_QUERY_TERMS)
+
+
+def _forecast_period_from_state(state: AgentState) -> Tuple[Optional[int], Optional[int], str]:
+    payload = state.get("period_payload") or state.get("period_parsed") or {}
+
+    if payload.get("type") == "single":
+        month = int(payload.get("month"))
+        year = int(payload.get("year"))
+        return month, year, datetime(year, month, 1).strftime("%b %Y")
+
+    if payload.get("type") == "range":
+        month = int(payload.get("start_month"))
+        year = int(payload.get("start_year"))
+        start_label = datetime(year, month, 1).strftime("%b %Y")
+        end_label = datetime(int(payload.get("end_year")), int(payload.get("end_month")), 1).strftime("%b %Y")
+        return month, year, f"{start_label} to {end_label}"
+
+    return None, None, "latest available forecast"
+
+
+def _forecast_query_has_contextual_period_reference(query: str) -> bool:
+    q = _normalize(query)
+    return any(
+        phrase in q
+        for phrase in [
+            "same period",
+            "same month",
+            "that period",
+            "that month",
+            "this period",
+            "this month",
+            "above period",
+            "previous period",
+        ]
+    )
+
+
+def _clean_forecast_product_query(state: AgentState) -> Optional[str]:
+    product_query = state.get("product_query")
+    if not product_query:
+        return None
+
+    pq = _normalize(str(product_query))
+    countries = set(state.get("target_countries") or [])
+    countries.add(str(state.get("country") or "").lower())
+
+    country_aliases = {
+        "uk", "united kingdom", "amazon uk",
+        "us", "usa", "united states", "amazon us",
+        "global", "all countries", "both countries",
+    }
+    generic_terms = set(FORECAST_QUERY_TERMS) | {
+        "forecast",
+        "forecasting",
+        "projection",
+        "projected",
+        "demand",
+        "future",
+        "stock",
+        "inventory",
+        "country",
+        "market",
+    }
+
+    if pq in countries or pq in country_aliases or pq in generic_terms:
+        return None
+
+    return product_query
+
+
+def _format_forecast_money(value: Any, country: Optional[str], metric_name: str = "net_sales") -> str:
+    try:
+        return _format_value(float(value or 0.0), metric_name, country)
+    except Exception:
+        return str(value)
+
+
+def _compute_forecast_analysis(state: AgentState) -> AgentState:
+    countries = state.get("target_countries") or [state.get("country") or "uk"]
+    month, year, period_label = _forecast_period_from_state(state)
+    product_query = _clean_forecast_product_query(state)
+
+    results = []
+    for country in countries:
+        inventory = get_inventory_forecast_snapshot(
+            user_id=state["user_id"],
+            country=country,
+            month=month,
+            year=year,
+            product_query=product_query,
+        )
+
+        if product_query and inventory.get("available") and not inventory.get("row_count"):
+            inventory = get_inventory_forecast_snapshot(
+                user_id=state["user_id"],
+                country=country,
+                month=month,
+                year=year,
+                product_query=None,
+            )
+
+        pnl = get_pnl_forecast_snapshot(
+            user_id=state["user_id"],
+            country=country,
+            month=month,
+            year=year,
+            product_query=product_query,
+        )
+        if product_query and pnl.get("available") and not pnl.get("row_count"):
+            pnl = get_pnl_forecast_snapshot(
+                user_id=state["user_id"],
+                country=country,
+                month=month,
+                year=year,
+                product_query=None,
+            )
+
+        inventory_rows = inventory.get("rows") or []
+        pnl_rows = pnl.get("rows") or []
+        top_inventory = inventory_rows[:3]
+        top_pnl = pnl_rows[:3]
+
+        results.append({
+            "country": country,
+            "country_label": _country_display_name(country),
+            "period_label": period_label,
+            "inventory": inventory,
+            "pnl": pnl,
+            "top_inventory": top_inventory,
+            "top_pnl": top_pnl,
+        })
+
+    state["current_metrics"] = {
+        "metric": "forecast",
+        "period_label": period_label,
+        "total": None,
+    }
+    state["analysis_result"] = {
+        "type": "forecast",
+        "countries": countries,
+        "period_label": period_label,
+        "requested_month": month,
+        "requested_year": year,
+        "product": product_query,
+        "results": results,
+    }
+    return state
+
+
+def _is_summary_request(state: AgentState) -> bool:
+    query = (state.get("user_query") or "").lower()
+    return (
+        state.get("analysis_type") == "summary"
+        or state.get("answer_shape") == "summary"
+        or "summary" in query
+    )
+
+
+def _query_has_mtd(state: AgentState) -> bool:
+    query = (state.get("user_query") or "").lower()
+    return bool(re.search(r"\bmtd\b|\bmonth\s+to\s+date\b", query))
+
+
+def _month_keys_between(start_month: int, start_year: int, end_month: int, end_year: int) -> List[MonthKey]:
+    months: List[MonthKey] = []
+    cur_month = int(start_month)
+    cur_year = int(start_year)
+
+    while (cur_year, cur_month) <= (int(end_year), int(end_month)):
+        months.append(MonthKey(year=cur_year, month=cur_month))
+        cur_month += 1
+        if cur_month > 12:
+            cur_month = 1
+            cur_year += 1
+
+    return months
+
+
+def _summary_months_for_country(engine: Any, state: AgentState, country: str) -> List[MonthKey]:
+    payload = state.get("period_payload") or {}
+    if payload.get("type") == "growth_base":
+        payload = _prepare_period_payload(payload.get("base") or {}, "absolute")
+
+    ptype = payload.get("type")
+
+    if ptype == "single":
+        return [MonthKey(year=int(payload["year"]), month=int(payload["month"]))]
+
+    if ptype == "multi_month":
+        months = payload.get("months") or state.get("target_months") or []
+        return [
+            MonthKey(year=int(item["year"]), month=int(item["month"]))
+            for item in months
+            if item.get("month") and item.get("year")
+        ]
+
+    if ptype == "range":
+        return _month_keys_between(
+            int(payload["start_month"]),
+            int(payload["start_year"]),
+            int(payload["end_month"]),
+            int(payload["end_year"]),
+        )
+
+    if ptype == "last_n_months":
+        return _last_n_window(engine, state["user_id"], country, int(payload.get("n") or 6))
+
+    latest = latest_available_month(engine, state["user_id"], country)
+    return [latest]
+
+
+def _summary_period_label(state: AgentState, months: List[MonthKey]) -> str:
+    if not months:
+        return "selected period"
+
+    if len(months) == 1:
+        label = months[0].label
+        return f"{label} MTD" if _query_has_mtd(state) else label
+
+    return f"{months[0].label} to {months[-1].label}"
+
+
+def _summary_metric_names_for_state(state: AgentState) -> List[str]:
+    query = (state.get("user_query") or "").lower()
+    requested = _unique_metrics_from_state(state)
+
+    if any(metric in INVENTORY_METRICS for metric in requested):
+        base = ["available", "inbound_quantity", "days_of_supply"]
+    elif any(metric in {"total_ads", "ads_spend", "product_spend", "brand_spend", "display_spend"} for metric in requested) or any(word in query for word in ["ads", "ad spend", "advertising"]):
+        base = ["total_ads", "net_sales", "acos", "total_cm2_profit"]
+    elif any(metric in {"profit", "total_cm2_profit", "cm2_profit"} for metric in requested) or any(word in query for word in ["profit", "margin", "cm2"]):
+        base = ["profit", "net_sales", "total_cm2_profit", "total_ads", "total_quantity", "asp"]
+    elif any(metric in {"net_sales", "gross_sales", "product_sales"} for metric in requested) or any(word in query for word in ["sales", "revenue"]):
+        base = ["net_sales", "profit", "total_cm2_profit", "total_ads", "total_quantity", "asp"]
+    else:
+        base = ["net_sales", "profit", "total_cm2_profit", "total_ads", "total_quantity", "asp"]
+
+    out: List[str] = []
+    for metric in requested + base:
+        if metric and metric not in out:
+            out.append(metric)
+
+    return out[:6]
+
+
+def _aggregate_summary_metric(
+    engine: Any,
+    state: AgentState,
+    country: str,
+    metric_name: str,
+    months: List[MonthKey],
+    product_query: Optional[str],
+) -> Tuple[Optional[float], Optional[str]]:
+    if not months:
+        return None, None
+
+    if metric_name == "asp":
+        sales, product_match = _aggregate_summary_metric(
+            engine,
+            state,
+            country,
+            "net_sales",
+            months,
+            product_query,
+        )
+        units, _ = _aggregate_summary_metric(
+            engine,
+            state,
+            country,
+            "total_quantity",
+            months,
+            product_query,
+        )
+        if not units:
+            return 0.0, product_match
+        return float(sales or 0.0) / float(units), product_match
+
+    total = 0.0
+    found_value = False
+    product_match = None
+
+    for month_key in months:
+        try:
+            value, matched = _country_metric_value(
+                engine,
+                state,
+                country,
+                metric_name,
+                month_key.month,
+                month_key.year,
+                product_query,
+            )
+        except Exception:
+            logger.debug(
+                "Skipping summary metric %s for %s %s",
+                metric_name,
+                country,
+                month_key.label,
+                exc_info=True,
+            )
+            continue
+
+        found_value = True
+        product_match = product_match or matched
+        total += float(value or 0.0)
+
+    if not found_value:
+        return None, product_match
+
+    return total, product_match
+
+
+def _top_sales_product_for_summary(
+    engine: Any,
+    state: AgentState,
+    country: str,
+    months: List[MonthKey],
+) -> Optional[Dict[str, Any]]:
+    if state.get("product_query"):
+        return None
+
+    totals: Dict[Tuple[str, str], float] = {}
+    labels: Dict[Tuple[str, str], Tuple[str, str]] = {}
+
+    for month_key in months:
+        try:
+            result = get_metric_for_month(
+                engine,
+                state["user_id"],
+                country,
+                "net_sales",
+                month_key.month,
+                month_key.year,
+            )
+        except Exception:
+            logger.debug("Summary top product unavailable for %s %s", country, month_key.label, exc_info=True)
+            continue
+
+        for row in result.get("per_sku", []):
+            product_name = str(row.get("product_name") or row.get("sku") or "Unknown").strip()
+            sku = str(row.get("sku") or "").strip()
+            key = (product_name.lower(), sku.lower())
+            labels[key] = (product_name, sku)
+            totals[key] = totals.get(key, 0.0) + float(row.get("__metric__", 0.0) or 0.0)
+
+    if not totals:
+        return None
+
+    best_key, best_value = max(totals.items(), key=lambda item: item[1])
+    product_name, sku = labels.get(best_key, ("Unknown", ""))
+    product_label = _format_product_with_sku(product_name, sku, product_name)
+
+    return {
+        "product": product_label,
+        "value": best_value,
+        "formatted": _format_metric_for_display(best_value, "net_sales", country),
+    }
+
+
+def _build_country_summary_row(
+    engine: Any,
+    state: AgentState,
+    country: str,
+    metric_names: List[str],
+) -> Dict[str, Any]:
+    months = _summary_months_for_country(engine, state, country)
+    period_label = _summary_period_label(state, months)
+    product_query = state.get("product_query")
+    metrics: Dict[str, float] = {}
+    formatted_metrics: Dict[str, str] = {}
+    product_match = None
+
+    for metric_name in metric_names:
+        value, matched = _aggregate_summary_metric(
+            engine,
+            state,
+            country,
+            metric_name,
+            months,
+            product_query,
+        )
+        if value is None:
+            continue
+        product_match = product_match or matched
+        metrics[metric_name] = float(value)
+        formatted_metrics[metric_name] = _format_metric_for_display(float(value), metric_name, country)
+
+    return {
+        "country": country,
+        "country_label": _country_display_name(country),
+        "period_label": period_label,
+        "months": [{"month": mk.month, "year": mk.year, "label": mk.label} for mk in months],
+        "metrics": metrics,
+        "formatted_metrics": formatted_metrics,
+        "product": product_match or product_query,
+        "top_product": _top_sales_product_for_summary(engine, state, country, months),
+    }
+
+
 def _compute_multi_country(state: AgentState) -> AgentState:
     engine = state["engine"]
     metric_names = _unique_metrics_from_state(state)
@@ -2880,6 +3246,28 @@ def _compute_multi_country(state: AgentState) -> AgentState:
     payload = state.get("period_payload") or {}
     wants_time = _is_multi_country_time_query(state)
     product_query = state.get("product_query")
+
+    if _is_summary_request(state):
+        summary_metrics = _summary_metric_names_for_state(state)
+        rows = [
+            _build_country_summary_row(engine, state, country, summary_metrics)
+            for country in countries
+        ]
+        period_labels = [row.get("period_label") for row in rows if row.get("period_label")]
+
+        state["current_metrics"] = {
+            "metric": ", ".join(summary_metrics),
+            "period_label": period_labels[0] if len(set(period_labels)) == 1 else "selected period",
+            "total": None,
+        }
+        state["analysis_result"] = {
+            "type": "multi_country_summary",
+            "mode": "summary",
+            "metrics": summary_metrics,
+            "countries": countries,
+            "results": rows,
+        }
+        return state
 
     if wants_time:
         trend_results = []
@@ -3224,6 +3612,7 @@ def _execute_tool(state: AgentState, tool_name: str) -> AgentState:
         "sku_trend": _compute_sku_trend,
         "standard_analysis": _compute_standard_analysis,
         "multi_country": _compute_multi_country,
+        "forecast_analysis": _compute_forecast_analysis,
     }
 
     try:
@@ -3884,6 +4273,56 @@ def _render_business_advisor_fallback(state: AgentState, analysis: Dict[str, Any
     return "\n".join(lines)
 
 
+def _summary_metric_parts(row: Dict[str, Any], metric_names: List[str]) -> List[str]:
+    formatted = row.get("formatted_metrics") or {}
+    parts: List[str] = []
+
+    for metric_name in metric_names:
+        if metric_name not in formatted:
+            continue
+        label = "Units" if metric_name == "total_quantity" else humanize_metric(metric_name)
+        parts.append(f"{label} **{formatted[metric_name]}**")
+
+    return parts
+
+
+def _summary_metric_names_from_row(row: Dict[str, Any]) -> List[str]:
+    preferred_order = [
+        "net_sales",
+        "profit",
+        "total_cm2_profit",
+        "total_ads",
+        "total_quantity",
+        "asp",
+        "acos",
+        "available",
+        "inbound_quantity",
+        "days_of_supply",
+    ]
+    available = list((row.get("formatted_metrics") or {}).keys())
+    ordered = [metric for metric in preferred_order if metric in available]
+    ordered.extend(metric for metric in available if metric not in ordered)
+    return ordered
+
+
+def _forecast_file_period_text(snapshot: Dict[str, Any]) -> str:
+    month = snapshot.get("stored_month")
+    year = snapshot.get("stored_year")
+    if month and year:
+        return f"{str(month).title()} {year}"
+    return "latest available"
+
+
+def _format_forecast_units_map(units_by_month: Dict[str, Any]) -> str:
+    parts = []
+    for label, value in (units_by_month or {}).items():
+        try:
+            parts.append(f"{label}: {float(value or 0.0):,.0f} units")
+        except Exception:
+            parts.append(f"{label}: {value}")
+    return ", ".join(parts)
+
+
 def _render_response(state: AgentState) -> AgentState:
     if state.get("intent") == "clarify":
         state["final_response"] = state.get("clarification_question") or "Could you clarify what you'd like me to analyze?"
@@ -4410,6 +4849,100 @@ def _render_response(state: AgentState) -> AgentState:
 
         return state
     
+    if analysis.get("type") == "forecast":
+        requested_month = analysis.get("requested_month")
+        requested_year = analysis.get("requested_year")
+        title_period = analysis.get("period_label") or period_label
+        lines = [f"**Forecast summary for {title_period}**"]
+
+        for result in analysis.get("results", []):
+            country = result.get("country")
+            country_label = result.get("country_label") or _country_display_name(country)
+            inventory = result.get("inventory") or {}
+            pnl = result.get("pnl") or {}
+
+            country_parts = []
+            if inventory.get("available"):
+                units_text = _format_forecast_units_map((inventory.get("totals") or {}).get("forecast_units") or {})
+                projected_total = (inventory.get("totals") or {}).get("projected_sales_total")
+                if units_text:
+                    country_parts.append(f"forecast units **{units_text}**")
+                if projected_total:
+                    country_parts.append(f"projected total **{float(projected_total):,.0f} units**")
+
+            show_pnl = bool(
+                pnl.get("available")
+                and (pnl.get("exact_period_match", True) or not requested_month or not requested_year)
+            )
+            if show_pnl:
+                totals = pnl.get("totals") or {}
+                country_parts.extend([
+                    f"sales **{_format_forecast_money(totals.get('forecast_sales'), country, 'net_sales')}**",
+                    f"profit **{_format_forecast_money(totals.get('forecast_profit'), country, 'profit')}**",
+                    f"CM2 **{_format_forecast_money(totals.get('forecast_cm2_profit'), country, 'total_cm2_profit')}**",
+                    f"ad spend **{_format_forecast_money(totals.get('forecast_ad_spend'), country, 'total_ads')}**",
+                ])
+
+            if country_parts:
+                lines.append(f"- **{country_label}**: {', '.join(country_parts)}.")
+            else:
+                lines.append(f"- **{country_label}**: no forecast data found.")
+
+            if inventory.get("available") and not inventory.get("exact_period_match", True):
+                lines.append(f"  Latest inventory forecast available: **{_forecast_file_period_text(inventory)}**.")
+            if pnl.get("available") and not show_pnl:
+                lines.append(f"  P&L forecast for requested month is not available; latest stored P&L forecast is **{_forecast_file_period_text(pnl)}**.")
+
+            top_row = None
+            top_source = result.get("top_pnl") or []
+            if show_pnl and top_source:
+                top_row = top_source[0]
+                lines.append(
+                    f"  Top forecasted product: **{_format_product_with_sku(top_row.get('product_name'), top_row.get('sku'), top_row.get('sku'))}** "
+                    f"({_format_forecast_money(top_row.get('forecast_sales'), country, 'net_sales')} sales)."
+                )
+            elif result.get("top_inventory"):
+                top_row = result["top_inventory"][0]
+                lines.append(
+                    f"  Top forecasted product: **{_format_product_with_sku(top_row.get('product_name'), top_row.get('sku'), top_row.get('sku'))}** "
+                    f"({float(top_row.get('projected_sales_total') or 0.0):,.0f} units)."
+                )
+
+        state["final_response"] = "\n".join(lines)
+        return state
+
+    if analysis.get("type") == "multi_country_summary":
+        rows = analysis.get("results") or []
+        metric_names = analysis.get("metrics") or []
+        period_labels = [row.get("period_label") for row in rows if row.get("period_label")]
+        unique_periods = list(dict.fromkeys(period_labels))
+        title_period = unique_periods[0] if len(unique_periods) == 1 else "Selected period"
+        lines = [f"**{title_period} summary**"]
+
+        for row in rows:
+            country_label = row.get("country_label") or _country_display_name(row.get("country"))
+            parts = _summary_metric_parts(row, metric_names or _summary_metric_names_from_row(row))
+            if parts:
+                lines.append(f"- **{country_label}**: {', '.join(parts)}.")
+            else:
+                lines.append(f"- **{country_label}**: no data available for the requested period.")
+
+        top_products = [
+            (row.get("country_label") or _country_display_name(row.get("country")), row.get("top_product"))
+            for row in rows
+            if row.get("top_product")
+        ]
+        if top_products:
+            lines.append("")
+            for country_label, top_product in top_products:
+                lines.append(
+                    f"- Top product in **{country_label}**: "
+                    f"**{top_product.get('product')}** ({top_product.get('formatted')})."
+                )
+
+        state["final_response"] = "\n".join(lines)
+        return state
+
     if analysis.get("type") == "multi_country":
         mode = analysis.get("mode") or "single"
         product = analysis.get("product")
@@ -4587,6 +5120,29 @@ def _render_response(state: AgentState) -> AgentState:
         return state
     
     if analysis.get("type") == "summary":
+        row = (analysis.get("rows") or [{}])[0]
+        country_label = row.get("country_label") or analysis.get("country_label") or _country_display_name(state.get("country"))
+        summary_period = row.get("period_label") or analysis.get("period_label") or period_label
+        metric_names = _summary_metric_names_from_row(row)
+        parts = _summary_metric_parts(row, metric_names)
+        lines = [f"**{country_label} {summary_period} summary**"]
+
+        if parts:
+            lines.append(f"- {', '.join(parts)}.")
+        else:
+            lines.append("- No data available for the requested period.")
+
+        top_product = row.get("top_product") or analysis.get("top_product")
+        if top_product:
+            lines.append(
+                f"- Top product: **{top_product.get('product')}** "
+                f"({top_product.get('formatted')})."
+            )
+
+        state["final_response"] = "\n".join(lines)
+        return state
+
+    if False and analysis.get("type") == "summary":
         metrics = analysis.get("metrics", {})
 
         # -------- BASE METRICS --------
@@ -5095,7 +5651,8 @@ def _invoke_agent(state: AgentState) -> AgentState:
             f"[PLAN] intent={plan.intent}, analysis_type={plan.analysis_type}, "
             f"metric={plan.metric_name}, metric_names={plan.metric_names}, "
             f"product_query={plan.product_query}, product_queries={plan.product_queries}, "
-            f"answer_shape={plan.answer_shape}, reasoning_mode={plan.reasoning_mode}"
+            f"answer_shape={plan.answer_shape}, reasoning_mode={plan.reasoning_mode}, "
+            f"needs_forecast_data={plan.needs_forecast_data}"
         )
         # -------- 🔥 LLM-BASED FOLLOW-UP RESOLUTION --------
         followup_resolution = _resolve_followup_with_llm(state, history)
@@ -5134,6 +5691,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
         state["metric_names"] = plan.metric_names
         state["product_queries"] = plan.product_queries
         state["needs_advice"] = plan.needs_advice
+        state["needs_forecast_data"] = plan.needs_forecast_data
         state["clarification_question"] = plan.clarification_question
         state["response_mode"] = plan.response_mode
         state["email_requested"] = bool(state.get("email_requested") or plan.intent == "email")
@@ -5246,6 +5804,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
                 state.get("analysis_type") not in {"summary"}
                 and state.get("answer_shape") not in {"summary"}
                 and state.get("intent") != "event_planner"
+                and not _is_forecast_request(state)
             ):
                 logger.warning("[CLARIFY] No metric found, asking user")
                 state["intent"] = "clarify"
@@ -5274,7 +5833,14 @@ def _invoke_agent(state: AgentState) -> AgentState:
             and followup_resolution.is_followup
             and followup_resolution.reuse_previous_period
         ):
-            inherited_period = _previous_single_period_from_history(history)
+            if (
+                _is_forecast_request(state)
+                and parsed_period.get("type") == "latest_month"
+                and not _forecast_query_has_contextual_period_reference(q_lower)
+            ):
+                logger.info("[FORECAST_PERIOD] Generic forecast request -> using latest available forecast, not inherited chat period")
+            else:
+                inherited_period = _previous_single_period_from_history(history)
 
         if inherited_period:
             state["period_parsed"] = inherited_period

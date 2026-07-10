@@ -1443,7 +1443,13 @@ def parse_period(query: str) -> Dict:
         return rng
 
     # -------- MONTH DETECTION (FIXED) --------
-    month_pattern = r"(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)"
+    month_pattern = (
+        r"\b("
+        r"january|jan|february|feb|march|mar|april|apr|may|"
+        r"june|jun|july|jul|august|aug|september|sep|"
+        r"october|oct|november|nov|december|dec"
+        r")\b"
+    )
     month_matches = re.findall(month_pattern, text)
 
     year = extract_year(text)
