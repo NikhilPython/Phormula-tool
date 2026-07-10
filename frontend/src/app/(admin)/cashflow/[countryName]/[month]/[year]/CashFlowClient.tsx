@@ -117,14 +117,16 @@ type SummaryRow = {
   amount: React.ReactNode;
 };
 
+type CashFlowSummary = Partial<SummaryShape> & Record<string, unknown>;
+
 type APIResponse = {
-  previous_summary: SummaryShape | undefined;
-  summary?: Partial<SummaryShape>;
-  monthlyBreakdown?: Record<string, Partial<SummaryShape>>;
+  previous_summary?: CashFlowSummary;
+  summary?: CashFlowSummary;
+  monthlyBreakdown?: Record<string, CashFlowSummary>;
 };
 
-type QuarterlyMonthlyData = Record<string, Partial<SummaryShape>>;
-type QuarterlyTotals = Partial<SummaryShape>;
+type QuarterlyMonthlyData = Record<string, CashFlowSummary>;
+type QuarterlyTotals = CashFlowSummary;
 
 const getCurrencySymbol = (country?: string) => {
   switch ((country || "").toLowerCase()) {
@@ -359,7 +361,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     Record<string, QuarterlyTotals>
   >({});
   const [allYearlyData, setAllYearlyData] = useState<
-    Record<string, Partial<SummaryShape>>
+    Record<string, CashFlowSummary>
   >({});
   const [quarterlyMonthlyData, setQuarterlyMonthlyData] =
     useState<QuarterlyMonthlyData>({});
@@ -532,12 +534,11 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     return { monthlyData, quarterSummary };
   };
 
-
   const fetchYearlyMonthlyData = async (
     targetYear: string,
     monthsToFetch: string[]
-  ) => {
-    const yearlyData: Record<string, Partial<SummaryShape>> = {};
+  ): Promise<Record<string, CashFlowSummary>> => {
+    const yearlyData: Record<string, CashFlowSummary> = {};
 
     for (const mName of monthsToFetch) {
       try {
@@ -548,7 +549,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         );
 
         if (result?.summary) {
-          yearlyData[mName] = result.summary;
+          yearlyData[mName] = {
+            ...result.summary,
+          };
         }
       } catch {
         // Continue fetching the remaining months
@@ -559,23 +562,29 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   };
 
   const buildYearlySummaryFromMonths = (
-    yearlyData: Record<string, Partial<SummaryShape>>
-  ): SummaryShape => {
-    const summary: SummaryShape = {
-      quantity_total: 0,
-      gross_sales: 0,
-      net_sales: 0,
-      amazon_fee: 0,
-      advertising_total: 0,
-      taxncredit: 0,
-      otherwplatform: 0,
-      rembursement_fee: 0,
-      cashflow: 0,
-    };
+    yearlyData: Record<string, CashFlowSummary>
+  ): CashFlowSummary => {
+    const summary: CashFlowSummary = {};
 
     Object.values(yearlyData).forEach((monthSummary) => {
-      (Object.keys(summary) as (keyof SummaryShape)[]).forEach((key) => {
-        summary[key] += Number(monthSummary?.[key] ?? 0);
+      Object.entries(monthSummary || {}).forEach(([key, rawValue]) => {
+        // Skip null, undefined, objects and non-numeric values
+        if (rawValue === null || rawValue === undefined) return;
+
+        const numericValue =
+          typeof rawValue === "number"
+            ? rawValue
+            : typeof rawValue === "string" &&
+              rawValue.trim() !== "" &&
+              Number.isFinite(Number(rawValue.replace(/,/g, "")))
+              ? Number(rawValue.replace(/,/g, ""))
+              : null;
+
+        if (numericValue === null || !Number.isFinite(numericValue)) {
+          return;
+        }
+
+        summary[key] = Number(summary[key] ?? 0) + numericValue;
       });
     });
 
