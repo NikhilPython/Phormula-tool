@@ -469,6 +469,89 @@ def _previous_period_for_base(base: Dict[str, Any]) -> Dict[str, Any]:
     return {"type": "latest_month"}
 
 
+_MONTH_TOKEN_TO_NUM = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+
+def _explicit_month_comparison_from_query(query: str) -> Optional[Dict[str, Any]]:
+    q = _normalize(query)
+    if not any(token in q for token in ["compare", "compared", " vs ", " versus ", " than "]):
+        return None
+
+    pattern = re.compile(
+        r"\b("
+        r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+        r")\b(?:\s*['-]?\s*(20\d{2}|\d{2}))?",
+        re.IGNORECASE,
+    )
+    refs: List[Dict[str, int]] = []
+    explicit_years: List[int] = []
+
+    for match in pattern.finditer(q):
+        month_token = match.group(1).lower()
+        year_text = match.group(2)
+        month = _MONTH_TOKEN_TO_NUM.get(month_token)
+        if not month:
+            continue
+        year = None
+        if year_text:
+            year = int(year_text)
+            if year < 100:
+                year += 2000
+            explicit_years.append(year)
+        refs.append({"month": month, "year": year or 0})
+
+    if len(refs) < 2:
+        return None
+
+    fallback_year = explicit_years[0] if explicit_years else datetime.today().year
+    left = refs[0]
+    right = refs[1]
+    left_year = left["year"] or fallback_year
+    right_year = right["year"] or fallback_year
+
+    return {
+        "type": "comparison",
+        "left": {
+            "start_month": left["month"],
+            "start_year": left_year,
+            "end_month": left["month"],
+            "end_year": left_year,
+        },
+        "right": {
+            "start_month": right["month"],
+            "start_year": right_year,
+            "end_month": right["month"],
+            "end_year": right_year,
+        },
+    }
+
+
 def _last_n_window(engine: Any, user_id: int, country: str, n: int, *, extra_for_mom: bool = False) -> List[Any]:
     requested_n = max(int(n or 1), 1)
     count = requested_n + 1 if extra_for_mom else requested_n
@@ -595,6 +678,7 @@ def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
     reasoning_mode = "decision" if any(x in q for x in ["improve", "optimize", "should", "recommend", "fix"]) else ("analysis" if any(x in q for x in ["why", "reason", "underperform"]) or analysis_type == "growth" else "lookup")
     answer_shape = "trend" if analysis_type == "growth" else "single_value"
     ranking_direction = None
+    top_n = None
     if any(x in q for x in ["top", "best"]):
         answer_shape = "ranking"
         ranking_direction = "top"
@@ -607,6 +691,10 @@ def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
         answer_shape = "summary"
         analysis_type = "summary"
     subject_scope = "product" if any(x in q for x in ["product", "sku", " vs ", " versus "]) else "metric"
+    if subject_scope == "product" and answer_shape == "extreme":
+        answer_shape = "ranking"
+        ranking_direction = "top" if any(x in q for x in ["highest", "peak", "maximum", "best"]) else "bottom"
+        top_n = 1
     return RequestPlan(
         intent="email" if email_requested else "metric_qa",
         analysis_type=analysis_type,
@@ -616,6 +704,7 @@ def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
         response_mode="detailed" if wants_detailed_response else "short",
         metric_name=metric_name,
         answer_shape=answer_shape,
+        top_n=top_n,
         ranking_direction=ranking_direction,
         extreme_type="max" if any(x in q for x in ["highest", "peak", "maximum"]) else None,
         dimension="sku" if subject_scope == "product" else "time",
@@ -659,6 +748,22 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
         if analysis_type == "growth":
             answer_shape = "trend"
         dimension = "sku" if (subject_scope in {"product", "products"} or product_query or product_queries) else fallback.dimension
+        ranking_direction = result.ranking_direction or fallback.ranking_direction
+        q_asks_sku_ranking = (
+            any(phrase in q for phrase in ["which sku", "which skus", "which product", "which products", "top sku", "top product"])
+            or (
+                any(token in q for token in ["sku", "product"])
+                and any(token in q for token in ["highest", "top", "best", "lowest", "bottom", "worst"])
+            )
+        )
+        top_n = result.top_n or fallback.top_n
+        if q_asks_sku_ranking:
+            dimension = "sku"
+            subject_scope = "product"
+            answer_shape = "ranking"
+            ranking_direction = "bottom" if any(token in q for token in ["lowest", "bottom", "worst"]) else "top"
+            if top_n is None and any(token in q for token in ["which", "highest", "lowest", "best", "worst"]):
+                top_n = 1
         return RequestPlan(
             intent=result.intent or fallback.intent,
             analysis_type=analysis_type,
@@ -672,10 +777,10 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
             metric_names=metric_names or (None if not metric_name else [metric_name]),
             product_queries=product_queries or None,
             clarification_question=result.clarification_question,
-            top_n=result.top_n,
+            top_n=top_n,
             answer_shape=answer_shape,
             subject_scope=subject_scope,
-            ranking_direction=result.ranking_direction or fallback.ranking_direction,
+            ranking_direction=ranking_direction or result.ranking_direction or fallback.ranking_direction,
             extreme_type=result.extreme_type or fallback.extreme_type,
             time_granularity=result.time_granularity,
             target_months=result.target_months,
@@ -702,6 +807,15 @@ def _build_tool_plan(state: AgentState) -> List[str]:
         return ["ranked_extreme_contribution"]
 
     # -------- 🔥 EXTREME PRIORITY --------
+    if state.get("dimension") == "sku" and state.get("answer_shape") in {"ranking", "extreme"}:
+        state["answer_shape"] = "ranking"
+        if not state.get("ranking_direction"):
+            state["ranking_direction"] = "bottom" if state.get("extreme_type") == "min" else "top"
+        if not state.get("top_n") and (state.get("extreme_type") or "which " in (state.get("user_query") or "").lower()):
+            state["top_n"] = 1
+        logger.info("[ROUTE_FIX] SKU/product extreme request -> ranking tool")
+        return ["ranking"]
+
     if state.get("answer_shape") == "extreme":
         logger.info("[ROUTE_FIX] extreme → extreme tool")
         return ["extreme"]
@@ -728,6 +842,9 @@ def _build_tool_plan(state: AgentState) -> List[str]:
     metric_name = state.get("metric_name")
 
     if metric_name in INVENTORY_METRICS:
+        if state.get("analysis_type") == "comparison" or state.get("answer_shape") == "comparison":
+            logger.info("[ROUTE_FIX] inventory comparison -> standard_analysis")
+            return ["standard_analysis"]
         state["analysis_type"] = "diagnosis"
         return ["standard_analysis"]
 
@@ -1079,11 +1196,59 @@ def _compute_summary(state: AgentState) -> AgentState:
     return state
 
 
+def _highest_month_for_metric(
+    engine: Any,
+    state: AgentState,
+    metric_name: str,
+    months: List[MonthKey],
+) -> Optional[Dict[str, Any]]:
+    month_scores: List[Dict[str, Any]] = []
+
+    for month_key in months or []:
+        try:
+            monthly_result = get_metric_for_month(
+                engine,
+                state["user_id"],
+                state["country"],
+                metric_name,
+                month_key.month,
+                month_key.year,
+            )
+        except Exception:
+            logger.debug("Ranking highest-month lookup failed", exc_info=True)
+            continue
+
+        value = monthly_result.get("total")
+        if value is None:
+            continue
+
+        try:
+            numeric_value = float(value)
+        except Exception:
+            continue
+
+        month_scores.append(
+            {
+                "month": month_key.month,
+                "year": month_key.year,
+                "period_label": monthly_result.get("period_label") or month_key.label,
+                "value": numeric_value,
+                "metric": metric_name,
+            }
+        )
+
+    if not month_scores:
+        return None
+
+    return max(month_scores, key=lambda row: row["value"])
+
+
 def _compute_ranking(state: AgentState) -> AgentState:
     engine = state["engine"]
     metric_name = state.get("metric_name") or "profit"
     payload = state["period_payload"]
     direction = state.get("ranking_direction") or "top"
+    period_months: List[MonthKey] = []
 
     # -------- 🔥 INVENTORY FIX (NEW BLOCK) --------
     if metric_name in INVENTORY_METRICS:
@@ -1132,6 +1297,7 @@ def _compute_ranking(state: AgentState) -> AgentState:
             state["user_id"],
             state["country"]
         )
+        period_months = [latest]
         result = get_metric_for_month(
             engine,
             state["user_id"],
@@ -1150,8 +1316,26 @@ def _compute_ranking(state: AgentState) -> AgentState:
             payload["month"],
             payload["year"]
         )
+        period_months = [MonthKey(year=int(payload["year"]), month=int(payload["month"]))]
 
     elif ptype == "range":
+        try:
+            period_months = [
+                month_key
+                for month_key, _ in fetch_period_dfs(
+                    engine,
+                    state["user_id"],
+                    state["country"],
+                    payload["start_month"],
+                    payload["start_year"],
+                    payload["end_month"],
+                    payload["end_year"],
+                    skip_missing=True,
+                )
+            ]
+        except Exception:
+            logger.debug("Ranking period month list unavailable", exc_info=True)
+            period_months = []
         result = get_metric_for_period(
             engine,
             state["user_id"],
@@ -1173,6 +1357,7 @@ def _compute_ranking(state: AgentState) -> AgentState:
         )
 
         if months:
+            period_months = months
             result = get_metric_for_period(
                 engine,
                 state["user_id"],
@@ -1185,6 +1370,8 @@ def _compute_ranking(state: AgentState) -> AgentState:
                 skip_missing=True
             )
         else:
+            latest = latest_available_month(engine, state["user_id"], state["country"])
+            period_months = [latest]
             result = _latest_month_result(
                 engine,
                 state["user_id"],
@@ -1193,6 +1380,8 @@ def _compute_ranking(state: AgentState) -> AgentState:
             )
 
     else:
+        latest = latest_available_month(engine, state["user_id"], state["country"])
+        period_months = [latest]
         result = _latest_month_result(
             engine,
             state["user_id"],
@@ -1205,12 +1394,14 @@ def _compute_ranking(state: AgentState) -> AgentState:
         direction=direction,
         limit=state.get("top_n") or 5
     )
+    highest_month = _highest_month_for_metric(engine, state, metric_name, period_months)
 
     state["current_metrics"] = result
     state["analysis_result"] = {
         "type": "ranking",
         "metric": metric_name,
         "period_label": result.get("period_label"),
+        "highest_month": highest_month,
         "per_sku": ranked,
         "total": result.get("total", 0.0),
         "ranking_direction": direction,
@@ -1595,6 +1786,122 @@ def _compute_sku_trend(state: AgentState) -> AgentState:
     state["current_metrics"] = {"metric": metric_name, "period_label": f"{months[0].label} to {months[-1].label}", "total": None}
     return state
 
+
+def _period_end_month_key(period: Dict[str, Any]) -> MonthKey:
+    return MonthKey(
+        year=int(period.get("end_year") or period.get("year")),
+        month=int(period.get("end_month") or period.get("month")),
+    )
+
+
+def _inventory_snapshot_value(
+    snapshot: Dict[str, Any],
+    product_query: Optional[str],
+) -> Tuple[Optional[float], Optional[str], Optional[str]]:
+    rows = snapshot.get("per_sku") or []
+    if not product_query:
+        total = snapshot.get("total")
+        return (float(total) if total is not None else None), None, None
+
+    pq = str(product_query).strip().lower()
+    exact_matches = [
+        row for row in rows
+        if pq == str(row.get("product_name") or "").strip().lower()
+        or pq == str(row.get("sku") or "").strip().lower()
+    ]
+    contains_matches = [
+        row for row in rows
+        if pq in str(row.get("product_name") or "").strip().lower()
+        or pq in str(row.get("sku") or "").strip().lower()
+    ]
+    matches = exact_matches or contains_matches
+    if not matches:
+        return None, None, None
+
+    value = sum(float(row.get("__metric__", 0.0) or 0.0) for row in matches)
+    first = matches[0]
+    return value, first.get("product_name") or product_query, first.get("sku")
+
+
+def _format_product_with_sku(product_name: Optional[str], sku: Optional[str], fallback: Optional[str]) -> str:
+    product_display = product_name or fallback or "selected product"
+    if sku and str(product_display).strip().lower() != str(sku).strip().lower():
+        return f"{product_display} ({sku})"
+    return str(product_display)
+
+
+def _compute_inventory_comparison(state: AgentState, left_period: Dict[str, Any], right_period: Dict[str, Any]) -> AgentState:
+    metric_name = state.get("metric_name") or "available"
+    product_query = state.get("product_query")
+    left_month = _period_end_month_key(left_period)
+    right_month = _period_end_month_key(right_period)
+
+    left_snapshot = get_inventory_snapshot(
+        user_id=state["user_id"],
+        metric_name=metric_name,
+        month=left_month.month,
+        year=left_month.year,
+        country=state["country"],
+    )
+    right_snapshot = get_inventory_snapshot(
+        user_id=state["user_id"],
+        metric_name=metric_name,
+        month=right_month.month,
+        year=right_month.year,
+        country=state["country"],
+    )
+
+    left_value, left_product, left_sku = _inventory_snapshot_value(left_snapshot, product_query)
+    right_value, right_product, right_sku = _inventory_snapshot_value(right_snapshot, product_query)
+    product_display = _format_product_with_sku(
+        left_product or right_product,
+        left_sku or right_sku,
+        product_query,
+    )
+
+    delta = None
+    pct_change = None
+    if left_value is not None and right_value is not None:
+        delta = left_value - right_value
+        pct_change = None if right_value == 0 else (delta / right_value) * 100.0
+
+    comparison = {
+        "left": {
+            "label": left_snapshot.get("period_label") or left_month.label,
+            "total": left_value,
+        },
+        "right": {
+            "label": right_snapshot.get("period_label") or right_month.label,
+            "total": right_value,
+        },
+        "delta": delta,
+        "pct_change": pct_change,
+    }
+
+    state["comparison"] = comparison
+    state["current_metrics"] = {
+        "metric": metric_name,
+        "period_label": f"{comparison['left']['label']} vs {comparison['right']['label']}",
+        "total": left_value,
+    }
+    state["analysis_result"] = {
+        "type": "inventory_comparison",
+        "metric": metric_name,
+        "country": state.get("country"),
+        "product_query": product_query,
+        "product_display": product_display,
+        "left": comparison["left"],
+        "right": comparison["right"],
+        "delta": delta,
+        "pct_change": pct_change,
+        "missing": {
+            "left": left_value is None,
+            "right": right_value is None,
+        },
+    }
+    return state
+
+
 def _compute_standard_analysis(state: AgentState) -> AgentState:
     try:
         engine = state["engine"]
@@ -1656,6 +1963,10 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
             logger.info("[ROUTE] Comparison analysis")
 
             p1, p2 = payload["p1"], payload["p2"]
+
+            if metric_name in INVENTORY_METRICS:
+                logger.info("[ROUTE] Inventory comparison analysis")
+                return _compute_inventory_comparison(state, p1, p2)
 
             comp = compare_periods(
                 engine=engine,
@@ -2164,7 +2475,7 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
                 rows = [
                     r for r in rows
-                    if pq == str(r.get("product_name") or "").strip().lower()
+                    if pq in str(r.get("product_name") or "").strip().lower()
                     or pq == str(r.get("sku") or "").strip().lower()
                 ]
 
@@ -2266,6 +2577,12 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
 
             state["analysis_result"] = {
                 "type": "inventory_diagnosis",
+                "metric": metric_name,
+                "period_label": result.get("period_label"),
+                "source_table": result.get("source_table"),
+                "snapshot_date": result.get("snapshot_date"),
+                "country": result.get("country") or state.get("country"),
+                "total": result.get("total"),
                 "insights": insights,
                 "rows": rows,
                 "flags": flags,      # ✅ NEW
@@ -2355,6 +2672,22 @@ def _unique_metrics_from_state(state: AgentState) -> List[str]:
 def _is_multi_country_time_query(state: AgentState) -> bool:
     query = (state.get("user_query") or "").lower()
     payload_type = (state.get("period_payload") or {}).get("type")
+    time_movement_phrases = [
+        "month on month",
+        "month-on-month",
+        "mom",
+        "change",
+        "changed",
+        "growth",
+        "increase",
+        "decrease",
+        "trend",
+        "over time",
+        "from ",
+        " to ",
+    ]
+    if state.get("target_countries") and len(state.get("target_countries") or []) > 1 and payload_type == "single":
+        return any(phrase in query for phrase in time_movement_phrases)
     if payload_type in {"last_n_months", "range", "multi_month"}:
         return True
     if state.get("analysis_type") in {"growth", "trend", "comparison"}:
@@ -2363,16 +2696,7 @@ def _is_multi_country_time_query(state: AgentState) -> bool:
         return True
     return any(
         phrase in query
-        for phrase in [
-            "month on month",
-            "month-on-month",
-            "mom",
-            "change",
-            "changed",
-            "growth",
-            "increase",
-            "decrease",
-            "trend",
+        for phrase in time_movement_phrases + [
             "performing well",
             "performing better",
             "which country",
@@ -2505,6 +2829,19 @@ def _country_metric_value(
         )
         return (0.0 if units == 0 else sales / units), product_match
 
+    if metric_name in INVENTORY_METRICS:
+        result = get_inventory_snapshot(
+            user_id=state["user_id"],
+            metric_name=metric_name,
+            month=month,
+            year=year,
+            country=country,
+        )
+        value, product_match, _ = _inventory_snapshot_value(result, product_query)
+        if value is None:
+            return 0.0, product_match
+        return value, product_match
+
     result = get_metric_for_month(
         engine,
         state["user_id"],
@@ -2524,6 +2861,8 @@ def _format_country_delta(value: float, metric_name: str, country: str) -> str:
     sign = "+" if value >= 0 else "-"
     if metric_name in {"sales_mix", "profit_mix", "acos", "ads_acos", "profit_percentage", "cm2_profit_percentage", "cm2_margins"}:
         return f"{sign}{abs(value):.2f} pp"
+    if metric_name in INVENTORY_METRICS:
+        return f"{sign}{_format_inventory_value(abs(value), metric_name)}"
     return f"{sign}{_format_value(abs(value), metric_name, country)}"
 
 
@@ -2586,7 +2925,7 @@ def _compute_multi_country(state: AgentState) -> AgentState:
                             "year": month_key.year,
                             "period_label": month_key.label,
                             "value": float(value),
-                            "formatted": _format_value(float(value), metric_name, country),
+                            "formatted": _format_metric_for_display(float(value), metric_name, country),
                         })
                     except Exception as exc:
                         series.append({
@@ -2611,8 +2950,8 @@ def _compute_multi_country(state: AgentState) -> AgentState:
                         "delta": delta,
                         "pct_change": pct_change,
                         "delta_formatted": _format_country_delta(delta, metric_name, country),
-                        "current_formatted": _format_value(curr, metric_name, country),
-                        "previous_formatted": _format_value(prev, metric_name, country),
+                        "current_formatted": _format_metric_for_display(curr, metric_name, country),
+                        "previous_formatted": _format_metric_for_display(prev, metric_name, country),
                     })
 
                 latest_change = mom[-1] if mom else None
@@ -2689,7 +3028,7 @@ def _compute_multi_country(state: AgentState) -> AgentState:
                 "country": country,
                 "metric": metric_name,
                 "value": value,
-                "formatted": _format_value(value, metric_name, country),
+                "formatted": _format_metric_for_display(value, metric_name, country),
                 "period_label": datetime(country_year, country_month, 1).strftime("%b %Y"),
                 "product": product_match or product_query,
             })
@@ -3124,10 +3463,16 @@ def humanize_metric(metric: str) -> str:
         "shipment_fees": "Shipment Fees",
 
         # -------- INVENTORY --------
+        "available": "Available Inventory",
+        "inbound_quantity": "Inbound Inventory",
+        "total_reserved_quantity": "Reserved Inventory",
+        "unfulfillable_quantity": "Unfulfillable Inventory",
         "units_shipped_t30": "Units Shipped (30 Days)",
         "units_shipped_t60": "Units Shipped (60 Days)",
         "units_shipped_t90": "Units Shipped (90 Days)",
+        "sell_through": "Sell Through",
         "days_of_supply": "Days of Supply",
+        "estimated_excess_quantity": "Estimated Excess Inventory",
 
         # -------- MISC --------
         "sales_mix": "Sales Mix",
@@ -3433,6 +3778,25 @@ def _fmt_business_money(state: AgentState, value: Any, metric_name: str = "net_s
         return str(value)
 
 
+def _format_inventory_value(value: Any, metric_name: str) -> str:
+    try:
+        numeric_value = float(value or 0.0)
+    except Exception:
+        return str(value)
+
+    if metric_name == "sell_through":
+        return f"{numeric_value:.2f}%"
+    if metric_name == "days_of_supply":
+        return f"{numeric_value:,.1f} days"
+    return f"{numeric_value:,.0f} units"
+
+
+def _format_metric_for_display(value: Any, metric_name: str, country: Optional[str]) -> str:
+    if metric_name in INVENTORY_METRICS:
+        return _format_inventory_value(value, metric_name)
+    return _format_value(float(value or 0.0), metric_name, country)
+
+
 def _first_product(rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return rows[0] if rows else None
 
@@ -3626,6 +3990,41 @@ def _render_response(state: AgentState) -> AgentState:
 
     
     # -------- 🔥 INVENTORY DIAGNOSIS RENDER (UPGRADED) --------
+    if analysis.get("type") == "inventory_comparison":
+        metric_key = analysis.get("metric") or metric_name
+        product_display = analysis.get("product_display") or _display_product_name(state.get("product_query") or "selected product")
+        country_label = _country_display_name(analysis.get("country") or state.get("country"))
+        left = analysis.get("left") or {}
+        right = analysis.get("right") or {}
+        left_value = left.get("total")
+        right_value = right.get("total")
+
+        if left_value is None or right_value is None:
+            missing_labels = []
+            if left_value is None:
+                missing_labels.append(str(left.get("label") or "first period"))
+            if right_value is None:
+                missing_labels.append(str(right.get("label") or "second period"))
+            state["final_response"] = (
+                f"I could not compare **{product_display}** inventory in **{country_label}** because "
+                f"data is missing for **{', '.join(missing_labels)}**."
+            )
+            return state
+
+        delta = float(analysis.get("delta") or 0.0)
+        pct_change = analysis.get("pct_change")
+        direction = "increased" if delta > 0 else "decreased" if delta < 0 else "stayed the same"
+        change_text = _format_inventory_value(abs(delta), metric_key)
+        pct_text = "" if pct_change is None else f" ({abs(float(pct_change)):.2f}%)"
+        lines = [
+            f"**{product_display}** inventory in **{country_label}**:",
+            f"- **{left.get('label')}**: **{_format_inventory_value(left_value, metric_key)}**",
+            f"- **{right.get('label')}**: **{_format_inventory_value(right_value, metric_key)}**",
+            f"- Change: **{direction} by {change_text}{pct_text}**",
+        ]
+        state["final_response"] = "\n".join(lines)
+        return state
+
     if analysis.get("type") == "inventory_diagnosis":
         insights = analysis.get("insights", [])
         rows = analysis.get("rows", [])
@@ -3654,10 +4053,51 @@ def _render_response(state: AgentState) -> AgentState:
 
         # 3) Else keep all rows
 
+        metric_key = analysis.get("metric") or metric_name
+        metric_label = humanize_metric(metric_key)
+        inventory_period = analysis.get("period_label") or period_label
+        inventory_country = _country_display_name(analysis.get("country") or state.get("country"))
+        source_table = analysis.get("source_table")
+
+        if product_query:
+            if not rows:
+                state["final_response"] = (
+                    f"I could not find inventory data for **{_display_product_name(product_query)}** "
+                    f"in **{inventory_country}** for **{inventory_period}**."
+                )
+                return state
+
+            row = rows[0]
+            product_name = row.get("product_name") or product_query
+            sku = row.get("sku")
+            if sku and str(product_name).strip().lower() != str(sku).strip().lower():
+                product_display = f"{product_name} ({sku})"
+            else:
+                product_display = str(product_name)
+
+            value = _format_inventory_value(row.get("__metric__", 0), metric_key)
+            lines = [
+                f"**{product_display}** inventory in **{inventory_country}** for **{inventory_period}**:",
+                f"- **{metric_label}**: **{value}**",
+            ]
+
+            flags = analysis.get("flags", {})
+            sku_map = analysis.get("sku_map", {})
+            flag = flags.get(sku or sku_map.get(product_name), {})
+            alert = flag.get("inventory_alert")
+            recommendation = flag.get("inventory_recommendation")
+            if source_table != "monthwise_inventory" and alert and alert != "No alert":
+                lines.append(f"- Status: **{alert}**")
+            if recommendation and alert and alert != "No alert" and source_table != "monthwise_inventory":
+                lines.append(f"- Action: {recommendation}")
+
+            state["final_response"] = "\n".join(lines)
+            return state
+
         flags = analysis.get("flags", {})
         sku_map = analysis.get("sku_map", {})
 
-        lines = ["Inventory health check:\n"]
+        lines = [f"Inventory health check for **{inventory_country}** in **{inventory_period}**:\n"]
 
         # summary insights
         for i in insights:
@@ -3745,11 +4185,12 @@ def _render_response(state: AgentState) -> AgentState:
         pct = comp.get("pct_change")
         curr = float(comp.get("left", {}).get("total", 0.0))
         prev = float(comp.get("right", {}).get("total", 0.0))
+        metric_label = humanize_metric(metric_name)
         if pct is None:
-            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}."
+            msg = f"**{metric_label}** was **{_format_value(curr, metric_name, state.get('country'))}** vs **{_format_value(prev, metric_name, state.get('country'))}**."
         else:
             direction = "higher" if pct > 0 else "lower"
-            msg = f"{metric_name} was {_format_value(curr, metric_name, state.get('country'))} vs {_format_value(prev, metric_name, state.get('country'))}, which is {abs(pct):.2f}% {direction}."
+            msg = f"**{metric_label}** was **{_format_value(curr, metric_name, state.get('country'))}** vs **{_format_value(prev, metric_name, state.get('country'))}**, which is **{abs(pct):.2f}% {direction}**."
         if analysis.get("growth_driver"):
             gp = analysis["growth_driver"]
             primary = gp.get("primary_driver")
@@ -3763,6 +4204,7 @@ def _render_response(state: AgentState) -> AgentState:
     if analysis.get("type") in {"trend", "growth"}:
         series = analysis.get("series_display") or analysis.get("series", [])
         mom = analysis.get("mom_display") or analysis.get("mom", [])
+        metric_label = humanize_metric(metric_name)
         if not series:
             state["final_response"] = "No trend data found."
             return state
@@ -3782,9 +4224,9 @@ def _render_response(state: AgentState) -> AgentState:
             direction = "increased" if change >= 0 else "decreased"
 
             lines = []
-            lines.append(f"Your {metric_name} is {_format_value(latest, metric_name, state.get('country'))}.")
+            lines.append(f"Your **{metric_label}** is **{_format_value(latest, metric_name, state.get('country'))}**.")
             lines.append(
-                f"It has {direction} by {_format_value(abs(change), metric_name, state.get('country'))} ({pct:.2f}%)."
+                f"It has **{direction}** by **{_format_value(abs(change), metric_name, state.get('country'))}** (**{pct:.2f}%**)."
             )
 
             # -------- 🔥 FIX 3: ROLLING MOM --------
@@ -3853,14 +4295,14 @@ def _render_response(state: AgentState) -> AgentState:
                             lines.append("\nTop growing products:")
                             for g in top_growth:
                                 lines.append(
-                                    f"- {g['product_name']} (+{_format_value(g['change'], metric_name, state.get('country'))})"
+                                    f"- **{g['product_name']}** (+**{_format_value(g['change'], metric_name, state.get('country'))}**)"
                                 )
 
                         if top_decline:
                             lines.append("\nTop declining products:")
                             for g in top_decline:
                                 lines.append(
-                                    f"- {g['product_name']} ({_format_value(g['change'], metric_name, state.get('country'))})"
+                                    f"- **{g['product_name']}** (**{_format_value(g['change'], metric_name, state.get('country'))}**)"
                                 )
 
                 except Exception:
@@ -3872,18 +4314,18 @@ def _render_response(state: AgentState) -> AgentState:
         
         latest = series[-1]
         prev = series[-2] if len(series) > 1 else None
-        lines = [f"{metric_name} trend ({period_label})", f"Latest: {_format_value(latest['__metric__'], metric_name, state.get('country'))}"]
+        lines = [f"{metric_label} trend ({period_label})", f"Latest: **{_format_value(latest['__metric__'], metric_name, state.get('country'))}**"]
         if prev:
             delta = latest["__metric__"] - prev["__metric__"]
             pct = (delta / prev["__metric__"] * 100) if prev["__metric__"] else 0
             direction = "↑" if pct > 0 else "↓" if pct < 0 else "→"
-            lines.append(f"Change vs previous month: {direction} {abs(pct):.2f}%")
+            lines.append(f"Change vs previous month: **{direction} {abs(pct):.2f}%**")
         lines.append("")
         lines.append("Breakdown:")
         for row in series:
             label = row.get("period_label", "Unknown")
             val = float(row.get("__metric__", 0.0))
-            lines.append(f"- {label}: {_format_value(val, metric_name, state.get('country'))}")
+            lines.append(f"- {label}: **{_format_value(val, metric_name, state.get('country'))}**")
         state["final_response"] = "\n".join(lines)
         return state
     
@@ -3894,11 +4336,13 @@ def _render_response(state: AgentState) -> AgentState:
 
         rows = analysis.get("per_sku", [])
         direction = analysis.get("ranking_direction", "top")
+        metric_label = humanize_metric(metric_name)
 
         # Sort descending safely
-        rows = sorted(rows, key=lambda x: x.get("__metric__", 0), reverse=True)
+        rows = sorted(rows, key=lambda x: x.get("__metric__", 0), reverse=(direction == "top"))
 
-        header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
+        period_text = f" in {period_label}" if period_label else ""
+        header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_label}{period_text}:"
 
         context = analysis.get("context") or {}
 
@@ -3906,26 +4350,40 @@ def _render_response(state: AgentState) -> AgentState:
             selected_month = context.get("selected_month") or {}
             extreme_rank = context.get("extreme_rank") or 1
             base_metric = analysis.get("base_metric") or metric_name
+            base_metric_label = humanize_metric(base_metric)
 
             header = (
-                f"Top products for {metric_name} in "
-                f"{_ordinal_label(extreme_rank)} highest {base_metric} month "
+                f"Top products for {metric_label} in "
+                f"{_ordinal_label(extreme_rank)} highest {base_metric_label} month "
                 f"({selected_month.get('period_label', period_label)}):"
             )
         else:
-            header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_name}:"
+            header = f"{'Top' if direction == 'top' else 'Bottom'} products for {metric_label}{period_text}:"
 
         lines = [header, ""]
 
         for idx, row in enumerate(rows, 1):
-            name = row.get("product_name") or row.get("sku") or "Unknown"
+            product_name = row.get("product_name")
+            sku = row.get("sku")
+            if product_name and sku and str(product_name).strip().lower() != str(sku).strip().lower():
+                name = f"{product_name} ({sku})"
+            else:
+                name = product_name or sku or "Unknown"
             value = float(row.get("__metric__", 0.0))
-            lines.append(f"{idx}. {name} — {_format_value(value, metric_name, state.get('country'))}")
+            lines.append(f"{idx}. **{name}** - **{_format_value(value, metric_name, state.get('country'))}**")
+
+        highest_month = analysis.get("highest_month") or {}
+        if highest_month.get("period_label") and highest_month.get("value") is not None:
+            lines.append("")
+            lines.append(
+                f"Highest **{metric_label}** month in this period: **{highest_month.get('period_label')}** - "
+                f"**{_format_value(float(highest_month.get('value', 0.0)), metric_name, state.get('country'))}**"
+            )
 
         total = analysis.get("total")
         if total is not None:
             lines.append("")
-            lines.append(f"Total: {_format_value(float(total), metric_name, state.get('country'))}")
+            lines.append(f"Total: **{_format_value(float(total), metric_name, state.get('country'))}**")
 
         state["final_response"] = "\n".join(lines)
         return state
@@ -3935,18 +4393,19 @@ def _render_response(state: AgentState) -> AgentState:
         label = analysis.get("period_label", "Unknown")
         value = float(analysis.get("value", 0.0))
         descriptor = "highest" if analysis.get("extreme_type", "max") == "max" else "lowest"
+        metric_label = humanize_metric(metric_name)
 
         product = analysis.get("product")
 
         if product:
             state["final_response"] = (
-                f"{product} had the {descriptor} {metric_name} in {label} "
-                f"at {_format_value(value, metric_name, state.get('country'))}."
+                f"**{_display_product_name(product)}** had the {descriptor} **{metric_label}** in **{label}** "
+                f"at **{_format_value(value, metric_name, state.get('country'))}**."
             )
         else:
             state["final_response"] = (
-                f"The {descriptor} {metric_name} was in {label} "
-                f"at {_format_value(value, metric_name, state.get('country'))}."
+                f"The {descriptor} **{metric_label}** was in **{label}** "
+                f"at **{_format_value(value, metric_name, state.get('country'))}**."
             )
 
         return state
@@ -3984,10 +4443,10 @@ def _render_response(state: AgentState) -> AgentState:
 
                     if latest_change:
                         lines.append(
-                            f"- {country}: {latest_change.get('previous_formatted')} -> "
-                            f"{latest_change.get('current_formatted')} "
-                            f"({latest_change.get('delta_formatted')}, "
-                            f"{(latest_change.get('pct_change') or 0):.2f}% change)"
+                            f"- **{country}**: **{latest_change.get('previous_formatted')}** -> "
+                            f"**{latest_change.get('current_formatted')}** "
+                            f"(**{latest_change.get('delta_formatted')}**, "
+                            f"**{(latest_change.get('pct_change') or 0):.2f}% change**)"
                         )
                         if len(series) > 2:
                             trend_points = ", ".join(
@@ -3998,7 +4457,7 @@ def _render_response(state: AgentState) -> AgentState:
                     elif series:
                         latest = series[-1]
                         lines.append(
-                            f"- {country}: {latest.get('formatted')} in {latest.get('period_label')} "
+                            f"- **{country}**: **{latest.get('formatted')}** in **{latest.get('period_label')}** "
                             "(not enough previous-period data for MoM change)"
                         )
                     elif error:
@@ -4012,8 +4471,8 @@ def _render_response(state: AgentState) -> AgentState:
                     reason = winner.get("reason") or "best latest movement"
                     lines.append(
                         f"Best performing country for {humanize_metric(metric)}: "
-                        f"{str(winner.get('country')).upper()} "
-                        f"({change.get('delta_formatted')}, {reason})."
+                        f"**{str(winner.get('country')).upper()}** "
+                        f"(**{change.get('delta_formatted')}**, {reason})."
                     )
 
             state["final_response"] = "\n".join(lines)
@@ -4030,14 +4489,14 @@ def _render_response(state: AgentState) -> AgentState:
             metric_rows = sorted(metric_rows, key=lambda row: float(row.get("value", 0.0)), reverse=metric not in LOWER_IS_BETTER_METRICS)
             for row in metric_rows:
                 country = str(row.get("country") or "").upper()
-                product_label = f" | {row.get('product')}" if row.get("product") else ""
+                product_label = f" | **{row.get('product')}**" if row.get("product") else ""
                 lines.append(
-                    f"- {country}{product_label}: {row.get('formatted')} "
-                    f"({row.get('period_label')})"
+                    f"- **{country}**{product_label}: **{row.get('formatted')}** "
+                    f"(**{row.get('period_label')}**)"
                 )
             if metric_rows:
                 winner = metric_rows[0]
-                lines.append(f"Best performing country for {humanize_metric(metric)}: {str(winner.get('country')).upper()}.")
+                lines.append(f"Best performing country for {humanize_metric(metric)}: **{str(winner.get('country')).upper()}**.")
 
         state["final_response"] = "\n".join(lines)
         return state
@@ -4072,8 +4531,8 @@ def _render_response(state: AgentState) -> AgentState:
                 title = f"{metric_label} for {_display_product_name(requested_product)}"
 
             lines.append(f"{title}:")
-            lines.append(f"Country: {country_label}")
-            lines.append(f"Period: {period_text}")
+            lines.append(f"Country: **{country_label}**")
+            lines.append(f"Period: **{period_text}**")
             lines.append("")
             lines.append("Monthly breakdown:")
 
@@ -4087,21 +4546,21 @@ def _render_response(state: AgentState) -> AgentState:
                         product_name = _display_product_name(product)
                         product_totals[product_name] = product_totals.get(product_name, 0.0) + numeric_value
                         if len(breakdown_items) == 1:
-                            lines.append(f"- {label}: {_format_value(numeric_value, metric, state.get('country'))}")
+                            lines.append(f"- {label}: **{_format_value(numeric_value, metric, state.get('country'))}**")
                         else:
-                            lines.append(f"- {label} | {product_name}: {_format_value(numeric_value, metric, state.get('country'))}")
+                            lines.append(f"- {label} | **{product_name}**: **{_format_value(numeric_value, metric, state.get('country'))}**")
                 else:
                     metric_total += value
-                    lines.append(f"- {label}: {_format_value(value, metric, state.get('country'))}")
+                    lines.append(f"- {label}: **{_format_value(value, metric, state.get('country'))}**")
 
             if product_totals:
                 lines.append("")
                 lines.append("Total:")
                 for product, total in product_totals.items():
-                    lines.append(f"- {product}: {_format_value(total, metric, state.get('country'))}")
+                    lines.append(f"- **{product}**: **{_format_value(total, metric, state.get('country'))}**")
             else:
                 lines.append("")
-                lines.append(f"Total: {_format_value(metric_total, metric, state.get('country'))}")
+                lines.append(f"Total: **{_format_value(metric_total, metric, state.get('country'))}**")
         state["final_response"] = "\n".join(lines)
         return state
     
@@ -4116,14 +4575,14 @@ def _render_response(state: AgentState) -> AgentState:
             for row in rows:
                 totals[row["product"]] = totals.get(row["product"], 0.0) + float(row["value"])
             for product, total in sorted(totals.items(), key=lambda x: x[1], reverse=True):
-                lines.append(f"- {product}: {_format_value(total, metric, state.get('country'))}")
+                lines.append(f"- **{product}**: **{_format_value(total, metric, state.get('country'))}**")
             lines.append("")
             lines.append("Breakdown:")
             for row in rows[:50]:
-                lines.append(f"- {row['month']} | {row['product']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
+                lines.append(f"- {row['month']} | **{row['product']}**: **{_format_value(row['value'], row['metric'], state.get('country'))}**")
         else:
             for row in rows[:50]:
-                lines.append(f"- {row['month']} | {row['product']} | {row['metric']}: {_format_value(row['value'], row['metric'], state.get('country'))}")
+                lines.append(f"- {row['month']} | **{row['product']}** | **{humanize_metric(row['metric'])}**: **{_format_value(row['value'], row['metric'], state.get('country'))}**")
         state["final_response"] = "\n".join(lines)
         return state
     
@@ -4134,15 +4593,15 @@ def _render_response(state: AgentState) -> AgentState:
         lines = [
             f"Business Report for {period_label}",
             "",
-            f"Revenue: {_format_value(metrics.get('net_sales', 0), 'net_sales', state.get('country'))}",
-            f"Profit: {_format_value(metrics.get('profit', 0), 'profit', state.get('country'))}",
-            f"Units: {metrics.get('total_quantity', 0):,.0f}",
-            f"ASP: {_format_value(metrics.get('asp', 0), 'asp', state.get('country'))}",
-            f"ACOS: {metrics.get('acos', 0):.2f}%",
-            f"Ad Spend: {_format_value(metrics.get('total_ads', 0), 'total_ads', state.get('country'))}",
-            f"Platform Fees: {_format_value(metrics.get('platform_fee', 0), 'platform_fee', state.get('country'))}",
-            f"CM2 Profit: {_format_value(metrics.get('total_cm2_profit', 0), 'total_cm2_profit', state.get('country'))}",
-            f"Reimbursements (Amazon): {_format_value(metrics.get('rembursement_fee', 0), 'rembursement_fee', state.get('country'))}",
+            f"Revenue: **{_format_value(metrics.get('net_sales', 0), 'net_sales', state.get('country'))}**",
+            f"Profit: **{_format_value(metrics.get('profit', 0), 'profit', state.get('country'))}**",
+            f"Units: **{metrics.get('total_quantity', 0):,.0f}**",
+            f"ASP: **{_format_value(metrics.get('asp', 0), 'asp', state.get('country'))}**",
+            f"ACOS: **{metrics.get('acos', 0):.2f}%**",
+            f"Ad Spend: **{_format_value(metrics.get('total_ads', 0), 'total_ads', state.get('country'))}**",
+            f"Platform Fees: **{_format_value(metrics.get('platform_fee', 0), 'platform_fee', state.get('country'))}**",
+            f"CM2 Profit: **{_format_value(metrics.get('total_cm2_profit', 0), 'total_cm2_profit', state.get('country'))}**",
+            f"Reimbursements (Amazon): **{_format_value(metrics.get('rembursement_fee', 0), 'rembursement_fee', state.get('country'))}**",
         ]
 
         # -------- TOP PRODUCTS --------
@@ -4152,7 +4611,7 @@ def _render_response(state: AgentState) -> AgentState:
             for row in top_products:
                 name = row.get("product_name") or row.get("sku") or "Unknown"
                 lines.append(
-                    f"- {name}: {_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}"
+                    f"- **{name}**: **{_format_value(float(row.get('__metric__', 0.0)), 'net_sales', state.get('country'))}**"
                 )
 
         # -------- 🔥 AI INSIGHTS (YOUR NEW LAYER) --------
@@ -4184,11 +4643,11 @@ def _render_response(state: AgentState) -> AgentState:
     if total is not None:
         product_label = ""
         if state.get("product_query"):
-            product_label = f" for {_display_product_name(state.get('product_query'))}"
+            product_label = f" for **{_display_product_name(state.get('product_query'))}**"
         state["final_response"] = (
-            f"In {period_label}, {humanize_metric(metric_name)}{product_label} "
-            f"for {_country_display_name(state.get('country'))} was "
-            f"{_format_value(float(total), metric_name, state.get('country'))}."
+            f"In **{period_label}**, **{humanize_metric(metric_name)}**{product_label} "
+            f"for **{_country_display_name(state.get('country'))}** was "
+            f"**{_format_value(float(total), metric_name, state.get('country'))}**."
         )
         return state
 
@@ -4212,6 +4671,7 @@ def _render_response(state: AgentState) -> AgentState:
     - Try to answer helpfully even if data is missing
     - Do NOT hallucinate exact numbers
     - Give reasoning, possible causes, or guidance
+    - Use Markdown bold sparingly for only the most important product, metric, value, or action
     """
 
             response = chat_llm.invoke(prompt)
@@ -4681,6 +5141,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
         state["subject_scope"] = plan.subject_scope
         state["ranking_direction"] = plan.ranking_direction
         state["extreme_type"] = plan.extreme_type
+        state["top_n"] = plan.top_n
         state["time_granularity"] = plan.time_granularity
         state["target_months"] = plan.target_months
         state["event_name"] = plan.event_name
@@ -4797,6 +5258,13 @@ def _invoke_agent(state: AgentState) -> AgentState:
 
         # -------- PERIOD PARSING --------
         parsed_period = parse_period(q_lower)
+        explicit_comparison = _explicit_month_comparison_from_query(q_lower)
+        if explicit_comparison:
+            parsed_period = explicit_comparison
+            state["analysis_type"] = "comparison"
+            state["answer_shape"] = "comparison"
+            state["intent"] = "comparison"
+            logger.info(f"[PERIOD_COMPARISON_OVERRIDE] {parsed_period}")
         logger.info(f"[PERIOD_PARSED_RAW] {parsed_period}")
 
         inherited_period = None
@@ -4815,7 +5283,7 @@ def _invoke_agent(state: AgentState) -> AgentState:
             state["period_parsed"] = parsed_period
             logger.info(f"[PERIOD_PARSED] {state['period_parsed']}")
 
-        if state["period_parsed"].get("type") in {"single", "range", "comparison"}:
+        if state["period_parsed"].get("type") in {"single", "range"}:
             state["period_payload"] = state["period_parsed"]
         else:
             state["period_payload"] = _prepare_period_payload(
