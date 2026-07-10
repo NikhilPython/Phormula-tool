@@ -596,11 +596,29 @@ def productwise_performance():
 
         # Request data
         data = request.get_json() or {}
+
         product_name = data.get('product_name')
         time_range = data.get('time_range', 'Yearly')
-        year = data.get('year', datetime.now().year)
+        year = int(data.get('year', datetime.now().year))
         quarter = data.get('quarter')
         home_currency = (data.get('home_currency') or 'USD').lower()
+
+        # Same completed-month cutoff must be sent for current and previous year.
+        # Example: July 2026 => comparison_end_month = 6.
+        comparison_end_month = data.get('comparison_end_month')
+
+        if comparison_end_month is not None:
+            try:
+                comparison_end_month = int(comparison_end_month)
+            except (TypeError, ValueError):
+                return jsonify({
+                    'error': 'comparison_end_month must be a number between 1 and 12'
+                }), 400
+
+            if comparison_end_month < 1 or comparison_end_month > 12:
+                return jsonify({
+                    'error': 'comparison_end_month must be between 1 and 12'
+                }), 400
 
         # ✅ NEW: exact products shown under Other SKUs chips
         other_sku_product_names = data.get("other_sku_product_names") or []
@@ -630,10 +648,42 @@ def productwise_performance():
             '4': ['october', 'november', 'december']
         }
 
+        all_months = list(month_mapping.keys())
+
         if time_range == 'Quarterly' and quarter:
             months_to_fetch = quarter_months.get(str(quarter), [])
         else:
-            months_to_fetch = list(month_mapping.keys())
+            months_to_fetch = all_months
+
+        # -----------------------------------------------------
+        # Exclude running month and future months
+        # -----------------------------------------------------
+        if comparison_end_month is not None:
+            # Use exactly the same cutoff for both current and previous year requests.
+            #
+            # Example:
+            # Current request:  year=2026, comparison_end_month=6
+            # Previous request: year=2025, comparison_end_month=6
+            #
+            # Both return only months up to June.
+            months_to_fetch = [
+                month
+                for month in months_to_fetch
+                if int(month_mapping[month]) <= comparison_end_month
+            ]
+
+        else:
+            # Backend fallback when frontend does not send comparison_end_month.
+            now = datetime.now()
+
+            if int(year) == now.year:
+                last_completed_month = now.month - 1
+
+                months_to_fetch = [
+                    month
+                    for month in months_to_fetch
+                    if int(month_mapping[month]) <= last_completed_month
+                ]
 
         result_data = {}
         other_skus_graph_data = {}
@@ -726,7 +776,6 @@ def productwise_performance():
                         if not matching_tables:
                             continue
 
-                        table_found = True
                         table_name = matching_tables[0]
 
                         try:
@@ -770,10 +819,14 @@ def productwise_performance():
                                 query, {'product_name': product_name}
                             ).fetchall()
 
+                            if not rows:
+                                continue
+
+                            table_found = True
+
                             table_sales = sum(float(row[0] or 0) for row in rows)
-                            table_total_quantity = sum(int(row[1] or 0) for row in rows)
+                            table_total_quantity = sum(float(row[1] or 0) for row in rows)
                             table_profit = sum(float(row[2] or 0) for row in rows)
-                            table_asp = sum(float(row[3] or 0) for row in rows)
                             table_sales_mix = sum(float(row[4] or 0) for row in rows)
                             table_profit_mix = sum(float(row[5] or 0) for row in rows)
                             table_cost_of_unit_sold = sum(float(row[6] or 0) for row in rows)
@@ -796,7 +849,7 @@ def productwise_performance():
 
                                 table_sales *= conversion_rate
                                 table_profit *= conversion_rate
-                                table_asp *= conversion_rate
+                                # table_asp *= conversion_rate
                                 table_cost_of_unit_sold *= conversion_rate
 
                                 conversion_rate_applied = conversion_rate
@@ -806,7 +859,7 @@ def productwise_performance():
                             total_sales += table_sales
                             total_quantity += table_total_quantity
                             total_profit += table_profit
-                            total_asp += table_asp
+                            # total_asp += table_asp
                             total_sales_mix += table_sales_mix
                             total_profit_mix += table_profit_mix
                             total_cost_of_unit_sold += table_cost_of_unit_sold
@@ -814,8 +867,16 @@ def productwise_performance():
                         except Exception as e:
                             continue
 
+                    total_asp = (
+                        total_sales / total_quantity
+                        if total_quantity > 0
+                        else 0.0
+                    )
+
                     gross_margin = (
-                        (total_profit / total_sales) * 100 if total_sales > 0 else 0.0
+                        (total_profit / total_sales) * 100
+                        if total_sales > 0
+                        else 0.0
                     )
 
                     inventory_units = inventory_units_map.get(
@@ -907,10 +968,14 @@ def productwise_performance():
                     )
 
                     if selected_sku and sku_country in ("uk", "us"):
-                        if time_range == "Quarterly" and quarter and months_to_fetch:
+                        if months_to_fetch:
                             anchor_month = int(month_mapping[months_to_fetch[-1]])
                         else:
-                            anchor_month = 12
+                            anchor_month = 0
+
+                        if anchor_month <= 0:
+                            other_skus_graph_data[country] = []
+                            continue
 
                         other_series = build_remaining_skus_time_series(
                             user_id=int(user_id),
@@ -1002,6 +1067,10 @@ def productwise_performance():
             'time_range': time_range,
             'year': year,
             'quarter': quarter if time_range == 'Quarterly' else None,
+
+            # Comparison range used by backend
+            'comparison_end_month': comparison_end_month,
+            'months_included': months_to_fetch,
 
             # Selected product graph data
             'data': result_data,
