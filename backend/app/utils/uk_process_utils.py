@@ -1329,7 +1329,17 @@ def process_skuwise_data(user_id, country, month, year):
         )
 
         # ✅ platform fee should be only your breakup totals (NOT uk_platform_fee helper total)
-        platform_fee_fixed_total = float(platform_fee_inventory_storage_total) + float(platformfeenew_total)
+        # Signed value matching frontend signs:
+        # storage fees (-), lost reimbursement (+), misc (+), other platform fees (-)
+        platform_fee_fixed_total = round(
+            -abs(float(short_term_storage_fee_total))
+            - abs(float(long_term_storage_fee_total))
+            - abs(float(fba_disposal_total))
+            + abs(float(lost_total_amount))
+            + abs(float(misc_transaction_total))
+            - abs(float(platformfeenew_total)),
+            2
+        )
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
 
@@ -1391,9 +1401,12 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["promotional_rebates_percentage"] = (total_pr / total_ns) * 100 if total_ns != 0 else 0.0
         lost_total_total = float(sum_row.get("lost_total", 0) or 0)  
         sum_row["platform_fee"] = round(
-            float(platform_fee_inventory_storage_total)
-            + float(platformfeenew_total)
-            - float(lost_total_total),
+            -abs(float(short_term_storage_fee_total))
+            - abs(float(long_term_storage_fee_total))
+            - abs(float(fba_disposal_total))
+            + abs(float(lost_total_total))
+            + abs(float(misc_transaction_total))
+            - abs(float(platformfeenew_total)),
             2
         )
         sum_row["rembursement_fee"] = abs(rembursement_fee) 
@@ -1517,7 +1530,10 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["short_term_storage_fee"] = abs(float(short_term_storage_fee_total))
         sum_row["long_term_storage_fee"] = abs(float(long_term_storage_fee_total))
         sum_row["fba_disposal"] = abs(float(fba_disposal_total))
-        sum_row["platform_fee"] = abs(float(sum_row.get("platform_fee", 0)))
+        sum_row["platform_fee"] = round(
+            float(sum_row.get("platform_fee", 0)),
+            2
+        )
         # -------------------------------------------------------------
 
         sum_row["user_id"] = user_id
@@ -2557,7 +2573,6 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                     "short_term_storage_fee",
                     "long_term_storage_fee",
                     "fba_disposal",
-                    "platform_fee",
                 ]
 
                 for col in abs_cols:
@@ -2834,7 +2849,6 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "short_term_storage_fee",
                 "long_term_storage_fee",
                 "fba_disposal",
-                "platform_fee",
             ]
 
             for col in abs_cols:
