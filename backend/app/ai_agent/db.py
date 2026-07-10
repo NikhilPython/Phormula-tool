@@ -789,6 +789,10 @@ def _month_end_sql() -> str:
     return "(make_date(:year, :month, 1) + INTERVAL '1 month' - INTERVAL '1 day')::date"
 
 
+def _month_start_sql() -> str:
+    return "make_date(:year, :month, 1)::date"
+
+
 def _resolve_current_inventory_table(
     engine: Engine,
     user_id: int,
@@ -839,7 +843,10 @@ def _resolve_current_inventory_table(
 
     requested = (int(year), int(month))
     prior = [(mk, name) for mk, name in candidates if (mk.year, mk.month) <= requested]
-    selected = max(prior or candidates, key=lambda item: (item[0].year, item[0].month))
+    if not prior:
+        return None
+
+    selected = max(prior, key=lambda item: (item[0].year, item[0].month))
     return selected[1], selected[0]
 
 
@@ -965,30 +972,19 @@ def _get_monthwise_inventory_snapshot(
             WHERE user_id = :user_id
               AND LOWER(TRIM(disposition)) = 'sellable'
               {country_filter}
+              AND date::date >= {_month_start_sql()}
               AND date::date <= {_month_end_sql()}
-        ),
-        fallback_snapshot AS (
-            SELECT COALESCE(
-                (SELECT latest_date FROM latest_snapshot),
-                (
-                    SELECT MAX(date::date)
-                    FROM monthwise_inventory
-                    WHERE user_id = :user_id
-                      AND LOWER(TRIM(disposition)) = 'sellable'
-                      {country_filter}
-                )
-            ) AS latest_date
         )
         SELECT
             msku AS sku,
             COALESCE(NULLIF(TRIM(product_name), ''), NULLIF(TRIM(title), ''), msku) AS product_name,
             SUM(COALESCE({column_name}, 0)) AS value,
-            (SELECT latest_date FROM fallback_snapshot) AS snapshot_date
+            (SELECT latest_date FROM latest_snapshot) AS snapshot_date
         FROM monthwise_inventory
         WHERE user_id = :user_id
           AND LOWER(TRIM(disposition)) = 'sellable'
           {country_filter}
-          AND date::date = (SELECT latest_date FROM fallback_snapshot)
+          AND date::date = (SELECT latest_date FROM latest_snapshot)
         GROUP BY msku, COALESCE(NULLIF(TRIM(product_name), ''), NULLIF(TRIM(title), ''), msku)
         ORDER BY value DESC
     """)
@@ -1070,18 +1066,8 @@ def get_inventory_snapshot(
             FROM inventory_aged
             WHERE user_id = :user_id
               {marketplace_filter}
+              AND "snapshot-date" >= {_month_start_sql()}
               AND "snapshot-date" <= {_month_end_sql()}
-        ),
-        fallback_snapshot AS (
-            SELECT COALESCE(
-                (SELECT latest_date FROM latest_snapshot),
-                (
-                    SELECT MAX("snapshot-date")
-                    FROM inventory_aged
-                    WHERE user_id = :user_id
-                      {marketplace_filter}
-                )
-            ) AS latest_date
         )
         SELECT
             sku,
@@ -1092,7 +1078,7 @@ def get_inventory_snapshot(
         FROM inventory_aged
         WHERE user_id = :user_id
           {marketplace_filter}
-          AND "snapshot-date" = (SELECT latest_date FROM fallback_snapshot)
+          AND "snapshot-date" = (SELECT latest_date FROM latest_snapshot)
         ORDER BY COALESCE({column_expr}, 0) DESC
     """)
 
@@ -1100,16 +1086,16 @@ def get_inventory_snapshot(
         with engine.connect() as conn:
             rows = conn.execute(query, params).mappings().all()
     except Exception:
-        current_snapshot = _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
-        if current_snapshot.get("per_sku") or current_snapshot.get("total") is not None:
-            return current_snapshot
-        return _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+        monthwise_snapshot = _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+        if monthwise_snapshot.get("per_sku") or monthwise_snapshot.get("total") is not None:
+            return monthwise_snapshot
+        return _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
 
     if not rows:
-        current_snapshot = _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
-        if current_snapshot.get("per_sku") or current_snapshot.get("total") is not None:
-            return current_snapshot
-        return _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+        monthwise_snapshot = _get_monthwise_inventory_snapshot(user_id, metric_key, month, year, country)
+        if monthwise_snapshot.get("per_sku") or monthwise_snapshot.get("total") is not None:
+            return monthwise_snapshot
+        return _get_current_inventory_snapshot(user_id, metric_key, month, year, country)
 
     snapshot_date = rows[0].get("snapshot_date")
     per_sku = [

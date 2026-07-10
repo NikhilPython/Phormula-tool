@@ -593,6 +593,7 @@ def build_business_context(
     product_query: Optional[str] = None,
 ) -> Dict[str, Any]:
     months = _months_from_payload(engine, user_id, country, period_payload)
+    requested_months = list(months)
     period_frames = _load_period_frames(engine, user_id, country, months)
     if not period_frames:
         latest = latest_available_month(engine, user_id, country)
@@ -607,6 +608,7 @@ def build_business_context(
         selected_metric_names.insert(0, metric_name)
 
     latest_month = loaded_months[-1] if loaded_months else latest_available_month(engine, user_id, country)
+    inventory_month = requested_months[-1] if requested_months else latest_month
     available_columns = sorted({column for _, frame in period_frames for column in frame.columns})
 
     return {
@@ -654,7 +656,7 @@ def build_business_context(
         "rankings": _rankings(sku_rows),
         "focus_products": _focus_products(sku_rows, product_query),
         "history": _history(engine, user_id, country, loaded_months),
-        "inventory": _inventory_context(user_id, country, latest_month, metric_name, user_query, product_query),
+        "inventory": _inventory_context(user_id, country, inventory_month, metric_name, user_query, product_query),
         "data_quality": {
             "row_count": int(len(sku_rows)),
             "has_sku_rows": bool(not sku_rows.empty),
