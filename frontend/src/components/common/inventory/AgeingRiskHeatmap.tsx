@@ -609,7 +609,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "productName",
                 label: "Product Name",
-                width: "135px",
+                width: "145px",
                 align: "left",
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
@@ -617,7 +617,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             {
                 key: "sku",
                 label: "SKU",
-                width: "95px",
+                width: "120px",
                 align: "left",
                 thClassName: heatmapHeaderClassName,
                 tdClassName: defaultTdClassName,
