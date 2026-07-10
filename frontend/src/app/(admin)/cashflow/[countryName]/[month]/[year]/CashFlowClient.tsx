@@ -166,7 +166,7 @@ const columnsToDisplay2 = [
 ] as const;
 
 const labelMap: Record<(typeof columnsToDisplay2)[number], string> = {
-  net_sales: "Sales",
+  net_sales: "Net Sales",
   amazon_fee: "Amazon Fees",
   advertising_total: "Advertising Cost",
   taxncredit: "Tax and Credit",
@@ -176,7 +176,7 @@ const labelMap: Record<(typeof columnsToDisplay2)[number], string> = {
 };
 
 const colorMapping: Record<string, string> = {
-  Sales: "#75BBDA",
+  "Net Sales": "#75BBDA",
   "Amazon Fees": "#B75A5A",
   "Advertising Cost": "#C49466",
   "Other Charges": "#3A8EA4",
@@ -187,7 +187,7 @@ const colorMapping: Record<string, string> = {
 };
 
 const mobileShortLabelMap: Record<string, string> = {
-  Sales: "Sales",
+  "Net Sales": "Net Sales",
   "Amazon Fees": "Amz Fees",
   "Advertising Cost": "Ads",
   "Tax and Credit": "Tax/Crd",
@@ -210,6 +210,25 @@ const monthsList = [
   "November",
   "December",
 ];
+
+const getCompletedMonthsForYear = (selectedYear: string): string[] => {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const selectedYearNumber = Number(selectedYear);
+
+  // Previous years are fully historic
+  if (selectedYearNumber < currentYear) {
+    return monthsList;
+  }
+
+  // Current year: exclude the currently running month
+  if (selectedYearNumber === currentYear) {
+    return monthsList.slice(0, today.getMonth());
+  }
+
+  // Future year: no historic months
+  return [];
+};
 
 const quarterMapping: Record<string, string[]> = {
   Q1: ["January", "February", "March"],
@@ -514,25 +533,54 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   };
 
 
-
   const fetchAllYearlyData = async () => {
     const yearlyData: Record<string, Partial<SummaryShape>> = {};
-    for (const mName of monthsList) {
+
+    // Only completed/historic months
+    const monthsToFetch = getCompletedMonthsForYear(year);
+
+    for (const mName of monthsToFetch) {
       try {
         const result = await fetchSpecificPeriodData(
           mName.toLowerCase(),
           year,
           "monthly"
         );
-        if (result && result.summary) {
+
+        if (result?.summary) {
           yearlyData[mName] = result.summary;
         }
       } catch {
-        // continue
+        // Continue fetching remaining completed months
       }
     }
+
     setAllYearlyData(yearlyData);
     return yearlyData;
+  };
+
+  const buildYearlySummaryFromMonths = (
+    yearlyData: Record<string, Partial<SummaryShape>>
+  ): SummaryShape => {
+    const summary: SummaryShape = {
+      quantity_total: 0,
+      gross_sales: 0,
+      net_sales: 0,
+      amazon_fee: 0,
+      advertising_total: 0,
+      taxncredit: 0,
+      otherwplatform: 0,
+      rembursement_fee: 0,
+      cashflow: 0,
+    };
+
+    Object.values(yearlyData).forEach((monthSummary) => {
+      (Object.keys(summary) as (keyof SummaryShape)[]).forEach((key) => {
+        summary[key] += Number(monthSummary?.[key] ?? 0);
+      });
+    });
+
+    return summary;
   };
 
   const fetchCashFlowData = async () => {
@@ -583,9 +631,15 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         setQuarterlyMonthlyData(monthlyData);
       }
       else if (periodType === "yearly") {
-        await fetchAllYearlyData();
-        const resp = await fetchSpecificPeriodData(null, year, "yearly");
-        setData(resp);
+        const yearlyData = await fetchAllYearlyData();
+
+        const completedMonthsSummary =
+          buildYearlySummaryFromMonths(yearlyData);
+
+        setData({
+          summary: completedMonthsSummary,
+          previous_summary: undefined,
+        });
       } else {
         const resp = await fetchSpecificPeriodData(
           month.toLowerCase(),
@@ -1131,60 +1185,62 @@ md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
           )}
 
           <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-            <div
-              className={[
-                "flex flex-wrap items-center justify-center",
-                "gap-4",
-                "w-full",
-                allValuesZero ? "pointer-events-none" : "opacity-100",
-                "transition-opacity duration-300",
-              ].join(" ")}
-            >
-              {displayedMetrics.map(({ name, displayLabel, color }) => {
-                const isChecked = !!selectedGraphs[name];
+            {periodType !== "monthly" && (
+              <div
+                className={[
+                  "flex flex-wrap items-center justify-center",
+                  "gap-4",
+                  "w-full",
+                  allValuesZero ? "pointer-events-none" : "opacity-100",
+                  "transition-opacity duration-300",
+                ].join(" ")}
+              >
+                {displayedMetrics.map(({ name, displayLabel, color }) => {
+                  const isChecked = !!selectedGraphs[name];
 
-                return (
-                  <label
-                    key={name}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className={[
-                      "shrink-0",
-                      "flex items-center gap-1 sm:gap-1.5",
-                      "font-semibold select-none whitespace-nowrap",
-                      "text-[10px] 2xl:text-xs my-1 2xl:my-3",
-                      "text-charcoal-500",
-                      allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
-                    ].join(" ")}
-                  >
-                    <span
-                      className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-                      style={{
-                        borderColor: color,
-                        backgroundColor: isChecked ? color : "white",
-                        opacity: allValuesZero ? 0.6 : 1,
-                      }}
+                  return (
+                    <label
+                      key={name}
+                      onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!allValuesZero) toggleMetricSelection(name);
-                      }}
+                      className={[
+                        "shrink-0",
+                        "flex items-center gap-1 sm:gap-1.5",
+                        "font-semibold select-none whitespace-nowrap",
+                        "text-[10px] 2xl:text-xs my-1 2xl:my-3",
+                        "text-charcoal-500",
+                        allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
+                      ].join(" ")}
                     >
-                      {isChecked && (
-                        <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
-                          <path
-                            fill="currentColor"
-                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                          />
-                        </svg>
-                      )}
-                    </span>
+                      <span
+                        className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                        style={{
+                          borderColor: color,
+                          backgroundColor: isChecked ? color : "white",
+                          opacity: allValuesZero ? 0.6 : 1,
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!allValuesZero) toggleMetricSelection(name);
+                        }}
+                      >
+                        {isChecked && (
+                          <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                            <path
+                              fill="currentColor"
+                              d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                            />
+                          </svg>
+                        )}
+                      </span>
 
-                    <span className="capitalize">{displayLabel}</span>
-                  </label>
-                );
-              })}
-            </div>
+                      <span className="capitalize">{displayLabel}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="w-full pt-4 h-[320px] sm:h-[40vw] max-h-[560px]">
               {periodType === "monthly" ? (
