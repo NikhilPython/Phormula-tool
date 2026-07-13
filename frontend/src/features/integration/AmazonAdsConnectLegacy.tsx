@@ -274,18 +274,18 @@ async function seedAdsReportsOnConnect(
     onActiveSteps?.([3]);
     onStep?.(3, "Ads summary", 75, "Building monthly and daily ads tables...");
 
-   const { month, year } = getCurrentMonthYearIST();
+    const { month, year } = getCurrentMonthYearIST();
 
-const adsDbPayload = {
-    month: monthToNumber(month),
-    year,
-    country,
-    include: ["SP", "SD", "SB"],
-};
+    const adsDbPayload = {
+        month: monthToNumber(month),
+        year,
+        country,
+        include: ["SP", "SD", "SB"],
+    };
 
-await postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload);
+    await postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload);
 
-await postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload);
+    await postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload);
 
     onStep?.(3, "Sponsored Brand", 100, "Sponsored Brand and monthly sync complete");
     onCompleteStep?.(3);
@@ -513,12 +513,12 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                     })}
                 </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-5 pt-4 border-t border-slate-100 flex justify-center">
                     {/* <p className="text-xs text-slate-400 truncate">
                         {stepProgress.detail || "Initialising sync…"}
                     </p> */}
 
-                    <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
+                    <div className="flex items-center gap-1 px-3 py-1 bg-slate-100 rounded-full">
                         <span className="text-xs text-slate-400">Estimated:</span>
                         <span className="text-xs font-medium text-slate-600">
                             {estimatedTime}
@@ -537,6 +537,7 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                         })()}
                     </span> */}
                 </div>
+               
             </div>
         </div>
     );
@@ -811,11 +812,11 @@ export default function AmazonAdsConnect({
         }, pollIntervalMs);
     };
 
- const handleAmazonAdsLogin = async () => {
-    setError("");
-    setMessage("");
+    const handleAmazonAdsLogin = async () => {
+        setError("");
+        setMessage("");
 
-    const token = getAuthToken();
+        const token = getAuthToken();
         if (!token) {
             setError("You are not logged in. Please login again.");
             return;
