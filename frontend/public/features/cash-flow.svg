@@ -1,0 +1,8 @@
+<svg width="220" height="220" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="220" height="220" rx="34" fill="#F7F1E5"/>
+  <circle cx="172" cy="48" r="28" fill="#FDD36F" opacity="0.35"/>
+  <circle cx="48" cy="174" r="35" fill="#5EA68E" opacity="0.18"/>
+  <rect x="42" y="50" width="136" height="112" rx="22" fill="white" stroke="#263B5E" stroke-opacity="0.12" stroke-width="3"/>
+  <circle cx="110" cy="104" r="44" fill="#5EA68E" opacity="0.18" stroke="#5EA68E" stroke-width="5"/><path d="M110 76V132M96 88C96 79 124 78 124 94C124 111 96 99 96 118C96 134 126 132 126 118" stroke="#263B5E" stroke-width="7" stroke-linecap="round"/><path d="M154 72L166 60L178 72M166 60V118" stroke="#FDD36F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="110" y="188" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#263B5E">Cash Flow</text>
+</svg>

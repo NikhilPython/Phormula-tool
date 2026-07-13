@@ -1,0 +1,8 @@
+<svg width="220" height="220" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="220" height="220" rx="34" fill="#F7F1E5"/>
+  <circle cx="172" cy="48" r="28" fill="#FDD36F" opacity="0.35"/>
+  <circle cx="48" cy="174" r="35" fill="#5EA68E" opacity="0.18"/>
+  <rect x="42" y="50" width="136" height="112" rx="22" fill="white" stroke="#263B5E" stroke-opacity="0.12" stroke-width="3"/>
+  <rect x="70" y="68" width="80" height="72" rx="20" fill="#5EA68E" opacity="0.18" stroke="#5EA68E" stroke-width="5"/><circle cx="94" cy="102" r="6" fill="#263B5E"/><circle cx="126" cy="102" r="6" fill="#263B5E"/><path d="M94 120C104 128 116 128 126 120" stroke="#263B5E" stroke-width="5" stroke-linecap="round"/><path d="M110 52V68M82 56L90 72M138 56L130 72" stroke="#FDD36F" stroke-width="6" stroke-linecap="round"/>
+  <text x="110" y="188" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#263B5E">AI Insights</text>
+</svg>
